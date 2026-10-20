@@ -1,0 +1,274 @@
+[gd_scene load_steps=10 format=3 uid="uid://stage4_vovinam"]
+
+[ext_resource type="Script" path="res://scripts/Stage4_Vovinam.gd" id="1_stage4"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_vov"]
+sky_top_color = Color(0.35, 0.68, 0.98, 1)
+sky_horizon_color = Color(0.78, 0.88, 0.98, 1)
+ground_bottom_color = Color(0.35, 0.45, 0.35, 1)
+ground_horizon_color = Color(0.68, 0.78, 0.72, 1)
+sun_angle_max = 30.0
+sun_curve = 0.15
+
+[sub_resource type="Sky" id="Sky_vov"]
+sky_material = SubResource("ProceduralSkyMaterial_vov")
+
+[sub_resource type="Environment" id="Environment_vov"]
+background_mode = 2
+sky = SubResource("Sky_vov")
+ambient_light_source = 3
+ambient_light_energy = 1.35
+ambient_light_sky_contribution = 0.7
+tonemap_mode = 0
+tonemap_exposure = 1.15
+glow_enabled = true
+glow_intensity = 0.2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_grass"]
+albedo_color = Color(0.22, 0.65, 0.32, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_blue_suit"]
+albedo_color = Color(0, 0.42, 0.85, 1)
+roughness = 0.6
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dummy"]
+albedo_color = Color(0.65, 0.45, 0.3, 1)
+roughness = 0.8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
+bg_color = Color(0.06, 0.08, 0.14, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.95, 0.44, 0.13, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hud"]
+bg_color = Color(0.06, 0.08, 0.14, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.95, 0.44, 0.13, 0.85)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+
+[node name="Stage4_Vovinam" type="Node3D"]
+script = ExtResource("1_stage4")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_vov")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.819152, 0.40558, -0.40558, 0, 0.707107, 0.707107, 0.573576, 0.579228, -0.579228, 0, 25, 0)
+light_color = Color(1, 0.98, 0.92, 1)
+light_energy = 1.45
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.906308, 0.422618, 0, -0.422618, 0.906308, 0, 4.2, 7.5)
+current = true
+fov = 60.0
+
+[node name="Arena" type="Node3D" parent="."]
+
+[node name="MatPad" type="CSGBox3D" parent="Arena"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 0)
+size = Vector3(14, 0.1, 14)
+
+[node name="PlayerFighter" type="Node3D" parent="Arena"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0.8, 0)
+
+[node name="Body" type="CSGCylinder3D" parent="Arena/PlayerFighter"]
+material_override = SubResource("StandardMaterial3D_blue_suit")
+radius = 0.35
+height = 1.4
+
+[node name="Head" type="CSGSphere3D" parent="Arena/PlayerFighter"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 0)
+radius = 0.26
+
+[node name="Belt" type="CSGCylinder3D" parent="Arena/PlayerFighter"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+radius = 0.37
+height = 0.15
+
+[node name="TrainingDummy" type="Node3D" parent="Arena"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 0.8, 0)
+
+[node name="DummyBody" type="CSGCylinder3D" parent="Arena/TrainingDummy"]
+material_override = SubResource("StandardMaterial3D_dummy")
+radius = 0.3
+height = 1.5
+
+[node name="DummyHead" type="CSGSphere3D" parent="Arena/TrainingDummy"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 0)
+material_override = SubResource("StandardMaterial3D_dummy")
+radius = 0.28
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="TopTitle" type="PanelContainer" parent="HUD"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -300.0
+offset_top = 16.0
+offset_right = 300.0
+offset_bottom = 68.0
+grow_horizontal = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_hud")
+
+[node name="Label" type="Label" parent="HUD/TopTitle"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
+theme_override_font_sizes/font_size = 20
+text = "🥋 MÀN 4: VOVINAM ĐẠI CHIẾN - SÂN VÕ FPTU"
+horizontal_alignment = 1
+
+[node name="RhythmPanel" type="PanelContainer" parent="HUD"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -360.0
+offset_top = -180.0
+offset_right = 360.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_hud")
+
+[node name="VBox" type="VBoxContainer" parent="HUD/RhythmPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="CommandLabel" type="Label" parent="HUD/RhythmPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "THẦY HÔ: 'ĐẤM THẲNG TAY THUẬN!'"
+horizontal_alignment = 1
+
+[node name="KeyLabel" type="Label" parent="HUD/RhythmPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
+theme_override_font_sizes/font_size = 24
+text = "HÃY BẤM: PHÍM MŨI TÊN TRÁI [⬅️]"
+horizontal_alignment = 1
+
+[node name="ComboLabel" type="Label" parent="HUD/RhythmPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.9, 0.95, 1)
+theme_override_font_sizes/font_size = 16
+text = "COMBO: 0 / 5"
+horizontal_alignment = 1
+
+[node name="FinisherPanel" type="PanelContainer" parent="HUD"]
+visible = false
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -360.0
+offset_top = -180.0
+offset_right = 360.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_hud")
+
+[node name="VBox" type="VBoxContainer" parent="HUD/FinisherPanel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Label" type="Label" parent="HUD/FinisherPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
+theme_override_font_sizes/font_size = 18
+text = "⚡ ĐÒN CHÂN KẸP CỔ SỐ 21: CĂN THANH LỰC VÙNG VÀNG (>65%)!"
+horizontal_alignment = 1
+
+[node name="PowerBar" type="ProgressBar" parent="HUD/FinisherPanel/VBox"]
+custom_minimum_size = Vector2(0, 32)
+layout_mode = 2
+
+[node name="ExecuteButton" type="Button" parent="HUD/FinisherPanel/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "⚡ THI TRIỂN ĐÒN CHÂN KẸP CỔ QUẬT NGÃ HÌNH NỘM!"
+
+[node name="ModalOverlay" type="ColorRect" parent="HUD"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.06, 0.1, 0.96)
+
+[node name="Center" type="CenterContainer" parent="HUD/ModalOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Card" type="PanelContainer" parent="HUD/ModalOverlay/Center"]
+custom_minimum_size = Vector2(760, 400)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Margin" type="MarginContainer" parent="HUD/ModalOverlay/Center/Card"]
+layout_mode = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 28
+
+[node name="VBox" type="VBoxContainer" parent="HUD/ModalOverlay/Center/Card/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.18, 0.8, 0.44, 1)
+theme_override_font_sizes/font_size = 24
+text = "HOÀN THÀNH BÀI THI VOVINAM!"
+horizontal_alignment = 1
+
+[node name="SubLabel" type="Label" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.88, 0.92, 1)
+theme_override_font_sizes/font_size = 16
+text = "Bạn đã thi triển xuất sắc đòn chân kẹp cổ số 21!"
+horizontal_alignment = 1
+
+[node name="NextButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "TIẾP TỤC MÀN 5: CĂN TIN & 7-ELEVEN ➔"
+
+[node name="RetryButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "🔄 CHƠI LẠI MÀN NÀY"
+
+[node name="MenuButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "📋 CHỌN MÀN CHƠI (CAMPAIGN MENU)"

@@ -1,0 +1,24 @@
+[gd_scene load_steps=4 format=3 uid="uid://trafficcar_fptu"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_bus"]
+size = Vector3(2.5, 2.8, 7.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_bus"]
+size = Vector3(2.5, 2.8, 7.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_roof"]
+size = Vector3(2.35, 0.25, 7.2)
+
+[node name="TrafficCar" type="StaticBody3D" groups=["slipstream_vehicle", "traffic_obstacle"]]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+shape = SubResource("BoxShape3D_bus")
+
+[node name="BusBodyMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+mesh = SubResource("BoxMesh_bus")
+
+[node name="BusRoofMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.95, 0)
+mesh = SubResource("BoxMesh_roof")

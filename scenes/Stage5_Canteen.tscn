@@ -1,0 +1,269 @@
+[gd_scene load_steps=8 format=3 uid="uid://stage5_canteen"]
+
+[ext_resource type="Script" path="res://scripts/Stage5_Canteen.gd" id="1_stage5"]
+
+[sub_resource type="Environment" id="Environment_canteen"]
+background_mode = 1
+background_color = Color(0.12, 0.15, 0.2, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.92, 0.94, 0.98, 1)
+ambient_light_energy = 1.3
+tonemap_mode = 0
+tonemap_exposure = 1.15
+glow_enabled = true
+glow_intensity = 0.2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tile"]
+albedo_color = Color(0.82, 0.84, 0.86, 1)
+roughness = 0.85
+
+[sub_resource type="BoxMesh" id="BoxMesh_floor"]
+material = SubResource("StandardMaterial3D_tile")
+size = Vector3(32, 0.2, 26)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_table"]
+albedo_color = Color(0.55, 0.38, 0.25, 1)
+roughness = 0.7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hud"]
+bg_color = Color(0.06, 0.08, 0.14, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.95, 0.44, 0.13, 0.85)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
+bg_color = Color(0.06, 0.08, 0.14, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.95, 0.44, 0.13, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[node name="Stage5_Canteen" type="Node3D"]
+script = ExtResource("1_stage5")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_canteen")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.819152, 0.40558, -0.40558, 0, 0.707107, 0.707107, 0.573576, 0.579228, -0.579228, 0, 15, 0)
+light_color = Color(1, 0.98, 0.92, 1)
+light_energy = 1.35
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 5.5, 8.5)
+current = true
+fov = 60.0
+
+[node name="CanteenHall" type="Node3D" parent="."]
+
+[node name="FoodCounter" type="CSGBox3D" parent="CanteenHall"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 1, -8)
+size = Vector3(10, 1.8, 2.5)
+
+[node name="SevenElevenStore" type="CSGBox3D" parent="CanteenHall"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 1.6, -8.5)
+size = Vector3(10, 3.2, 2)
+
+[node name="SevenElevenSign" type="MeshInstance3D" parent="CanteenHall"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 2.85, -6.4)
+
+[node name="Table1" type="CSGBox3D" parent="CanteenHall"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.6, -1.5)
+material_override = SubResource("StandardMaterial3D_table")
+size = Vector3(3, 1, 1.6)
+
+[node name="Table2" type="CSGBox3D" parent="CanteenHall"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.6, -1.5)
+material_override = SubResource("StandardMaterial3D_table")
+size = Vector3(3, 1, 1.6)
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="MissionPanel" type="PanelContainer" parent="HUD"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -380.0
+offset_top = 16.0
+offset_right = 380.0
+offset_bottom = 68.0
+grow_horizontal = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_hud")
+
+[node name="MissionLabel" type="Label" parent="HUD/MissionPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
+theme_override_font_sizes/font_size = 17
+text = "BƯNG KHAY CƠM TỚI BÀN BẠN: 0% (GIỮ THANH THĂNG BẰNG Ở GIỮA!)"
+horizontal_alignment = 1
+
+[node name="BalancePanel" type="PanelContainer" parent="HUD"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -300.0
+offset_top = -160.0
+offset_right = 300.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_hud")
+
+[node name="VBox" type="VBoxContainer" parent="HUD/BalancePanel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Label" type="Label" parent="HUD/BalancePanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "⚖️ GIỮ THĂNG BẰNG KHAY CƠM (PHÍM A/D HOẶC NÚT BÊN DƯỚI):"
+horizontal_alignment = 1
+
+[node name="BalanceBar" type="ProgressBar" parent="HUD/BalancePanel/VBox"]
+custom_minimum_size = Vector2(0, 26)
+layout_mode = 2
+value = 50.0
+
+[node name="HBox" type="HBoxContainer" parent="HUD/BalancePanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="LeftButton" type="Button" parent="HUD/BalancePanel/VBox/HBox"]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "⬅️ NGHIÊNG TRÁI [A]"
+
+[node name="RightButton" type="Button" parent="HUD/BalancePanel/VBox/HBox"]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "➡️ NGHIÊNG PHẢI [D]"
+
+[node name="CenterModals" type="CenterContainer" parent="HUD"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="SevenElevenModal" type="PanelContainer" parent="HUD/CenterModals"]
+visible = false
+custom_minimum_size = Vector2(680, 340)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Margin" type="MarginContainer" parent="HUD/CenterModals/SevenElevenModal"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 22
+
+[node name="VBox" type="VBoxContainer" parent="HUD/CenterModals/SevenElevenModal/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="HUD/CenterModals/SevenElevenModal/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0, 0.6, 0.35, 1)
+theme_override_font_sizes/font_size = 22
+text = "🏪 7-ELEVEN FPTU CAMPUS"
+horizontal_alignment = 1
+
+[node name="BuyNoodlesButton" type="Button" parent="HUD/CenterModals/SevenElevenModal/Margin/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "🍜 MUA MÌ TRỘN INDOMIE ĐÔI TRỨNG XÚC XÍCH (HỒI STAMINA)"
+
+[node name="BuyDrinkButton" type="Button" parent="HUD/CenterModals/SevenElevenModal/Margin/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "⚡ MUA LON NƯỚC TĂNG LỰC BÒ HÚC / MONSTER (HỒI SANITY)"
+
+[node name="FinishButton" type="Button" parent="HUD/CenterModals/SevenElevenModal/Margin/VBox"]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+disabled = true
+text = "HÃY MUA CẢ 2 MÓN TRÊN ĐỂ NẠP ĐỦ PIN ➔"
+
+[node name="ModalOverlay" type="ColorRect" parent="HUD"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.06, 0.1, 0.96)
+
+[node name="Center" type="CenterContainer" parent="HUD/ModalOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Card" type="PanelContainer" parent="HUD/ModalOverlay/Center"]
+custom_minimum_size = Vector2(760, 400)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Margin" type="MarginContainer" parent="HUD/ModalOverlay/Center/Card"]
+layout_mode = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 28
+
+[node name="VBox" type="VBoxContainer" parent="HUD/ModalOverlay/Center/Card/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.18, 0.8, 0.44, 1)
+theme_override_font_sizes/font_size = 24
+text = "NO NÊ CĂN TIN & NẠP ĐẦY PIN!"
+horizontal_alignment = 1
+
+[node name="SubLabel" type="Label" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.88, 0.92, 1)
+theme_override_font_sizes/font_size = 16
+text = "Sẵn sàng cho trận chiến đồ án Capstone 23:59 đêm nay!"
+horizontal_alignment = 1
+
+[node name="NextButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "TIẾP TỤC MÀN 6: BOSS FIGHT CAPSTONE ➔"
+
+[node name="RetryButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "🔄 CHƠI LẠI MÀN NÀY"
+
+[node name="MenuButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "📋 CHỌN MÀN CHƠI (CAMPAIGN MENU)"

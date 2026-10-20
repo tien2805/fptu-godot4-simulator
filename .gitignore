@@ -1,0 +1,15 @@
+# Godot 4+ specific ignores
+.godot/
+*.translation
+.godot.zip
+
+# Logs and temporary files
+smoke_log.txt
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+push_to_github.ps1
+

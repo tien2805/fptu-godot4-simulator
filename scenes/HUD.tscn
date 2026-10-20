@@ -1,0 +1,219 @@
+[gd_scene load_steps=6 format=3 uid="uid://hud_fptu"]
+
+[ext_resource type="Script" path="res://scripts/HUDManager.gd" id="1_hud"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_clock"]
+bg_color = Color(0.06, 0.08, 0.14, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.95, 0.44, 0.13, 0.95)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_zone"]
+bg_color = Color(0.06, 0.08, 0.14, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.2, 0.55, 0.9, 0.8)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_speed"]
+bg_color = Color(0.06, 0.08, 0.14, 0.9)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.95, 0.44, 0.13, 0.85)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_notice"]
+bg_color = Color(0.12, 0.04, 0.04, 0.95)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.9, 0.2, 0.2, 0.9)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="TopBar" type="HBoxContainer" parent="."]
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 24.0
+offset_top = 16.0
+offset_right = -24.0
+offset_bottom = 82.0
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="ClockPanel" type="PanelContainer" parent="TopBar"]
+custom_minimum_size = Vector2(250, 60)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_clock")
+
+[node name="ClockLabel" type="Label" parent="TopBar/ClockPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.95, 0.85, 1)
+theme_override_font_sizes/font_size = 28
+text = "07:05:00 AM"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ZonePanel" type="PanelContainer" parent="TopBar"]
+custom_minimum_size = Vector2(520, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_zone")
+
+[node name="ZoneLabel" type="Label" parent="TopBar/ZonePanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
+theme_override_font_sizes/font_size = 20
+text = "📍 VINHOMES GRAND PARK"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="StageSelectBtn" type="Button" parent="TopBar"]
+custom_minimum_size = Vector2(180, 60)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "📋 CHỌN MÀN [M]"
+
+[node name="BottomRight" type="MarginContainer" parent="."]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -340.0
+offset_top = -170.0
+offset_right = -24.0
+offset_bottom = -24.0
+
+[node name="SpeedContainer" type="PanelContainer" parent="BottomRight"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_speed")
+
+[node name="SpeedPanel" type="VBoxContainer" parent="BottomRight/SpeedContainer"]
+layout_mode = 2
+
+[node name="SpeedLabel" type="Label" parent="BottomRight/SpeedContainer/SpeedPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.95, 0.9, 1)
+theme_override_font_sizes/font_size = 36
+text = "00 km/h"
+horizontal_alignment = 2
+
+[node name="SlipstreamBar" type="ProgressBar" parent="BottomRight/SpeedContainer/SpeedPanel"]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+value = 0.0
+
+[node name="SlipstreamStatus" type="Label" parent="BottomRight/SpeedContainer/SpeedPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.85, 0.9, 1)
+theme_override_font_sizes/font_size = 12
+text = "NÚP GIÓ SAU XE F-BUS / VINBUS (< 8M)"
+horizontal_alignment = 2
+
+[node name="NoticeBanner" type="PanelContainer" parent="."]
+visible = false
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -340.0
+offset_top = 96.0
+offset_right = 340.0
+offset_bottom = 148.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_notice")
+
+[node name="NoticeLabel" type="Label" parent="NoticeBanner"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.9, 1)
+theme_override_font_sizes/font_size = 17
+text = "💥 RƠI KHỎI ĐƯỜNG! ĐÃ CỨU HỘ VỀ LÒNG ĐƯỜNG (+3s PHẠT)"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="DamageFlash" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 0.15, 0.15, 0)
+
+[node name="AbsentOverlay" type="ColorRect" parent="."]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.04, 0.06, 0.1, 0.96)
+
+[node name="CenterContainer" type="CenterContainer" parent="AbsentOverlay"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="AbsentOverlay/CenterContainer"]
+custom_minimum_size = Vector2(680, 0)
+layout_mode = 2
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="AbsentTitle" type="Label" parent="AbsentOverlay/CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "BẠN ĐÃ BỊ ĐÁNH ABSENT!
+HẸN GẶP LẠI Ở KỲ RETAKE (HỌC LẠI)!"
+horizontal_alignment = 1
+
+[node name="NextStageButton" type="Button" parent="AbsentOverlay/CenterContainer/VBoxContainer"]
+visible = false
+custom_minimum_size = Vector2(380, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 19
+text = "TIẾP TỤC MÀN 2: BÃI XE D1 & LEO NÚI ➔"
+
+[node name="RetryButton" type="Button" parent="AbsentOverlay/CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(360, 48)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 18
+text = "🔄 CHƠI LẠI TỪ ĐẦU"
+
+[node name="CampaignHubButton" type="Button" parent="AbsentOverlay/CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(360, 48)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 18
+text = "📋 CHỌN MÀN CHƠI KHÁC (CAMPAIGN HUB)"
+
+[node name="AbsentBellPlayer" type="AudioStreamPlayer" parent="."]

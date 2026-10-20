@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://roadtrack_fptu"]
+
+[node name="RoadTrack" type="Node3D"]
+
+[node name="RoadPath" type="Path3D" parent="."]
+
+[node name="AsphaltCSG" type="CSGPolygon3D" parent="."]
+use_collision = true
+
+[node name="CenterYellowLineCSG" type="CSGPolygon3D" parent="."]

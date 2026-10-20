@@ -1,0 +1,324 @@
+[gd_scene load_steps=10 format=3 uid="uid://stage3_classroom"]
+
+[ext_resource type="Script" path="res://scripts/Stage3_ClassroomFAP.gd" id="1_stage3"]
+
+[sub_resource type="Environment" id="Environment_class"]
+background_mode = 1
+background_color = Color(0.1, 0.12, 0.16, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.88, 0.92, 0.98, 1)
+ambient_light_energy = 1.25
+tonemap_mode = 0
+tonemap_exposure = 1.15
+glow_enabled = true
+glow_intensity = 0.2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_floor"]
+albedo_color = Color(0.28, 0.32, 0.36, 1)
+roughness = 0.85
+
+[sub_resource type="BoxMesh" id="BoxMesh_floor"]
+material = SubResource("StandardMaterial3D_floor")
+size = Vector3(26, 0.2, 22)
+
+[sub_resource type="QuadMesh" id="QuadMesh_screen"]
+size = Vector2(4.4, 2.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_desk"]
+albedo_color = Color(0.68, 0.54, 0.42, 1)
+roughness = 0.7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hud"]
+bg_color = Color(0.06, 0.08, 0.14, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.95, 0.44, 0.13, 0.85)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
+bg_color = Color(0.06, 0.08, 0.14, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.95, 0.44, 0.13, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_cold"]
+bg_color = Color(0.04, 0.08, 0.14, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.2, 0.65, 0.9, 0.85)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+
+[node name="Stage3_ClassroomFAP" type="Node3D"]
+script = ExtResource("1_stage3")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_class")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.819152, 0.40558, -0.40558, 0, 0.707107, 0.707107, 0.573576, 0.579228, -0.579228, 0, 10, 0)
+light_color = Color(0.95, 0.98, 1, 1)
+light_energy = 1.3
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.939693, 0.34202, 0, -0.34202, 0.939693, 0, 2.8, 4.5)
+current = true
+fov = 65.0
+
+[node name="Room" type="Node3D" parent="."]
+
+[node name="ProjectorScreen" type="MeshInstance3D" parent="Room"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.05, -5.62)
+mesh = SubResource("QuadMesh_screen")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="TopBar" type="HBoxContainer" parent="HUD"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 24.0
+offset_top = 16.0
+offset_right = -24.0
+offset_bottom = 76.0
+theme_override_constants/separation = 16
+
+[node name="TimerPanel" type="PanelContainer" parent="HUD/TopBar"]
+custom_minimum_size = Vector2(250, 56)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_hud")
+
+[node name="TimerLabel" type="Label" parent="HUD/TopBar/TimerPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.95, 0.85, 1)
+theme_override_font_sizes/font_size = 24
+text = "07:30:00 AM"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="MissionPanel" type="PanelContainer" parent="HUD/TopBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_hud")
+
+[node name="MissionLabel" type="Label" parent="HUD/TopBar/MissionPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
+theme_override_font_sizes/font_size = 17
+text = "HÃY CHUYỂN 4G ĐỂ ĐÁNH BẠI WI-FI LAG & NHẬP MÃ ĐIỂM DANH [FPT999]!"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SleepPanel" type="PanelContainer" parent="HUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -380.0
+offset_top = 92.0
+offset_right = -24.0
+offset_bottom = 205.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_cold")
+
+[node name="VBox" type="VBoxContainer" parent="HUD/SleepPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Label" type="Label" parent="HUD/SleepPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.92, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "❄️ PHÒNG LẠNH 16°C & MỨC BUỒN NGỦ:"
+
+[node name="SleepBar" type="ProgressBar" parent="HUD/SleepPanel/VBox"]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+value = 20.0
+
+[node name="CoffeeButton" type="Button" parent="HUD/SleepPanel/VBox"]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "☕ NHẤP CÀ PHÊ 7-ELEVEN (-28% BUỒN NGỦ)"
+
+[node name="CenterModals" type="CenterContainer" parent="HUD"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="FAPModal" type="PanelContainer" parent="HUD/CenterModals"]
+custom_minimum_size = Vector2(680, 320)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Margin" type="MarginContainer" parent="HUD/CenterModals/FAPModal"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 22
+
+[node name="VBox" type="VBoxContainer" parent="HUD/CenterModals/FAPModal/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="HUD/CenterModals/FAPModal/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.44, 0.13, 1)
+theme_override_font_sizes/font_size = 22
+text = "🌐 CỔNG ĐIỂM DANH FAP - SLOT 1 (07:30 AM)"
+horizontal_alignment = 1
+
+[node name="StatusLabel" type="Label" parent="HUD/CenterModals/FAPModal/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.7, 0.2, 1)
+theme_override_font_sizes/font_size = 15
+text = "⚠️ Wi-Fi FPTU_Student đang quá tải quay vòng tròn! Hãy chuyển sang 4G!"
+horizontal_alignment = 1
+
+[node name="Switch4GButton" type="Button" parent="HUD/CenterModals/FAPModal/Margin/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "📶 BẬT 4G VIETTEL/VINA TỐC ĐỘ CAO (CỨU FAP)"
+
+[node name="CodeInput" type="LineEdit" parent="HUD/CenterModals/FAPModal/Margin/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+placeholder_text = "Chuyển sang 4G trước khi nhập mã..."
+alignment = 1
+editable = false
+
+[node name="SubmitButton" type="Button" parent="HUD/CenterModals/FAPModal/Margin/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+disabled = true
+text = "✅ GỬI MÃ ĐIỂM DANH [ROLL CALL]"
+
+[node name="QuizModal" type="PanelContainer" parent="HUD/CenterModals"]
+visible = false
+custom_minimum_size = Vector2(740, 360)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Margin" type="MarginContainer" parent="HUD/CenterModals/QuizModal"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 22
+
+[node name="VBox" type="VBoxContainer" parent="HUD/CenterModals/QuizModal/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="QuestionLabel" type="Label" parent="HUD/CenterModals/QuizModal/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_font_sizes/font_size = 17
+text = "🎓 GIẢNG VIÊN HỎI BẤT NGỜ:\nTrong kiến trúc lập trình SOLID, chữ S đại diện cho nguyên lý nào?"
+horizontal_alignment = 1
+
+[node name="OptionA" type="Button" parent="HUD/CenterModals/QuizModal/Margin/VBox"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "A. Single Responsibility Principle (Mỗi class/module chỉ chịu 1 trách nhiệm duy nhất)"
+
+[node name="OptionB" type="Button" parent="HUD/CenterModals/QuizModal/Margin/VBox"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "B. Simple Object Lifecycle (Vòng đời đối tượng đơn giản)"
+
+[node name="OptionC" type="Button" parent="HUD/CenterModals/QuizModal/Margin/VBox"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "C. Static Overriding Logic (Logic ghi đè tĩnh)"
+
+[node name="ModalOverlay" type="ColorRect" parent="HUD"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.06, 0.1, 0.96)
+
+[node name="Center" type="CenterContainer" parent="HUD/ModalOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Card" type="PanelContainer" parent="HUD/ModalOverlay/Center"]
+custom_minimum_size = Vector2(760, 400)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Margin" type="MarginContainer" parent="HUD/ModalOverlay/Center/Card"]
+layout_mode = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 28
+
+[node name="VBox" type="VBoxContainer" parent="HUD/ModalOverlay/Center/Card/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.18, 0.8, 0.44, 1)
+theme_override_font_sizes/font_size = 24
+text = "ĐIỂM DANH THÀNH CÔNG!"
+horizontal_alignment = 1
+
+[node name="SubLabel" type="Label" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.88, 0.92, 1)
+theme_override_font_sizes/font_size = 16
+text = "Bạn đã có mặt [P] - Present và đạt điểm tuyệt đối!"
+horizontal_alignment = 1
+
+[node name="NextButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "TIẾP TỤC MÀN 4: VOVINAM ĐẠI CHIẾN ➔"
+
+[node name="RetryButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "🔄 CHƠI LẠI MÀN NÀY"
+
+[node name="MenuButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "📋 CHỌN MÀN CHƠI (CAMPAIGN MENU)"
