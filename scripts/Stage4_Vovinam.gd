@@ -200,8 +200,14 @@ func _build_fighter_limbs() -> void:
 	dummy_mat.emission_enabled = true
 	dummy_mat.emission = Color.WHITE
 	dummy_mat.emission_energy_multiplier = 0.0
-	dummy_body.material_override = dummy_mat
-	dummy_head.material_override = dummy_mat
+	dummy_mat.albedo_color = Color(0.92, 0.8, 0.64)
+	dummy_mat.albedo_texture = CharacterBuilder._tex("prop_wood.png")
+	dummy_mat.uv1_triplanar = true
+	dummy_mat.uv1_scale = Vector3(1.5, 1.5, 1.5)
+	dummy_body.visible = false
+	dummy_head.visible = false
+	var dummy_model: Node3D = PropBuilder.build_training_dummy(dummy, dummy_mat)
+	dummy_model.position = Vector3(0.0, -0.8, 0.0)
 
 func _build_arena_extras() -> void:
 	# Thầy võ trên bục

@@ -590,38 +590,18 @@ func _build_cau_trau_trau_and_ringroad3() -> void:
 		crane_arm.position = Vector3(-12.0, 32.0, offset_z)
 
 func _build_dai_lo_d2_boulevard() -> void:
-	# Đại lộ D2 SHTP: 6 làn xe rộng rãi, dải phân cách trồng cỏ và cây cảnh
-	var mat_palm := StandardMaterial3D.new()
-	mat_palm.albedo_color = Color("#27AE60")
-
+	# Đại lộ D2 SHTP: 6 làn xe rộng rãi; hai bên là hàng cây tán rộng (PropBuilder, bake 1 mesh/cây) và cột đèn cao áp 2 nhánh
+	var cm: Dictionary = FPTUCampusBuilder.make_materials()
 	for d: float in range(1040.0, 1500.0, 32.0):
 		var t_xform: Transform3D = road_path.curve.sample_baked_with_rotation(d)
-
-		# Hàng cây xanh 2 bên vỉa hè
+		var bx: Vector3 = t_xform.basis.x
+		var lamp_yaw: float = atan2(-bx.z, bx.x)
 		for side: float in [-1.0, 1.0]:
-			var tree := MeshInstance3D.new()
-			var t_mesh := SphereMesh.new()
-			t_mesh.radius = 3.4
-			t_mesh.height = 6.8
-			tree.mesh = t_mesh
-			tree.material_override = mat_palm
-			scenery_root.add_child(tree)
-			tree.global_position = t_xform.origin + t_xform.basis.x * (side * 11.5) + Vector3(0, 4.2, 0)
-
-			# Cột đèn cao áp 2 nhánh chiếu sáng
+			var tpos: Vector3 = t_xform.origin + bx * (side * 11.5)
+			PropBuilder.build_tree(scenery_root, scenery_root.to_local(tpos), cm, 1.35, int(d) + (7 if side > 0.0 else 3))
 			if int(d) % 64 == 0:
-				var lamp := MeshInstance3D.new()
-				var l_mesh := CylinderMesh.new()
-				l_mesh.top_radius = 0.12
-				l_mesh.bottom_radius = 0.16
-				l_mesh.height = 8.5
-				lamp.mesh = l_mesh
-				var mat_metal := StandardMaterial3D.new()
-				mat_metal.albedo_color = Color("#BDC3C7")
-				mat_metal.metallic = 0.8
-				lamp.material_override = mat_metal
-				scenery_root.add_child(lamp)
-				lamp.global_position = t_xform.origin + t_xform.basis.x * (side * 8.2) + Vector3(0, 4.25, 0)
+				var lpos: Vector3 = t_xform.origin + bx * (side * 8.2)
+				PropBuilder.build_lamp_post(scenery_root, scenery_root.to_local(lpos), 8.5, true, lamp_yaw)
 
 	# Biển chào Khu Công nghệ cao SHTP từ ảnh chụp thật (fptu_shtp_monument.png)
 	if tex_shtp:

@@ -401,8 +401,8 @@ func _build_rival() -> void:
 	col.position = Vector3(0.0, 0.6, 0.0)
 	body.add_child(col)
 
-	FPTUCampusBuilder.build_motorbike(rival_root, Vector3.ZERO, 0.0, Color("#C0392B"), campus_mats)
-	CharacterBuilder.build_baked_rider(rival_root, Vector3(0.0, 0.27, 0.12), {"seed": 99, "shirt_color": Color("#3498DB"), "helmet_color": Color("#F39C12"), "backpack": true})
+	PropBuilder.build_scooter(rival_root, Vector3.ZERO, 0.0, Color("#C0392B"), {"baked": true, "name": "RivalScooter"})
+	CharacterBuilder.build_baked_rider(rival_root, Vector3(0.0, 0.32, 0.12), {"seed": 99, "shirt_color": Color("#3498DB"), "helmet_color": Color("#F39C12"), "backpack": true})
 
 	rival_bubble = Label3D.new()
 	rival_bubble.text = "🛵 Ô gần nhất là của tui!"

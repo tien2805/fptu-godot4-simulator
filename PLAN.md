@@ -160,7 +160,8 @@ graph LR
 | **Phase 5b** | Gameplay v2 Màn 1: drift, near-miss, sự kiện đường, đèn đỏ, mưa, kẹp làn, speed lines | ✅ Hoàn tất |
 | **Phase 6** | Đóng gói Windows Executable, cài đặt đồ họa Low/Medium/High, menu chính, icon Cóc Vàng, GitHub Release v1.0.0 | ✅ Hoàn tất |
 | **Phase 7 (v1.1) – M1** | Quick wins theo `docs/GAME_DESIGN_REVIEW_2026-10-20.md`: near-miss sớm + chuỗi nhân thưởng, cửa hàng 7-Eleven bằng phím, thẻ chuyển cảnh, menu tạm dừng, bus âm thanh + âm lượng, test HUD không bị cắt | ✅ Hoàn tất |
-| **Phase 7 – M2** | **Người & đồ vật giống thật** (CharacterBuilder + PropBuilder thủ tục, texture Pillow, animation idle/walk/react – yêu cầu chủ dự án 20/10/2026), ánh sáng theo giờ từng màn, nhạc thủ tục | 🔄 Đang làm |
+| **Phase 7 – M2a/b** | **Người & đồ vật giống thật** (yêu cầu chủ dự án 20/10/2026): `CharacterBuilder` (người nhiều phần, mặt vẽ Pillow, 13 preset, animation thủ tục) thay mọi capsule ở 7 màn + menu; `PropBuilder` (xe tay ga ~50 chi tiết, xe buýt, nộm gỗ, cây, cột đèn, bàn ghế dù, khay cơm) | ✅ Hoàn tất |
+| **Phase 7 – M2c** | Ánh sáng theo giờ từng màn, nhạc thủ tục thích ứng, đời sống campus (đám đông bake MultiMesh) | 🔄 Đang làm |
 | **Phase 7 – M3/M4** | Tổng kết ngày, thành tích, thử thách ngày, tay cầm/đổi phím, CI test job, tối ưu, tách StageBase, changelog, v1.1.0 | 📅 Kế hoạch |
 
 ---
@@ -199,6 +200,16 @@ Thực hiện theo `docs/PROMPT_FULL_UPGRADE.md` (brief) và `docs/GAME_DESIGN_R
 * **Baseline FPS (RTX laptop, cửa sổ 1280×720, 1 frame sau khi nạp – chỉ tham khảo, số thấp là frame đầu còn biên dịch shader):** High: menu 156, S3 7, S4 50, S5 41–60, S6 60, Extra 31–87 · Medium: menu 226, S3 66, S4 1*, S5 60–91, S6 60, Extra 31 · Low: menu 172, S3 12*, S4 80–87, S5 4*, S6 48, Extra 44–67 (*: frame đầu). M4 sẽ đo lại bằng trung bình 120 frame.
 * **Gotcha mới:** script được `--script` test tham chiếu trực tiếp bằng `class_name` (vd `PlayerBike.attach_near_miss_tag`) bị biên dịch TRƯỚC khi autoload đăng ký → trong script đó không được dùng định danh `GameFX`/`StageManager`, phải `get_node_or_null("/root/GameFX")`.
 
+## 🧍 X. NÂNG CẤP v1.1 – M2: NGƯỜI & ĐỒ VẬT GIỐNG THẬT (20/10/2026)
+
+Yêu cầu chủ dự án: *"người và đồ vật giống thật hơn thay vì chỉ là các khối hình"* – vẫn giữ ràng buộc KHÔNG ảnh AI, GDScript thuần, không plugin: mọi thứ là hình học thủ tục + texture vẽ bằng code.
+
+* **`scripts/CharacterBuilder.gd`** – `build(opts)` trả về Node3D (chân ở y=0, mặt hướng -Z): thân là mesh tiện (lathe) có vai/eo/hông thật (nam/nữ khác profile), đầu ellipsoid dán **bản đồ mặt** (mắt, mày, môi, má hồng; bản nhắm mắt để chớp) do `generate_character_textures.py` vẽ, mũi, tai, 9 kiểu tóc, cổ áo, tay áo, tay 2 đoạn + bàn tay, chân 2 đoạn + giày, thắt lưng, ba lô, kính, dây đeo thẻ, cà vạt, phù hiệu, cầu vai, tạp dề, mũ bếp, mũ kê-pi, mũ bảo hiểm. 13 preset (`student`/`_m`/`_f`, `player`, `rider`, `lecturer`, `guard`, `cop`, `vovinam`, `master`, `cook`, `proctor`, `casual`); biến thể theo seed (4 tông da, 5 màu tóc, chiều cao, vai). Mỗi khớp là pivot (`get_pivot(root, "head"|"shoulder_r"|"thigh_l"…)`), `head_top()` để treo Label3D.
+* **Animator** (node con "Animator"): thở, đổi trọng tâm, bước đi/chạy theo `set_speed(m/s)`, nhìn theo `look_at_point()`, chớp mắt, LOD theo khoảng cách camera; clip `play()`: sit, type, eat, phone, sleepy(_sit), cheer, flinch, facepalm, wave, bow, nod, stance, punch, chop, kick, ride, guard, lie, carry, jump, slide, plank, slump; `set_base_clip()` để one-shot quay về tư thế nền (vd võ sinh về "stance"); `pose()` đặt tư thế tĩnh không cần Animator; `bake()` gộp thành 1 ArrayMesh nhiều surface (đám đông MultiMesh, `build_baked_rider()` cho xe NPC); `set_opacity()` (giám thị mờ dần).
+* **`scripts/PropBuilder.gd`** – `build_scooter()` xe tay ga (bánh lốp/vành/nan hoa/đĩa phanh, phuộc, yếm 3 tấm, hộc đồ, sàn, thân sau tiện, yên da, baga, đèn hậu, biển số 59-X1, ống xả + pô, chân chống, đèn pha, táp-lô, bao tay, phanh, gương, xi-nhan; `baked` cho NPC), `build_scooter_parts()` lắp vào pivot của `PlayerBike.tscn` (bánh quay, ghi-đông bẻ lái), `build_bus()` F-Bus/VinBus (thân, dải kính + trụ, cửa gập, kính lái, gương, đèn, cản, dải trang trí texture, 4 bánh), `build_training_dummy()`, `build_tree()` (thân cong, rễ bạnh, cành, 8–10 khối lá, bake), `build_lamp_post()`, `build_tray()` (dĩa cơm/bún, chén canh, ly trà đá, đũa), `build_table()/build_stool()/build_umbrella()`. Texture: `generate_prop_textures.py` (gỗ, kim loại xước, da, gai lốp, biển số, dải xe buýt).
+* **Đã thay ở:** Màn 1 (người lái + xe tay ga, 19 xe NPC + người lái bake, 8 xe buýt, hàng cây + cột đèn D2, anh CSGT), menu (xe trên D1), Màn 2 (bảo vệ, đối thủ + xe, runner với clip nhảy/trượt/vấp, NPC sinh viên/giảng viên), Màn 3 (cô giáo đi lại, 10 bạn học gõ máy/ngủ gật/điện thoại), Màn 4 (võ sinh – đòn là clip, thầy, 8 đồng môn, nộm gỗ), Màn 5 (cô Ba sau quầy 1 m, 3 nhóm tán gẫu, người chơi bưng khay, bạn vẫy, 19 người đi lại có khay, bàn gỗ/ghế đẩu/dù), Màn 6 (4 thành viên gõ máy/gục/nằm ngủ), Extra (giám thị, 16 thí sinh ngồi; tell điện thoại/tai nghe/đồng hồ gắn vào pivot đầu/khuỷu tay).
+* **Gotcha:** `SphereMesh.is_hemisphere` dùng `height` làm chiều cao *của bán cầu* (đặt `height = r`); `SurfaceTool` mặt trước theo chiều kim đồng hồ; `--script` biên dịch script được tham chiếu bằng `class_name` TRƯỚC khi autoload đăng ký → `CharacterBuilder`/`PropBuilder`/`FPTUCampusBuilder` không dùng định danh `GameFX` (nạp ảnh bằng `FileAccess`); script mới cần `godot --headless --import` để vào cache `class_name`; Pillow chỉ blend alpha khi vẽ lên ảnh **RGB** với `ImageDraw.Draw(im, "RGBA")`.
+
 ## 🧪 VII. KIỂM THỬ HEADLESS (tests/)
 
 | Lệnh | Kiểm tra |
@@ -215,10 +226,14 @@ Thực hiện theo `docs/PROMPT_FULL_UPGRADE.md` (brief) và `docs/GAME_DESIGN_R
 | `tests/test_stage6_capstone.gd` | Gõ chữ, gõ sai, gọi dậy, skill, 3 conflict (1 sai), push cuối |
 | `tests/test_stage_extra_eos.gd` | CCTV, chụp bằng chứng, lập biên bản, bắt oan -35 uy tín |
 | `tests/test_hud_bounds.gd` | Menu + 7 màn ở 3 độ phân giải: không Control nào tràn khỏi viewport |
+| `tests/test_character_builder.gd` | 13 preset đủ pivot/≥20 mesh, 21 clip chạy 120 frame, bake() ≥3 surface, set_opacity, 16 texture mặt |
 | `godot --path . --script tests/preview_campus.gd` (cần cửa sổ) | Chụp 7 góc campus trong Màn 1 → `user://preview/*.png` (bản sao ở `docs/preview/`) |
 | `godot --path . --script tests/preview_stage2.gd` (cần cửa sổ) | Chụp 9 góc Màn 2: D1, cổng bãi xe, lối xe, bãi xe, lối sau, sân trong, cầu thang, cửa Lab 402, toàn cảnh |
 | `godot --path . --script tests/preview_stages.gd` (cần cửa sổ) | Chụp Màn 3, 4, 5, 6, Extra từ camera gameplay + 1–2 góc phụ (cửa sổ, hiên, CCTV) |
 | `godot --path . --script tests/preview_m1_ui.gd` (cần cửa sổ) | Chụp bảng chuỗi near-miss, menu tạm dừng + cài đặt, thẻ chuyển cảnh, cửa hàng bằng phím |
+| `godot --path . --script tests/preview_characters.gd` (cần cửa sổ) | Studio nhân vật: 12 preset, cận mặt, 12 clip, nhìn sau, đám đông bake 60 người |
+| `godot --path . --script tests/preview_props.gd` (cần cửa sổ) | Studio đồ vật: xe tay ga, xe buýt, nộm, cây + đèn, bàn ghế dù, khay |
+| `PEOPLE_ONLY=s1,s5 godot --path . --script tests/preview_people.gd` (cần cửa sổ) | Người & đồ vật trong từng màn từ camera gameplay + góc cận |
 
 **Đồ hoạ ("nặng cũng được"):** `project.godot` bật MSAA 2x + FXAA + debanding, lọc dị hướng, shadow map 8192 bóng mềm chất lượng cao, SSAO/SSIL/SSR chất lượng cao, SDFGI hội tụ nhanh, sương thể tích độ phân giải cao. Mỗi màn gọi `GameFX.upgrade_scene_visuals(self, "outdoor"/"indoor")` ở cuối `_ready`: nhân bản Environment rồi bật SDFGI (6/4 cascade), SSIL, SSR, glow softlight, tonemap ACES, chỉnh màu nhẹ, sương + sương thể tích (outdoor), bán cầu dưới sky trung tính; nắng dùng PSSM 4 split, bóng mềm. Headless không kiểm được visual → tự render bằng 2 script preview ở trên và xem ảnh.
 

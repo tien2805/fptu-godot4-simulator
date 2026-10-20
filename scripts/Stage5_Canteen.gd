@@ -314,56 +314,24 @@ func _build_hall() -> void:
 	fridge.position = Vector3(12.3, 1.0, -7.1)
 	hall.add_child(fridge)
 
-	# Thêm bàn ăn thành lưới + ghế
-	var mat_table := StandardMaterial3D.new()
-	mat_table.albedo_color = Color(0.55, 0.38, 0.25)
+	# Bàn ăn gỗ chân thép + ghế đẩu + dù cam (PropBuilder)
 	var positions: Array[Vector3] = [Vector3(-10, 0, 0), Vector3(10, 0, 0), Vector3(-10, 0, 5), Vector3(-4, 0, 5), Vector3(4, 0, 5), Vector3(10, 0, 5), Vector3(-4, 0, 10), Vector3(4, 0, 10)]
 	for p: Vector3 in positions:
-		var t := CSGBox3D.new()
-		t.size = Vector3(3.0, 1.0, 1.6)
-		t.material_override = mat_table
-		t.use_collision = true
-		t.position = p + Vector3(0.0, 0.6, 0.0)
-		hall.add_child(t)
-	# Ghế đẩu quanh mọi bàn + dù cam che nắng cho bàn ngoài hiên
-	var mat_stool := StandardMaterial3D.new()
-	mat_stool.albedo_color = Color("#1F5FA8")
-	var mat_umb := StandardMaterial3D.new()
-	mat_umb.albedo_color = Color("#F37021")
+		PropBuilder.build_table(hall, p, Vector3(3.0, 0.76, 1.6))
 	var all_tables: Array = positions.duplicate()
 	all_tables.append(Vector3(-4.0, 0.0, -1.5))
 	all_tables.append(Vector3(4.0, 0.0, -1.5))
+	var stool_cols: Array[Color] = [Color("#1F5FA8"), Color("#C0392B"), Color("#27AE60"), Color("#F39C12")]
+	var si: int = 0
 	for p: Vector3 in all_tables:
 		for off: Vector3 in [Vector3(-0.9, 0.0, 1.25), Vector3(0.9, 0.0, 1.25), Vector3(-0.9, 0.0, -1.25), Vector3(0.9, 0.0, -1.25)]:
-			var st := MeshInstance3D.new()
-			var stm := CylinderMesh.new()
-			stm.top_radius = 0.2
-			stm.bottom_radius = 0.17
-			stm.height = 0.45
-			st.mesh = stm
-			st.material_override = mat_stool
-			st.position = p + off + Vector3(0.0, 0.225, 0.0)
-			hall.add_child(st)
+			PropBuilder.build_stool(hall, p + off, stool_cols[si % stool_cols.size()])
+			si += 1
 		if p.z >= 4.0:
-			var pole := MeshInstance3D.new()
-			var pm := CylinderMesh.new()
-			pm.top_radius = 0.03
-			pm.bottom_radius = 0.03
-			pm.height = 2.6
-			pole.mesh = pm
-			pole.material_override = cmat["steel"]
-			pole.position = p + Vector3(0.0, 1.3, 0.0)
-			hall.add_child(pole)
-			var umb := MeshInstance3D.new()
-			var um := CylinderMesh.new()
-			um.top_radius = 0.0
-			um.bottom_radius = 1.7
-			um.height = 0.5
-			um.radial_segments = 8
-			umb.mesh = um
-			umb.material_override = mat_umb
-			umb.position = p + Vector3(0.0, 2.55, 0.0)
-			hall.add_child(umb)
+			PropBuilder.build_umbrella(hall, p)
+		elif si % 3 == 0:
+			var left_tray: Node3D = PropBuilder.build_tray(hall, "bun" if si % 2 == 0 else "com")
+			left_tray.position = p + Vector3(0.6, 0.77, 0.3)
 	# Quầy cô căn tin: biển + cô bán hàng
 	var lbl := Label3D.new()
 	lbl.text = "🍚 QUẦY CƠM CÔ BA – CƠM TẤM 35K · MÌ XÀO 30K\n[E] LẤY KHAY"
@@ -432,36 +400,7 @@ func _build_player() -> void:
 	tray_mesh = Node3D.new()
 	tray_mesh.position = Vector3(0.0, 1.0, -0.42)
 	player_visual.add_child(tray_mesh)
-	var tray := MeshInstance3D.new()
-	var tm := BoxMesh.new()
-	tm.size = Vector3(0.6, 0.03, 0.4)
-	tray.mesh = tm
-	var mat_tray := StandardMaterial3D.new()
-	mat_tray.albedo_color = Color("#C0392B")
-	tray.material_override = mat_tray
-	tray_mesh.add_child(tray)
-	var bowl := MeshInstance3D.new()
-	var bm := CylinderMesh.new()
-	bm.top_radius = 0.14
-	bm.bottom_radius = 0.1
-	bm.height = 0.08
-	bowl.mesh = bm
-	var mat_bowl := StandardMaterial3D.new()
-	mat_bowl.albedo_color = Color.WHITE
-	bowl.material_override = mat_bowl
-	bowl.position = Vector3(-0.12, 0.06, 0.0)
-	tray_mesh.add_child(bowl)
-	var cup := MeshInstance3D.new()
-	var cpm := CylinderMesh.new()
-	cpm.top_radius = 0.05
-	cpm.bottom_radius = 0.04
-	cpm.height = 0.14
-	cup.mesh = cpm
-	var mat_cup := StandardMaterial3D.new()
-	mat_cup.albedo_color = Color("#F39C12")
-	cup.material_override = mat_cup
-	cup.position = Vector3(0.18, 0.08, 0.05)
-	tray_mesh.add_child(cup)
+	PropBuilder.build_tray(tray_mesh, "com")
 	tray_mesh.visible = false
 
 	# Bạn đang vẫy ở bàn (người thật, clip "wave" liên tục)
@@ -492,15 +431,8 @@ func _build_npcs(count: int) -> void:
 		root.add_child(walker)
 		if randf() < 0.5:
 			CharacterBuilder.play(walker, "carry")
-			var tray := MeshInstance3D.new()
-			var tm := BoxMesh.new()
-			tm.size = Vector3(0.5, 0.03, 0.35)
-			tray.mesh = tm
-			var mat_tray_npc := StandardMaterial3D.new()
-			mat_tray_npc.albedo_color = [Color("#C0392B"), Color("#2980B9"), Color("#27AE60")][randi() % 3]
-			tray.material_override = mat_tray_npc
-			tray.position = Vector3(0.0, 1.0, -0.42)
-			root.add_child(tray)
+			var npc_tray: Node3D = PropBuilder.build_tray(root, "bun" if randf() < 0.5 else "com")
+			npc_tray.position = Vector3(0.0, 1.0, -0.42)
 		var area := Area3D.new()
 		var cs := CollisionShape3D.new()
 		var sph := SphereShape3D.new()

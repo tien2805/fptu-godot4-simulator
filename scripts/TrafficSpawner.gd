@@ -96,12 +96,12 @@ func _spawn_moto(track_len: float, lane_x: float, direction: float, speed: float
 	# Xe máy chi tiết (bảng linh kiện dùng chung với bãi xe) + người lái bake 1 mesh (mặt, mũ bảo hiểm, áo, ba lô)
 	var shirt_colors: Array[Color] = [Color("#3498DB"), Color("#2ECC71"), Color("#E84393"), Color("#FDCB6E"), Color("#636E72"), Color("#ECF0F1"), Color("#8E44AD")]
 	var paint: Color = FPTUCampusBuilder.BIKE_PAINTS[randi() % FPTUCampusBuilder.BIKE_PAINTS.size()]
-	FPTUCampusBuilder.build_motorbike(body, Vector3.ZERO, 0.0, paint, FPTUCampusBuilder.make_materials())
+	PropBuilder.build_scooter(body, Vector3.ZERO, 0.0, paint, {"baked": true, "name": "Scooter"})
 	var rider_opts: Dictionary = {"seed": randi(), "helmet_color": [Color("#E74C3C"), Color("#F1C40F"), Color("#FFFFFF"), Color("#0984E3"), Color("#2C3E50")][randi() % 5]}
 	if randf() < 0.65:
 		rider_opts["shirt_color"] = shirt_colors[randi() % shirt_colors.size()]
 		rider_opts["backpack"] = randf() < 0.3
-	CharacterBuilder.build_baked_rider(body, Vector3(0.0, 0.27, 0.12), rider_opts)
+	CharacterBuilder.build_baked_rider(body, Vector3(0.0, 0.32, 0.12), rider_opts)
 
 	follower.add_child(body)
 	follower.h_offset = lane_x
@@ -118,23 +118,23 @@ func _spawn_moto(track_len: float, lane_x: float, direction: float, speed: float
 	active_buses.append(agent)
 
 func _PaintBusColor(bus_node: StaticBody3D, is_fbus: bool) -> void:
-	var mesh_inst: MeshInstance3D = bus_node.get_node_or_null("BusBodyMesh")
-	if mesh_inst:
-		var mat := StandardMaterial3D.new()
-		# F-Bus màu Cam FPTU (#F37021), VinBus màu Xanh lá (#00A859)
-		mat.albedo_color = Color("#F37021") if is_fbus else Color("#00A859")
-		mat.roughness = 0.45
-		mesh_inst.material_override = mat
+	# Xe buýt chi tiết (PropBuilder, bake 1 mesh); hộp cũ trong TrafficCar.tscn ẩn đi. F-Bus cam FPTU / VinBus xanh lá.
+	for n: String in ["BusBodyMesh", "BusRoofMesh"]:
+		var mi: MeshInstance3D = bus_node.get_node_or_null(n)
+		if mi:
+			mi.visible = false
+	PropBuilder.build_bus(bus_node, is_fbus, true)
 	var lbl := Label3D.new()
-	lbl.text = "F-BUS FPTU" if is_fbus else "VINBUS"
-	lbl.font_size = 40
-	lbl.outline_size = 10
-	lbl.modulate = Color.WHITE
-	lbl.position = Vector3(0.0, 2.2, 3.85)
+	lbl.text = "F-BUS FPTU · ĐH FPT" if is_fbus else "VINBUS · D2 → VINHOMES"
+	lbl.font_size = 30
+	lbl.outline_size = 8
+	lbl.modulate = Color("#FFB74D") if is_fbus else Color("#A5D6A7")
+	lbl.position = Vector3(0.0, 2.95, -3.57)
+	lbl.rotation_degrees.y = 180.0
 	bus_node.add_child(lbl)
 	var lbl2 := lbl.duplicate() as Label3D
-	lbl2.rotation_degrees.y = 180.0
-	lbl2.position.z = -3.85
+	lbl2.rotation_degrees.y = 0.0
+	lbl2.position.z = 3.57
 	bus_node.add_child(lbl2)
 
 func _physics_process(delta: float) -> void:

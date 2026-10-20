@@ -339,37 +339,18 @@ func _build_traffic_light() -> void:
 		root.add_child(bulb)
 		light_bulbs.append(bulb)
 
-	# Anh CSGT đứng cạnh cột đèn
-	var cop := Node3D.new()
+	# Anh CSGT đứng cạnh cột đèn (CharacterBuilder: đồng phục vàng, mũ kê-pi, tay chắp sau lưng)
+	var cop: Node3D = CharacterBuilder.build({"preset": "cop", "seed": 113, "name": "Cop", "clip": "guard"})
 	cop.position = Vector3(-1.2, 0.0, 3.0)
+	cop.rotation.y = PI * 0.5
 	root.add_child(cop)
-	var mat_khaki := StandardMaterial3D.new()
-	mat_khaki.albedo_color = Color("#D4AC0D")
-	var cb := MeshInstance3D.new()
-	var cbm := CapsuleMesh.new()
-	cbm.radius = 0.26
-	cbm.height = 1.3
-	cb.mesh = cbm
-	cb.material_override = mat_khaki
-	cb.position = Vector3(0.0, 0.95, 0.0)
-	cop.add_child(cb)
-	var ch := MeshInstance3D.new()
-	var chm := SphereMesh.new()
-	chm.radius = 0.17
-	chm.height = 0.34
-	ch.mesh = chm
-	var ms := StandardMaterial3D.new()
-	ms.albedo_color = Color("#FFCCAA")
-	ch.material_override = ms
-	ch.position = Vector3(0.0, 1.75, 0.0)
-	cop.add_child(ch)
 	cop_bubble = Label3D.new()
 	cop_bubble.text = "👮 CSGT: Đèn đỏ là dừng nha mấy đứa!"
 	cop_bubble.font_size = 28
 	cop_bubble.outline_size = 10
 	cop_bubble.modulate = Color("#FFFFFF")
 	cop_bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	cop_bubble.position = Vector3(0.0, 2.5, 0.0)
+	cop_bubble.position = Vector3(0.0, 2.2, 0.0)
 	cop.add_child(cop_bubble)
 
 	# Vạch dừng trắng ngang đường

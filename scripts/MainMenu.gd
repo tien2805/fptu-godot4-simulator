@@ -82,7 +82,7 @@ func _build_world() -> void:
 	for sp: Array in specs:
 		var dir_sign: float = float(sp[1])
 		var paint: Color = FPTUCampusBuilder.BIKE_PAINTS[rng.randi() % FPTUCampusBuilder.BIKE_PAINTS.size()]
-		var bike: Node3D = FPTUCampusBuilder.build_motorbike(world, Vector3(float(sp[3]), 0.0, float(sp[0])), -90.0 * dir_sign, paint, campus_mats)
+		var bike: Node3D = PropBuilder.build_scooter(world, Vector3(float(sp[3]), 0.0, float(sp[0])), deg_to_rad(-90.0 * dir_sign), paint, {"baked": true})["root"]
 		_add_rider(bike, rng)
 		bikes.append({"node": bike, "dir": dir_sign, "speed": float(sp[2]), "z": float(sp[0])})
 
@@ -90,7 +90,7 @@ func _add_rider(bike: Node3D, rng: RandomNumberGenerator) -> void:
 	var opts: Dictionary = {"seed": rng.randi(), "helmet_color": [Color("#F1C40F"), Color("#E74C3C"), Color("#ECF0F1"), Color("#2C3E50")][rng.randi() % 4]}
 	if rng.randf() < 0.5:
 		opts["shirt_color"] = [Color("#2C3E50"), Color("#3498DB"), Color("#2ECC71"), Color("#ECF0F1")][rng.randi() % 4]
-	CharacterBuilder.build_baked_rider(bike, Vector3(0.0, 0.27, 0.12), opts)
+	CharacterBuilder.build_baked_rider(bike, Vector3(0.0, 0.32, 0.12), opts)
 
 func _process(delta: float) -> void:
 	# Xe chạy trên D1, quay vòng

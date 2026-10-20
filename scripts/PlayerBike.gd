@@ -290,160 +290,23 @@ func _setup_drift_smoke() -> void:
 	visual_pivot.add_child(smoke_particles)
 
 func _build_procedural_bike_and_seated_rider() -> void:
-	# Màu sắc chuẩn FPTU & xe máy sinh viên
-	var mat_fpt_orange := StandardMaterial3D.new()
-	mat_fpt_orange.albedo_color = Color("#F37021") # Áo cam FPTU
-	mat_fpt_orange.roughness = 0.55
-
-	var mat_dark_metal := StandardMaterial3D.new()
-	mat_dark_metal.albedo_color = Color("#1E272E")
-	mat_dark_metal.metallic = 0.45
-	mat_dark_metal.roughness = 0.4
-
-
-
-	var mat_helmet := StandardMaterial3D.new()
-	mat_helmet.albedo_color = Color("#0066CC") # Mũ bảo hiểm xanh dương
-	mat_helmet.roughness = 0.25
-
-	var mat_white := StandardMaterial3D.new()
-	mat_white.albedo_color = Color("#FFFFFF")
-
-	# 1. Thân xe & Yếm xe máy (Fairings kiểu Wave / Vision)
-	var chassis := MeshInstance3D.new()
-	var chassis_mesh := BoxMesh.new()
-	chassis_mesh.size = Vector3(0.36, 0.44, 1.55)
-	chassis.mesh = chassis_mesh
-	chassis.position = Vector3(0.0, 0.52, 0.0)
-	chassis.material_override = mat_dark_metal
-	visual_pivot.add_child(chassis)
-
-	var mat_fairing := StandardMaterial3D.new()
-	mat_fairing.albedo_color = Color("#BDC3C7")
-	mat_fairing.metallic = 0.5
-	mat_fairing.roughness = 0.3
-	for side: float in [-1.0, 1.0]:
-		var fairing := MeshInstance3D.new()
-		var f_mesh := BoxMesh.new()
-		f_mesh.size = Vector3(0.08, 0.52, 0.65)
-		fairing.mesh = f_mesh
-		fairing.position = Vector3(side * 0.22, 0.60, -0.28)
-		fairing.rotation_degrees = Vector3(18.0, side * 12.0, 0.0)
-		fairing.material_override = mat_fairing
-		visual_pivot.add_child(fairing)
-
-	var seat := MeshInstance3D.new()
-	var seat_mesh := BoxMesh.new()
-	seat_mesh.size = Vector3(0.36, 0.14, 0.78)
-	seat.mesh = seat_mesh
-	seat.position = Vector3(0.0, 0.78, 0.22)
-	seat.material_override = mat_dark_metal
-	visual_pivot.add_child(seat)
-
-	var exhaust := MeshInstance3D.new()
-	var ex_mesh := CylinderMesh.new()
-	ex_mesh.top_radius = 0.05
-	ex_mesh.bottom_radius = 0.06
-	ex_mesh.height = 0.85
-	exhaust.mesh = ex_mesh
-	exhaust.rotation_degrees = Vector3(82.0, 0.0, 0.0)
-	exhaust.position = Vector3(0.24, 0.30, 0.35)
-	var mat_chrome := StandardMaterial3D.new()
-	mat_chrome.albedo_color = Color("#ECEFF1")
-	mat_chrome.metallic = 0.85
-	mat_chrome.roughness = 0.2
-	exhaust.material_override = mat_chrome
-	visual_pivot.add_child(exhaust)
-
-	var headlight := MeshInstance3D.new()
-	var hl_mesh := CylinderMesh.new()
-	hl_mesh.top_radius = 0.11
-	hl_mesh.bottom_radius = 0.11
-	hl_mesh.height = 0.12
-	headlight.mesh = hl_mesh
-	headlight.rotation_degrees = Vector3(90.0, 0.0, 0.0)
-	headlight.position = Vector3(0.0, 0.82, -0.76)
-	var mat_hl := StandardMaterial3D.new()
-	mat_hl.albedo_color = Color("#FFF9C4")
-	mat_hl.emission_enabled = true
-	mat_hl.emission = Color("#FFF9C4") * 1.5
-	headlight.material_override = mat_hl
-	visual_pivot.add_child(headlight)
-
+	# 1–3. XE TAY GA CHI TIẾT (PropBuilder): lắp vào các pivot của scene để bánh quay & ghi-đông bẻ lái như cũ
+	front_wheel.set("mesh", null)
+	rear_wheel.set("mesh", null)
+	PropBuilder.build_scooter_parts(visual_pivot, front_wheel, rear_wheel, handlebar_pivot, Color("#2C3E50"), {"headlight_energy": 2.2})
 	var spot := SpotLight3D.new()
 	spot.light_color = Color("#FFF9C4")
 	spot.light_energy = 2.4
 	spot.spot_range = 28.0
 	spot.spot_angle = 35.0
-	spot.position = Vector3(0.0, 0.82, -0.80)
+	spot.position = Vector3(0.0, 0.9, -0.7)
 	spot.rotation_degrees = Vector3(-8.0, 180.0, 0.0)
 	visual_pivot.add_child(spot)
-
-	var taillight := MeshInstance3D.new()
-	var tl_mesh := BoxMesh.new()
-	tl_mesh.size = Vector3(0.18, 0.08, 0.06)
-	taillight.mesh = tl_mesh
-	taillight.position = Vector3(0.0, 0.68, 0.78)
-	var mat_tl := StandardMaterial3D.new()
-	mat_tl.albedo_color = Color("#FF1744")
-	mat_tl.emission_enabled = true
-	mat_tl.emission = Color("#FF1744") * 1.8
-	taillight.material_override = mat_tl
-	visual_pivot.add_child(taillight)
-
-	var plate := MeshInstance3D.new()
-	var pl_mesh := BoxMesh.new()
-	pl_mesh.size = Vector3(0.18, 0.14, 0.02)
-	plate.mesh = pl_mesh
-	plate.position = Vector3(0.0, 0.54, 0.80)
-	plate.material_override = mat_white
-	visual_pivot.add_child(plate)
-
-	var footpegs := MeshInstance3D.new()
-	var peg_mesh := BoxMesh.new()
-	peg_mesh.size = Vector3(0.66, 0.06, 0.08)
-	footpegs.mesh = peg_mesh
-	footpegs.position = Vector3(0.0, 0.34, 0.05)
-	footpegs.material_override = mat_dark_metal
-	visual_pivot.add_child(footpegs)
-
-	# 3. Cổ xe, Ghi-đông & Gương chiếu hậu
-	var stem := MeshInstance3D.new()
-	var stem_mesh := CylinderMesh.new()
-	stem_mesh.top_radius = 0.04
-	stem_mesh.bottom_radius = 0.05
-	stem_mesh.height = 0.45
-	stem.mesh = stem_mesh
-	stem.position = Vector3(0.0, -0.15, 0.0)
-	stem.material_override = mat_dark_metal
-	handlebar_pivot.add_child(stem)
-
-	var bar := MeshInstance3D.new()
-	var bar_mesh := CylinderMesh.new()
-	bar_mesh.top_radius = 0.03
-	bar_mesh.bottom_radius = 0.03
-	bar_mesh.height = 0.72
-	bar.mesh = bar_mesh
-	bar.rotation_degrees = Vector3(0.0, 0.0, 90.0)
-	bar.material_override = mat_dark_metal
-	handlebar_pivot.add_child(bar)
-
-	for side: float in [-1.0, 1.0]:
-		var mirror := MeshInstance3D.new()
-		var m_mesh := CylinderMesh.new()
-		m_mesh.top_radius = 0.06
-		m_mesh.bottom_radius = 0.06
-		m_mesh.height = 0.03
-		mirror.mesh = m_mesh
-		mirror.rotation_degrees = Vector3(75.0, 0.0, 0.0)
-		mirror.position = Vector3(side * 0.34, 0.14, -0.04)
-		mirror.material_override = mat_dark_metal
-		handlebar_pivot.add_child(mirror)
 
 	# 4. SINH VIÊN FPTU NGỒI LÁI XE – CharacterBuilder (mặt, tóc, áo polo FPT, ba lô, mũ bảo hiểm, tay ôm ghi-đông)
 	#    Gốc nhân vật đặt tại yên: hông ở 0.62 m trên gốc khi ở clip "ride"; yên xe cao 0.85 m → gốc y = 0.23.
 	rider_node = CharacterBuilder.build({"preset": "rider", "seed": 2805, "name": "SeatedFPTURider", "helmet_color": Color("#0066CC"), "backpack": true, "clip": "ride", "glasses": false})
-	rider_node.position = Vector3(0.0, 0.23, 0.14)
+	rider_node.position = Vector3(0.0, 0.32, 0.14)
 	visual_pivot.add_child(rider_node)
 	CharacterBuilder.set_param(rider_node, "ride_shoulder", 1.2)
 	CharacterBuilder.set_param(rider_node, "ride_elbow", 0.28)

@@ -77,12 +77,31 @@ static func load_texture(file_name: String) -> Texture2D:
 	var path: String = TEX_DIR + file_name
 	if not FileAccess.file_exists(path):
 		return null
-	var img: Image = GameFX.load_image_any(path)
+	var img: Image = _load_image_file(path)
 	if img == null:
 		return null
 	img.convert(Image.FORMAT_RGBA8)
 	img.generate_mipmaps()
 	return ImageTexture.create_from_image(img)
+
+## Đọc PNG/JPG/WebP bằng FileAccess (chạy được trong PCK và trong test --script, không cần autoload GameFX)
+static func _load_image_file(path: String) -> Image:
+	if not FileAccess.file_exists(path):
+		return null
+	var bytes: PackedByteArray = FileAccess.get_file_as_bytes(path)
+	var img := Image.new()
+	var ext: String = path.get_extension().to_lower()
+	var err: int = ERR_UNAVAILABLE
+	match ext:
+		"png":
+			err = img.load_png_from_buffer(bytes)
+		"jpg", "jpeg":
+			err = img.load_jpg_from_buffer(bytes)
+		"webp":
+			err = img.load_webp_from_buffer(bytes)
+		_:
+			err = img.load_png_from_buffer(bytes)
+	return img if err == OK else null
 
 static func _tex(file_name: String) -> Texture2D:
 	return load_texture(file_name)
