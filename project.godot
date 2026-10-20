@@ -4,7 +4,7 @@ config_version=5
 
 [application]
 config/name="FPTU Student Simulator: Godot 4 Edition"
-run/main_scene="res://scenes/Main.tscn"
+run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.2", "Forward Plus")
 
 [autoload]

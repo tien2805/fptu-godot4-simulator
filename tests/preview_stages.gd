@@ -6,6 +6,7 @@
 extends SceneTree
 
 const SCENES: Array = [
+	{"key": "menu", "path": "res://scenes/MainMenu.tscn", "extra": []},
 	{"key": "s3", "path": "res://scenes/Stage3_ClassroomFAP.tscn", "extra": [{"pos": Vector3(-1.5, 1.7, 2.2), "look": Vector3(7.0, 1.3, -2.5), "fov": 72.0}]},
 	{"key": "s4", "path": "res://scenes/Stage4_Vovinam.tscn", "extra": [{"pos": Vector3(14.0, 9.0, 16.0), "look": Vector3(0.0, 1.0, -6.0), "fov": 62.0}]},
 	{"key": "s5", "path": "res://scenes/Stage5_Canteen.tscn", "extra": [{"pos": Vector3(2.0, 2.6, 13.0), "look": Vector3(-2.0, 1.4, -6.0), "fov": 70.0}, {"pos": Vector3(-12.0, 1.8, 3.0), "look": Vector3(8.0, 1.5, -7.0), "fov": 72.0}]},
@@ -60,6 +61,15 @@ func _process(_d: float) -> bool:
 		return false
 	var key: String = SCENES[scene_idx]["key"]
 	var extras: Array = SCENES[scene_idx]["extra"]
+	if extras.is_empty():
+		# Scene không có góc phụ (menu): chụp camera riêng của nó 2 lần cách nhau để thấy chuyển cảnh
+		if frames == 60:
+			_save("%s_01_gameplay_cam" % key)
+		elif frames == 420:
+			_save("%s_02_gameplay_cam_later" % key)
+			current.queue_free()
+			current = null
+		return false
 	if step == 0 and frames == 60:
 		_save("%s_01_gameplay_cam" % key)
 		step = 1

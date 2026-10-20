@@ -53,8 +53,13 @@ var stage_info: Dictionary = {
 	}
 }
 
+const MAIN_MENU_SCENE: String = "res://scenes/MainMenu.tscn"
+const PROGRESS_PATH: String = "user://progress.cfg"
+
 var current_stage: int = StageID.STAGE_1_RACE
 var modal_layer: CanvasLayer
+## Kỷ lục lưu trên đĩa: stage_id -> {"score": int, "rank": String, "wins": int, "plays": int}
+var best_stats: Dictionary = {}
 
 # ----- Trạng thái xuyên màn -----
 ## Vật phẩm mang theo giữa các màn (mua ở 7-Eleven, nhặt ở bãi xe...)
@@ -65,7 +70,60 @@ var run_stats: Dictionary = {}
 var _rank_labels: Dictionary = {}
 
 func _ready() -> void:
+	load_progress()
 	_create_stage_select_ui()
+
+# ---------------------------------------------------------------------------
+# MENU CHÍNH & LƯU KỶ LỤC
+# ---------------------------------------------------------------------------
+func go_to_main_menu() -> void:
+	typing_mode = false
+	if modal_layer:
+		modal_layer.visible = false
+	Engine.time_scale = 1.0
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
+
+## Bắt đầu hành trình mới từ Màn 1: xoá vật phẩm & kết quả phiên hiện tại (kỷ lục trên đĩa vẫn giữ)
+func start_new_day() -> void:
+	inventory = {"monster": 0, "coffee": 0, "banh_bao": 0}
+	run_stats.clear()
+	_refresh_rank_labels()
+	change_stage(StageID.STAGE_1_RACE)
+
+func load_progress() -> void:
+	best_stats.clear()
+	var cfg := ConfigFile.new()
+	if cfg.load(PROGRESS_PATH) != OK:
+		return
+	for sid: int in stage_scenes.keys():
+		var sec: String = "stage_%d" % sid
+		if cfg.has_section(sec):
+			best_stats[sid] = {
+				"score": int(cfg.get_value(sec, "score", 0)), "rank": String(cfg.get_value(sec, "rank", "")),
+				"wins": int(cfg.get_value(sec, "wins", 0)), "plays": int(cfg.get_value(sec, "plays", 0))
+			}
+
+func save_progress() -> void:
+	if DisplayServer.get_name() == "headless":
+		return # bot test headless không được ghi đè kỷ lục thật của người chơi
+	var cfg := ConfigFile.new()
+	for sid: int in best_stats.keys():
+		var b: Dictionary = best_stats[sid]
+		var sec: String = "stage_%d" % sid
+		cfg.set_value(sec, "score", int(b.get("score", 0)))
+		cfg.set_value(sec, "rank", String(b.get("rank", "")))
+		cfg.set_value(sec, "wins", int(b.get("wins", 0)))
+		cfg.set_value(sec, "plays", int(b.get("plays", 0)))
+	cfg.save(PROGRESS_PATH)
+
+func get_best_text(stage_id: int) -> String:
+	if not best_stats.has(stage_id):
+		return "— chưa chơi —"
+	var b: Dictionary = best_stats[stage_id]
+	if int(b.get("wins", 0)) <= 0:
+		return "chưa qua (%d lần thử)" % int(b.get("plays", 0))
+	return "🏆 %s · %d điểm · %d/%d thắng" % [String(b.get("rank", "B")), int(b.get("score", 0)), int(b.get("wins", 0)), int(b.get("plays", 0))]
 
 ## Màn chơi đặt true khi người chơi đang gõ chữ (bullet-hell typing...) để phím M không mở Campaign Hub
 var typing_mode: bool = false
@@ -139,15 +197,27 @@ func consume_item(item_id: String) -> bool:
 ## Màn chơi gọi khi kết thúc: result = {"result": "win"|"fail", "score": int, "rank": "S|A|B|C", "detail": String}
 func report_stage_result(stage_id: int, result: Dictionary) -> void:
 	run_stats[stage_id] = result
+	var b: Dictionary = best_stats.get(stage_id, {"score": 0, "rank": "", "wins": 0, "plays": 0})
+	b["plays"] = int(b.get("plays", 0)) + 1
+	if result.get("result", "") == "win":
+		b["wins"] = int(b.get("wins", 0)) + 1
+		if int(result.get("score", 0)) >= int(b.get("score", 0)):
+			b["score"] = int(result.get("score", 0))
+			b["rank"] = String(result.get("rank", "B"))
+	best_stats[stage_id] = b
+	save_progress()
 	_refresh_rank_labels()
 
 func get_stage_rank_text(stage_id: int) -> String:
+	var best: String = ""
+	if best_stats.has(stage_id) and int(best_stats[stage_id].get("wins", 0)) > 0:
+		best = "   (kỷ lục: %s · %d điểm)" % [String(best_stats[stage_id].get("rank", "B")), int(best_stats[stage_id].get("score", 0))]
 	if not run_stats.has(stage_id):
-		return "— chưa chơi —"
+		return "— chưa chơi hôm nay —" + best
 	var r: Dictionary = run_stats[stage_id]
 	if r.get("result", "") == "win":
-		return "✅ RANK %s · %d điểm" % [str(r.get("rank", "B")), int(r.get("score", 0))]
-	return "❌ Thất bại lần gần nhất"
+		return "✅ RANK %s · %d điểm" % [str(r.get("rank", "B")), int(r.get("score", 0))] + best
+	return "❌ Thất bại lần gần nhất" + best
 
 func _refresh_rank_labels() -> void:
 	for sid: int in _rank_labels.keys():
@@ -265,6 +335,13 @@ func _create_stage_select_ui() -> void:
 	bottom_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	main_vbox.add_child(bottom_hbox)
 
+	bottom_hbox.add_theme_constant_override("separation", 14)
+	var menu_btn := Button.new()
+	menu_btn.custom_minimum_size = Vector2(260, 44)
+	menu_btn.text = "🏠 VỀ MENU CHÍNH"
+	menu_btn.add_theme_font_size_override("font_size", 15)
+	menu_btn.pressed.connect(go_to_main_menu)
+	bottom_hbox.add_child(menu_btn)
 	var close_btn := Button.new()
 	close_btn.custom_minimum_size = Vector2(280, 44)
 	close_btn.text = "✖ ĐÓNG CỬA SỔ CHỌN MÀN"

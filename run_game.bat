@@ -23,7 +23,7 @@ if %SMOKE_RC% NEQ 0 (
 )
 findstr /C:"ERROR:" /C:"SCRIPT ERROR" smoke_log.txt >nul
 if %ERRORLEVEL% EQU 0 (
-    echo [LOI] Smoke test chay het nhung log co dong ERROR (loi runtime trong _ready/_process). Sua xong moi choi!
+    echo [LOI] Smoke test chay het nhung log co dong ERROR - loi runtime trong _ready/_process. Sua xong moi choi!
     pause
     exit /b 1
 )

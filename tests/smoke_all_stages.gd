@@ -6,6 +6,7 @@
 extends SceneTree
 
 const SCENES: Array[String] = [
+	"res://scenes/MainMenu.tscn",
 	"res://scenes/Main.tscn",
 	"res://scenes/Stage2_Parking.tscn",
 	"res://scenes/Stage3_ClassroomFAP.tscn",

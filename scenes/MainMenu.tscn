@@ -1,0 +1,66 @@
+[gd_scene load_steps=5 format=3 uid="uid://mainmenu_fptu"]
+
+[ext_resource type="Script" path="res://scripts/MainMenu.gd" id="1_menu"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_menu"]
+sky_top_color = Color(0.22, 0.5, 0.92, 1)
+sky_horizon_color = Color(0.98, 0.84, 0.66, 1)
+ground_bottom_color = Color(0.27, 0.26, 0.24, 1)
+ground_horizon_color = Color(0.72, 0.72, 0.7, 1)
+sun_angle_max = 25.0
+sun_curve = 0.12
+
+[sub_resource type="Sky" id="Sky_menu"]
+sky_material = SubResource("ProceduralSkyMaterial_menu")
+
+[sub_resource type="Environment" id="Environment_menu"]
+background_mode = 2
+sky = SubResource("Sky_menu")
+ambient_light_source = 3
+ambient_light_color = Color(0.98, 0.92, 0.84, 1)
+ambient_light_energy = 1.05
+ambient_light_sky_contribution = 0.7
+tonemap_mode = 3
+tonemap_exposure = 1.02
+tonemap_white = 6.0
+ssao_enabled = true
+glow_enabled = true
+glow_intensity = 0.5
+fog_enabled = true
+fog_light_color = Color(0.95, 0.86, 0.76, 1)
+fog_density = 0.0005
+fog_aerial_perspective = 0.3
+
+[node name="MainMenu" type="Node3D"]
+script = ExtResource("1_menu")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_menu")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.766044, -0.241845, 0.595534, 0, 0.926459, 0.376222, -0.642788, 0.288201, -0.709711, 0, 40, 0)
+light_color = Color(1, 0.88, 0.72, 1)
+light_energy = 1.4
+shadow_enabled = true
+shadow_bias = 0.03
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 44, -75)
+current = true
+fov = 58.0
+far = 1500.0
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="Fade" type="CanvasLayer" parent="."]
+layer = 1
+
+[node name="FadeRect" type="ColorRect" parent="Fade"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
+
+[node name="UI" type="CanvasLayer" parent="."]
+layer = 2

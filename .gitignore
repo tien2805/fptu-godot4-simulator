@@ -13,3 +13,7 @@ Thumbs.db
 desktop.ini
 push_to_github.ps1
 
+
+# Build output (export)
+build/
+*.tpz

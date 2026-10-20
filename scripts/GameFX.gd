@@ -43,8 +43,99 @@ void fragment() {
 }
 """
 
+# ---------------------------------------------------------------------------
+# CÀI ĐẶT (lưu user://settings.cfg): mức đồ hoạ 0 thấp / 1 trung bình / 2 cao, toàn màn hình
+# ---------------------------------------------------------------------------
+const SETTINGS_PATH: String = "user://settings.cfg"
+var visual_quality: int = 2
+var fullscreen: bool = false
+
+func load_settings() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SETTINGS_PATH) == OK:
+		visual_quality = clampi(int(cfg.get_value("video", "quality", 2)), 0, 2)
+		fullscreen = bool(cfg.get_value("video", "fullscreen", false))
+	_apply_global_quality()
+	_apply_window_mode()
+
+func save_settings() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("video", "quality", visual_quality)
+	cfg.set_value("video", "fullscreen", fullscreen)
+	cfg.save(SETTINGS_PATH)
+
+func set_visual_quality(q: int) -> void:
+	visual_quality = clampi(q, 0, 2)
+	_apply_global_quality()
+	save_settings()
+
+func set_fullscreen(on: bool) -> void:
+	fullscreen = on
+	_apply_window_mode()
+	save_settings()
+
+func _apply_window_mode() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
+
+## Các thiết lập toàn cục (MSAA, FXAA, kích thước shadow map) theo mức chất lượng
+func _apply_global_quality() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var vp: Viewport = get_viewport()
+	if vp == null:
+		return
+	match visual_quality:
+		0:
+			vp.msaa_3d = Viewport.MSAA_DISABLED
+			vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
+			RenderingServer.directional_shadow_atlas_set_size(2048, true)
+		1:
+			vp.msaa_3d = Viewport.MSAA_2X
+			vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
+			RenderingServer.directional_shadow_atlas_set_size(4096, true)
+		_:
+			vp.msaa_3d = Viewport.MSAA_2X
+			vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
+			RenderingServer.directional_shadow_atlas_set_size(8192, true)
+
+## Nạp ảnh từ res:// an toàn cho cả editor lẫn bản EXPORT (đọc byte thô qua FileAccess rồi giải mã,
+## vì ProjectSettings.globalize_path("res://...") không dùng được khi tài nguyên nằm trong PCK).
+static func load_image_any(res_path: String) -> Image:
+	if not FileAccess.file_exists(res_path):
+		return null
+	var bytes: PackedByteArray = FileAccess.get_file_as_bytes(res_path)
+	if bytes.is_empty():
+		return null
+	var img := Image.new()
+	var err: int = ERR_FILE_UNRECOGNIZED
+	match res_path.get_extension().to_lower():
+		"png":
+			err = img.load_png_from_buffer(bytes)
+		"jpg", "jpeg":
+			err = img.load_jpg_from_buffer(bytes)
+		"webp":
+			err = img.load_webp_from_buffer(bytes)
+		"bmp":
+			err = img.load_bmp_from_buffer(bytes)
+		_:
+			err = img.load_png_from_buffer(bytes)
+	if err != OK or img.is_empty():
+		return null
+	return img
+
+static func _quality() -> int:
+	var ml: SceneTree = Engine.get_main_loop() as SceneTree
+	if ml and ml.root:
+		var g: Node = ml.root.get_node_or_null("GameFX")
+		if g:
+			return int(g.get("visual_quality"))
+	return 2
+
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	load_settings()
 	_layer = CanvasLayer.new()
 	_layer.layer = 90
 	add_child(_layer)
@@ -465,25 +556,26 @@ static func upgrade_scene_visuals(root: Node, preset: String = "outdoor") -> voi
 		return
 	var outdoor: bool = preset == "outdoor"
 	var night: bool = preset == "night"
+	var q: int = _quality() # 0 thấp / 1 trung bình / 2 cao (menu Cài đặt đồ hoạ)
 	var env_node: WorldEnvironment = _find_first(root, "WorldEnvironment") as WorldEnvironment
 	if env_node and env_node.environment:
 		var e: Environment = env_node.environment.duplicate(true)
 		env_node.environment = e
 		_ensure_sky(e, night)
-		e.ssao_enabled = true
+		e.ssao_enabled = q >= 1
 		e.ssao_radius = 1.8
 		e.ssao_intensity = 2.2
 		e.ssao_power = 1.6
-		e.ssil_enabled = true
+		e.ssil_enabled = q >= 2
 		e.ssil_radius = 4.0
 		e.ssil_intensity = 1.0
-		e.sdfgi_enabled = true
+		e.sdfgi_enabled = q >= 2
 		e.sdfgi_use_occlusion = true
 		e.sdfgi_bounce_feedback = 0.35
 		e.sdfgi_cascades = 6 if outdoor else 4
 		e.sdfgi_min_cell_size = 0.3 if outdoor else 0.12
 		e.sdfgi_energy = 1.0
-		e.ssr_enabled = true
+		e.ssr_enabled = q >= 1
 		e.ssr_max_steps = 96
 		e.ssr_fade_in = 0.2
 		e.ssr_fade_out = 2.0
@@ -505,7 +597,7 @@ static func upgrade_scene_visuals(root: Node, preset: String = "outdoor") -> voi
 			e.fog_sun_scatter = 0.06
 			e.fog_aerial_perspective = 0.2
 			e.fog_sky_affect = 0.04
-			e.volumetric_fog_enabled = true
+			e.volumetric_fog_enabled = q >= 2
 			e.volumetric_fog_density = 0.0014
 			e.volumetric_fog_albedo = Color(0.9, 0.93, 1.0)
 			e.volumetric_fog_length = 200.0
@@ -515,13 +607,15 @@ static func upgrade_scene_visuals(root: Node, preset: String = "outdoor") -> voi
 			e.fog_enabled = false
 			e.volumetric_fog_enabled = false
 		if night:
-			e.ambient_light_energy = 0.3
+			e.ambient_light_energy = 0.3 if q >= 2 else 0.5
 			e.ambient_light_color = Color(0.7, 0.78, 1.0)
+		elif not outdoor and q < 2:
+			e.ambient_light_energy = maxf(e.ambient_light_energy, 1.2) # không có SDFGI thì bù ánh sáng môi trường trong nhà
 	var sun: DirectionalLight3D = _find_first(root, "DirectionalLight3D") as DirectionalLight3D
 	if sun:
 		sun.shadow_enabled = true
-		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-		sun.directional_shadow_max_distance = 420.0 if outdoor else 90.0
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if q >= 1 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+		sun.directional_shadow_max_distance = ([150.0, 260.0, 420.0][q]) if outdoor else 90.0
 		sun.directional_shadow_split_1 = 0.06
 		sun.directional_shadow_split_2 = 0.15
 		sun.directional_shadow_split_3 = 0.35

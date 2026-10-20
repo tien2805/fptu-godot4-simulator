@@ -89,12 +89,11 @@ func _load_textures() -> void:
 	tex_shtp = _load_tex("res://assets/textures/fptu_shtp_monument.png")
 
 func _load_tex(res_path: String) -> Texture2D:
-	var global_p: String = ProjectSettings.globalize_path(res_path)
-	if FileAccess.file_exists(res_path):
-		var img := Image.load_from_file(global_p)
-		if img:
-			img.convert(Image.FORMAT_RGBA8)
-			return ImageTexture.create_from_image(img)
+	var img: Image = GameFX.load_image_any(res_path)
+	if img:
+		img.convert(Image.FORMAT_RGBA8)
+		img.generate_mipmaps()
+		return ImageTexture.create_from_image(img)
 	return null
 
 func _build_real_world_curve() -> void:

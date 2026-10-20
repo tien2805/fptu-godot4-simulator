@@ -1,0 +1,75 @@
+# Tự động build bản Windows (không cần cài Godot) và đăng lên GitHub Releases.
+# Kích hoạt: push một tag dạng v1.0.0  (git tag v1.0.0 && git push origin v1.0.0)
+#            hoặc bấm "Run workflow" trong tab Actions (chỉ tạo artifact, không tạo Release).
+name: Build Windows release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.7.2"
+
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Godot ${{ env.GODOT_VERSION }} + export templates
+        run: |
+          set -e
+          V="${GODOT_VERSION}"
+          wget -q "https://github.com/godotengine/godot/releases/download/${V}-stable/Godot_v${V}-stable_linux.x86_64.zip"
+          wget -q "https://github.com/godotengine/godot/releases/download/${V}-stable/Godot_v${V}-stable_export_templates.tpz"
+          unzip -q "Godot_v${V}-stable_linux.x86_64.zip"
+          mv "Godot_v${V}-stable_linux.x86_64" godot
+          chmod +x godot
+          mkdir -p "$HOME/.local/share/godot/export_templates/${V}.stable"
+          unzip -q "Godot_v${V}-stable_export_templates.tpz" -d /tmp/tpl
+          mv /tmp/tpl/templates/* "$HOME/.local/share/godot/export_templates/${V}.stable/"
+          ./godot --version
+
+      - name: Import resources
+        run: ./godot --headless --path . --import
+
+      - name: Check scripts
+        run: ./godot --headless --path . --quit --check-only
+
+      - name: Smoke test (menu + 7 stages, fail on any ERROR line)
+        run: |
+          set -o pipefail
+          ./godot --headless --path . --script tests/smoke_all_stages.gd 2>&1 | tee smoke.log
+          if grep -q "ERROR:" smoke.log; then echo "::error::smoke log contains ERROR lines"; exit 1; fi
+
+      - name: Export Windows build
+        run: |
+          mkdir -p build/windows
+          ./godot --headless --path . --export-release "Windows Desktop" build/windows/FPTU-Student-Simulator.exe
+          ls -la build/windows
+
+      - name: Package zip
+        run: |
+          cp README.md build/windows/README.md
+          cd build
+          NAME="FPTU-Student-Simulator-windows-${GITHUB_REF_NAME}"
+          zip -r "${NAME}.zip" windows
+          ls -la
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: build/*.zip
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/*.zip
+          generate_release_notes: true

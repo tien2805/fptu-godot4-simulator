@@ -149,9 +149,8 @@ func _ready() -> void:
 # ===========================================================================
 func _apply_7eleven_sign() -> void:
 	var path: String = "res://assets/textures/seven_eleven_sign.png"
-	var global_p: String = ProjectSettings.globalize_path(path)
 	if FileAccess.file_exists(path):
-		var img: Image = Image.load_from_file(global_p)
+		var img: Image = GameFX.load_image_any(path)
 		if img:
 			var tex: ImageTexture = ImageTexture.create_from_image(img)
 			var qm := QuadMesh.new()

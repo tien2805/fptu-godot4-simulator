@@ -77,7 +77,7 @@ static func load_texture(file_name: String) -> Texture2D:
 	var path: String = TEX_DIR + file_name
 	if not FileAccess.file_exists(path):
 		return null
-	var img: Image = Image.load_from_file(ProjectSettings.globalize_path(path))
+	var img: Image = GameFX.load_image_any(path)
 	if img == null:
 		return null
 	img.convert(Image.FORMAT_RGBA8)

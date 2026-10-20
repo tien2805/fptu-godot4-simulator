@@ -43,6 +43,7 @@ fptu-godot4-simulator/
 ├── docs/preview/               # Ảnh render tự chụp (tests/preview_campus.gd, tests/preview_stage2.gd) để tự kiểm tra đồ hoạ
 ├── tests/                      # Test headless (xem mục VII)
 ├── scenes/
+│   ├── MainMenu.tscn           # MENU CHÍNH (scene khởi động): nền 3D campus thật + camera bay, Bắt đầu / Chọn màn / Hướng dẫn / Cài đặt / Thoát
 │   ├── Main.tscn               # MÀN 1 – đua xe (HUD.tscn, PlayerBike.tscn, RoadTrack.tscn, TrafficCar.tscn)
 │   ├── Stage2_Parking.tscn     # MÀN 2 – bãi xe & chạy bộ xuyên campus (dựng lại đúng campus Màn 1 tại gốc toạ độ)
 │   ├── Stage3_ClassroomFAP.tscn# MÀN 3 – FAP & sinh tồn 16°C
@@ -51,8 +52,9 @@ fptu-godot4-simulator/
 │   ├── Stage6_CapstoneBoss.tscn# MÀN 6 – boss Capstone
 │   └── StageExtra_EOSExam.tscn # EXTRA – giám thị EOS
 └── scripts/
-    ├── GameFX.gd               # Autoload: shake, flash, vignette nhịp tim, slow-motion, chữ bay, popup, SFX tổng hợp, helper HUD anchors
-    ├── StageManager.gd         # Autoload: chuyển màn, Campaign Hub [M], inventory xuyên màn, rank từng màn
+    ├── GameFX.gd               # Autoload: shake, flash, vignette, slow-motion, popup, SFX tổng hợp, helper HUD anchors, preset render + cài đặt đồ hoạ (user://settings.cfg)
+    ├── StageManager.gd         # Autoload: chuyển màn, Campaign Hub [M], inventory xuyên màn, rank từng màn, kỷ lục lưu đĩa (user://progress.cfg), về menu chính
+    ├── MainMenu.gd             # Menu chính: 5 shot camera qua campus, xe máy chạy D1, hướng dẫn phím, 3 mức đồ hoạ + fullscreen, nhật ký kỷ lục
     ├── PlayerBike.gd           # Xe máy: drift [SPACE], lùi [S], núp gió, near-miss, kẹp làn, mưa trơn
     ├── RoadManager.gd          # Dựng cung đường Google Maps + landmark + gọi RoadEvents
     ├── RoadEvents.gd           # Ổ gà, xe tải hỏng, chó cô Ba, đèn đỏ CSGT, mưa rào, 5 checkpoint hài
@@ -162,7 +164,7 @@ graph LR
 
 ## 🕹️ VI. HƯỚNG DẪN ĐIỀU KHIỂN
 
-* **Khởi chạy:** nhấp đúp [run_game.bat](file:///c:/Users/nguye/.gemini/antigravity-ide/scratch/fptu-godot4-simulator/run_game.bat) (check-only → smoke test → game). Trong game bấm **`M`** để mở Campaign Hub chọn màn (hiện rank từng màn).
+* **Khởi chạy:** nhấp đúp [run_game.bat](file:///c:/Users/nguye/.gemini/antigravity-ide/scratch/fptu-godot4-simulator/run_game.bat) (check-only → smoke test có quét dòng ERROR → game). Game mở vào **MENU CHÍNH** (`scenes/MainMenu.tscn`): nền là campus thật với camera bay 5 góc + xe máy trên D1; nút **▶ Bắt đầu ngày mới** (reset vật phẩm/kết quả phiên → Màn 1), **📋 Chọn màn** (Campaign Hub, có rank phiên + kỷ lục), **🎮 Hướng dẫn điều khiển**, **⚙ Cài đặt đồ hoạ** (Thấp / Trung bình / Cao + Fullscreen, lưu `user://settings.cfg`, áp dụng qua `GameFX.upgrade_scene_visuals`), **✖ Thoát**; bảng **Nhật ký hành trình** hiện kỷ lục từng màn (`user://progress.cfg`). Điều hướng bằng chuột hoặc ↑↓ + Enter. Trong game bấm **`M`** để mở Campaign Hub (có nút 🏠 Về menu chính).
 * **Màn 1:** `W` ga · `S` phanh/lùi · `A/D` lái · `SPACE` + `A/D` drift (thả để boost) · `H` còi · dừng đèn đỏ bằng `S`.
 * **Màn 2:** `E` quét thẻ · `H` còi dọa xe tranh ô · `S` lùi · pha leo: `A/D` làn, `SPACE` nhảy, `S` trượt, `SHIFT` sprint, `Q` Monster.
 * **Màn 3:** gõ mã + `ENTER` · `TAB` 4G · `SPACE` đúng nhịp · `C` cà phê · `B` bánh bao · `F` úp điện thoại · gõ đáp án khi bị gọi tên.
@@ -173,12 +175,20 @@ graph LR
 
 ---
 
+## 📦 VIII. PHÁT HÀNH (GitHub + bản Windows chơi ngay)
+
+* **Export an toàn:** mọi ảnh/âm thanh nạp lúc chạy đi qua `GameFX.load_image_any()` / `GameFX.load_wav()` (đọc byte thô qua `FileAccess`), vì `ProjectSettings.globalize_path("res://…")` không dùng được trong PCK. `export_presets.cfg` (preset "Windows Desktop", nhúng PCK vào exe, loại `tests/ docs/ reference_photos/ *.py *.bat *.md`); `assets/textures/*.png` và `assets/audio/*.wav` dùng `.import` kiểu `importer="keep"` nên được đóng gói nguyên bản, không nhân đôi. `docs/` và `reference_photos/` có `.gdignore` (không import, chỉ nằm trên GitHub).
+* **Build tại máy:** `build_windows.bat` (cần Export Templates 4.7.2 cài trong Godot Editor) → `build/FPTU-Student-Simulator-windows.zip`.
+* **Build tự động:** `.github/workflows/release.yml` – push tag `v*` → GitHub Actions tải Godot 4.7.2 + templates, `--import`, check-only, smoke (fail nếu có dòng ERROR), export, zip, đính kèm vào Release. Người chơi tải zip từ tab Releases, giải nén, chạy `FPTU-Student-Simulator.exe`.
+* **Repo:** `README.md` cho người chơi/người xem GitHub; `.gitignore` bỏ `.godot/`, `build/`, log.
+
 ## 🧪 VII. KIỂM THỬ HEADLESS (tests/)
 
 | Lệnh | Kiểm tra |
 | :--- | :--- |
 | `godot --headless --quit --check-only --path .` | Biên dịch toàn bộ script |
-| `godot --headless --path . --script tests/smoke_all_stages.gd` | Parse mọi script, nạp & chạy 75 frame cả 7 scene |
+| `godot --headless --path . --script tests/smoke_all_stages.gd` | Parse mọi script, nạp & chạy 75 frame menu + cả 7 scene màn chơi |
+| `tests/test_main_menu.gd` | Menu: 5 nút, hướng dẫn mở/đóng, đổi mức đồ hoạ + lưu settings, mở hub, Bắt đầu ngày mới reset inventory & nạp Màn 1 |
 | `tests/test_stage1_race.gd` | Autopilot né xe, dừng đèn đỏ, về đích; 5/5 checkpoint |
 | `tests/test_near_miss.gd` | Vùng near-miss bắt được xe đứng yên & xe ngược chiều, 0 va chạm |
 | `tests/test_stage2_stairs.gd` | Bot auto-runner né/nhảy/trượt, về Lab 402 đúng giờ |
