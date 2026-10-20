@@ -87,26 +87,10 @@ func _build_world() -> void:
 		bikes.append({"node": bike, "dir": dir_sign, "speed": float(sp[2]), "z": float(sp[0])})
 
 func _add_rider(bike: Node3D, rng: RandomNumberGenerator) -> void:
-	var shirt := StandardMaterial3D.new()
-	shirt.albedo_color = [Color("#F37021"), Color("#2C3E50"), Color("#3498DB"), Color("#F37021")][rng.randi() % 4]
-	var body := MeshInstance3D.new()
-	var bm := CapsuleMesh.new()
-	bm.radius = 0.17
-	bm.height = 0.66
-	body.mesh = bm
-	body.material_override = shirt
-	body.position = Vector3(0.0, 1.08, 0.12)
-	bike.add_child(body)
-	var helmet := MeshInstance3D.new()
-	var hm := SphereMesh.new()
-	hm.radius = 0.15
-	hm.height = 0.3
-	helmet.mesh = hm
-	var mh := StandardMaterial3D.new()
-	mh.albedo_color = [Color("#F1C40F"), Color("#E74C3C"), Color("#ECF0F1")][rng.randi() % 3]
-	helmet.material_override = mh
-	helmet.position = Vector3(0.0, 1.56, 0.06)
-	bike.add_child(helmet)
+	var opts: Dictionary = {"seed": rng.randi(), "helmet_color": [Color("#F1C40F"), Color("#E74C3C"), Color("#ECF0F1"), Color("#2C3E50")][rng.randi() % 4]}
+	if rng.randf() < 0.5:
+		opts["shirt_color"] = [Color("#2C3E50"), Color("#3498DB"), Color("#2ECC71"), Color("#ECF0F1")][rng.randi() % 4]
+	CharacterBuilder.build_baked_rider(bike, Vector3(0.0, 0.27, 0.12), opts)
 
 func _process(delta: float) -> void:
 	# Xe chạy trên D1, quay vòng

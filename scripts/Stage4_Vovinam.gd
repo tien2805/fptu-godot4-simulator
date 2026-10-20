@@ -104,6 +104,7 @@ var fin_ring: Control
 var master: Node3D
 var master_bubble: Label3D
 var dummy_mat: StandardMaterial3D
+var fighter_model: Node3D
 var arm_l: Node3D
 var arm_r: Node3D
 var leg_l: Node3D
@@ -175,57 +176,22 @@ func _apply_mat_texture() -> void:
 			mat_pad.material_override = mat
 
 func _build_fighter_limbs() -> void:
-	# Thân ngắn lại để lộ chân; tay chân là pivot để animate từng đòn
-	fighter_body.height = 0.9
-	fighter_body.position.y = 0.3
-	var mat_blue := StandardMaterial3D.new()
-	mat_blue.albedo_color = Color(0, 0.42, 0.85)
-	mat_blue.roughness = 0.6
-	var mat_skin := StandardMaterial3D.new()
-	mat_skin.albedo_color = Color("#FFCCAA")
-
-	for side: float in [-1.0, 1.0]:
-		var ap := Node3D.new()
-		ap.position = Vector3(0.0, 0.62, side * 0.42)
-		player_fighter.add_child(ap)
-		var arm := MeshInstance3D.new()
-		var am := CylinderMesh.new()
-		am.top_radius = 0.08
-		am.bottom_radius = 0.07
-		am.height = 0.62
-		arm.mesh = am
-		arm.material_override = mat_blue
-		arm.position = Vector3(0.0, -0.31, 0.0)
-		ap.add_child(arm)
-		var fist := MeshInstance3D.new()
-		var fm := SphereMesh.new()
-		fm.radius = 0.09
-		fm.height = 0.18
-		fist.mesh = fm
-		fist.material_override = mat_skin
-		fist.position = Vector3(0.0, -0.66, 0.0)
-		ap.add_child(fist)
-		if side < 0.0:
-			arm_l = ap
-		else:
-			arm_r = ap
-
-		var lp := Node3D.new()
-		lp.position = Vector3(0.0, -0.15, side * 0.16)
-		player_fighter.add_child(lp)
-		var leg := MeshInstance3D.new()
-		var lm := CylinderMesh.new()
-		lm.top_radius = 0.11
-		lm.bottom_radius = 0.09
-		lm.height = 0.62
-		leg.mesh = lm
-		leg.material_override = mat_blue
-		leg.position = Vector3(0.0, -0.31, 0.0)
-		lp.add_child(leg)
-		if side < 0.0:
-			leg_l = lp
-		else:
-			leg_r = lp
+	# Võ sinh CharacterBuilder (võ phục xanh, đai vàng, mặt thật). CSG Body/Head/Belt cũ ẩn đi.
+	# Gốc PlayerFighter ở y = 0.8 → model đặt y = -0.8; mặt quay về +X (phía nộm) nên xoay -90°.
+	fighter_body.visible = false
+	fighter_head.visible = false
+	var belt_csg: Node3D = player_fighter.get_node_or_null("Belt")
+	if belt_csg:
+		belt_csg.visible = false
+	fighter_model = CharacterBuilder.build({"preset": "vovinam", "seed": 2805, "name": "FighterModel", "glasses": false})
+	fighter_model.position = Vector3(0.0, -0.8, 0.0)
+	fighter_model.rotation.y = -PI * 0.5
+	player_fighter.add_child(fighter_model)
+	CharacterBuilder.set_base_clip(fighter_model, "stance")
+	arm_l = CharacterBuilder.get_pivot(fighter_model, "shoulder_l")
+	arm_r = CharacterBuilder.get_pivot(fighter_model, "shoulder_r")
+	leg_l = CharacterBuilder.get_pivot(fighter_model, "thigh_l")
+	leg_r = CharacterBuilder.get_pivot(fighter_model, "thigh_r")
 
 	# Vật liệu nộm riêng để flash khi trúng đòn
 	dummy_mat = StandardMaterial3D.new()
@@ -251,57 +217,24 @@ func _build_arena_extras() -> void:
 	podium.material_override = mat_red
 	podium.position = Vector3(0.0, 0.2, 0.0)
 	master.add_child(podium)
-	var mat_master := StandardMaterial3D.new()
-	mat_master.albedo_color = Color(0, 0.3, 0.7)
-	var mb := MeshInstance3D.new()
-	var mbm := CapsuleMesh.new()
-	mbm.radius = 0.3
-	mbm.height = 1.4
-	mb.mesh = mbm
-	mb.material_override = mat_master
-	mb.position = Vector3(0.0, 1.3, 0.0)
-	master.add_child(mb)
-	var mh := MeshInstance3D.new()
-	var mhm := SphereMesh.new()
-	mhm.radius = 0.2
-	mhm.height = 0.4
-	mh.mesh = mhm
-	var ms := StandardMaterial3D.new()
-	ms.albedo_color = Color("#FFCCAA")
-	mh.material_override = ms
-	mh.position = Vector3(0.0, 2.2, 0.0)
-	master.add_child(mh)
-	var belt := MeshInstance3D.new()
-	var bm := CylinderMesh.new()
-	bm.top_radius = 0.33
-	bm.bottom_radius = 0.33
-	bm.height = 0.12
-	belt.mesh = bm
-	var mat_belt := StandardMaterial3D.new()
-	mat_belt.albedo_color = Color("#E74C3C")
-	belt.material_override = mat_belt
-	belt.position = Vector3(0.0, 1.25, 0.0)
-	master.add_child(belt)
+	var master_model: Node3D = CharacterBuilder.build({"preset": "master", "seed": 5, "name": "MasterModel", "clip": "guard", "height": 1.04})
+	master_model.position = Vector3(0.0, 0.4, 0.0)
+	master_model.rotation.y = PI
+	master.add_child(master_model)
 	master_bubble = Label3D.new()
 	master_bubble.text = "🥋 THẦY: Nghiêm! Lễ!"
 	master_bubble.font_size = 40
 	master_bubble.outline_size = 12
 	master_bubble.modulate = Color.WHITE
 	master_bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	master_bubble.position = Vector3(0.0, 3.0, 0.0)
+	master_bubble.position = Vector3(0.0, 2.7, 0.0)
 	master.add_child(master_bubble)
 
-	# Hàng đồng môn áo xanh xem thi
-	var mat_student := StandardMaterial3D.new()
-	mat_student.albedo_color = Color(0, 0.42, 0.85)
+	# Hàng đồng môn áo xanh đứng nghiêm xem thi (người thật, tay chắp sau lưng)
 	for i: int in range(8):
-		var s := MeshInstance3D.new()
-		var sm := CapsuleMesh.new()
-		sm.radius = 0.25
-		sm.height = 1.3
-		s.mesh = sm
-		s.material_override = mat_student
-		s.position = Vector3(-7.0 + i * 2.0, 0.75, -7.5)
+		var s: Node3D = CharacterBuilder.build({"preset": "vovinam", "seed": 400 + i * 11, "name": "Peer%d" % i, "clip": "guard"})
+		s.position = Vector3(-7.0 + i * 2.0, 0.0, -7.5)
+		s.rotation.y = PI
 		$Arena.add_child(s)
 
 	# SÂN VÕ ĐẶT GIỮA NỬA SÂN LÁT GẠCH CỦA SÂN TRONG CAMPUS THẬT: toàn bộ vòng nhà, hồ sen, cóc vàng bao quanh
@@ -662,7 +595,8 @@ func _start_pushup() -> void:
 	GameFX.shake(0.3)
 	master_bubble.text = "🥋 THẦY: HÍT ĐẤT 10 CÁI!!"
 	var tw := create_tween()
-	tw.tween_property(player_fighter, "rotation_degrees:x", 80.0, 0.25)
+	CharacterBuilder.play(fighter_model, "plank", 999.0)
+	tw.tween_property(player_fighter, "rotation_degrees:z", -80.0, 0.25)
 	tw.parallel().tween_property(player_fighter, "position:y", 0.35, 0.25)
 
 func _pushup_press() -> void:
@@ -680,7 +614,8 @@ func _end_pushup(success: bool) -> void:
 	consecutive_misses = 0
 	combo = 0
 	var tw := create_tween()
-	tw.tween_property(player_fighter, "rotation_degrees:x", 0.0, 0.25)
+	CharacterBuilder.stop_clip(fighter_model)
+	tw.tween_property(player_fighter, "rotation_degrees:z", 0.0, 0.25)
 	tw.parallel().tween_property(player_fighter, "position:y", fighter_start_pos.y, 0.25)
 	if success:
 		GameFX.popup("HÍT ĐẤT XONG! VÀO LẠI NHỊP!", Color("#2ECC71"), 28, 1.0)
@@ -704,39 +639,33 @@ func _play_move(move: String, strong: bool) -> void:
 	match move:
 		"punch":
 			tw.set_parallel(true)
-			tw.tween_property(arm_r, "rotation_degrees:z", 92.0, 0.07)
+			CharacterBuilder.play(fighter_model, "punch", 0.42)
 			tw.tween_property(player_fighter, "position:x", fighter_start_pos.x + 0.45 * amp, 0.07)
-			tw.chain().tween_property(arm_r, "rotation_degrees:z", 0.0, 0.22)
+			tw.chain().tween_interval(0.22)
 			tw.parallel().tween_property(player_fighter, "position:x", fighter_start_pos.x, 0.22)
 			_dummy_hit(0.3 * amp)
 		"chop":
 			tw.set_parallel(true)
-			tw.tween_property(arm_l, "rotation_degrees:z", 100.0, 0.07)
+			CharacterBuilder.play(fighter_model, "chop", 0.4)
 			tw.tween_property(player_fighter, "rotation_degrees:y", -45.0 * amp, 0.08)
-			tw.chain().tween_property(arm_l, "rotation_degrees:z", 0.0, 0.22)
+			tw.chain().tween_interval(0.22)
 			tw.parallel().tween_property(player_fighter, "rotation_degrees:y", 0.0, 0.22)
 			_dummy_hit(0.22 * amp)
 		"stance":
 			tw.set_parallel(true)
 			tw.tween_property(player_fighter, "position:y", fighter_start_pos.y - 0.28, 0.1)
-			tw.tween_property(leg_l, "rotation_degrees:x", 28.0, 0.1)
-			tw.tween_property(leg_r, "rotation_degrees:x", -28.0, 0.1)
-			tw.tween_property(arm_l, "rotation_degrees:z", 70.0, 0.1)
-			tw.tween_property(arm_r, "rotation_degrees:z", 70.0, 0.1)
+			CharacterBuilder.play(fighter_model, "stance", 0.45)
 			tw.chain().tween_interval(0.15)
 			tw.chain().tween_property(player_fighter, "position:y", fighter_start_pos.y, 0.15)
-			tw.parallel().tween_property(leg_l, "rotation_degrees:x", 0.0, 0.15)
-			tw.parallel().tween_property(leg_r, "rotation_degrees:x", 0.0, 0.15)
-			tw.parallel().tween_property(arm_l, "rotation_degrees:z", 0.0, 0.15)
-			tw.parallel().tween_property(arm_r, "rotation_degrees:z", 0.0, 0.15)
 		"kick":
 			tw.set_parallel(true)
-			tw.tween_property(leg_r, "rotation_degrees:z", 85.0, 0.09)
+			CharacterBuilder.play(fighter_model, "kick", 0.62)
 			tw.tween_property(player_fighter, "position:y", fighter_start_pos.y + 0.18, 0.09)
-			tw.chain().tween_property(leg_r, "rotation_degrees:z", 0.0, 0.22)
+			tw.chain().tween_interval(0.22)
 			tw.parallel().tween_property(player_fighter, "position:y", fighter_start_pos.y, 0.22)
 			_dummy_hit(0.35 * amp)
 		"shout":
+			CharacterBuilder.play(fighter_model, "cheer_once", 0.6)
 			tw.tween_property(player_fighter, "scale", Vector3(1.18, 1.18, 1.18), 0.08)
 			tw.tween_property(player_fighter, "scale", Vector3.ONE, 0.2)
 			GameFX.float_text(self, player_fighter.global_position + Vector3(0, 2.0, 0), "ÁAAAA!", Color("#F1C40F"), 56)
@@ -770,6 +699,8 @@ func _start_finisher() -> void:
 	_set_fin_step(1)
 
 func _set_fin_step(step: int) -> void:
+	if fighter_model:
+		CharacterBuilder.set_speed(fighter_model, 0.0)
 	fin_step = step
 	fin_progress = 0.0
 	fin_ring.active = false
@@ -820,8 +751,7 @@ func _process_finisher(delta: float) -> void:
 			if holding:
 				fin_progress = minf(1.0, fin_progress + delta / 1.2)
 				player_fighter.position.x = lerpf(fighter_start_pos.x, dummy.position.x - 1.4, fin_progress)
-				leg_l.rotation_degrees.x = sin(Time.get_ticks_msec() * 0.03) * 40.0
-				leg_r.rotation_degrees.x = -leg_l.rotation_degrees.x
+				CharacterBuilder.set_speed(fighter_model, 2.6)
 				if fin_progress >= 1.0:
 					GameFX.play_sfx("whoosh", -4.0)
 					_set_fin_step(2)

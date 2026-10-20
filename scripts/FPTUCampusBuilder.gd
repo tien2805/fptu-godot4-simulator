@@ -116,8 +116,13 @@ static func _tex_mat(file_name: String, fallback: Color, triplanar: bool, scale:
 	m.roughness = rough
 	return m
 
+static var _materials_cache: Dictionary = {}
+
+## Bộ vật liệu campus dùng chung. Được CACHE: màn gọi lại (ngoài lần trong build_authentic_campus) không nạp lại texture.
 static func make_materials() -> Dictionary:
-	var m: Dictionary = {}
+	if not _materials_cache.is_empty():
+		return _materials_cache
+	var m: Dictionary = _materials_cache
 	m["facade"] = _tex_mat("fptu_alpha_facade.png", Color("#F0F2F4"), true, Vector3(0.1, 0.1, 0.1), 0.78, "fptu_alpha_facade_n.png", 0.5)
 	m["roof"] = _tex_mat("roof_terracotta.png", Color("#B5543A"), true, Vector3(0.55, 0.55, 0.55), 0.92, "roof_terracotta_n.png", 0.8)
 	m["terracotta"] = _mat(Color("#C4683F"), 0.9)

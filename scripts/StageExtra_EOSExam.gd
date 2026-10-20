@@ -67,36 +67,21 @@ var force_btn: Button
 var tex_eos: Texture2D
 var decoy_timer: float = 3.0
 var cctv_marker: MeshInstance3D
-var proctor_body_mat: StandardMaterial3D
-var proctor_head_mat: StandardMaterial3D
+var proctor_model: Node3D
 var cam_yaw: float = PI # yaw camera đang bám (PI = nhìn về phía bảng / cửa sổ D1)
 
 ## Vật liệu riêng (có alpha) cho thân & đầu giám thị để camera lại gần thì mờ dần.
 func _setup_proctor_materials() -> void:
-	proctor_body_mat = StandardMaterial3D.new()
-	proctor_body_mat.albedo_color = Color(0.17, 0.2, 0.26)
-	proctor_body_mat.roughness = 0.7
-	proctor_body_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	proctor_head_mat = StandardMaterial3D.new()
-	proctor_head_mat.albedo_color = Color("#E0B084")
-	proctor_head_mat.roughness = 0.8
-	proctor_head_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	var body: GeometryInstance3D = proctor.get_node_or_null("BodyMesh")
-	var head: GeometryInstance3D = proctor.get_node_or_null("HeadMesh")
-	if body:
-		body.material_override = proctor_body_mat
-	if head:
-		head.material_override = proctor_head_mat
-	# Cà vạt + bảng tên "GIÁM THỊ" để nhận ra nhân vật
-	var tie := MeshInstance3D.new()
-	var tm := BoxMesh.new()
-	tm.size = Vector3(0.08, 0.45, 0.03)
-	tie.mesh = tm
-	var mat_tie := StandardMaterial3D.new()
-	mat_tie.albedo_color = Color("#C0392B")
-	tie.material_override = mat_tie
-	tie.position = Vector3(0.0, 0.42, 0.35)
-	proctor.add_child(tie)
+	# Giám thị = CharacterBuilder "proctor" (sơ mi trắng, cà vạt, thẻ, kính). CSG BodyMesh/HeadMesh cũ ẩn đi.
+	# Gốc Proctor (CharacterBody3D) ở y = 0.85, mặt hướng +Z (theo _handle_movement) → model y = -0.85, xoay PI.
+	for n: String in ["BodyMesh", "HeadMesh"]:
+		var g: Node3D = proctor.get_node_or_null(n)
+		if g:
+			g.visible = false
+	proctor_model = CharacterBuilder.build({"preset": "proctor", "seed": 2026, "name": "ProctorModel", "female": false})
+	proctor_model.position = Vector3(0.0, -0.85, 0.0)
+	proctor_model.rotation.y = PI
+	proctor.add_child(proctor_model)
 	var badge := Label3D.new()
 	badge.text = "GIÁM THỊ"
 	badge.font_size = 18
@@ -146,10 +131,6 @@ func _build_exam_stations() -> void:
 	var root: Node3D = $ExamRoom/Stations
 	var mat_desk := StandardMaterial3D.new()
 	mat_desk.albedo_color = Color("#34495E")
-	var mat_student := StandardMaterial3D.new()
-	mat_student.albedo_color = Color("#E67E22")
-	var mat_skin := StandardMaterial3D.new()
-	mat_skin.albedo_color = Color("#FFCCAA")
 
 	# Chọn 6 thánh tool: 2 cấp 1 (Alt+Tab), 2 cấp 2 (điện thoại), 2 cấp 3 (tai nghe / watch)
 	var all_idx: Array[int] = []
@@ -197,65 +178,38 @@ func _build_exam_stations() -> void:
 			monitor.position = Vector3(0.0, 1.7, -0.3)
 			station.add_child(monitor)
 
-			var student := Node3D.new()
+			var student: Node3D = CharacterBuilder.build({"preset": "student", "seed": 900 + idx * 23, "name": "Student%02d" % idx, "backpack": false, "animate": false})
 			student.position = Vector3(0.0, 0.0, 0.6)
 			station.add_child(student)
-			var body := MeshInstance3D.new()
-			var sm := CapsuleMesh.new()
-			sm.radius = 0.25
-			sm.height = 1.2
-			body.mesh = sm
-			body.material_override = mat_student
-			body.position = Vector3(0.0, 0.8, 0.0)
-			student.add_child(body)
-			var head := Node3D.new()
-			head.position = Vector3(0.0, 1.5, 0.0)
-			student.add_child(head)
-			var head_mesh := MeshInstance3D.new()
-			var hm := SphereMesh.new()
-			hm.radius = 0.17
-			hm.height = 0.34
-			head_mesh.mesh = hm
-			head_mesh.material_override = mat_skin
-			head.add_child(head_mesh)
-			# Tai nghe (ẩn)
+			# ghế cao: hông ở 0.78 (đơn vị trạm) để đầu nhô khỏi bàn 1.3
+			CharacterBuilder.pose(student, "type", float(idx) * 0.7, {"sit_height": 0.95})
+			var head: Node3D = CharacterBuilder.get_pivot(student, "head")
+			# Tai nghe (ẩn) gắn tai phải
 			var earbud := MeshInstance3D.new()
 			var em := SphereMesh.new()
-			em.radius = 0.05
-			em.height = 0.1
+			em.radius = 0.022
+			em.height = 0.044
 			earbud.mesh = em
 			var mat_e := StandardMaterial3D.new()
 			mat_e.albedo_color = Color.WHITE
 			mat_e.emission_enabled = true
 			mat_e.emission = Color.WHITE * 1.5
 			earbud.material_override = mat_e
-			earbud.position = Vector3(0.17, 0.0, 0.0)
+			earbud.position = Vector3(0.108, 0.115, 0.0)
 			earbud.visible = false
 			head.add_child(earbud)
-			# Cánh tay + đồng hồ (ẩn sáng)
-			var arm := Node3D.new()
-			arm.position = Vector3(0.3, 1.1, -0.1)
-			student.add_child(arm)
-			var arm_mesh := MeshInstance3D.new()
-			var am := CylinderMesh.new()
-			am.top_radius = 0.06
-			am.bottom_radius = 0.06
-			am.height = 0.5
-			arm_mesh.mesh = am
-			arm_mesh.material_override = mat_student
-			arm_mesh.rotation_degrees = Vector3(70.0, 0.0, 0.0)
-			arm_mesh.position = Vector3(0.0, 0.0, -0.2)
-			arm.add_child(arm_mesh)
+			# Cẳng tay phải + đồng hồ (sáng lên khi gian lận)
+			var arm: Node3D = CharacterBuilder.get_pivot(student, "elbow_r")
 			var watch := MeshInstance3D.new()
 			var wm := BoxMesh.new()
-			wm.size = Vector3(0.08, 0.06, 0.05)
+			wm.size = Vector3(0.035, 0.03, 0.012)
 			watch.mesh = wm
 			var mat_w := StandardMaterial3D.new()
 			mat_w.albedo_color = Color("#111111")
 			mat_w.emission_enabled = true
 			mat_w.emission = Color.BLACK
 			watch.material_override = mat_w
-			watch.position = Vector3(0.0, 0.05, -0.42)
+			watch.position = Vector3(0.0, -0.23, -0.045)
 			arm.add_child(watch)
 			# Điện thoại + đèn dưới gầm bàn (ẩn)
 			var phone := MeshInstance3D.new()
@@ -492,10 +446,8 @@ func _update_walk_camera(delta: float) -> void:
 		walk_cam.look_at(look, Vector3.UP)
 	var d: float = walk_cam.global_position.distance_to(p + Vector3(0.0, 0.95, 0.0))
 	var alpha: float = clampf((d - 1.4) / 1.1, 0.18, 1.0)
-	if proctor_body_mat:
-		proctor_body_mat.albedo_color.a = alpha
-	if proctor_head_mat:
-		proctor_head_mat.albedo_color.a = alpha
+	if proctor_model:
+		CharacterBuilder.set_opacity(proctor_model, alpha)
 
 func _handle_movement(delta: float) -> void:
 	var input_dir := Vector3.ZERO
@@ -522,8 +474,12 @@ func _handle_movement(delta: float) -> void:
 		proctor.rotation.y = lerp_angle(proctor.rotation.y, target_angle, delta * 10.0)
 		proctor.velocity.x = move.x * 4.2
 		proctor.velocity.z = move.z * 4.2
+		if proctor_model:
+			CharacterBuilder.set_speed(proctor_model, 4.2)
 	else:
 		proctor.velocity.x = move_toward(proctor.velocity.x, 0.0, delta * 20.0)
+		if proctor_model:
+			CharacterBuilder.set_speed(proctor_model, 0.0)
 		proctor.velocity.z = move_toward(proctor.velocity.z, 0.0, delta * 20.0)
 	proctor.velocity.y = 0.0
 	proctor.move_and_slide()
@@ -627,7 +583,7 @@ func _set_tell_visual(st: Dictionary, on: bool) -> void:
 			(st["light"] as OmniLight3D).light_energy = 2.4 if on else 0.0
 			var head: Node3D = st["head"]
 			var tw := create_tween()
-			tw.tween_property(head, "rotation_degrees:x", 32.0 if on else 0.0, 0.2)
+			tw.tween_property(head, "rotation_degrees:x", -38.0 if on else -10.0, 0.2)
 		Tell.EARBUD:
 			(st["earbud"] as MeshInstance3D).visible = on
 			var head: Node3D = st["head"]
@@ -638,7 +594,7 @@ func _set_tell_visual(st: Dictionary, on: bool) -> void:
 			wm.emission = Color("#74B9FF") * (2.0 if on else 0.0)
 			var arm: Node3D = st["arm"]
 			var tw := create_tween()
-			tw.tween_property(arm, "rotation_degrees:x", -60.0 if on else 0.0, 0.2)
+			tw.tween_property(arm, "rotation_degrees:x", 138.0 if on else 83.0, 0.2)
 
 func _update_decoys(delta: float) -> void:
 	# Sinh viên ngay thẳng cũng cử động: vươn vai / gãi đầu / nhìn trần (KHÔNG phải vi phạm)
@@ -657,14 +613,15 @@ func _update_decoys(delta: float) -> void:
 	var tw := create_tween()
 	match randi() % 3:
 		0:
-			tw.tween_property(head, "position:y", 1.7, 0.35)
-			tw.tween_property(head, "position:y", 1.5, 0.35)
+			var hy: float = head.position.y
+			tw.tween_property(head, "position:y", hy + 0.08, 0.35)
+			tw.tween_property(head, "position:y", hy, 0.35)
 		1:
 			tw.tween_property(head, "rotation_degrees:y", 40.0, 0.4)
-			tw.tween_property(head, "rotation_degrees:y", 0.0, 0.4)
+			tw.tween_property(head, "rotation_degrees:y", 4.6, 0.4)
 		_:
-			tw.tween_property(head, "rotation_degrees:x", -25.0, 0.4)
-			tw.tween_property(head, "rotation_degrees:x", 0.0, 0.4)
+			tw.tween_property(head, "rotation_degrees:x", 22.0, 0.4)
+			tw.tween_property(head, "rotation_degrees:x", -10.0, 0.4)
 
 # ===========================================================================
 # CHỤP BẰNG CHỨNG & LẬP BIÊN BẢN

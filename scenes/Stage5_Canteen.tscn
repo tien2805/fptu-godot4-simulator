@@ -73,8 +73,8 @@ fov = 60.0
 [node name="CanteenHall" type="Node3D" parent="."]
 
 [node name="FoodCounter" type="CSGBox3D" parent="CanteenHall"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 1, -8)
-size = Vector3(10, 1.8, 2.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -8)
+size = Vector3(10, 1, 2.5)
 
 [node name="SevenElevenStore" type="CSGBox3D" parent="CanteenHall"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 1.6, -8.5)

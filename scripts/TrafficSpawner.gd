@@ -93,68 +93,15 @@ func _spawn_moto(track_len: float, lane_x: float, direction: float, speed: float
 	body.add_child(cs)
 	PlayerBike.attach_near_miss_tag(body, Vector3(0.7, 1.3, 1.9), 0.65)
 
-	var shirt_colors: Array[Color] = [Color("#F37021"), Color("#3498DB"), Color("#2ECC71"), Color("#E84393"), Color("#FDCB6E"), Color("#636E72")]
-	var bike_colors: Array[Color] = [Color("#C0392B"), Color("#2C3E50"), Color("#7F8C8D"), Color("#8E44AD"), Color("#16A085")]
-
-	var mat_bike := StandardMaterial3D.new()
-	mat_bike.albedo_color = bike_colors[randi() % bike_colors.size()]
-	var chassis := MeshInstance3D.new()
-	var cm := BoxMesh.new()
-	cm.size = Vector3(0.38, 0.44, 1.55)
-	chassis.mesh = cm
-	chassis.material_override = mat_bike
-	chassis.position = Vector3(0.0, 0.52, 0.0)
-	body.add_child(chassis)
-
-	var mat_tire := StandardMaterial3D.new()
-	mat_tire.albedo_color = Color("#111418")
-	for z: float in [-0.62, 0.62]:
-		var w := MeshInstance3D.new()
-		var wm := CylinderMesh.new()
-		wm.top_radius = 0.32
-		wm.bottom_radius = 0.32
-		wm.height = 0.16
-		w.mesh = wm
-		w.material_override = mat_tire
-		w.rotation_degrees = Vector3(0, 0, 90)
-		w.position = Vector3(0.0, 0.32, z)
-		body.add_child(w)
-
-	var mat_shirt := StandardMaterial3D.new()
-	mat_shirt.albedo_color = shirt_colors[randi() % shirt_colors.size()]
-	var rider := MeshInstance3D.new()
-	var rm := CapsuleMesh.new()
-	rm.radius = 0.19
-	rm.height = 0.62
-	rider.mesh = rm
-	rider.material_override = mat_shirt
-	rider.position = Vector3(0.0, 1.12, 0.15)
-	rider.rotation_degrees = Vector3(-18.0, 0.0, 0.0)
-	body.add_child(rider)
-
-	var helmet := MeshInstance3D.new()
-	var hm := SphereMesh.new()
-	hm.radius = 0.17
-	hm.height = 0.34
-	helmet.mesh = hm
-	var mat_helmet := StandardMaterial3D.new()
-	mat_helmet.albedo_color = [Color("#E74C3C"), Color("#F1C40F"), Color("#FFFFFF"), Color("#0984E3")][randi() % 4]
-	helmet.material_override = mat_helmet
-	helmet.position = Vector3(0.0, 1.55, 0.0)
-	body.add_child(helmet)
-
-	var head_lamp := MeshInstance3D.new()
-	var hlm := SphereMesh.new()
-	hlm.radius = 0.09
-	hlm.height = 0.18
-	head_lamp.mesh = hlm
-	var mat_hl := StandardMaterial3D.new()
-	mat_hl.albedo_color = Color("#FFF9C4")
-	mat_hl.emission_enabled = true
-	mat_hl.emission = Color("#FFF9C4") * 1.6
-	head_lamp.material_override = mat_hl
-	head_lamp.position = Vector3(0.0, 0.8, -0.78)
-	body.add_child(head_lamp)
+	# Xe máy chi tiết (bảng linh kiện dùng chung với bãi xe) + người lái bake 1 mesh (mặt, mũ bảo hiểm, áo, ba lô)
+	var shirt_colors: Array[Color] = [Color("#3498DB"), Color("#2ECC71"), Color("#E84393"), Color("#FDCB6E"), Color("#636E72"), Color("#ECF0F1"), Color("#8E44AD")]
+	var paint: Color = FPTUCampusBuilder.BIKE_PAINTS[randi() % FPTUCampusBuilder.BIKE_PAINTS.size()]
+	FPTUCampusBuilder.build_motorbike(body, Vector3.ZERO, 0.0, paint, FPTUCampusBuilder.make_materials())
+	var rider_opts: Dictionary = {"seed": randi(), "helmet_color": [Color("#E74C3C"), Color("#F1C40F"), Color("#FFFFFF"), Color("#0984E3"), Color("#2C3E50")][randi() % 5]}
+	if randf() < 0.65:
+		rider_opts["shirt_color"] = shirt_colors[randi() % shirt_colors.size()]
+		rider_opts["backpack"] = randf() < 0.3
+	CharacterBuilder.build_baked_rider(body, Vector3(0.0, 0.27, 0.12), rider_opts)
 
 	follower.add_child(body)
 	follower.h_offset = lane_x

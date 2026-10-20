@@ -61,6 +61,7 @@ var near_miss_chain: int = 0
 var near_miss_chain_timer: float = 0.0
 const NEAR_MISS_CHAIN_WINDOW: float = 6.0 # đủ để đi từ cụm xe này sang cụm kế (~130 m ở 80 km/h)
 var longest_near_miss_chain: int = 0
+var rider_node: Node3D
 var near_miss_area: Area3D
 
 # Hệ thống Âm thanh Vòm 3D
@@ -299,11 +300,7 @@ func _build_procedural_bike_and_seated_rider() -> void:
 	mat_dark_metal.metallic = 0.45
 	mat_dark_metal.roughness = 0.4
 
-	var mat_jeans := StandardMaterial3D.new()
-	mat_jeans.albedo_color = Color("#2C3A47")
 
-	var mat_skin := StandardMaterial3D.new()
-	mat_skin.albedo_color = Color("#FFCCAA")
 
 	var mat_helmet := StandardMaterial3D.new()
 	mat_helmet.albedo_color = Color("#0066CC") # Mũ bảo hiểm xanh dương
@@ -443,95 +440,14 @@ func _build_procedural_bike_and_seated_rider() -> void:
 		mirror.material_override = mat_dark_metal
 		handlebar_pivot.add_child(mirror)
 
-	# 4. SINH VIÊN FPTU NGỒI LÁI XE (Áo cam, mũ bảo hiểm, balo, cong lưng ôm lái)
-	var rider_root := Node3D.new()
-	rider_root.name = "SeatedFPTURider"
-	visual_pivot.add_child(rider_root)
-
-	var pelvis := MeshInstance3D.new()
-	var pelvis_mesh := CapsuleMesh.new()
-	pelvis_mesh.radius = 0.16
-	pelvis_mesh.height = 0.36
-	pelvis.mesh = pelvis_mesh
-	pelvis.rotation_degrees = Vector3(0, 0, 90.0)
-	pelvis.position = Vector3(0.0, 0.88, 0.22)
-	pelvis.material_override = mat_jeans
-	rider_root.add_child(pelvis)
-
-	var torso := MeshInstance3D.new()
-	var torso_mesh := CapsuleMesh.new()
-	torso_mesh.radius = 0.19
-	torso_mesh.height = 0.58
-	torso.mesh = torso_mesh
-	torso.position = Vector3(0.0, 1.18, 0.10)
-	torso.rotation_degrees = Vector3(-24.0, 0.0, 0.0)
-	torso.material_override = mat_fpt_orange
-	rider_root.add_child(torso)
-
-	var badge := MeshInstance3D.new()
-	var badge_mesh := BoxMesh.new()
-	badge_mesh.size = Vector3(0.10, 0.14, 0.02)
-	badge.mesh = badge_mesh
-	badge.position = Vector3(0.0, 0.0, -0.16)
-	badge.material_override = mat_white
-	torso.add_child(badge)
-
-	var backpack := MeshInstance3D.new()
-	var pack_mesh := BoxMesh.new()
-	pack_mesh.size = Vector3(0.32, 0.42, 0.18)
-	backpack.mesh = pack_mesh
-	backpack.position = Vector3(0.0, 0.02, 0.22)
-	backpack.material_override = mat_dark_metal
-	torso.add_child(backpack)
-
-	var head := MeshInstance3D.new()
-	var head_mesh := SphereMesh.new()
-	head_mesh.radius = 0.14
-	head_mesh.height = 0.28
-	head.mesh = head_mesh
-	head.position = Vector3(0.0, 1.54, -0.04)
-	head.material_override = mat_skin
-	rider_root.add_child(head)
-
-	var helmet := MeshInstance3D.new()
-	var helmet_mesh := SphereMesh.new()
-	helmet_mesh.radius = 0.18
-	helmet_mesh.height = 0.34
-	helmet.mesh = helmet_mesh
-	helmet.position = Vector3(0.0, 0.04, 0.0)
-	helmet.material_override = mat_helmet
-	head.add_child(helmet)
-
-	for side: float in [-1.0, 1.0]:
-		var thigh := MeshInstance3D.new()
-		var thigh_mesh := CapsuleMesh.new()
-		thigh_mesh.radius = 0.09
-		thigh_mesh.height = 0.42
-		thigh.mesh = thigh_mesh
-		thigh.position = Vector3(side * 0.18, 0.78, 0.06)
-		thigh.rotation_degrees = Vector3(56.0, side * -8.0, 0.0)
-		thigh.material_override = mat_jeans
-		rider_root.add_child(thigh)
-
-		var calf := MeshInstance3D.new()
-		var calf_mesh := CapsuleMesh.new()
-		calf_mesh.radius = 0.08
-		calf_mesh.height = 0.40
-		calf.mesh = calf_mesh
-		calf.position = Vector3(side * 0.20, 0.48, -0.02)
-		calf.rotation_degrees = Vector3(-18.0, 0.0, 0.0)
-		calf.material_override = mat_jeans
-		rider_root.add_child(calf)
-
-		var arm := MeshInstance3D.new()
-		var arm_mesh := CapsuleMesh.new()
-		arm_mesh.radius = 0.07
-		arm_mesh.height = 0.56
-		arm.mesh = arm_mesh
-		arm.position = Vector3(side * 0.22, 1.16, -0.18)
-		arm.rotation_degrees = Vector3(68.0, side * -6.0, 0.0)
-		arm.material_override = mat_fpt_orange
-		rider_root.add_child(arm)
+	# 4. SINH VIÊN FPTU NGỒI LÁI XE – CharacterBuilder (mặt, tóc, áo polo FPT, ba lô, mũ bảo hiểm, tay ôm ghi-đông)
+	#    Gốc nhân vật đặt tại yên: hông ở 0.62 m trên gốc khi ở clip "ride"; yên xe cao 0.85 m → gốc y = 0.23.
+	rider_node = CharacterBuilder.build({"preset": "rider", "seed": 2805, "name": "SeatedFPTURider", "helmet_color": Color("#0066CC"), "backpack": true, "clip": "ride", "glasses": false})
+	rider_node.position = Vector3(0.0, 0.23, 0.14)
+	visual_pivot.add_child(rider_node)
+	CharacterBuilder.set_param(rider_node, "ride_shoulder", 1.2)
+	CharacterBuilder.set_param(rider_node, "ride_elbow", 0.28)
+	CharacterBuilder.set_param(rider_node, "ride_lean", 0.4)
 
 # ---------------------------------------------------------------------------
 # VẬT LÝ CHÍNH
@@ -635,6 +551,8 @@ func _physics_process(delta: float) -> void:
 	var target_tilt: float = steer_input * max_tilt_angle * speed_factor * (1.25 if is_drifting else 1.0)
 	tilt_angle = lerpf(tilt_angle, target_tilt, delta * 10.0)
 	visual_pivot.rotation.z = tilt_angle
+	if rider_node:
+		CharacterBuilder.set_param(rider_node, "lean", -tilt_angle * 0.35)
 	visual_pivot.rotation.y = RearSkidOffset
 	handlebar_pivot.rotation.y = steer_input * 0.38
 

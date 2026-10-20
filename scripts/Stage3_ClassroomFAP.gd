@@ -114,6 +114,7 @@ var beat_feedback: Label
 var answer_input: LineEdit
 var quiz_bar: ProgressBar
 var lecturer: Node3D
+var classmates: Array[Node3D] = []
 var lecturer_bubble: Label3D
 var phone_mesh: MeshInstance3D
 var phone_mat: StandardMaterial3D
@@ -235,46 +236,17 @@ func _build_room_extras() -> void:
 	code_title.position = Vector3(0.0, 2.85, -5.5)
 	$Room.add_child(code_title)
 
-	# Giảng viên đứng cạnh bàn
-	lecturer = Node3D.new()
+	# Giảng viên đứng cạnh bàn (CharacterBuilder: cô giáo áo sơ mi, kính, dây đeo thẻ). Hướng -Z = nhìn slide; quay PI = nhìn lớp
+	lecturer = CharacterBuilder.build({"preset": "lecturer", "seed": 12, "female": true, "name": "Lecturer", "hair_style": "bun"})
 	lecturer.position = Vector3(2.6, 0.0, -4.0)
 	$Room.add_child(lecturer)
-	var mat_shirt := StandardMaterial3D.new()
-	mat_shirt.albedo_color = Color("#2C3E50")
-	var body := MeshInstance3D.new()
-	var cm := CapsuleMesh.new()
-	cm.radius = 0.28
-	cm.height = 1.35
-	body.mesh = cm
-	body.material_override = mat_shirt
-	body.position = Vector3(0.0, 0.95, 0.0)
-	lecturer.add_child(body)
-	var head := MeshInstance3D.new()
-	var hm := SphereMesh.new()
-	hm.radius = 0.18
-	hm.height = 0.36
-	head.mesh = hm
-	var ms := StandardMaterial3D.new()
-	ms.albedo_color = Color("#FFCCAA")
-	head.material_override = ms
-	head.position = Vector3(0.0, 1.8, 0.0)
-	lecturer.add_child(head)
-	var glasses := MeshInstance3D.new()
-	var gm := BoxMesh.new()
-	gm.size = Vector3(0.3, 0.06, 0.04)
-	glasses.mesh = gm
-	var mg := StandardMaterial3D.new()
-	mg.albedo_color = Color("#111111")
-	glasses.material_override = mg
-	glasses.position = Vector3(0.0, 1.82, 0.17)
-	lecturer.add_child(glasses)
 	lecturer_bubble = Label3D.new()
 	lecturer_bubble.text = "🎓 Các em nhập mã nhanh lên!"
 	lecturer_bubble.font_size = 34
 	lecturer_bubble.outline_size = 10
 	lecturer_bubble.modulate = Color.WHITE
 	lecturer_bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lecturer_bubble.position = Vector3(0.0, 2.5, 0.0)
+	lecturer_bubble.position = Vector3(0.0, 2.2, 0.0)
 	lecturer.add_child(lecturer_bubble)
 
 	# Điện thoại trên bàn sinh viên
@@ -290,32 +262,18 @@ func _build_room_extras() -> void:
 	phone_mesh.position = Vector3(0.95, 0.78, 2.0)
 	$Room.add_child(phone_mesh)
 
-	# Bạn bè áo cam ngồi ở ghế các bàn máy (trừ ghế của người chơi)
-	var mat_orange := StandardMaterial3D.new()
-	mat_orange.albedo_color = Color("#F37021")
-	var mat_skin2 := StandardMaterial3D.new()
-	mat_skin2.albedo_color = Color("#FFCCAA")
+	# Bạn bè áo cam ngồi ở ghế các bàn máy (trừ ghế của người chơi) – người thật: gõ máy, ngủ gật, lén điện thoại
 	var seats: Array = [
 		Vector2(-5.3, 2.55), Vector2(-3.7, 2.55), Vector2(3.7, 2.55), Vector2(5.3, 2.55),
 		Vector2(-5.3, -0.45), Vector2(-3.7, -0.45), Vector2(-0.8, -0.45), Vector2(0.8, -0.45), Vector2(3.7, -0.45), Vector2(5.3, -0.45)
 	]
-	for sp: Vector2 in seats:
-		var npc := MeshInstance3D.new()
-		var nm := CapsuleMesh.new()
-		nm.radius = 0.22
-		nm.height = 0.9
-		npc.mesh = nm
-		npc.material_override = mat_orange
-		npc.position = Vector3(sp.x, 0.85, sp.y)
+	var seat_clips: Array[String] = ["type", "type", "sleepy_sit", "type", "phone", "type", "sit", "type", "sleepy_sit", "type"]
+	for i: int in range(seats.size()):
+		var sp: Vector2 = seats[i]
+		var npc: Node3D = CharacterBuilder.build({"preset": "student", "seed": 300 + i * 13, "name": "Classmate%d" % i, "backpack": false, "clip": seat_clips[i]})
+		npc.position = Vector3(sp.x, 0.0, sp.y + 0.1)
 		$Room.add_child(npc)
-		var nh := MeshInstance3D.new()
-		var nhm := SphereMesh.new()
-		nhm.radius = 0.15
-		nhm.height = 0.3
-		nh.mesh = nhm
-		nh.material_override = mat_skin2
-		nh.position = Vector3(sp.x, 1.42, sp.y)
-		$Room.add_child(nh)
+		classmates.append(npc)
 
 # ===========================================================================
 # UI
@@ -811,7 +769,9 @@ func _start_phone_check() -> void:
 	lecturer_bubble.text = "🎓 Để cô xuống xem ai chơi điện thoại..."
 	if lecturer:
 		var tw := create_tween()
+		CharacterBuilder.set_speed(lecturer, 1.3)
 		tw.tween_property(lecturer, "position", Vector3(1.4, 0.0, 0.6), 1.4)
+		tw.tween_callback(CharacterBuilder.set_speed.bind(lecturer, 0.0))
 		tw.tween_property(lecturer, "rotation:y", PI, 0.2)
 
 func _on_phone_flip() -> void:
@@ -847,7 +807,9 @@ func _resolve_phone(saved: bool) -> void:
 	if lecturer:
 		var tw2 := create_tween()
 		tw2.tween_interval(0.6)
+		CharacterBuilder.set_speed(lecturer, 1.3)
 		tw2.tween_property(lecturer, "position", Vector3(2.6, 0.0, -4.0), 1.2)
+		tw2.tween_callback(CharacterBuilder.set_speed.bind(lecturer, 0.0))
 		tw2.tween_property(lecturer, "rotation:y", 0.0, 0.3)
 	# Lần úp tiếp theo: điện thoại lại sáng lên (bạn lại lén mở)
 	if saved:

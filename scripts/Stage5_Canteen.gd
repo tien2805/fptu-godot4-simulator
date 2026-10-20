@@ -235,7 +235,7 @@ func _build_hall() -> void:
 	gm.size = Vector3(10.0, 0.6, 0.04)
 	guard.mesh = gm
 	guard.material_override = cmat["glass"]
-	guard.position = Vector3(-8.0, 2.25, -6.8)
+	guard.position = Vector3(-8.0, 1.45, -6.8)
 	hall.add_child(guard)
 	var tray_cols: Array = [Color("#F7F3E8"), Color("#8E4B2A"), Color("#3E8E41"), Color("#5B3A29"), Color("#E9B44C"), Color("#D35400")]
 	for i: int in range(6):
@@ -246,7 +246,7 @@ func _build_hall() -> void:
 		var mt := StandardMaterial3D.new()
 		mt.albedo_color = tray_cols[i]
 		tray.material_override = mt
-		tray.position = Vector3(-12.2 + i * 1.6, 1.96, -7.6)
+		tray.position = Vector3(-12.2 + i * 1.6, 1.06, -7.6)
 		hall.add_child(tray)
 	var cooker := MeshInstance3D.new()
 	var ckm := CylinderMesh.new()
@@ -255,7 +255,7 @@ func _build_hall() -> void:
 	ckm.height = 0.5
 	cooker.mesh = ckm
 	cooker.material_override = mat_inox
-	cooker.position = Vector3(-12.3, 2.15, -8.6)
+	cooker.position = Vector3(-12.3, 1.25, -8.6)
 	hall.add_child(cooker)
 	var menu := MeshInstance3D.new()
 	var mnm := BoxMesh.new()
@@ -372,15 +372,10 @@ func _build_hall() -> void:
 	lbl.modulate = Color("#F1C40F")
 	lbl.position = Vector3(-8.0, 2.9, -6.6)
 	hall.add_child(lbl)
-	var mat_apron := StandardMaterial3D.new()
-	mat_apron.albedo_color = Color("#E84393")
-	var cook := MeshInstance3D.new()
-	var cm := CapsuleMesh.new()
-	cm.radius = 0.3
-	cm.height = 1.3
-	cook.mesh = cm
-	cook.material_override = mat_apron
-	cook.position = Vector3(-8.0, 2.4, -8.0)
+	# Cô Ba đứng sau quầy (CharacterBuilder: áo bếp, tạp dề, mũ bếp, bưng khay) – quay mặt ra sảnh (+Z)
+	var cook: Node3D = CharacterBuilder.build({"preset": "cook", "seed": 31, "female": true, "name": "CoBa", "clip": "carry", "height": 0.96})
+	cook.position = Vector3(-8.0, 0.0, -9.65)
+	cook.rotation.y = PI
 	hall.add_child(cook)
 	var lbl2 := Label3D.new()
 	lbl2.text = "🏪 7-ELEVEN CAMPUS – [E] VÀO MUA COMBO"
@@ -389,9 +384,8 @@ func _build_hall() -> void:
 	lbl2.modulate = Color("#2ECC71")
 	lbl2.position = Vector3(8.0, 2.95, -6.0)
 	hall.add_child(lbl2)
-	# Nhóm đứng tụ tập (chướng ngại cứng) tại điểm nghẽn
-	var mat_orange := StandardMaterial3D.new()
-	mat_orange.albedo_color = Color("#F37021")
+	# Nhóm đứng tụ tập (chướng ngại cứng) tại điểm nghẽn – 3 người thật quay mặt vào nhau tán gẫu
+	var gi: int = 0
 	for center: Vector3 in [Vector3(0.0, 0.0, 3.0), Vector3(6.5, 0.0, 2.5), Vector3(-6.0, 0.0, 8.0)]:
 		for k: int in range(3):
 			var ang: float = k * TAU / 3.0
@@ -405,14 +399,12 @@ func _build_hall() -> void:
 			cs.shape = cap
 			cs.position = Vector3(0.0, 0.85, 0.0)
 			sb.add_child(cs)
-			var m := MeshInstance3D.new()
-			var mm := CapsuleMesh.new()
-			mm.radius = 0.28
-			mm.height = 1.6
-			m.mesh = mm
-			m.material_override = mat_orange
-			m.position = Vector3(0.0, 0.85, 0.0)
-			sb.add_child(m)
+			var talker: Node3D = CharacterBuilder.build({"preset": "student" if gi % 4 != 3 else "casual", "seed": 500 + gi * 7, "name": "Talker%d" % gi})
+			talker.rotation.y = atan2(cos(ang), sin(ang))
+			sb.add_child(talker)
+			if k == 0:
+				CharacterBuilder.play(talker, "phone")
+			gi += 1
 		var glbl := Label3D.new()
 		glbl.text = "💬 'Ê nghe nói slot 3 nghỉ hả?'"
 		glbl.font_size = 20
@@ -433,37 +425,12 @@ func _build_player() -> void:
 	cs.position = Vector3(0.0, 0.85, 0.0)
 	player.add_child(cs)
 
-	player_visual = Node3D.new()
+	# Người chơi: CharacterBuilder "player" (áo FPT, ba lô, vòng tay vàng); bước đi do Animator lái theo vận tốc
+	player_visual = CharacterBuilder.build({"preset": "player", "seed": 2805, "name": "PlayerVisual", "glasses": false})
 	player.add_child(player_visual)
-	var mat_orange := StandardMaterial3D.new()
-	mat_orange.albedo_color = Color("#F37021")
-	var body := MeshInstance3D.new()
-	var cm := CapsuleMesh.new()
-	cm.radius = 0.3
-	cm.height = 1.2
-	body.mesh = cm
-	body.material_override = mat_orange
-	body.position = Vector3(0.0, 0.9, 0.0)
-	player_visual.add_child(body)
-	var head := MeshInstance3D.new()
-	var hm := SphereMesh.new()
-	hm.radius = 0.17
-	hm.height = 0.34
-	head.mesh = hm
-	var ms := StandardMaterial3D.new()
-	ms.albedo_color = Color("#FFCCAA")
-	head.material_override = ms
-	head.position = Vector3(0.0, 1.65, 0.0)
-	player_visual.add_child(head)
-	var lanyard := MeshInstance3D.new()
-	var lm := BoxMesh.new()
-	lm.size = Vector3(0.1, 0.14, 0.02)
-	lanyard.mesh = lm
-	lanyard.position = Vector3(0.0, 1.05, -0.3)
-	player_visual.add_child(lanyard)
 
 	tray_mesh = Node3D.new()
-	tray_mesh.position = Vector3(0.0, 1.1, -0.55)
+	tray_mesh.position = Vector3(0.0, 1.0, -0.42)
 	player_visual.add_child(tray_mesh)
 	var tray := MeshInstance3D.new()
 	var tm := BoxMesh.new()
@@ -497,29 +464,12 @@ func _build_player() -> void:
 	tray_mesh.add_child(cup)
 	tray_mesh.visible = false
 
-	# Bạn đang vẫy ở bàn
+	# Bạn đang vẫy ở bàn (người thật, clip "wave" liên tục)
 	friend_root = Node3D.new()
 	hall.add_child(friend_root)
-	var fb := MeshInstance3D.new()
-	var fcm := CapsuleMesh.new()
-	fcm.radius = 0.28
-	fcm.height = 1.1
-	fb.mesh = fcm
-	fb.material_override = mat_orange
-	fb.position = Vector3(0.0, 0.75, 0.0)
-	friend_root.add_child(fb)
-	friend_arm = Node3D.new()
-	friend_arm.position = Vector3(0.3, 1.2, 0.0)
-	friend_root.add_child(friend_arm)
-	var arm := MeshInstance3D.new()
-	var am := CylinderMesh.new()
-	am.top_radius = 0.06
-	am.bottom_radius = 0.06
-	am.height = 0.6
-	arm.mesh = am
-	arm.material_override = mat_orange
-	arm.position = Vector3(0.0, 0.3, 0.0)
-	friend_arm.add_child(arm)
+	var friend_person: Node3D = CharacterBuilder.build({"preset": "student", "seed": 77, "name": "Friend", "clip": "wave"})
+	friend_root.add_child(friend_person)
+	friend_arm = CharacterBuilder.get_pivot(friend_person, "shoulder_r")
 	friend_label = Label3D.new()
 	friend_label.font_size = 34
 	friend_label.outline_size = 10
@@ -537,32 +487,19 @@ func _build_npcs(count: int) -> void:
 			wps.append(Vector3(randf_range(-13.0, 13.0), 0.0, randf_range(-5.0, 11.0)))
 		root.position = wps[0]
 		hall.add_child(root)
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = colors[randi() % colors.size()]
-		var body := MeshInstance3D.new()
-		var cm := CapsuleMesh.new()
-		cm.radius = 0.28
-		cm.height = 1.2
-		body.mesh = cm
-		body.material_override = mat
-		body.position = Vector3(0.0, 0.9, 0.0)
-		root.add_child(body)
-		var head := MeshInstance3D.new()
-		var hm := SphereMesh.new()
-		hm.radius = 0.16
-		hm.height = 0.32
-		head.mesh = hm
-		var ms := StandardMaterial3D.new()
-		ms.albedo_color = Color("#FFCCAA")
-		head.material_override = ms
-		head.position = Vector3(0.0, 1.62, 0.0)
-		root.add_child(head)
+		var npc_opts: Dictionary = {"preset": "student" if randf() < 0.65 else "casual", "seed": 700 + i * 19, "name": "Walker%d" % i}
+		var walker: Node3D = CharacterBuilder.build(npc_opts)
+		root.add_child(walker)
 		if randf() < 0.5:
+			CharacterBuilder.play(walker, "carry")
 			var tray := MeshInstance3D.new()
 			var tm := BoxMesh.new()
 			tm.size = Vector3(0.5, 0.03, 0.35)
 			tray.mesh = tm
-			tray.position = Vector3(0.0, 1.1, -0.45)
+			var mat_tray_npc := StandardMaterial3D.new()
+			mat_tray_npc.albedo_color = [Color("#C0392B"), Color("#2980B9"), Color("#27AE60")][randi() % 3]
+			tray.material_override = mat_tray_npc
+			tray.position = Vector3(0.0, 1.0, -0.42)
 			root.add_child(tray)
 		var area := Area3D.new()
 		var cs := CollisionShape3D.new()
@@ -573,7 +510,7 @@ func _build_npcs(count: int) -> void:
 		area.add_child(cs)
 		root.add_child(area)
 		area.body_entered.connect(_on_npc_bump.bind(root))
-		npcs.append({"node": root, "wps": wps, "idx": 1, "speed": randf_range(1.6, 2.5), "pause": randf_range(0.0, 1.0)})
+		npcs.append({"node": root, "char": walker, "wps": wps, "idx": 1, "speed": randf_range(1.6, 2.5), "pause": randf_range(0.0, 1.0)})
 
 # ===========================================================================
 # HUD
@@ -709,6 +646,7 @@ func _set_order(idx: int) -> void:
 
 func _take_tray() -> void:
 	has_tray = true
+	CharacterBuilder.play(player_visual, "carry")
 	tilt = 0.0
 	tray_mesh.visible = true
 	GameFX.play_sfx("pop", -2.0)
@@ -717,6 +655,7 @@ func _take_tray() -> void:
 
 func _deliver() -> void:
 	has_tray = false
+	CharacterBuilder.stop_clip(player_visual)
 	tray_mesh.visible = false
 	orders_done += 1
 	GameFX.play_sfx("success")
@@ -733,6 +672,7 @@ func _deliver() -> void:
 
 func _spill() -> void:
 	has_tray = false
+	CharacterBuilder.stop_clip(player_visual)
 	tray_mesh.visible = false
 	spills += 1
 	tilt = 0.0
@@ -778,8 +718,6 @@ func _process(delta: float) -> void:
 			_process_npcs(delta)
 			_process_tray(delta)
 			_update_camera(delta)
-			if friend_arm:
-				friend_arm.rotation.z = sin(Time.get_ticks_msec() * 0.012) * 0.6 + 0.9
 			mission_label.text = mission_label.text.get_slice(" ⏱", 0) + " ⏱ %ds" % int(ceil(maxf(0.0, time_left)))
 			if time_left <= 0.0:
 				_fail_stage("HẾT GIỜ NGHỈ TRƯA! Bạn bè đói meo, cô Ba lắc đầu: 'Lần sau lẹ lên em!'")
@@ -813,7 +751,7 @@ func _process_walk(delta: float) -> void:
 	if dir != Vector3.ZERO:
 		var yaw: float = atan2(-dir.x, -dir.z)
 		player_visual.rotation.y = lerp_angle(player_visual.rotation.y, yaw, delta * 12.0)
-		player_visual.position.y = absf(sin(Time.get_ticks_msec() * 0.012)) * 0.05
+	CharacterBuilder.set_speed(player_visual, Vector2(player.velocity.x, player.velocity.z).length())
 	bump_cooldown = maxf(0.0, bump_cooldown - delta)
 
 func _process_npcs(delta: float) -> void:
@@ -821,7 +759,9 @@ func _process_npcs(delta: float) -> void:
 		var node: Node3D = n["node"]
 		if n["pause"] > 0.0:
 			n["pause"] = float(n["pause"]) - delta
+			CharacterBuilder.set_speed(n["char"], 0.0)
 			continue
+		CharacterBuilder.set_speed(n["char"], float(n["speed"]))
 		var wps: Array = n["wps"]
 		var target: Vector3 = wps[int(n["idx"])]
 		var to: Vector3 = target - node.position

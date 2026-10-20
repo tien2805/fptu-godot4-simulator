@@ -95,6 +95,7 @@ var git_head_lbl: Label
 var git_theirs_lbl: Label
 var git_bar: ProgressBar
 var log_lines: Array[String] = []
+var team_people: Array[Node3D] = []
 var team_meshes: Array[Node3D] = []
 var sleep_label: Label3D
 
@@ -158,37 +159,21 @@ func _init_members() -> void:
 # 3D
 # ===========================================================================
 func _build_team_meshes() -> void:
-	var mat_skin := StandardMaterial3D.new()
-	mat_skin.albedo_color = Color("#FFCCAA")
+	# 4 thành viên nhóm Capstone (CharacterBuilder) ngồi gõ máy; người thứ 4 đang ngủ gục dưới sàn
 	for i: int in range(LANE_COUNT):
 		var m: Dictionary = members[i]
 		var root := Node3D.new()
 		root.position = Vector3(-2.1 + i * 1.4, 0.0, 2.6)
 		$Arena.add_child(root)
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = m["color"]
-		var body := MeshInstance3D.new()
-		var cm := CapsuleMesh.new()
-		cm.radius = 0.24
-		cm.height = 1.1
-		body.mesh = cm
-		body.material_override = mat
-		body.position = Vector3(0.0, 0.75, 0.0)
-		root.add_child(body)
-		var head := MeshInstance3D.new()
-		var hm := SphereMesh.new()
-		hm.radius = 0.16
-		hm.height = 0.32
-		head.mesh = hm
-		head.material_override = mat_skin
-		head.position = Vector3(0.0, 1.45, 0.0)
-		root.add_child(head)
+		var person: Node3D = CharacterBuilder.build({"preset": "student", "seed": 600 + i * 29, "name": "Member%d" % i, "shirt_color": m["color"], "backpack": false, "clip": "type" if m["awake"] else "lie"})
+		root.add_child(person)
+		team_people.append(person)
 		var lbl := Label3D.new()
 		lbl.text = "%s %s" % [m["icon"], m["name"]]
 		lbl.font_size = 22
 		lbl.outline_size = 8
 		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		lbl.position = Vector3(0.0, 1.9, 0.0)
+		lbl.position = Vector3(0.0, 1.75, 0.0)
 		root.add_child(lbl)
 		if not m["awake"]:
 			root.rotation_degrees.z = 80.0
@@ -724,7 +709,9 @@ func _bullet_hits_bottom(b: Dictionary) -> void:
 		var idx: int = members.find(target)
 		if idx >= 0 and idx < team_meshes.size():
 			var tw := create_tween()
-			tw.tween_property(team_meshes[idx], "rotation_degrees:x", -85.0, 0.4)
+			tw.tween_property(team_meshes[idx], "rotation_degrees:x", -12.0, 0.4)
+			if idx < team_people.size():
+				CharacterBuilder.play(team_people[idx], "slump")
 		if active_idx == idx:
 			_cycle_member()
 		if _down_count() >= 2:
@@ -834,6 +821,8 @@ func _phone_end(success: bool) -> void:
 			var tw := create_tween()
 			tw.tween_property(team_meshes[3], "rotation_degrees:z", 0.0, 0.4)
 			tw.parallel().tween_property(team_meshes[3], "position:y", 0.0, 0.4)
+			if team_people.size() > 3:
+				CharacterBuilder.play(team_people[3], "type")
 		if sleep_label:
 			sleep_label.text = "☕ tỉnh rồi!"
 	else:

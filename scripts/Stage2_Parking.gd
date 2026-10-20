@@ -104,6 +104,7 @@ var runner_left_leg: Node3D
 var runner_right_leg: Node3D
 var runner_left_arm: Node3D
 var runner_right_arm: Node3D
+var runner_clip: String = ""
 var jump_t: float = -1.0
 var slide_t: float = -1.0
 var stumble_timer: float = 0.0
@@ -348,41 +349,10 @@ func _build_gate_props() -> void:
 	rl.position = Vector3(0.0, 1.75, 0.0)
 	reader.add_child(rl)
 
-	# Bác bảo vệ đứng gác + bong bóng thoại
-	var guard := Node3D.new()
+	# Bác bảo vệ đứng gác (CharacterBuilder: đồng phục xanh, mũ kê-pi, cầu vai, hai tay chắp sau lưng) + bong bóng thoại
+	var guard: Node3D = CharacterBuilder.build({"preset": "guard", "seed": 71, "name": "Guard", "clip": "guard"})
 	guard.position = GUARD_POS
 	env_root.add_child(guard)
-	var g_body := MeshInstance3D.new()
-	var g_b_mesh := CapsuleMesh.new()
-	g_b_mesh.radius = 0.25
-	g_b_mesh.height = 1.65
-	g_body.mesh = g_b_mesh
-	var mat_guard := StandardMaterial3D.new()
-	mat_guard.albedo_color = Color("#2980B9")
-	g_body.material_override = mat_guard
-	g_body.position = Vector3(0.0, 0.85, 0.0)
-	guard.add_child(g_body)
-	var g_head := MeshInstance3D.new()
-	var gh_m := SphereMesh.new()
-	gh_m.radius = 0.16
-	gh_m.height = 0.32
-	g_head.mesh = gh_m
-	var mat_skin := StandardMaterial3D.new()
-	mat_skin.albedo_color = Color("#E0B084")
-	g_head.material_override = mat_skin
-	g_head.position = Vector3(0.0, 1.62, 0.0)
-	guard.add_child(g_head)
-	var g_cap := MeshInstance3D.new()
-	var gc_m := CylinderMesh.new()
-	gc_m.top_radius = 0.19
-	gc_m.bottom_radius = 0.19
-	gc_m.height = 0.08
-	g_cap.mesh = gc_m
-	var mat_cap := StandardMaterial3D.new()
-	mat_cap.albedo_color = Color("#1B4F72")
-	g_cap.material_override = mat_cap
-	g_cap.position = Vector3(0.0, 1.8, 0.0)
-	guard.add_child(g_cap)
 	guard_bubble = Label3D.new()
 	guard_bubble.text = "👮 Thẻ sinh viên đâu em?!"
 	guard_bubble.font_size = 30
@@ -390,7 +360,7 @@ func _build_gate_props() -> void:
 	guard_bubble.modulate = Color("#FFFFFF")
 	guard_bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	guard_bubble.no_depth_test = true
-	guard_bubble.position = Vector3(0.0, 2.6, 0.0)
+	guard_bubble.position = Vector3(0.0, 2.15, 0.0)
 	guard.add_child(guard_bubble)
 
 func _create_floating_marker() -> void:
@@ -432,26 +402,7 @@ func _build_rival() -> void:
 	body.add_child(col)
 
 	FPTUCampusBuilder.build_motorbike(rival_root, Vector3.ZERO, 0.0, Color("#C0392B"), campus_mats)
-	var mat_shirt := StandardMaterial3D.new()
-	mat_shirt.albedo_color = Color("#3498DB")
-	var rider := MeshInstance3D.new()
-	var rm := CapsuleMesh.new()
-	rm.radius = 0.19
-	rm.height = 0.7
-	rider.mesh = rm
-	rider.material_override = mat_shirt
-	rider.position = Vector3(0.0, 1.12, 0.15)
-	rival_root.add_child(rider)
-	var head := MeshInstance3D.new()
-	var hm := SphereMesh.new()
-	hm.radius = 0.15
-	hm.height = 0.3
-	head.mesh = hm
-	var mat_helmet := StandardMaterial3D.new()
-	mat_helmet.albedo_color = Color("#F39C12")
-	head.material_override = mat_helmet
-	head.position = Vector3(0.0, 1.62, 0.1)
-	rival_root.add_child(head)
+	CharacterBuilder.build_baked_rider(rival_root, Vector3(0.0, 0.27, 0.12), {"seed": 99, "shirt_color": Color("#3498DB"), "helmet_color": Color("#F39C12"), "backpack": true})
 
 	rival_bubble = Label3D.new()
 	rival_bubble.text = "🛵 Ô gần nhất là của tui!"
@@ -910,113 +861,13 @@ func _spawn_runner() -> void:
 	staircase_root.add_child(runner_body)
 	runner_body.global_position = route_points[0]
 
-	runner_visual = Node3D.new()
-	runner_visual.name = "RunnerVisual"
+	# Nhân vật CharacterBuilder (áo polo FPT, ba lô, mặt thật) – bước chạy do Animator lái theo run_speed_cur
+	runner_visual = CharacterBuilder.build({"preset": "player", "seed": 2805, "name": "RunnerVisual", "glasses": false})
 	runner_body.add_child(runner_visual)
-
-	var mat_fpt_orange := StandardMaterial3D.new()
-	mat_fpt_orange.albedo_color = Color("#F37021")
-	mat_fpt_orange.roughness = 0.6
-	var mat_white := StandardMaterial3D.new()
-	mat_white.albedo_color = Color("#FFFFFF")
-	var mat_pack := StandardMaterial3D.new()
-	mat_pack.albedo_color = Color("#1E272E")
-	var mat_skin := StandardMaterial3D.new()
-	mat_skin.albedo_color = Color("#FFCCAA")
-	var mat_hair := StandardMaterial3D.new()
-	mat_hair.albedo_color = Color("#1E1E1E")
-	var mat_jeans := StandardMaterial3D.new()
-	mat_jeans.albedo_color = Color("#2C3A47")
-
-	var torso := MeshInstance3D.new()
-	var tm := BoxMesh.new()
-	tm.size = Vector3(0.48, 0.58, 0.28)
-	torso.mesh = tm
-	torso.material_override = mat_fpt_orange
-	torso.position = Vector3(0.0, 1.05, 0.0)
-	runner_visual.add_child(torso)
-
-	var collar := MeshInstance3D.new()
-	var clm := BoxMesh.new()
-	clm.size = Vector3(0.32, 0.08, 0.3)
-	collar.mesh = clm
-	collar.material_override = mat_white
-	collar.position = Vector3(0.0, 1.35, 0.0)
-	runner_visual.add_child(collar)
-
-	var lanyard := MeshInstance3D.new()
-	var lnm := BoxMesh.new()
-	lnm.size = Vector3(0.12, 0.16, 0.02)
-	lanyard.mesh = lnm
-	lanyard.material_override = mat_white
-	lanyard.position = Vector3(0.0, 1.0, -0.16)
-	runner_visual.add_child(lanyard)
-
-	var backpack := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(0.38, 0.48, 0.22)
-	backpack.mesh = bm
-	backpack.material_override = mat_pack
-	backpack.position = Vector3(0.0, 1.05, 0.22)
-	runner_visual.add_child(backpack)
-
-	var head := MeshInstance3D.new()
-	var hm := SphereMesh.new()
-	hm.radius = 0.16
-	hm.height = 0.32
-	head.mesh = hm
-	head.material_override = mat_skin
-	head.position = Vector3(0.0, 1.55, 0.0)
-	runner_visual.add_child(head)
-
-	var hair := MeshInstance3D.new()
-	var hrm := BoxMesh.new()
-	hrm.size = Vector3(0.34, 0.14, 0.34)
-	hair.mesh = hrm
-	hair.material_override = mat_hair
-	hair.position = Vector3(0.0, 1.68, 0.0)
-	runner_visual.add_child(hair)
-
-	for side: float in [-1.0, 1.0]:
-		var arm_pivot := Node3D.new()
-		arm_pivot.position = Vector3(side * 0.28, 1.30, 0.0)
-		runner_visual.add_child(arm_pivot)
-		if side < 0.0:
-			runner_left_arm = arm_pivot
-		else:
-			runner_right_arm = arm_pivot
-		var arm := MeshInstance3D.new()
-		var am := CapsuleMesh.new()
-		am.radius = 0.07
-		am.height = 0.48
-		arm.mesh = am
-		arm.material_override = mat_fpt_orange
-		arm.position = Vector3(0.0, -0.22, 0.0)
-		arm_pivot.add_child(arm)
-
-	for side: float in [-1.0, 1.0]:
-		var leg_pivot := Node3D.new()
-		leg_pivot.position = Vector3(side * 0.14, 0.72, 0.0)
-		runner_visual.add_child(leg_pivot)
-		if side < 0.0:
-			runner_left_leg = leg_pivot
-		else:
-			runner_right_leg = leg_pivot
-		var leg := MeshInstance3D.new()
-		var lm := CapsuleMesh.new()
-		lm.radius = 0.09
-		lm.height = 0.60
-		leg.mesh = lm
-		leg.material_override = mat_jeans
-		leg.position = Vector3(0.0, -0.28, 0.0)
-		leg_pivot.add_child(leg)
-		var shoe := MeshInstance3D.new()
-		var sm := BoxMesh.new()
-		sm.size = Vector3(0.14, 0.12, 0.26)
-		shoe.mesh = sm
-		shoe.material_override = mat_white
-		shoe.position = Vector3(0.0, -0.58, -0.05)
-		leg_pivot.add_child(shoe)
+	runner_left_leg = CharacterBuilder.get_pivot(runner_visual, "thigh_l")
+	runner_right_leg = CharacterBuilder.get_pivot(runner_visual, "thigh_r")
+	runner_left_arm = CharacterBuilder.get_pivot(runner_visual, "shoulder_l")
+	runner_right_arm = CharacterBuilder.get_pivot(runner_visual, "shoulder_r")
 
 func _setup_run_camera() -> void:
 	run_cam = Camera3D.new()
@@ -1107,35 +958,20 @@ func _make_obstacle_node(type: String, lanes: Array) -> Node3D:
 	match type:
 		"npc", "teacher":
 			var is_teacher: bool = type == "teacher"
-			var mat := StandardMaterial3D.new()
-			mat.albedo_color = Color("#34495E") if is_teacher else Color("#F37021")
-			var body := MeshInstance3D.new()
-			var cm := CapsuleMesh.new()
-			cm.radius = 0.26
-			cm.height = 1.25
-			body.mesh = cm
-			body.material_override = mat
-			body.position = Vector3(0.0, 0.95, 0.0)
-			root.add_child(body)
-			var head := MeshInstance3D.new()
-			var hm := SphereMesh.new()
-			hm.radius = 0.17
-			hm.height = 0.34
-			head.mesh = hm
-			var ms := StandardMaterial3D.new()
-			ms.albedo_color = Color("#FFCCAA")
-			head.material_override = ms
-			head.position = Vector3(0.0, 1.75, 0.0)
-			root.add_child(head)
+			var person: Node3D = CharacterBuilder.build({"preset": "lecturer" if is_teacher else "student", "seed": obstacles.size() * 17 + lanes.size() * 5 + (3 if is_teacher else 0), "name": "Person"})
+			root.add_child(person)
+			CharacterBuilder.set_speed(person, 1.1 if is_teacher else 2.6)
 			if is_teacher:
+				CharacterBuilder.play(person, "carry")
 				var book := MeshInstance3D.new()
 				var bkm := BoxMesh.new()
-				bkm.size = Vector3(0.3, 0.4, 0.05)
+				bkm.size = Vector3(0.26, 0.05, 0.34)
 				book.mesh = bkm
 				var mb := StandardMaterial3D.new()
 				mb.albedo_color = Color("#E67E22")
 				book.material_override = mb
-				book.position = Vector3(0.25, 1.1, -0.25)
+				book.position = Vector3(0.0, 1.02, -0.3)
+				book.rotation.x = 0.35
 				root.add_child(book)
 			var lbl := Label3D.new()
 			lbl.text = "📚 Cô đi chậm..." if is_teacher else "🏃 Ê né ra!!"
@@ -1143,7 +979,7 @@ func _make_obstacle_node(type: String, lanes: Array) -> Node3D:
 			lbl.outline_size = 8
 			lbl.modulate = Color("#FFFFFF")
 			lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-			lbl.position = Vector3(0.0, 2.3, 0.0)
+			lbl.position = Vector3(0.0, 2.15, 0.0)
 			root.add_child(lbl)
 		"cart":
 			var w: float = LANE_OFFSET * float(lanes.size()) - 0.2
@@ -1347,34 +1183,32 @@ func _update_runner_transform(delta: float, sprinting: bool) -> void:
 	var target_yaw: float = atan2(-fwd.x, -fwd.z)
 	runner_body.rotation.y = lerp_angle(runner_body.rotation.y, target_yaw, delta * 10.0)
 
-	# Dáng người: trượt / vấp / chạy
+	# Dáng người: trượt / nhảy / vấp / chạy – clip + nhịp bước của CharacterBuilder
 	var target_rot_x: float = 0.0
 	var target_y: float = 0.0
+	var clip: String = ""
 	if slide_t >= 0.0:
-		target_rot_x = -1.15
-		target_y = -0.45
+		target_rot_x = -0.55
+		target_y = -0.42
+		clip = "slide"
+	elif jump_t >= 0.0:
+		clip = "jump"
 	elif stumble_timer > 0.35:
-		target_rot_x = 0.95
-		target_y = -0.3
+		target_rot_x = 0.6
+		target_y = -0.2
+		clip = "flinch"
 	runner_visual.rotation.x = lerpf(runner_visual.rotation.x, target_rot_x, delta * 14.0)
 	runner_visual.rotation.z = lerpf(runner_visual.rotation.z, -(float(lane) * LANE_OFFSET - lane_x) * 0.35, delta * 10.0)
-
+	runner_visual.position.y = lerpf(runner_visual.position.y, target_y, delta * 12.0)
 	var moving: bool = run_speed_cur > 0.5 and jump_t < 0.0 and slide_t < 0.0
-	if moving:
-		var stride_freq: float = 18.0 if sprinting else 11.0
-		var leg_swing: float = sin(Time.get_ticks_msec() * 0.001 * stride_freq) * (0.7 if sprinting else 0.45)
-		runner_left_leg.rotation.x = leg_swing
-		runner_right_leg.rotation.x = -leg_swing
-		runner_left_arm.rotation.x = -leg_swing * 0.85
-		runner_right_arm.rotation.x = leg_swing * 0.85
-		runner_visual.position.y = lerpf(runner_visual.position.y, target_y + absf(sin(Time.get_ticks_msec() * 0.001 * stride_freq)) * 0.06, delta * 12.0)
-	else:
-		var tuck: float = 1.3 if jump_t >= 0.0 else 0.0
-		runner_left_leg.rotation.x = lerpf(runner_left_leg.rotation.x, tuck, delta * 12.0)
-		runner_right_leg.rotation.x = lerpf(runner_right_leg.rotation.x, tuck * 0.6, delta * 12.0)
-		runner_left_arm.rotation.x = lerpf(runner_left_arm.rotation.x, -tuck * 1.5, delta * 12.0)
-		runner_right_arm.rotation.x = lerpf(runner_right_arm.rotation.x, -tuck * 1.5, delta * 12.0)
-		runner_visual.position.y = lerpf(runner_visual.position.y, target_y, delta * 10.0)
+	CharacterBuilder.set_speed(runner_visual, run_speed_cur * 0.55 if moving else 0.0)
+	CharacterBuilder.set_param(runner_visual, "run", 0.5 if sprinting else 0.2)
+	if clip != runner_clip:
+		runner_clip = clip
+		if clip == "":
+			CharacterBuilder.stop_clip(runner_visual)
+		else:
+			CharacterBuilder.play(runner_visual, clip)
 
 func _update_obstacles(delta: float) -> void:
 	for ob: Dictionary in obstacles:
