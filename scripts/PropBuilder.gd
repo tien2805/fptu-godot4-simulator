@@ -142,10 +142,11 @@ static func bake_into(parent: Node3D, root: Node3D, name: String, pos: Vector3, 
 # ===========================================================================
 # BÁNH XE
 # ===========================================================================
-static func build_wheel(parent: Node3D, pos: Vector3, radius: float = 0.3, width: float = 0.1, spokes: int = 5, rim_color: Color = Color("#C9CED3")) -> Node3D:
+static func build_wheel(parent: Node3D, pos: Vector3, radius: float = 0.3, width: float = 0.1, spokes: int = 5, rim_color: Color = Color("#C9CED3"), basis: Basis = Basis.IDENTITY) -> Node3D:
 	var w := Node3D.new()
 	w.name = "Wheel"
 	w.position = pos
+	w.basis = basis # cho phép bù phép xoay có sẵn của pivot cha (trục lốp phải là trục X của xe)
 	parent.add_child(w)
 	var r_in: float = radius - width * 1.15
 	# lốp (torus trục X) + vành kim loại mảnh + moay-ơ + nan hoa + đĩa phanh
@@ -193,9 +194,10 @@ static func build_scooter_parts(root: Node3D, front: Node3D, rear: Node3D, bar: 
 	var dark: Material = black_plastic()
 	var chr: Material = chrome()
 	var stl: Material = steel()
-	# --- bánh
-	build_wheel(front, Vector3.ZERO, 0.3, 0.1, 5)
-	build_wheel(rear, Vector3.ZERO, 0.3, 0.1, 5)
+	# --- bánh. Pivot FrontWheel/RearWheel của PlayerBike.tscn đã xoay 90° quanh Z (dành cho hình trụ cũ) nên
+	#     hình bánh được đặt basis = nghịch đảo basis pivot → trục lốp luôn là trục X của xe, rotate_x quay đúng chiều.
+	build_wheel(front, Vector3.ZERO, 0.3, 0.1, 5, Color("#C9CED3"), front.basis.inverse())
+	build_wheel(rear, Vector3.ZERO, 0.3, 0.1, 5, Color("#C9CED3"), rear.basis.inverse())
 	# --- phuộc trước + cổ lái + chắn bùn trước
 	for sx: float in [-1.0, 1.0]:
 		_tube(root, Vector3(sx * 0.085, 0.3, -0.62), Vector3(sx * 0.07, 0.9, -0.5), 0.018, chr)

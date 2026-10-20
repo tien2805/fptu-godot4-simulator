@@ -231,6 +231,7 @@ Yêu cầu chủ dự án: *"người và đồ vật giống thật hơn thay v
 | `tests/test_hud_bounds.gd` | Menu + 7 màn ở 3 độ phân giải: không Control nào tràn khỏi viewport |
 | `tests/test_character_builder.gd` | 13 preset đủ pivot/≥20 mesh, 21 clip chạy 120 frame, bake() ≥3 surface, set_opacity, 16 texture mặt |
 | `tests/test_music.gd` | MusicDirector phát đủ 8 style, đổi tension, fade-out, quãng 8 đúng x2 |
+| `tests/test_wheel_spin.gd` | Lốp xe người chơi có trục song song trục X của xe và đỉnh bánh quay về phía trước khi chạy tới (bắt lỗi bánh nằm bẹt / quay ngược) |
 | `godot --path . --script tests/preview_campus.gd` (cần cửa sổ) | Chụp 7 góc campus trong Màn 1 → `user://preview/*.png` (bản sao ở `docs/preview/`) |
 | `godot --path . --script tests/preview_stage2.gd` (cần cửa sổ) | Chụp 9 góc Màn 2: D1, cổng bãi xe, lối xe, bãi xe, lối sau, sân trong, cầu thang, cửa Lab 402, toàn cảnh |
 | `godot --path . --script tests/preview_stages.gd` (cần cửa sổ) | Chụp Màn 3, 4, 5, 6, Extra từ camera gameplay + 1–2 góc phụ (cửa sổ, hiên, CCTV) |
