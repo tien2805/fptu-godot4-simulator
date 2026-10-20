@@ -181,6 +181,7 @@ graph LR
 * **Build tại máy:** `build_windows.bat` (cần Export Templates 4.7.2 cài trong Godot Editor) → `build/FPTU-Student-Simulator-windows.zip`.
 * **Build tự động:** `.github/workflows/release.yml` – push tag `v*` → GitHub Actions tải Godot 4.7.2 + templates, `--import`, check-only, smoke (fail nếu có dòng ERROR), export, zip, đính kèm vào Release. Người chơi tải zip từ tab Releases, giải nén, chạy `FPTU-Student-Simulator.exe`.
 * **Repo:** `README.md` cho người chơi/người xem GitHub; `.gitignore` bỏ `.godot/`, `build/`, log.
+* **Icon:** `generate_icon.py` tạo `assets/icon/cocvang_icon.png` (1024) + `.ico` (16–256) từ ảnh cóc do user cung cấp – flood-fill tách nền, đổi da xanh lá → vàng (hue 50°, V nâng 0.72+0.3·V), áo xanh dương → cam FPT, vẽ logo FPT 3 khối góc dưới phải; `project.godot` `config/icon` + `config/windows_native_icon`, preset `application/icon` + `modify_resources=true` (Godot ≥ 4.1 tự nhúng, không cần rcedit).
 
 ## 🧪 VII. KIỂM THỬ HEADLESS (tests/)
 

@@ -6,6 +6,8 @@ config_version=5
 config/name="FPTU Student Simulator: Godot 4 Edition"
 run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.2", "Forward Plus")
+config/icon="res://assets/icon/cocvang_icon.png"
+config/windows_native_icon="res://assets/icon/cocvang_icon.ico"
 
 [autoload]
 StageManager="*res://scripts/StageManager.gd"
