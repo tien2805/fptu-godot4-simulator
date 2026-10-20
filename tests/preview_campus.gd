@@ -61,5 +61,5 @@ func _process(_delta: float) -> bool:
 		var img: Image = root.get_texture().get_image()
 		var path: String = out_dir.path_join(str(shots[shot_idx]["name"]) + ".png")
 		var err: int = img.save_png(path)
-		print("  saved ", path, " err=", err, " size=", img.get_size())
+		print("  saved ", path, " err=", err, " size=", img.get_size(), " fps=", Engine.get_frames_per_second(), " quality=", root.get_node("GameFX").get("visual_quality"))
 	return false

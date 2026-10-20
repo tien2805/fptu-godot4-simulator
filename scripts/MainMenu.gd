@@ -155,8 +155,8 @@ func _style_button(btn: Button, accent: Color = GameFX.FPT_ORANGE) -> void:
 	btn.add_theme_color_override("font_hover_color", GameFX.FPT_YELLOW)
 	btn.add_theme_color_override("font_focus_color", GameFX.FPT_YELLOW)
 	btn.add_theme_color_override("font_pressed_color", Color.WHITE)
-	btn.mouse_entered.connect(func() -> void: GameFX.play_sfx("tick", -10.0, 1.4))
-	btn.focus_entered.connect(func() -> void: GameFX.play_sfx("tick", -10.0, 1.4))
+	btn.mouse_entered.connect(func() -> void: GameFX.play_ui("tick", -10.0, 1.4))
+	btn.focus_entered.connect(func() -> void: GameFX.play_ui("tick", -10.0, 1.4))
 
 func _menu_button(text: String, accent: Color = GameFX.FPT_ORANGE) -> Button:
 	var b := Button.new()
@@ -308,16 +308,7 @@ func _build_guide_panel() -> PanelContainer:
 	v.add_theme_constant_override("separation", 8)
 	m.add_child(v)
 	v.add_child(GameFX.make_label("🎮 HƯỚNG DẪN ĐIỀU KHIỂN", 24, Color("#3498DB")))
-	var lines: Array = [
-		["Chung", "[M] mở Campaign Hub chọn màn (xem rank) · [ESC] đóng cửa sổ · Vật phẩm mua ở 7-Eleven (Màn 5) dùng được ở Màn 2, 3"],
-		["Màn 1 – Đua xe", "[W] ga · [S] phanh/lùi · [A]/[D] lái · [SPACE]+[A]/[D] drift (thả để boost) · [H] còi · dừng đèn đỏ bằng [S]"],
-		["Màn 2 – Bãi xe & chạy bộ", "[E] quét thẻ · [H] còi doạ xe tranh ô · [S] lùi · pha chạy: [A]/[D] đổi làn, [SPACE] nhảy, [S] trượt, [SHIFT] sprint, [Q] Monster"],
-		["Màn 3 – Roll call FAP", "gõ mã + [ENTER] · [TAB] bật 4G · [SPACE] đúng nhịp · [C] cà phê · [B] bánh bao · [F] úp điện thoại · gõ đáp án khi bị gọi tên"],
-		["Màn 4 – Vovinam", "[←][→][↑][↓][SPACE] theo nốt (hoặc A D W S) · hít đất mash [SPACE] · finisher: giữ [W], [SPACE], [←][→] luân phiên, [SPACE], [↓]"],
-		["Màn 5 – Căn tin", "[WASD] đi · [E] lấy khay / giao / vào 7-Eleven · đứng yên giữ [SPACE] cân khay · kéo thả hoặc double-click món, bấm món trong giỏ để bỏ"],
-		["Màn 6 – Boss Capstone", "gõ chữ trên đạn · [BACKSPACE] xoá · [TAB] đổi người · [ENTER] skill / gọi điện · [SPACE] mash khi gọi · [←]/[→] chọn khối code conflict"],
-		["Extra – Giám thị EOS", "[WASD] đi tuần (theo hướng camera) · [C] CCTV · [S] chụp bằng chứng · [E] soi / lập biên bản · [Shift]+[SPACE] ép biên bản"]
-	]
+	var lines: Array = StageManager.CONTROLS_GUIDE
 	for ln: Array in lines:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 14)
@@ -377,6 +368,8 @@ func _build_settings_panel() -> PanelContainer:
 	frow.alignment = BoxContainer.ALIGNMENT_CENTER
 	frow.add_child(fullscreen_check)
 	v.add_child(frow)
+	v.add_child(GameFX.make_label("🔈 ÂM LƯỢNG", 18, Color("#2ECC71")))
+	GameFX.build_audio_settings(v)
 	var close := _menu_button("✔   LƯU & ĐÓNG  [ESC]", Color("#2ECC71"))
 	close.custom_minimum_size = Vector2(320, 46)
 	close.alignment = HORIZONTAL_ALIGNMENT_CENTER

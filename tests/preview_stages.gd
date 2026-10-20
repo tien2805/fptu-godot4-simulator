@@ -40,7 +40,7 @@ func _save(name: String) -> void:
 	var img: Image = root.get_texture().get_image()
 	var path: String = out_dir.path_join(name + ".png")
 	var err: int = img.save_png(path)
-	print("  saved ", name, ".png err=", err)
+	print("  saved ", name, ".png err=", err, " fps=", Engine.get_frames_per_second(), " quality=", root.get_node("GameFX").get("visual_quality"))
 
 func _process(_d: float) -> bool:
 	frames += 1

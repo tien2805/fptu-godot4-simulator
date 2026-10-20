@@ -140,6 +140,7 @@ offset_left = -380.0
 offset_top = 92.0
 offset_right = -24.0
 offset_bottom = 205.0
+grow_horizontal = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_cold")
 
 [node name="VBox" type="VBoxContainer" parent="HUD/SleepPanel"]

@@ -49,20 +49,122 @@ void fragment() {
 const SETTINGS_PATH: String = "user://settings.cfg"
 var visual_quality: int = 2
 var fullscreen: bool = false
+## Âm lượng tuyến tính 0..1 theo bus (lưu trong settings.cfg)
+const AUDIO_BUSES: Array[String] = ["Master", "Music", "SFX", "UI"]
+var volumes: Dictionary = {"Master": 1.0, "Music": 0.8, "SFX": 1.0, "UI": 0.9}
+var _ui_pool: Array[AudioStreamPlayer] = []
+var _ui_pool_idx: int = 0
 
 func load_settings() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SETTINGS_PATH) == OK:
 		visual_quality = clampi(int(cfg.get_value("video", "quality", 2)), 0, 2)
 		fullscreen = bool(cfg.get_value("video", "fullscreen", false))
+		for b: String in AUDIO_BUSES:
+			volumes[b] = clampf(float(cfg.get_value("audio", "vol_" + b.to_lower(), volumes[b])), 0.0, 1.0)
 	_apply_global_quality()
 	_apply_window_mode()
+	_apply_volumes()
 
 func save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("video", "quality", visual_quality)
 	cfg.set_value("video", "fullscreen", fullscreen)
+	for b: String in AUDIO_BUSES:
+		cfg.set_value("audio", "vol_" + b.to_lower(), float(volumes[b]))
 	cfg.save(SETTINGS_PATH)
+
+# --- Bus âm thanh: Master (limiter) <- Music / SFX / UI. Tạo lúc chạy vì dự án không có bus layout riêng.
+func _setup_audio_buses() -> void:
+	for name: String in ["Music", "SFX", "UI"]:
+		if AudioServer.get_bus_index(name) == -1:
+			var idx: int = AudioServer.bus_count
+			AudioServer.add_bus(idx)
+			AudioServer.set_bus_name(idx, name)
+			AudioServer.set_bus_send(idx, "Master")
+	var master: int = AudioServer.get_bus_index("Master")
+	if AudioServer.get_bus_effect_count(master) == 0:
+		var lim: AudioEffect = null
+		if ClassDB.class_exists("AudioEffectHardLimiter"):
+			lim = ClassDB.instantiate("AudioEffectHardLimiter")
+		else:
+			lim = AudioEffectLimiter.new()
+		AudioServer.add_bus_effect(master, lim)
+
+func _apply_volumes() -> void:
+	for b: String in AUDIO_BUSES:
+		var idx: int = AudioServer.get_bus_index(b)
+		if idx == -1:
+			continue
+		var v: float = clampf(float(volumes.get(b, 1.0)), 0.0, 1.0)
+		AudioServer.set_bus_mute(idx, v <= 0.001)
+		AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(v, 0.001)))
+
+func set_volume(bus_name: String, linear: float) -> void:
+	volumes[bus_name] = clampf(linear, 0.0, 1.0)
+	_apply_volumes()
+	save_settings()
+
+func get_volume(bus_name: String) -> float:
+	return float(volumes.get(bus_name, 1.0))
+
+## Chuyển mọi AudioStreamPlayer/3D dưới `node` sang bus (xe máy Màn 1 có player riêng)
+static func route_audio_to_bus(node: Node, bus_name: String) -> void:
+	if node is AudioStreamPlayer or node is AudioStreamPlayer3D or node is AudioStreamPlayer2D:
+		node.set("bus", bus_name)
+	for c: Node in node.get_children():
+		route_audio_to_bus(c, bus_name)
+
+## SFX giao diện (menu, tạm dừng, cửa hàng) đi bus UI
+func play_ui(name_or_path: String, volume_db: float = -8.0, pitch: float = 1.0) -> void:
+	if _ui_pool.is_empty():
+		for i: int in range(4):
+			var p := AudioStreamPlayer.new()
+			p.bus = "UI"
+			add_child(p)
+			_ui_pool.append(p)
+	var stream: AudioStream = null
+	if not _sfx_bank.has(name_or_path):
+		_sfx_bank[name_or_path] = load_wav(name_or_path) if name_or_path.begins_with("res://") else _synth(name_or_path)
+	stream = _sfx_bank[name_or_path]
+	if not stream:
+		return
+	var p: AudioStreamPlayer = _ui_pool[_ui_pool_idx]
+	_ui_pool_idx = (_ui_pool_idx + 1) % _ui_pool.size()
+	p.stop()
+	p.stream = stream
+	p.volume_db = volume_db
+	p.pitch_scale = pitch
+	p.play()
+
+## Hàng thanh trượt âm lượng cho bảng cài đặt (menu chính & tạm dừng)
+func build_audio_settings(parent: Control) -> void:
+	var names: Dictionary = {"Master": "🔊 Tổng", "Music": "🎵 Nhạc", "SFX": "💥 Hiệu ứng", "UI": "🖱 Giao diện"}
+	for b: String in AUDIO_BUSES:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		parent.add_child(row)
+		var lbl: Label = make_label(String(names[b]), 15, Color("#DFE6E9"), HORIZONTAL_ALIGNMENT_LEFT)
+		lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		lbl.custom_minimum_size = Vector2(130, 0)
+		row.add_child(lbl)
+		var slider := HSlider.new()
+		slider.min_value = 0.0
+		slider.max_value = 1.0
+		slider.step = 0.05
+		slider.value = get_volume(b)
+		slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		slider.custom_minimum_size = Vector2(260, 24)
+		slider.focus_mode = Control.FOCUS_ALL
+		row.add_child(slider)
+		var pct: Label = make_label("%d%%" % int(round(get_volume(b) * 100.0)), 14, FPT_YELLOW, HORIZONTAL_ALIGNMENT_RIGHT)
+		pct.autowrap_mode = TextServer.AUTOWRAP_OFF
+		pct.custom_minimum_size = Vector2(52, 0)
+		row.add_child(pct)
+		slider.value_changed.connect(func(v: float) -> void:
+			set_volume(b, v)
+			pct.text = "%d%%" % int(round(v * 100.0))
+			play_ui("tick", -12.0, 1.0 + v * 0.5))
 
 func set_visual_quality(q: int) -> void:
 	visual_quality = clampi(q, 0, 2)
@@ -135,6 +237,7 @@ static func _quality() -> int:
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_setup_audio_buses()
 	load_settings()
 	_layer = CanvasLayer.new()
 	_layer.layer = 90
@@ -170,7 +273,7 @@ func _ready() -> void:
 
 	for i: int in range(10):
 		var p := AudioStreamPlayer.new()
-		p.bus = "Master"
+		p.bus = "SFX"
 		add_child(p)
 		_sfx_pool.append(p)
 

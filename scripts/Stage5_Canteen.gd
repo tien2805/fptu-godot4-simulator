@@ -99,6 +99,12 @@ var totals_label: Label
 var pay_btn: Button
 var shop_timer_bar: ProgressBar
 var score_phase1: int = 0
+# Điều khiển cửa hàng bằng bàn phím (Slay the Spire style): lưới 4x2, Enter thêm, Backspace bỏ, Tab sang giỏ, Space trả tiền
+var shop_cards: Array[PanelContainer] = []
+var shop_focus_idx: int = 0
+var shop_focus_zone: int = 0 # 0 = kệ hàng, 1 = giỏ
+var basket_focus_idx: int = 0
+var basket_buttons: Array[Button] = []
 
 class ShopCard extends PanelContainer:
 	var item: Dictionary
@@ -597,8 +603,78 @@ func _unhandled_input(event: InputEvent) -> void:
 	if is_stage_ended:
 		return
 	if event is InputEventKey and event.is_pressed() and not event.is_echo():
+		if phase == Phase.SHOP:
+			_shop_key(event.physical_keycode)
+			return
 		if event.physical_keycode == KEY_E:
 			_interact()
+
+func _shop_key(key: int) -> void:
+	var cols: int = 4
+	match key:
+		KEY_LEFT, KEY_A:
+			if shop_focus_zone == 0:
+				shop_focus_idx = (shop_focus_idx / cols) * cols + ((shop_focus_idx % cols) + cols - 1) % cols
+			_refresh_shop_focus()
+		KEY_RIGHT, KEY_D:
+			if shop_focus_zone == 0:
+				shop_focus_idx = (shop_focus_idx / cols) * cols + ((shop_focus_idx % cols) + 1) % cols
+			_refresh_shop_focus()
+		KEY_UP, KEY_W:
+			if shop_focus_zone == 0:
+				shop_focus_idx = (shop_focus_idx + shop_cards.size() - cols) % shop_cards.size()
+			else:
+				basket_focus_idx = maxi(0, basket_focus_idx - 1)
+			_refresh_shop_focus()
+		KEY_DOWN, KEY_S:
+			if shop_focus_zone == 0:
+				shop_focus_idx = (shop_focus_idx + cols) % shop_cards.size()
+			else:
+				basket_focus_idx = mini(basket.size() - 1, basket_focus_idx + 1)
+			_refresh_shop_focus()
+		KEY_TAB:
+			shop_focus_zone = 1 - shop_focus_zone if not basket.is_empty() else 0
+			basket_focus_idx = clampi(basket_focus_idx, 0, maxi(0, basket.size() - 1))
+			GameFX.play_sfx("tick", -10.0)
+			_refresh_shop_focus()
+		KEY_ENTER, KEY_KP_ENTER, KEY_E:
+			if shop_focus_zone == 0 and shop_focus_idx < SHOP_ITEMS.size():
+				add_to_basket(SHOP_ITEMS[shop_focus_idx])
+			elif shop_focus_zone == 1:
+				remove_from_basket(basket_focus_idx)
+				if basket.is_empty():
+					shop_focus_zone = 0
+				basket_focus_idx = clampi(basket_focus_idx, 0, maxi(0, basket.size() - 1))
+				_refresh_shop_focus()
+		KEY_BACKSPACE, KEY_DELETE:
+			if not basket.is_empty():
+				remove_from_basket(basket.size() - 1 if shop_focus_zone == 0 else basket_focus_idx)
+				if basket.is_empty():
+					shop_focus_zone = 0
+				basket_focus_idx = clampi(basket_focus_idx, 0, maxi(0, basket.size() - 1))
+				_refresh_shop_focus()
+		KEY_SPACE:
+			if pay_btn and not pay_btn.disabled:
+				_on_pay_pressed()
+			else:
+				GameFX.play_sfx("error", -6.0)
+				if shop_panel:
+					var tw := create_tween()
+					tw.tween_property(shop_panel, "position:x", shop_panel.position.x + 10.0, 0.05)
+					tw.tween_property(shop_panel, "position:x", shop_panel.position.x - 10.0, 0.05)
+					tw.tween_property(shop_panel, "position:x", shop_panel.position.x, 0.05)
+
+func _refresh_shop_focus() -> void:
+	for i: int in range(shop_cards.size()):
+		var c: PanelContainer = shop_cards[i]
+		var focused: bool = shop_focus_zone == 0 and i == shop_focus_idx
+		c.add_theme_stylebox_override("panel", GameFX.make_panel_style(GameFX.FPT_YELLOW if focused else Color("#2ECC71"), Color(0.12, 0.12, 0.04, 0.98) if focused else Color(0.05, 0.1, 0.08, 0.98), 8))
+		c.scale = Vector2(1.04, 1.04) if focused else Vector2.ONE
+		c.pivot_offset = c.size * 0.5
+	for i: int in range(basket_buttons.size()):
+		var b: Button = basket_buttons[i]
+		if is_instance_valid(b):
+			b.add_theme_color_override("font_color", GameFX.FPT_YELLOW if (shop_focus_zone == 1 and i == basket_focus_idx) else Color.WHITE)
 
 func _interact() -> void:
 	match phase:
@@ -830,8 +906,10 @@ func _build_shop_ui() -> void:
 	shop_title.text = "🏪 7-ELEVEN FPTU CAMPUS – NGÂN SÁCH %dk · 35 GIÂY" % budget
 	shop_timer_bar = GameFX.make_bar(100.0, Color("#E74C3C"), 10)
 	shop_vbox.add_child(shop_timer_bar)
-	var hint := GameFX.make_label("Mục tiêu: ⚡ NĂNG LƯỢNG ≥ %d và 🧠 TINH THẦN ≥ %d, không vượt %dk. Kéo thả món vào giỏ (hoặc double-click). Bấm món trong giỏ để bỏ ra." % [TARGET_ENERGY, TARGET_SANITY, budget], 14, Color("#BDC3C7"))
+	var hint := GameFX.make_label("Mục tiêu: ⚡ NĂNG LƯỢNG ≥ %d và 🧠 TINH THẦN ≥ %d, không vượt %dk." % [TARGET_ENERGY, TARGET_SANITY, budget], 14, Color("#BDC3C7"))
 	shop_vbox.add_child(hint)
+	var keys_hint := GameFX.make_label("⌨ [←→↑↓] chọn món · [ENTER] thêm vào giỏ · [BACKSPACE] bỏ món cuối · [TAB] sang giỏ · [SPACE] trả tiền   (chuột: kéo thả / double-click)", 13, GameFX.FPT_YELLOW)
+	shop_vbox.add_child(keys_hint)
 
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 16)
@@ -862,6 +940,7 @@ func _build_shop_ui() -> void:
 			stat += "🧠%+d" % int(item["sanity"])
 		vb.add_child(GameFX.make_label(stat, 13, Color("#74B9FF")))
 		grid.add_child(card)
+		shop_cards.append(card)
 
 	var basket_panel := BasketDrop.new()
 	basket_panel.stage = self
@@ -883,7 +962,10 @@ func _build_shop_ui() -> void:
 	pay_btn.focus_mode = Control.FOCUS_NONE
 	pay_btn.pressed.connect(_on_pay_pressed)
 	bvb.add_child(pay_btn)
+	shop_focus_idx = 0
+	shop_focus_zone = 0
 	_refresh_basket()
+	_refresh_shop_focus()
 
 func add_to_basket(item: Dictionary) -> void:
 	if phase != Phase.SHOP:
@@ -916,6 +998,7 @@ func _basket_total(key: String) -> int:
 func _refresh_basket() -> void:
 	for c: Node in basket_list.get_children():
 		c.queue_free()
+	basket_buttons.clear()
 	for i: int in range(basket.size()):
 		var it: Dictionary = basket[i]
 		var b := Button.new()
@@ -924,6 +1007,7 @@ func _refresh_basket() -> void:
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.pressed.connect(_remove_idx.bind(i))
 		basket_list.add_child(b)
+		basket_buttons.append(b)
 	var money: int = _basket_total("price")
 	var e: int = _basket_total("energy")
 	var s: int = _basket_total("sanity")

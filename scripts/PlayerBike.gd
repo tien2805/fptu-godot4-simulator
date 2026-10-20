@@ -59,6 +59,8 @@ var rain_factor: float = 1.0
 var near_candidates: Dictionary = {}
 var near_miss_chain: int = 0
 var near_miss_chain_timer: float = 0.0
+const NEAR_MISS_CHAIN_WINDOW: float = 6.0 # đủ để đi từ cụm xe này sang cụm kế (~130 m ở 80 km/h)
+var longest_near_miss_chain: int = 0
 var near_miss_area: Area3D
 
 # Hệ thống Âm thanh Vòm 3D
@@ -87,6 +89,10 @@ func _ready() -> void:
 	_build_procedural_bike_and_seated_rider()
 	_setup_audio_system()
 	_setup_near_miss_area()
+	# Không dùng định danh autoload GameFX ở đây: test --script biên dịch PlayerBike trước khi autoload được đăng ký
+	var fx_node: Node = get_node_or_null("/root/GameFX")
+	if fx_node:
+		fx_node.route_audio_to_bus(self, "SFX")
 	_setup_drift_smoke()
 	slipstream_ray.target_position = Vector3(0.0, 0.0, -8.5) # Quét cự ly 8.5m phía trước
 	slipstream_ray.enabled = true
@@ -709,11 +715,15 @@ func _on_near_body_exited(body: Node3D) -> void:
 	if current_speed_ms * 3.6 < 50.0:
 		return
 	near_miss_chain = (near_miss_chain + 1) if near_miss_chain_timer > 0.0 else 1
-	near_miss_chain_timer = 2.5
-	add_camera_shake(0.08)
+	near_miss_chain_timer = NEAR_MISS_CHAIN_WINDOW
+	longest_near_miss_chain = maxi(longest_near_miss_chain, near_miss_chain)
+	add_camera_shake(0.08 + 0.03 * float(mini(near_miss_chain, 4)))
 	var fx: Node = get_node_or_null("/root/GameFX")
 	if fx:
-		fx.play_sfx("whoosh", -4.0, randf_range(0.9, 1.2))
+		# Cao độ tăng theo chuỗi: 1.0 / 1.15 / 1.3 (Crazy Taxi "Crazy Through")
+		fx.play_sfx("whoosh", -4.0, [1.0, 1.15, 1.3][mini(near_miss_chain, 3) - 1])
+		if near_miss_chain >= 3:
+			fx.hit_stop(0.04, 0.1)
 	emit_signal("near_miss", near_miss_chain)
 
 # ---------------------------------------------------------------------------

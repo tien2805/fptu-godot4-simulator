@@ -55,10 +55,23 @@ func _spawn_initial_traffic() -> void:
 
 		active_buses.append(agent)
 
-	# Xe máy ngược chiều (làn trái) - nhanh, nguồn near-miss chính
-	for i: int in range(moto_oncoming_count):
+	# Xe máy ngược chiều (làn trái) - nhanh, nguồn near-miss chính.
+	# Rải thành CỤM ở 180/320/480/640/900/1250 m để cú "sát nút" đầu tiên tới trước giây 15
+	# (trước đây ngẫu nhiên 80..cuối đường nên lần đầu thường ở giây ~57). Xe loop nên nửa sau vẫn có xe.
+	# Tránh khúc cua Nguyễn Xiển (250–300 m): cụm 1 kết thúc trước 230 m, cụm 2 bắt đầu sau 380 m
+	var cluster_offsets: Array[float] = [150.0, 380.0, 520.0, 680.0, 900.0, 1250.0]
+	var cluster_lanes: Array[float] = [-1.5, -3.4, -1.5, -5.2, -1.5, -3.4]
+	var spawned: int = 0
+	for c: int in range(cluster_offsets.size()):
+		var n_in_cluster: int = 3 if c % 2 == 0 else 2
+		for k: int in range(n_in_cluster):
+			var lane_x: float = cluster_lanes[(c + k) % cluster_lanes.size()]
+			var off: float = cluster_offsets[c] + float(k) * randf_range(25.0, 40.0)
+			_spawn_moto(track_len, lane_x, -1.0, randf_range(15.0, 19.0), minf(off, track_len - 60.0))
+			spawned += 1
+	for i: int in range(maxi(0, moto_oncoming_count - spawned)):
 		var lane_x: float = [-1.5, -3.4, -5.2][i % 3]
-		_spawn_moto(track_len, lane_x, -1.0, randf_range(15.0, 19.0), randf_range(80.0, track_len - 60.0))
+		_spawn_moto(track_len, lane_x, -1.0, randf_range(15.0, 19.0), randf_range(1300.0, track_len - 60.0))
 
 	# Xe máy chậm cùng chiều (làn ngoài cùng bên phải) - phải vượt
 	for i: int in range(moto_slow_count):

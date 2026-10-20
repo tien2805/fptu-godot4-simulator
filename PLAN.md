@@ -158,7 +158,10 @@ graph LR
 | **Phase 4** | Màn 3 (FAP Wi-Fi lag, đổi mã, sinh tồn đa nhiệm) & Màn 4 (rhythm lane, hít đất, finisher 5 bước) | ✅ Hoàn tất (v2) |
 | **Phase 5** | Màn 5 (Overcooked + kéo thả), Màn 6 (bullet-hell typing + Git conflict), Extra (bằng chứng, CCTV, uy tín) | ✅ Hoàn tất (v2) |
 | **Phase 5b** | Gameplay v2 Màn 1: drift, near-miss, sự kiện đường, đèn đỏ, mưa, kẹp làn, speed lines | ✅ Hoàn tất |
-| **Phase 6** | Đóng gói Windows Executable, cài đặt đồ họa Low/Medium/High, kiểm thử nhiều cấu hình | 📅 Kế hoạch |
+| **Phase 6** | Đóng gói Windows Executable, cài đặt đồ họa Low/Medium/High, menu chính, icon Cóc Vàng, GitHub Release v1.0.0 | ✅ Hoàn tất |
+| **Phase 7 (v1.1) – M1** | Quick wins theo `docs/GAME_DESIGN_REVIEW_2026-10-20.md`: near-miss sớm + chuỗi nhân thưởng, cửa hàng 7-Eleven bằng phím, thẻ chuyển cảnh, menu tạm dừng, bus âm thanh + âm lượng, test HUD không bị cắt | ✅ Hoàn tất |
+| **Phase 7 – M2** | **Người & đồ vật giống thật** (CharacterBuilder + PropBuilder thủ tục, texture Pillow, animation idle/walk/react – yêu cầu chủ dự án 20/10/2026), ánh sáng theo giờ từng màn, nhạc thủ tục | 🔄 Đang làm |
+| **Phase 7 – M3/M4** | Tổng kết ngày, thành tích, thử thách ngày, tay cầm/đổi phím, CI test job, tối ưu, tách StageBase, changelog, v1.1.0 | 📅 Kế hoạch |
 
 ---
 
@@ -183,6 +186,19 @@ graph LR
 * **Repo:** `README.md` cho người chơi/người xem GitHub; `.gitignore` bỏ `.godot/`, `build/`, log.
 * **Icon:** `generate_icon.py` tạo `assets/icon/cocvang_icon.png` (1024) + `.ico` (16–256) từ ảnh cóc do user cung cấp – flood-fill tách nền, đổi da xanh lá → vàng (hue 50°, V nâng 0.72+0.3·V), áo xanh dương → cam FPT, vẽ logo FPT 3 khối góc dưới phải; `project.godot` `config/icon` + `config/windows_native_icon`, preset `application/icon` + `modify_resources=true` (Godot ≥ 4.1 tự nhúng, không cần rcedit).
 
+## 🚀 IX. NÂNG CẤP v1.1 – M1 "QUICK WINS" (20/10/2026)
+
+Thực hiện theo `docs/PROMPT_FULL_UPGRADE.md` (brief) và `docs/GAME_DESIGN_REVIEW_2026-10-20.md` (review 12 mục):
+
+* **#1 Near-miss sớm & chuỗi nhân thưởng (Màn 1):** `TrafficSpawner` rải xe ngược chiều thành cụm ở 150/380/520/680/900/1250 m (tránh khúc cua Nguyễn Xiển) thay vì ngẫu nhiên → cú sát nút đầu tiên < 10 s thay vì ~57 s. `PlayerBike` giữ chuỗi trong 6 s (`NEAR_MISS_CHAIN_WINDOW`), lưu `longest_near_miss_chain`, whoosh tăng cao độ theo chuỗi, hit-stop 40 ms từ x3. `HUDManager`: thưởng 0.5/0.75/1.0 s theo bậc, bảng "SÁT NÚT xN" giữa trên với thanh thời gian chuỗi, điểm + `longest_chain*60`, ngưỡng rank 1250/800/450.
+* **#2 Cửa hàng 7-Eleven bằng phím (Màn 5):** lưới 4×2, `[←→↑↓]`/WASD chọn, `[ENTER]`/`[E]` thêm, `[BACKSPACE]` bỏ món cuối, `[TAB]` sang giỏ, `[SPACE]` trả tiền (rung bảng + tiếng lỗi nếu chưa đủ). Chuột kéo thả vẫn dùng được. Bot mua hoàn toàn bằng phím.
+* **#5 Thẻ chuyển cảnh:** `StageManager._begin_transition` – lớp tối + đồng hồ chạy từ giờ màn trước tới giờ màn sau (đọc từ tiêu đề `[HH:MM AM]`), tên màn, 1 câu thoại theo kết quả (S / thắng / thua / tối Capstone), 3 s hoặc bấm phím bất kỳ; **bỏ qua hoàn toàn khi headless** để bot không bị chậm.
+* **Menu tạm dừng (ESC):** CanvasLayer 118, `process_mode ALWAYS`, `get_tree().paused`; Tiếp tục / Cài đặt (3 mức đồ hoạ áp ngay cho cảnh hiện tại + 4 thanh âm lượng) / Điều khiển (bảng phím dùng chung `StageManager.CONTROLS_GUIDE` với menu chính) / Campaign Hub / Về menu / Thoát. Không bật trong MainMenu, ESC đóng hub trước. `change_stage`/`go_to_main_menu` luôn bỏ pause.
+* **Âm thanh:** `GameFX._setup_audio_buses()` tạo bus Music/SFX/UI gửi về Master (có limiter) lúc chạy; pool SFX → bus SFX, `play_ui()` → bus UI, `route_audio_to_bus()` cho player của xe máy; âm lượng lưu `settings.cfg [audio]`, thanh trượt trong menu chính & menu tạm dừng (`build_audio_settings`).
+* **Kiểm thử:** `tests/test_hud_bounds.gd` nạp menu + 7 màn ở 1280×720 / 1920×1080 / 2560×1440 và khẳng định mọi Control hiển thị nằm trong viewport (đã bắt được SleepPanel Màn 3 tràn phải → `grow_horizontal = BEGIN`). `tests/preview_m1_ui.gd` chụp 5 ảnh UI mới (`docs/preview/m1_*.png`).
+* **Baseline FPS (RTX laptop, cửa sổ 1280×720, 1 frame sau khi nạp – chỉ tham khảo, số thấp là frame đầu còn biên dịch shader):** High: menu 156, S3 7, S4 50, S5 41–60, S6 60, Extra 31–87 · Medium: menu 226, S3 66, S4 1*, S5 60–91, S6 60, Extra 31 · Low: menu 172, S3 12*, S4 80–87, S5 4*, S6 48, Extra 44–67 (*: frame đầu). M4 sẽ đo lại bằng trung bình 120 frame.
+* **Gotcha mới:** script được `--script` test tham chiếu trực tiếp bằng `class_name` (vd `PlayerBike.attach_near_miss_tag`) bị biên dịch TRƯỚC khi autoload đăng ký → trong script đó không được dùng định danh `GameFX`/`StageManager`, phải `get_node_or_null("/root/GameFX")`.
+
 ## 🧪 VII. KIỂM THỬ HEADLESS (tests/)
 
 | Lệnh | Kiểm tra |
@@ -198,9 +214,11 @@ graph LR
 | `tests/test_stage5_canteen.gd` | Đi bằng phím, lấy/giao khay, cân khay, giải combo đúng ngân sách |
 | `tests/test_stage6_capstone.gd` | Gõ chữ, gõ sai, gọi dậy, skill, 3 conflict (1 sai), push cuối |
 | `tests/test_stage_extra_eos.gd` | CCTV, chụp bằng chứng, lập biên bản, bắt oan -35 uy tín |
+| `tests/test_hud_bounds.gd` | Menu + 7 màn ở 3 độ phân giải: không Control nào tràn khỏi viewport |
 | `godot --path . --script tests/preview_campus.gd` (cần cửa sổ) | Chụp 7 góc campus trong Màn 1 → `user://preview/*.png` (bản sao ở `docs/preview/`) |
 | `godot --path . --script tests/preview_stage2.gd` (cần cửa sổ) | Chụp 9 góc Màn 2: D1, cổng bãi xe, lối xe, bãi xe, lối sau, sân trong, cầu thang, cửa Lab 402, toàn cảnh |
 | `godot --path . --script tests/preview_stages.gd` (cần cửa sổ) | Chụp Màn 3, 4, 5, 6, Extra từ camera gameplay + 1–2 góc phụ (cửa sổ, hiên, CCTV) |
+| `godot --path . --script tests/preview_m1_ui.gd` (cần cửa sổ) | Chụp bảng chuỗi near-miss, menu tạm dừng + cài đặt, thẻ chuyển cảnh, cửa hàng bằng phím |
 
 **Đồ hoạ ("nặng cũng được"):** `project.godot` bật MSAA 2x + FXAA + debanding, lọc dị hướng, shadow map 8192 bóng mềm chất lượng cao, SSAO/SSIL/SSR chất lượng cao, SDFGI hội tụ nhanh, sương thể tích độ phân giải cao. Mỗi màn gọi `GameFX.upgrade_scene_visuals(self, "outdoor"/"indoor")` ở cuối `_ready`: nhân bản Environment rồi bật SDFGI (6/4 cascade), SSIL, SSR, glow softlight, tonemap ACES, chỉnh màu nhẹ, sương + sương thể tích (outdoor), bán cầu dưới sky trung tính; nắng dùng PSSM 4 split, bóng mềm. Headless không kiểm được visual → tự render bằng 2 script preview ở trên và xem ảnh.
 

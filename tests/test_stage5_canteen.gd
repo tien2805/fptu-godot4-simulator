@@ -117,11 +117,40 @@ func _bot_shop() -> void:
 	while basket.size() > 0:
 		stage.call("remove_from_basket", 0)
 		basket = stage.get("basket")
+	# Mua HOÀN TOÀN BẰNG PHÍM: di chuyển con trỏ lưới 4x2 tới từng món, Enter; Backspace thử bỏ 1 món rồi thêm lại; Space trả tiền
+	var ids: Array[String] = []
+	for it: Dictionary in items:
+		ids.append(String(it["id"]))
 	for id: String in plan:
-		stage.call("add_to_basket", by_id[id])
+		_shop_move_to(ids.find(id))
+		_tap_key(KEY_ENTER)
+	_tap_key(KEY_BACKSPACE)
+	_shop_move_to(ids.find(plan[plan.size() - 1]))
+	_tap_key(KEY_ENTER)
 	var pay: Button = stage.get("pay_btn")
-	print("  budget=%dk plan=%s pay_enabled=%s totals=%s" % [budget, str(plan), str(not pay.disabled), (stage.get("totals_label") as Label).text])
-	stage.call("_on_pay_pressed")
+	print("  budget=%dk plan=%s (bằng phím) pay_enabled=%s totals=%s" % [budget, str(plan), str(not pay.disabled), (stage.get("totals_label") as Label).text])
+	_tap_key(KEY_SPACE)
+
+func _tap_key(code: int) -> void:
+	for pressed: bool in [true, false]:
+		var ev := InputEventKey.new()
+		ev.physical_keycode = code
+		ev.keycode = code
+		ev.pressed = pressed
+		stage.call("_unhandled_input", ev)
+
+func _shop_move_to(target: int) -> void:
+	var cols: int = 4
+	var guard: int = 0
+	while int(stage.get("shop_focus_idx")) != target and guard < 12:
+		guard += 1
+		var cur: int = int(stage.get("shop_focus_idx"))
+		if cur / cols != target / cols:
+			_tap_key(KEY_DOWN)
+		elif cur % cols < target % cols:
+			_tap_key(KEY_RIGHT)
+		else:
+			_tap_key(KEY_LEFT)
 
 func _process(_delta: float) -> bool:
 	if not started or stage == null:

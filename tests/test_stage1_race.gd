@@ -15,6 +15,7 @@ var started: bool = false
 var max_offset: float = 0.0
 var lateral_target: float = 2.4
 var lane_hold: int = 0
+var first_near_miss_frame: int = -1
 const CANDIDATES: Array[float] = [2.4, 4.6, 0.3, -2.0, -4.4]
 const MAX_FRAMES: int = 60 * 60 * 6
 
@@ -47,11 +48,14 @@ func _pick_lane(my_off: float) -> void:
 	lane_hold -= 1
 	var obstacles: Array[Node] = get_nodes_in_group("traffic_obstacle")
 	var infos: Array[Vector2] = []
+	var infos_far: Array[Vector2] = []
 	for n: Node in obstacles:
 		if n is Node3D and n != bike:
 			var info: Vector2 = _obstacle_info(n, my_off)
 			if info.x > -3.0 and info.x < 34.0:
 				infos.append(info)
+			if info.x > 20.0 and info.x < 60.0:
+				infos_far.append(info)
 	var blocked_current: bool = false
 	for info: Vector2 in infos:
 		if absf(info.y - lateral_target) < 1.7:
@@ -60,6 +64,17 @@ func _pick_lane(my_off: float) -> void:
 	if not blocked_current and lane_hold > 0:
 		return
 	if not blocked_current:
+		# "Người chơi trung bình" chủ động lách sát: nếu có xe ngược chiều ở làn -1.5 cách 20–60 m và làn giữa (0.3) trống
+		for info: Vector2 in infos_far:
+			if info.y < -0.5 and info.y > -2.6 and info.x > 20.0 and info.x < 60.0 and lateral_target != 0.3:
+				var mid_free: bool = true
+				for o: Vector2 in infos:
+					if absf(o.y - 0.3) < 1.7:
+						mid_free = false
+				if mid_free:
+					lateral_target = 0.3
+					lane_hold = 40
+				return
 		return
 	for cand: float in CANDIDATES:
 		var ok: bool = true
@@ -120,6 +135,9 @@ func _process(_delta: float) -> bool:
 		curve = (road.get_node("RoadTrack/RoadPath") as Path3D).curve
 	if frames > 3 and not hud.get("is_game_ended"):
 		_autopilot()
+	if first_near_miss_frame < 0 and int(hud.get("near_miss_count")) > 0:
+		first_near_miss_frame = frames
+		print("  >> first near-miss at frame %d (%.1fs), offset %.0f m" % [frames, hud.get("elapsed_sec"), max_offset])
 	if frames % 300 == 0:
 		var ev: Node = road.get("road_events")
 		print("  frame %d: offset %.0f m, lane %.1f, speed %.0f km/h, elapsed %.1fs, light=%s, nearmiss=%d, crashes=%d, bonus=%.1f, penalty=%.1f" % [
@@ -135,8 +153,10 @@ func _process(_delta: float) -> bool:
 			for cp: Dictionary in ev.get("checkpoints"):
 				if cp["done"]:
 					cps_done += 1
-		print("  Kết thúc sau %d frame: reached_finish=%s, max_offset=%.0f, checkpoints=%d/5, nearmiss=%d, drift_boosts=%d, crashes=%d, bonus=%.1f, penalty=%.1f, elapsed=%.1f" % [
-			frames, str(reached), max_offset, cps_done, hud.get("near_miss_count"), hud.get("drift_boosts"), hud.get("crashes"), hud.get("bonus_total"), hud.get("penalty_total"), hud.get("elapsed_sec")])
+		print("  Kết thúc sau %d frame: reached_finish=%s, max_offset=%.0f, checkpoints=%d/5, nearmiss=%d, longest_chain=%d, first_nearmiss_frame=%d, drift_boosts=%d, crashes=%d, bonus=%.1f, penalty=%.1f, elapsed=%.1f" % [
+			frames, str(reached), max_offset, cps_done, hud.get("near_miss_count"), bike.get("longest_near_miss_chain"), first_near_miss_frame, hud.get("drift_boosts"), hud.get("crashes"), hud.get("bonus_total"), hud.get("penalty_total"), hud.get("elapsed_sec")])
+		if reached and (first_near_miss_frame < 0 or first_near_miss_frame > 60 * 20):
+			print("⚠️ WARN: first near-miss later than 20 s (target < 15 s) – check cluster placement")
 		if reached and cps_done >= 5:
 			print("✅ SUCCESS: AUTOPILOT REACHED FPTU GATE; ALL ROAD EVENTS FIRED")
 			quit(0)

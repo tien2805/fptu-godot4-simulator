@@ -77,6 +77,11 @@ var is_drifting: bool = false
 var is_boosting: bool = false
 var last_speed_kmh: float = 0.0
 var stats_label: Label
+var chain_panel: PanelContainer
+var chain_label: Label
+var chain_bar: ProgressBar
+var chain_break_timer: float = 0.0
+var _last_chain_seen: int = 0
 var drift_hint_label: Label
 
 # Audio Players
@@ -160,6 +165,7 @@ func _setup_overlays() -> void:
 	panel.add_child(vb)
 	stats_label = GameFX.make_label("⏱ THƯỞNG +0.0s · PHẠT +0.0s\n💨 SÁT NÚT 0 · 🔥 DRIFT 0", 14, Color("#DFE6E9"), HORIZONTAL_ALIGNMENT_LEFT)
 	vb.add_child(stats_label)
+	_build_chain_panel()
 	drift_hint_label = GameFX.make_label("", 15, Color("#F39C12"), HORIZONTAL_ALIGNMENT_LEFT)
 	vb.add_child(drift_hint_label)
 
@@ -198,6 +204,7 @@ func _setup_hud_audio() -> void:
 	add_child(absent_player)
 
 func _process(delta: float) -> void:
+	_update_chain_panel(delta)
 	# Overlay luôn cập nhật (kể cả khi kết thúc để mờ dần)
 	var speed_int: float = clampf((last_speed_kmh - 52.0) / 42.0, 0.0, 1.0)
 	if is_boosting:
@@ -255,17 +262,71 @@ func _on_drift_boost(_duration: float) -> void:
 
 func _on_near_miss(chain: int) -> void:
 	near_miss_count += 1
-	var bonus: float = 0.5 if chain <= 1 else 1.0
+	# Thưởng theo chuỗi 0.5 / 0.75 / 1.0 s (từ chuỗi 3 trở đi), trần tổng 8 s giữ nguyên
+	var bonus: float = [0.5, 0.75, 1.0][mini(chain, 3) - 1]
 	var granted: float = _grant_bonus(bonus)
 	var txt: String
 	if chain <= 1:
 		txt = "💨 SÁT NÚT! -%.1fs" % granted
 	else:
-		txt = "💨 SÁT NÚT x%d! -%.1fs" % [chain, granted]
+		txt = "💨 SÁT NÚT x%d! -%.2fs" % [chain, granted]
 	if granted <= 0.0:
-		txt = "💨 SÁT NÚT! (đã đạt trần thưởng %.0fs)" % BONUS_CAP
-	GameFX.popup(txt, Color("#00D2D3"), 32 if chain <= 1 else 38, 0.7)
+		txt = "💨 SÁT NÚT x%d! (đã đạt trần thưởng %.0fs – vẫn tính điểm)" % [chain, BONUS_CAP]
+	GameFX.popup(txt, Color("#00D2D3"), 30 if chain <= 1 else 36, 0.6)
+	_show_chain(chain)
 	_refresh_stats()
+
+## Bảng chuỗi sát nút giữa đỉnh màn hình: số chuỗi + thanh thời gian còn giữ chuỗi
+func _build_chain_panel() -> void:
+	chain_panel = GameFX.anchored_panel(self, Control.PRESET_CENTER_TOP, Vector2(300, 0), 96, Color("#00D2D3"))
+	chain_panel.visible = false
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 4)
+	chain_panel.add_child(vb)
+	chain_label = GameFX.make_label("SÁT NÚT x1", 40, GameFX.FPT_YELLOW)
+	chain_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	chain_label.add_theme_constant_override("outline_size", 8)
+	chain_label.add_theme_color_override("font_outline_color", Color(0.02, 0.03, 0.06, 0.9))
+	vb.add_child(chain_label)
+	chain_bar = GameFX.make_bar(100.0, Color("#00D2D3"), 10)
+	vb.add_child(chain_bar)
+	var hint: Label = GameFX.make_label("giữ chuỗi: lách sát xe ngược chiều trong 6 s", 11, Color("#BDC3C7"))
+	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
+	vb.add_child(hint)
+
+func _show_chain(chain: int) -> void:
+	if not chain_panel:
+		return
+	chain_panel.visible = true
+	chain_break_timer = 0.0
+	chain_label.text = "SÁT NÚT x%d" % chain if chain > 1 else "SÁT NÚT!"
+	chain_label.add_theme_color_override("font_color", GameFX.FPT_YELLOW if chain < 3 else Color("#FF9F43"))
+	chain_panel.scale = Vector2(1.18, 1.18)
+	chain_panel.pivot_offset = chain_panel.size * 0.5
+	var tw := create_tween()
+	tw.tween_property(chain_panel, "scale", Vector2.ONE, 0.12)
+	if chain >= 3:
+		GameFX.flash(Color(1.0, 0.85, 0.3), 0.18, 0.15)
+
+func _update_chain_panel(delta: float) -> void:
+	if not chain_panel or not player_bike:
+		return
+	var chain: int = int(player_bike.get("near_miss_chain"))
+	var timer: float = float(player_bike.get("near_miss_chain_timer"))
+	if chain > 0:
+		chain_bar.value = clampf(timer / float(player_bike.get("NEAR_MISS_CHAIN_WINDOW")) * 100.0, 0.0, 100.0)
+		GameFX.set_bar_color(chain_bar, Color("#00D2D3") if timer > 2.0 else GameFX.FPT_RED)
+	elif _last_chain_seen > 0:
+		# chuỗi vừa đứt: báo ngắn rồi ẩn
+		chain_label.text = "CHUỖI ĐỨT" if _last_chain_seen > 1 else ""
+		chain_label.add_theme_color_override("font_color", Color("#BDC3C7"))
+		chain_bar.value = 0.0
+		chain_break_timer = 0.6
+	if chain == 0 and chain_break_timer > 0.0:
+		chain_break_timer -= delta
+		if chain_break_timer <= 0.0:
+			chain_panel.visible = false
+	_last_chain_seen = chain
 
 func _grant_bonus(sec: float) -> float:
 	var room: float = maxf(0.0, BONUS_CAP - bonus_total)
@@ -335,15 +396,17 @@ func _on_destination_reached() -> void:
 		player_bike.set("is_controls_locked", true)
 
 	var time_left: float = maxf(0.0, stage_duration_sec - elapsed_sec)
-	var score: int = int(time_left * 40.0) + near_miss_count * 60 + drift_boosts * 50 - crashes * 40
+	var longest_chain: int = int(player_bike.get("longest_near_miss_chain")) if player_bike else 0
+	var score: int = int(time_left * 40.0) + near_miss_count * 60 + longest_chain * 60 + drift_boosts * 50 - crashes * 40
 	score = maxi(0, score)
-	var rank: String = GameFX.rank_for(float(score), 1100.0, 750.0, 400.0)
+	# S đòi hỏi ít nhất một chuỗi sát nút 3 (ngưỡng 1100 -> 1250)
+	var rank: String = GameFX.rank_for(float(score), 1250.0, 800.0, 450.0)
 	StageManager.report_stage_result(StageManager.StageID.STAGE_1_RACE, {
 		"result": "win", "score": score, "rank": rank,
-		"detail": "left=%.1f nearmiss=%d drift=%d crash=%d" % [time_left, near_miss_count, drift_boosts, crashes]
+		"detail": "left=%.1f nearmiss=%d chain=%d drift=%d crash=%d" % [time_left, near_miss_count, longest_chain, drift_boosts, crashes]
 	})
 
-	absent_title.text = "ĐIỂM DANH SLOT 1 THÀNH CÔNG [PRESENT]! RANK %s\nCHÀO MỪNG ĐẾN ĐẠI HỌC FPT TP.HCM!\n\nCòn dư %ds · Sát nút %d · Drift boost %d · Va chạm %d · Điểm %d" % [rank, int(time_left), near_miss_count, drift_boosts, crashes, score]
+	absent_title.text = "ĐIỂM DANH SLOT 1 THÀNH CÔNG [PRESENT]! RANK %s\nCHÀO MỪNG ĐẾN ĐẠI HỌC FPT TP.HCM!\n\nCòn dư %ds · Sát nút %d (chuỗi dài nhất x%d) · Drift boost %d · Va chạm %d · Điểm %d" % [rank, int(time_left), near_miss_count, longest_chain, drift_boosts, crashes, score]
 	absent_title.modulate = Color("#4CD137")
 	if next_stage_btn:
 		next_stage_btn.visible = true
