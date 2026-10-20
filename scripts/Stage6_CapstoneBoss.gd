@@ -121,6 +121,7 @@ func _ready() -> void:
 
 	StageManager.typing_mode = true
 	GameFX.upgrade_scene_visuals(self, "night")
+	GameFX.music_play("capstone", 0.3)
 	_log("⚔️ 23:57:30 – QUÁI VẬT DEADLINE XUẤT HIỆN! GÕ TÊN LỖI ĐỂ BẮN HẠ. [TAB] ĐỔI NGƯỜI · [ENTER] SKILL")
 	_update_boss_ui()
 
@@ -387,6 +388,7 @@ func _log(text: String) -> void:
 
 func _update_boss_ui() -> void:
 	boss_hp_bar.value = boss_hp / BOSS_MAX_HP * 100.0
+	GameFX.music_tension(0.3 + 0.7 * (1.0 - boss_hp / BOSS_MAX_HP))
 	boss_name_lbl.text = "👾 QUÁI VẬT DEADLINE 23:59 · HP %d/%d · COMBO x%d (%d) · ĐIỂM %d" % [int(boss_hp), int(BOSS_MAX_HP), _mult(), combo, score]
 
 func _mult() -> int:

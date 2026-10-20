@@ -50,7 +50,8 @@ func _ready() -> void:
 	_configure_road_csg()
 	_build_landmarks_and_fptu_campus()
 	_spawn_road_events()
-	GameFX.upgrade_scene_visuals(get_parent(), "outdoor")
+	GameFX.upgrade_scene_visuals(get_parent(), "dawn")
+	GameFX.music_play("ride", 0.3)
 
 func _spawn_road_events() -> void:
 	# Sự kiện bất ngờ trên đường (ổ gà, xe tải hỏng, chó, đèn đỏ, mưa, checkpoint hài)

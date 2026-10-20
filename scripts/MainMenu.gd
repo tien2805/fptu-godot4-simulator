@@ -46,7 +46,8 @@ func _ready() -> void:
 	GameFX.reset_all()
 	_build_world()
 	_build_ui()
-	GameFX.upgrade_scene_visuals(self, "outdoor")
+	GameFX.upgrade_scene_visuals(self, "dawn")
+	GameFX.music_play("menu", 0.2)
 	_apply_shot(0.0)
 	fade_rect.color = Color(0.0, 0.0, 0.0, 1.0)
 	btn_start.call_deferred("grab_focus")
@@ -403,7 +404,7 @@ func _hide_modals() -> void:
 func _set_quality(q: int) -> void:
 	GameFX.set_visual_quality(q)
 	_refresh_quality_buttons()
-	GameFX.upgrade_scene_visuals(self, "outdoor")
+	GameFX.upgrade_scene_visuals(self, "dawn")
 	GameFX.play_sfx("pop", -4.0)
 	GameFX.popup("Đã áp dụng mức đồ hoạ: %s" % ["THẤP", "TRUNG BÌNH", "CAO"][clampi(q, 0, 2)], GameFX.FPT_GREEN, 22, 1.0)
 

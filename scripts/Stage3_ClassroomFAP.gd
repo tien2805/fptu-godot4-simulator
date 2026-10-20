@@ -169,7 +169,8 @@ func _ready() -> void:
 	banhbao_left = 2 + StageManager.item_count("banh_bao")
 	_refresh_consumables()
 	GameFX.disable_button_focus(hud)
-	GameFX.upgrade_scene_visuals(self, "indoor")
+	GameFX.upgrade_scene_visuals(self, "morning_indoor")
+	GameFX.music_play("classroom", 0.3)
 
 	_generate_code()
 	mission_label.text = "ĐỌC MÃ FAP TRÊN MÀN CHIẾU (WI-FI LAG LÀM NHÒE) HOẶC BẬT 4G [TAB] 5s – NHẬP ĐÚNG MÃ TRƯỚC 45s!"

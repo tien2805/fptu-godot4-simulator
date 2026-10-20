@@ -151,7 +151,8 @@ func _ready() -> void:
 	_build_phase2_hud()
 	_apply_spot(0)
 	GameFX.disable_button_focus(hud)
-	GameFX.upgrade_scene_visuals(self, "outdoor")
+	GameFX.upgrade_scene_visuals(self, "morning")
+	GameFX.music_play("parking", 0.35)
 
 	mission_label.text = "RẼ PHẢI VÀO CỔNG BÃI XE D1 (BÊN PHẢI) → DỪNG TRƯỚC BARIE, BẤM [E] QUÉT THẺ DÂY CAM!"
 	_say("⏱ 07:26 AM! VỀ TỚI ĐƯỜNG D1 – FPTU BÊN PHẢI, HUTECH BÊN TRÁI. CỔNG BÃI XE NGAY PHÍA TRƯỚC. [H] CÒI · [S] LÙI", GameFX.FPT_YELLOW, 4.5)

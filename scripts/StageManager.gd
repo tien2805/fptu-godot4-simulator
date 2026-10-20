@@ -276,7 +276,7 @@ func _create_pause_ui() -> void:
 			GameFX.set_visual_quality(q)
 			var cs: Node = get_tree().current_scene
 			if cs:
-				GameFX.upgrade_scene_visuals(cs, "night" if cs is Stage6_CapstoneBoss else ("outdoor" if (cs.name == "Main" or cs is Stage2_Parking or cs is Stage4_Vovinam) else "indoor"))
+				GameFX.upgrade_scene_visuals(cs, String(cs.get_meta("visual_preset", "morning")))
 			_refresh_pause_quality()
 			GameFX.play_ui("pop", -6.0))
 		qrow.add_child(qb)

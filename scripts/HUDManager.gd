@@ -205,6 +205,8 @@ func _setup_hud_audio() -> void:
 
 func _process(delta: float) -> void:
 	_update_chain_panel(delta)
+	if player_bike:
+		GameFX.music_tension(clampf(absf(float(player_bike.get("current_speed_ms"))) * 3.6 / 75.0 * 0.55 + float(player_bike.get("near_miss_chain")) * 0.12, 0.2, 1.0))
 	# Overlay luôn cập nhật (kể cả khi kết thúc để mờ dần)
 	var speed_int: float = clampf((last_speed_kmh - 52.0) / 42.0, 0.0, 1.0)
 	if is_boosting:

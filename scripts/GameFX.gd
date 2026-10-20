@@ -235,10 +235,30 @@ static func _quality() -> int:
 			return int(g.get("visual_quality"))
 	return 2
 
+var music: MusicDirector
+
+## Nhạc nền thủ tục theo màn: style thuộc MusicDirector.STYLES (menu, ride, parking, classroom, vovinam, canteen, capstone, exam)
+func music_play(style: String, tension: float = 0.35) -> void:
+	if music:
+		music.play(style)
+		music.set_tension(tension)
+
+func music_tension(v: float) -> void:
+	if music:
+		music.set_tension(v)
+
+func music_stop(fade: bool = true) -> void:
+	if music:
+		music.stop(fade)
+
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_audio_buses()
 	load_settings()
+	music = MusicDirector.new()
+	music.name = "Music"
+	add_child(music)
+
 	_layer = CanvasLayer.new()
 	_layer.layer = 90
 	add_child(_layer)
@@ -623,7 +643,20 @@ static func _find_first(node: Node, cls: String) -> Node:
 	return null
 
 ## Bảo đảm Environment có bầu trời ProceduralSky (phòng có cửa sổ cần thấy trời + ánh sáng trời cho SDFGI).
-static func _ensure_sky(e: Environment, night: bool) -> void:
+## Preset ánh sáng theo GIỜ TRONG NGÀY của từng màn (độ cao/hướng nắng, màu nắng, màu trời, sương, tonemap).
+## Tên cũ "outdoor"/"indoor"/"night" vẫn dùng được (alias).
+const TOD_PRESETS: Dictionary = {
+	"dawn":           {"outdoor": true,  "elev": 18.0, "azim": 118.0, "sun": Color(1.0, 0.82, 0.6), "energy": 2.0, "top": Color(0.36, 0.55, 0.9), "horizon": Color(0.99, 0.82, 0.64), "exposure": 1.08, "contrast": 1.08, "saturation": 1.06, "fog_tint": Color(0.98, 0.86, 0.72), "shafts": false, "haze": false, "ambient": 1.45},
+	"morning":        {"outdoor": true,  "elev": 22.0, "azim": 112.0, "sun": Color(1.0, 0.9, 0.76), "energy": 1.5,  "top": Color(0.3, 0.58, 0.95),  "horizon": Color(0.9, 0.9, 0.9),   "exposure": 1.0, "contrast": 1.07, "saturation": 1.02, "fog_tint": Color(0.92, 0.93, 0.97), "shafts": false, "haze": false},
+	"morning_indoor": {"outdoor": false, "elev": 24.0, "azim": 120.0, "sun": Color(0.96, 0.98, 1.0), "energy": 1.7,  "top": Color(0.3, 0.6, 0.97),   "horizon": Color(0.85, 0.9, 0.97), "exposure": 1.08, "contrast": 1.06, "saturation": 0.98, "fog_tint": Color(0.95, 0.97, 1.0), "shafts": true,  "haze": false},
+	"noon":           {"outdoor": true,  "elev": 58.0, "azim": 150.0, "sun": Color(1.0, 0.98, 0.95), "energy": 1.75, "top": Color(0.22, 0.5, 0.95),  "horizon": Color(0.82, 0.88, 0.96), "exposure": 0.98, "contrast": 1.1,  "saturation": 1.05, "fog_tint": Color(0.9, 0.93, 0.98), "shafts": false, "haze": false},
+	"midday_open":    {"outdoor": false, "elev": 70.0, "azim": 175.0, "sun": Color(1.0, 0.99, 0.96), "energy": 1.85, "top": Color(0.25, 0.52, 0.96), "horizon": Color(0.86, 0.9, 0.95),  "exposure": 1.05, "contrast": 1.06, "saturation": 1.03, "fog_tint": Color(0.95, 0.95, 0.93), "shafts": false, "haze": true},
+	"exam":           {"outdoor": false, "elev": 30.0, "azim": 125.0, "sun": Color(0.97, 0.98, 1.0), "energy": 1.35, "top": Color(0.32, 0.58, 0.95), "horizon": Color(0.85, 0.9, 0.96),  "exposure": 1.08, "contrast": 1.04, "saturation": 0.97, "fog_tint": Color(0.95, 0.97, 1.0), "shafts": false, "haze": false},
+	"night":          {"outdoor": false, "elev": 40.0, "azim": 200.0, "sun": Color(0.62, 0.72, 1.0), "energy": 0.22, "top": Color(0.015, 0.025, 0.07), "horizon": Color(0.09, 0.11, 0.2), "exposure": 1.0, "contrast": 1.07, "saturation": 1.0, "fog_tint": Color(0.1, 0.12, 0.2), "shafts": false, "haze": false}
+}
+const TOD_ALIASES: Dictionary = {"outdoor": "morning", "indoor": "exam"}
+
+static func _ensure_sky(e: Environment, night: bool, top: Color = Color(0.3, 0.6, 0.97), horizon: Color = Color(0.8, 0.88, 0.97)) -> void:
 	var sm: ProceduralSkyMaterial = null
 	if e.background_mode == Environment.BG_SKY and e.sky and e.sky.sky_material is ProceduralSkyMaterial:
 		sm = e.sky.sky_material
@@ -648,6 +681,9 @@ static func _ensure_sky(e: Environment, night: bool) -> void:
 		sm.ground_horizon_color = Color(0.06, 0.06, 0.08)
 		sm.sky_energy_multiplier = 0.4
 	else:
+		sm.sky_top_color = top
+		sm.sky_horizon_color = horizon
+		sm.sky_energy_multiplier = 1.0
 		# Bán cầu dưới của sky màu trung tính: tránh ám xanh lá lên mặt dưới mái che / trần hiên
 		sm.ground_bottom_color = Color(0.27, 0.26, 0.24)
 		sm.ground_horizon_color = Color(0.72, 0.72, 0.7)
@@ -657,14 +693,19 @@ static func _ensure_sky(e: Environment, night: bool) -> void:
 static func upgrade_scene_visuals(root: Node, preset: String = "outdoor") -> void:
 	if root == null:
 		return
-	var outdoor: bool = preset == "outdoor"
-	var night: bool = preset == "night"
+	var key: String = String(TOD_ALIASES.get(preset, preset))
+	if not TOD_PRESETS.has(key):
+		key = "morning"
+	var tod: Dictionary = TOD_PRESETS[key]
+	root.set_meta("visual_preset", key)
+	var outdoor: bool = bool(tod["outdoor"])
+	var night: bool = key == "night"
 	var q: int = _quality() # 0 thấp / 1 trung bình / 2 cao (menu Cài đặt đồ hoạ)
 	var env_node: WorldEnvironment = _find_first(root, "WorldEnvironment") as WorldEnvironment
 	if env_node and env_node.environment:
 		var e: Environment = env_node.environment.duplicate(true)
 		env_node.environment = e
-		_ensure_sky(e, night)
+		_ensure_sky(e, night, tod["top"], tod["horizon"])
 		e.ssao_enabled = q >= 1
 		e.ssao_radius = 1.8
 		e.ssao_intensity = 2.2
@@ -688,27 +729,48 @@ static func upgrade_scene_visuals(root: Node, preset: String = "outdoor") -> voi
 		e.glow_hdr_threshold = 1.05
 		e.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 		e.tonemap_mode = Environment.TONE_MAPPER_ACES
-		e.tonemap_exposure = 1.0 if (outdoor or night) else 1.1
+		e.tonemap_exposure = float(tod["exposure"])
 		e.tonemap_white = 4.0
 		e.adjustment_enabled = true
 		e.adjustment_brightness = 1.02
-		e.adjustment_contrast = 1.07
-		e.adjustment_saturation = 1.0
+		e.adjustment_contrast = float(tod["contrast"])
+		e.adjustment_saturation = float(tod["saturation"])
 		if outdoor:
 			e.fog_enabled = true
-			e.fog_density = 0.00016
-			e.fog_sun_scatter = 0.06
+			e.fog_light_color = tod["fog_tint"]
+			e.fog_density = 0.00016 if key != "dawn" else 0.00026
+			e.fog_sun_scatter = 0.06 if key != "dawn" else 0.16
 			e.fog_aerial_perspective = 0.2
 			e.fog_sky_affect = 0.04
 			e.volumetric_fog_enabled = q >= 2
-			e.volumetric_fog_density = 0.0014
-			e.volumetric_fog_albedo = Color(0.9, 0.93, 1.0)
+			e.volumetric_fog_density = 0.0014 if key != "dawn" else 0.0022
+			e.volumetric_fog_albedo = tod["fog_tint"]
 			e.volumetric_fog_length = 200.0
-			e.volumetric_fog_anisotropy = 0.55
+			e.volumetric_fog_anisotropy = 0.55 if key != "dawn" else 0.7
 			e.volumetric_fog_sky_affect = 0.03
+		elif bool(tod["shafts"]) and q >= 2:
+			# Tia nắng xuyên cửa sổ phòng học 07:30 (sương thể tích mỏng trong nhà)
+			e.fog_enabled = false
+			e.volumetric_fog_enabled = true
+			e.volumetric_fog_density = 0.012
+			e.volumetric_fog_albedo = Color(1.0, 0.98, 0.94)
+			e.volumetric_fog_length = 40.0
+			e.volumetric_fog_anisotropy = 0.75
+			e.volumetric_fog_ambient_inject = 0.0
+			e.volumetric_fog_sky_affect = 0.0
+		elif bool(tod["haze"]):
+			# Nắng trưa 11:30 ở căn tin hở: sương nhiệt nhẹ phía xa
+			e.fog_enabled = true
+			e.fog_light_color = tod["fog_tint"]
+			e.fog_density = 0.0009
+			e.fog_sun_scatter = 0.1
+			e.fog_aerial_perspective = 0.3
+			e.volumetric_fog_enabled = false
 		else:
 			e.fog_enabled = false
 			e.volumetric_fog_enabled = false
+		if tod.has("ambient"):
+			e.ambient_light_energy = float(tod["ambient"]) # trời sớm: bầu trời tối hơn nên bù ánh sáng môi trường
 		if night:
 			e.ambient_light_energy = 0.3 if q >= 2 else 0.5
 			e.ambient_light_color = Color(0.7, 0.78, 1.0)
@@ -728,14 +790,13 @@ static func upgrade_scene_visuals(root: Node, preset: String = "outdoor") -> voi
 		sun.shadow_bias = 0.03
 		sun.shadow_normal_bias = 1.6
 		sun.shadow_blur = 1.2
-		if night:
-			sun.light_energy = 0.22
-			sun.light_color = Color(0.62, 0.72, 1.0)
-			sun.light_indirect_energy = 0.6
-		else:
-			sun.light_indirect_energy = 1.3
-			if sun.light_energy < 1.2:
-				sun.light_energy = 1.3
+		sun.rotation_degrees = Vector3(-float(tod["elev"]), float(tod["azim"]), 0.0)
+		sun.light_color = tod["sun"]
+		sun.light_energy = float(tod["energy"])
+		sun.light_indirect_energy = 0.6 if night else 1.3
+		if key == "dawn":
+			sun.directional_shadow_max_distance = [220.0, 360.0, 520.0][q] # bóng dài buổi sớm
+			sun.light_angular_distance = 1.2
 
 # ---------------------------------------------------------------------------
 # TIỆN ÍCH HUD CHUẨN GODOT 4 (anchors / containers, không offset cứng)

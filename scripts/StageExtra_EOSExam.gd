@@ -108,7 +108,8 @@ func _ready() -> void:
 	menu_btn.pressed.connect(_on_menu_pressed)
 	retry_btn.pressed.connect(_on_retry_pressed)
 	GameFX.disable_button_focus(hud)
-	GameFX.upgrade_scene_visuals(self, "indoor")
+	GameFX.upgrade_scene_visuals(self, "exam")
+	GameFX.music_play("exam", 0.3)
 	walk_cam.top_level = true
 	proctor.rotation.y = PI
 	cam_yaw = PI

@@ -150,7 +150,8 @@ func _ready() -> void:
 
 	execute_btn.visible = false
 	GameFX.disable_button_focus(hud)
-	GameFX.upgrade_scene_visuals(self, "outdoor")
+	GameFX.upgrade_scene_visuals(self, "noon")
+	GameFX.music_play("vovinam", 0.5)
 	next_btn.pressed.connect(_on_next_pressed)
 	menu_btn.pressed.connect(_on_menu_pressed)
 	retry_btn.pressed.connect(_on_retry_pressed)
