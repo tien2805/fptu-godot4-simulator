@@ -246,12 +246,15 @@ func _build_arena_extras() -> void:
 
 	# SÂN VÕ ĐẶT GIỮA NỬA SÂN LÁT GẠCH CỦA SÂN TRONG CAMPUS THẬT: toàn bộ vòng nhà, hồ sen, cóc vàng bao quanh
 	var cm: Dictionary = FPTUCampusBuilder.make_materials()
+	# tâm nửa sân lát gạch (phía sảnh trống đồng) của sân trong v8 = gốc sân võ
+	var court: Rect2 = FPTUCampusBuilder.ring_courtyard_rect()
+	var arena_c := Vector3(court.position.x + court.size.x * 0.25, 0.0, court.position.y + court.size.y * 0.5)
 	var world := Node3D.new()
 	world.name = "CampusWorld"
-	world.position = Vector3(-60.5, 0.0, -53.0)
+	world.position = -arena_c
 	$Arena.add_child(world)
 	FPTUCampusBuilder.build_authentic_campus(world, Vector3.ZERO, 0.0, {"grass": true})
-	FPTUCampusBuilder.build_hutech(world, Vector3(135.0, 0.0, -26.0), cm)
+	FPTUCampusBuilder.build_hutech(world, FPTUCampusBuilder.hutech_origin_local(), cm)
 	FPTUCampusBuilder.build_d1_road_piece(world, -13.0, -80.0, 300.0, cm, 0.0)
 	# Nắng từ phía sau lưng người xem để thảm võ không bị bóng cánh nhà che
 	$DirectionalLight3D.rotation_degrees = Vector3(-62.0, 20.0, 0.0)
@@ -263,14 +266,16 @@ func _build_arena_extras() -> void:
 	bnm.size = Vector3(11.0, 1.3, 0.08)
 	banner.mesh = bnm
 	banner.material_override = mat_banner
-	banner.position = Vector3(0.0, 3.0, -17.4)
+	# treo trên hiên cột cánh trước (mặt sân trong của cánh trước = RING_V0 + LONG_D), 0,6 m trước mặt cột
+	var banner_z: float = (FPTUCampusBuilder.RING_V0 + FPTUCampusBuilder.LONG_D) - arena_c.z + 0.6
+	banner.position = Vector3(0.0, 3.0, banner_z)
 	$Arena.add_child(banner)
 	var bl := Label3D.new()
 	bl.text = "GIẢI VOVINAM FPTU – ĐÒN CHÂN KẸP CỔ #21\nCLB VOVINAM ĐẠI HỌC FPT TP.HCM"
 	bl.font_size = 34
 	bl.outline_size = 8
 	bl.modulate = Color("#FFD100")
-	bl.position = Vector3(0.0, 3.0, -17.34)
+	bl.position = Vector3(0.0, 3.0, banner_z + 0.06)
 	$Arena.add_child(bl)
 	var mat_flag_b := StandardMaterial3D.new()
 	mat_flag_b.albedo_color = Color("#0055A5")

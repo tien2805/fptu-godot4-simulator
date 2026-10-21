@@ -9,18 +9,21 @@ extends SceneTree
 var cam: Camera3D
 var frames: int = 0
 var shot_idx: int = -1
+# v8: cổng tây u = 181, làn xe mép Tây u = 183, bãi xe v 94..113 (làn 103.5), lối vào sau u ≈ 121.5, sân trong u 42..147 ×
+# v 30..79, sảnh thông tầng cửa kính v ≈ 69.4, cầu thang u = 164, sảnh trống đồng u ≈ 85.5, mặt tiền v = 16.
 var shots: Array = [
-	{"name": "s2_01_d1_approach", "pos": Vector3(136.0, 2.0, -9.7), "look": Vector3(185.0, 5.0, -4.0), "fov": 72.0},
-	{"name": "s2_02_park_gate", "pos": Vector3(166.0, 2.4, -16.0), "look": Vector3(176.0, 2.6, 6.0), "fov": 66.0},
-	{"name": "s2_03_lane_along_wing", "pos": Vector3(175.0, 2.6, 18.0), "look": Vector3(170.0, 7.0, 90.0), "fov": 70.0},
-	{"name": "s2_04_parking_lot", "pos": Vector3(162.0, 2.8, 100.0), "look": Vector3(112.0, 2.0, 100.0), "fov": 70.0},
-	{"name": "s2_05_back_passage", "pos": Vector3(110.3, 2.2, 98.0), "look": Vector3(110.3, 4.0, 68.0), "fov": 72.0},
-	{"name": "s2_06_courtyard_pond", "pos": Vector3(111.0, 2.4, 69.0), "look": Vector3(84.0, 5.0, 44.0), "fov": 72.0},
-	{"name": "s2_07_atrium_stair_hall", "pos": Vector3(136.5, 1.7, 67.5), "look": Vector3(150.0, 6.0, 52.0), "fov": 72.0},
-	{"name": "s2_08_stair_top_door", "pos": Vector3(150.0, 19.3, 44.0), "look": Vector3(150.0, 19.0, 34.0), "fov": 70.0},
-	{"name": "s2_10_lobby_trong_dong", "pos": Vector3(76.6, 1.7, 36.5), "look": Vector3(76.6, 1.1, 22.0), "fov": 68.0},
-	{"name": "s2_11_facade_front", "pos": Vector3(60.0, 6.0, -14.0), "look": Vector3(125.0, 12.0, 24.0), "fov": 64.0},
-	{"name": "s2_09_birdseye", "pos": Vector3(90.0, 120.0, -70.0), "look": Vector3(90.0, 0.0, 62.0), "fov": 60.0}
+	{"name": "s2_01_d1_approach", "pos": Vector3(143.0, 2.0, -9.7), "look": Vector3(192.0, 5.0, -4.0), "fov": 72.0},
+	{"name": "s2_02_park_gate", "pos": Vector3(173.0, 2.4, -16.0), "look": Vector3(183.0, 2.6, 6.0), "fov": 66.0},
+	{"name": "s2_03_lane_along_wing", "pos": Vector3(183.0, 2.6, 18.0), "look": Vector3(178.0, 7.0, 95.0), "fov": 70.0},
+	{"name": "s2_04_parking_lot", "pos": Vector3(172.0, 2.8, 103.5), "look": Vector3(110.0, 2.0, 103.5), "fov": 70.0},
+	{"name": "s2_05_back_passage", "pos": Vector3(121.5, 2.0, 84.0), "look": Vector3(121.5, 2.5, 108.0), "fov": 72.0},
+	{"name": "s2_06_courtyard_pond", "pos": Vector3(122.0, 2.4, 76.0), "look": Vector3(90.0, 5.0, 48.0), "fov": 72.0},
+	{"name": "s2_07_atrium_stair_hall", "pos": Vector3(150.0, 1.7, 69.4), "look": Vector3(164.0, 5.0, 50.0), "fov": 72.0},
+	{"name": "s2_08_stair_top_door", "pos": Vector3(164.0, 19.3, 46.0), "look": Vector3(164.0, 19.0, 34.0), "fov": 70.0},
+	{"name": "s2_10_lobby_trong_dong", "pos": Vector3(85.5, 1.7, 36.0), "look": Vector3(85.5, 1.1, 20.0), "fov": 68.0},
+	{"name": "s2_11_facade_front", "pos": Vector3(55.0, 6.0, -14.0), "look": Vector3(125.0, 12.0, 20.0), "fov": 64.0},
+	{"name": "s2_09_birdseye", "pos": Vector3(95.0, 215.0, 25.0), "look": Vector3(95.0, 0.0, 62.0), "fov": 60.0},
+	{"name": "s2_12_birdseye_back", "pos": Vector3(95.0, 95.0, 200.0), "look": Vector3(95.0, 0.0, 70.0), "fov": 62.0}
 ]
 var out_dir: String = ""
 

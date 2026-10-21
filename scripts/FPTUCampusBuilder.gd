@@ -17,8 +17,22 @@
 #   - Vật liệu: mặt tường ô bàn cờ = fptu_alpha_facade.png (crop ảnh chụp thật) + normal map vẽ code,
 #     hồ = lotus_pond_real.png, bảng ảnh thật fptu_*.png; mái ngói/cỏ/sân gạch/bảng tên/cờ/cỏ billboard =
 #     texture vẽ code (generate_campus_textures.py).
-# Hệ toạ độ cục bộ: X = dọc D1 (u, 0 ở cổng chính, tăng theo chiều xe chạy), Z = chiều sâu (v, 0 ở ranh giới
-# giáp vỉa hè), Y lên. Mặt đường D1 ở phía -Z (tim đường tại v = -13).
+# Hệ toạ độ cục bộ: X = dọc D1 (u, 0 ở góc Đông Nam lô đất, tăng theo chiều xe chạy về Tây Bắc), Z = chiều sâu
+# (v, 0 ở ranh giới giáp vỉa hè, tăng về Đông Bắc vào trong lô), Y lên. Mặt đường D1 ở phía -Z (tim đường tại v = -13).
+#
+# v8 (2026-10-22, "real map"): kích thước & vị trí lấy từ assets/data/mapdata.json (OSM, xem docs/superpowers/plans/
+# 2026-10-22-real-map-world.md, Task 4). Trong hệ cục bộ (gốc = góc ĐN lô, quay 136° quanh Y so với hệ thế giới):
+#   - Lô đất: mặt tiền D1 188 m (PLOT_U = 190), sâu 123 m ở đầu ĐN / 107 m ở đầu Tây (lô hình thang) -> PLOT_V = 116
+#     (giá trị trung bình; 4 góc hình chữ nhật cách đỉnh lô thật < 12 m, xem tests/test_campus_real.gd).
+#   - Cổng chính (node entrance OSM) ở u = 7 ngay góc ĐN; cổng tây (entrance thứ 2) ở u = 181 gần góc Tây; cả hai trên D1.
+#     Cổng sau (BACK_GATE_U, v = PLOT_V) mở ra dải bãi xe phía sau (hotspot Màn 2 của thế giới mở).
+#   - Vòng nhà thật: mép ngoài u 15..176 × v 15.5..83 (phình tới 95.7 ở giữa cánh sau); sân trong u 39..144 × v 30..72
+#     (phình tới 80.6). Mô hình: mép ngoài RING_* = u 14..175 × v 16..93, cánh đầu 28 m, cánh dài 14 m
+#     -> SÂN TRONG 105 × 49 m (ring_courtyard_rect(); kế hoạch yêu cầu 100..110 × 48..52).
+#   - Bãi xe máy thật: dải 128 × 12 m dọc mép sau (u 58..186, v ≈ 101..113) -> 2 dãy mái + làn giữa tại v 94..113.
+#   - Sân bóng mini thật 42 × 22 m ở góc sau phía ĐN (tâm u 34.5, v 103) -> pitch_center_local().
+#   - HUTECH thật: khối chính u 89..183 × v −72..−104, cổng trên hàng rào v ≈ −46 -> hutech_origin_local().
+#   real_plot_transform(): Transform3D đưa hệ cục bộ lên hệ thế giới (x đông, z nam, gốc = trọng tâm campus).
 #
 # opts (Dictionary) cho build_authentic_campus:
 #   "colliders": bool        – tạo StaticBody3D cho nhà, xe, cây, rào, hồ (Màn 2 cần cho xe máy)
@@ -33,41 +47,66 @@
 class_name FPTUCampusBuilder
 extends RefCounted
 
-const PLOT_U: float = 180.0
-const PLOT_V: float = 115.0
+const PLOT_U: float = 190.0
+const PLOT_V: float = 116.0
 const FLOOR_H: float = 3.6
 const TEX_DIR: String = "res://assets/textures/"
-const MAIN_GATE_U: float = 6.0
-const PARK_GATE_U: float = 174.0
+const MAIN_GATE_U: float = 7.0          # cổng chính thật: 7 m từ góc ĐN lô, trên D1
+const WEST_GATE_U: float = 181.0        # cổng tây thật (campus_west_gate): 7 m từ góc Tây lô, trên D1 – xe máy vào bãi
+const PARK_GATE_U: float = WEST_GATE_U  # tên cũ (Màn 2): cổng bãi xe = cổng tây
+const WEST_LANE_U: float = 183.0        # tim làn xe 7 m dọc mép Tây lô, từ cổng tây tới bãi xe sau
+const BACK_GATE_U: float = 122.0        # cổng sau (hàng rào mép ĐB, v = PLOT_V) mở thẳng ra dải bãi xe
 const ROAD_CENTER_V: float = -13.0
 
-# Vòng nhà chữ nhật
-const RING_U0: float = 10.0
-const RING_U1: float = 160.0
-const RING_V0: float = 21.0
-const RING_V1: float = 85.0
+# Vị trí lô đất thật trong hệ thế giới (mapdata.json): quay 136° quanh Y (+u chạy từ góc ĐN về Tây Bắc dọc D1,
+# +v hướng ĐB vào lô); gốc giải sao cho (MAIN_GATE_U, 0, 0) rơi đúng campus_main_gate. Hằng số dự phòng khi thiếu MapData.
+const REAL_ROT_Y_DEG: float = 136.0
+const REAL_MAIN_GATE_XZ: Vector2 = Vector2(16.1, 99.5)
+
+# Vòng nhà chữ nhật: RING_* = MÉP NGOÀI toà nhà; sân trong = RING_U0 + SIDE_D .. RING_U1 - SIDE_D × RING_V0 + LONG_D .. RING_V1 - LONG_D
+const RING_U0: float = 14.0
+const RING_U1: float = 175.0
+const RING_V0: float = 16.0
+const RING_V1: float = 93.0
 const LONG_D: float = 14.0    # độ dày cánh dài (trước/sau)
-const SIDE_D: float = 26.0    # độ dày cánh ngắn (hai đầu, khối núi)
+const SIDE_D: float = 28.0    # độ dày cánh ngắn (hai đầu, khối núi; thật 24 m đầu ĐN / 32 m đầu Tây)
 const LINK_W: float = 3.0
+const MODULE_NOMINAL_W: float = 14.0  # bề rộng danh định một module lớp học (mô hình giấy) -> suy ra số module cánh dài
+const FRONT_MODULES: int = int(((RING_U1 - SIDE_D) - (RING_U0 + SIDE_D) + LINK_W + (MODULE_NOMINAL_W + LINK_W) * 0.5) / (MODULE_NOMINAL_W + LINK_W)) # round(108 / 17) = 6
+const SIDE_MODULES: int = 4
+const SIDE_MODULE_W: float = ((RING_V1 - RING_V0) - float(SIDE_MODULES - 1) * LINK_W) / float(SIDE_MODULES) # = 17
 const LOBBY_MODULE: int = 2   # module thứ 3 cánh trước là sảnh xuyên
 const BACK_GAP_MODULE: int = 4 # module thứ 5 cánh sau là lối đi từ bãi xe vào sân
 
-# Bãi xe máy phía sau
-const PARK_CX: float = 118.0
-const PARK_ROW_A: float = 93.5
-const PARK_ROW_B: float = 106.5
-const PARK_LANE_V: float = 100.0
-const PARK_HALF_LEN: float = 32.0
+# Bãi xe máy phía sau: dải thật 128 × 12 m dọc mép ĐB (u 58..186, v ≈ 101..113) -> 2 dãy mái 7 m + làn 7 m ở giữa
+const PARK_CX: float = 122.0
+const PARK_HALF_LEN: float = 56.0      # dãy mái u 66..178 (chừa làn xe mép Tây tại WEST_LANE_U)
+const PARK_ROW_A: float = 97.5         # dãy sát lưng toà nhà (mái 94..101)
+const PARK_LANE_V: float = 103.5       # làn xe đỏ 7 m (100..107)
+const PARK_ROW_B: float = 109.5        # dãy ngoài (mái 106..113)
+const PARK_CANOPY_W: float = 7.0
+
+# Sân bóng mini thật 42 × 22 m, góc sau phía ĐN (tâm thật u 34.5, v 103; đặt song song trục u)
+const PITCH_CX: float = 35.0
+const PITCH_CV: float = 105.0
+const PITCH_LEN: float = 42.0
+const PITCH_W: float = 22.0
+
+# HUTECH đối diện (footprint thật 94 × 32 m, tâm cách cổng trên hàng rào mặt D1 42 m về phía sau)
+const HUTECH_BLOCK_LEN: float = 94.0
+const HUTECH_BLOCK_DEPTH: float = 32.0
+const HUTECH_BLOCK_OFFSET: float = 42.0
 
 # Cầu thang ngoài trời (mặt ngoài cánh trước, đầu phía cổng bãi xe) -> Lab 402
 const STAIR_V: float = 19.4            # (cũ – cầu thang ngoài trời, giữ để tương thích)
 const STAIR_RUN: float = 30.5
 const STAIR_TOP_Y: float = 17.9
 const STAIR_W: float = 5.0
-## CẦU THANG TRONG NHÀ (v7): sảnh thông tầng ở module 1–2 cánh phải, thang chạy dọc v từ sân trong (v=64) lên
-## chiếu nghỉ đỉnh ở đầu nam module 1 (v≈37.75), cửa Lab 402 mở ở mặt nam module 0, lầu 4.
-const STAIR_U: float = 150.0
-const STAIR_FOOT_V: float = 64.0
+## CẦU THANG TRONG NHÀ (v7): sảnh thông tầng ở module 1–2 cánh phải, thang chạy dọc v từ cửa kính sân trong
+## (ATRIUM_DOOR_V, đầu nam module 2) lên chiếu nghỉ đỉnh trong khối link 0/1, cửa Lab 402 mở ở mặt nam module 0, lầu 4.
+const STAIR_U: float = RING_U1 - SIDE_D * 0.5 + 3.0   # = 164: trong cánh phải (u 147..175), lệch 3 m về mặt ngoài
+const ATRIUM_DOOR_V: float = RING_V0 + 3.0 * SIDE_MODULE_W + 2.0 * LINK_W - 3.6  # tâm lối vào kính module 2 (= 69.4)
+const STAIR_FOOT_V: float = ATRIUM_DOOR_V - 2.5
 const STAIR_SLOT_HALF: float = 3.0     # nửa bề rộng khe thang trong sàn các tầng
 const ATRIUM_MODULES: Array[int] = [1, 2]
 
@@ -705,22 +744,116 @@ static func build_mountain_bar(parent: Node3D, local_pos: Vector3, length: float
 # ===========================================================================
 static func _front_module_w() -> float:
 	var span: float = (RING_U1 - SIDE_D) - (RING_U0 + SIDE_D)
-	return (span - 5.0 * LINK_W) / 6.0
+	return (span - float(FRONT_MODULES - 1) * LINK_W) / float(FRONT_MODULES)
+
+## Số tầng từng module cánh dài: hai đầu cao (6), trũng xuống 4 ở giữa (mô hình giấy [6,5,4,4,5,6] với 6 module).
+static func _long_wing_profile() -> Array:
+	var prof: Array = []
+	for k: int in range(FRONT_MODULES):
+		var d: int = mini(k, FRONT_MODULES - 1 - k) # khoảng cách tới đầu gần nhất
+		prof.append(maxi(4, 6 - d))
+	return prof
+
+## Số tầng từng module cánh đầu (khối núi): 7 ở hai đầu, 8 ở giữa.
+static func _side_wing_profile() -> Array:
+	var prof: Array = []
+	for k: int in range(SIDE_MODULES):
+		prof.append(7 if (k == 0 or k == SIDE_MODULES - 1) else 8)
+	return prof
+
+## Tâm module k (0-based) của cánh dài, theo u.
+static func front_module_u(k: int) -> float:
+	var mw: float = _front_module_w()
+	return (RING_U0 + SIDE_D) + float(k) * (mw + LINK_W) + mw * 0.5
 
 static func lobby_u() -> float:
-	var mw: float = _front_module_w()
-	return (RING_U0 + SIDE_D) + float(LOBBY_MODULE) * (mw + LINK_W) + mw * 0.5
+	return front_module_u(LOBBY_MODULE)
 
 static func back_gap_u() -> float:
-	var mw: float = _front_module_w()
-	return (RING_U0 + SIDE_D) + float(BACK_GAP_MODULE) * (mw + LINK_W) + mw * 0.5
+	return front_module_u(BACK_GAP_MODULE)
 
 static func _side_module_w() -> float:
-	return ((RING_V1 - RING_V0) - 3.0 * LINK_W) / 4.0
+	return SIDE_MODULE_W
 
 ## v của đầu nam module 1 cánh phải (= sau khối link 0/1): chiếu nghỉ đỉnh cầu thang trong nhà.
 static func stair_top_v() -> float:
 	return RING_V0 + _side_module_w() + LINK_W
+
+## Sân trong (mép trong vòng nhà) trong hệ cục bộ: Rect2(u0, v0, dài, sâu) = 105 × 49 m theo dữ liệu thật.
+static func ring_courtyard_rect() -> Rect2:
+	return Rect2(RING_U0 + SIDE_D, RING_V0 + LONG_D, (RING_U1 - SIDE_D) - (RING_U0 + SIDE_D), (RING_V1 - LONG_D) - (RING_V0 + LONG_D))
+
+## Mép ngoài vòng nhà trong hệ cục bộ.
+static func ring_outer_rect() -> Rect2:
+	return Rect2(RING_U0, RING_V0, RING_U1 - RING_U0, RING_V1 - RING_V0)
+
+## Lô đất (hình chữ nhật mô hình) trong hệ cục bộ.
+static func plot_rect() -> Rect2:
+	return Rect2(0.0, 0.0, PLOT_U, PLOT_V)
+
+static func main_gate_local() -> Vector3:
+	return Vector3(MAIN_GATE_U, 0.0, 0.0)
+
+static func west_gate_local() -> Vector3:
+	return Vector3(WEST_GATE_U, 0.0, 0.0)
+
+static func back_gate_local() -> Vector3:
+	return Vector3(BACK_GATE_U, 0.0, PLOT_V)
+
+static func parking_center_local() -> Vector3:
+	return Vector3(PARK_CX, 0.0, PARK_LANE_V)
+
+static func pitch_center_local() -> Vector3:
+	return Vector3(PITCH_CX, 0.0, PITCH_CV)
+
+## Tâm lối vào kính sảnh thông tầng cánh phải (mặt sân trong, module 2) – điểm rẽ vào cầu thang của Màn 2.
+static func atrium_door_local() -> Vector3:
+	return Vector3(RING_U1 - SIDE_D, 0.0, ATRIUM_DOOR_V)
+
+# --- Lô đất thật -------------------------------------------------------------
+## Transform đưa hệ cục bộ (u, y, v) lên hệ thế giới của mapdata.json (x đông, z nam, gốc = trọng tâm campus):
+## quay REAL_ROT_Y_DEG quanh Y, gốc giải sao cho Vector3(MAIN_GATE_U, 0, 0) rơi đúng cổng chính thật.
+## Dùng landmark campus_main_gate khi có MapData, không thì hằng số REAL_MAIN_GATE_XZ.
+static func real_plot_transform() -> Transform3D:
+	var gate: Vector2 = REAL_MAIN_GATE_XZ
+	var md: MapData = MapData.load_default()
+	if md != null:
+		var g: Variant = md.landmark("campus_main_gate")
+		if g is Array and (g as Array).size() >= 2:
+			gate = Vector2(float(g[0]), float(g[1]))
+	return real_plot_transform_from(gate)
+
+## Cùng phép đặt nhưng với toạ độ cổng chính (x, z) cho trước (test / dữ liệu khác).
+static func real_plot_transform_from(gate_xz: Vector2) -> Transform3D:
+	var basis := Basis(Vector3.UP, deg_to_rad(REAL_ROT_Y_DEG))
+	var origin: Vector3 = Vector3(gate_xz.x, 0.0, gate_xz.y) - basis * Vector3(MAIN_GATE_U, 0.0, 0.0)
+	return Transform3D(basis, origin)
+
+## Điểm thế giới (x, z) của mapdata -> hệ cục bộ campus (u, y=0, v); dùng hằng số dự phòng khi không có MapData.
+static func world_xz_to_local(p: Vector2) -> Vector3:
+	return real_plot_transform().affine_inverse() * Vector3(p.x, 0.0, p.y)
+
+## Gốc HUTECH (tim cổng trên hàng rào mặt D1) trong hệ cục bộ campus, suy từ footprint thật `hutech_building`:
+## khối chính nằm 26 m sau cổng (như build_hutech), cổng đặt giữa mặt tiền khối. Dự phòng (136, 0, -46).
+static func hutech_origin_local() -> Vector3:
+	var c: Vector3 = hutech_block_center_local()
+	return Vector3(c.x, 0.0, c.z + HUTECH_BLOCK_OFFSET)
+
+## Tâm khối chính HUTECH trong hệ cục bộ campus (từ hutech_building; dự phòng (136, 0, -88)).
+static func hutech_block_center_local() -> Vector3:
+	var md: MapData = MapData.load_default()
+	if md != null:
+		var poly: Variant = md.landmark("hutech_building")
+		if poly is Array and (poly as Array).size() >= 3:
+			var inv: Transform3D = real_plot_transform().affine_inverse()
+			var lo := Vector2(INF, INF)
+			var hi := Vector2(-INF, -INF)
+			for p: Variant in (poly as Array):
+				var l: Vector3 = inv * Vector3(float(p[0]), 0.0, float(p[1]))
+				lo = Vector2(minf(lo.x, l.x), minf(lo.y, l.z))
+				hi = Vector2(maxf(hi.x, l.x), maxf(hi.y, l.z))
+			return Vector3((lo.x + hi.x) * 0.5, 0.0, (lo.y + hi.y) * 0.5)
+	return Vector3(136.0, 0.0, -88.0)
 
 static func stair_foot() -> Vector3:
 	return Vector3(STAIR_U, 0.0, STAIR_FOOT_V)
@@ -751,27 +884,33 @@ static func stair_profile() -> Array[Vector3]:
 			pts.append(Vector3(STAIR_U, y, z))
 	return pts
 
+## 3 ô đỗ ứng viên (Màn 2): gần cổng tây nhất (mặt trong dãy B), giữa bãi (mặt trong dãy A), góc xa (mặt ngoài dãy B,
+## phải vòng qua đầu mái). Toạ độ suy từ dải bãi xe thật (PARK_CX ± PARK_HALF_LEN).
 static func parking_spot_candidates() -> Array[Vector3]:
 	return [
-		Vector3(143.0, 0.0, PARK_ROW_B - 1.8), # gần lối vào nhất, mặt trong dãy B
-		Vector3(106.6, 0.0, PARK_ROW_A + 1.8), # giữa bãi, mặt trong dãy A
-		Vector3(92.3, 0.0, PARK_ROW_B + 1.8)   # góc xa, mặt ngoài dãy B (phải vòng qua đầu mái)
+		Vector3(PARK_CX + PARK_HALF_LEN - 8.0, 0.0, PARK_ROW_B - 1.8),
+		Vector3(PARK_CX, 0.0, PARK_ROW_A + 1.8),
+		Vector3(PARK_CX - PARK_HALF_LEN + 6.0, 0.0, PARK_ROW_B + 1.8)
 	]
 
+## Bốt bảo vệ cổng tây (xe máy): nằm phía -u của cổng (phía +u là mép lô / làn xe).
 static func park_gate_guard_pos() -> Vector3:
-	return Vector3(PARK_GATE_U + 9.5, 0.0, 4.5)
+	return Vector3(PARK_GATE_U - 9.5, 0.0, 4.5)
 
-## Tâm phòng LAB 402: cánh phải, module 0, tầng 5 (lầu 4) – ngay sau cửa đỉnh cầu thang ngoài trời.
-## Phòng 14 m (dọc u) × 11.7 m (dọc v) × 3.3 m; cửa sổ phía sân trong (u nhỏ) và phía D1 (v nhỏ).
+## Tâm phòng LAB 402: cánh phải, module 0, tầng 5 (lầu 4) – ngay sau cửa đỉnh cầu thang trong nhà.
+## Phòng 14 m (dọc u) × 11.7 m (dọc v) × 3.3 m; cửa sổ phía sân trong (u nhỏ) và phía D1 (v nhỏ);
+## tường nam cách mặt nam module 0 (cửa Lab 402) 1,7 m.
 static func lab402_room_center() -> Vector3:
-	return Vector3(148.0, STAIR_TOP_Y + 0.15, 27.2)
+	var sz: Vector3 = lab402_room_size()
+	return Vector3(STAIR_U - 2.0, STAIR_TOP_Y + 0.15, RING_V0 + _side_module_w() - 1.7 - sz.z * 0.5)
 
 static func lab402_room_size() -> Vector3:
 	return Vector3(14.0, 3.3, 11.7)
 
 ## Tâm PHÒNG 311: cánh trước, module 4, tầng 3 (lầu 3). Phòng 12 × 10 × 3.3 m; cửa sổ 2 phía (D1 & sân trong).
+## Tầng 3 lùi 3,2 m về phía sân trong (setback) nên tâm module lệch 1,6 m về phía D1.
 static func room311_center() -> Vector3:
-	return Vector3(110.3, FLOOR_H * 3.0 + 0.05, 26.4)
+	return Vector3(front_module_u(4), FLOOR_H * 3.0 + 0.05, RING_V0 + LONG_D * 0.5 - 1.6)
 
 static func room311_size() -> Vector3:
 	return Vector3(12.0, 3.3, 10.0)
@@ -957,8 +1096,9 @@ static func build_authentic_campus(parent: Node3D, gate_origin: Vector3, rot_y_d
 	parent.add_child(root)
 
 	_build_ground_and_boundary(root, m)
-	_build_gate(root, m, MAIN_GATE_U, true)
-	_build_gate(root, m, PARK_GATE_U, false)
+	_build_gate(root, m, MAIN_GATE_U, true, 1.0)
+	_build_gate(root, m, WEST_GATE_U, false, -1.0)
+	_build_back_gate(root, m)
 	_build_front_plaza(root, m)
 	_build_ring_building(root, m)
 	_build_courtyard(root, m)
@@ -982,10 +1122,11 @@ static func _build_ground_and_boundary(root: Node3D, m: Dictionary) -> void:
 		_box(root, Vector3(gu, 0.05, -2.7), Vector3(14.0, 0.1, 5.4), m["red_plaza"])
 		for sx: float in [-1.0, 1.0]:
 			_box(root, Vector3(gu + sx * 7.1, 0.2, -5.3), Vector3(0.3, 0.4, 0.3), m["granite"])
-	var gaps: Array = [[MAIN_GATE_U - 6.5, MAIN_GATE_U + 6.5], [PARK_GATE_U - 6.5, PARK_GATE_U + 6.5]]
-	var u: float = -12.0
-	while u < PLOT_U + 12.0:
-		var seg_end: float = minf(u + 6.0, PLOT_U + 12.0)
+	# Hàng rào mặt tiền (tường thấp + hàng rào cây) đúng ranh giới lô 0..PLOT_U, chừa cổng chính & cổng tây
+	var gaps: Array = [[MAIN_GATE_U - 6.5, MAIN_GATE_U + 6.5], [WEST_GATE_U - 6.5, WEST_GATE_U + 6.5]]
+	var u: float = -0.5
+	while u < PLOT_U + 0.5:
+		var seg_end: float = minf(u + 6.0, PLOT_U + 0.5)
 		var in_gap: bool = false
 		for g: Array in gaps:
 			if u < float(g[1]) and seg_end > float(g[0]):
@@ -997,14 +1138,22 @@ static func _build_ground_and_boundary(root: Node3D, m: Dictionary) -> void:
 			_box(root, Vector3(cx, 0.8, 1.1), Vector3(seg_end - u - 0.3, 1.4, 1.0), m["leaf2"])
 			_col_box(root, Vector3(cx, 0.8, 0.6), Vector3(seg_end - u, 1.6, 1.4))
 		u = seg_end
-	for side: float in [-10.0, PLOT_U + 10.0]:
+	# Hai hàng rào bên đúng mép lô (lô thật: góc ĐN tại u = 0, góc Tây tại u ≈ 188)
+	for side: float in [-0.5, PLOT_U + 0.5]:
 		_box(root, Vector3(side, 0.3, PLOT_V * 0.5), Vector3(0.35, 0.6, PLOT_V), m["white"])
-		_box(root, Vector3(side + (1.0 if side < 0.0 else -1.0), 0.8, PLOT_V * 0.5), Vector3(0.9, 1.4, PLOT_V - 2.0), m["leaf2"])
+		_box(root, Vector3(side + (1.0 if side < 1.0 else -1.0), 0.8, PLOT_V * 0.5), Vector3(0.9, 1.4, PLOT_V - 2.0), m["leaf2"])
 		_col_box(root, Vector3(side, 0.8, PLOT_V * 0.5), Vector3(1.6, 1.6, PLOT_V))
-	_box(root, Vector3(PLOT_U * 0.5, 0.3, PLOT_V + 5.0), Vector3(PLOT_U + 20.0, 0.6, 0.35), m["white"])
-	_col_box(root, Vector3(PLOT_U * 0.5, 0.8, PLOT_V + 5.0), Vector3(PLOT_U + 20.0, 1.6, 0.6))
+	# Hàng rào sau (mép ĐB) chừa cổng sau 11 m tại BACK_GATE_U
+	for seg: Array in [[-0.5, BACK_GATE_U - 5.5], [BACK_GATE_U + 5.5, PLOT_U + 0.5]]:
+		var a: float = float(seg[0])
+		var b: float = float(seg[1])
+		_box(root, Vector3((a + b) * 0.5, 0.3, PLOT_V + 0.5), Vector3(b - a, 0.6, 0.35), m["white"])
+		_box(root, Vector3((a + b) * 0.5, 1.0, PLOT_V + 0.5), Vector3(b - a, 0.05, 0.4), m["steel"])
+		_col_box(root, Vector3((a + b) * 0.5, 0.8, PLOT_V + 0.5), Vector3(b - a, 1.6, 0.6))
 
-static func _build_gate(root: Node3D, m: Dictionary, u: float, is_main: bool) -> void:
+## Cổng trên mặt D1 (12 m giữa hai trụ đá). `s` = phía đặt bốt bảo vệ / trụ barie / bảng (+1 = phía +u, -1 = phía -u):
+## cổng chính ở góc ĐN nên bốt về phía +u; cổng tây sát góc Tây nên bốt về phía -u (phía +u là làn xe & mép lô).
+static func _build_gate(root: Node3D, m: Dictionary, u: float, is_main: bool, s: float = 1.0) -> void:
 	for sx: float in [-1.0, 1.0]:
 		_box(root, Vector3(u + sx * 6.0, 2.6, 0.2), Vector3(1.2, 5.2, 1.2), m["granite"])
 		_col_box(root, Vector3(u + sx * 6.0, 2.6, 0.2), Vector3(1.2, 5.2, 1.2))
@@ -1012,51 +1161,79 @@ static func _build_gate(root: Node3D, m: Dictionary, u: float, is_main: bool) ->
 	_box(root, Vector3(u, 5.0, 0.2), Vector3(12.4, 1.7, 0.6), m["orange"])
 	_quad(root, Vector3(u, 5.0, -0.12), Vector2(12.0, 1.5), m["board"], 180.0)
 	if is_main:
-		_box(root, Vector3(u - 13.5, 1.3, 1.2), Vector3(11.0, 2.6, 1.0), m["orange"])
-		_col_box(root, Vector3(u - 13.5, 1.3, 1.2), Vector3(11.0, 2.6, 1.0))
-		_label(root, Vector3(u - 13.5, 1.45, 0.66), "TRƯỜNG ĐẠI HỌC FPT\nTP. HỒ CHÍ MINH", 30, Color.WHITE, 180.0)
-		_label(root, Vector3(u - 13.5, 0.45, 0.66), "LÔ E2A-7 · ĐƯỜNG D1 · KHU CÔNG NGHỆ CAO", 13, Color.WHITE, 180.0)
+		var bu: float = u + s * 23.0
+		_box(root, Vector3(bu, 1.3, 1.2), Vector3(11.0, 2.6, 1.0), m["orange"])
+		_col_box(root, Vector3(bu, 1.3, 1.2), Vector3(11.0, 2.6, 1.0))
+		_label(root, Vector3(bu, 1.45, 0.66), "TRƯỜNG ĐẠI HỌC FPT\nTP. HỒ CHÍ MINH", 30, Color.WHITE, 180.0)
+		_label(root, Vector3(bu, 0.45, 0.66), "LÔ E2A-7 · ĐƯỜNG D1 · KHU CÔNG NGHỆ CAO", 13, Color.WHITE, 180.0)
 		var mat_map := _tex_mat("fptu_campus_map_billboard.png", Color("#DDDDDD"), false, Vector3.ONE, 0.7)
-		_box(root, Vector3(u + 12.5, 2.0, 2.4), Vector3(5.6, 3.2, 0.25), mat_map)
-		_label(root, Vector3(u + 12.5, 3.9, 2.25), "SƠ ĐỒ KHUÔN VIÊN FPTU (ẢNH CHỤP THỰC TẾ)", 14, Color("#F37021"), 180.0)
+		_box(root, Vector3(u + s * 33.0, 2.0, 2.4), Vector3(5.6, 3.2, 0.25), mat_map)
+		_label(root, Vector3(u + s * 33.0, 3.9, 2.25), "SƠ ĐỒ KHUÔN VIÊN FPTU (ẢNH CHỤP THỰC TẾ)", 14, Color("#F37021"), 180.0)
 	else:
 		_label(root, Vector3(u, 3.3, -0.3), "🅿 CỔNG BÃI XE D1 – SINH VIÊN QUÉT THẺ", 22, Color.WHITE, 180.0)
-	_box(root, Vector3(u + 9.5, 1.6, 4.5), Vector3(3.2, 3.2, 3.0), m["white"])
-	_col_box(root, Vector3(u + 9.5, 1.6, 4.5), Vector3(3.2, 3.2, 3.0))
-	_box(root, Vector3(u + 9.5, 2.0, 2.95), Vector3(2.4, 1.1, 0.1), m["glass"])
-	_box(root, Vector3(u + 9.5, 3.35, 4.5), Vector3(3.8, 0.3, 3.6), m["roof"])
-	_cyl(root, Vector3(u + 5.2, 0.6, 3.2), 0.12, 0.14, 1.2, m["steel"])
+	var bx: float = u + s * 9.5
+	_box(root, Vector3(bx, 1.6, 4.5), Vector3(3.2, 3.2, 3.0), m["white"])
+	_col_box(root, Vector3(bx, 1.6, 4.5), Vector3(3.2, 3.2, 3.0))
+	_box(root, Vector3(bx, 2.0, 2.95), Vector3(2.4, 1.1, 0.1), m["glass"])
+	_box(root, Vector3(bx, 3.35, 4.5), Vector3(3.8, 0.3, 3.6), m["roof"])
+	_cyl(root, Vector3(u + s * 5.2, 0.6, 3.2), 0.12, 0.14, 1.2, m["steel"])
 	if absf(float(_opt("skip_barrier_at", -999.0)) - u) > 0.5:
-		var arm := _box(root, Vector3(u + 2.2, 1.15, 3.2), Vector3(6.0, 0.14, 0.14), m["line"])
-		arm.rotation_degrees.z = 4.0
+		var arm := _box(root, Vector3(u + s * 2.2, 1.15, 3.2), Vector3(6.0, 0.14, 0.14), m["line"])
+		arm.rotation_degrees.z = 4.0 * s
 		for i: int in range(5):
-			_box(root, Vector3(u + 4.6 - i * 1.2, 1.15 + i * 0.08, 3.21), Vector3(0.5, 0.15, 0.15), _mat(Color("#E74C3C"), 0.6))
-	_cyl(root, Vector3(u - 3.0, 6.0, 7.0), 0.07, 0.11, 12.0, m["steel"])
-	_quad(root, Vector3(u - 3.0 + 1.55, 11.1, 7.0), Vector2(3.0, 2.0), m["flag"], 0.0)
+			_box(root, Vector3(u + s * (4.6 - i * 1.2), 1.15 + i * 0.08, 3.21), Vector3(0.5, 0.15, 0.15), _mat(Color("#E74C3C"), 0.6))
+	if is_main:
+		_cyl(root, Vector3(u - s * 3.0, 6.0, 7.0), 0.07, 0.11, 12.0, m["steel"])
+		_quad(root, Vector3(u - s * 3.0 + 1.55, 11.1, 7.0), Vector2(3.0, 2.0), m["flag"], 0.0)
+
+## Cổng sau trên hàng rào mép ĐB (v = PLOT_V): hai trụ đá, cánh cổng trượt thép đang mở, bảng tên, đèn.
+## Mở thẳng vào dãy B của bãi xe (chừa khe 6 m) -> làn xe giữa bãi. Thế giới mở dùng làm hotspot Màn 2.
+static func _build_back_gate(root: Node3D, m: Dictionary) -> void:
+	var v: float = PLOT_V + 0.5
+	for sx: float in [-1.0, 1.0]:
+		_box(root, Vector3(BACK_GATE_U + sx * 5.5, 2.0, v), Vector3(0.9, 4.0, 0.9), m["granite"])
+		_col_box(root, Vector3(BACK_GATE_U + sx * 5.5, 2.0, v), Vector3(0.9, 4.0, 0.9))
+		_box(root, Vector3(BACK_GATE_U + sx * 5.5, 4.1, v), Vector3(1.2, 0.25, 1.2), m["white"])
+	# cánh cổng trượt (đang mở, đẩy sang phía +u dọc hàng rào)
+	var slide_cx: float = BACK_GATE_U + 5.5 + 5.4
+	_box(root, Vector3(slide_cx, 1.0, v + 0.45), Vector3(10.4, 1.9, 0.08), m["steel"])
+	_col_box(root, Vector3(slide_cx, 1.0, v + 0.45), Vector3(10.4, 1.9, 0.2))
+	var gx: float = slide_cx - 5.0
+	while gx <= slide_cx + 5.0:
+		_box(root, Vector3(gx, 1.0, v + 0.5), Vector3(0.06, 1.9, 0.06), m["dark"])
+		gx += 0.5
+	_box(root, Vector3(BACK_GATE_U, 3.6, v), Vector3(11.0, 0.7, 0.3), m["orange"])
+	_label(root, Vector3(BACK_GATE_U, 3.6, v + 0.2), "CỔNG SAU – BÃI XE MÁY SINH VIÊN", 18, Color.WHITE, 0.0)
+	_label(root, Vector3(BACK_GATE_U, 3.6, v - 0.2), "CỔNG SAU – BÃI XE MÁY SINH VIÊN", 18, Color.WHITE, 180.0)
+	_cyl(root, Vector3(BACK_GATE_U - 7.5, 2.2, v - 1.0), 0.07, 0.1, 4.4, m["steel"])
+	_sphere(root, Vector3(BACK_GATE_U - 7.5, 4.55, v - 1.0), 0.28, m["lamp"])
+	# lối xe từ cổng sau qua khe dãy B vào làn giữa bãi
+	_box(root, Vector3(BACK_GATE_U, 0.02, (PARK_LANE_V + PLOT_V) * 0.5), Vector3(5.6, 0.05, PLOT_V - PARK_LANE_V), m["red_plaza"])
 
 static func _build_front_plaza(root: Node3D, m: Dictionary) -> void:
-	_box(root, Vector3(PLOT_U * 0.5, 0.02, 13.5), Vector3(PLOT_U - 4.0, 0.05, 15.0), m["red_plaza"])
+	# Sân đỏ (đưa đón / đỗ xe) giữa dải cỏ mặt tiền (v 0.8..6) và mặt trước toà nhà (RING_V0)
+	_box(root, Vector3(PLOT_U * 0.5, 0.02, (6.0 + RING_V0) * 0.5), Vector3(PLOT_U - 4.0, 0.05, RING_V0 - 6.0), m["red_plaza"])
 	_box(root, Vector3(MAIN_GATE_U, 0.03, 4.0), Vector3(10.0, 0.05, 8.0), m["red_plaza"])
-	_box(root, Vector3(PARK_GATE_U, 0.03, 4.0), Vector3(10.0, 0.05, 8.0), m["red_plaza"])
+	_box(root, Vector3(WEST_GATE_U, 0.03, 4.0), Vector3(10.0, 0.05, 8.0), m["red_plaza"])
 	var lu: float = lobby_u()
-	var u: float = 30.0
-	while u < 150.0:
+	var u: float = RING_U0 + 12.0
+	while u < RING_U1 - 12.0:
 		if absf(u - lu) > 9.0:
-			_box(root, Vector3(u, 0.05, 16.5), Vector3(0.12, 0.02, 5.0), m["line"])
+			_box(root, Vector3(u, 0.05, RING_V0 - 3.5), Vector3(0.12, 0.02, 5.0), m["line"])
 		u += 2.6
 	# MÁI CHE RĂNG CƯA dài dọc mặt trước
 	var seg: float = 4.0
-	var zz: float = 22.0
-	while zz < 148.0:
+	var zz: float = RING_U0 + 8.0
+	while zz < RING_U1 - 8.0:
 		if absf(zz - lu) > 8.0:
-			_prism(root, Vector3(zz, 3.3, 8.5), Vector3(seg, 1.6, 3.6), m["white"], 0.5, 90.0)
-			_cyl(root, Vector3(zz - seg * 0.5 + 0.2, 1.4, 7.2), 0.08, 0.08, 2.8, m["steel"])
-			_cyl(root, Vector3(zz - seg * 0.5 + 0.2, 1.4, 9.8), 0.08, 0.08, 2.8, m["steel"])
+			_prism(root, Vector3(zz, 3.3, RING_V0 - 7.5), Vector3(seg, 1.6, 3.6), m["white"], 0.5, 90.0)
+			_cyl(root, Vector3(zz - seg * 0.5 + 0.2, 1.4, RING_V0 - 8.8), 0.08, 0.08, 2.8, m["steel"])
+			_cyl(root, Vector3(zz - seg * 0.5 + 0.2, 1.4, RING_V0 - 6.2), 0.08, 0.08, 2.8, m["steel"])
 		zz += seg
-	u = -4.0
+	u = 2.0
 	var k: int = 0
-	while u < PLOT_U + 6.0:
-		var skip: bool = absf(u - MAIN_GATE_U) < 8.0 or absf(u - PARK_GATE_U) < 8.0
+	while u < PLOT_U - 2.0:
+		var skip: bool = absf(u - MAIN_GATE_U) < 8.0 or absf(u - WEST_GATE_U) < 8.0
 		if not skip:
 			if k % 2 == 0:
 				build_royal_palm(root, Vector3(u, 0.0, 3.0), m, 7.0 + float(k % 3))
@@ -1065,7 +1242,7 @@ static func _build_front_plaza(root: Node3D, m: Dictionary) -> void:
 		u += 9.0
 		k += 1
 	for i: int in range(9):
-		var lx: float = -4.0 + i * 23.0
+		var lx: float = 5.0 + i * 22.5
 		_cyl(root, Vector3(lx, 2.2, -4.6), 0.07, 0.1, 4.4, m["steel"])
 		_sphere(root, Vector3(lx, 4.55, -4.6), 0.28, m["lamp"])
 
@@ -1076,12 +1253,14 @@ static func _build_ring_building(root: Node3D, m: Dictionary) -> void:
 	var v_back: float = RING_V1 - LONG_D * 0.5
 	# v7 (mô hình giấy): hai cánh dài trũng ở giữa, hai đầu nhà xếp tầng cao như núi; sảnh trống đồng ở module 2 cánh trước;
 	# sảnh thông tầng + cầu thang trong nhà ở module 1–2 cánh phải (lên Lab 402)
-	build_module_wing(root, Vector3(u_a, 0.0, v_front), Vector3(u_b, 0.0, v_front), LONG_D, [6, 5, 4, 4, 5, 6], m, -1.0, -1, true, _opt("open_front_modules", []), [], false, LOBBY_MODULE)
-	build_module_wing(root, Vector3(u_a, 0.0, v_back), Vector3(u_b, 0.0, v_back), LONG_D, [6, 5, 4, 4, 5, 6], m, 1.0, BACK_GAP_MODULE, true, _opt("open_back_modules", []))
+	var long_prof: Array = _long_wing_profile()
+	var side_prof: Array = _side_wing_profile()
+	build_module_wing(root, Vector3(u_a, 0.0, v_front), Vector3(u_b, 0.0, v_front), LONG_D, long_prof, m, -1.0, -1, true, _opt("open_front_modules", []), [], false, LOBBY_MODULE)
+	build_module_wing(root, Vector3(u_a, 0.0, v_back), Vector3(u_b, 0.0, v_back), LONG_D, long_prof, m, 1.0, BACK_GAP_MODULE, true, _opt("open_back_modules", []))
 	var u_l: float = RING_U0 + SIDE_D * 0.5
 	var u_r: float = RING_U1 - SIDE_D * 0.5
-	build_module_wing(root, Vector3(u_l, 0.0, RING_V0), Vector3(u_l, 0.0, RING_V1), SIDE_D, [7, 8, 8, 7], m, 1.0, -1, true, [], [], true)
-	build_module_wing(root, Vector3(u_r, 0.0, RING_V0), Vector3(u_r, 0.0, RING_V1), SIDE_D, [7, 8, 8, 7], m, -1.0, -1, true, [], ATRIUM_MODULES, true)
+	build_module_wing(root, Vector3(u_l, 0.0, RING_V0), Vector3(u_l, 0.0, RING_V1), SIDE_D, side_prof, m, 1.0, -1, true, [], [], true)
+	build_module_wing(root, Vector3(u_r, 0.0, RING_V0), Vector3(u_r, 0.0, RING_V1), SIDE_D, side_prof, m, -1.0, -1, true, [], ATRIUM_MODULES, true)
 
 	var lu: float = lobby_u()
 	var bu: float = back_gap_u()
@@ -1099,12 +1278,14 @@ static func _build_ring_building(root: Node3D, m: Dictionary) -> void:
 	_quad(root, Vector3(bu - 12.0, 3.0, v_back_face), Vector2(7.0, 1.4), mat_se, 0.0)
 	_label(root, Vector3(bu - 12.0, 4.1, v_back_face + 0.1), "7-ELEVEN FPTU CAMPUS · CANTEEN E2A", 16, Color.WHITE, 0.0)
 	_box(root, Vector3(bu - 12.0, 1.3, RING_V1 + 0.08), Vector3(5.0, 2.4, 0.12), m["glass"])
-	# Passio Coffee – kiosk nhỏ trong sân trong gần hồ
-	_box(root, Vector3(127.0, 1.6, 44.0), Vector3(7.0, 3.2, 5.0), m["white"])
-	_col_box(root, Vector3(127.0, 1.6, 44.0), Vector3(7.0, 3.2, 5.0))
-	_box(root, Vector3(127.0, 1.2, 46.55), Vector3(5.0, 2.0, 0.1), m["glass"])
-	_box(root, Vector3(127.0, 3.5, 44.0), Vector3(7.6, 0.3, 5.6), m["roof"])
-	_label(root, Vector3(127.0, 4.2, 46.6), "PASSIO COFFEE FPT", 20, Color("#E67E22"), 0.0)
+	# Passio Coffee – kiosk nhỏ trong nửa cỏ của sân trong, gần hồ
+	var court: Rect2 = ring_courtyard_rect()
+	var ck := Vector3(court.position.x + court.size.x * 0.5 + 32.0, 0.0, court.position.y + 10.0)
+	_box(root, ck + Vector3(0.0, 1.6, 0.0), Vector3(7.0, 3.2, 5.0), m["white"])
+	_col_box(root, ck + Vector3(0.0, 1.6, 0.0), Vector3(7.0, 3.2, 5.0))
+	_box(root, ck + Vector3(0.0, 1.2, 2.55), Vector3(5.0, 2.0, 0.1), m["glass"])
+	_box(root, ck + Vector3(0.0, 3.5, 0.0), Vector3(7.6, 0.3, 5.6), m["roof"])
+	_label(root, ck + Vector3(0.0, 4.2, 2.6), "PASSIO COFFEE FPT", 20, Color("#E67E22"), 0.0)
 
 	_build_atrium_stair(root, m)
 
@@ -1207,7 +1388,11 @@ static func _build_courtyard(root: Node3D, m: Dictionary) -> void:
 		_cyl(root, lp, 0.6, 0.6, 0.05, m["leaf2"])
 		if i % 3 == 0:
 			_sphere(root, lp + Vector3(0.0, 0.25, 0.0), 0.2, _mat(Color("#FF9FF3"), 0.8))
-	var tree_pts: Array = [Vector2(89.0, 50.0), Vector2(124.0, 39.0), Vector2(128.0, 66.0), Vector2(118.0, 66.5), Vector2(89.0, 67.0), Vector2(121.0, 48.0), Vector2(130.0, 56.0)]
+	# Cây trong nửa cỏ (toạ độ tương đối với tâm sân / hai mép, tránh hồ sen, lối đi sau và kiosk Passio)
+	var tree_pts: Array = [
+		Vector2(mid_u + 4.0, v0 + 15.0), Vector2(mid_u + 39.0, v0 + 4.0), Vector2(mid_u + 43.0, v1 - 5.0),
+		Vector2(mid_u + 33.0, v1 - 4.5), Vector2(mid_u + 4.0, v1 - 4.0), Vector2(mid_u + 36.0, v0 + 13.0), Vector2(mid_u + 45.0, cv + 3.0)
+	]
 	for i: int in range(tree_pts.size()):
 		var tp: Vector2 = tree_pts[i]
 		build_tropical_tree(root, Vector3(tp.x, 0.0, tp.y), m, 0.8, 400 + i)
@@ -1231,42 +1416,55 @@ static func _build_courtyard(root: Node3D, m: Dictionary) -> void:
 	for i: int in range(4):
 		_box(root, Vector3(u0 + 8.0 + i * 11.0, 0.3, v1 - 3.0), Vector3(1.8, 0.1, 0.5), m["granite"])
 		_box(root, Vector3(u0 + 8.0 + i * 11.0, 0.12, v1 - 3.0), Vector3(1.6, 0.24, 0.4), m["granite"])
-	for lp: Vector2 in [Vector2(52.0, 53.0), Vector2(72.0, 53.0), Vector2(118.0, 40.0), Vector2(118.0, 66.0)]:
+	for lp: Vector2 in [Vector2(u0 + 16.0, cv), Vector2(u0 + 36.0, cv), Vector2(mid_u + 20.0, v0 + 5.0), Vector2(mid_u + 20.0, v1 - 5.0)]:
 		_cyl(root, Vector3(lp.x, 2.5, lp.y), 0.07, 0.1, 5.0, m["steel"])
 		_sphere(root, Vector3(lp.x, 5.2, lp.y), 0.3, m["lamp"])
 
 static func _build_back_facilities(root: Node3D, m: Dictionary) -> void:
-	# Sân bóng mini 5 người góc Đông
-	_box(root, Vector3(28.0, 0.02, 101.0), Vector3(38.0, 0.05, 22.0), m["pitch"])
-	_box(root, Vector3(28.0, 0.05, 101.0), Vector3(38.0, 0.02, 0.2), m["line"])
-	_box(root, Vector3(28.0, 0.05, 101.0), Vector3(0.2, 0.02, 22.0), m["line"])
+	# Sân bóng mini 5 người (42 × 22 m thật) ở góc sau phía ĐN, sau lưng đầu nhà ĐN
+	var pc := Vector3(PITCH_CX, 0.0, PITCH_CV)
+	var hl: float = PITCH_LEN * 0.5
+	var hw: float = PITCH_W * 0.5
+	_box(root, pc + Vector3(0.0, 0.02, 0.0), Vector3(PITCH_LEN, 0.05, PITCH_W), m["pitch"])
+	_box(root, pc + Vector3(0.0, 0.05, 0.0), Vector3(PITCH_LEN, 0.02, 0.2), m["line"])
+	_box(root, pc + Vector3(0.0, 0.05, 0.0), Vector3(0.2, 0.02, PITCH_W), m["line"])
 	for sx: float in [-1.0, 1.0]:
-		_box(root, Vector3(28.0 + sx * 18.8, 0.05, 101.0), Vector3(0.2, 0.02, 22.0), m["line"])
-		_box(root, Vector3(28.0 + sx * 18.5, 1.1, 101.0), Vector3(0.1, 2.2, 5.0), m["white"])
-	_cyl(root, Vector3(28.0, 0.05, 101.0), 4.0, 4.0, 0.02, m["line"])
-	_cyl(root, Vector3(28.0, 0.06, 101.0), 3.8, 3.8, 0.02, m["pitch"])
+		_box(root, pc + Vector3(sx * (hl - 0.2), 0.05, 0.0), Vector3(0.2, 0.02, PITCH_W), m["line"])
+		_box(root, pc + Vector3(sx * (hl - 0.5), 1.1, 0.0), Vector3(0.1, 2.2, 5.0), m["white"])
+	_cyl(root, pc + Vector3(0.0, 0.05, 0.0), 4.0, 4.0, 0.02, m["line"])
+	_cyl(root, pc + Vector3(0.0, 0.06, 0.0), 3.8, 3.8, 0.02, m["pitch"])
 	for sz: float in [-1.0, 1.0]:
-		_box(root, Vector3(28.0, 2.0, 101.0 + sz * 11.5), Vector3(38.0, 4.0, 0.05), m["glass"])
-		_col_box(root, Vector3(28.0, 2.0, 101.0 + sz * 11.5), Vector3(38.0, 4.0, 0.3))
+		_box(root, pc + Vector3(0.0, 2.0, sz * (hw + 0.5)), Vector3(PITCH_LEN, 4.0, 0.05), m["glass"])
+		_col_box(root, pc + Vector3(0.0, 2.0, sz * (hw + 0.5)), Vector3(PITCH_LEN, 4.0, 0.3))
 	for sx: float in [-1.0, 1.0]:
-		_box(root, Vector3(28.0 + sx * 19.3, 2.0, 101.0), Vector3(0.05, 4.0, 23.0), m["glass"])
-		_col_box(root, Vector3(28.0 + sx * 19.3, 2.0, 101.0), Vector3(0.3, 4.0, 23.0))
+		_box(root, pc + Vector3(sx * (hl + 0.3), 2.0, 0.0), Vector3(0.05, 4.0, PITCH_W + 1.0), m["glass"])
+		_col_box(root, pc + Vector3(sx * (hl + 0.3), 2.0, 0.0), Vector3(0.3, 4.0, PITCH_W + 1.0))
 
-	# BÃI XE MÁY SINH VIÊN: 2 dãy mái tôn song song, làn xe chạy giữa (v = PARK_LANE_V)
+	# BÃI XE MÁY SINH VIÊN (dải thật 128 × 12 m dọc mép ĐB): 2 dãy mái tôn 7 m song song, làn xe 7 m ở giữa
+	# (v = PARK_LANE_V); dãy B chừa khe 6 m trước cổng sau.
 	var gaps: Array = _opt("parking_gaps", [])
 	var bu: float = back_gap_u()
 	var xforms: Array[Transform3D] = []
 	var colors: Array[Color] = []
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
+	var post_off: float = PARK_CANOPY_W * 0.5 - 0.6
 	for row_v: float in [PARK_ROW_A, PARK_ROW_B]:
-		for sx: float in [-1.0, 1.0]:
-			for k: int in range(5):
-				var pp := Vector3(PARK_CX - 30.0 + k * 15.0, 1.6, row_v + sx * 3.2)
-				_cyl(root, pp, 0.1, 0.12, 3.2, m["steel"])
-				_col_cyl(root, pp, 0.14, 3.2)
-		_prism(root, Vector3(PARK_CX, 3.9, row_v), Vector3(8.0, 1.2, PARK_HALF_LEN * 2.0), m["canopy"], 0.5, 90.0)
-		_box(root, Vector3(PARK_CX, 0.015, row_v), Vector3(PARK_HALF_LEN * 2.0 + 4.0, 0.03, 9.4), m["concrete"])
+		var is_b: bool = is_equal_approx(row_v, PARK_ROW_B)
+		var segs: Array = [[PARK_CX - PARK_HALF_LEN, PARK_CX + PARK_HALF_LEN]]
+		if is_b:
+			segs = [[PARK_CX - PARK_HALF_LEN, BACK_GATE_U - 3.0], [BACK_GATE_U + 3.0, PARK_CX + PARK_HALF_LEN]]
+		for seg: Array in segs:
+			var a: float = float(seg[0])
+			var b: float = float(seg[1])
+			var n_post: int = maxi(2, int(round((b - a) / 14.0)) + 1)
+			for sx: float in [-1.0, 1.0]:
+				for k: int in range(n_post):
+					var pp := Vector3(lerpf(a + 0.6, b - 0.6, float(k) / float(n_post - 1)), 1.6, row_v + sx * post_off)
+					_cyl(root, pp, 0.1, 0.12, 3.2, m["steel"])
+					_col_cyl(root, pp, 0.14, 3.2)
+			_prism(root, Vector3((a + b) * 0.5, 3.9, row_v), Vector3(PARK_CANOPY_W, 1.2, b - a), m["canopy"], 0.5, 90.0)
+			_box(root, Vector3((a + b) * 0.5, 0.015, row_v), Vector3(b - a + 1.0, 0.03, PARK_CANOPY_W + 0.4), m["concrete"])
 		for r2: float in [-1.8, 1.8]:
 			var bx: float = PARK_CX - PARK_HALF_LEN
 			while bx <= PARK_CX + PARK_HALF_LEN:
@@ -1276,8 +1474,10 @@ static func _build_back_facilities(root: Node3D, m: Dictionary) -> void:
 					var gv: Vector2 = g
 					if absf(bx - gv.x) < 2.0 and absf(bz - gv.y) < 1.0:
 						skip = true
-				# Lối đi bộ từ lối vào sau toà nhà ra làn xe: chừa trống dãy A
-				if is_equal_approx(row_v, PARK_ROW_A) and absf(bx - bu) < 2.0:
+				# Lối đi bộ từ lối vào sau toà nhà ra làn xe: chừa trống dãy A; khe cổng sau: chừa trống dãy B
+				if (not is_b) and absf(bx - bu) < 2.0:
+					skip = true
+				if is_b and absf(bx - BACK_GATE_U) < 3.0:
 					skip = true
 				if not skip:
 					var yaw: float = (0.0 if r2 < 0.0 else PI) + rng.randf_range(-0.08, 0.08)
@@ -1288,32 +1488,38 @@ static func _build_back_facilities(root: Node3D, m: Dictionary) -> void:
 				bx += 1.3
 	build_motorbike_multimesh(root, xforms, colors, m)
 	_box(root, Vector3(bu, 0.03, (RING_V1 + PARK_LANE_V) * 0.5), Vector3(4.0, 0.05, PARK_LANE_V - RING_V1), m["red_path"])
-	# Vạch ô đỗ trắng dọc làn + nhãn
-	_label(root, Vector3(PARK_CX, 5.6, PARK_ROW_A - 5.0), "BÃI XE MÁY SINH VIÊN – QUÉT THẺ DÂY CAM", 20, Color("#F1C40F"), 180.0)
-	_box(root, Vector3(PARK_CX + 14.0, 0.02, PARK_LANE_V), Vector3(PARK_HALF_LEN * 2.0 + 36.0, 0.05, 7.0), m["red_plaza"])
-	_box(root, Vector3(PARK_GATE_U, 0.02, 56.0), Vector3(7.0, 0.05, 112.0), m["red_plaza"])
+	# Làn xe đỏ giữa hai dãy (nối tới làn mép Tây) + làn xe mép Tây từ cổng tây; vạch ô đỗ trắng + nhãn
+	_label(root, Vector3(PARK_CX, 5.6, PARK_ROW_A - 4.5), "BÃI XE MÁY SINH VIÊN – QUÉT THẺ DÂY CAM", 20, Color("#F1C40F"), 180.0)
+	var lane_u0: float = PARK_CX - PARK_HALF_LEN - 4.0
+	var lane_u1: float = WEST_LANE_U + 3.5
+	_box(root, Vector3((lane_u0 + lane_u1) * 0.5, 0.02, PARK_LANE_V), Vector3(lane_u1 - lane_u0, 0.05, 7.0), m["red_plaza"])
+	_box(root, Vector3(WEST_LANE_U, 0.02, (PARK_LANE_V + 3.5) * 0.5), Vector3(7.0, 0.05, PARK_LANE_V + 3.5), m["red_plaza"])
 	var vx: float = PARK_CX - PARK_HALF_LEN
 	while vx <= PARK_CX + PARK_HALF_LEN:
-		for row_v: float in [PARK_ROW_A + 3.6, PARK_ROW_B - 3.6]:
+		for row_v: float in [PARK_ROW_A + 3.1, PARK_ROW_B - 3.1]:
 			_box(root, Vector3(vx - 0.65, 0.05, row_v), Vector3(0.08, 0.02, 1.6), m["line"])
 		vx += 1.3
 
 static func _build_perimeter_trees(root: Node3D, m: Dictionary) -> void:
+	# Hàng cây trong hàng rào: dọc mép sau (trừ sân bóng & cổng sau) và hai mép bên (dải ĐN 0..RING_U0, dải Tây sau làn xe)
 	var k: int = 100
-	var u: float = -4.0
-	while u < PLOT_U + 4.0:
-		build_tropical_tree(root, Vector3(u, 0.0, PLOT_V + 1.0), m, 1.1, k)
+	var u: float = 4.0
+	while u < PLOT_U - 3.0:
+		var on_pitch: bool = absf(u - PITCH_CX) < PITCH_LEN * 0.5 + 2.0
+		var on_gate: bool = absf(u - BACK_GATE_U) < 8.0
+		if not on_pitch and not on_gate:
+			build_tropical_tree(root, Vector3(u, 0.0, PLOT_V - 1.6), m, 1.1, k)
 		u += 14.0
 		k += 1
 	var v: float = 16.0
 	while v < PLOT_V - 4.0:
-		build_tropical_tree(root, Vector3(-6.0, 0.0, v), m, 1.0, k)
-		build_tropical_tree(root, Vector3(PLOT_U + 6.0, 0.0, v + 6.0), m, 1.0, k + 1)
+		build_tropical_tree(root, Vector3(4.0, 0.0, v), m, 1.0, k)
+		build_tropical_tree(root, Vector3(PLOT_U - 2.0, 0.0, v + 6.0), m, 1.0, k + 1)
 		v += 16.0
 		k += 2
 
 static func _is_lawn(u: float, v: float) -> bool:
-	if u < -8.0 or u > PLOT_U + 8.0 or v < 0.8 or v > PLOT_V + 3.0:
+	if u < 0.5 or u > PLOT_U - 0.5 or v < 0.8 or v > PLOT_V - 0.8:
 		return false
 	for r: Variant in _opt("no_grass_rects", []):
 		var rr: Rect2 = r
@@ -1321,7 +1527,9 @@ static func _is_lawn(u: float, v: float) -> bool:
 			return false
 	if absf(u - MAIN_GATE_U) < 7.0 and v < 12.0:
 		return false
-	if absf(u - PARK_GATE_U) < 4.5:
+	if absf(u - WEST_LANE_U) < 4.5:
+		return false
+	if absf(u - BACK_GATE_U) < 3.8 and v > PARK_LANE_V - 3.5:
 		return false
 	# dải cỏ mặt tiền giữa hàng rào và sân đỏ
 	if v >= 0.8 and v <= 6.0:
@@ -1340,10 +1548,10 @@ static func _is_lawn(u: float, v: float) -> bool:
 	# rìa sau & hai bên
 	if absf(u - back_gap_u()) < 2.3 and v > RING_V1 and v < PARK_LANE_V:
 		return false
-	if v > RING_V1 + 1.0:
-		if u > 8.0 and u < 48.0 and v > 89.0 and v < 113.0:
+	if v > RING_V1 + 0.5:
+		if absf(u - PITCH_CX) < PITCH_LEN * 0.5 + 1.5 and absf(v - PITCH_CV) < PITCH_W * 0.5 + 1.5:
 			return false
-		if u > PARK_CX - PARK_HALF_LEN - 2.0 and u < PARK_CX + PARK_HALF_LEN + 20.0 and v > 88.0 and v < 112.0:
+		if u > PARK_CX - PARK_HALF_LEN - 4.5 and u < PLOT_U and v > PARK_ROW_A - 4.5 and v < PARK_ROW_B + 4.0:
 			return false
 		return true
 	if (u < RING_U0 - 1.0 or u > RING_U1 + 1.0) and v > RING_V0 - 1.0 and v < RING_V1 + 1.0:
@@ -1405,7 +1613,10 @@ static func build_d1_road_piece(parent: Node3D, z_center: float, x0: float, x1: 
 		dx += 9.0
 	return road
 
-## Viện Công nghệ cao HUTECH đối diện FPT (khối kính tối màu lam trắng dọc + cổng xanh/vàng), origin = tim cổng.
+## Viện Công nghệ cao HUTECH đối diện FPT (khối kính tối màu lam trắng dọc + cổng xanh/vàng), origin = tim cổng trên
+## hàng rào mặt D1 (hệ cục bộ campus: hutech_origin_local() = (136, 0, −46)). v8: khối chính theo footprint thật
+## 94 × 32 m, tâm cách cổng HUTECH_BLOCK_OFFSET = 42 m về phía sau; trước hàng rào là vỉa hè + làn xe D1 phía xa
+## (lấp dải −26..−46 giữa đoạn D1 của build_d1_road_piece và hàng rào).
 static func build_hutech(parent: Node3D, origin: Vector3, m: Dictionary, colliders: bool = false) -> Node3D:
 	var prev_opts: Dictionary = _opts
 	_opts = {"colliders": colliders}
@@ -1417,39 +1628,62 @@ static func build_hutech(parent: Node3D, origin: Vector3, m: Dictionary, collide
 	var mat_gold := _mat(Color("#FFD100"), 0.5)
 	var mat_dark := _mat(Color("#1B2631"), 0.25, 0.45)
 	var mat_sign := _tex_mat("hutech_sign.png", Color("#0055A5"), false, Vector3.ONE, 0.6)
-	# Cổng
+	var hl: float = HUTECH_BLOCK_LEN * 0.5
+	var hd: float = HUTECH_BLOCK_DEPTH * 0.5
+	var zc: float = -HUTECH_BLOCK_OFFSET
+	var z_front: float = zc + hd   # mặt trước khối chính (phía D1)
+	# Cổng + hàng rào thép xanh dọc mặt D1 (chừa lối 20 m)
 	for sx: float in [-1.0, 1.0]:
 		_box(campus, Vector3(sx * 10.0, 3.75, 0.0), Vector3(2.4, 7.5, 2.4), mat_blue)
 		_col_box(campus, Vector3(sx * 10.0, 3.75, 0.0), Vector3(2.4, 7.5, 2.4))
 	_quad(campus, Vector3(0.0, 6.2, 1.25), Vector2(20.0, 4.4), mat_sign, 0.0)
-	# Toà chính 8 tầng kính tối + lam trắng dọc + nẹp sàn trắng
-	_box(campus, Vector3(0.0, 14.0, -26.0), Vector3(64.0, 28.0, 24.0), mat_dark)
-	_col_box(campus, Vector3(0.0, 14.0, -26.0), Vector3(64.0, 28.0, 24.0))
-	var fx: float = -31.0
-	while fx <= 31.0:
-		_box(campus, Vector3(fx, 14.0, -13.6), Vector3(0.35, 26.5, 1.1), m["white"])
+	for seg: Array in [[-128.0, -11.2], [11.2, 60.0]]:
+		var a: float = float(seg[0])
+		var b: float = float(seg[1])
+		_box(campus, Vector3((a + b) * 0.5, 0.25, 0.0), Vector3(b - a, 0.5, 0.3), m["concrete"])
+		_box(campus, Vector3((a + b) * 0.5, 1.25, 0.0), Vector3(b - a, 1.5, 0.08), mat_blue)
+		_col_box(campus, Vector3((a + b) * 0.5, 1.0, 0.0), Vector3(b - a, 2.0, 0.3))
+	# Toà chính 8 tầng kính tối + lam trắng dọc + nẹp sàn trắng (footprint thật)
+	_box(campus, Vector3(0.0, 14.0, zc), Vector3(HUTECH_BLOCK_LEN, 28.0, HUTECH_BLOCK_DEPTH), mat_dark)
+	_col_box(campus, Vector3(0.0, 14.0, zc), Vector3(HUTECH_BLOCK_LEN, 28.0, HUTECH_BLOCK_DEPTH))
+	var fx: float = -(hl - 1.0)
+	while fx <= hl - 1.0:
+		_box(campus, Vector3(fx, 14.0, z_front + 0.4), Vector3(0.35, 26.5, 1.1), m["white"])
 		fx += 2.4
 	for sx: float in [-1.0, 1.0]:
-		var fz: float = -37.0
-		while fz <= -15.0:
-			_box(campus, Vector3(sx * 32.4, 14.0, fz), Vector3(1.1, 26.5, 0.35), m["white"])
+		var fz: float = zc - hd + 3.0
+		while fz <= zc + hd - 3.0:
+			_box(campus, Vector3(sx * (hl + 0.4), 14.0, fz), Vector3(1.1, 26.5, 0.35), m["white"])
 			fz += 2.4
 	for floor_idx: int in range(0, 9):
-		_box(campus, Vector3(0.0, floor_idx * 3.4 + 0.3, -26.0), Vector3(64.6, 0.3, 24.6), m["white"])
-	_box(campus, Vector3(0.0, 29.6, -13.8), Vector3(22.0, 2.6, 0.5), mat_gold)
-	_label(campus, Vector3(0.0, 29.6, -13.4), "HUTECH", 70, Color("#0055A5"), 0.0)
-	_label(campus, Vector3(0.0, 9.0, -13.3), "VIỆN CÔNG NGHỆ CAO HUTECH – KHU CÔNG NGHỆ CAO TP.HCM", 30, Color("#FFD100"), 0.0)
-	# Khối Viện CNC 3 tầng (kéo dài mặt tiền) + khối nghiên cứu trắng
-	_box(campus, Vector3(-90.0, 5.5, -20.0), Vector3(44.0, 11.0, 18.0), m["white"])
-	_col_box(campus, Vector3(-90.0, 5.5, -20.0), Vector3(44.0, 11.0, 18.0))
+		_box(campus, Vector3(0.0, floor_idx * 3.4 + 0.3, zc), Vector3(HUTECH_BLOCK_LEN + 0.6, 0.3, HUTECH_BLOCK_DEPTH + 0.6), m["white"])
+	_box(campus, Vector3(0.0, 29.6, z_front + 0.2), Vector3(22.0, 2.6, 0.5), mat_gold)
+	_label(campus, Vector3(0.0, 29.6, z_front + 0.6), "HUTECH", 70, Color("#0055A5"), 0.0)
+	_label(campus, Vector3(0.0, 9.0, z_front + 0.7), "VIỆN CÔNG NGHỆ CAO HUTECH – KHU CÔNG NGHỆ CAO TP.HCM", 30, Color("#FFD100"), 0.0)
+	# Sân trước khối chính (từ cổng tới mặt tiền) + đường xe nội bộ
+	_box(campus, Vector3(0.0, 0.01, z_front * 0.5), Vector3(HUTECH_BLOCK_LEN * 0.6, 0.03, -z_front), m["concrete"])
+	_box(campus, Vector3(0.0, 0.02, z_front * 0.5), Vector3(8.0, 0.03, -z_front), m["asphalt"])
+	# Khối Viện CNC 3 tầng (phía -u, đối diện đầu ĐN campus) + khối nghiên cứu trắng ở giữa
+	_box(campus, Vector3(-100.0, 5.5, -24.0), Vector3(44.0, 11.0, 18.0), m["white"])
+	_col_box(campus, Vector3(-100.0, 5.5, -24.0), Vector3(44.0, 11.0, 18.0))
 	for floor_idx: int in range(3):
-		_box(campus, Vector3(-90.0, floor_idx * 3.5 + 2.2, -10.8), Vector3(42.0, 1.5, 0.4), m["glass"])
-	_label(campus, Vector3(-90.0, 12.0, -10.6), "VIỆN CÔNG NGHỆ CAO HUTECH – KHU E1", 34, Color("#FFD100"), 0.0)
-	_box(campus, Vector3(-48.0, 10.0, -24.0), Vector3(28.0, 20.0, 20.0), m["white"])
-	_col_box(campus, Vector3(-48.0, 10.0, -24.0), Vector3(28.0, 20.0, 20.0))
-	# Vỉa hè + cây sau vỉa hè
-	_box(campus, Vector3(-25.0, 0.14, 2.9), Vector3(170.0, 0.28, 5.2), m["sidewalk"])
-	for x_offset: float in [-110.0, -70.0, -35.0, -18.0, 18.0, 35.0]:
+		_box(campus, Vector3(-100.0, floor_idx * 3.5 + 2.2, -14.8), Vector3(42.0, 1.5, 0.4), m["glass"])
+	_label(campus, Vector3(-100.0, 12.0, -14.6), "VIỆN CÔNG NGHỆ CAO HUTECH – KHU E1", 34, Color("#FFD100"), 0.0)
+	_box(campus, Vector3(-62.0, 10.0, -30.0), Vector3(28.0, 20.0, 20.0), m["white"])
+	_col_box(campus, Vector3(-62.0, 10.0, -30.0), Vector3(28.0, 20.0, 20.0))
+	# Trước hàng rào: vỉa hè lát gạch, rồi làn xe D1 phía xa (3 làn một chiều) nối tới mép vỉa hè đối diện của
+	# build_d1_road_piece (v ≈ −26), dải phân cách cỏ hẹp
+	_box(campus, Vector3(-34.0, 0.14, 2.9), Vector3(188.0, 0.28, 5.2), m["sidewalk"])
+	_box(campus, Vector3(-34.0, 0.2, 5.65), Vector3(188.0, 0.4, 0.3), m["granite"])
+	# mặt nhựa nhô 2 cm trên y = 0 để không z-fight với mặt đất của màn (Màn 1 đặt mặt đất tại y = 0)
+	_box(campus, Vector3(-34.0, -0.105, 12.8), Vector3(188.0, 0.25, 14.0), m["asphalt"])
+	_box(campus, Vector3(-34.0, 0.03, 19.65), Vector3(188.0, 0.02, 0.15), m["line"])
+	var dx: float = -126.0
+	while dx < 58.0:
+		for lz: float in [9.4, 14.0]:
+			_box(campus, Vector3(dx, 0.03, lz), Vector3(3.0, 0.02, 0.15), m["line"])
+		dx += 9.0
+	for x_offset: float in [-110.0, -70.0, -35.0, -18.0, 18.0, 35.0, 52.0]:
 		build_tropical_tree(campus, Vector3(x_offset, 0.0, -4.0), m, 1.0, 700 + int(x_offset))
 	_opts = prev_opts
 	return campus

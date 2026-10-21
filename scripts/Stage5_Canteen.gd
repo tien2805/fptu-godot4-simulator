@@ -192,9 +192,9 @@ func _build_hall() -> void:
 	FPTUCampusBuilder.build_authentic_campus(world, Vector3.ZERO, 0.0, {
 		"colliders": true,
 		"open_front_modules": [3, 4],
-		"no_grass_rects": [Rect2(cc.x - 15.5, 34.0, 31.0, 13.0)]
+		"no_grass_rects": [Rect2(cc.x - 15.5, FPTUCampusBuilder.RING_V0 + FPTUCampusBuilder.LONG_D - 1.0, 31.0, 13.0)]
 	})
-	FPTUCampusBuilder.build_hutech(world, Vector3(135.0, 0.0, -26.0), cmat)
+	FPTUCampusBuilder.build_hutech(world, FPTUCampusBuilder.hutech_origin_local(), cmat)
 	FPTUCampusBuilder.build_d1_road_piece(world, -13.0, -80.0, 300.0, cmat, 0.0)
 	$DirectionalLight3D.rotation_degrees = Vector3(-58.0, 20.0, 0.0)
 	# Hiên ăn lát gạch + bồn cây viền + cây xanh

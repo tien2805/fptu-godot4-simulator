@@ -1,10 +1,11 @@
 # File: res://scripts/Stage2_Parking.gd
 # MÀN 2: BÃI XE D1 & CHINH PHỤC CẦU THANG NGOÀI TRỜI LÊN LAB 402 – DIỄN RA TRONG CHÍNH KHUÔN VIÊN THẬT CỦA MÀN 1.
 #   FPTUCampusBuilder dựng cùng một campus (vòng nhà chữ nhật, sân trong, bãi xe có mái, HUTECH đối diện qua D1)
-#   tại gốc toạ độ. Màn 1 về đích ngay trước CỔNG BÃI XE D1 (u = 174) -> Màn 2 bắt đầu đúng chỗ đó trên đường D1.
+#   tại gốc toạ độ. Màn 1 về đích ngay trước CỔNG TÂY / CỔNG BÃI XE D1 (u = 181, cổng thật thứ hai trên D1 sát góc Tây
+#   lô đất – FPTUCampusBuilder v8) -> Màn 2 bắt đầu đúng chỗ đó trên đường D1.
 #
 #   Pha 1 (55s): rẽ phải từ D1 vào cổng bãi xe, dừng trước barie quét thẻ [E] với bác bảo vệ, barie mở, chạy dọc
-#                lối xe ven cánh phải toà nhà (~95 m) tới bãi xe máy có mái phía sau, tranh ô đỗ với xe NPC,
+#                làn xe mép Tây lô (~100 m) tới dải bãi xe máy có mái dọc mép sau, tranh ô đỗ với xe NPC,
 #                đỗ thẳng & dừng hẳn, có thể lùi [S], còi [H] doạ xe NPC. Máy bán nước sau lưng toà nhà có Monster:
 #                rẽ vào lấy tốn vài giây (risk/reward cho pha 2).
 #   Pha 2 (48s): AUTO-RUNNER 3D theo Path3D xuyên campus: bãi xe -> lối đi bộ qua dãy A -> lối vào sau (tầng trệt
@@ -41,13 +42,13 @@ signal stage_completed()
 
 # ----- Thiết kế -----
 const PHASE1_TIME: float = 55.0
-const PHASE2_TIME: float = 34.0   # v7: tuyến ~153 m qua sân trong + cầu thang trong nhà; bot sạch ~25 s -> dư ~8 s, vấp ~4 lần
-const GATE_U: float = FPTUCampusBuilder.PARK_GATE_U
-const GUARD_POS: Vector3 = Vector3(180.6, 0.0, 2.3)      # Bác bảo vệ đứng cạnh trụ barie, trước bốt
-const BIKE_START: Vector3 = Vector3(146.0, 0.4, -9.7)    # Làn phải đường D1, 28 m trước cổng bãi xe (đích Màn 1)
-const RIVAL_START: Vector3 = Vector3(174.0, 0.0, 13.0)   # Xe NPC đã quét thẻ trước, đang đứng sau barie
-const MONSTER_POS: Vector3 = Vector3(138.0, 0.0, 86.6)   # Máy bán nước sát mặt sau cánh sau (phải rẽ vào lấy)
-const HUTECH_ORIGIN: Vector3 = Vector3(135.0, 0.0, -26.0) # Cùng toạ độ tương đối như Màn 1
+const PHASE2_TIME: float = 38.0   # v8: tuyến ~169 m (bãi xe sau -> sân trong -> thang trong nhà); bot ~29,5 s -> dư ~8,5 s, vấp ~1 lần
+const GATE_U: float = FPTUCampusBuilder.WEST_GATE_U       # cổng tây thật (u = 181) = cổng bãi xe máy
+const LANE_U: float = FPTUCampusBuilder.WEST_LANE_U       # tim làn xe 7 m dọc mép Tây lô tới bãi xe sau
+const GUARD_POS: Vector3 = Vector3(GATE_U - 6.6, 0.0, 2.3)      # Bác bảo vệ đứng cạnh trụ barie, trước bốt (bốt phía -u)
+const BIKE_START: Vector3 = Vector3(GATE_U - 28.0, 0.4, -9.7)   # Làn phải đường D1, 28 m trước cổng bãi xe (đích Màn 1)
+const RIVAL_START: Vector3 = Vector3(LANE_U, 0.0, 13.0)         # Xe NPC đã quét thẻ trước, đang đứng sau barie
+const MONSTER_POS: Vector3 = Vector3(FPTUCampusBuilder.PLOT_U - 1.6, 0.0, 60.0) # Máy bán nước sát hàng rào Tây, cạnh làn xe (phải rẽ vào lấy)
 const LANE_OFFSET: float = 1.5
 const RUN_SPEED: float = 6.0
 const SPRINT_SPEED: float = 9.0
@@ -233,9 +234,9 @@ func _build_world() -> void:
 		"grass": true
 	})
 	FPTUCampusBuilder.build_d1_road_piece(campus_root, FPTUCampusBuilder.ROAD_CENTER_V, -80.0, 300.0, campus_mats, 0.0)
-	FPTUCampusBuilder.build_hutech(campus_root, HUTECH_ORIGIN, campus_mats, true)
+	FPTUCampusBuilder.build_hutech(campus_root, FPTUCampusBuilder.hutech_origin_local(), campus_mats, true)
 
-	# Cổng chính (u = 6) đóng với xe máy sinh viên: thanh chắn + nón + bảng chỉ sang cổng bãi xe
+	# Cổng chính (u = 7, góc ĐN) đóng với xe máy sinh viên: thanh chắn + nón + bảng chỉ sang cổng bãi xe (cổng tây)
 	var mg: float = FPTUCampusBuilder.MAIN_GATE_U
 	var closure := StaticBody3D.new()
 	closure.position = Vector3(mg, 0.0, 1.6)
@@ -285,10 +286,11 @@ func _build_gate_props() -> void:
 	pm.height = 1.2
 	pole2.mesh = pm
 	pole2.material_override = m["steel"]
-	pole2.position = Vector3(168.8, 0.6, 3.2)
+	# trụ thứ hai dưới BarieArm (scene, phía +u); thanh barie 2 gắn vào trụ của builder ở phía -u (bốt bảo vệ)
+	pole2.position = Vector3(GATE_U + 5.2, 0.6, 3.2)
 	env_root.add_child(pole2)
 	barie_arm2 = Node3D.new()
-	barie_arm2.position = Vector3(168.8, 1.2, 3.2)
+	barie_arm2.position = Vector3(GATE_U - 5.2, 1.2, 3.2)
 	env_root.add_child(barie_arm2)
 	var arm2 := MeshInstance3D.new()
 	var abm := BoxMesh.new()
@@ -315,7 +317,7 @@ func _build_gate_props() -> void:
 
 	# Trụ đầu đọc thẻ bên phải lối vào
 	var reader := Node3D.new()
-	reader.position = Vector3(178.2, 0.0, 0.4)
+	reader.position = Vector3(GATE_U - 4.2, 0.0, 0.4)
 	env_root.add_child(reader)
 	var post := MeshInstance3D.new()
 	var postm := CylinderMesh.new()
@@ -421,8 +423,8 @@ func _rival_plan_route(spot: Vector3) -> void:
 	var lane_v: float = FPTUCampusBuilder.PARK_LANE_V
 	rival_waypoints = [
 		rival_root.position,
-		Vector3(GATE_U, 0.0, 60.0),
-		Vector3(GATE_U, 0.0, lane_v - 1.0),
+		Vector3(LANE_U, 0.0, 60.0),
+		Vector3(LANE_U, 0.0, lane_v - 1.0),
 		Vector3(spot.x + 6.0, 0.0, lane_v),
 		Vector3(spot.x, 0.0, lane_v),
 		spot
@@ -433,6 +435,7 @@ func _build_monster_machine() -> void:
 	var m: Dictionary = campus_mats
 	var kiosk := Node3D.new()
 	kiosk.position = MONSTER_POS
+	kiosk.rotation_degrees.y = -90.0 # mặt máy (local +Z) quay về -u: nhìn ra làn xe mép Tây, lưng tựa hàng rào
 	env_root.add_child(kiosk)
 	var body := StaticBody3D.new()
 	kiosk.add_child(body)
@@ -544,27 +547,30 @@ func _build_route() -> void:
 	var cp_back: int = -1
 	var cp_lobby: int = -1
 	var cp_stair: int = -1
-	if sp.z > 107.0:
-		# Ô góc xa ở mặt ngoài dãy B: phải vòng qua đầu dãy mái che
-		var west_end: float = FPTUCampusBuilder.PARK_CX - FPTUCampusBuilder.PARK_HALF_LEN - 3.0
-		pts.append(Vector3(sp.x, g, 112.5))
-		pts.append(Vector3(west_end, g, 112.5))
-		pts.append(Vector3(west_end, g, lane_v))
+	var court: Rect2 = FPTUCampusBuilder.ring_courtyard_rect()
+	var door_v: float = FPTUCampusBuilder.ATRIUM_DOOR_V
+	if sp.z > FPTUCampusBuilder.PARK_ROW_B:
+		# Ô góc xa ở mặt ngoài dãy B: phải vòng qua đầu dãy mái che (lối đi sau dãy B, sát hàng rào)
+		var far_end: float = FPTUCampusBuilder.PARK_CX - FPTUCampusBuilder.PARK_HALF_LEN - 3.0
+		var back_walk: float = FPTUCampusBuilder.PARK_ROW_B + 3.6
+		pts.append(Vector3(sp.x, g, back_walk))
+		pts.append(Vector3(far_end, g, back_walk))
+		pts.append(Vector3(far_end, g, lane_v))
 	else:
 		pts.append(Vector3(sp.x, g, lane_v))
 	pts.append(Vector3(bu, g, lane_v))                       # chạy dọc làn xe tới lối đi bộ
-	pts.append(Vector3(bu, g, 88.0))                         # qua khe dãy A -> sau lưng toà nhà
+	pts.append(Vector3(bu, g, FPTUCampusBuilder.RING_V1 + 3.0)) # qua khe dãy A -> sau lưng toà nhà
 	cp_back = pts.size() - 1
 	pts.append(Vector3(bu, g, FPTUCampusBuilder.RING_V1 - FPTUCampusBuilder.LONG_D)) # xuyên lối vào sau ra sân trong
-	pts.append(Vector3(bu, g, 62.0))
+	pts.append(Vector3(bu, g, court.end.y - 8.0))
 	# v7: băng qua sân trong về cánh phải, vào SẢNH THÔNG TẦNG (cửa kính mặt sân trong, module 2) rồi lên cầu thang TRONG NHÀ
 	var sf: Vector3 = FPTUCampusBuilder.stair_foot()
 	var hall_x: float = FPTUCampusBuilder.RING_U1 - FPTUCampusBuilder.SIDE_D - 2.5
-	pts.append(Vector3(bu + 16.0, g, 66.5))
-	pts.append(Vector3(hall_x, g, 66.5))
+	pts.append(Vector3(bu + 16.0, g, door_v))
+	pts.append(Vector3(hall_x, g, door_v))
 	cp_lobby = pts.size() - 1
-	pts.append(Vector3(sf.x - 3.0, g, 66.5))
-	pts.append(Vector3(sf.x, g, 66.5))
+	pts.append(Vector3(sf.x - 3.0, g, door_v))
+	pts.append(Vector3(sf.x, g, door_v))
 	var prof: Array[Vector3] = FPTUCampusBuilder.stair_profile()
 	for i: int in range(prof.size()):
 		pts.append(prof[i] + Vector3(0.0, 0.05, 0.0))

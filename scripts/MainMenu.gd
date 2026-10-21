@@ -9,12 +9,14 @@
 class_name MainMenu
 extends Node3D
 
+## 5 góc máy (hệ cục bộ campus v8: lô 190 × 116 m, vòng nhà u 14..175 × v 16..93, sân trong u 42..147 × v 30..79,
+## cổng chính u = 7, cổng tây u = 181, HUTECH sau hàng rào v = −46)
 const SHOTS: Array = [
-	{"from": Vector3(-30.0, 44.0, -75.0), "to": Vector3(40.0, 40.0, -88.0), "look_from": Vector3(90.0, 6.0, 55.0), "look_to": Vector3(96.0, 8.0, 50.0), "fov": 58.0, "dur": 11.0},
-	{"from": Vector3(-30.0, 2.3, -9.7), "to": Vector3(70.0, 2.5, -9.7), "look_from": Vector3(60.0, 9.0, 20.0), "look_to": Vector3(150.0, 10.0, 25.0), "fov": 66.0, "dur": 11.0},
-	{"from": Vector3(56.0, 2.2, 62.0), "to": Vector3(66.0, 2.6, 56.0), "look_from": Vector3(100.0, 6.0, 52.0), "look_to": Vector3(118.0, 9.0, 56.0), "fov": 68.0, "dur": 11.0},
-	{"from": Vector3(78.0, 2.6, 14.0), "to": Vector3(94.0, 3.0, 15.0), "look_from": Vector3(120.0, 9.0, 19.0), "look_to": Vector3(140.0, 15.0, 21.0), "fov": 64.0, "dur": 11.0},
-	{"from": Vector3(210.0, 58.0, -30.0), "to": Vector3(170.0, 70.0, -95.0), "look_from": Vector3(90.0, 0.0, 60.0), "look_to": Vector3(82.0, 0.0, 58.0), "fov": 56.0, "dur": 12.0}
+	{"from": Vector3(-30.0, 48.0, -70.0), "to": Vector3(45.0, 44.0, -84.0), "look_from": Vector3(95.0, 6.0, 58.0), "look_to": Vector3(101.0, 8.0, 52.0), "fov": 58.0, "dur": 11.0},
+	{"from": Vector3(-30.0, 2.3, -9.7), "to": Vector3(70.0, 2.5, -9.7), "look_from": Vector3(60.0, 9.0, 16.0), "look_to": Vector3(150.0, 10.0, 22.0), "fov": 66.0, "dur": 11.0},
+	{"from": Vector3(62.0, 2.2, 66.0), "to": Vector3(72.0, 2.6, 60.0), "look_from": Vector3(110.0, 6.0, 55.0), "look_to": Vector3(128.0, 9.0, 60.0), "fov": 68.0, "dur": 11.0},
+	{"from": Vector3(78.0, 2.6, 8.5), "to": Vector3(94.0, 3.0, 9.5), "look_from": Vector3(120.0, 9.0, 14.0), "look_to": Vector3(140.0, 15.0, 16.0), "fov": 64.0, "dur": 11.0},
+	{"from": Vector3(220.0, 58.0, -30.0), "to": Vector3(180.0, 72.0, -100.0), "look_from": Vector3(95.0, 0.0, 60.0), "look_to": Vector3(87.0, 0.0, 58.0), "fov": 56.0, "dur": 12.0}
 ]
 const FADE_T: float = 0.55
 
@@ -59,7 +61,7 @@ func _ready() -> void:
 func _build_world() -> void:
 	campus_mats = FPTUCampusBuilder.make_materials()
 	FPTUCampusBuilder.build_authentic_campus(world, Vector3.ZERO, 0.0, {"grass": true})
-	FPTUCampusBuilder.build_hutech(world, Vector3(135.0, 0.0, -26.0), campus_mats)
+	FPTUCampusBuilder.build_hutech(world, FPTUCampusBuilder.hutech_origin_local(), campus_mats)
 	FPTUCampusBuilder.build_d1_road_piece(world, -13.0, -140.0, 340.0, campus_mats, 0.0)
 	# Mặt đất xa + nền cỏ bao quanh
 	var ground := MeshInstance3D.new()
