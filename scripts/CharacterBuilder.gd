@@ -42,6 +42,30 @@ const HEAD_R: float = 0.105
 static var _tex_cache: Dictionary = {}
 static var _mat_cache: Dictionary = {}
 static var _mesh_cache: Dictionary = {}
+## Phong cách hoạt hình: toon diffuse/specular + viền đen (next_pass) cho mọi vật liệu nhân vật & đồ vật
+static var toon: bool = true
+static var _outline_cache: Dictionary = {}
+const EXPRESSIONS: Array[String] = ["open", "closed", "happy", "angry", "surprised", "done"]
+
+static func _outline_mat(width: float) -> ShaderMaterial:
+	var key: String = "%.4f" % width
+	if _outline_cache.has(key):
+		return _outline_cache[key]
+	var sm := ShaderMaterial.new()
+	sm.shader = load("res://assets/shaders/outline.gdshader")
+	sm.set_shader_parameter("width", width)
+	_outline_cache[key] = sm
+	return sm
+
+## Áp phong cách toon + viền lên một StandardMaterial3D (bỏ qua vật liệu trong suốt)
+static func _style_mat(m: StandardMaterial3D, outline_width: float = 0.012) -> StandardMaterial3D:
+	if not toon:
+		return m
+	m.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
+	m.specular_mode = BaseMaterial3D.SPECULAR_TOON
+	if m.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED and outline_width > 0.0:
+		m.next_pass = _outline_mat(outline_width)
+	return m
 
 # ===========================================================================
 # API TĨNH
@@ -216,10 +240,35 @@ static func build(opts: Dictionary = {}) -> Node3D:
 			elif shoe_style == "sandal":
 				_box(foot, Vector3(0.0, 0.0, -0.05), Vector3(0.09, 0.01, 0.025), outfit["sole_mat"])
 
+	# --- Tỉ lệ cách điệu (hoạt hình): đầu to, tay chân ngắn, bàn tay to; hông hạ theo chân ngắn
+	var stylized: bool = bool(opts.get("stylized", true))
+	var leg_scale: float = 1.0
+	if stylized:
+		head.scale = Vector3(1.26, 1.26, 1.26)
+		for key: String in ["shoulder_l", "shoulder_r"]:
+			(rig[key] as Node3D).scale = Vector3(0.93, 0.93, 0.93)
+		for key: String in ["hand_l", "hand_r"]:
+			(rig[key] as Node3D).scale = Vector3(1.18, 1.18, 1.18)
+		leg_scale = 0.9
+		for key: String in ["thigh_l", "thigh_r"]:
+			(rig[key] as Node3D).scale = Vector3(leg_scale, leg_scale, leg_scale)
+		hips.position.y = HIP_Y * leg_scale
+		torso_mi.scale = Vector3(1.05, 1.0, 1.05)
+	# --- Khối cầu lấp khớp (vai, khuỷu, cổ tay, háng, gối, cổ chân) để không lộ đoạn rời
+	var arm_r2: float = (0.042 if female else 0.047) * width
+	var leg_r2: float = (0.072 if female else 0.07) * width
+	for sfx: String in ["l", "r"]:
+		_sphere(rig["shoulder_" + sfx], Vector3.ZERO, arm_r2 * 1.15, outfit["shirt_plain"])
+		_sphere(rig["elbow_" + sfx], Vector3.ZERO, arm_r2 * 0.92, outfit["shirt_plain"] if float(outfit.get("sleeve", 0.14)) > UPPER_ARM_LEN else skin)
+		_sphere(rig["hand_" + sfx], Vector3.ZERO, arm_r2 * 0.8, skin)
+		_sphere(rig["thigh_" + sfx], Vector3.ZERO, leg_r2 * 1.0, outfit["trousers"])
+		_sphere(rig["knee_" + sfx], Vector3.ZERO, leg_r2 * 0.84, skin if bool(outfit.get("shorts", false)) else outfit["trousers"])
 	root.set_meta("rig", rig)
 	root.set_meta("preset", preset)
 	root.set_meta("female", female)
 	root.set_meta("height", height)
+	root.set_meta("hip_base", HIP_Y * leg_scale)
+	root.set_meta("skin_idx", skin_idx)
 	# --- Animator
 	if bool(opts.get("animate", true)):
 		var an := Animator.new()
@@ -238,6 +287,7 @@ static func build(opts: Dictionary = {}) -> Node3D:
 			else:
 				an.blink_enabled = false
 		an.rng_phase = rng.randf() * TAU
+		an.hip_base = HIP_Y * leg_scale
 		root.add_child(an)
 		var clip: String = String(opts.get("clip", ""))
 		if clip != "":
@@ -309,6 +359,28 @@ static func look_at_point(root: Node3D, global_point: Variant) -> void:
 	if an:
 		an.look_target = global_point
 
+## Đổi biểu cảm mặt: "open" (bình thường), "happy", "angry", "surprised", "done" (cạn lời). Chớp mắt vẫn hoạt động.
+static func set_expression(root: Node3D, expr: String) -> void:
+	var an: Animator = get_animator(root)
+	var face: MeshInstance3D = get_pivot(root, "face_mesh") as MeshInstance3D
+	if face == null:
+		return
+	var idx: int = int(root.get_meta("skin_idx", 1))
+	var female: bool = bool(root.get_meta("female", false))
+	var tex: Texture2D = _tex("char_face_%s%s_%s.png" % [SKIN_KEYS[idx], "f" if female else "m", expr if expr in EXPRESSIONS else "open"])
+	if tex == null:
+		return
+	var fm: StandardMaterial3D = face.material_override as StandardMaterial3D
+	if an and an.face_mat:
+		an.face_open = tex
+		if an._blink_closed <= 0.0:
+			an.face_mat.albedo_texture = tex
+	elif fm:
+		if fm == _mat_cache.get("face_%d_%s" % [idx, "f" if female else "m"], null):
+			fm = fm.duplicate()
+			face.material_override = fm
+		fm.albedo_texture = tex
+
 static func get_pivot(root: Node3D, key: String) -> Node3D:
 	var rig: Dictionary = root.get_meta("rig", {})
 	return rig.get(key, null)
@@ -324,6 +396,7 @@ static func set_opacity(root: Node3D, alpha: float) -> void:
 				var m: Material = mi.material_override.duplicate()
 				if m is StandardMaterial3D:
 					m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+					m.next_pass = null # bong ma trong suot khong ve vien
 				mi.material_override = m
 		var an: Animator = get_animator(root)
 		if an and an.face_mat:
@@ -754,6 +827,7 @@ static func _mat(key: String, color: Color, rough: float = 0.85, metal: float = 
 	if emission > 0.0:
 		m.emission_enabled = true
 		m.emission = color * emission
+	_style_mat(m, 0.0 if emission > 0.0 else 0.012)
 	_mat_cache[k] = m
 	return m
 
@@ -765,14 +839,18 @@ static func _cloth_mat(key: String, color: Color) -> StandardMaterial3D:
 	m.albedo_color = color
 	m.roughness = 0.92
 	m.metallic = 0.0
+	var folds: Texture2D = _tex("char_cloth_folds.png")
+	if folds:
+		m.albedo_texture = folds # bóng + nếp gấp vẽ sẵn, nhân với màu vải
 	var n: Texture2D = _tex("char_cloth_n.png")
 	if n:
 		m.normal_enabled = true
 		m.normal_texture = n
 		m.normal_scale = 0.5
-		m.uv1_scale = Vector3(4.0, 4.0, 4.0)
-		m.uv1_triplanar = true
-		m.uv1_triplanar_sharpness = 2.0
+	m.uv1_scale = Vector3(4.0, 4.0, 4.0)
+	m.uv1_triplanar = true
+	m.uv1_triplanar_sharpness = 2.0
+	_style_mat(m)
 	_mat_cache[k] = m
 	return m
 
@@ -795,6 +873,7 @@ static func _denim_mat() -> StandardMaterial3D:
 		m.normal_scale = 0.5
 	m.uv1_scale = Vector3(3.0, 3.0, 3.0)
 	m.uv1_triplanar = true
+	_style_mat(m)
 	_mat_cache[k] = m
 	return m
 
@@ -815,6 +894,7 @@ static func _shirt_fpt_mat() -> StandardMaterial3D:
 		m.normal_enabled = true
 		m.normal_texture = n
 		m.normal_scale = 0.35
+	_style_mat(m)
 	_mat_cache[k] = m
 	return m
 
@@ -836,6 +916,7 @@ static func _skin_mat(idx: int) -> StandardMaterial3D:
 		m.normal_scale = 0.25
 		m.uv1_triplanar = true
 		m.uv1_scale = Vector3(6.0, 6.0, 6.0)
+	_style_mat(m)
 	_mat_cache[k] = m
 	return m
 
@@ -855,6 +936,7 @@ static func _face_mat(idx: int, female: bool) -> StandardMaterial3D:
 		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	else:
 		m.albedo_color = SKIN_TONES[idx]
+	_style_mat(m)
 	_mat_cache[k] = m
 	return m
 
@@ -875,6 +957,7 @@ static func _hair_mat(idx: int) -> StandardMaterial3D:
 		m.normal_scale = 0.8
 		m.uv1_triplanar = true
 		m.uv1_scale = Vector3(5.0, 5.0, 5.0)
+	_style_mat(m, 0.014)
 	_mat_cache[k] = m
 	return m
 
@@ -883,6 +966,7 @@ static func _hair_mat(idx: int) -> StandardMaterial3D:
 # ===========================================================================
 class Animator extends Node:
 	var rig: Dictionary = {}
+	var hip_base: float = HIP_Y       # cao độ hông khi đứng (ngắn hơn HIP_Y nếu tỉ lệ cách điệu)
 	var speed: float = 0.0            # m/s, lái chu kỳ bước
 	var look_target: Variant = null   # Vector3 toàn cục hoặc null
 	var params: Dictionary = {"lean": 0.0, "run": 0.0}
@@ -1241,7 +1325,7 @@ class Animator extends Node:
 		var hips: Node3D = rig.get("hips", null)
 		if hips:
 			var hy: float = lerpf(float(loco.get("hips_y", 0.0)), float(cpose.get("hips_y", float(loco.get("hips_y", 0.0)))), w)
-			hips.position.y = HIP_Y + hy
+			hips.position.y = hip_base + hy
 		var torso_mesh: MeshInstance3D = rig.get("torso_mesh", null)
 		if torso_mesh:
 			var b: float = float(loco.get("breathe", 0.0))

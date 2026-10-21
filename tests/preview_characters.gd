@@ -108,6 +108,17 @@ func _process(_d: float) -> bool:
 		60:
 			_save("char_01_lineup")
 			_shot(Vector3(-4.1, 1.62, 1.35), Vector3(-4.4, 1.5, 0.0), 32.0)
+		70:
+			# biểu cảm: 5 người đầu mỗi người một kiểu
+			var exprs: Array[String] = ["happy", "angry", "surprised", "done", "open"]
+			for i: int in range(mini(5, chars.size())):
+				CharacterBuilder.set_expression(chars[i], exprs[i])
+			_shot(Vector3(-4.0, 1.62, 1.9), Vector3(-4.0, 1.5, 0.0), 36.0)
+		75:
+			_save("char_06_expressions")
+			_shot(Vector3(-4.1, 1.62, 1.35), Vector3(-4.4, 1.5, 0.0), 32.0)
+			for i: int in range(mini(5, chars.size())):
+				CharacterBuilder.set_expression(chars[i], "open")
 		80:
 			_save("char_02_faces")
 			for i: int in range(chars.size()):

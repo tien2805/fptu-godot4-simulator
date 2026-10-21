@@ -74,9 +74,12 @@ def noise(w, h, octaves=4, persistence=0.5, seed=0):
 
 
 # ---------------------------------------------------------------- MẶT
-def make_face(tone_key, sex, closed):
-    # Vẽ ở 512x256 (S=2 so với lưới thiết kế 256x128). Ảnh nền RGB + Draw mode "RGBA" để Pillow BLEND alpha
-    # (vẽ lên ảnh RGBA thì Pillow chỉ ghi đè pixel, bóng mờ sẽ thành mảng đặc).
+EXPRESSIONS = ["open", "closed", "happy", "angry", "surprised", "done"]
+
+
+def make_face(tone_key, sex, expr):
+    """Bản đồ mặt 512x256 cho SphereMesh (u=0.5 phía trước). expr: open/closed (chớp mắt)/happy/angry/surprised/done.
+    Ảnh nền RGB + Draw mode "RGBA" để Pillow BLEND alpha."""
     S = 2
     W, H = 256 * S, 128 * S
     base = TONES[tone_key]
@@ -92,18 +95,18 @@ def make_face(tone_key, sex, closed):
     def E(box, **kw):
         d.ellipse([v * S for v in box], **kw)
 
-    cx, ey = 128 * S, 62 * S  # tâm mặt (u=0.5), đường mắt ở v≈0.48
+    cx, ey = 128 * S, 62 * S
     lash = (38, 24, 18, 255)
-    # má hồng (nữ) / hơi đỏ (nam)
     blush = (235, 120, 110, 55) if sex == "f" else (220, 130, 110, 26)
+    if expr == "happy":
+        blush = (235, 110, 100, 95)
     for sx in (-1, 1):
         E([128 + sx * 30 - 16, 74 - 8, 128 + sx * 30 + 16, 74 + 8], fill=blush)
-    # bóng hốc mắt + sống mũi sáng + bóng dưới mũi
     for sx in (-1, 1):
         E([128 + sx * 12 - 10, 62 - 7, 128 + sx * 12 + 10, 62 + 6], fill=(60, 30, 20, 18))
     E([128 - 4, 62 + 4, 128 + 4, 62 + 18], fill=(255, 255, 255, 22))
     E([128 - 7, 62 + 14, 128 + 7, 62 + 21], fill=(70, 30, 20, 30))
-    # lông mày
+    # lông mày theo biểu cảm
     brow_w = (2 if sex == "f" else 4) * S // 2 + 1
     for sx in (-1, 1):
         x0 = cx + sx * 12 * S
@@ -112,37 +115,72 @@ def make_face(tone_key, sex, closed):
             t = i / 8.0
             x = x0 + sx * (t - 0.5) * 20 * S
             arch = (-5.0 if sex == "f" else -2.5) * math.sin(t * math.pi) * S
-            pts.append((x, ey - 10 * S + arch + (1.5 * S if (sx * (t - 0.5)) > 0 else 0.0)))
+            lift = 0.0
+            if expr == "angry":
+                lift = (6.0 - 10.0 * t) * S * (1 if sx > 0 else 1)  # đầu trong (t=0) hạ thấp, đầu ngoài nhô
+                lift = (-4.0 + 10.0 * (1 - t)) * S if False else lift
+            elif expr == "surprised":
+                lift = -9.0 * S
+            elif expr == "done":
+                lift = 1.5 * S
+            pts.append((x, ey - 10 * S + arch + lift + (1.5 * S if (sx * (t - 0.5)) > 0 else 0.0)))
+        if expr == "angry":
+            # vẽ lại: mày xếch vào trong (đầu trong thấp hơn)
+            pts = [(x0 + sx * (t / 8.0 - 0.5) * 20 * S, ey - 12 * S + (t / 8.0) * 8 * S * -1 + 8 * S * (1 - t / 8.0) * 0) for t in range(9)]
+            pts = [(x0 + sx * (t / 8.0 - 0.5) * 20 * S, ey - 5 * S - (t / 8.0) * 8 * S) for t in range(9)]
+            pts = [(x0 - sx * 10 * S + sx * (t / 8.0) * 20 * S, ey - 5 * S - (1 - t / 8.0) * 0 - (t / 8.0) * 7 * S) for t in range(9)]
         d.line(pts, fill=(44, 30, 22, 235), width=brow_w, joint="curve")
     # mắt
     for sx in (-1, 1):
         x = cx + sx * 12 * S
-        if not closed:
-            ew, eh = ((11, 7) if sex == "f" else (11, 6))
-            ew *= S
-            eh *= S
-            d.ellipse([x - ew / 2, ey - eh / 2, x + ew / 2, ey + eh / 2], fill=(247, 243, 240, 255))
-            ir = 3.4 * S
-            d.ellipse([x - ir, ey - ir, x + ir, ey + ir], fill=(96, 60, 34, 255))
-            d.ellipse([x - ir, ey - ir, x + ir, ey + ir], outline=(50, 30, 18, 255), width=1)
-            pr = 1.6 * S
-            d.ellipse([x - pr, ey - pr, x + pr, ey + pr], fill=(14, 10, 8, 255))
-            d.ellipse([x - 2.4 * S, ey - 2.6 * S, x - 0.9 * S, ey - 1.1 * S], fill=(255, 255, 255, 235))
-            # mí trên (nửa trên của bbox, PIL: 0° = 3 giờ, chiều kim đồng hồ)
-            d.arc([x - ew / 2 - S, ey - eh / 2 - S, x + ew / 2 + S, ey + eh / 2 + S], 195, 345, fill=lash, width=S)
-            if sex == "f":
-                d.arc([x - ew / 2 - 2 * S, ey - eh / 2 - 2 * S, x + ew / 2 + 2 * S, ey + eh / 2 + 2 * S], 205, 335, fill=lash, width=1)
-                d.line([(x + sx * 6 * S, ey - 3 * S), (x + sx * 8 * S, ey - 5.5 * S)], fill=lash, width=S)
-            # mí dưới rất nhẹ
-            d.arc([x - ew / 2, ey - eh / 2, x + ew / 2, ey + eh / 2 + S], 20, 160, fill=(120, 80, 60, 120), width=1)
-        else:
+        ew, eh = ((11, 7) if sex == "f" else (11, 6))
+        ew *= S
+        eh *= S
+        if expr == "surprised":
+            ew = int(ew * 1.25)
+            eh = int(eh * 1.5)
+        if expr in ("closed",):
             d.arc([x - 6 * S, ey - 3 * S, x + 6 * S, ey + 4 * S], 15, 165, fill=lash, width=S)
-    # lỗ mũi
+            continue
+        if expr == "happy":
+            # mắt cười: cung cong lên
+            d.arc([x - 6 * S, ey - 2 * S, x + 6 * S, ey + 6 * S], 195, 345, fill=lash, width=S + 1)
+            continue
+        if expr == "done":
+            eh = max(2 * S, eh // 2)
+        d.ellipse([x - ew / 2, ey - eh / 2, x + ew / 2, ey + eh / 2], fill=(247, 243, 240, 255))
+        ir = 3.4 * S if expr != "surprised" else 2.6 * S
+        iy = ey if expr != "done" else ey + 1 * S
+        d.ellipse([x - ir, iy - ir, x + ir, iy + ir], fill=(96, 60, 34, 255))
+        d.ellipse([x - ir, iy - ir, x + ir, iy + ir], outline=(50, 30, 18, 255), width=1)
+        pr = 1.6 * S if expr != "surprised" else 1.1 * S
+        d.ellipse([x - pr, iy - pr, x + pr, iy + pr], fill=(14, 10, 8, 255))
+        d.ellipse([x - 2.4 * S, iy - 2.6 * S, x - 0.9 * S, iy - 1.1 * S], fill=(255, 255, 255, 235))
+        d.arc([x - ew / 2 - S, ey - eh / 2 - S, x + ew / 2 + S, ey + eh / 2 + S], 195, 345, fill=lash, width=S)
+        if expr == "done":
+            d.line([(x - ew / 2, ey - eh / 2), (x + ew / 2, ey - eh / 2)], fill=lash, width=S + 1)  # mí sụp
+        if sex == "f":
+            d.arc([x - ew / 2 - 2 * S, ey - eh / 2 - 2 * S, x + ew / 2 + 2 * S, ey + eh / 2 + 2 * S], 205, 335, fill=lash, width=1)
+            d.line([(x + sx * 6 * S, ey - 3 * S), (x + sx * 8 * S, ey - 5.5 * S)], fill=lash, width=S)
+        d.arc([x - ew / 2, ey - eh / 2, x + ew / 2, ey + eh / 2 + S], 20, 160, fill=(120, 80, 60, 120), width=1)
     for sx in (-1, 1):
         E([128 + sx * 3 - 1.5, 79 - 1, 128 + sx * 3 + 1.5, 79 + 1], fill=(40, 15, 10, 110))
-    # miệng
+    # miệng theo biểu cảm
     my = 91 * S
-    if sex == "f":
+    if expr == "happy":
+        d.chord([cx - 11 * S, my - 7 * S, cx + 11 * S, my + 6 * S], 0, 180, fill=(120, 48, 56, 255))
+        d.chord([cx - 9 * S, my - 6 * S, cx + 9 * S, my + 1 * S], 0, 180, fill=(250, 250, 248, 255))
+    elif expr == "angry":
+        d.arc([cx - 9 * S, my - 1 * S, cx + 9 * S, my + 9 * S], 200, 340, fill=(118, 50, 50, 255), width=S + 1)
+    elif expr == "surprised":
+        d.ellipse([cx - 5 * S, my - 5 * S, cx + 5 * S, my + 6 * S], fill=(90, 36, 40, 255))
+        d.ellipse([cx - 3 * S, my - 3 * S, cx + 3 * S, my + 1 * S], fill=(250, 250, 248, 255))
+    elif expr == "done":
+        d.line([(cx - 8 * S, my + 1 * S), (cx + 8 * S, my + 1 * S)], fill=(118, 62, 58, 255), width=S)
+        # giọt mồ hôi xanh ở thái dương
+        d.polygon([(cx + 30 * S, 50 * S), (cx + 33 * S, 60 * S), (cx + 27 * S, 60 * S)], fill=(130, 190, 240, 230))
+        d.ellipse([cx + 27 * S, 57 * S, cx + 33 * S, 63 * S], fill=(130, 190, 240, 230))
+    elif sex == "f":
         E([128 - 8, 91 - 3, 128 + 8, 91 + 1], fill=(196, 92, 104, 225))
         E([128 - 8, 91 - 1, 128 + 8, 91 + 4], fill=(206, 104, 112, 235))
         d.line([(cx - 8 * S, my), (cx, my + 0.5 * S), (cx + 8 * S, my)], fill=(120, 48, 56, 255), width=1)
@@ -150,9 +188,19 @@ def make_face(tone_key, sex, closed):
     else:
         d.line([(cx - 7 * S, my), (cx, my + 0.8 * S), (cx + 7 * S, my)], fill=(118, 62, 58, 255), width=S)
         E([128 - 6, 91 + 1, 128 + 6, 91 + 4], fill=(190, 110, 100, 110))
-    # bóng cằm nhẹ
     E([128 - 14, 104, 128 + 14, 118], fill=(60, 25, 15, 26))
-    save(im, "char_face_%s%s_%s.png" % (tone_key, sex, "closed" if closed else "open"))
+    save(im, "char_face_%s%s_%s.png" % (tone_key, sex, expr))
+
+
+def make_cloth_folds():
+    """Albedo vải trơn có bóng và nếp gấp mềm (nhân với albedo_color của vật liệu) – 'vẽ tay' hơn màu phẳng."""
+    W = H = 256
+    n = noise(W, H, 4, 0.55, 17)
+    yy, xx = np.mgrid[0:H, 0:W]
+    folds = np.sin(xx * 0.11 + n * 6.0) * 0.5 + 0.5
+    h = 0.78 + 0.22 * (folds * 0.6 + n * 0.4)
+    arr = np.stack([h, h, h], axis=-1) * 255.0
+    save(Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB"), "char_cloth_folds.png")
 
 
 # ---------------------------------------------------------------- ÁO POLO FPT
@@ -234,8 +282,9 @@ if __name__ == "__main__":
     print("Generating character textures ->", OUT_DIR)
     for t in TONES:
         for s in ("m", "f"):
-            for c in (False, True):
-                make_face(t, s, c)
+            for ex in EXPRESSIONS:
+                make_face(t, s, ex)
+    make_cloth_folds()
     make_shirt_fpt()
     make_cloth_normal()
     make_denim()

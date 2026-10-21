@@ -29,6 +29,7 @@ static func paint(color: Color) -> StandardMaterial3D:
 	m.clearcoat_enabled = true
 	m.clearcoat = 0.6
 	m.clearcoat_roughness = 0.1
+	CharacterBuilder._style_mat(m, 0.01)
 	CharacterBuilder._mat_cache[k] = m
 	return m
 
@@ -55,6 +56,7 @@ static func rubber() -> StandardMaterial3D:
 		m.normal_scale = 0.8
 		m.uv1_triplanar = true
 		m.uv1_scale = Vector3(6.0, 6.0, 6.0)
+	CharacterBuilder._style_mat(m, 0.01)
 	CharacterBuilder._mat_cache[k] = m
 	return m
 
@@ -108,6 +110,7 @@ static func _textured(key: String, fallback: Color, albedo_file: String, normal_
 		m.normal_scale = 0.6
 	m.uv1_triplanar = true
 	m.uv1_scale = Vector3(uv_scale, uv_scale, uv_scale)
+	CharacterBuilder._style_mat(m, 0.01)
 	CharacterBuilder._mat_cache[key] = m
 	return m
 
