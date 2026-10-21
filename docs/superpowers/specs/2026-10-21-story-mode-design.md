@@ -15,7 +15,7 @@ Ngày: 2026-10-21 · Trạng thái: đã duyệt từng phần với chủ dự 
 | Thế giới mở | Đi bộ/đi xe tự do trong campus, tới đúng địa điểm thì vào mini-game để phá kỷ lục; mở từ menu ngay từ đầu; NPC chỉ nói một câu, không nhiệm vụ. |
 | Trình bày | Cảnh 3D + hộp thoại; chân dung render trực tiếp từ nhân vật 3D; **không ảnh AI**, không ảnh người thật. |
 | Giảng viên phản diện hài | Tên hư cấu **ThS. ToanHLM**, nhóm chat gọi **"Toàn Nổ"**; mặt hư cấu (nam ~40, mặt tròn, trán chữ M hơi hói, tóc ngắn củn, polo bóng, thẻ giảng viên, đồng hồ to). Không dựng theo ảnh người thật, không gắn tính cách với dân tộc nào. |
-| Băng bán tool | Cừu Dolly, Lò Văn Lụm, Lò Thị Lụm, Lê Minh Gia Mẫn (tên meme group FB; nếu tên cuối trùng người thật thì đổi tên hư cấu tương tự). |
+| Băng bán tool | Cừu Dolly, Lò Văn Lụm, Lò Thị Lụm, Lê Minh Gia Mẫn (tất cả là tên hư cấu do chủ dự án nghĩ ra, theo chất tên meme group FB). |
 
 Ràng buộc kỹ thuật không đổi: Godot 4.7 GDScript thuần, không plugin, không C#, giữ cấu trúc thư mục và `class_name`, texture chỉ vẽ/xử lý bằng code (Pillow), sau mỗi thay đổi chạy `--check-only` + smoke + bot test.
 
