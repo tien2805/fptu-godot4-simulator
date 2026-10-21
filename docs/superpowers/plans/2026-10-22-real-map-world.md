@@ -51,7 +51,7 @@ pois: [{name, display, kind, x, z, region}]
 
 `region` is one of `campus`, `vinhomes`, `corridor`. `style` is one of `tower`, `beverly`, `mall`, `shophouse`, `industrial`. `source` `"msft"` marks the 2548 unnamed Microsoft Global ML Building Footprints (CDLA-Permissive-2.0, ids >= 9000000000, levels 1-4 at 3.6 m) that MapBuilder merges into `MSChunk_<gx>_<gz>` meshes (one per 128 m cell, see the MapBuilder header); `"osm"` buildings keep one node each. Polygons are closed (first point repeated last). Widths are metres per carriageway; `oneway` ways are one carriageway each (Đường D1 is mapped as two one-way ways).
 
-Counts today: 611 roads (campus 189, vinhomes 282, corridor 140), 143 buildings, 18 water, 121 areas, 88 POIs.
+Counts today: 611 roads (campus 189, vinhomes 282, corridor 140), 2691 buildings (143 osm + 2548 msft), 18 water, 121 areas, 88 POIs.
 
 ## File structure
 
