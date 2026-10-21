@@ -6,7 +6,8 @@
 #   Nút: ▶ BẮT ĐẦU NGÀY MỚI (reset hành trình → Màn 1) · 📋 CHỌN MÀN (Campaign Hub có rank) · 🌏 KHÁM PHÁ CAMPUS
 #        (thế giới mở FreeRoam: spawn ở BE6 Vinhomes Grand Park, đi/chạy xe tới campus) · 🎮 HƯỚNG DẪN ĐIỀU KHIỂN
 #        (bảng phím + khối "Nguồn dữ liệu bản đồ": OpenStreetMap ODbL, footprint nhà Microsoft CDLA-Permissive-2.0)
-#        · ⚙ CÀI ĐẶT ĐỒ HOẠ (3 mức chất lượng + toàn màn hình, lưu user://settings.cfg) · ✖ THOÁT.
+#        · ⚙ CÀI ĐẶT ĐỒ HOẠ (3 mức chất lượng + toàn màn hình + phong cách Vice City / Cổ điển + vệt sáng, lưu
+#        user://settings.cfg) · ✖ THOÁT.
 #   Bảng "Nhật ký hành trình" hiện kỷ lục từng màn (lưu user://progress.cfg). Điều hướng: chuột hoặc ↑↓ + Enter, [M] mở hub.
 class_name MainMenu
 extends Node3D
@@ -353,7 +354,7 @@ func _build_settings_panel() -> PanelContainer:
 	v.add_theme_constant_override("separation", 10)
 	m.add_child(v)
 	v.add_child(GameFX.make_label("⚙ CÀI ĐẶT ĐỒ HOẠ", 24, Color("#2ECC71")))
-	var desc: Label = GameFX.make_label("Game mặc định chạy mức CAO (SDFGI, SSIL, phản xạ màn hình, sương thể tích, bóng mềm 8K). Máy yếu chọn mức thấp hơn – áp dụng ngay và lưu cho lần sau.", 13, Color("#BDC3C7"))
+	var desc: Label = GameFX.make_label("Phong cách Vice City (mặc định) dùng ánh sáng phẳng kiểu PS2, nhẹ máy; mức đồ hoạ đổi bóng đổ và khử răng cưa. Phong cách Cổ điển ở mức CAO bật SDFGI, SSIL, phản xạ màn hình, sương thể tích. Áp dụng ngay và lưu cho lần sau.", 13, Color("#BDC3C7"))
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(desc)
 	var qrow := HBoxContainer.new()
@@ -381,6 +382,8 @@ func _build_settings_panel() -> PanelContainer:
 	frow.alignment = BoxContainer.ALIGNMENT_CENTER
 	frow.add_child(fullscreen_check)
 	v.add_child(frow)
+	# Phong cách đồ hoạ (Vice City / Cổ điển) + vệt sáng: GameFX.set_art_style() áp lại nền 3D của menu ngay
+	GameFX.build_style_settings(v)
 	v.add_child(GameFX.make_label("🔈 ÂM LƯỢNG", 18, Color("#2ECC71")))
 	GameFX.build_audio_settings(v)
 	var close := _menu_button("✔   LƯU & ĐÓNG  [ESC]", Color("#2ECC71"))
@@ -419,6 +422,7 @@ func _show_settings() -> void:
 	GameFX.play_sfx("pop", -6.0)
 	_refresh_quality_buttons()
 	fullscreen_check.button_pressed = GameFX.fullscreen
+	GameFX.sync_style_settings(settings_panel)
 	modal_dim.visible = true
 	settings_panel.visible = true
 	guide_panel.visible = false

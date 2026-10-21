@@ -309,6 +309,7 @@ func pause_game() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	GameFX.play_ui("pop", -6.0, 0.8)
 	_refresh_pause_quality()
+	GameFX.sync_style_settings(pause_settings_box)
 	pause_resume_btn.call_deferred("grab_focus")
 
 func resume_game() -> void:
@@ -376,6 +377,8 @@ func _create_pause_ui() -> void:
 			GameFX.play_ui("pop", -6.0))
 		qrow.add_child(qb)
 		pause_quality_buttons.append(qb)
+	# Phong cách đồ hoạ (Vice City / Cổ điển) + vệt sáng: đổi là áp lại preset ánh sáng của màn đang chơi, không nạp lại
+	GameFX.build_style_settings(pause_settings_box)
 	GameFX.build_audio_settings(pause_settings_box)
 
 	var controls_btn: Button = _pause_button("🎮   ĐIỀU KHIỂN")

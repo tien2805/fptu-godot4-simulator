@@ -11,6 +11,8 @@
 #   roam_07_nguyen_van_tang  – chạy xe máy trên Nguyễn Văn Tăng (tuyến 3 350 m), dãy nhà ống Microsoft hai bên đường
 # In FPS ở mỗi ảnh: trung bình MEASURE frame ngay trước khi chụp (sau dịch chuyển, SDFGI dựng lại cascade và shader
 # biên dịch trong vài frame đầu, nên SETTLE - MEASURE frame đầu không tính) + bộ đếm Engine lúc chụp.
+# Biến môi trường chỉ dùng cho ảnh preview (không ghi settings.cfg): VICE_STYLE=vice|classic ép phong cách đồ hoạ,
+# PREVIEW_DIR=<thư mục tuyệt đối> thay cho user://preview, PREVIEW_NOVSYNC=1 tắt V-Sync để đo FPS thật.
 extends SceneTree
 
 const SETTLE: int = 96
@@ -38,11 +40,27 @@ func _initialize() -> void:
 			var n: Node = s.new()
 			n.name = pair[0]
 			root.add_child(n)
-	out_dir = ProjectSettings.globalize_path("user://preview")
+	_apply_style_override(root.get_node("GameFX"))
+	if OS.get_environment("PREVIEW_NOVSYNC") == "1":
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	var dir_env: String = OS.get_environment("PREVIEW_DIR")
+	out_dir = dir_env if dir_env != "" else ProjectSettings.globalize_path("user://preview")
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	roam = (load("res://scenes/FreeRoam.tscn") as PackedScene).instantiate()
 	root.add_child(roam)   # _ready chạy ở frame đầu của vòng lặp -> phần còn lại trong _setup()
 	print("PREVIEW OUT DIR: ", out_dir)
+
+
+## VICE_STYLE=vice|classic: ép phong cách cho lần chạy preview (không lưu settings.cfg). Autoload GameFX chỉ _ready
+## (nạp settings.cfg) sau _initialize, nên đặt phong cách ngay sau tín hiệu ready của nó, trước FreeRoam._ready.
+static func _apply_style_override(fx: Node) -> void:
+	var style: String = OS.get_environment("VICE_STYLE")
+	if style == "" or fx == null:
+		return
+	if fx.is_node_ready():
+		fx.call("set_art_style", style, false)
+	else:
+		fx.ready.connect(func() -> void: fx.call("set_art_style", style, false), CONNECT_ONE_SHOT)
 
 
 ## Gọi ở frame đầu tiên sau khi FreeRoam._ready dựng xong thế giới.
@@ -192,7 +210,8 @@ func _save(name: String) -> void:
 	var img: Image = root.get_texture().get_image()
 	var path: String = out_dir.path_join(name + ".png")
 	var err: int = img.save_png(path)
-	print("  saved %s err=%d size=%s fps=%.0f (engine counter %.0f)" % [path, err, img.get_size(), mean_fps, Engine.get_frames_per_second()])
+	var fx: Node = root.get_node("GameFX")
+	print("  saved %s err=%d size=%s fps=%.0f (engine counter %.0f) style=%s quality=%d" % [path, err, img.get_size(), mean_fps, Engine.get_frames_per_second(), String(fx.get("art_style")), int(fx.get("visual_quality"))])
 
 
 func _process(_delta: float) -> bool:
