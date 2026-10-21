@@ -1,18 +1,25 @@
 # File: res://tests/test_mapbuilder.gd
 # Headless test for MapBuilder (plan Task 3 + Microsoft footprints): builds the vinhomes, corridor and campus regions
 # from assets/data/mapdata.json and checks geometry, naming, colliders, the facade UV contract, the merged msft
-# chunks (MSChunk_<gx>_<gz>: every msft id in exactly one chunk, colliders, visibility range, outward walls, nothing
-# on a carriageway or inside an OSM building) and the time budget. Every check goes through _check() (a failed
-# assert inside _initialize would hang a --script run); a watchdog quits if _initialize aborts anyway.
+# chunks (MSChunk_<gx>_<gz>: every msft id in exactly one chunk, lean colliders (one convex / concave shape per
+# footprint piece, < 40 % of the render triangles, nothing above the roofs), <= 30-triangle water tanks, visibility
+# range, outward walls, nothing on a carriageway or footway ribbon or inside an OSM building, no piece under 1 m
+# wide) and the time budget. Every check goes through _check() (a failed assert inside _initialize would hang a
+# --script run); a watchdog quits if _initialize aborts anyway.
 # Run:  godot --headless --path . --script tests/test_mapbuilder.gd
 extends SceneTree
 
 const TIME_BUDGET_MS: int = 5000
 const MAX_MESH_INSTANCES: int = 600
+const MAX_TANK_TRIS: int = 30
+const MAX_COLLIDER_SHARE: float = 0.4      # collider faces / render triangles of one msft chunk
+const FOOT_CELL: float = 32.0
 
 var _done: bool = false
 var _frames: int = 0
 var _problems: int = 0
+var _foot_quads: Array = []                # [PackedVector2Array drawn footway quad, Rect2] (whole map)
+var _foot_quad_hash: Dictionary = {}       # Vector2i FOOT_CELL cell -> Array[int] into _foot_quads
 
 
 func _initialize() -> void:
@@ -179,14 +186,19 @@ func _run() -> String:
 	var bridge: MeshInstance3D = MapBuilder.build_road(world, PackedVector2Array([Vector2(0, 100), Vector2(200, 100)]), 8.0, {"bridge": true})
 	_check(bridge != null and bridge.mesh.get_aabb().size.y > 5.0, "bridge deck rises ~6 m")
 
+	# --- tank-only build: one rooftop water tank on a 6 x 12 m roof at 7.2 m ------------------
+	_check_tank_only()
+
 	_check(ms_vin < TIME_BUDGET_MS and ms_cor < TIME_BUDGET_MS and ms_cam < TIME_BUDGET_MS, "each region under %d ms (vin %d, cor %d, cam %d)" % [TIME_BUDGET_MS, ms_vin, ms_cor, ms_cam])
 	return "vinhomes=%dms corridor=%dms campus=%dms chunks=%d/%d/%d" % [ms_vin, ms_cor, ms_cam, ch_vin, ch_cor, ch_cam]
 
 
 ## Microsoft chunks of a built region: every unskipped msft id of the region in exactly one chunk (and in the chunk
-## of its centroid cell), meta source, one trimesh collider per chunk (when `colliders`), visibility range by lod,
-## no Label3D, ~40 % rooftop tanks, and every final footprint off the carriageways and outside the OSM buildings.
-## Returns the chunk count.
+## of its centroid cell), meta source, lean colliders (when `colliders`: one StaticBody3D holding only
+## ConvexPolygonShape3D / ConcavePolygonShape3D shapes, one per footprint piece, from the ground up to the roofs, faces
+## < MAX_COLLIDER_SHARE of the render triangles), visibility range by lod, no Label3D, ~40 % rooftop tanks of
+## <= MAX_TANK_TRIS triangles, and every final footprint off the carriageways and footways, outside the OSM buildings
+## and at least 1 m wide. Returns the chunk count.
 func _check_msft(md: MapData, region_root: Node3D, region: String, skip: Array, lod: int, colliders: bool) -> int:
 	var holder: Node = region_root.get_node_or_null("Buildings")
 	if not _check(holder != null, "%s has a Buildings node" % region):
@@ -200,9 +212,17 @@ func _check_msft(md: MapData, region_root: Node3D, region: String, skip: Array, 
 				want[int(b["id"])] = 0
 	var dropped: Array = holder.get_meta("msft_dropped_ids", [])
 	_check(dropped.is_empty(), "%s: no msft footprint clipped away entirely (dropped %s)" % [region, str(dropped)])
+	var fps: Array = MapBuilder.msft_footprints(md, region, skip)
+	var pieces_of: Dictionary = {}
+	for e: Array in fps:
+		pieces_of[int(e[0]["id"])] = (e[1] as Array).size()
 	var vis_end: float = 700.0 if lod == 0 else 450.0
 	var chunks: Array = []
 	var tanks: int = 0
+	var n_convex: int = 0
+	var n_concave: int = 0
+	var col_faces_all: int = 0
+	var render_all: int = 0
 	for c: Node in holder.get_children():
 		if not c.name.begins_with("MSChunk_"):
 			continue
@@ -222,15 +242,48 @@ func _check_msft(md: MapData, region_root: Node3D, region: String, skip: Array, 
 			_check(mi.name == "MSChunk_%d_%d" % [key.x, key.y], "%s: building %d sits in %s, its centroid cell is %s" % [region, id, mi.name, str(key)])
 		_check(absf(mi.visibility_range_end - vis_end) < 0.01 and absf(mi.visibility_range_end_margin - 40.0) < 0.01 and mi.visibility_range_fade_mode == GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF, "%s/%s: visibility_range_end %.0f (lod %d), margin 40, fade self" % [region, mi.name, vis_end, lod])
 		var bodies: int = 0
-		var concave: int = 0
+		var shapes: int = 0
+		var others: int = 0
+		var col_faces: int = 0
+		var col_top: float = -INF
+		var col_bottom: float = INF
 		for k: Node in mi.get_children():
 			if k is StaticBody3D:
 				bodies += 1
 				for cs: Node in k.get_children():
-					if cs is CollisionShape3D and (cs as CollisionShape3D).shape is ConcavePolygonShape3D:
-						concave += 1
+					var shape: Shape3D = (cs as CollisionShape3D).shape if cs is CollisionShape3D else null
+					var pts := PackedVector3Array()
+					if shape is ConcavePolygonShape3D:
+						pts = (shape as ConcavePolygonShape3D).get_faces()
+						col_faces += pts.size() / 3
+						n_concave += 1
+					elif shape is ConvexPolygonShape3D:
+						pts = (shape as ConvexPolygonShape3D).points
+						col_faces += 2 * pts.size() - 4   # triangles of a convex hull with that many vertices (upper bound)
+						n_convex += 1
+					else:
+						others += 1
+						continue
+					shapes += 1
+					for v: Vector3 in pts:
+						col_top = maxf(col_top, v.y)
+						col_bottom = minf(col_bottom, v.y)
+		var render_tris: int = _tri_count(mi.mesh)
 		if colliders:
-			_check(bodies == 1 and concave == 1, "%s/%s: 1 StaticBody3D with 1 ConcavePolygonShape3D (got %d/%d)" % [region, mi.name, bodies, concave])
+			var want_shapes: int = 0
+			var roof_top: float = 0.0
+			for id_v: Variant in ids:
+				want_shapes += int(pieces_of.get(int(id_v), 0))
+				if by_id.has(int(id_v)):
+					var hb: float = MapBuilder._building_height(by_id[int(id_v)])
+					roof_top = maxf(roof_top, maxf(3.0, hb) if lod >= 2 else hb)
+			_check(bodies == 1 and shapes >= 1 and others == 0, "%s/%s: 1 StaticBody3D holding only ConvexPolygonShape3D / ConcavePolygonShape3D shapes (got %d bodies, %d shapes, %d other children)" % [region, mi.name, bodies, shapes, others])
+			_check(shapes == want_shapes, "%s/%s: one collider shape per footprint piece (%d shapes, %d pieces)" % [region, mi.name, shapes, want_shapes])
+			_check(col_top <= roof_top + 0.01 and col_bottom >= -0.01, "%s/%s: colliders span the ground .. the roofs only, no parapet / tank (y %.2f..%.2f, highest roof %.2f)" % [region, mi.name, col_bottom, col_top, roof_top])
+			if lod < 2:
+				_check(float(col_faces) < MAX_COLLIDER_SHARE * float(render_tris), "%s/%s: collider faces %d < %.0f %% of the %d render triangles" % [region, mi.name, col_faces, MAX_COLLIDER_SHARE * 100.0, render_tris])
+			col_faces_all += col_faces
+			render_all += render_tris
 		_check(_count(mi, "Label3D") == 0, "%s/%s: no Label3D" % [region, mi.name])
 		var surfaces: Array = []
 		for s: int in range(mi.mesh.get_surface_count()):
@@ -239,6 +292,14 @@ func _check_msft(md: MapData, region_root: Node3D, region: String, skip: Array, 
 			_check(surfaces == ["boxes"], "%s/%s lod 2: one box surface (got %s)" % [region, mi.name, str(surfaces)])
 		else:
 			_check(surfaces.has("roof") and surfaces.has("parapet") and surfaces.any(func(n: String) -> bool: return n.begins_with("walls_")), "%s/%s: walls_<style> + roof + parapet surfaces (got %s)" % [region, mi.name, str(surfaces)])
+			var tank_tris: int = 0
+			var si: int = surfaces.find("tank")
+			if si >= 0:
+				var tarr: Array = mi.mesh.surface_get_arrays(si)
+				var tidx: PackedInt32Array = _indices(tarr)
+				tank_tris = tidx.size() / 3 if tidx.size() > 0 else (tarr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() / 3
+			var n_tanks: int = int(mi.get_meta("tank_count", 0))
+			_check((n_tanks == 0) == (si < 0) and tank_tris <= MAX_TANK_TRIS * n_tanks, "%s/%s: %d tank triangles for %d tanks (<= %d each)" % [region, mi.name, tank_tris, n_tanks, MAX_TANK_TRIS])
 		tanks += int(mi.get_meta("tank_count", 0))
 	var missing: int = 0
 	var several: int = 0
@@ -253,22 +314,32 @@ func _check_msft(md: MapData, region_root: Node3D, region: String, skip: Array, 
 	if lod < 2 and want.size() >= 100:
 		var share: float = float(tanks) / float(want.size())
 		_check(share > 0.25 and share < 0.45, "%s: rooftop water tanks on ~40 %% of the msft roofs (got %.1f %%)" % [region, share * 100.0])
+	if colliders:
+		print("  %s colliders: %d convex + %d concave shapes, %d faces = %.1f %% of %d render tris" % [region, n_convex, n_concave, col_faces_all, 100.0 * float(col_faces_all) / maxf(1.0, float(render_all)), render_all])
 	if lod == 0:
-		_check_footprints(md, region, skip)
+		_check_footprints(md, region, fps)
 	return chunks.size()
 
 
-## Final msft footprints: no vertex or centroid on a carriageway ribbon (+ 0.3 m), no overlap with any OSM building.
-func _check_footprints(md: MapData, region: String, skip: Array) -> void:
+## Final msft footprints (`fps` = MapBuilder.msft_footprints()): no vertex or centroid on a carriageway ribbon
+## (+ 0.3 m) or on a drawn footway ribbon (+ 0.2 m), no overlap with any OSM building or drawn footway quad, and no
+## piece narrower than 1 m (eroding it by 0.49 m leaves something).
+func _check_footprints(md: MapData, region: String, fps: Array) -> void:
 	var osm: Array = []
 	for b: Dictionary in md.buildings():
 		if not MapBuilder.is_msft(b):
 			var p: PackedVector2Array = MapData.poly(b["outer"])
 			osm.append([p, _bbox(p)])
+	_prepare_foot_quads(md)
 	var on_road: int = 0
 	var in_osm: int = 0
+	var on_foot: int = 0
+	var foot_overlap: int = 0
+	var thin: int = 0
+	var fins: int = 0
+	var worst_fin: float = 0.0
 	var pieces: int = 0
-	for e: Array in MapBuilder.msft_footprints(md, region, skip):
+	for e: Array in fps:
 		for piece: PackedVector2Array in e[1]:
 			pieces += 1
 			var probe := PackedVector2Array(piece)
@@ -277,6 +348,17 @@ func _check_footprints(md: MapData, region: String, skip: Array) -> void:
 				if _on_ribbon(v, 0.3):
 					on_road += 1
 					break
+			for v: Vector2 in probe:
+				if _on_footway(v, 0.2):
+					on_foot += 1
+					break
+			if Geometry2D.offset_polygon(piece, -0.49, Geometry2D.JOIN_MITER).is_empty():
+				thin += 1
+			var piece_area: float = absf(_signed_area(piece))
+			var fin_loss: float = piece_area - _opened_area(piece, 0.45)
+			worst_fin = maxf(worst_fin, fin_loss)
+			if fin_loss > maxf(0.1, piece_area * 0.01):
+				fins += 1
 			var pb: Rect2 = _bbox(piece)
 			for o: Array in osm:
 				if not (o[1] as Rect2).intersects(pb):
@@ -286,9 +368,121 @@ func _check_footprints(md: MapData, region: String, skip: Array) -> void:
 					area += absf(_signed_area(q))
 				if area > 0.05:
 					in_osm += 1
+			var seen: Dictionary = {}
+			var hit: bool = false
+			for cell: Vector2i in _foot_cells(pb):
+				for qi: int in _foot_quad_hash.get(cell, []):
+					if hit or seen.has(qi) or not (_foot_quads[qi][1] as Rect2).intersects(pb):
+						continue
+					seen[qi] = true
+					var fa: float = 0.0
+					for q: PackedVector2Array in Geometry2D.intersect_polygons(piece, _foot_quads[qi][0]):
+						fa += absf(_signed_area(q))
+					if fa > 0.01:
+						hit = true
+			if hit:
+				foot_overlap += 1
 	_check(pieces > 0, "%s: msft footprints exist" % region)
 	_check(on_road == 0, "%s: %d msft footprint pieces touch a carriageway ribbon" % [region, on_road])
 	_check(in_osm == 0, "%s: %d msft footprint pieces overlap an OSM building (z-fighting)" % [region, in_osm])
+	_check(on_foot == 0, "%s: %d msft footprint pieces have a vertex within 0.2 m of a footway ribbon" % [region, on_foot])
+	_check(foot_overlap == 0, "%s: %d msft footprint pieces intersect a drawn footway ribbon" % [region, foot_overlap])
+	_check(thin == 0, "%s: %d msft footprint pieces narrower than 1 m (eroding by 0.49 m leaves nothing)" % [region, thin])
+	print("  %s: %d msft pieces, worst area lost to a 0.45 m opening %.3f m2" % [region, pieces, worst_fin])
+	_check(fins == 0, "%s: %d msft footprint pieces keep a fin / neck under ~0.9 m wide (a 0.45 m opening removes > max(0.1 m2, 1 %%) of them)" % [region, fins])
+
+
+## Area left after a morphological opening of `poly` by `r` (erode, dilate each core with mitre joins, clip to poly).
+func _opened_area(poly: PackedVector2Array, r: float) -> float:
+	var area: float = 0.0
+	for core: PackedVector2Array in Geometry2D.offset_polygon(poly, -r, Geometry2D.JOIN_MITER):
+		for g: PackedVector2Array in Geometry2D.offset_polygon(core, r, Geometry2D.JOIN_MITER):
+			for q: PackedVector2Array in Geometry2D.intersect_polygons(g, poly):
+				area += absf(_signed_area(q))
+	return area
+
+
+## Drawn footway / steps / path ribbon quads of the whole map, exactly as MapBuilder._build_roads emits them
+## (_footway_profile + _mitre_offsets, half width footway_width / 2), hashed by FOOT_CELL cells.
+func _prepare_foot_quads(md: MapData) -> void:
+	if not _foot_quads.is_empty():
+		return
+	for r: Dictionary in md.roads():
+		if int(r.get("lanes", 2)) > 0:
+			continue
+		var pts2: PackedVector2Array = MapData.poly(r.get("points", []))
+		if pts2.size() < 2:
+			continue
+		var half: float = MapBuilder.footway_width(float(r.get("width", 6.0))) * 0.5
+		var fp: PackedVector3Array = MapBuilder._footway_profile(pts2)
+		var offs: PackedVector2Array = MapBuilder._mitre_offsets(fp)
+		for i: int in range(fp.size() - 1):
+			var a := Vector2(fp[i].x, fp[i].z)
+			var c := Vector2(fp[i + 1].x, fp[i + 1].z)
+			var q := PackedVector2Array([a + offs[i] * half, c + offs[i + 1] * half, c - offs[i + 1] * half, a - offs[i] * half])
+			var qb: Rect2 = _bbox(q)
+			var qi: int = _foot_quads.size()
+			_foot_quads.append([q, qb])
+			for cell: Vector2i in _foot_cells(qb):
+				if not _foot_quad_hash.has(cell):
+					_foot_quad_hash[cell] = []
+				(_foot_quad_hash[cell] as Array).append(qi)
+
+
+func _foot_cells(r: Rect2) -> Array:
+	var out: Array = []
+	for cx: int in range(floori(r.position.x / FOOT_CELL), floori(r.end.x / FOOT_CELL) + 1):
+		for cz: int in range(floori(r.position.y / FOOT_CELL), floori(r.end.y / FOOT_CELL) + 1):
+			out.append(Vector2i(cx, cz))
+	return out
+
+
+## True when `p` lies on a drawn footway ribbon widened by `margin` on both sides (MapBuilder's footway index): within
+## footway_width / 2 + margin of a segment, except past the flat end of a way.
+func _on_footway(p: Vector2, margin: float) -> bool:
+	var c: Vector2i = MapBuilder._cell(p)
+	for dx: int in [-1, 0, 1]:
+		for dy: int in [-1, 0, 1]:
+			for sv: Vector2i in MapBuilder._foot_hash.get(Vector2i(c.x + dx, c.y + dy), []):
+				var fw: Array = MapBuilder._footways[sv.x]
+				var pts: PackedVector2Array = fw[0]
+				var a: Vector2 = pts[sv.y]
+				var b: Vector2 = pts[sv.y + 1]
+				var ab: Vector2 = b - a
+				var t: float = (p - a).dot(ab) / maxf(ab.length_squared(), 1e-9)
+				if (t < 0.0 and sv.y == 0) or (t > 1.0 and sv.y == pts.size() - 2):
+					continue
+				if MapBuilder._dist_point_segment(p, a, b) <= float(fw[1]) * 0.5 + margin:
+					return true
+	return false
+
+
+## One tank on a plain 6 x 12 m roof (MapBuilder._emit_roof_tank alone): it fits, stays within MAX_TANK_TRIS
+## triangles, sits on the roof and every triangle's winding agrees with its shading normal.
+func _check_tank_only() -> void:
+	var tb := MapBuilder.Batch.new()
+	var roof := PackedVector2Array([Vector2(0, 0), Vector2(6, 0), Vector2(6, 12), Vector2(0, 12)])
+	if not _check(MapBuilder._emit_roof_tank(tb, roof, 7.2), "a tank fits a 6 x 12 m roof"):
+		return
+	var mesh: ArrayMesh = tb.st.commit()
+	var tris: int = _tri_count(mesh)
+	var arr: Array = mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var norms: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+	var idx: PackedInt32Array = _indices(arr)
+	var bad: int = 0
+	for t: int in range(tris):
+		var i0: int = idx[t * 3] if idx.size() > 0 else t * 3
+		var i1: int = idx[t * 3 + 1] if idx.size() > 0 else t * 3 + 1
+		var i2: int = idx[t * 3 + 2] if idx.size() > 0 else t * 3 + 2
+		var geo_n: Vector3 = -(verts[i1] - verts[i0]).cross(verts[i2] - verts[i0]).normalized()
+		if geo_n.dot((norms[i0] + norms[i1] + norms[i2]).normalized()) < 0.9:
+			bad += 1
+	var bb: AABB = mesh.get_aabb()
+	print("  tank-only build: %d triangles, aabb y %.2f..%.2f" % [tris, bb.position.y, bb.end.y])
+	_check(tris > 0 and tris <= MAX_TANK_TRIS, "one water tank is <= %d triangles (got %d)" % [MAX_TANK_TRIS, tris])
+	_check(absf(bb.position.y - 7.2) < 0.01 and bb.end.y < 7.2 + MapBuilder.TANK_LEG_H + 2.0 * MapBuilder.TANK_R + 0.01, "tank stands on the roof (aabb y %.2f..%.2f)" % [bb.position.y, bb.end.y])
+	_check(bad == 0, "tank: %d triangles whose winding disagrees with the shading normal" % bad)
 
 
 ## True when `p` lies on a drawn carriageway ribbon widened by `margin` on both sides (MapBuilder's road index):

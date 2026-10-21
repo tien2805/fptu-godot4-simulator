@@ -25,15 +25,20 @@
 #
 # MICROSOFT FOOTPRINTS ("source": "msft", ~2.5k unnamed tube houses / warehouses merged by tools/osm_to_mapdata.py,
 #   ids >= 9e9): never one node per building. msft_footprints() first clips every footprint MSFT_ROAD_CLEAR m off each
-#   carriageway ribbon (+ kerb), out of OSM buildings, water and the msft footprints placed before it (the imagery
-#   outlines overlap the OSM road widths by up to 4 m and each other at party walls); pieces under MSFT_MIN_PIECE_M2
+#   carriageway ribbon (+ kerb), MSFT_FOOTWAY_CLEAR m off each drawn footway / steps / path ribbon (lanes == 0), out of
+#   OSM buildings, water and the msft footprints placed before it (the imagery outlines overlap the OSM road widths by
+#   up to 4 m and each other at party walls); then every clipped piece is opened (eroded and dilated by MSFT_OPEN_R,
+#   clipped back to the piece) so thin fins and necks under 2 * MSFT_OPEN_R vanish, and parts under MSFT_MIN_PIECE_M2
 #   or thinner than MSFT_MIN_WIDTH_M are dropped. _build_msft_chunks() groups the buildings by the MSFT_CHUNK_M cell of
 #   their centroid and appends the same _emit_building() geometry as build_building() into per-material batches:
 #   one MeshInstance3D "MSChunk_<gx>_<gz>" per cell (surfaces walls_<style>, roof, parapet, tank; lod 2: one box
 #   surface), meta source = "msft", building_ids (Array[int]) and tank_count, visibility_range_end 700 m (lod 0) /
-#   450 m (lod >= 1) with a 40 m self fade, one trimesh StaticBody3D "Col" per chunk, no Label3D. Shophouse facades
-#   start on a per-id whole 4 m bay (u0) so neighbours differ in colour; ~MSFT_TANK_SHARE of the roofs (deterministic
-#   per id) carry a stainless-steel water tank on two legs. skip_building_ids applies before clipping.
+#   450 m (lod >= 1) with a 40 m self fade, no Label3D, and one StaticBody3D "Col" per chunk with LEAN shapes, never a
+#   trimesh of the render mesh (no Mesh.get_faces() / TriangleMesh cache on the chunk meshes): per footprint piece a
+#   ConvexPolygonShape3D prism (ground .. roof) when the piece is convex, else a ConcavePolygonShape3D of its walls and
+#   flat roof only (no parapet, no tank). Shophouse facades start on a per-id whole 4 m bay (u0) so neighbours differ
+#   in colour; ~MSFT_TANK_SHARE of the roofs (deterministic per id) carry a stainless-steel water tank on two legs
+#   (<= TANK_MAX_TRIS triangles, visual only). skip_building_ids applies before clipping.
 #
 # Y STACK: ground -0.03 | area planes 0.0..0.035 by kind | roads 0.05 | lane overlay +0.01 | footways 0.12
 #   (dipping to 0.03 where they cross a carriageway) | kerb top 0.15 | water -0.3 (ground cut out around it,
@@ -87,15 +92,21 @@ const MSFT_VIS_END_LOD0: float = 700.0
 const MSFT_VIS_END_FAR: float = 450.0
 const MSFT_VIS_MARGIN: float = 40.0
 const MSFT_ROAD_CLEAR: float = 0.7      # gap between a clipped footprint and the kerb (or the edge of a kerb-less lane)
+const MSFT_FOOTWAY_CLEAR: float = 0.3   # gap between a clipped footprint and the edge of a drawn footway ribbon
 const MSFT_MIN_PIECE_M2: float = 6.0
 const MSFT_MIN_WIDTH_M: float = 1.0     # 2 * area / perimeter of a kept piece (~ its width)
+const MSFT_OPEN_R: float = 0.5          # opening radius: parts / fins narrower than 2 * MSFT_OPEN_R are dropped
+const MSFT_CONVEX_TOL_M2: float = 0.05  # hull area - piece area up to which a piece gets a convex collider
 const MSFT_TANK_SHARE: float = 0.4
 const SHOPHOUSE_BAY_M: float = 4.0      # one house of the 12 m shophouse tile
+const FOOTWAY_MIN_W: float = 1.5
+const FOOTWAY_MAX_W: float = 2.5
 const TANK_R: float = 0.45
 const TANK_L: float = 1.6
 const TANK_LEG_H: float = 0.3
 const TANK_CLEAR: float = 0.4           # tank footprint margin to the roof edge (parapet 0.3 m thick)
-const TANK_SEGMENTS: int = 12
+const TANK_SEGMENTS: int = 8
+const TANK_MAX_TRIS: int = 30           # _emit_roof_tank budget (7 drum facets + two 8-gon caps + two leg plates)
 
 static var _mats: Dictionary = {}
 static var _style_mats: Dictionary = {}
@@ -107,6 +118,9 @@ static var _discs: Array = []                # [Vector2 centre, float radius] ju
 static var _disc_hash: Dictionary = {}       # Vector2i cell -> Array[int]
 static var _max_disc_r: float = 0.0
 static var _max_road_w: float = 0.0
+static var _footways: Array = []             # [PackedVector2Array points, float drawn width] (lanes == 0 ways)
+static var _foot_hash: Dictionary = {}       # Vector2i cell -> Array[Vector2i(footway index, segment index)]
+static var _max_foot_w: float = 0.0
 static var _water_cache_md: MapData = null
 static var _water_cache: Array = []          # PackedVector2Array polygons of every water body (all regions)
 static var _osm_md: MapData = null
@@ -415,6 +429,7 @@ static func materials() -> Dictionary:
 	m["box"] = _plain(Color(0.84, 0.80, 0.78), 0.9)
 	var tank: StandardMaterial3D = _plain(Color(0.80, 0.81, 0.83), 0.3)   # brushed stainless steel water tank
 	tank.metallic = 0.8
+	tank.cull_mode = BaseMaterial3D.CULL_DISABLED   # one-quad leg plates seen from both sides (_emit_roof_tank)
 	m["tank"] = tank
 	return m
 
@@ -566,7 +581,7 @@ static func _build_roads(root: Node3D, md: MapData, region: String, m: Dictionar
 		var width: float = float(r.get("width", 6.0))
 		var lanes: int = int(r.get("lanes", 2))
 		if lanes <= 0:
-			var w: float = clampf(width, 1.5, 2.5)
+			var w: float = footway_width(width)
 			var fp: PackedVector3Array = _footway_profile(pts2)
 			_emit_ribbon(foot, fp, w, 0.0, 0.0, 1.0, 1.0 / OVERLAY_TILE_M)
 			_emit_skirts(foot, fp, w, GROUND_Y - 0.05)
@@ -693,8 +708,10 @@ static func is_msft(b: Dictionary) -> bool:
 
 ## The region's Microsoft buildings (minus `skip` ids) with their final footprints, in data order:
 ## [[building Dictionary, pieces], ...], pieces = Array of open PackedVector2Array rings clipped MSFT_ROAD_CLEAR m off
-## every carriageway ribbon (+ kerb), out of every OSM building, every water body and the msft pieces placed before
-## it; slivers (< MSFT_MIN_PIECE_M2 or thinner than MSFT_MIN_WIDTH_M) are dropped, so pieces can be empty.
+## every carriageway ribbon (+ kerb), MSFT_FOOTWAY_CLEAR m off every drawn footway ribbon, out of every OSM building,
+## every water body and the msft pieces placed before it, then opened (_open_piece: fins and necks narrower than
+## 2 * MSFT_OPEN_R removed); slivers (< MSFT_MIN_PIECE_M2 or thinner than MSFT_MIN_WIDTH_M) are dropped, so pieces
+## can be empty.
 static func msft_footprints(md: MapData, region: String, skip: Array = []) -> Array:
 	_prepare_road_index(md)
 	_prepare_osm_index(md)
@@ -716,6 +733,7 @@ static func msft_footprints(md: MapData, region: String, skip: Array = []) -> Ar
 		var bb: Rect2 = _bbox(outer)
 		var cells: Array = _cells_of_box(bb, 0.0)
 		var cutters: Array = _road_cutters(bb)
+		cutters.append_array(_footway_cutters(bb))
 		var seen: Dictionary = {}
 		for cell: Vector2i in cells:
 			for oi: int in _osm_hash.get(cell, []):
@@ -735,27 +753,127 @@ static func msft_footprints(md: MapData, region: String, skip: Array = []) -> Ar
 		var keep: Array = []
 		for p: PackedVector2Array in pieces:
 			var q: PackedVector2Array = _open(p)
-			if q.size() < 3:
+			if q.size() < 3 or _abs_area(q) < MSFT_MIN_PIECE_M2:
 				continue
-			var area: float = _abs_area(q)
-			if area < MSFT_MIN_PIECE_M2 or 2.0 * area / maxf(_perimeter(q), 0.001) < MSFT_MIN_WIDTH_M:
-				continue
-			keep.append(q)
-			var qb: Rect2 = _bbox(q)
-			var qi: int = placed.size()
-			placed.append(q)
-			placed_boxes.append(qb)
-			for cell: Vector2i in _cells_of_box(qb, 0.0):
-				if not placed_hash.has(cell):
-					placed_hash[cell] = []
-				(placed_hash[cell] as Array).append(qi)
+			for part: PackedVector2Array in _open_piece(q):
+				var area: float = _abs_area(part)
+				if area < MSFT_MIN_PIECE_M2 or 2.0 * area / maxf(_perimeter(part), 0.001) < MSFT_MIN_WIDTH_M:
+					continue
+				keep.append(part)
+				var qb: Rect2 = _bbox(part)
+				var qi: int = placed.size()
+				placed.append(part)
+				placed_boxes.append(qb)
+				for cell: Vector2i in _cells_of_box(qb, 0.0):
+					if not placed_hash.has(cell):
+						placed_hash[cell] = []
+					(placed_hash[cell] as Array).append(qi)
 		out.append([b, keep])
 	return out
 
 
+## Morphological opening of one clipped footprint piece: erode by MSFT_OPEN_R, dilate every surviving core back by
+## MSFT_OPEN_R (mitre joins, so right-angled corners come back exactly) and clip the result to the piece, which drops
+## every part, fin or neck narrower than 2 * MSFT_OPEN_R. Parts grown from different cores never overlap. A piece the
+## opening leaves as it was (one part, area within 0.05 m2) is returned unchanged, vertex for vertex.
+static func _open_piece(q: PackedVector2Array) -> Array:
+	var cores: Array = Geometry2D.offset_polygon(q, -MSFT_OPEN_R, Geometry2D.JOIN_MITER)
+	var out: Array = []
+	for core: PackedVector2Array in cores:
+		if core.size() < 3 or _is_hole_of_any(core, cores):
+			continue
+		var grown: Array = Geometry2D.offset_polygon(core, MSFT_OPEN_R, Geometry2D.JOIN_MITER)
+		for g: PackedVector2Array in grown:
+			if g.size() < 3 or _is_hole_of_any(g, grown):
+				continue
+			var parts: Array = Geometry2D.intersect_polygons(g, q)
+			for part: PackedVector2Array in parts:
+				if part.size() < 3 or _is_hole_of_any(part, parts):
+					continue
+				for r: PackedVector2Array in _subtract([part], out):
+					var c: PackedVector2Array = _clean_ring(_open(r), 0.01)
+					if c.size() >= 3:
+						out.append(c)
+	if out.size() == 1 and absf(_abs_area(out[0]) - _abs_area(q)) < 0.05:
+		return [q]
+	return out
+
+
+## Drops near-duplicate and collinear vertices (closer than `tol` to the segment joining their neighbours).
+static func _clean_ring(ring: PackedVector2Array, tol: float) -> PackedVector2Array:
+	var pts: PackedVector2Array = ring.duplicate()
+	var i: int = 0
+	var guard: int = pts.size() * 4 + 4
+	while pts.size() > 3 and i < pts.size() and guard > 0:
+		guard -= 1
+		var n: int = pts.size()
+		if _dist_point_segment(pts[i], pts[(i - 1 + n) % n], pts[(i + 1) % n]) < tol:
+			pts.remove_at(i)
+			i = maxi(0, i - 1)
+		else:
+			i += 1
+	return pts
+
+
+## Drawn width of a footway / steps / path ribbon (lanes == 0) for its data width.
+static func footway_width(width: float) -> float:
+	return clampf(width, FOOTWAY_MIN_W, FOOTWAY_MAX_W)
+
+
+## Rectangles of the footway / steps / path segments (lanes == 0) near `bb`, MSFT_FOOTWAY_CLEAR m wider than the drawn
+## ribbon (footway_width) on both sides, extended past interior vertices up to the mitre point of that widened ribbon
+## (so consecutive rectangles close the outer wedge of every bend) and MSFT_FOOTWAY_CLEAR m past the ends of a way.
+static func _footway_cutters(bb: Rect2) -> Array:
+	var out: Array = []
+	if _foot_hash.is_empty():
+		return out
+	var seen: Dictionary = {}
+	var c: Vector2 = bb.get_center()
+	var rad: float = bb.size.length() * 0.5
+	var reach: float = (_max_foot_w * 0.5 + MSFT_FOOTWAY_CLEAR) * 3.0
+	for cell: Vector2i in _cells_of_box(bb, reach):
+		if not _foot_hash.has(cell):
+			continue
+		for sv: Vector2i in _foot_hash[cell]:
+			if seen.has(sv):
+				continue
+			seen[sv] = true
+			var fw: Array = _footways[sv.x]
+			var pts: PackedVector2Array = fw[0]
+			var half: float = float(fw[1]) * 0.5 + MSFT_FOOTWAY_CLEAR
+			var a: Vector2 = pts[sv.y]
+			var e: Vector2 = pts[sv.y + 1]
+			if _dist_point_segment(c, a, e) > half * 3.0 + rad:
+				continue
+			var d: Vector2 = e - a
+			var len: float = d.length()
+			if len < 0.01:
+				continue
+			d /= len
+			var n := Vector2(-d.y, d.x) * half
+			var ext0: float = MSFT_FOOTWAY_CLEAR if sv.y == 0 else half * _mitre_tan(pts[sv.y - 1], a, e) + 0.05
+			var ext1: float = MSFT_FOOTWAY_CLEAR if sv.y == pts.size() - 2 else half * _mitre_tan(a, e, pts[sv.y + 2]) + 0.05
+			var a2: Vector2 = a - d * ext0
+			var e2: Vector2 = e + d * ext1
+			out.append(PackedVector2Array([a2 + n, e2 + n, e2 - n, a2 - n]))
+	return out
+
+
+## tan(turn angle / 2) at vertex b of the polyline a -> b -> c: how far past b the outer edge of a ribbon of half
+## width 1 runs to its mitre point. Clamped to 2 (the drawn mitre is clamped at 2x the half width, _mitre_offsets).
+static func _mitre_tan(a: Vector2, b: Vector2, c: Vector2) -> float:
+	var d0: Vector2 = (b - a).normalized()
+	var d1: Vector2 = (c - b).normalized()
+	var dot: float = d0.dot(d1)
+	if dot <= -0.6:
+		return 2.0
+	return minf(2.0, absf(d0.cross(d1)) / (1.0 + dot))
+
+
 ## One merged MeshInstance3D per MSFT_CHUNK_M cell of the building centroids (name MSChunk_<gx>_<gz>, meta source,
-## building_ids, tank_count), visibility range by lod, one trimesh StaticBody3D when opts.colliders. Ids whose
-## footprint was clipped away entirely are listed in the holder's meta "msft_dropped_ids".
+## building_ids, tank_count), visibility range by lod, one StaticBody3D "Col" of lean per-piece shapes when
+## opts.colliders (_piece_shape). Ids whose footprint was clipped away entirely are listed in the holder's meta
+## "msft_dropped_ids".
 static func _build_msft_chunks(holder: Node3D, md: MapData, region: String, m: Dictionary, o: Dictionary) -> void:
 	var lod: int = int(o["lod"])
 	var cells: Dictionary = {}
@@ -773,7 +891,7 @@ static func _build_msft_chunks(holder: Node3D, md: MapData, region: String, m: D
 		(cells[key] as Array).append(e)
 	holder.set_meta("msft_dropped_ids", dropped)
 	for key: Vector2i in order:
-		var mi: MeshInstance3D = _build_msft_chunk(cells[key], lod, m)
+		var mi: MeshInstance3D = _build_msft_chunk(cells[key], lod, m, bool(o["colliders"]))
 		if mi == null:
 			continue
 		mi.name = "MSChunk_%d_%d" % [key.x, key.y]
@@ -781,8 +899,6 @@ static func _build_msft_chunks(holder: Node3D, md: MapData, region: String, m: D
 		mi.visibility_range_end_margin = MSFT_VIS_MARGIN
 		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		holder.add_child(mi)
-		if bool(o["colliders"]):
-			_add_trimesh_collider(mi)
 
 
 ## Grid cell (MSFT_CHUNK_M) of a building's centroid (vertex average of the data outer ring).
@@ -792,8 +908,9 @@ static func msft_chunk_key(b: Dictionary) -> Vector2i:
 
 
 ## Merged mesh of one chunk: _emit_building() per piece into per-material batches (walls per style, roof, parapet,
-## tank), or plain boxes for lod >= 2 (like the OSM BuildingBoxes). Null when nothing was emitted.
-static func _build_msft_chunk(entries: Array, lod: int, m: Dictionary) -> MeshInstance3D:
+## tank), or plain boxes for lod >= 2 (like the OSM BuildingBoxes). With `colliders` a StaticBody3D "Col" child holds
+## one lean shape per piece up to its roof (box top for lod >= 2), see _piece_shape(). Null when nothing was emitted.
+static func _build_msft_chunk(entries: Array, lod: int, m: Dictionary, colliders: bool = false) -> MeshInstance3D:
 	var ids: Array = []
 	var walls: Dictionary = {}
 	var styles: Array = []
@@ -802,6 +919,7 @@ static func _build_msft_chunk(entries: Array, lod: int, m: Dictionary) -> MeshIn
 	var tank := Batch.new()
 	var boxes := Batch.new()
 	var tanks: int = 0
+	var shapes: Array = []
 	for e: Array in entries:
 		var b: Dictionary = e[0]
 		var pieces: Array = e[1]
@@ -810,6 +928,11 @@ static func _build_msft_chunk(entries: Array, lod: int, m: Dictionary) -> MeshIn
 		var style: String = str(b.get("style", "shophouse"))
 		var levels: int = _building_levels(b)
 		var height: float = _building_height(b)
+		if colliders:
+			for p: PackedVector2Array in pieces:
+				var sh: Shape3D = _piece_shape(p, maxf(3.0, height) if lod >= 2 else height)
+				if sh != null:
+					shapes.append(sh)
 		if lod >= 2:
 			var hb: float = maxf(3.0, height)
 			for p: PackedVector2Array in pieces:
@@ -858,7 +981,70 @@ static func _build_msft_chunk(entries: Array, lod: int, m: Dictionary) -> MeshIn
 	mi.set_meta("source", "msft")
 	mi.set_meta("building_ids", ids)
 	mi.set_meta("tank_count", tanks)
+	if not shapes.is_empty():
+		var sb := StaticBody3D.new()
+		sb.name = "Col"
+		for sh: Shape3D in shapes:
+			var cs := CollisionShape3D.new()
+			cs.shape = sh
+			sb.add_child(cs)
+		mi.add_child(sb)
 	return mi
+
+
+## Lean collider of one footprint piece extruded from the ground to `top` (its roof; no parapet, no tank): a
+## ConvexPolygonShape3D prism of the hull when the piece is convex (hull area within MSFT_CONVEX_TOL_M2 of the piece),
+## otherwise a ConcavePolygonShape3D of its walls and flat roof only, wound like the render mesh (front faces out / up).
+static func _piece_shape(piece: PackedVector2Array, top: float) -> Shape3D:
+	var ring: PackedVector2Array = _open(piece)
+	if ring.size() < 3:
+		return null
+	var hull: PackedVector2Array = _open(Geometry2D.convex_hull(ring))
+	if hull.size() >= 3 and _abs_area(hull) - _abs_area(ring) <= MSFT_CONVEX_TOL_M2:
+		var pts := PackedVector3Array()
+		for v: Vector2 in hull:
+			pts.append(Vector3(v.x, 0.0, v.y))
+			pts.append(Vector3(v.x, top, v.y))
+		var convex := ConvexPolygonShape3D.new()
+		convex.points = pts
+		return convex
+	var faces := PackedVector3Array()
+	var sgn: float = 1.0 if _signed_area(ring) > 0.0 else -1.0
+	var n: int = ring.size()
+	for i: int in range(n):
+		var a: Vector2 = ring[i]
+		var c: Vector2 = ring[(i + 1) % n]
+		var d: Vector2 = c - a
+		var len: float = d.length()
+		if len < 0.01:
+			continue
+		var outward: Vector2 = Vector2(d.y, -d.x) / len * sgn   # -left * sgn, as in _emit_walls()
+		var want := Vector3(outward.x, 0.0, outward.y)
+		_face(faces, Vector3(a.x, 0.0, a.y), Vector3(c.x, 0.0, c.y), Vector3(c.x, top, c.y), want)
+		_face(faces, Vector3(a.x, 0.0, a.y), Vector3(c.x, top, c.y), Vector3(a.x, top, a.y), want)
+	var idx: PackedInt32Array = _triangulate(ring)
+	for k: int in range(0, idx.size(), 3):
+		var p0: Vector2 = ring[idx[k]]
+		var p1: Vector2 = ring[idx[k + 1]]
+		var p2: Vector2 = ring[idx[k + 2]]
+		_face(faces, Vector3(p0.x, top, p0.y), Vector3(p1.x, top, p1.y), Vector3(p2.x, top, p2.y), Vector3.UP)
+	var concave := ConcavePolygonShape3D.new()
+	concave.set_faces(faces)
+	return concave
+
+
+## Appends one collision triangle whose front side faces `want` (clockwise seen from the front, like _tri()).
+static func _face(faces: PackedVector3Array, p0: Vector3, p1: Vector3, p2: Vector3, want: Vector3) -> void:
+	var nrm: Vector3 = (p1 - p0).cross(p2 - p0)
+	if nrm.length_squared() < 1e-10:
+		return
+	faces.append(p0)
+	if nrm.dot(want) > 0.0:
+		faces.append(p2)
+		faces.append(p1)
+	else:
+		faces.append(p1)
+		faces.append(p2)
 
 
 ## Shophouse facades start on a per-id whole bay of the 12 m tile (3 houses of 4 m in 3 colours); other styles 0.
@@ -939,7 +1125,12 @@ static func _prepare_osm_index(md: MapData) -> void:
 
 ## Stainless-steel rooftop water tank (bồn nước inox, the classic Vietnamese tube-house roof): a horizontal cylinder
 ## TANK_R x TANK_L lying on two saddle legs, centred on the roof piece with its axis along the longest edge, at least
-## TANK_CLEAR inside the roof outline (clear of the parapet). Returns false when it does not fit.
+## TANK_CLEAR inside the roof outline (clear of the parapet). Returns false when it does not fit. At most
+## TANK_MAX_TRIS triangles (it sits on ~40 % of ~2.5k roofs): a TANK_SEGMENTS-sided open drum with smooth normals and a
+## flat bottom facet, two flat 8-gon end caps and two thin saddle-plate legs across the axis. The tank material is
+## double-sided, so each thin leg box is one quad (its mid-plane, seen from both ends) and the drum's bottom facet
+## (between the legs, facing the roof, below the parapet line) is left out: from below, the inside of the drum
+## stands in for it. Visual only: never part of a collider.
 static func _emit_roof_tank(b: Batch, piece: PackedVector2Array, roof_y: float) -> bool:
 	var ring: PackedVector2Array = _open(piece)
 	if ring.size() < 3:
@@ -963,24 +1154,38 @@ static func _emit_roof_tank(b: Batch, piece: PackedVector2Array, roof_y: float) 
 	var centre := Vector3(c.x, roof_y + TANK_LEG_H + TANK_R, c.y)
 	var e0: Vector3 = centre - a3 * (TANK_L * 0.5)
 	var e1: Vector3 = centre + a3 * (TANK_L * 0.5)
+	# rim directions at angles (k + 0.5) / TANK_SEGMENTS of a turn in the (side, up) plane: facet k joins rim k and
+	# k + 1, and the facet centred on -90 degrees is the flat bottom one
+	var rim: Array = []
 	for k: int in range(TANK_SEGMENTS):
-		var t0: float = TAU * float(k) / float(TANK_SEGMENTS)
-		var t1: float = TAU * float(k + 1) / float(TANK_SEGMENTS)
-		var n0: Vector3 = s3 * cos(t0) + Vector3.UP * sin(t0)
-		var n1: Vector3 = s3 * cos(t1) + Vector3.UP * sin(t1)
+		var t: float = TAU * (float(k) + 0.5) / float(TANK_SEGMENTS)
+		rim.append(s3 * cos(t) + Vector3.UP * sin(t))
+	var bottom: int = int(round(0.75 * float(TANK_SEGMENTS) - 1.0)) % TANK_SEGMENTS
+	for k: int in range(TANK_SEGMENTS):
+		if k == bottom:
+			continue
+		var n0: Vector3 = rim[k]
+		var n1: Vector3 = rim[(k + 1) % TANK_SEGMENTS]
 		var p00: Vector3 = e0 + n0 * TANK_R
 		var p01: Vector3 = e1 + n0 * TANK_R
 		var p10: Vector3 = e0 + n1 * TANK_R
 		var p11: Vector3 = e1 + n1 * TANK_R
 		_tri_smooth(b, p00, p01, p11, n0, n0, n1, n0 + n1)
 		_tri_smooth(b, p00, p11, p10, n0, n1, n1, n0 + n1)
-		_tri(b, e0, p10, p00, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, -a3)
-		_tri(b, e1, p01, p11, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, a3)
-	# saddle legs: flat plates across the axis, their tops hidden inside the drum
+	# flat end caps: one TANK_SEGMENTS-gon each, fanned from rim 0
+	for cap: Array in [[e0, -a3], [e1, a3]]:
+		var ec: Vector3 = cap[0]
+		var want: Vector3 = cap[1]
+		var r0: Vector3 = ec + (rim[0] as Vector3) * TANK_R
+		for k: int in range(1, TANK_SEGMENTS - 1):
+			_tri(b, r0, ec + (rim[k] as Vector3) * TANK_R, ec + (rim[k + 1] as Vector3) * TANK_R, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, want)
+	# saddle legs: thin plates across the axis, their tops hidden inside the drum (half width inside the 8-gon there)
 	var leg_h: float = TANK_LEG_H + TANK_R * 0.35
-	for f: float in [-0.3, 0.3]:
-		var base: Vector3 = Vector3(c.x, roof_y, c.y) + a3 * (TANK_L * f)
-		_emit_obox(b, base + Vector3(0.0, leg_h * 0.5, 0.0), a3 * 0.04, s3 * (TANK_R * 0.85), Vector3(0.0, leg_h * 0.5, 0.0))
+	var hw: Vector3 = s3 * (TANK_R * 0.62)
+	for f: float in [-1.0, 1.0]:
+		var base: Vector3 = Vector3(c.x, roof_y, c.y) + a3 * (TANK_L * 0.3 * f)
+		var up := Vector3(0.0, leg_h, 0.0)
+		_quad(b, base - hw, base + hw, base + hw + up, base - hw + up, Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0), a3 * f)
 	return true
 
 
@@ -1595,7 +1800,8 @@ static func _emit_parking_stripes(b: Batch, poly: PackedVector2Array, y: float) 
 # JUNCTION / CARRIAGEWAY INDEX
 # ===========================================================================
 
-## Spatial hash of every carriageway segment of the map plus the junction discs (kerb-free zones).
+## Spatial hash of every carriageway segment of the map plus the junction discs (kerb-free zones), and of every
+## footway / steps / path (lanes == 0, as _build_roads draws them) with its drawn width.
 static func _prepare_road_index(md: MapData) -> void:
 	if _hash_md == md:
 		return
@@ -1606,7 +1812,22 @@ static func _prepare_road_index(md: MapData) -> void:
 	_disc_hash = {}
 	_max_disc_r = 0.0
 	_max_road_w = 0.0
+	_footways = []
+	_foot_hash = {}
+	_max_foot_w = 0.0
 	for r: Dictionary in md.roads():
+		if int(r.get("lanes", 2)) <= 0:
+			var fpts: PackedVector2Array = MapData.poly(r.get("points", []))
+			if fpts.size() >= 2:
+				var fi: int = _footways.size()
+				var fw: float = footway_width(float(r.get("width", 6.0)))
+				_footways.append([fpts, fw])
+				_max_foot_w = maxf(_max_foot_w, fw)
+				for si: int in range(fpts.size() - 1):
+					for cell: Vector2i in _cells_of_box(_seg_box(fpts[si], fpts[si + 1]), 0.0):
+						if not _foot_hash.has(cell):
+							_foot_hash[cell] = []
+						(_foot_hash[cell] as Array).append(Vector2i(fi, si))
 		if int(r.get("lanes", 0)) <= 0:
 			continue
 		var pts: PackedVector2Array = MapData.poly(r.get("points", []))
@@ -1921,17 +2142,6 @@ static func _tri_smooth(b: Batch, p0: Vector3, p1: Vector3, p2: Vector3, n0: Vec
 		b.st.add_vertex(v[0])
 	b.n += 3
 
-
-## Oriented box without a bottom face: centre +- the half-axis vectors hu, hv, hw (hw = up).
-static func _emit_obox(b: Batch, c: Vector3, hu: Vector3, hv: Vector3, hw: Vector3) -> void:
-	var uv: Array = [Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]
-	for s: float in [-1.0, 1.0]:
-		var fu: Vector3 = c + hu * s
-		_quad(b, fu - hv - hw, fu + hv - hw, fu + hv + hw, fu - hv + hw, uv[0], uv[1], uv[2], uv[3], hu * s)
-		var fv: Vector3 = c + hv * s
-		_quad(b, fv - hu - hw, fv + hu - hw, fv + hu + hw, fv - hu + hw, uv[0], uv[1], uv[2], uv[3], hv * s)
-	var top: Vector3 = c + hw
-	_quad(b, top - hu - hv, top + hu - hv, top + hu + hv, top - hu + hv, uv[0], uv[1], uv[2], uv[3], hw)
 
 
 static func _commit(b: Batch, mat: Material, name: String) -> MeshInstance3D:
