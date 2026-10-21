@@ -16,8 +16,10 @@ var shots: Array = [
 	{"name": "s2_04_parking_lot", "pos": Vector3(162.0, 2.8, 100.0), "look": Vector3(112.0, 2.0, 100.0), "fov": 70.0},
 	{"name": "s2_05_back_passage", "pos": Vector3(110.3, 2.2, 98.0), "look": Vector3(110.3, 4.0, 68.0), "fov": 72.0},
 	{"name": "s2_06_courtyard_pond", "pos": Vector3(111.0, 2.4, 69.0), "look": Vector3(84.0, 5.0, 44.0), "fov": 72.0},
-	{"name": "s2_07_stair_from_plaza", "pos": Vector3(93.0, 2.2, 13.0), "look": Vector3(124.0, 11.0, 19.5), "fov": 68.0},
-	{"name": "s2_08_stair_top_door", "pos": Vector3(129.5, 19.2, 16.8), "look": Vector3(144.0, 19.5, 21.0), "fov": 70.0},
+	{"name": "s2_07_atrium_stair_hall", "pos": Vector3(136.5, 1.7, 67.5), "look": Vector3(150.0, 6.0, 52.0), "fov": 72.0},
+	{"name": "s2_08_stair_top_door", "pos": Vector3(150.0, 19.3, 44.0), "look": Vector3(150.0, 19.0, 34.0), "fov": 70.0},
+	{"name": "s2_10_lobby_trong_dong", "pos": Vector3(76.6, 1.7, 36.5), "look": Vector3(76.6, 1.1, 22.0), "fov": 68.0},
+	{"name": "s2_11_facade_front", "pos": Vector3(60.0, 6.0, -14.0), "look": Vector3(125.0, 12.0, 24.0), "fov": 64.0},
 	{"name": "s2_09_birdseye", "pos": Vector3(90.0, 120.0, -70.0), "look": Vector3(90.0, 0.0, 62.0), "fov": 60.0}
 ]
 var out_dir: String = ""

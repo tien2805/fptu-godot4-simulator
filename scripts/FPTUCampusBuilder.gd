@@ -60,10 +60,16 @@ const PARK_LANE_V: float = 100.0
 const PARK_HALF_LEN: float = 32.0
 
 # Cầu thang ngoài trời (mặt ngoài cánh trước, đầu phía cổng bãi xe) -> Lab 402
-const STAIR_V: float = 19.4
+const STAIR_V: float = 19.4            # (cũ – cầu thang ngoài trời, giữ để tương thích)
 const STAIR_RUN: float = 30.5
 const STAIR_TOP_Y: float = 17.9
-const STAIR_W: float = 4.2
+const STAIR_W: float = 5.0
+## CẦU THANG TRONG NHÀ (v7): sảnh thông tầng ở module 1–2 cánh phải, thang chạy dọc v từ sân trong (v=64) lên
+## chiếu nghỉ đỉnh ở đầu nam module 1 (v≈37.75), cửa Lab 402 mở ở mặt nam module 0, lầu 4.
+const STAIR_U: float = 150.0
+const STAIR_FOOT_V: float = 64.0
+const STAIR_SLOT_HALF: float = 3.0     # nửa bề rộng khe thang trong sàn các tầng
+const ATRIUM_MODULES: Array[int] = [1, 2]
 
 static var _opts: Dictionary = {}
 
@@ -142,7 +148,10 @@ static func make_materials() -> Dictionary:
 	if not _materials_cache.is_empty():
 		return _materials_cache
 	var m: Dictionary = _materials_cache
-	m["facade"] = _tex_mat("fptu_alpha_facade.png", Color("#F0F2F4"), true, Vector3(0.1, 0.1, 0.1), 0.78, "fptu_alpha_facade_n.png", 0.5)
+	# v7: mặt đứng vẽ bằng code theo mô hình giấy (1 ô = 1 tầng 3,6 m × 14 m, 4 ô cửa). Ảnh chụp thật
+	# fptu_alpha_facade.png (sân gạch cam Hòa Lạc) vẫn giữ trong repo cho bảng ảnh, không còn dán lặp lên tường.
+	m["facade"] = _tex_mat("fptu_facade_modules.png", Color("#EEEEEA"), true, Vector3(1.0 / 14.0, 1.0 / 3.6, 1.0 / 14.0), 0.82, "fptu_facade_modules_n.png", 0.6)
+	m["facade_photo"] = _tex_mat("fptu_alpha_facade.png", Color("#F0F2F4"), false, Vector3.ONE, 0.7)
 	m["roof"] = _tex_mat("roof_terracotta.png", Color("#B5543A"), true, Vector3(0.55, 0.55, 0.55), 0.92, "roof_terracotta_n.png", 0.8)
 	m["terracotta"] = _mat(Color("#C4683F"), 0.9)
 	m["band"] = _mat(Color("#263645"), 0.2, 0.45)
@@ -194,6 +203,22 @@ static func make_materials() -> Dictionary:
 	m["flag"] = _tex_mat("vietnam_flag.png", Color("#DA251D"), false, Vector3(1.0, 1.0, 1.0), 0.9)
 	m["board"] = _tex_mat("fpt_university_board.png", Color("#F37021"), false, Vector3(1.0, 1.0, 1.0), 0.6)
 	m["lamp"] = _mat(Color("#FFF3C4"), 0.4, 0.0, 1.2)
+	# v7: sảnh trống đồng, sảnh thông tầng, mặt đứng theo mô hình giấy
+	m["red_accent"] = _mat(Color("#D9442B"), 0.6)
+	m["terrazzo_lobby"] = _tex_mat("fptu_terrazzo_lobby.png", Color("#C9C9C6"), true, Vector3(0.09, 0.09, 0.09), 0.28, "fptu_terrazzo_lobby_n.png", 0.3)
+	m["concrete_beam"] = _tex_mat("fptu_concrete_beam.png", Color("#A4A6A3"), true, Vector3(0.5, 0.5, 0.5), 0.9, "fptu_concrete_beam_n.png", 0.5)
+	m["graffiti"] = _tex_mat("fptu_graffiti_stair.png", Color("#C42622"), false, Vector3.ONE, 0.75)
+	m["bronze"] = _mat(Color("#8C6A3F"), 0.38, 0.85)
+	var drum_face: StandardMaterial3D = _tex_mat("fptu_bronze_drum.png", Color("#8C6A3F"), false, Vector3.ONE, 0.4)
+	drum_face.metallic = 0.7
+	m["bronze_face"] = drum_face
+	m["marble"] = _mat(Color("#33363B"), 0.22, 0.15)
+	m["black_plinth"] = _mat(Color("#141518"), 0.3, 0.1)
+	m["elevator"] = _mat(Color("#9AA4AB"), 0.25, 0.9)
+	var glass_clear := _mat(Color(0.78, 0.86, 0.94, 0.28), 0.04, 0.3)
+	glass_clear.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m["glass_clear"] = glass_clear
+	m["rail_white"] = _mat(Color("#F7F8F8"), 0.5, 0.2)
 	m["bike"] = [_mat(Color("#E74C3C")), _mat(Color("#3498DB")), _mat(Color("#2C3E50")), _mat(Color("#F1C40F")), _mat(Color("#BDC3C7")), _mat(Color("#8E44AD"))]
 	var grass_bl := StandardMaterial3D.new()
 	var gbt: Texture2D = _tex("grass_blades.png")
@@ -473,7 +498,7 @@ static func build_royal_palm(parent: Node3D, pos: Vector3, m: Dictionary, height
 #   hiên cột tầng trệt ở phía đó, mái ngói dốc xuống về phía đó.
 #   profile: số tầng từng module. gap_module: module để trống tầng trệt làm lối đi xuyên (-1 = không).
 # ===========================================================================
-static func build_module_wing(parent: Node3D, p_start: Vector3, p_end: Vector3, depth: float, profile: Array, m: Dictionary, inner_sign: float = 1.0, gap_module: int = -1, arcade: bool = true, open_modules: Array = []) -> Node3D:
+static func build_module_wing(parent: Node3D, p_start: Vector3, p_end: Vector3, depth: float, profile: Array, m: Dictionary, inner_sign: float = 1.0, gap_module: int = -1, arcade: bool = true, open_modules: Array = [], atrium_modules: Array = [], double_step: bool = false, lobby_module: int = -1) -> Node3D:
 	var wing := Node3D.new()
 	var dir: Vector3 = p_end - p_start
 	dir.y = 0.0
@@ -495,8 +520,10 @@ static func build_module_wing(parent: Node3D, p_start: Vector3, p_end: Vector3, 
 		for f: int in range(floors):
 			var y0: float = float(f) * FLOOR_H
 			var setback: float = 0.0 if f < 2 else float(f - 1) * step
-			var depth_f: float = depth - setback
-			var xc: float = -inner_sign * setback * 0.5
+			var outer_sb: float = setback * 0.5 if double_step else 0.0 # hai đầu nhà: xếp tầng cả mặt ngoài (mô hình giấy)
+			var depth_f: float = depth - setback - outer_sb
+			var xc: float = -inner_sign * setback * 0.5 + inner_sign * outer_sb * 0.5
+			var is_atrium: bool = k in atrium_modules
 			var inner_x: float = xc + inner_sign * depth_f * 0.5
 			var outer_x: float = xc - inner_sign * depth_f * 0.5
 
@@ -532,6 +559,12 @@ static func build_module_wing(parent: Node3D, p_start: Vector3, p_end: Vector3, 
 					_cyl(wing, Vector3(inner_x - inner_sign * 0.35, FLOOR_H * 0.5, az), 0.22, 0.24, FLOOR_H, m["white"])
 					_col_cyl(wing, Vector3(inner_x - inner_sign * 0.35, FLOOR_H * 0.5, az), 0.26, FLOOR_H)
 					az += 3.4
+				_exposed_beams(wing, xc, zc, depth_f, module_w + LINK_W, FLOOR_H, m)
+				_white_railing(wing, Vector3(inner_x - inner_sign * 0.2, FLOOR_H, zc), module_w, 0.0, m)
+			elif f == 0 and k == lobby_module:
+				_build_lobby_trong_dong(wing, xc, zc, depth_f, module_w, inner_sign, m)
+			elif is_atrium:
+				_build_atrium_floor(wing, xc, zc, depth_f, module_w, inner_sign, y0, m, f == 0, f == floors - 1)
 			elif f == 0 and k == gap_module:
 				# LỐI ĐI XUYÊN tầng trệt: 4 trụ lớn + dầm cam + nền gạch đỏ
 				for sz: float in [-1.0, 1.0]:
@@ -565,33 +598,62 @@ static func build_module_wing(parent: Node3D, p_start: Vector3, p_end: Vector3, 
 						var sc: float = 0.42 + 0.14 * absf(sin(zb * 1.9 + float(f) + side_x))
 						bush_xforms.append(Transform3D(Basis.IDENTITY.scaled(Vector3(sc, sc, sc)), Vector3(side_x + sgn * 0.05, y0 + 1.28, zb)))
 						zb += 2.2
-				if _module_has_room(wing, Vector3(xc, y0 + FLOOR_H * 0.5, zc), Vector3(depth_f, FLOOR_H, module_w)):
-					for sgn: float in [-1.0, 1.0]:
-						var q: MeshInstance3D = _quad(wing, Vector3(xc + sgn * (depth_f * 0.5 + 0.02), y0 + 2.3, zc), Vector2(module_w - 0.6, 1.5), m["band"], 90.0 * sgn)
-						q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-				else:
-					_box(wing, Vector3(xc, y0 + 2.3, zc), Vector3(depth_f + 0.04, 1.5, module_w - 0.6), m["band"])
+				# Mặt đứng theo mô hình giấy: tường trắng (texture ảnh thật) + ô cửa khung ĐỎ CAM rải rác, không còn dải kính tối
+				var seed_i: int = k * 7 + f * 3
+				for sgn: float in [-1.0, 1.0]:
+					if is_atrium and sgn == inner_sign:
+						continue # mặt sân trong của sảnh thông tầng là tường kính
+					var face_x: float = xc + sgn * (depth_f * 0.5 + 0.07)
+					var n_acc: int = 2 + (seed_i + (1 if sgn > 0.0 else 0)) % 2
+					for a: int in range(n_acc):
+						var zz: float = zc - module_w * 0.5 + 1.6 + float((a * 5 + seed_i * 3) % maxi(1, int(module_w - 3.2)))
+						var fr: MeshInstance3D = _box(wing, Vector3(face_x, y0 + 2.0, zz), Vector3(0.14, 1.5, 1.3), m["red_accent"])
+						fr.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+						var gl: MeshInstance3D = _box(wing, Vector3(face_x + sgn * 0.03, y0 + 2.0, zz), Vector3(0.06, 1.2, 1.0), m["band"])
+						gl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 			if f >= 2:
 				var tx: float = inner_x + inner_sign * step * 0.5
 				_box(wing, Vector3(tx, y0 + 0.08, zc), Vector3(step, 0.16, module_w - 0.2), m["lawn_small"])
 
 			if f == floors - 1:
-				var ltr: float = 0.0 if inner_sign > 0.0 else 1.0
-				_prism(wing, Vector3(xc, y0 + FLOOR_H + 1.0, zc), Vector3(depth_f + 0.6, 2.0, module_w + 0.3), m["roof"], ltr)
-				# Mặt đứng phía cao của mái dốc: tường trắng + dải kính (không để lộ mặt ngói thẳng đứng)
-				var fascia_x: float = outer_x - inner_sign * 0.34
-				_box(wing, Vector3(fascia_x, y0 + FLOOR_H + 1.0, zc), Vector3(0.22, 2.0, module_w + 0.34), m["white"])
-				_box(wing, Vector3(fascia_x - inner_sign * 0.08, y0 + FLOOR_H + 1.05, zc), Vector3(0.1, 1.1, module_w - 0.8), m["band"])
+				# MÁI BẰNG = SÂN THƯỢNG (mô hình giấy): sàn, tường chắn mái trắng 4 phía, bồn cây xanh dọc 2 mép dài, buồng kỹ thuật
+				_box(wing, Vector3(xc, y0 + FLOOR_H + 0.1, zc), Vector3(depth_f + 0.5, 0.2, module_w + 0.3), m["white"])
+				for sgn: float in [-1.0, 1.0]:
+					var px: float = xc + sgn * (depth_f * 0.5 + 0.12)
+					_box(wing, Vector3(px, y0 + FLOOR_H + 0.75, zc), Vector3(0.25, 1.1, module_w + 0.3), m["white"])
+					_box(wing, Vector3(px - sgn * 0.75, y0 + FLOOR_H + 0.45, zc), Vector3(1.2, 0.5, module_w - 0.6), m["planter"])
+					var zb: float = zc - module_w * 0.5 + 1.0
+					while zb <= zc + module_w * 0.5 - 1.0:
+						bush_xforms.append(Transform3D(Basis.IDENTITY.scaled(Vector3(0.55, 0.5, 0.55)), Vector3(px - sgn * 0.75, y0 + FLOOR_H + 0.95, zb)))
+						zb += 2.0
+					_box(wing, Vector3(xc, y0 + FLOOR_H + 0.75, zc + sgn * (module_w * 0.5 + 0.03)), Vector3(depth_f + 0.5, 1.1, 0.25), m["white"])
 				if k % 2 == 0:
-					_box(wing, Vector3(outer_x + inner_sign * 1.6, y0 + FLOOR_H + 2.6, zc - module_w * 0.5 + 1.8), Vector3(2.6, 2.4, 2.6), m["white"])
-					_prism(wing, Vector3(outer_x + inner_sign * 1.6, y0 + FLOOR_H + 4.3, zc - module_w * 0.5 + 1.8), Vector3(2.8, 1.0, 2.8), m["white"], 0.5)
+					_box(wing, Vector3(xc - inner_sign * (depth_f * 0.5 - 2.2), y0 + FLOOR_H + 1.5, zc - module_w * 0.5 + 2.2), Vector3(3.2, 2.6, 3.2), m["white"])
 
 		if k < n - 1:
 			var f_link: int = maxi(1, mini(int(profile[k]), int(profile[k + 1])) - 1)
 			var zl: float = zc + module_w * 0.5 + LINK_W * 0.5
 			var link_d: float = depth - 2.0
-			if (k in open_modules) or ((k + 1) in open_modules):
+			if (k in atrium_modules) and ((k + 1) in atrium_modules):
+				# Link giữa 2 module thông tầng: khe thang chạy xuyên → dựng từng tầng rỗng như module
+				var f_both: int = mini(int(profile[k]), int(profile[k + 1]))
+				for ff: int in range(f_both):
+					var sb2: float = 0.0 if ff < 2 else float(ff - 1) * step
+					var osb2: float = sb2 * 0.5 if double_step else 0.0
+					var dl: float = depth - sb2 - osb2 - 2.0
+					var xl: float = -inner_sign * sb2 * 0.5 + inner_sign * osb2 * 0.5
+					_build_atrium_floor(wing, xl, zl, dl, LINK_W, inner_sign, float(ff) * FLOOR_H, m, ff == 0, ff == f_both - 1)
+				continue
+			elif (k in atrium_modules) or ((k + 1) in atrium_modules):
+				# Link cạnh module thông tầng (link 0/1 cánh phải): đặc tới dưới chiếu nghỉ đỉnh thang, trên là sân hở
+				var top_y: float = STAIR_TOP_Y - 0.2
+				_box(wing, Vector3(0.0, top_y * 0.5, zl), Vector3(link_d, top_y, LINK_W), m["white"])
+				_col_box(wing, Vector3(0.0, FLOOR_H * 0.5, zl), Vector3(link_d, FLOOR_H, LINK_W))
+				_box(wing, Vector3(0.0, STAIR_TOP_Y - 0.1, zl), Vector3(link_d + 0.3, 0.2, LINK_W + 0.1), m["white"])
+				_white_railing(wing, Vector3(-inner_sign * (link_d * 0.5 - 0.15), STAIR_TOP_Y, zl), LINK_W, 0.0, m)
+				continue
+			elif (k in open_modules) or ((k + 1) in open_modules):
 				# Link cạnh module mở: tầng trệt chỉ còn 2 cột tròn (sảnh thông suốt), khối link bắt đầu từ tầng 1
 				if f_link >= 2:
 					_box(wing, Vector3(0.0, (FLOOR_H + float(f_link) * FLOOR_H) * 0.5, zl), Vector3(link_d, float(f_link - 1) * FLOOR_H, LINK_W), m["white"])
@@ -653,33 +715,40 @@ static func back_gap_u() -> float:
 	var mw: float = _front_module_w()
 	return (RING_U0 + SIDE_D) + float(BACK_GAP_MODULE) * (mw + LINK_W) + mw * 0.5
 
+static func _side_module_w() -> float:
+	return ((RING_V1 - RING_V0) - 3.0 * LINK_W) / 4.0
+
+## v của đầu nam module 1 cánh phải (= sau khối link 0/1): chiếu nghỉ đỉnh cầu thang trong nhà.
+static func stair_top_v() -> float:
+	return RING_V0 + _side_module_w() + LINK_W
+
 static func stair_foot() -> Vector3:
-	return Vector3(RING_U1 - SIDE_D - STAIR_RUN, 0.0, STAIR_V)
+	return Vector3(STAIR_U, 0.0, STAIR_FOOT_V)
 
 static func stair_top() -> Vector3:
-	return Vector3(RING_U1 - SIDE_D, STAIR_TOP_Y, STAIR_V)
+	return Vector3(STAIR_U, STAIR_TOP_Y, stair_top_v())
 
-## Cửa Lab 402 nằm trên mặt trước cánh phải, tầng 5 (lầu 4) – ngay cạnh đỉnh cầu thang ngoài trời.
+## Cửa Lab 402: mặt NAM module 0 cánh phải (v = RING_V0 + module), lầu 4 – ngay sau chiếu nghỉ đỉnh thang trong nhà.
 static func lab402_door() -> Vector3:
-	return Vector3(RING_U1 - SIDE_D + 9.0, STAIR_TOP_Y, STAIR_V)
+	return Vector3(STAIR_U, STAIR_TOP_Y, RING_V0 + _side_module_w())
 
-## Mặt cắt cầu thang ngoài trời: 3 đợt thang + 2 chiếu nghỉ (các điểm gấp khúc, dùng làm tuyến chạy Màn 2).
+## Mặt cắt cầu thang trong nhà: chạy dọc -v, 3 đợt thang + 2 chiếu nghỉ (điểm gấp khúc = tuyến chạy Màn 2).
 static func stair_profile() -> Array[Vector3]:
 	var sf: Vector3 = stair_foot()
-	var x_end: float = RING_U1 - SIDE_D
+	var z_end: float = stair_top_v()
 	var landing: float = 2.5
-	var flight: float = (x_end - sf.x - 2.0 * landing) / 3.0
+	var flight: float = (sf.z - z_end - 2.0 * landing) / 3.0
 	var rise: float = (STAIR_TOP_Y - sf.y) / 3.0
 	var pts: Array[Vector3] = [sf]
-	var x: float = sf.x
+	var z: float = sf.z
 	var y: float = sf.y
 	for i: int in range(3):
-		x += flight
+		z -= flight
 		y += rise
-		pts.append(Vector3(x, y, STAIR_V))
+		pts.append(Vector3(STAIR_U, y, z))
 		if i < 2:
-			x += landing
-			pts.append(Vector3(x, y, STAIR_V))
+			z -= landing
+			pts.append(Vector3(STAIR_U, y, z))
 	return pts
 
 static func parking_spot_candidates() -> Array[Vector3]:
@@ -1005,17 +1074,19 @@ static func _build_ring_building(root: Node3D, m: Dictionary) -> void:
 	var u_b: float = RING_U1 - SIDE_D
 	var v_front: float = RING_V0 + LONG_D * 0.5
 	var v_back: float = RING_V1 - LONG_D * 0.5
-	build_module_wing(root, Vector3(u_a, 0.0, v_front), Vector3(u_b, 0.0, v_front), LONG_D, [5, 5, 5, 5, 5, 5], m, -1.0, LOBBY_MODULE, true, _opt("open_front_modules", []))
-	build_module_wing(root, Vector3(u_a, 0.0, v_back), Vector3(u_b, 0.0, v_back), LONG_D, [5, 5, 5, 5, 5, 5], m, 1.0, BACK_GAP_MODULE, true, _opt("open_back_modules", []))
+	# v7 (mô hình giấy): hai cánh dài trũng ở giữa, hai đầu nhà xếp tầng cao như núi; sảnh trống đồng ở module 2 cánh trước;
+	# sảnh thông tầng + cầu thang trong nhà ở module 1–2 cánh phải (lên Lab 402)
+	build_module_wing(root, Vector3(u_a, 0.0, v_front), Vector3(u_b, 0.0, v_front), LONG_D, [6, 5, 4, 4, 5, 6], m, -1.0, -1, true, _opt("open_front_modules", []), [], false, LOBBY_MODULE)
+	build_module_wing(root, Vector3(u_a, 0.0, v_back), Vector3(u_b, 0.0, v_back), LONG_D, [6, 5, 4, 4, 5, 6], m, 1.0, BACK_GAP_MODULE, true, _opt("open_back_modules", []))
 	var u_l: float = RING_U0 + SIDE_D * 0.5
 	var u_r: float = RING_U1 - SIDE_D * 0.5
-	build_module_wing(root, Vector3(u_l, 0.0, RING_V0), Vector3(u_l, 0.0, RING_V1), SIDE_D, [6, 8, 8, 6], m, 1.0)
-	build_module_wing(root, Vector3(u_r, 0.0, RING_V0), Vector3(u_r, 0.0, RING_V1), SIDE_D, [6, 8, 8, 6], m, -1.0)
+	build_module_wing(root, Vector3(u_l, 0.0, RING_V0), Vector3(u_l, 0.0, RING_V1), SIDE_D, [7, 8, 8, 7], m, 1.0, -1, true, [], [], true)
+	build_module_wing(root, Vector3(u_r, 0.0, RING_V0), Vector3(u_r, 0.0, RING_V1), SIDE_D, [7, 8, 8, 7], m, -1.0, -1, true, [], ATRIUM_MODULES, true)
 
 	var lu: float = lobby_u()
 	var bu: float = back_gap_u()
-	_label(root, Vector3(lu, FLOOR_H + 1.6, RING_V0 - 0.5), "SẢNH CHÍNH – TRƯỜNG ĐẠI HỌC FPT TP.HCM", 24, Color.WHITE, 180.0)
-	_label(root, Vector3(lu, FLOOR_H + 1.6, RING_V0 + LONG_D + 0.5), "SẢNH CHÍNH – ATRIUM", 24, Color.WHITE, 0.0)
+	_label(root, Vector3(lu, FLOOR_H + 1.6, RING_V0 - 0.5), "SẢNH TRỐNG ĐỒNG – TRƯỜNG ĐẠI HỌC FPT TP.HCM", 24, Color.WHITE, 180.0)
+	_label(root, Vector3(lu, FLOOR_H + 1.6, RING_V0 + LONG_D + 0.5), "SẢNH TRỐNG ĐỒNG", 24, Color.WHITE, 0.0)
 	_label(root, Vector3(bu, FLOOR_H + 1.6, RING_V1 + 0.5), "LỐI VÀO SAU – CĂN TIN E2A & 7-ELEVEN", 22, Color.WHITE, 0.0)
 	var mat_hall := _tex_mat("fptu_campus_hall_atrium.png", Color("#DDDDDD"), false, Vector3.ONE, 0.7)
 	_box(root, Vector3(lu + 9.5, 2.2, RING_V0 + LONG_D + 0.6), Vector3(9.0, 3.2, 0.2), mat_hall)
@@ -1035,7 +1106,7 @@ static func _build_ring_building(root: Node3D, m: Dictionary) -> void:
 	_box(root, Vector3(127.0, 3.5, 44.0), Vector3(7.6, 0.3, 5.6), m["roof"])
 	_label(root, Vector3(127.0, 4.2, 46.6), "PASSIO COFFEE FPT", 20, Color("#E67E22"), 0.0)
 
-	_build_external_stair(root, m)
+	_build_atrium_stair(root, m)
 
 ## Lan can kính + tay vịn thép dọc một đoạn thang/chiếu nghỉ (a -> b theo trục X, cùng STAIR_V).
 static func _stair_rail(root: Node3D, a: Vector3, b: Vector3, m: Dictionary, sides: Array = [-1.0, 1.0]) -> void:
@@ -1382,3 +1453,292 @@ static func build_hutech(parent: Node3D, origin: Vector3, m: Dictionary, collide
 		build_tropical_tree(campus, Vector3(x_offset, 0.0, -4.0), m, 1.0, 700 + int(x_offset))
 	_opts = prev_opts
 	return campus
+
+# ===========================================================================
+# v7 – SẢNH TRỐNG ĐỒNG, SẢNH THÔNG TẦNG, CẦU THANG TRONG NHÀ, CHI TIẾT KIẾN TRÚC
+# ===========================================================================
+## Dầm bê tông lộ dưới trần (ảnh tham chiếu: trần sảnh tầng trệt lộ dầm, sơn xám)
+static func _exposed_beams(parent: Node3D, xc: float, zc: float, depth_f: float, len_z: float, ceil_y: float, m: Dictionary) -> void:
+	var bz: float = zc - len_z * 0.5 + 1.6
+	while bz <= zc + len_z * 0.5 - 1.0:
+		_box(parent, Vector3(xc, ceil_y - 0.32, bz), Vector3(depth_f - 0.4, 0.55, 0.36), m["concrete_beam"])
+		bz += 3.2
+	_box(parent, Vector3(xc, ceil_y - 0.32, zc), Vector3(0.4, 0.55, len_z), m["concrete_beam"])
+
+## Đèn trần: panel sáng + OmniLight không bóng, rải theo chiều dài (sảnh thông tầng tối vì bị tường/sàn che)
+static func _hall_lights(parent: Node3D, xc: float, zc: float, depth_f: float, len_z: float, ceil_y: float, m: Dictionary, energy: float) -> void:
+	var lz: float = zc - len_z * 0.5 + 2.2
+	while lz <= zc + len_z * 0.5 - 1.5:
+		for lx: float in [xc - depth_f * 0.28, xc + depth_f * 0.28]:
+			_box(parent, Vector3(lx, ceil_y - 0.62, lz), Vector3(1.3, 0.05, 0.3), m["lamp"])
+			var ol := OmniLight3D.new()
+			ol.position = Vector3(lx, ceil_y - 0.9, lz)
+			ol.light_color = Color(1.0, 0.97, 0.9)
+			ol.light_energy = energy
+			ol.omni_range = 9.0
+			ol.omni_attenuation = 1.2
+			ol.shadow_enabled = false
+			parent.add_child(ol)
+		lz += 4.4
+
+## Lan can thép trắng (song đứng + tay vịn) dài `length` dọc trục Z (yaw 0) hoặc X (yaw 90) tại `pos` (đáy lan can).
+static func _white_railing(parent: Node3D, pos: Vector3, length: float, yaw_deg: float, m: Dictionary) -> void:
+	var rail := Node3D.new()
+	rail.position = pos
+	rail.rotation_degrees.y = yaw_deg
+	parent.add_child(rail)
+	_box(rail, Vector3(0.0, 1.08, 0.0), Vector3(0.06, 0.06, length), m["rail_white"])
+	_box(rail, Vector3(0.0, 0.55, 0.0), Vector3(0.04, 0.03, length), m["rail_white"])
+	var n: int = maxi(2, int(length / 0.32))
+	for i: int in range(n + 1):
+		var z: float = -length * 0.5 + float(i) * (length / float(n))
+		_box(rail, Vector3(0.0, 0.54, z), Vector3(0.03, 1.08, 0.03), m["rail_white"])
+	_col_box(parent, pos + Vector3(0.0, 0.55, 0.0), Vector3(0.2, 1.1, length) if yaw_deg == 0.0 else Vector3(length, 1.1, 0.2))
+
+## Một tầng của SẢNH THÔNG TẦNG (hệ cục bộ cánh, x = chiều sâu, z = dọc cánh): sàn 2 dải hai bên KHE THANG,
+## lan can trắng mép khe, dầm bê tông, tường ngoài có cửa sổ, mặt sân trong là tường kính; tầng trệt = sảnh mở
+## (sàn terrazzo, cột tròn, kính có lối vào, trần dầm). is_top: thêm sàn mái bằng.
+static func _build_atrium_floor(wing: Node3D, xc: float, zc: float, depth_f: float, len_z: float, inner_sign: float, y0: float, m: Dictionary, ground: bool, is_top: bool) -> void:
+	var inner_x: float = xc + inner_sign * depth_f * 0.5
+	var outer_x: float = xc - inner_sign * depth_f * 0.5
+	# khe thang trong hệ cục bộ cánh: cánh phải đặt tại u_r = RING_U1 - SIDE_D/2, x cục bộ = u - u_r
+	var u_r: float = RING_U1 - SIDE_D * 0.5
+	var slot0: float = STAIR_U - STAIR_SLOT_HALF - u_r
+	var slot1: float = STAIR_U + STAIR_SLOT_HALF - u_r
+	var lo_x: float = minf(inner_x, outer_x)
+	var hi_x: float = maxf(inner_x, outer_x)
+	var top_y: float = y0 + FLOOR_H
+	if ground:
+		_box(wing, Vector3(xc, 0.055, zc), Vector3(depth_f - 0.2, 0.05, len_z), m["terrazzo_lobby"])
+		# cột tròn hai bên khe thang + dầm trần
+		var cz: float = zc - len_z * 0.5 + 1.5
+		while cz <= zc + len_z * 0.5 - 1.0:
+			for cx: float in [slot0 - 1.2, slot1 + 1.2]:
+				_cyl(wing, Vector3(cx, FLOOR_H * 0.5, cz), 0.28, 0.3, FLOOR_H, m["white"])
+				_col_cyl(wing, Vector3(cx, FLOOR_H * 0.5, cz), 0.32, FLOOR_H)
+			cz += 4.5
+		_exposed_beams(wing, xc, zc, depth_f, len_z, FLOOR_H, m)
+		_hall_lights(wing, xc, zc, depth_f, len_z, FLOOR_H, m, 1.3)
+		# tường ngoài đặc (tầng trệt) + tường kính phía sân trong có LỐI VÀO ở nửa nam (v lớn = z cục bộ lớn)
+		_box(wing, Vector3(outer_x + inner_sign * 0.25, FLOOR_H * 0.5, zc), Vector3(0.5, FLOOR_H, len_z), m["facade"])
+		_col_box(wing, Vector3(outer_x + inner_sign * 0.25, FLOOR_H * 0.5, zc), Vector3(0.5, FLOOR_H, len_z))
+		var gx: float = inner_x - inner_sign * 0.12
+		var door_z0: float = zc + len_z * 0.5 - 6.0
+		var door_z1: float = zc + len_z * 0.5 - 1.2
+		if len_z > 8.0:
+			# kính phía bắc lối vào + kính phía nam lối vào
+			var za: float = zc - len_z * 0.5
+			_box(wing, Vector3(gx, FLOOR_H * 0.5, (za + door_z0) * 0.5), Vector3(0.08, FLOOR_H - 0.3, door_z0 - za), m["glass_clear"])
+			_col_box(wing, Vector3(gx, FLOOR_H * 0.5, (za + door_z0) * 0.5), Vector3(0.3, FLOOR_H, door_z0 - za))
+			_box(wing, Vector3(gx, FLOOR_H * 0.5, (door_z1 + zc + len_z * 0.5) * 0.5), Vector3(0.08, FLOOR_H - 0.3, zc + len_z * 0.5 - door_z1), m["glass_clear"])
+			_col_box(wing, Vector3(gx, FLOOR_H * 0.5, (door_z1 + zc + len_z * 0.5) * 0.5), Vector3(0.3, FLOOR_H, zc + len_z * 0.5 - door_z1))
+			_box(wing, Vector3(gx, FLOOR_H - 0.3, (door_z0 + door_z1) * 0.5), Vector3(0.3, 0.6, door_z1 - door_z0), m["white"])
+			var mz: float = za
+			while mz <= zc + len_z * 0.5 + 0.01:
+				_box(wing, Vector3(gx, FLOOR_H * 0.5, mz), Vector3(0.12, FLOOR_H - 0.3, 0.1), m["white"])
+				mz += 2.3
+		else:
+			_box(wing, Vector3(gx, FLOOR_H * 0.5, zc), Vector3(0.08, FLOOR_H - 0.3, len_z), m["glass_clear"])
+			_col_box(wing, Vector3(gx, FLOOR_H * 0.5, zc), Vector3(0.3, FLOOR_H, len_z))
+	# sàn tầng trên (trần tầng này) = 2 dải hai bên khe thang + lan can trắng mép khe + dầm dưới sàn
+	var strip_a: float = slot0 - lo_x
+	var strip_b: float = hi_x - slot1
+	_box(wing, Vector3((lo_x + slot0) * 0.5, top_y - 0.15, zc), Vector3(strip_a, 0.3, len_z + 0.1), m["white"])
+	_box(wing, Vector3((slot1 + hi_x) * 0.5, top_y - 0.15, zc), Vector3(strip_b, 0.3, len_z + 0.1), m["white"])
+	if not is_top:
+		_white_railing(wing, Vector3(slot0 - 0.1, top_y, zc), len_z, 0.0, m)
+		_white_railing(wing, Vector3(slot1 + 0.1, top_y, zc), len_z, 0.0, m)
+	if not ground:
+		# tầng trên: tường ngoài có cửa sổ (texture ảnh), kính phía sân trong, dầm trần
+		_box(wing, Vector3(outer_x + inner_sign * 0.25, y0 + FLOOR_H * 0.5, zc), Vector3(0.5, FLOOR_H, len_z), m["facade"])
+		var gx2: float = inner_x - inner_sign * 0.12
+		_box(wing, Vector3(gx2, y0 + FLOOR_H * 0.5, zc), Vector3(0.08, FLOOR_H - 0.3, len_z), m["glass_clear"])
+		var mz2: float = zc - len_z * 0.5
+		while mz2 <= zc + len_z * 0.5 + 0.01:
+			_box(wing, Vector3(gx2, y0 + FLOOR_H * 0.5, mz2), Vector3(0.12, FLOOR_H - 0.3, 0.1), m["white"])
+			mz2 += 2.3
+		var bz: float = zc - len_z * 0.5 + 1.6
+		while bz <= zc + len_z * 0.5 - 1.0:
+			_box(wing, Vector3((lo_x + slot0) * 0.5, top_y - 0.5, bz), Vector3(strip_a - 0.3, 0.4, 0.3), m["concrete_beam"])
+			_box(wing, Vector3((slot1 + hi_x) * 0.5, top_y - 0.5, bz), Vector3(strip_b - 0.3, 0.4, 0.3), m["concrete_beam"])
+			bz += 3.2
+		_hall_lights(wing, xc, zc, depth_f, len_z, top_y, m, 0.9)
+
+## Lan can kính + tay vịn dọc một đoạn thang chạy theo trục Z (a → b cùng x = STAIR_U).
+static func _stair_rail_v(root: Node3D, a: Vector3, b: Vector3, m: Dictionary, width: float, sides: Array = [-1.0, 1.0]) -> void:
+	var d: Vector3 = b - a
+	var slen: float = d.length()
+	if slen < 0.05:
+		return
+	var ang: float = rad_to_deg(atan2(d.y, -d.z)) # thang chạy về -z
+	var mid: Vector3 = (a + b) * 0.5
+	for sx: float in sides:
+		var xpos: float = STAIR_U + sx * (width * 0.5 - 0.06)
+		var rail := _box(root, Vector3(xpos, mid.y + 1.05, mid.z), Vector3(0.08, 0.08, slen), m["steel"])
+		rail.rotation_degrees.x = ang
+		var glass := _box(root, Vector3(xpos, mid.y + 0.55, mid.z), Vector3(0.04, 0.9, slen), m["glass"])
+		glass.rotation_degrees.x = ang
+	var n_post: int = maxi(1, int(slen / 2.2))
+	for i: int in range(n_post + 1):
+		var t: float = float(i) / float(n_post)
+		var p: Vector3 = a.lerp(b, t)
+		for sx: float in sides:
+			_cyl(root, Vector3(STAIR_U + sx * (width * 0.5 - 0.06), p.y + 0.55, p.z), 0.03, 0.03, 1.1, m["steel"])
+
+## CẦU THANG TRONG NHÀ trong sảnh thông tầng cánh phải: đợt 1 = KHÁN ĐÀI ĐỎ vẽ graffiti (ảnh tham chiếu),
+## đợt 2–3 = thang trắng lan can kính; 2 chiếu nghỉ có bồn cây; chiếu nghỉ đỉnh nối cửa Lab 402 ở mặt nam module 0.
+static func _build_atrium_stair(root: Node3D, m: Dictionary) -> void:
+	var prof: Array[Vector3] = stair_profile()
+	var mat_tread := _mat(Color("#E8EAED"), 0.6)
+	var mat_nosing := _mat(Color("#F37021"), 0.5, 0.0, 0.25)
+	var mat_red := _mat(Color("#C4302C"), 0.65)
+	for i: int in range(prof.size() - 1):
+		var a: Vector3 = prof[i]
+		var b: Vector3 = prof[i + 1]
+		var run: float = a.z - b.z
+		var rise: float = b.y - a.y
+		var first: bool = i == 0
+		var width: float = STAIR_W + (2.6 if first else 0.0)
+		if rise > 0.01:
+			var n: int = maxi(1, int(round(rise / (0.21 if first else 0.17))))
+			var h: float = rise / float(n)
+			var dd: float = run / float(n)
+			for k: int in range(n):
+				var cz: float = a.z - (float(k) + 0.5) * dd
+				var cy: float = a.y + (float(k) + 0.5) * h
+				_box(root, Vector3(STAIR_U, cy, cz), Vector3(width, h, dd + 0.01), mat_red if first else mat_tread)
+				_box(root, Vector3(STAIR_U, cy + h * 0.5 + 0.006, cz - dd * 0.5 + 0.03), Vector3(width - 0.1, 0.012, 0.06), m["dark"] if first else mat_nosing)
+			var slen: float = sqrt(run * run + rise * rise)
+			var soffit := _box(root, Vector3(STAIR_U, (a.y + b.y) * 0.5 - 0.22, (a.z + b.z) * 0.5), Vector3(width + 0.1, 0.4, slen), m["white"] if not first else mat_red)
+			soffit.rotation_degrees.x = rad_to_deg(atan2(rise, run))
+			if first:
+				# tường graffiti hai bên khán đài (thấp) + bức tường graffiti lớn sau chiếu nghỉ 1
+				for sx: float in [-1.0, 1.0]:
+					var wall := _box(root, Vector3(STAIR_U + sx * (width * 0.5 + 0.08), (a.y + b.y) * 0.5 + 0.6, (a.z + b.z) * 0.5), Vector3(0.16, 1.4, slen), m["graffiti"])
+					wall.rotation_degrees.x = rad_to_deg(atan2(rise, run))
+			else:
+				_stair_rail_v(root, a, b, m, width)
+		else:
+			# chiếu nghỉ: sàn trắng + bồn cây + lan can
+			_box(root, Vector3(STAIR_U, a.y - 0.2, (a.z + b.z) * 0.5), Vector3(width + 0.1, 0.4, run + 0.02), m["white"])
+			_box(root, Vector3(STAIR_U, a.y + 0.08, (a.z + b.z) * 0.5), Vector3(width - 0.3, 0.16, run - 0.2), m["lawn_small"])
+			_stair_rail_v(root, a, b, m, width)
+			if i == 1:
+				var gw: float = STAIR_W + 2.6
+				_box(root, Vector3(STAIR_U, a.y + 2.2, b.z - 0.3), Vector3(gw + 1.0, 4.4, 0.25), m["graffiti"])
+				_box(root, Vector3(STAIR_U, a.y + 4.5, b.z - 0.3), Vector3(gw + 1.2, 0.25, 0.4), m["white"])
+	# chiếu nghỉ đỉnh (khối link 0/1) nối tới cửa Lab 402 ở mặt nam module 0
+	var st: Vector3 = prof[prof.size() - 1]
+	var door: Vector3 = lab402_door()
+	var land_z: float = (st.z + door.z) * 0.5
+	_box(root, Vector3(STAIR_U, st.y - 0.1, land_z), Vector3(STAIR_W + 1.0, 0.2, st.z - door.z + 0.2), m["white"])
+	_box(root, Vector3(door.x, st.y + 1.85, door.z + 0.12), Vector3(3.8, 3.9, 0.24), m["granite"])
+	_box(root, Vector3(door.x, st.y + 1.7, door.z + 0.26), Vector3(3.2, 3.4, 0.14), _mat(Color("#2ECC71"), 0.4, 0.0, 0.9))
+	_box(root, Vector3(door.x, st.y + 3.9, door.z + 0.26), Vector3(4.6, 0.6, 0.16), m["orange"])
+	_label(root, Vector3(door.x, st.y + 4.8, door.z + 0.45), "🚪 PHÒNG LAB 402 – KỸ THUẬT PHẦN MỀM\n[FAP SLOT 1 – 07:30 AM]", 24, Color.WHITE, 0.0)
+	var sf: Vector3 = prof[0]
+	_label(root, Vector3(sf.x, 3.2, sf.z + 2.5), "⬆ SẢNH THÔNG TẦNG – CẦU THANG LÊN LẦU 4 (LAB 402)", 16, Color("#F1C40F"), 0.0)
+
+## Đĩa phẳng có UV phẳng (mặt trống đồng).
+static func _disc_mesh(radius: float, segments: int = 48) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i: int in range(segments):
+		var a0: float = float(i) / float(segments) * TAU
+		var a1: float = float(i + 1) / float(segments) * TAU
+		st.set_normal(Vector3.UP)
+		st.set_uv(Vector2(0.5, 0.5)); st.add_vertex(Vector3.ZERO)
+		st.set_uv(Vector2(0.5 + 0.5 * cos(a1), 0.5 + 0.5 * sin(a1))); st.add_vertex(Vector3(cos(a1) * radius, 0.0, sin(a1) * radius))
+		st.set_uv(Vector2(0.5 + 0.5 * cos(a0), 0.5 + 0.5 * sin(a0))); st.add_vertex(Vector3(cos(a0) * radius, 0.0, sin(a0) * radius))
+	return st.commit()
+
+## SẢNH TRỐNG ĐỒNG (hệ cục bộ cánh trước: x = chiều sâu, +x = phía D1, z = dọc u): sàn terrazzo hoa văn, trống đồng
+## trên bệ đen giữa sảnh, kính 2 mặt có lối đi, bảng FPT UNIVERSITY, thang máy ốp đá, dãy ảnh, cây cảnh, trần đèn panel.
+static func _build_lobby_trong_dong(wing: Node3D, xc: float, zc: float, depth_f: float, module_w: float, inner_sign: float, m: Dictionary) -> void:
+	var half_d: float = depth_f * 0.5
+	var half_w: float = module_w * 0.5
+	var outer_x: float = xc - inner_sign * half_d   # phía D1
+	var inner_x: float = xc + inner_sign * half_d   # phía sân trong
+	_box(wing, Vector3(xc, 0.06, zc), Vector3(depth_f + 0.4, 0.06, module_w + LINK_W), m["terrazzo_lobby"])
+	# trần: tấm trắng + 6 panel đèn + đèn
+	_box(wing, Vector3(xc, FLOOR_H - 0.06, zc), Vector3(depth_f + 0.2, 0.12, module_w + LINK_W), m["ceiling"])
+	for lz: float in [zc - half_w * 0.55, zc, zc + half_w * 0.55]:
+		for lx: float in [xc - half_d * 0.4, xc + half_d * 0.4]:
+			_box(wing, Vector3(lx, FLOOR_H - 0.14, lz), Vector3(1.4, 0.05, 0.7), m["lamp"])
+			var ol := OmniLight3D.new()
+			ol.position = Vector3(lx, FLOOR_H - 0.5, lz)
+			ol.light_color = Color(1.0, 0.98, 0.94)
+			ol.light_energy = 1.2
+			ol.omni_range = 8.0
+			ol.omni_attenuation = 1.3
+			ol.shadow_enabled = false
+			wing.add_child(ol)
+	# hai mặt kính (D1 & sân trong) có LỐI ĐI 3.2 m ở giữa; cột kính trắng
+	for face_x: float in [outer_x + inner_sign * 0.15, inner_x - inner_sign * 0.15]:
+		for sgn: float in [-1.0, 1.0]:
+			var seg_len: float = half_w - 1.6
+			var cz: float = zc + sgn * (1.6 + seg_len * 0.5)
+			_box(wing, Vector3(face_x, FLOOR_H * 0.5 - 0.1, cz), Vector3(0.08, FLOOR_H - 0.3, seg_len), m["glass_clear"])
+			_col_box(wing, Vector3(face_x, FLOOR_H * 0.5, cz), Vector3(0.3, FLOOR_H, seg_len))
+		_box(wing, Vector3(face_x, FLOOR_H - 0.35, zc), Vector3(0.3, 0.5, 3.4), m["white"])
+		var mz: float = zc - half_w
+		while mz <= zc + half_w + 0.01:
+			_box(wing, Vector3(face_x, FLOOR_H * 0.5, mz), Vector3(0.14, FLOOR_H - 0.2, 0.12), m["white"])
+			mz += 2.2
+	# bảng FPT UNIVERSITY trên lối vào phía D1 (nhìn được cả hai mặt)
+	for sgn: float in [-1.0, 1.0]:
+		_quad(wing, Vector3(outer_x + inner_sign * 0.15 + sgn * 0.2, FLOOR_H - 0.95, zc), Vector2(6.0, 1.3), m["board"], 90.0 * sgn * (-inner_sign))
+	# tường bên: (z nhỏ) THANG MÁY ốp đá + 2 cửa thép + chữ G; (z lớn) dãy ảnh khung + ghế gỗ
+	var wall_z0: float = zc - half_w - LINK_W * 0.5 + 0.2
+	var wall_z1: float = zc + half_w + LINK_W * 0.5 - 0.2
+	_box(wing, Vector3(xc, FLOOR_H * 0.5, wall_z0), Vector3(depth_f - 0.6, FLOOR_H, 0.3), m["wall_paint"])
+	_col_box(wing, Vector3(xc, FLOOR_H * 0.5, wall_z0), Vector3(depth_f - 0.6, FLOOR_H, 0.3))
+	_box(wing, Vector3(xc, FLOOR_H * 0.5, wall_z1), Vector3(depth_f - 0.6, FLOOR_H, 0.3), m["wall_paint"])
+	_col_box(wing, Vector3(xc, FLOOR_H * 0.5, wall_z1), Vector3(depth_f - 0.6, FLOOR_H, 0.3))
+	_box(wing, Vector3(xc - 1.0, FLOOR_H * 0.5, wall_z0 + 0.2), Vector3(6.2, FLOOR_H - 0.1, 0.12), m["marble"])
+	for ex: float in [xc - 2.4, xc + 0.4]:
+		_box(wing, Vector3(ex, 1.2, wall_z0 + 0.3), Vector3(1.3, 2.4, 0.08), m["elevator"])
+		_box(wing, Vector3(ex, 1.2, wall_z0 + 0.35), Vector3(0.03, 2.4, 0.04), m["dark"])
+		_box(wing, Vector3(ex, 2.6, wall_z0 + 0.31), Vector3(0.5, 0.18, 0.04), _mat(Color("#FF5722"), 0.3, 0.0, 1.0))
+	_label(wing, Vector3(xc - 3.9, 1.9, wall_z0 + 0.32), "G", 48, Color("#F1C40F"), 0.0)
+	_box(wing, Vector3(xc + 2.7, 1.0, wall_z0 + 0.3), Vector3(0.9, 0.9, 0.06), m["board"])
+	var photos: Array = ["fptu_campus_hall_atrium.png", "fptu_student_activities_billboard.png", "fptu_vtn_architecture_plaque.png", "fptu_campus_map_billboard.png"]
+	for i: int in range(photos.size()):
+		var pm: StandardMaterial3D = _tex_mat(String(photos[i]), Color("#DDDDDD"), false, Vector3.ONE, 0.6)
+		var px: float = xc - half_d + 1.8 + float(i) * 3.0
+		_box(wing, Vector3(px, 1.75, wall_z1 - 0.22), Vector3(2.4, 1.6, 0.06), m["dark"])
+		_quad(wing, Vector3(px, 1.75, wall_z1 - 0.27), Vector2(2.2, 1.4), pm, 180.0)
+	_box(wing, Vector3(xc, 0.45, wall_z1 - 0.9), Vector3(4.0, 0.08, 0.6), m["wood"])
+	_box(wing, Vector3(xc, 0.2, wall_z1 - 0.9), Vector3(3.6, 0.4, 0.5), m["dark"])
+	# TRỐNG ĐỒNG trên bệ đá đen (tâm sảnh): thân tiện (phình – thắt eo – xoè chân), mặt trống dán hoa văn, 4 quai, vành
+	var pc := Vector3(xc, 0.0, zc)
+	_box(wing, pc + Vector3(0.0, 0.06, 0.0), Vector3(3.6, 0.12, 3.6), m["marble"])
+	_box(wing, pc + Vector3(0.0, 0.36, 0.0), Vector3(2.8, 0.5, 2.8), m["black_plinth"])
+	_col_box(wing, pc + Vector3(0.0, 0.5, 0.0), Vector3(3.6, 1.0, 3.6))
+	var drum := MeshInstance3D.new()
+	drum.mesh = CharacterBuilder._lathe([Vector3(0.9, 0.0, 0.9), Vector3(1.0, 0.1, 1.0), Vector3(0.86, 0.32, 0.86), Vector3(0.8, 0.5, 0.8), Vector3(0.93, 0.74, 0.93), Vector3(1.02, 0.9, 1.02), Vector3(1.0, 1.02, 1.0), Vector3(0.0, 1.03, 0.0)], 40)
+	drum.material_override = m["bronze"]
+	drum.position = pc + Vector3(0.0, 0.61, 0.0)
+	wing.add_child(drum)
+	var face := MeshInstance3D.new()
+	face.mesh = _disc_mesh(0.99)
+	face.material_override = m["bronze_face"]
+	face.position = pc + Vector3(0.0, 1.645, 0.0)
+	wing.add_child(face)
+	for ring_y: float in [0.72, 1.0, 1.5]:
+		_torus(wing, pc + Vector3(0.0, ring_y, 0.0), 0.86 if ring_y < 1.2 else 0.98, (0.86 if ring_y < 1.2 else 0.98) + 0.05, m["dark"])
+	for a: int in range(4):
+		var ang: float = float(a) * TAU / 4.0 + PI * 0.25
+		var hp: Vector3 = pc + Vector3(cos(ang) * 1.0, 1.15, sin(ang) * 1.0)
+		var handle := _torus(wing, hp, 0.08, 0.14, m["bronze"])
+		handle.rotation_degrees.y = -rad_to_deg(ang)
+	_label(wing, pc + Vector3(0.0, 2.3, 0.0), "TRỐNG ĐỒNG ĐÔNG SƠN – SẢNH CHÍNH FPTU", 18, Color("#FFD32A"), 0.0, true)
+	# cây cảnh trong chậu ở 4 góc + thảm đỏ lối vào
+	for sx: float in [-1.0, 1.0]:
+		for sz: float in [-1.0, 1.0]:
+			var pp: Vector3 = Vector3(xc + sx * (half_d - 1.3), 0.0, zc + sz * (half_w - 1.0))
+			_cyl(wing, pp + Vector3(0.0, 0.3, 0.0), 0.3, 0.24, 0.6, m["white"])
+			_cyl(wing, pp + Vector3(0.0, 1.1, 0.0), 0.03, 0.04, 1.0, m["trunk"])
+			_sphere(wing, pp + Vector3(0.0, 1.75, 0.0), 0.5, m["leaf3"])
+			_sphere(wing, pp + Vector3(0.25, 1.5, 0.1), 0.35, m["leaf2"])
+	_box(wing, Vector3(xc, 0.1, zc), Vector3(depth_f + 0.5, 0.02, 2.6), m["red_path"])

@@ -41,7 +41,7 @@ signal stage_completed()
 
 # ----- Thiết kế -----
 const PHASE1_TIME: float = 55.0
-const PHASE2_TIME: float = 48.0   # Chạy thẳng không vấp ~36s trên ~215 m -> được phép vấp ~6 lần
+const PHASE2_TIME: float = 34.0   # v7: tuyến ~153 m qua sân trong + cầu thang trong nhà; bot sạch ~25 s -> dư ~8 s, vấp ~4 lần
 const GATE_U: float = FPTUCampusBuilder.PARK_GATE_U
 const GUARD_POS: Vector3 = Vector3(180.6, 0.0, 2.3)      # Bác bảo vệ đứng cạnh trụ barie, trước bốt
 const BIKE_START: Vector3 = Vector3(146.0, 0.4, -9.7)    # Làn phải đường D1, 28 m trước cổng bãi xe (đích Màn 1)
@@ -538,7 +538,6 @@ func _on_monster_area_entered(body: Node3D) -> void:
 func _build_route() -> void:
 	var sp: Vector3 = spot_candidates[spot_idx]
 	var bu: float = FPTUCampusBuilder.back_gap_u()
-	var lu: float = FPTUCampusBuilder.lobby_u()
 	var lane_v: float = FPTUCampusBuilder.PARK_LANE_V
 	var g: float = 0.1
 	var pts: Array[Vector3] = [Vector3(sp.x, g, sp.z)]
@@ -558,14 +557,14 @@ func _build_route() -> void:
 	cp_back = pts.size() - 1
 	pts.append(Vector3(bu, g, FPTUCampusBuilder.RING_V1 - FPTUCampusBuilder.LONG_D)) # xuyên lối vào sau ra sân trong
 	pts.append(Vector3(bu, g, 62.0))
-	pts.append(Vector3(bu, g, 50.0))
-	pts.append(Vector3(lu + 9.5, g, 42.0))                   # vòng qua hồ sen, hướng về sảnh
-	pts.append(Vector3(lu, g, 42.0))
-	pts.append(Vector3(lu, g, FPTUCampusBuilder.RING_V0))    # xuyên sảnh chính ra sân trước
-	cp_lobby = pts.size() - 1
-	pts.append(Vector3(lu, g, 15.5))
+	# v7: băng qua sân trong về cánh phải, vào SẢNH THÔNG TẦNG (cửa kính mặt sân trong, module 2) rồi lên cầu thang TRONG NHÀ
 	var sf: Vector3 = FPTUCampusBuilder.stair_foot()
-	pts.append(Vector3(sf.x - 4.0, g, 17.5))
+	var hall_x: float = FPTUCampusBuilder.RING_U1 - FPTUCampusBuilder.SIDE_D - 2.5
+	pts.append(Vector3(bu + 16.0, g, 66.5))
+	pts.append(Vector3(hall_x, g, 66.5))
+	cp_lobby = pts.size() - 1
+	pts.append(Vector3(sf.x - 3.0, g, 66.5))
+	pts.append(Vector3(sf.x, g, 66.5))
 	var prof: Array[Vector3] = FPTUCampusBuilder.stair_profile()
 	for i: int in range(prof.size()):
 		pts.append(prof[i] + Vector3(0.0, 0.05, 0.0))
@@ -573,7 +572,7 @@ func _build_route() -> void:
 			cp_stair = pts.size() - 1
 	var door: Vector3 = FPTUCampusBuilder.lab402_door()
 	var top_y: float = prof[prof.size() - 1].y + 0.05
-	pts.append(Vector3(door.x - 0.6, top_y, FPTUCampusBuilder.STAIR_V))
+	pts.append(Vector3(door.x, top_y, door.z + 0.7))
 
 	route_points = pts
 	run_curve = Curve3D.new()
@@ -585,8 +584,8 @@ func _build_route() -> void:
 
 	checkpoints = [
 		{"progress": run_curve.get_closest_offset(pts[cp_back]), "text": "📍 LỐI VÀO SAU – CĂN TIN E2A & 7-ELEVEN. XUYÊN QUA SÂN TRONG!", "done": false},
-		{"progress": run_curve.get_closest_offset(pts[cp_lobby]), "text": "📍 SẢNH CHÍNH – RA SÂN TRƯỚC, CẦU THANG NGOÀI TRỜI BÊN PHẢI!", "done": false},
-		{"progress": run_curve.get_closest_offset(pts[cp_stair]), "text": "📍 CẦU THANG NGOÀI TRỜI – 105 BẬC LÊN LAB 402! BỨT TỐC!", "done": false}
+		{"progress": run_curve.get_closest_offset(pts[cp_lobby]), "text": "📍 SẢNH THÔNG TẦNG CÁNH PHẢI – VÀO CỬA KÍNH, CẦU THANG NGAY TRƯỚC MẶT!", "done": false},
+		{"progress": run_curve.get_closest_offset(pts[cp_stair]), "text": "📍 CẦU THANG TRONG NHÀ – 105 BẬC LÊN LAB 402! BỨT TỐC!", "done": false}
 	]
 
 # ===========================================================================

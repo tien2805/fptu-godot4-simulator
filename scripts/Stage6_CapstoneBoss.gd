@@ -201,7 +201,7 @@ func _build_lab_night_world() -> void:
 	FPTUCampusBuilder.build_hutech(world, Vector3(135.0, 0.0, -26.0), cm)
 	FPTUCampusBuilder.build_d1_road_piece(world, -13.0, -80.0, 300.0, cm, 0.0)
 	FPTUCampusBuilder.build_room_interior($Arena, FPTUCampusBuilder.lab402_room_size(), cm, {
-		"windows": ["+x", "+z"], "door": "+z", "door_x": 0.86, "board_side": "-x", "name": "LAB 402", "night": true
+		"windows": ["+x", "+z"], "door": "-z", "door_x": -0.35, "board_side": "-x", "name": "LAB 402", "night": true
 	})
 	# Bàn máy của 4 thành viên (sau lưng hàng người), bàn giữa đặt laptop chung, pizza & lon nước thức đêm
 	for i: int in range(LANE_COUNT):

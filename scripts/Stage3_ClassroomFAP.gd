@@ -209,7 +209,7 @@ func _build_lab_402_world() -> void:
 	FPTUCampusBuilder.build_hutech(world, Vector3(135.0, 0.0, -26.0), cm)
 	FPTUCampusBuilder.build_d1_road_piece(world, -13.0, -80.0, 300.0, cm, 0.0)
 	FPTUCampusBuilder.build_room_interior($Room, FPTUCampusBuilder.lab402_room_size(), cm, {
-		"windows": ["+x", "+z"], "door": "+z", "door_x": 0.86, "board_side": "-x", "name": "LAB 402"
+		"windows": ["+x", "+z"], "door": "-z", "door_x": -0.35, "board_side": "-x", "name": "LAB 402"
 	})
 	# Bàn giảng viên (quay mặt xuống lớp) + 2 hàng bàn máy, bàn giữa hàng sau là của người chơi
 	FPTUCampusBuilder.build_lab_desk($Room, Vector3(0.0, 0.0, -3.9), cm, 1, 180.0, "chair_blue", 2.4)
