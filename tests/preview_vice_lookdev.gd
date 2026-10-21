@@ -297,6 +297,8 @@ func _build_neon() -> void:
 	var per_color: Array = [[], [], [], []]
 	var bi: int = 0
 	for b: Dictionary in md.buildings("vinhomes"):
+		if String(b.get("source", "osm")) == "msft":
+			continue   # raw Microsoft outlines are clipped at build time; neon would float over roads
 		var outer: PackedVector2Array = MapData.poly(b["outer"])
 		if outer.size() < 4:
 			continue

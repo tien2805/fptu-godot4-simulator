@@ -737,6 +737,10 @@ func _detail_start_buildings() -> void:
 	holder.name = "StartBuildingsDetail"
 	scenery_root.add_child(holder)
 	for b: Dictionary in md.buildings("vinhomes"):
+		# Microsoft tube houses are already drawn as clipped, chunked meshes (MapBuilder.msft_footprints): re-building them
+		# from the raw outline would double them and push 11 of them onto side-street carriageways.
+		if String(b.get("source", "osm")) == "msft":
+			continue
 		var outer: PackedVector2Array = MapData.poly(b.get("outer", []))
 		if outer.size() >= 2 and outer[0].distance_to(outer[outer.size() - 1]) < 0.01:
 			outer.remove_at(outer.size() - 1)
