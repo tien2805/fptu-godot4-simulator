@@ -265,9 +265,9 @@ Tier 1 total including the foundation: 4.5 + 3 + 3 + 4.5 + 2 + 2 = 19 days, plus
 | Feature | Real value (OSM) | Current game (FPTUCampusBuilder v7) | Action |
 |---|---|---|---|
 | Campus plot | irregular octagon, OBB 190 x 123 m, long axis parallel to Đường D1 (bearing 136 deg from east) | PLOT_U x PLOT_V = 180 x 115 m, axis-aligned | keep size, rotate the whole campus to the real bearing, use the real octagon as the fence |
-| Main building | one ring, OBB 105 x 50 m, bearing -43 deg, relation 13698121 (outer 9 verts, inner 8) | ring 150 x 64 m (RING_U0..U1, RING_V0..V1) | shrink the ring to 105 x 50 m; keep wing depth 14 / 26 m; re-derive module count |
-| Main gate | on the D1 edge at (16, -100); second gate at the west corner (-109, 22) | MAIN_GATE_U = 6, PARK_GATE_U = 174 on the same side | move gates to the real positions |
-| Motorcycle parking | strip 128 x 12 m centred (-6, 62), i.e. the NE (back) side, not the D1 side | parking lot near the D1 gate | move parking behind the building, reroute Màn 2 |
+| Main building | one ring, relation 13698121: OUTER footprint about 162 x 80 m (local u 14.8..176.7, v 15.4..95.7), COURTYARD 105 x 49 m, bearing -43 deg (an earlier reading of 105 x 50 was the courtyard, not the building) | ring 150 x 64 m (RING_U0..U1, RING_V0..V1) | done in campus v8 (commit 4f17054): outer ring u 14..175 x v 16..93, wings 28 / 14 m deep, courtyard 105 x 49 |
+| Main gate | on the D1 edge 7 m from the SE corner of the plot (16, -100); second gate at the west corner (-109, 22) | MAIN_GATE_U = 6, PARK_GATE_U = 174 on the same side | done in v8: MAIN_GATE_U = 7, WEST_GATE_U = 181 (real), BACK_GATE_U = 122 on the NE fence (new, for the open world) |
+| Motorcycle parking | strip 128 x 12 m centred (-6, 62), i.e. the NE (back) side, not the D1 side | parking lot near the D1 gate | done in v8: two canopy rows at local v 97.5 / 109.5, u 66..178; Màn 2 enters by the real west gate and rides the west lane to the strip (PHASE2_TIME 38 s) |
 | Pitch (sân bóng) | 42 x 22 m at (64, -4) inside the plot | none | add (Vovinam / sports yard) |
 | HUTECH | campus 198 x 202 m across D1 at (-96, -143); building "Viện Công Nghệ Cao HUTECH" 94 x 31 m at (-132, -79) | one block opposite | place from footprint |
 | Đường D1 | primary, one-way pairs, 3 lanes, runs SW of the campus from (-150, 12) to (113, -211); roundabout "vòng xoay" at (82, -215); bus stops at (-132, 29) and (-150, 0) | straight road along one side | build from the polyline |
