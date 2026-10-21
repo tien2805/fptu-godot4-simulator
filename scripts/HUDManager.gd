@@ -4,7 +4,7 @@
 class_name HUDManager
 extends CanvasLayer
 
-@export var stage_duration_sec: float = 104.0 # 104 giây thực tế = 25 phút trong game (7:05 -> 7:30 AM); lái sạch + dừng đèn đỏ ~98s
+@export var stage_duration_sec: float = 300.0 # giây thực = 25 phút trong game (7:05 -> 7:30 AM) trên tuyến thật 5,5 km; _ready lấy RoadManager.STAGE_TIME (xem lý do con số ở đó)
 @export var player_bike: CharacterBody3D
 @export var road_manager: Node3D
 
@@ -66,7 +66,9 @@ var penalty_total: float = 0.0
 var near_miss_count: int = 0
 var drift_boosts: int = 0
 var crashes: int = 0
-const BONUS_CAP: float = 8.0
+const BONUS_CAP: float = 12.0 # trần tổng giây thưởng (8 s x1,5 cùng với thưởng sát nút, tuyến thật 240 s)
+var dist_label: Label
+var dist_bar: ProgressBar
 
 var speedlines_rect: ColorRect
 var speedlines_mat: ShaderMaterial
@@ -119,6 +121,8 @@ func _ready() -> void:
 		if player_bike.has_signal("curb_hit"):
 			player_bike.connect("curb_hit", _on_curb_hit)
 	if road_manager:
+		if road_manager is RoadManager:
+			stage_duration_sec = RoadManager.STAGE_TIME
 		road_manager.connect("zone_changed", _on_zone_changed)
 		road_manager.connect("destination_reached", _on_destination_reached)
 		var ev: Node = road_manager.get("road_events")
@@ -168,6 +172,23 @@ func _setup_overlays() -> void:
 	_build_chain_panel()
 	drift_hint_label = GameFX.make_label("", 15, Color("#F39C12"), HORIZONTAL_ALIGNMENT_LEFT)
 	vb.add_child(drift_hint_label)
+	# Quãng đường còn lại tới cổng FPTU (đọc từ curve tuyến thật qua RoadManager.remaining_m) + thanh tiến độ
+	dist_label = GameFX.make_label("📏 CÒN LẠI – m", 14, Color("#74B9FF"), HORIZONTAL_ALIGNMENT_LEFT)
+	vb.add_child(dist_label)
+	dist_bar = GameFX.make_bar(0.0, Color("#74B9FF"), 8)
+	vb.add_child(dist_bar)
+
+func _update_distance() -> void:
+	if not dist_label or not road_manager:
+		return
+	var rem: Variant = road_manager.get("remaining_m")
+	var total: Variant = road_manager.get("total_track_length")
+	if not (rem is float) or not (total is float):
+		return
+	var total_m: float = maxf(1.0, float(total))
+	var remaining: float = clampf(float(rem), 0.0, total_m)
+	dist_label.text = "📏 CÒN %d m TỚI CỔNG FPTU · ĐÃ ĐI %.1f / %.1f km" % [int(ceil(remaining)), (total_m - remaining) / 1000.0, total_m / 1000.0]
+	dist_bar.value = (total_m - remaining) / total_m * 100.0
 
 func _refresh_stats() -> void:
 	if stats_label:
@@ -205,6 +226,7 @@ func _setup_hud_audio() -> void:
 
 func _process(delta: float) -> void:
 	_update_chain_panel(delta)
+	_update_distance()
 	if player_bike:
 		GameFX.music_tension(clampf(absf(float(player_bike.get("current_speed_ms"))) * 3.6 / 75.0 * 0.55 + float(player_bike.get("near_miss_chain")) * 0.12, 0.2, 1.0))
 	# Overlay luôn cập nhật (kể cả khi kết thúc để mờ dần)
@@ -264,8 +286,8 @@ func _on_drift_boost(_duration: float) -> void:
 
 func _on_near_miss(chain: int) -> void:
 	near_miss_count += 1
-	# Thưởng theo chuỗi 0.5 / 0.75 / 1.0 s (từ chuỗi 3 trở đi), trần tổng 8 s giữ nguyên
-	var bonus: float = [0.5, 0.75, 1.0][mini(chain, 3) - 1]
+	# Thưởng theo chuỗi 0.75 / 1.125 / 1.5 s (= 0.5 / 0.75 / 1.0 x1,5 cho tuyến thật 240 s), trần tổng BONUS_CAP
+	var bonus: float = [0.75, 1.125, 1.5][mini(chain, 3) - 1]
 	var granted: float = _grant_bonus(bonus)
 	var txt: String
 	if chain <= 1:

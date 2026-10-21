@@ -1,9 +1,13 @@
 # File: res://scripts/RoadEvents.gd
-# Sự kiện bất ngờ trên cung đường Vinhomes -> FPTU (Màn 1):
-#   - Ổ gà Nguyễn Xiển (random), xe tải hỏng chắn làn trên D2, chó cô Ba chạy qua đường,
-#   - Đèn đỏ bất ngờ ở ngã ba trước Cầu Trau Trảu (vượt = CSGT phạt, dừng đúng = thưởng),
-#   - Mưa rào SHTP (50%) làm đường trơn, 5 cổng checkpoint có lời thoại hài.
-# RoadManager tạo node này sau khi dựng đường; HUDManager nối các signal để cộng/trừ giờ.
+# Sự kiện bất ngờ trên cung đường thật BE6 (Vinhomes) -> FPTU (Màn 1), đặt theo mốc thật của tuyến
+# (RoadManager.route_marks: offset curve của Cầu Rạch Hầm, Nguyễn Văn Tăng, vòng xoay D2B-D1, Đường D1...):
+#   - Ổ gà Nguyễn Xiển / đầu Nguyễn Văn Tăng (random), xe tải hỏng chắn làn trên Nguyễn Văn Tăng,
+#     chó cô Ba chạy qua Đường Cầu Vồng 5,
+#   - Đèn đỏ bất ngờ ngay trước Cầu Rạch Hầm (vượt = CSGT phạt, dừng đúng = thưởng),
+#   - Mưa rào (50%) trên Nguyễn Văn Tăng làm đường trơn, 5 cổng checkpoint có lời thoại hài
+#     (hết Hải Đăng, qua cầu, vào Nguyễn Văn Tăng, trước vòng xoay, vào D1).
+# Bề rộng chướng ngại/cổng theo lòng đường thật (RoadManager.half_width_at). Không có RoadManager thì dùng
+# các offset cũ của đường 14 m. RoadManager tạo node này sau khi dựng đường; HUDManager nối các signal.
 class_name RoadEvents
 extends Node3D
 
@@ -12,11 +16,16 @@ signal time_bonus(sec: float, msg: String)
 signal banner(text: String, color: Color, duration: float)
 signal rain_changed(is_raining: bool)
 
-const LIGHT_OFFSET: float = 778.0
-const DOG_OFFSET: float = 470.0
+var LIGHT_OFFSET: float = 778.0   # vạch đèn đỏ: 34 m trước đầu Cầu Rạch Hầm (setup đặt theo route_marks)
+var DOG_OFFSET: float = 470.0     # chó cô Ba: giữa Đường Cầu Vồng 5
+var dog_span: float = 9.5         # chó chạy từ lề này sang lề kia (nửa bề rộng đường + 3 m)
+var rain_from: float = 1040.0
+var rain_to: float = 1480.0
 
 var road_path: Path3D
 var player_bike: CharacterBody3D
+var road_manager: Node = null
+var marks: Dictionary = {}
 var curve: Curve3D
 var track_len: float = 1.0
 
@@ -47,11 +56,22 @@ var rain_done: bool = false
 var rain_particles: CPUParticles3D
 var world_env: WorldEnvironment
 
-func setup(path: Path3D, bike: CharacterBody3D) -> void:
+func setup(path: Path3D, bike: CharacterBody3D, manager: Node = null) -> void:
 	road_path = path
 	player_bike = bike
+	road_manager = manager
 	curve = path.curve
 	track_len = curve.get_baked_length()
+	if manager:
+		var m: Variant = manager.get("route_marks")
+		if m is Dictionary:
+			marks = m
+	LIGHT_OFFSET = _mark("bridge_start", 812.0) - 34.0
+	var cv5: float = _mark("cau_vong_5_start", -1.0)
+	var nx: float = _mark("nguyen_xien", -1.0)
+	DOG_OFFSET = lerpf(cv5, nx, 0.55) if (cv5 >= 0.0 and nx > cv5) else 470.0
+	rain_from = _mark("nvt_start", 1040.0) + 300.0
+	rain_to = rain_from + 600.0 if marks.has("nvt_start") else 1480.0
 	rain_possible = randf() < 0.5
 	_build_potholes()
 	_build_broken_trucks()
@@ -59,6 +79,17 @@ func setup(path: Path3D, bike: CharacterBody3D) -> void:
 	_build_traffic_light()
 	_build_checkpoints()
 	_build_rain()
+
+## Offset mốc thật (route_marks) hoặc giá trị dự phòng của đường cũ khi thiếu.
+func _mark(key: String, fallback: float) -> float:
+	var v: float = float(marks.get(key, -1.0))
+	return v if v >= 0.0 else fallback
+
+## Nửa bề rộng lòng đường thật tại offset (7 m = đường cũ 14 m khi không có RoadManager).
+func _hw(offset: float) -> float:
+	if road_manager and road_manager.has_method("half_width_at"):
+		return float(road_manager.call("half_width_at", offset))
+	return 7.0
 
 func _xform_at(offset: float) -> Transform3D:
 	return curve.sample_baked_with_rotation(clampf(offset, 0.0, track_len - 0.1))
@@ -78,12 +109,25 @@ func _build_potholes() -> void:
 	mat_hole.roughness = 1.0
 	var mat_rim := StandardMaterial3D.new()
 	mat_rim.albedo_color = Color("#5D4A2E")
+	# Ổ gà rải trên Nguyễn Xiển (hai bên cầu) và 400 m đầu Nguyễn Văn Tăng; tránh mặt cầu và vạch đèn đỏ
+	var lo: float = _mark("nguyen_xien", 220.0) + 20.0
+	var hi: float = _mark("nvt_start", 700.0) + 400.0
+	var b0: float = _mark("bridge_start", -1.0)
+	var b1: float = _mark("bridge_end", -1.0)
 	var offsets: Array[float] = []
-	for i: int in range(7):
-		offsets.append(randf_range(240.0, 750.0))
+	var guard: int = 0
+	while offsets.size() < 7 and guard < 200:
+		guard += 1
+		var o: float = randf_range(lo, hi)
+		if b0 >= 0.0 and o > b0 - 10.0 and o < b1 + 10.0:
+			continue
+		if absf(o - LIGHT_OFFSET) < 50.0:
+			continue
+		offsets.append(o)
 	offsets.sort()
 	for off: float in offsets:
-		var lateral: float = randf_range(-4.8, 4.8)
+		var hw: float = _hw(off)
+		var lateral: float = randf_range(-hw * 0.8, hw * 0.8)
 		var hole := Area3D.new()
 		hole.add_to_group("pothole")
 		var cs := CollisionShape3D.new()
@@ -129,11 +173,14 @@ func _on_pothole_entered(body: Node3D, hole: Area3D) -> void:
 # XE TẢI HỎNG CHẮN LÀN TRÊN ĐẠI LỘ D2
 # ---------------------------------------------------------------------------
 func _build_broken_trucks() -> void:
-	var candidates: Array[float] = [1120.0, 1260.0, 1410.0]
+	# Xe tải hỏng trên đường thẳng Nguyễn Văn Tăng (2 trong 3 vị trí)
+	var nvt: float = _mark("nvt_start", 670.0)
+	var candidates: Array[float] = [nvt + 450.0, nvt + 750.0, nvt + 1050.0]
 	candidates.shuffle()
 	for i: int in range(2):
 		var off: float = candidates[i]
-		var lateral: float = 3.4 if randf() < 0.6 else 1.4
+		var hw: float = _hw(off)
+		var lateral: float = hw * 0.48 if randf() < 0.6 else hw * 0.2
 		var truck := StaticBody3D.new()
 		truck.add_to_group("traffic_obstacle")
 		var cs := CollisionShape3D.new()
@@ -205,10 +252,11 @@ func _build_broken_trucks() -> void:
 func _build_dog() -> void:
 	dog_root = Node3D.new()
 	add_child(dog_root)
-	dog_xform = _place(dog_root, DOG_OFFSET, -9.5, 0.25)
+	dog_span = _hw(DOG_OFFSET) + 3.0
+	dog_xform = _place(dog_root, DOG_OFFSET, -dog_span, 0.25)
 	dog_dir = 1.0 if randf() < 0.5 else -1.0
 	if dog_dir < 0.0:
-		dog_root.global_position = dog_xform.origin + dog_xform.basis.x * 9.5 + Vector3(0, 0.25, 0)
+		dog_root.global_position = dog_xform.origin + dog_xform.basis.x * dog_span + Vector3(0, 0.25, 0)
 
 	var mat_fur := StandardMaterial3D.new()
 	mat_fur.albedo_color = Color("#A0522D")
@@ -282,7 +330,7 @@ func _update_dog(delta: float, player_offset: float) -> void:
 			GameFX.play_sfx("alarm", -6.0)
 	elif dog_state == 1:
 		dog_t += delta / 2.4
-		var lateral: float = lerpf(-9.5, 9.5, clampf(dog_t, 0.0, 1.0)) * dog_dir
+		var lateral: float = lerpf(-dog_span, dog_span, clampf(dog_t, 0.0, 1.0)) * dog_dir
 		dog_root.global_position = dog_xform.origin + dog_xform.basis.x * lateral + Vector3(0.0, 0.25 + absf(sin(dog_t * 40.0)) * 0.12, 0.0)
 		if dog_t >= 1.0:
 			dog_state = 2
@@ -294,7 +342,8 @@ func _update_dog(delta: float, player_offset: float) -> void:
 func _build_traffic_light() -> void:
 	var root := Node3D.new()
 	add_child(root)
-	_place(root, LIGHT_OFFSET, 8.4, 0.0)
+	var hw: float = _hw(LIGHT_OFFSET)
+	_place(root, LIGHT_OFFSET, hw + 3.5, 0.0)
 
 	var mat_pole := StandardMaterial3D.new()
 	mat_pole.albedo_color = Color("#636E72")
@@ -356,7 +405,7 @@ func _build_traffic_light() -> void:
 	# Vạch dừng trắng ngang đường
 	var stop_line := MeshInstance3D.new()
 	var slm := BoxMesh.new()
-	slm.size = Vector3(13.6, 0.03, 0.6)
+	slm.size = Vector3(hw * 2.0, 0.03, 0.6)
 	stop_line.mesh = slm
 	var mat_line := StandardMaterial3D.new()
 	mat_line.albedo_color = Color.WHITE
@@ -393,7 +442,7 @@ func _update_traffic_light(delta: float, player_offset: float) -> void:
 			if player_offset > LIGHT_OFFSET - 62.0 and not light_penalized and not light_rewarded:
 				_set_light("yellow")
 				light_timer = 1.4
-				emit_signal("banner", "🟡 ĐÈN VÀNG NGÃ BA TRAU TRẢU! CHUẨN BỊ DỪNG [S]!", Color("#F1C40F"), 1.4)
+				emit_signal("banner", "🟡 ĐÈN VÀNG TRƯỚC CẦU RẠCH HẦM! CHUẨN BỊ DỪNG [S]!", Color("#F1C40F"), 1.4)
 				GameFX.play_sfx("beep", -4.0)
 		"yellow":
 			light_timer -= delta
@@ -427,7 +476,7 @@ func _update_traffic_light(delta: float, player_offset: float) -> void:
 					cop_bubble.text = "👮 Ngoan! Đi đi em!"
 					GameFX.play_sfx("success", -2.0)
 				else:
-					emit_signal("banner", "🟢 ĐÈN XANH! VÍT GA LÊN CẦU TRAU TRẢU!", Color("#2ECC71"), 1.2)
+					emit_signal("banner", "🟢 ĐÈN XANH! VÍT GA LÊN CẦU RẠCH HẦM!", Color("#2ECC71"), 1.2)
 		_:
 			pass
 
@@ -436,11 +485,11 @@ func _update_traffic_light(delta: float, player_offset: float) -> void:
 # ---------------------------------------------------------------------------
 func _build_checkpoints() -> void:
 	var specs: Array = [
-		[150.0, "🏁 RỜI VINHOMES! 'Nhớ đổ xăng chưa đó?!'", "VINHOMES ➔ NGUYỄN XIỂN"],
-		[795.0, "🌉 QUA CẦU TRAU TRẢU RỒI! 'Vành Đai 3 xây 10 năm chưa xong!'", "CẦU TRAU TRẢU"],
-		[1035.0, "🛣 ĐẠI LỘ D2 SHTP! 'Thẳng tắp, vít ga đi!'", "ĐẠI LỘ D2"],
-		[1522.0, "🔄 BÙNG BINH KÌA! 'Đi VÒNG, đừng đi THẲNG!'", "BÙNG BINH D1-D2"],
-		[1705.0, "🎓 HUTECH BÊN TRÁI – 'Đừng rẽ nhầm trường!' FPTU BÊN PHẢI!", "ĐƯỜNG D1 ➔ FPTU"]
+		[_mark("hai_dang_end", 150.0) - 12.0, "🏁 RỜI THE BEVERLY! 'Nhớ đổ xăng chưa đó?!'", "HẾT ĐƯỜNG HẢI ĐĂNG"],
+		[_mark("bridge_end", 795.0) + 25.0, "🌉 QUA CẦU RẠCH HẦM RỒI! 'Vành Đai 3 xây 10 năm chưa xong!'", "CẦU RẠCH HẦM"],
+		[_mark("nvt_start", 1035.0) + 40.0, "🛣 NGUYỄN VĂN TĂNG THẲNG TẮP! 'Vít ga, lách sát xe đi!'", "NGUYỄN VĂN TĂNG"],
+		[_mark("roundabout", 1522.0) - 70.0, "🔄 BÙNG BINH D2B - D1 KÌA! 'Đi VÒNG, đừng đi THẲNG!'", "VÒNG XOAY D2B - D1"],
+		[_mark("d1_start", 1705.0) + 25.0, "🎓 HUTECH BÊN TRÁI – 'Đừng rẽ nhầm trường!' FPTU BÊN PHẢI!", "ĐƯỜNG D1 ➔ FPTU"]
 	]
 	var mat_post := StandardMaterial3D.new()
 	mat_post.albedo_color = Color("#F37021")
@@ -448,6 +497,7 @@ func _build_checkpoints() -> void:
 	mat_post.emission = Color("#F37021") * 0.4
 	for s: Array in specs:
 		var off: float = s[0]
+		var hw: float = _hw(off)
 		var gate := Node3D.new()
 		add_child(gate)
 		_place(gate, off, 0.0, 0.25)
@@ -459,11 +509,11 @@ func _build_checkpoints() -> void:
 			pm.height = 6.0
 			post.mesh = pm
 			post.material_override = mat_post
-			post.position = Vector3(side * 7.3, 3.0, 0.0)
+			post.position = Vector3(side * (hw + 1.6), 3.0, 0.0)
 			gate.add_child(post)
 		var beam := MeshInstance3D.new()
 		var bm := BoxMesh.new()
-		bm.size = Vector3(15.0, 0.9, 0.3)
+		bm.size = Vector3((hw + 1.6) * 2.0 + 0.6, 0.9, 0.3)
 		beam.mesh = bm
 		beam.material_override = mat_post
 		beam.position = Vector3(0.0, 6.3, 0.0)
@@ -518,25 +568,25 @@ func _build_rain() -> void:
 func _update_rain(player_offset: float) -> void:
 	if not rain_possible or rain_done:
 		return
-	if not is_raining and player_offset > 1040.0 and player_offset < 1480.0:
+	if not is_raining and player_offset > rain_from and player_offset < rain_to:
 		is_raining = true
 		rain_particles.emitting = true
 		if player_bike.has_method("set_rain"):
 			player_bike.set_rain(true)
 		emit_signal("rain_changed", true)
-		emit_signal("banner", "🌧 MƯA RÀO SHTP BẤT CHỢT! ĐƯỜNG TRƠN – LÁI NHẸ TAY, DRIFT DỄ VĂNG!", Color("#74B9FF"), 2.6)
+		emit_signal("banner", "🌧 MƯA RÀO BẤT CHỢT TRÊN NGUYỄN VĂN TĂNG! ĐƯỜNG TRƠN – LÁI NHẸ TAY, DRIFT DỄ VĂNG!", Color("#74B9FF"), 2.6)
 		GameFX.play_sfx("whoosh", -2.0, 0.6)
 		if world_env and world_env.environment:
 			var tw := create_tween()
 			tw.tween_property(world_env.environment, "fog_density", 0.0045, 1.2)
-	elif is_raining and player_offset >= 1480.0:
+	elif is_raining and player_offset >= rain_to:
 		is_raining = false
 		rain_done = true
 		rain_particles.emitting = false
 		if player_bike.has_method("set_rain"):
 			player_bike.set_rain(false)
 		emit_signal("rain_changed", false)
-		emit_signal("banner", "☀️ TẠNH MƯA RỒI! VÍT GA VÀO BÙNG BINH!", Color("#FDCB6E"), 1.6)
+		emit_signal("banner", "☀️ TẠNH MƯA RỒI! VÍT GA TIẾP!", Color("#FDCB6E"), 1.6)
 		if world_env and world_env.environment:
 			var tw := create_tween()
 			tw.tween_property(world_env.environment, "fog_density", 0.0006, 1.5)
