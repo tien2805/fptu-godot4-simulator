@@ -685,4 +685,4 @@ class RoamMap extends Control:
 		draw_line(pp, pp + player_dir.normalized() * 18.0, Color.WHITE, 3.0)
 		var font: Font = ThemeDB.fallback_font
 		draw_string(font, Vector2(16.0, 30.0), "BẢN ĐỒ · [M] đóng · cam: Vinhomes Grand Park · xanh: khu campus · vạch cam: tuyến BE6 → FPTU · chấm xanh: cổng FPTU", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.96, 0.96, 0.96))
-		draw_string(font, Vector2(16.0, size.y - 14.0), "Bản đồ (c) OpenStreetMap contributors (ODbL)", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.75, 0.75, 0.75))
+		draw_string(font, Vector2(16.0, size.y - 14.0), "Bản đồ (c) OpenStreetMap contributors (ODbL) · Nhà ống (c) Microsoft Global ML Building Footprints (CDLA-Permissive-2.0)", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.75, 0.75, 0.75))

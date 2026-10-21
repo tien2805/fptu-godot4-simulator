@@ -43,13 +43,13 @@ landmarks:
   bus_stop_fpt: [-131.9, -29.4]                    bus_stop_hutech: [-149.8, 0.1]
 route_be6_to_fptu: {length_m: 5478, roads: [[name, metres]...], points: [[x,z]...]}
 roads: [{id, name, class, width, lanes, oneway, roundabout, bridge, region, points: [[x,z]...]}]
-buildings: [{id, name, display, kind, levels, height, style, region, area, outer: [[x,z]...], inner: [[[x,z]...]...]}]
+buildings: [{id, source: "osm"|"msft", name, display, kind, levels, height, style, region, area, outer: [[x,z]...], inner: [[[x,z]...]...]}]
 water: [{id, name, kind: "area"|"line", width?, region, outer?|points?}]
 areas: [{id, name, display, kind: park|pitch|parking|pool|water_park|campus|other, tag, region, area, outer}]
 pois: [{name, display, kind, x, z, region}]
 ```
 
-`region` is one of `campus`, `vinhomes`, `corridor`. `style` is one of `tower`, `beverly`, `mall`, `shophouse`, `industrial`. Polygons are closed (first point repeated last). Widths are metres per carriageway; `oneway` ways are one carriageway each (Đường D1 is mapped as two one-way ways).
+`region` is one of `campus`, `vinhomes`, `corridor`. `style` is one of `tower`, `beverly`, `mall`, `shophouse`, `industrial`. `source` `"msft"` marks the 2548 unnamed Microsoft Global ML Building Footprints (CDLA-Permissive-2.0, ids >= 9000000000, levels 1-4 at 3.6 m) that MapBuilder merges into `MSChunk_<gx>_<gz>` meshes (one per 128 m cell, see the MapBuilder header); `"osm"` buildings keep one node each. Polygons are closed (first point repeated last). Widths are metres per carriageway; `oneway` ways are one carriageway each (Đường D1 is mapped as two one-way ways).
 
 Counts today: 611 roads (campus 189, vinhomes 282, corridor 140), 143 buildings, 18 water, 121 areas, 88 POIs.
 

@@ -2,7 +2,7 @@
 """Checks the code-drawn city textures written by generate_city_textures.py (plan Task 2):
 existence + .import "keep" stub, 512 px width, the documented tile sizes, RGBA road overlay,
 normal maps mostly facing +Z, seamless tiling along x (and along y where one tile = one storey), and that the
-shophouse tile (one tile = one whole building) matches the levels/height of every shophouse in mapdata.json.
+shophouse tile (2 storeys: shopfront + windows) matches the storey height of every shophouse in mapdata.json.
 Run from the project root:  python tests/test_city_textures.py   (exit code 0 = OK)
 """
 import json
@@ -28,34 +28,38 @@ SPEC = {
     "city_road_overlay.png": (512, 256, "RGBA", False),
     "city_roof_flat.png": (512, 512, "RGB", True),
 }
-# Shophouse tile contract (generate_city_textures.TILE_W / TILE_STOREYS): MapBuilder sets
-# uv1_scale.y = 1 / SHOPHOUSE_STOREYS on a wall with v = levels, so one tile is stretched over one whole building.
+# Shophouse tile contract (generate_city_textures.TILE_W / TILE_STOREYS, MapBuilder "FACADE UV CONTRACT"): the tile is
+# SHOPHOUSE_STOREYS storeys high (shopfront below, windows above); MapBuilder maps the ground storey of a shophouse to
+# the lower half and every upper storey to the upper half, so any storey count works as long as every shophouse has
+# the tile's storey height. The OSM shophouses are exactly SHOPHOUSE_STOREYS storeys (one tile over the whole
+# building, as drawn); the Microsoft tube houses ("source": "msft") have 1-4.
 SHOPHOUSE_TILE_W_M = 12.0
 SHOPHOUSE_STOREYS = 2
 
 
 def check_shophouse_fits_data(errors, png_height):
-    """Every style == "shophouse" building in mapdata.json must have exactly SHOPHOUSE_STOREYS levels and one
-    common height, and the tile must be drawn at that height (px/m = 512 / tile width), or the single tile
-    stretched over the building shows the wrong number of storeys / squashed windows."""
+    """Every style == "shophouse" building in mapdata.json must share one storey height (height / levels) and the
+    tile must be drawn at SHOPHOUSE_STOREYS of those storeys (px/m = 512 / tile width), or the facade bands land
+    off the floors (squashed windows, shutters above the pavement). OSM shophouses must have exactly
+    SHOPHOUSE_STOREYS levels."""
     with open(os.path.join(ROOT, "assets", "data", "mapdata.json"), encoding="utf-8") as f:
         shops = [b for b in json.load(f)["buildings"] if b.get("style") == "shophouse"]
     if not shops:
         errors.append("mapdata.json: no shophouse buildings, nothing to fit the tile to")
         return
-    levels = sorted({int(b["levels"]) for b in shops})
-    heights = sorted({round(float(b["height"]), 2) for b in shops})
-    if levels != [SHOPHOUSE_STOREYS]:
-        errors.append("city_shophouse_facade.png: tile draws %d storeys but mapdata shophouses have levels %s"
-                      % (SHOPHOUSE_STOREYS, levels))
-    if len(heights) != 1:
-        errors.append("city_shophouse_facade.png: mapdata shophouses have several heights %s, one tile cannot fit all"
-                      % heights)
+    osm_levels = sorted({int(b["levels"]) for b in shops if b.get("source", "osm") != "msft"})
+    storey_h = sorted({round(float(b["height"]) / max(1, int(b["levels"])), 2) for b in shops})
+    if osm_levels and osm_levels != [SHOPHOUSE_STOREYS]:
+        errors.append("city_shophouse_facade.png: tile draws %d storeys but OSM shophouses have levels %s"
+                      % (SHOPHOUSE_STOREYS, osm_levels))
+    if len(storey_h) != 1:
+        errors.append("city_shophouse_facade.png: mapdata shophouses have several storey heights %s, one tile cannot fit all"
+                      % storey_h)
     ppm = 512 / SHOPHOUSE_TILE_W_M
-    want = int(round(heights[0] * ppm))
+    want = int(round(storey_h[0] * SHOPHOUSE_STOREYS * ppm))
     if png_height != want:
-        errors.append("city_shophouse_facade.png: height %d px, but a %.1f m shophouse at %.2f px/m is %d px"
-                      % (png_height, heights[0], ppm, want))
+        errors.append("city_shophouse_facade.png: height %d px, but %d storeys of %.1f m at %.2f px/m are %d px"
+                      % (png_height, SHOPHOUSE_STOREYS, storey_h[0], ppm, want))
 
 
 def seam(a, axis):
