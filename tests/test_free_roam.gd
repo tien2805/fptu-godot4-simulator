@@ -14,14 +14,22 @@
 #   - Xe đang đỗ là vật cản; ở xa thì gợi ý "[F] xe máy cách N m", bản đồ [M] vẽ xe.
 #   - Sát bờ kênh: xuống xe không bao giờ đặt người lên mặt nước (xe trên mặt nước -> từ chối; xe sát bờ -> xuống phía
 #     bờ), đi thẳng vào kênh bị tường bờ chặn.
+#   - Cầu đi bộ / đường qua cống mặt thấp trên kênh (4 cầu đi bộ cạnh cầu dân sinh ~(4433..4474, 73..90) + đường qua
+#     cống (4251.7, 167.4)): chạy ngang ra mép mặt cầu cả hai bên -> lan can vô hình chặn, không bao giờ rơi xuống kênh.
+#   - Lưới an toàn: người chơi / xe đang cưỡi nằm dưới kênh ~1 s -> được đưa về chỗ khô gần nhất + gợi ý.
 #   - Menu tạm dừng mở bảng phím vẫn nằm gọn trong 1280 x 720.
 # Mọi kiểm tra dùng _check() + quit(2) (assert hỏng trong _initialize làm treo --script), có watchdog.
 # Chạy:  godot --headless --path . --script tests/test_free_roam.gd
 extends SceneTree
 
 const BUILD_BUDGET_MS: int = 15000
-const WATCHDOG_FRAMES: int = 6000
+const WATCHDOG_FRAMES: int = 20000
 const WALK_FRAMES: int = 40          # mỗi lần thử đi từ return_spawn (3 lần = 120 frame vật lý)
+## Chỗ tim đường cắt mép nước của các mặt cầu thấp (verifier probe_water2): 4 cầu đi bộ + đường qua cống.
+const DECK_POINTS: Array[Vector2] = [Vector2(4433.2, 89.6), Vector2(4432.1, 77.1), Vector2(4474.5, 85.8), Vector2(4473.0, 73.5), Vector2(4251.7, 167.4)]
+const DECK_WALK_FRAMES: int = 50     # chạy (7 m/s) ngang ra mép mặt cầu
+const DECK_SETTLE_FRAMES: int = 40
+const RESCUE_WAIT_FRAMES: int = 80   # > RESCUE_AFTER_S (1 s = 60 frame)
 
 var roam: Node3D
 var player: CharacterBody3D
@@ -46,6 +54,13 @@ var hs_walked: bool = false
 # canal
 var canal_n := Vector2.ZERO      # pháp tuyến mép kênh hướng ra bờ (đất)
 var canal_mid := Vector2.ZERO
+# mặt cầu thấp trên kênh
+var deck_walks: Array = []       # [Vector3 start, Vector3 hướng ngang, float nửa bề rộng, Vector2 tim, String nhãn]
+var deck_i: int = 0
+var deck_min_y: float = 0.0
+var deck_dry_spot := Vector3.ZERO   # giữa mặt đường qua cống
+var deck_wet_spot := Vector3.ZERO   # dưới kênh, cạnh đường qua cống
+var rescues0: int = 0
 
 
 func _initialize() -> void:
@@ -422,6 +437,74 @@ func _process(_delta: float) -> bool:
 					return true
 				if not _check(roam.call("free_spot_at", Vector3(canal_mid.x - canal_n.x * 2.0, 0.0, canal_mid.y - canal_n.y * 2.0), 0.0) == null, "free_spot_at() rejects a point over water"):
 					return true
+				phase = 84
+		84:
+			if not _setup_deck_walks():
+				return true
+			deck_i = 0
+			_start_deck_walk(pf)
+			phase = 85
+		85:
+			deck_min_y = minf(deck_min_y, player.global_position.y)
+			if pf >= mark + DECK_WALK_FRAMES and player.get("input_override") != null:
+				_release_input()
+			if pf >= mark + DECK_WALK_FRAMES + DECK_SETTLE_FRAMES:
+				if not _finish_deck_walk():
+					return true
+				deck_i += 1
+				if deck_i < deck_walks.size():
+					_start_deck_walk(pf)
+				else:
+					# lưới an toàn: đứng giữa đường qua cống (chỗ khô), rồi rơi xuống kênh cạnh đó
+					player.call("teleport", deck_dry_spot, 0.0)
+					mark = pf
+					phase = 86
+		86:
+			if pf >= mark + 10:
+				rescues0 = int(roam.get("rescues"))
+				player.call("teleport", deck_wet_spot, 0.0)
+				mark = pf
+				phase = 87
+		87:
+			if pf >= mark + RESCUE_WAIT_FRAMES:
+				var pp: Vector3 = player.global_position
+				print("  player dropped into the canal at %s -> rescued to %s (rescues +%d), hint '%s'" % [str(deck_wet_spot), str(pp), int(roam.get("rescues")) - rescues0, (roam.get("hint_label") as Label).text])
+				if not _check(int(roam.get("rescues")) == rescues0 + 1, "a player standing in the canal is rescued once within ~1 s"):
+					return true
+				if not _check(pp.y > -0.15 and _dry_floor_under(pp) and player.is_on_floor(), "rescued player stands on a dry floor (at %s)" % str(pp)):
+					return true
+				if not _check(_xz(pp).distance_to(_xz(deck_dry_spot)) < 9.0, "rescue lands next to the last dry position (%.1f m away)" % _xz(pp).distance_to(_xz(deck_dry_spot))):
+					return true
+				var rescued_hint: String = (roam.get_script() as GDScript).get_script_constant_map()["HINT_RESCUED"]
+				if not _check((roam.get("hint_label") as Label).text == rescued_hint, "rescue flashes the rescue hint"):
+					return true
+				# xe đang cưỡi rơi xuống kênh: cũng được đưa lên chỗ khô, vẫn trên xe, xuống xe được
+				player.call("teleport", deck_dry_spot, 0.0)
+				roam.set("bike_parked", false)
+				roam.call("mount_bike")
+				mark = pf
+				phase = 88
+		88:
+			if pf >= mark + 10:
+				if not _check(bool(roam.get("mounted")), "mount_bike() on the culvert road"):
+					return true
+				rescues0 = int(roam.get("rescues"))
+				bike.global_position = deck_wet_spot + Vector3(0.0, 0.2, 0.0)
+				bike.velocity = Vector3.ZERO
+				mark = pf
+				phase = 89
+		89:
+			if pf >= mark + RESCUE_WAIT_FRAMES + 10:
+				var bp: Vector3 = bike.global_position
+				print("  bike ridden into the canal -> rescued to %s (rescues +%d), mounted %s" % [str(bp), int(roam.get("rescues")) - rescues0, str(roam.get("mounted"))])
+				if not _check(int(roam.get("rescues")) == rescues0 + 1 and bool(roam.get("mounted")), "a bike in the canal is rescued with the player still riding"):
+					return true
+				if not _check(not bool(roam.call("is_wet")) and _dry_floor_under(bp + Vector3(0.0, 0.13, 0.0)), "rescued bike stands on a dry floor (at %s)" % str(bp)):
+					return true
+				var ok: bool = bool(roam.call("dismount_bike"))
+				var pp: Vector3 = player.global_position
+				if not _check(ok and pp.y > -0.15 and _dry_floor_under(pp), "after the bike rescue the player can get off onto a dry floor (dismount %s, player %s)" % [str(ok), str(pp)]):
+					return true
 				phase = 9
 		9:
 			if not _phase_pause_open():
@@ -435,7 +518,8 @@ func _process(_delta: float) -> bool:
 				phase = 10
 		10:
 			done = true
-			print("✅ SUCCESS: FREE ROAM OK (build %d ms, 6 reachable hotspots, bike mount/dismount, canal-safe dismount, night Lab 402 -> Màn 6, retry overlay hidden)" % int(roam.get("build_ms")))
+			print("  %d process frames for %d physics frames" % [frames, Engine.get_physics_frames() - pf0])
+			print("✅ SUCCESS: FREE ROAM OK (build %d ms, 6 reachable hotspots, bike mount/dismount, canal-safe dismount, low decks guarded + canal rescue, night Lab 402 -> Màn 6, retry overlay hidden)" % int(roam.get("build_ms")))
 			quit(0)
 			return true
 	return false
@@ -614,6 +698,102 @@ func _phase_canal_setup(pf: int) -> bool:
 	mark = pf
 	phase = 81
 	return true
+
+
+# ---------------------------------------------------------------------------
+# MẶT CẦU THẤP TRÊN KÊNH: CHẠY NGANG RA MÉP + LƯỚI AN TOÀN
+# ---------------------------------------------------------------------------
+## Chỗ tim một con đường cắt mép nước gần t (< 2 m): [điểm cắt, hướng đường vào nước, hướng đường, nửa bề rộng].
+func _deck_crossing(t: Vector2) -> Array:
+	var best: Array = []
+	var best_d: float = 2.0
+	for r: Dictionary in md.roads():
+		var pts: PackedVector2Array = MapData.poly(r.get("points", []))
+		var w: float = float(r.get("width", 6.0))
+		if int(r.get("lanes", 2)) <= 0:
+			w = clampf(w, 1.5, 2.5)
+		for i: int in range(pts.size() - 1):
+			if Geometry2D.get_closest_point_to_segment(t, pts[i], pts[i + 1]).distance_to(t) > 3.0:
+				continue
+			for poly: PackedVector2Array in water:
+				var ring: PackedVector2Array = MapBuilder._open(poly)
+				for k: int in range(ring.size()):
+					var a: Vector2 = ring[k]
+					var b: Vector2 = ring[(k + 1) % ring.size()]
+					if Geometry2D.get_closest_point_to_segment(t, a, b).distance_to(t) > 3.0:
+						continue
+					var x: Variant = Geometry2D.segment_intersects_segment(a, b, pts[i], pts[i + 1])
+					if x == null or (x as Vector2).distance_to(t) >= best_d:
+						continue
+					var rd: Vector2 = (pts[i + 1] - pts[i]).normalized()
+					var into: Vector2 = rd if _in_water((x as Vector2) + rd * 1.5) else -rd
+					best_d = (x as Vector2).distance_to(t)
+					best = [x, into, rd, w * 0.5]
+	return best
+
+
+## Mỗi mặt cầu thấp: đứng giữa mặt cầu 2,5 m trong mép nước, chạy ngang ra hai bên (cầu đi bộ đầu tiên: thêm 1 m
+## trong mép nước để thử góc lan can / tường bờ).
+func _setup_deck_walks() -> bool:
+	deck_walks.clear()
+	for di: int in range(DECK_POINTS.size()):
+		var c: Array = _deck_crossing(DECK_POINTS[di])
+		if not _check(not c.is_empty(), "test setup: a road crosses the water edge at %s" % str(DECK_POINTS[di])):
+			return false
+		var x: Vector2 = c[0]
+		var into: Vector2 = c[1]
+		var rd: Vector2 = c[2]
+		var hw: float = c[3]
+		for dist_in: float in ([1.0, 2.5] if di == 0 else [2.5]):
+			var centre: Vector2 = x + into * dist_in
+			if not _check(_in_water(centre), "test setup: deck point %s lies over water" % str(centre)):
+				return false
+			var hit: Dictionary = _ray(Vector3(centre.x, 2.5, centre.y), Vector3(centre.x, -1.0, centre.y))
+			if not _check(not hit.is_empty() and (hit["position"] as Vector3).y > -0.15, "test setup: low deck floor at %s (hit %s)" % [str(centre), str(hit.get("position"))]):
+				return false
+			var dy: float = (hit["position"] as Vector3).y
+			for sg: float in [1.0, -1.0]:
+				var side: Vector2 = Vector2(-rd.y, rd.x) * sg
+				deck_walks.append([Vector3(centre.x, dy + 0.05, centre.y), Vector3(side.x, 0.0, side.y), hw, centre, "%s in %.1f side %+.0f" % [str(DECK_POINTS[di]), dist_in, sg]])
+			if di == DECK_POINTS.size() - 1 and dist_in == 2.5:
+				deck_dry_spot = Vector3(centre.x, dy + 0.05, centre.y)
+				var wet: Vector2 = centre + Vector2(-rd.y, rd.x) * (hw + 1.5)
+				if not _check(_in_water(wet), "test setup: canal point %s next to the culvert road" % str(wet)):
+					return false
+				deck_wet_spot = Vector3(wet.x, -0.25, wet.y)
+	print("  %d sideways walks off low decks over water" % deck_walks.size())
+	return true
+
+
+## Sàn ngay dưới p (tia 0,4 m lên -> 0,4 m xuống) là sàn khô: có, cao hơn mức nước + 0,15, không phải WaterFloor.
+func _dry_floor_under(p: Vector3) -> bool:
+	var rq := PhysicsRayQueryParameters3D.create(p + Vector3(0.0, 0.4, 0.0), p - Vector3(0.0, 0.4, 0.0))
+	rq.collide_with_areas = false
+	rq.exclude = [player.get_rid(), bike.get_rid()]
+	var hit: Dictionary = _space().intersect_ray(rq)
+	return not hit.is_empty() and (hit["position"] as Vector3).y > -0.15 and hit.get("collider") != roam.get("water_floor")
+
+
+func _start_deck_walk(pf: int) -> void:
+	var w: Array = deck_walks[deck_i]
+	_place_facing(w[0], w[1])
+	player.set("input_override", Vector2(0.0, -1.0))
+	player.set("sprint_override", true)
+	deck_min_y = (w[0] as Vector3).y
+	mark = pf
+
+
+func _finish_deck_walk() -> bool:
+	_release_input()
+	var w: Array = deck_walks[deck_i]
+	var p: Vector3 = player.global_position
+	var dir: Vector3 = w[1]
+	var hw: float = w[2]
+	var lateral: float = (_xz(p) - (w[3] as Vector2)).dot(Vector2(dir.x, dir.z))
+	print("  deck %s: min y %.2f, end %s, %.2f m sideways (half width %.1f)" % [String(w[4]), deck_min_y, str(p.snappedf(0.01)), lateral, hw])
+	if not _check(deck_min_y > -0.15 and p.y > -0.15, "deck %s: running sideways off a low deck never drops the player into the canal (min y %.2f)" % [String(w[4]), deck_min_y]):
+		return false
+	return _check(lateral > hw - 0.65 and lateral < hw, "deck %s: the player ran up to the invisible edge guard at the ribbon edge (%.2f m sideways, half width %.1f)" % [String(w[4]), lateral, hw])
 
 
 # ---------------------------------------------------------------------------

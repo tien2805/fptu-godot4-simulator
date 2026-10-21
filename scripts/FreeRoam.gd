@@ -5,8 +5,11 @@
 #     + HUTECH đối diện (không vẽ lại dải D1 xa).
 #   - Mặt đất: hình vuông 12 km chia ô GROUND_TILE m, khoét đúng các mặt nước (MapBuilder._water_polygons) -> cùng
 #     các mảnh đó dựng mặt cỏ (y = -0,05) và sàn đi bộ ConcavePolygonShape3D (y = 0). Dưới đó một WorldBoundaryShape3D
-#     ở mực nước (MapBuilder.WATER_Y) để không ai rơi mãi, và tường bờ kênh vô hình cao BANK_WALL_H dọc mép mọi mặt
-#     nước (chừa khe nơi đường / lối đi bộ cắt qua) để không đi bộ hay xuống xe vào kênh.
+#     ở mực nước (MapBuilder.WATER_Y) để không ai rơi mãi, tường bờ kênh vô hình cao BANK_WALL_H dọc mép mọi mặt nước
+#     (khe đúng bằng ribbon của đường / lối đi bộ có mặt thấp cắt qua; dưới cầu cao tường chạy liền) và lan can vô hình
+#     dọc hai mép ribbon ở mọi đoạn mặt thấp nằm trên mặt nước (cầu đi bộ, đường qua cống, đầu cầu thấp chưa có lan can
+#     BridgeParts) để không đi bộ, chạy xe hay xuống xe vào kênh. Lưới an toàn: đứng / chạy xe trên sàn mực nước quá
+#     RESCUE_AFTER_S giây -> đưa về chỗ khô gần chỗ khô cuối cùng (find_free_spot) + gợi ý.
 #   - Spawn: MapData.spawn_transform() (6 m ngoài cửa sảnh BE6, quay lưng vào toà tháp) hoặc StageManager.roam_spawn
 #     khi quay về từ một màn chơi; điểm spawn được kiểm bằng capsule người chơi (intersect_shape) + tia tìm sàn, nếu vướng
 #     thì dò ra ngoài theo vòng 1 m tới SPAWN_SEARCH_M m, cuối cùng về spawn BE6. Người chơi = ThirdPersonController;
@@ -38,9 +41,13 @@ const GROUND_TILE: float = 500.0          # ô chia mặt đất (tam giác sàn
 const GROUND_MESH_Y: float = -0.05
 const GROUND_COLLIDER_Y: float = 0.0
 const BANK_WALL_H: float = 1.0           # tường bờ kênh vô hình: từ dưới mặt nước lên 1 m trên mặt đất
-const BANK_GAP_MARGIN: float = 0.6       # khe tường ở chỗ đường cắt mép nước: nửa bề rộng đường + lề này
-const BANK_GAP_MAX: float = 30.0
+const BANK_GAP_DECK_MAX: float = 1.05    # tường bờ chỉ khoét dưới đoạn ribbon có mặt thấp hơn đỉnh tường (+5 cm)
+const DECK_GUARD_MAX_H: float = 1.5      # đoạn ribbon trên mặt nước thấp hơn ROAD_Y + 1,5 m: lan can vô hình 2 mép
+const DECK_GUARD_ABOVE: float = 1.0      # lan can vô hình cao tới mặt đường + 1 m
+const WALL_BOTTOM_BELOW_WATER: float = 0.3
 const ROAD_HASH_CELL: float = 64.0
+const WET_MARGIN: float = 0.15           # chân (người / xe) thấp hơn WATER_Y + 0,15 = đang ở dưới kênh
+const RESCUE_AFTER_S: float = 1.0
 const PLAYER_RADIUS: float = 0.4         # = capsule của ThirdPersonController
 const PLAYER_HEIGHT: float = 1.7
 const SPOT_LIFT: float = 0.05            # capsule kiểm tra đặt cao hơn mặt sàn chút để không tính "chạm sàn"
@@ -56,6 +63,7 @@ const HUD_REFRESH: float = 0.2
 const HINT_DEFAULT: String = "[WASD] đi · [Shift] chạy · [Z]/[C] xoay camera · [F] xe máy · [T] giờ trong ngày · [M] bản đồ · [ESC] tạm dừng"
 const HINT_RIDING: String = "[F] xuống xe · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [H] còi"
 const HINT_NO_DISMOUNT: String = "Không có chỗ trống cạnh xe để xuống (nước / tường / vật cản) – chạy ra chỗ rộng rồi bấm [F]"
+const HINT_RESCUED: String = "Rơi xuống kênh! Đã đưa bạn về chỗ khô gần nhất"
 const TOD_NAMES: Dictionary = {"dawn": "Bình minh 06:00", "morning": "Buổi sáng 07:30", "noon": "Giữa trưa 11:30", "night": "Đêm khuya 23:00"}
 const HOTSPOT_COLORS: Dictionary = {1: Color("#F37021"), 2: Color("#3498DB"), 3: Color("#2ECC71"), 4: Color("#E74C3C"), 5: Color("#F1C40F"), 6: Color("#9B59B6"), 7: Color("#1ABC9C")}
 
@@ -90,6 +98,11 @@ var _base_env: Environment = null
 var _hint_flash: String = ""
 var _hint_flash_t: float = 0.0
 var _probe_capsule: CapsuleShape3D
+## Lưới an toàn dưới kênh: chỗ khô cuối cùng (chân người / bánh xe đang chạm sàn khô), thời gian đã ở dưới nước.
+var _last_dry: Vector3 = Vector3.ZERO
+var _has_dry: bool = false
+var _wet_t: float = 0.0
+var rescues: int = 0
 
 
 func _ready() -> void:
@@ -220,83 +233,84 @@ static func _append_floor_faces(faces: PackedVector3Array, piece: PackedVector2A
 		faces.append(c)
 
 
-## Tường bờ vô hình dọc mép mọi mặt nước, chừa khe nơi tim một con đường / lối đi bộ cắt mép nước (cầu, cống).
+## Tường vô hình quanh mặt nước (một StaticBody3D "BankWalls", ConcavePolygonShape3D va chạm hai mặt):
+##   1) Tường bờ cao BANK_WALL_H dọc mép mọi mặt nước, khoét đúng phần nằm dưới ribbon của một con đường / lối đi bộ
+##      có mặt thấp hơn đỉnh tường (BANK_GAP_DECK_MAX): khe kết thúc ĐÚNG ở mép ribbon. Dưới cầu cao (mặt cầu trên
+##      đỉnh tường) tường bờ chạy liền, nên không thể đi từ bờ xuống nước dưới gầm cầu.
+##   2) Lan can vô hình dọc hai mép ribbon ở mọi đoạn nằm trên mặt nước có mặt thấp (< ROAD_Y + DECK_GUARD_MAX_H:
+##      lối đi bộ, đường thường qua cống, đầu cầu thấp chưa có lan can BridgeParts), từ dưới mặt nước tới mặt đường
+##      + DECK_GUARD_ABOVE. Cùng hình ribbon với 1) nên góc tường bờ / lan can khép kín.
 func _build_bank_walls(water: Array) -> void:
-	var segs: Array = []          # [Vector2 a, Vector2 b, float half_width]
-	var seg_cells: Dictionary = {}  # Vector2i -> Array[int] (ô ROAD_HASH_CELL m)
-	for r: Dictionary in md.roads():
-		var pts: PackedVector2Array = MapData.poly(r.get("points", []))
-		if pts.size() < 2:
-			continue
-		var w: float = float(r.get("width", 6.0))
-		if int(r.get("lanes", 0)) <= 0:
-			w = clampf(w, 1.5, 2.5)   # lối đi bộ: cùng bề rộng MapBuilder vẽ
-		for si: int in range(pts.size() - 1):
-			var id: int = segs.size()
-			segs.append([pts[si], pts[si + 1], w * 0.5])
-			for cell: Vector2i in _cells_of(pts[si], pts[si + 1], 0.0):
-				if not seg_cells.has(cell):
-					seg_cells[cell] = []
-				(seg_cells[cell] as Array).append(id)
-	var faces := PackedVector3Array()
-	var y0: float = MapBuilder.WATER_Y - 0.3
-	var y1: float = GROUND_COLLIDER_Y + BANK_WALL_H
+	var rings: Array = []
+	var rects: Array = []
 	for poly: PackedVector2Array in water:
 		var ring: PackedVector2Array = MapBuilder._open(poly)
+		rings.append(ring)
+		var bb := Rect2(ring[0], Vector2.ZERO) if ring.size() > 0 else Rect2()
+		for p: Vector2 in ring:
+			bb = bb.expand(p)
+		rects.append(bb.grow(1.0))
+	var ribbons: Array = _ribbons_near_water(rects)
+	var cells: Dictionary = {}   # Vector2i (ô ROAD_HASH_CELL m) -> Array[int] chỉ số ribbon
+	for id: int in range(ribbons.size()):
+		var rb_box: Rect2 = ribbons[id][3]
+		for cell: Vector2i in _cells_of(rb_box.position, rb_box.end, 0.0):
+			if not cells.has(cell):
+				cells[cell] = []
+			(cells[cell] as Array).append(id)
+	var faces := PackedVector3Array()
+	var y_bot: float = MapBuilder.WATER_Y - WALL_BOTTOM_BELOW_WATER
+	var y_bank: float = GROUND_COLLIDER_Y + BANK_WALL_H
+	# 1) tường bờ trừ phần dưới ribbon mặt thấp
+	for wi: int in range(rings.size()):
+		var ring: PackedVector2Array = rings[wi]
 		var n: int = ring.size()
 		if n < 3:
 			continue
-		# 1) chỗ đường cắt mép nước: [điểm cắt, bán kính khe]
-		var crossings: Array = []
 		for i: int in range(n):
 			var a: Vector2 = ring[i]
 			var b: Vector2 = ring[(i + 1) % n]
-			var e: Vector2 = b - a
-			if e.length_squared() < 1e-6:
+			if a.distance_squared_to(b) < 1e-4:
 				continue
-			var eu: Vector2 = e.normalized()
+			var pieces: Array = [PackedVector2Array([a, b])]
+			var edge_box: Rect2 = Rect2(a, Vector2.ZERO).expand(b).grow(0.05)
 			var seen: Dictionary = {}
 			for cell: Vector2i in _cells_of(a, b, 0.0):
-				for id: int in seg_cells.get(cell, []):
+				for id: int in cells.get(cell, []):
 					if seen.has(id):
 						continue
 					seen[id] = true
-					var s: Array = segs[id]
-					var x: Variant = Geometry2D.segment_intersects_segment(a, b, s[0], s[1])
-					if x == null:
+					var rb: Array = ribbons[id]
+					if minf(float(rb[1]), float(rb[2])) >= BANK_GAP_DECK_MAX or not (rb[3] as Rect2).intersects(edge_box):
 						continue
-					var rd: Vector2 = (s[1] as Vector2) - (s[0] as Vector2)
-					var sin_a: float = absf(eu.cross(rd.normalized())) if rd.length_squared() > 1e-6 else 1.0
-					crossings.append([x, minf(BANK_GAP_MAX, (float(s[2]) + BANK_GAP_MARGIN) / maxf(0.25, sin_a))])
-		# 2) mỗi cạnh: phần không nằm trong khe nào -> 1 quad đứng
-		for i: int in range(n):
-			var a: Vector2 = ring[i]
-			var b: Vector2 = ring[(i + 1) % n]
-			var len_e: float = a.distance_to(b)
-			if len_e < 0.01:
+					var next: Array = []
+					for pc: PackedVector2Array in pieces:
+						next.append_array(Geometry2D.clip_polyline_with_polygon(pc, rb[0]))
+					pieces = next
+			for pc: PackedVector2Array in pieces:
+				for k: int in range(pc.size() - 1):
+					_wall_quad(faces, pc[k], pc[k + 1], y_bot, y_bank, y_bank)
+	# 2) lan can vô hình dọc mép ribbon mặt thấp trên mặt nước
+	var low_y: float = MapBuilder.ROAD_Y + DECK_GUARD_MAX_H
+	for rb: Array in ribbons:
+		var ya: float = rb[1]
+		var yb: float = rb[2]
+		if minf(ya, yb) >= low_y:
+			continue
+		var q: PackedVector2Array = rb[0]
+		for wi: int in range(rings.size()):
+			if (rings[wi] as PackedVector2Array).size() < 3 or not (rects[wi] as Rect2).intersects(rb[3]):
 				continue
-			var eu: Vector2 = (b - a) / len_e
-			var gaps: Array = []
-			for c: Array in crossings:
-				var xp: Vector2 = c[0]
-				var r: float = c[1]
-				var rel: Vector2 = xp - a
-				var tc: float = rel.dot(eu)
-				var dp: float = absf(rel.cross(eu))
-				if dp >= r:
-					continue
-				var hw: float = sqrt(r * r - dp * dp)
-				if tc + hw <= 0.0 or tc - hw >= len_e:
-					continue
-				gaps.append([maxf(0.0, tc - hw), minf(len_e, tc + hw)])
-			for run: Array in _free_intervals(gaps, len_e):
-				var p0: Vector2 = a + eu * float(run[0])
-				var p1: Vector2 = a + eu * float(run[1])
-				var v0 := Vector3(p0.x, y0, p0.y)
-				var v1 := Vector3(p1.x, y0, p1.y)
-				var v2 := Vector3(p1.x, y1, p1.y)
-				var v3 := Vector3(p0.x, y1, p0.y)
-				faces.append_array(PackedVector3Array([v0, v1, v2, v0, v2, v3]))
+			for side: Array in [[q[0], q[1]], [q[3], q[2]]]:
+				var s0: Vector2 = side[0]
+				var s1: Vector2 = side[1]
+				for part: PackedVector2Array in Geometry2D.intersect_polyline_with_polygon(PackedVector2Array([s0, s1]), rings[wi]):
+					for k: int in range(part.size() - 1):
+						var y0: float = lerpf(ya, yb, _param_on(s0, s1, part[k]))
+						var y1: float = lerpf(ya, yb, _param_on(s0, s1, part[k + 1]))
+						if minf(y0, y1) >= low_y:
+							continue
+						_wall_quad(faces, part[k], part[k + 1], y_bot, y0 + DECK_GUARD_ABOVE, y1 + DECK_GUARD_ABOVE)
 	if faces.is_empty():
 		return
 	bank_walls = StaticBody3D.new()
@@ -310,6 +324,70 @@ func _build_bank_walls(water: Array) -> void:
 	world.add_child(bank_walls)
 
 
+## Ribbon của mọi con đường / lối đi bộ có hộp bao chạm hộp bao một mặt nước, đúng hình MapBuilder._build_roads vẽ
+## (resample + profile cầu cho đường, FOOTWAY_Y cho lối đi bộ, mitre như _emit_ribbon). Mỗi đoạn:
+## [PackedVector2Array quad (trái a, trái c, phải c, phải a), float mặt tại a, float mặt tại c, Rect2 hộp bao].
+func _ribbons_near_water(water_rects: Array) -> Array:
+	var out: Array = []
+	for r: Dictionary in md.roads():
+		var pts2: PackedVector2Array = MapData.poly(r.get("points", []))
+		if pts2.size() < 2:
+			continue
+		var w: float = float(r.get("width", 6.0))
+		var footway: bool = int(r.get("lanes", 2)) <= 0
+		if footway:
+			w = clampf(w, 1.5, 2.5)
+		var road_box := Rect2(pts2[0], Vector2.ZERO)
+		for p: Vector2 in pts2:
+			road_box = road_box.expand(p)
+		road_box = road_box.grow(w)
+		var near: bool = false
+		for wr: Rect2 in water_rects:
+			if wr.intersects(road_box):
+				near = true
+				break
+		if not near:
+			continue
+		var pts3 := PackedVector3Array()
+		if footway:
+			for p: Vector2 in MapBuilder._resample(pts2, MapBuilder.FOOTWAY_STEP_M):
+				pts3.append(Vector3(p.x, MapBuilder.FOOTWAY_Y, p.y))
+		else:
+			pts3 = MapBuilder._road_profile(pts2, bool(r.get("bridge", false)), MapBuilder.ROAD_Y)
+		var offs: PackedVector2Array = MapBuilder._mitre_offsets(pts3)
+		var half: float = w * 0.5
+		for i: int in range(pts3.size() - 1):
+			var a := Vector2(pts3[i].x, pts3[i].z)
+			var c := Vector2(pts3[i + 1].x, pts3[i + 1].z)
+			if a.distance_squared_to(c) < 1e-6:
+				continue
+			var la: Vector2 = a + offs[i] * half
+			var ra: Vector2 = a - offs[i] * half
+			var lc: Vector2 = c + offs[i + 1] * half
+			var rc: Vector2 = c - offs[i + 1] * half
+			var box: Rect2 = Rect2(la, Vector2.ZERO).expand(lc).expand(rc).expand(ra)
+			out.append([PackedVector2Array([la, lc, rc, ra]), pts3[i].y, pts3[i + 1].y, box])
+	return out
+
+
+## Tham số [0, 1] của hình chiếu p lên đoạn s0 -> s1.
+static func _param_on(s0: Vector2, s1: Vector2, p: Vector2) -> float:
+	var d: Vector2 = s1 - s0
+	var l2: float = d.length_squared()
+	return clampf((p - s0).dot(d) / l2, 0.0, 1.0) if l2 > 1e-9 else 0.0
+
+
+## Một quad đứng p0 -> p1 từ y_bot lên y_top0 (tại p0) / y_top1 (tại p1), bỏ mẩu < 2 cm.
+static func _wall_quad(faces: PackedVector3Array, p0: Vector2, p1: Vector2, y_bot: float, y_top0: float, y_top1: float) -> void:
+	if p0.distance_squared_to(p1) < 0.0004:
+		return
+	var v0 := Vector3(p0.x, y_bot, p0.y)
+	var v1 := Vector3(p1.x, y_bot, p1.y)
+	var v2 := Vector3(p1.x, y_top1, p1.y)
+	var v3 := Vector3(p0.x, y_top0, p0.y)
+	faces.append_array(PackedVector3Array([v0, v1, v2, v0, v2, v3]))
+
+
 static func _cells_of(a: Vector2, b: Vector2, grow: float) -> Array:
 	var lo := Vector2(minf(a.x, b.x) - grow, minf(a.y, b.y) - grow)
 	var hi := Vector2(maxf(a.x, b.x) + grow, maxf(a.y, b.y) + grow)
@@ -317,22 +395,6 @@ static func _cells_of(a: Vector2, b: Vector2, grow: float) -> Array:
 	for cx: int in range(int(floor(lo.x / ROAD_HASH_CELL)), int(floor(hi.x / ROAD_HASH_CELL)) + 1):
 		for cz: int in range(int(floor(lo.y / ROAD_HASH_CELL)), int(floor(hi.y / ROAD_HASH_CELL)) + 1):
 			out.append(Vector2i(cx, cz))
-	return out
-
-
-## Phần bù của các khoảng [t0, t1] trong [0, length] (bỏ mẩu < 5 cm).
-static func _free_intervals(gaps: Array, length: float) -> Array:
-	if gaps.is_empty():
-		return [[0.0, length]]
-	gaps.sort_custom(func(x: Array, y: Array) -> bool: return float(x[0]) < float(y[0]))
-	var out: Array = []
-	var cur: float = 0.0
-	for gp: Array in gaps:
-		if float(gp[0]) > cur + 0.05:
-			out.append([cur, float(gp[0])])
-		cur = maxf(cur, float(gp[1]))
-	if cur < length - 0.05:
-		out.append([cur, length])
 	return out
 
 
@@ -429,6 +491,8 @@ func _build_player() -> void:
 	player = ThirdPersonController.new()
 	player.name = "Player"
 	add_child(player)
+	if bank_walls and player.cam_ray:
+		player.cam_ray.add_exception(bank_walls)   # tường vô hình không kéo camera vào sát người
 
 
 func _build_bike() -> void:
@@ -440,6 +504,8 @@ func _build_bike() -> void:
 	# xe đang đỗ (PROCESS_MODE_DISABLED) vẫn là vật cản: không bị gỡ khỏi không gian vật lý
 	bike.disable_mode = CollisionObject3D.DISABLE_MODE_KEEP_ACTIVE
 	add_child(bike)
+	if bank_walls and bike.spring_arm:
+		bike.spring_arm.add_excluded_object(bank_walls.get_rid())
 	bike.chase_cam.current = false
 	bike.visible = false
 	bike.process_mode = Node.PROCESS_MODE_DISABLED
@@ -797,6 +863,67 @@ func toggle_bike() -> void:
 
 
 # ===========================================================================
+# LƯỚI AN TOÀN DƯỚI KÊNH
+# ===========================================================================
+## Cao độ chân của thân đang điều khiển (người chơi; khi cưỡi xe: mặt sàn dưới bánh = gốc xe + BIKE_FLOOR_OFFSET).
+func _active_floor_y() -> float:
+	if mounted:
+		return bike.global_position.y + BIKE_FLOOR_OFFSET
+	return player.global_position.y
+
+
+func is_wet() -> bool:
+	return _active_floor_y() < MapBuilder.WATER_Y + WET_MARGIN
+
+
+## Mỗi frame vật lý: chân ở dưới mức sàn đất (đang đứng trên sàn mực nước) quá RESCUE_AFTER_S giây -> rescue;
+## còn khô, chạm sàn và tia ngắn xuống dưới chân trúng sàn khô (không phải WaterFloor) thì nhớ chỗ đó.
+func _watch_water(delta: float) -> void:
+	if is_wet():
+		_wet_t += delta
+		if _wet_t >= RESCUE_AFTER_S:
+			rescue_from_water()
+		return
+	_wet_t = 0.0
+	var body: CharacterBody3D = bike if mounted else player
+	if not body.is_on_floor() or not is_inside_tree():
+		return
+	var fy: float = _active_floor_y()
+	var p: Vector3 = body.global_position
+	var rq := PhysicsRayQueryParameters3D.create(Vector3(p.x, fy + 0.3, p.z), Vector3(p.x, fy - 0.3, p.z))
+	rq.exclude = [player.get_rid(), bike.get_rid()]
+	rq.collide_with_areas = false
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(rq)
+	if hit.is_empty() or hit.get("collider") == water_floor:
+		return
+	_last_dry = Vector3(p.x, (hit["position"] as Vector3).y, p.z)
+	_has_dry = true
+
+
+## Đưa người chơi (hoặc xe đang cưỡi) từ dưới kênh về chỗ trống gần chỗ khô cuối cùng, không có thì về spawn.
+func rescue_from_water() -> void:
+	_wet_t = 0.0
+	var excl: Array[RID] = []
+	if mounted:
+		excl.append(bike.get_rid())
+	var target: Variant = null
+	if _has_dry:
+		target = find_free_spot(_last_dry, _last_dry.y, SPAWN_SEARCH_M, excl)
+	if target == null:
+		target = find_free_spot(spawn_xf.origin, spawn_xf.origin.y, SPAWN_SEARCH_M, excl)
+	var pos: Vector3 = target if target is Vector3 else spawn_xf.origin
+	if mounted:
+		bike.global_position = pos + Vector3(0.0, 0.25, 0.0)
+		bike.velocity = Vector3.ZERO
+		bike.current_speed_ms = 0.0
+		bike.fallback_respawn = pos + Vector3(0.0, 0.8, 0.0)
+	else:
+		player.teleport(pos, player.facing_yaw())
+	rescues += 1
+	flash_hint(HINT_RESCUED)
+
+
+# ===========================================================================
 # GIỜ TRONG NGÀY / BẢN ĐỒ / HUD
 # ===========================================================================
 ## Đổi preset ánh sáng chỉ khi preset thật sự đổi. Luôn trả Environment gốc của cảnh về WorldEnvironment trước
@@ -884,6 +1011,7 @@ func _hint_text() -> String:
 func _physics_process(delta: float) -> void:
 	if player == null or bike == null:
 		return
+	_watch_water(delta)
 	_update_hotspot()
 	if _hint_flash_t > 0.0:
 		_hint_flash_t -= delta
