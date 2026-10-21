@@ -8,10 +8,13 @@
 #   roam_04_ride_nguyen_xien – đang chạy xe máy trên Nguyễn Xiển (camera đuổi của PlayerBike)
 #   roam_05_campus_gate_from_d1 – đứng trên D1 nhìn về cổng chính FPTU
 #   roam_06_campus_air       – flycam trên campus
-# In FPS ở mỗi ảnh.
+#   roam_07_nguyen_van_tang  – chạy xe máy trên Nguyễn Văn Tăng (tuyến 3 350 m), dãy nhà ống Microsoft hai bên đường
+# In FPS ở mỗi ảnh: trung bình MEASURE frame ngay trước khi chụp (sau dịch chuyển, SDFGI dựng lại cascade và shader
+# biên dịch trong vài frame đầu, nên SETTLE - MEASURE frame đầu không tính) + bộ đếm Engine lúc chụp.
 extends SceneTree
 
-const SETTLE: int = 36
+const SETTLE: int = 96
+const MEASURE: int = 60
 
 var roam: Node3D
 var player: CharacterBody3D
@@ -25,6 +28,7 @@ var free_cam: Camera3D
 var gas_held: bool = false
 var ready_done: bool = false
 var t_ready: int = 0
+var t_measure: int = 0
 
 
 func _initialize() -> void:
@@ -83,6 +87,10 @@ func _setup() -> void:
 	var ride: Array = _route_at(2560.0)
 	var ride_pos: Vector3 = ride[0]
 	var ride_dir: Vector3 = ride[1]
+	# 7. Nguyễn Văn Tăng (tuyến 2 711..4 123 m): đoạn 3 350 m có nhà ống dày đặc hai bên
+	var nvt: Array = _route_at(3350.0)
+	var nvt_pos: Vector3 = nvt[0]
+	var nvt_dir: Vector3 = nvt[1]
 	# 5. trên D1, 30 m trước cổng chính, nhìn về cổng
 	var gate_w: Vector3 = campus_xf * FPTUCampusBuilder.main_gate_local()
 	var d1_stand: Vector3 = campus_xf * Vector3(FPTUCampusBuilder.MAIN_GATE_U + 30.0, 0.0, -11.5)
@@ -97,6 +105,7 @@ func _setup() -> void:
 		{"name": "roam_04_ride_nguyen_xien", "kind": "ride", "pos": ride_pos, "look": ride_pos + ride_dir * 20.0},
 		{"name": "roam_05_campus_gate_from_d1", "kind": "walk", "pos": d1_stand, "look": gate_w},
 		{"name": "roam_06_campus_air", "kind": "air", "pos": ring_c + Vector3(-150.0, 175.0, 150.0), "look": ring_c},
+		{"name": "roam_07_nguyen_van_tang", "kind": "ride", "pos": nvt_pos, "look": nvt_pos + nvt_dir * 20.0},
 	]
 	free_cam = Camera3D.new()
 	free_cam.name = "PreviewCam"
@@ -160,6 +169,7 @@ func _begin_shot(s: Dictionary) -> void:
 	player.set("pitch", -0.16)
 	if kind == "ride":
 		player.call("teleport", s["pos"], _yaw_towards(s["pos"], s["look"]))
+		roam.set("bike_parked", false)   # the bike left at the previous ride shot is fetched to the player
 		roam.call("mount_bike")
 		Input.action_press("gas")
 		gas_held = true
@@ -178,10 +188,11 @@ func _end_shot(s: Dictionary) -> void:
 
 
 func _save(name: String) -> void:
+	var mean_fps: float = float(MEASURE) * 1000000.0 / float(maxi(1, Time.get_ticks_usec() - t_measure))
 	var img: Image = root.get_texture().get_image()
 	var path: String = out_dir.path_join(name + ".png")
 	var err: int = img.save_png(path)
-	print("  saved %s err=%d size=%s fps=%.0f" % [path, err, img.get_size(), Engine.get_frames_per_second()])
+	print("  saved %s err=%d size=%s fps=%.0f (engine counter %.0f)" % [path, err, img.get_size(), mean_fps, Engine.get_frames_per_second()])
 
 
 func _process(_delta: float) -> bool:
@@ -203,6 +214,8 @@ func _process(_delta: float) -> bool:
 			quit(0)
 			return true
 		_begin_shot(shots[shot_idx])
+	elif local_f == SETTLE - MEASURE:
+		t_measure = Time.get_ticks_usec()
 	elif local_f == SETTLE:
 		_save(String(shots[shot_idx]["name"]))
 	return false
