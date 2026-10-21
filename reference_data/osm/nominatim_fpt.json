@@ -1,0 +1,68 @@
+[
+ {
+  "place_id": 259456223,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "way",
+  "osm_id": 1022939891,
+  "lat": "10.8414168",
+  "lon": "106.8100745",
+  "category": "amenity",
+  "type": "university",
+  "place_rank": 30,
+  "importance": 0.36107739355702545,
+  "addresstype": "amenity",
+  "name": "Trường Đại học FPT Thành phố Hồ Chí Minh",
+  "display_name": "Trường Đại học FPT Thành phố Hồ Chí Minh, Lô E2a-7, Đường D1, Khu phố 47, Phường Tăng Nhơn Phú, Thành phố Hồ Chí Minh, 71320, Việt Nam",
+  "address": {
+   "amenity": "Trường Đại học FPT Thành phố Hồ Chí Minh",
+   "house_number": "Lô E2a-7",
+   "road": "Đường D1",
+   "neighbourhood": "Khu phố 47",
+   "suburb": "Phường Tăng Nhơn Phú",
+   "city": "Thành phố Hồ Chí Minh",
+   "ISO3166-2-lvl4": "VN-SG",
+   "postcode": "71320",
+   "country": "Việt Nam",
+   "country_code": "vn"
+  },
+  "boundingbox": [
+   "10.8404739",
+   "10.8423619",
+   "106.8090310",
+   "106.8110488"
+  ]
+ },
+ {
+  "place_id": 257247840,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "node",
+  "osm_id": 6794788987,
+  "lat": "10.8414360",
+  "lon": "106.8098568",
+  "category": "amenity",
+  "type": "university",
+  "place_rank": 30,
+  "importance": 6.703364614323671e-05,
+  "addresstype": "amenity",
+  "name": "Trường Đại Học FPT Thành phố Hồ Chí Minh",
+  "display_name": "Trường Đại Học FPT Thành phố Hồ Chí Minh, Lô E2a-7, Đường D1, Khu phố 47, Phường Tăng Nhơn Phú, Thành phố Hồ Chí Minh, 71320, Việt Nam",
+  "address": {
+   "amenity": "Trường Đại Học FPT Thành phố Hồ Chí Minh",
+   "house_number": "Lô E2a-7",
+   "road": "Đường D1",
+   "neighbourhood": "Khu phố 47",
+   "suburb": "Phường Tăng Nhơn Phú",
+   "city": "Thành phố Hồ Chí Minh",
+   "ISO3166-2-lvl4": "VN-SG",
+   "postcode": "71320",
+   "country": "Việt Nam",
+   "country_code": "vn"
+  },
+  "boundingbox": [
+   "10.8413860",
+   "10.8414860",
+   "106.8098068",
+   "106.8099068"
+  ]
+ }
+]
