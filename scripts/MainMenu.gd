@@ -5,6 +5,7 @@
 #   xe máy sinh viên chạy qua lại trên D1, nắng sớm vàng.
 #   Nút: ▶ BẮT ĐẦU NGÀY MỚI (reset hành trình → Màn 1) · 📋 CHỌN MÀN (Campaign Hub có rank) · 🌏 KHÁM PHÁ CAMPUS
 #        (thế giới mở FreeRoam: spawn ở BE6 Vinhomes Grand Park, đi/chạy xe tới campus) · 🎮 HƯỚNG DẪN ĐIỀU KHIỂN
+#        (bảng phím + khối "Nguồn dữ liệu bản đồ": OpenStreetMap ODbL, footprint nhà Microsoft CDLA-Permissive-2.0)
 #        · ⚙ CÀI ĐẶT ĐỒ HOẠ (3 mức chất lượng + toàn màn hình, lưu user://settings.cfg) · ✖ THOÁT.
 #   Bảng "Nhật ký hành trình" hiện kỷ lục từng màn (lưu user://progress.cfg). Điều hướng: chuột hoặc ↑↓ + Enter, [M] mở hub.
 class_name MainMenu
@@ -20,6 +21,9 @@ const SHOTS: Array = [
 	{"from": Vector3(220.0, 58.0, -30.0), "to": Vector3(180.0, 72.0, -100.0), "look_from": Vector3(95.0, 0.0, 60.0), "look_to": Vector3(87.0, 0.0, 58.0), "fov": 56.0, "dur": 12.0}
 ]
 const FADE_T: float = 0.55
+## Bảng Hướng dẫn: khối "Nguồn dữ liệu bản đồ" (OpenStreetMap ODbL + footprint nhà Microsoft CDLA-Permissive-2.0).
+const MAP_CREDITS_TITLE: String = "Nguồn dữ liệu bản đồ"
+const MAP_CREDITS: Array[String] = ["© OpenStreetMap contributors (ODbL)", "Building footprints © Microsoft (CDLA-Permissive-2.0)"]
 
 @onready var cam: Camera3D = $Camera3D
 @onready var world: Node3D = $World
@@ -312,6 +316,8 @@ func _build_guide_panel() -> PanelContainer:
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		d.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(d)
+	v.add_child(HSeparator.new())
+	v.add_child(_build_map_credits())
 	var close := _menu_button("✔   ĐÃ HIỂU, ĐÓNG  [ESC]", Color("#3498DB"))
 	close.custom_minimum_size = Vector2(320, 46)
 	close.alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -321,6 +327,21 @@ func _build_guide_panel() -> PanelContainer:
 	hb.add_child(close)
 	v.add_child(hb)
 	return panel
+
+## Ghi công dữ liệu bản đồ (thế giới mở + Màn 1, plan Task 7): một dòng như bảng phím, cột trái tiêu đề, cột phải
+## hai dòng giấy phép. Chuỗi đầy đủ (kèm link giấy phép) ở assets/data/mapdata.json["attribution"] và README.md.
+func _build_map_credits() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = "MapCredits"
+	row.add_theme_constant_override("separation", 14)
+	var k: Label = GameFX.make_label("🗺 " + MAP_CREDITS_TITLE, 14, Color("#1ABC9C"), HORIZONTAL_ALIGNMENT_LEFT)
+	k.custom_minimum_size = Vector2(190, 0)
+	row.add_child(k)
+	var d: Label = GameFX.make_label("\n".join(PackedStringArray(MAP_CREDITS)), 12, Color("#BDC3C7"), HORIZONTAL_ALIGNMENT_LEFT)
+	d.name = "MapCreditsText"
+	d.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(d)
+	return row
 
 func _build_settings_panel() -> PanelContainer:
 	var panel: PanelContainer = _center_modal(Vector2(760, 0), Color("#2ECC71"))

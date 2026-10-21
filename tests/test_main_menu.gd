@@ -1,5 +1,6 @@
 # File: res://tests/test_main_menu.gd
-# Test headless MENU CHÍNH: scene nạp được, đủ 5 nút, mở/đóng Hướng dẫn, đổi mức đồ hoạ (lưu user://settings.cfg),
+# Test headless MENU CHÍNH: scene nạp được, đủ 5 nút, mở/đóng Hướng dẫn (có khối "Nguồn dữ liệu bản đồ" OSM +
+# Microsoft, cả bảng nằm gọn trong viewport), đổi mức đồ hoạ (lưu user://settings.cfg),
 # mở Campaign Hub, rồi "Bắt đầu ngày mới" phải reset hành trình và chuyển sang Màn 1 (scene Main).
 # Chạy:  godot --headless --path . --script tests/test_main_menu.gd
 extends SceneTree
@@ -45,6 +46,22 @@ func _process(_d: float) -> bool:
 			menu.call("_show_guide")
 			if not (menu.get("guide_panel") as Control).visible:
 				_fail("bảng hướng dẫn không hiện")
+				return true
+		13:
+			# Bảng hướng dẫn (đã dàn trang) có khối "Nguồn dữ liệu bản đồ" và nằm gọn trong viewport
+			var gp: Control = menu.get("guide_panel")
+			var credits: Label = gp.find_child("MapCreditsText", true, false) as Label
+			if credits == null or not credits.is_visible_in_tree():
+				_fail("bảng hướng dẫn thiếu khối Nguồn dữ liệu bản đồ")
+				return true
+			if not (credits.text.contains("© OpenStreetMap contributors (ODbL)") and credits.text.contains("Building footprints © Microsoft (CDLA-Permissive-2.0)")):
+				_fail("ghi công bản đồ sai: " + credits.text)
+				return true
+			var vp: Rect2 = root.get_visible_rect()
+			var r: Rect2 = gp.get_global_rect()
+			print("  bảng hướng dẫn %s trong viewport %s, ghi công: %s" % [str(r), str(vp), credits.text.replace("\n", " | ")])
+			if not vp.grow(1.0).encloses(r):
+				_fail("bảng hướng dẫn tràn khỏi viewport: %s" % str(r))
 				return true
 			menu.call("_hide_modals")
 			if (menu.get("guide_panel") as Control).visible:
