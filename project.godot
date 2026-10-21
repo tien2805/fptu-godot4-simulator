@@ -23,6 +23,9 @@ window/stretch/mode="canvas_items"
 ; Godot 4.4+ dùng Jolt: mặc định Area3D KHÔNG phát hiện StaticBody3D.
 ; Bật để vùng near-miss của xe máy thấy được xe buýt / xe máy NPC / xe tải (StaticBody3D).
 jolt_physics_3d/simulation/areas_detect_static_bodies=true
+; Jolt dựng WorldBoundaryShape3D bằng một hộp kích thước này (mặc định 2000 m): thế giới mở trải từ campus
+; tới BE6 (4,1 km) nên mặt đất của FreeRoam cần 12 km.
+jolt_physics_3d/limits/world_boundary_shape_size=12000.0
 
 [rendering]
 
