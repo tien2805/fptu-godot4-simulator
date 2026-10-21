@@ -61,6 +61,7 @@ var deck_min_y: float = 0.0
 var deck_dry_spot := Vector3.ZERO   # giữa mặt đường qua cống
 var deck_wet_spot := Vector3.ZERO   # dưới kênh, cạnh đường qua cống
 var rescues0: int = 0
+var wall_min_y: float = 99.0     # thấp nhất khi trượt dọc tường bờ kênh (WaterFloor phải nằm ngoài tầm floor snap)
 
 
 func _initialize() -> void:
@@ -100,6 +101,12 @@ func _after_ready() -> bool:
 		return false
 	var ids: Dictionary = (sm.get_script() as GDScript).get_script_constant_map()["StageID"]
 	if not _check(ids.has("FREE_ROAM") and (sm.get("stage_scenes") as Dictionary).has(int(ids["FREE_ROAM"])), "StageManager.stage_scenes has FREE_ROAM"):
+		return false
+	# Gốc lỗi "tụt 30 cm 1 frame khi trượt dọc tường": mặt WaterFloor (WorldBoundary tại y của body) phải thấp hơn sàn đi
+	# bộ (y 0) một khoảng LỚN HƠN floor_snap_length của người và xe, nếu không apply_floor_snap có lúc hút thân xuống nó.
+	var wf: StaticBody3D = roam.get("water_floor")
+	var snap: float = maxf(player.floor_snap_length, bike.floor_snap_length)
+	if not _check(wf != null and -wf.global_position.y > snap + 0.02, "water floor sits deeper than the floor snap reach (water floor y %.2f, snap %.2f)" % [wf.global_position.y if wf else 0.0, snap]):
 		return false
 	pf0 = Engine.get_physics_frames()
 	return true
@@ -505,7 +512,7 @@ func _process(_delta: float) -> bool:
 				var pp: Vector3 = player.global_position
 				if not _check(ok and pp.y > -0.15 and _dry_floor_under(pp), "after the bike rescue the player can get off onto a dry floor (dismount %s, player %s)" % [str(ok), str(pp)]):
 					return true
-				phase = 9
+				phase = 95
 		9:
 			if not _phase_pause_open():
 				return true
@@ -516,10 +523,38 @@ func _process(_delta: float) -> bool:
 				if not _phase_pause_check():
 					return true
 				phase = 10
+		95:
+			# Trượt dọc tường bờ kênh: trước đây WaterFloor (WATER_Y) nằm trong tầm floor snap nên thỉnh thoảng thân bị hút
+			# xuống 30 cm trong 1 frame. Đứng cách tường 0,75 m, đẩy chéo vào tường 300 frame, y không được dưới -0,05.
+			if canal_n == Vector2.ZERO:
+				phase = 9
+			else:
+				if bool(roam.get("mounted")):
+					roam.call("dismount_bike")
+				var p2: Vector2 = canal_mid + canal_n * 0.75
+				_place_facing(Vector3(p2.x, 0.2, p2.y), Vector3(-canal_n.x, 0.0, -canal_n.y))
+				wall_min_y = 99.0
+				mark = frames
+				phase = 96
+		96:
+			if frames >= mark + 10:
+				# camera nhìn thẳng vào tường: x = dọc tường (đổi chiều mỗi 100 frame), y = -0,35 ép nhẹ vào tường
+				var along: float = 1.0 if ((frames - mark) / 100) % 2 == 0 else -1.0
+				player.set("input_override", Vector2(along, -0.35).normalized())
+				player.set("sprint_override", (frames / 60) % 2 == 1)   # đi bộ và chạy xen kẽ
+				wall_min_y = minf(wall_min_y, player.global_position.y)
+			if frames >= mark + 310:
+				_release_input()
+				var slid: float = _xz(player.global_position).distance_to(canal_mid + canal_n * 0.75)
+				if not _check(slid > 1.5, "wall slide test actually moved the player (%.1f m)" % slid):
+					return true
+				if not _check(wall_min_y > -0.05, "sliding along a bank wall never snaps the player down to the water floor (min y %.3f)" % wall_min_y):
+					return true
+				phase = 9
 		10:
 			done = true
 			print("  %d process frames for %d physics frames" % [frames, Engine.get_physics_frames() - pf0])
-			print("✅ SUCCESS: FREE ROAM OK (build %d ms, 6 reachable hotspots, bike mount/dismount, canal-safe dismount, low decks guarded + canal rescue, night Lab 402 -> Màn 6, retry overlay hidden)" % int(roam.get("build_ms")))
+			print("✅ SUCCESS: FREE ROAM OK (build %d ms, 6 reachable hotspots, bike mount/dismount, canal-safe dismount, low decks guarded + canal rescue, water floor below snap reach + wall slide, night Lab 402 -> Màn 6, retry overlay hidden)" % int(roam.get("build_ms")))
 			quit(0)
 			return true
 	return false

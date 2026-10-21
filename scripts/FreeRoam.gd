@@ -47,6 +47,7 @@ const DECK_GUARD_ABOVE: float = 1.0      # lan can vô hình cao tới mặt đ�
 const WALL_BOTTOM_BELOW_WATER: float = 0.3
 const ROAD_HASH_CELL: float = 64.0
 const WET_MARGIN: float = 0.15           # chân (người / xe) thấp hơn WATER_Y + 0,15 = đang ở dưới kênh
+const WATER_FLOOR_BELOW: float = 0.2     # sàn dự phòng dưới nước đặt thấp hơn WATER_Y (vượt tầm floor snap)
 const RESCUE_AFTER_S: float = 1.0
 const PLAYER_RADIUS: float = 0.4         # = capsule của ThirdPersonController
 const PLAYER_HEIGHT: float = 1.7
@@ -189,7 +190,9 @@ func _build_ground() -> void:
 	# Sàn dự phòng ở mực nước (Jolt: hộp world_boundary_shape_size = 12 km, project.godot)
 	water_floor = StaticBody3D.new()
 	water_floor.name = "WaterFloor"
-	water_floor.position = Vector3(centre.x, MapBuilder.WATER_Y, centre.y)
+	# 0,2 m dưới mặt nước: khoảng cách tới sàn đi bộ (0,5 m) phải lớn hơn floor_snap_length của người (0,4) và xe (0,45),
+	# nếu không khi trượt dọc tường, apply_floor_snap có lúc hút thân xuống WaterFloor 1 frame (tụt 30 cm).
+	water_floor.position = Vector3(centre.x, MapBuilder.WATER_Y - WATER_FLOOR_BELOW, centre.y)
 	var wcs := CollisionShape3D.new()
 	wcs.shape = WorldBoundaryShape3D.new()
 	water_floor.add_child(wcs)
