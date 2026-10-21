@@ -1378,7 +1378,7 @@ class RoamMap extends Control:
 		x = _legend(ci, font, x, y2, "line", ROAD_MINOR, "đường nhỏ")
 		x = _legend(ci, font, x, y2, "route", ROUTE, "tuyến BE6 → FPTU 5,5 km")
 		x = _legend(ci, font, x, y2, "dot", GATE, "cổng FPTU")
-		x = _legend(ci, font, x, y2, "dot", Color("#F1C40F"), "điểm nóng [E] chơi màn")
+		x = _legend(ci, font, x, y2, "dot", Color("#F1C40F"), "điểm nóng [E] (màu theo màn)")
 		x = _legend(ci, font, x, y2, "dot", Color.WHITE, "bạn")
 		_legend(ci, font, x, y2, "diamond", BIKE, "xe máy đang đỗ")
 		font.draw_string(ci, Vector2(PAD, size.y - 30.0), ATTR_OSM, HORIZONTAL_ALIGNMENT_LEFT, -1, LEGEND_SIZE, DIM)

@@ -1129,8 +1129,8 @@ static func _prepare_osm_index(md: MapData) -> void:
 ## TANK_MAX_TRIS triangles (it sits on ~40 % of ~2.5k roofs): a TANK_SEGMENTS-sided open drum with smooth normals and a
 ## flat bottom facet, two flat 8-gon end caps and two thin saddle-plate legs across the axis. The tank material is
 ## double-sided, so each thin leg box is one quad (its mid-plane, seen from both ends) and the drum's bottom facet
-## (between the legs, facing the roof, below the parapet line) is left out: from below, the inside of the drum
-## stands in for it. Visual only: never part of a collider.
+## (between the legs, facing the roof, about 0.33 m above it) is left out: from street level the roof edge hides it and
+## from other angles the double-sided inside of the drum stands in for it. Visual only: never part of a collider.
 static func _emit_roof_tank(b: Batch, piece: PackedVector2Array, roof_y: float) -> bool:
 	var ring: PackedVector2Array = _open(piece)
 	if ring.size() < 3:

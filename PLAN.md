@@ -71,6 +71,8 @@ fptu-godot4-simulator/
 
 ## 🗺️ III. MÀN 1: ĐUA XE TỪ VINHOMES ĐẾN CỔNG FPTU
 
+> **Superseded on 2026-10-22 (commit 8431443):** Stage 1 now follows the real 5,534 m route from tower BE6 to the FPTU main gate, built from OpenStreetMap data through MapBuilder (Hải Đăng, Cầu Vồng 5, Nguyễn Xiển, Cầu Rạch Hầm, Nguyễn Văn Tăng, D2B, D1), STAGE_TIME 300 s. See section XII. The description below is the retired hand-made 1.9 km track, kept for history.
+
 ### 1. Bản đồ & Địa hình (Google Maps Scale 1:1)
 Tuyến đường ~1.930 m bằng `Curve3D` + `CSGPolygon3D` 13.6 m có dải phân cách vàng kép, đi qua 6 phân đoạn:
 
