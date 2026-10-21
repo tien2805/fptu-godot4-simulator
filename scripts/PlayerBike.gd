@@ -37,6 +37,10 @@ signal drift_state_changed(is_drifting: bool)
 @export var lane_clamp_enabled: bool = true
 @export var road_half_width: float = 6.9      # Quá mức này sẽ bị đẩy về lòng đường
 @export var road_hard_limit: float = 8.6      # Quá mức này: đặt lại ở mép đường + phạt 1s
+## Không có road_path (bãi xe Màn 2, thế giới mở): rơi dưới fallback_fall_y thì đặt lại tại fallback_respawn
+## (mặc định = toạ độ cũ của Màn 2; FreeRoam đặt điểm spawn BE6 và ngưỡng -5 m).
+@export var fallback_respawn: Vector3 = Vector3(2.0, 0.8, -4.0)
+@export var fallback_fall_y: float = -3.5
 
 var current_speed_ms: float = 0.0
 var steer_input: float = 0.0
@@ -544,8 +548,8 @@ func _check_fall_and_offroad(delta: float) -> void:
 			visual_pivot.visible = true
 
 	if not road_path or not road_path.curve:
-		if global_position.y < -3.5:
-			global_position = Vector3(2.0, 0.8, -4.0)
+		if global_position.y < fallback_fall_y:
+			global_position = fallback_respawn
 			velocity = Vector3.ZERO
 			current_speed_ms = 0.0
 		return

@@ -9,9 +9,12 @@ enum StageID {
 	STAGE_4_VOVINAM = 4,
 	STAGE_5_CANTEEN = 5,
 	STAGE_6_CAPSTONE = 6,
-	STAGE_EXTRA_EOS = 7
+	STAGE_EXTRA_EOS = 7,
+	FREE_ROAM = 8
 }
 
+## FREE_ROAM (thế giới mở BE6 -> campus) không có trong stage_info: không hiện trong Campaign Hub / nhật ký,
+## không đi qua thẻ chuyển cảnh; vào bằng go_to_roam() (menu chính "Khám phá campus" hoặc nút "Về campus").
 var stage_scenes: Dictionary = {
 	StageID.STAGE_1_RACE: "res://scenes/Main.tscn",
 	StageID.STAGE_2_PARKING: "res://scenes/Stage2_Parking.tscn",
@@ -19,7 +22,8 @@ var stage_scenes: Dictionary = {
 	StageID.STAGE_4_VOVINAM: "res://scenes/Stage4_Vovinam.tscn",
 	StageID.STAGE_5_CANTEEN: "res://scenes/Stage5_Canteen.tscn",
 	StageID.STAGE_6_CAPSTONE: "res://scenes/Stage6_CapstoneBoss.tscn",
-	StageID.STAGE_EXTRA_EOS: "res://scenes/StageExtra_EOSExam.tscn"
+	StageID.STAGE_EXTRA_EOS: "res://scenes/StageExtra_EOSExam.tscn",
+	StageID.FREE_ROAM: "res://scenes/FreeRoam.tscn"
 }
 
 var stage_info: Dictionary = {
@@ -63,7 +67,8 @@ const CONTROLS_GUIDE: Array = [
 	["Màn 4 – Vovinam", "[←][→][↑][↓][SPACE] theo nốt (hoặc A D W S) · hít đất mash [SPACE] · finisher: giữ [W], [SPACE], [←][→] luân phiên, [SPACE], [↓]"],
 	["Màn 5 – Căn tin", "[WASD] đi · [E] lấy khay / giao / vào 7-Eleven · đứng yên giữ [SPACE] cân khay · cửa hàng: [←→↑↓] chọn, [ENTER] thêm, [BACKSPACE] bỏ, [SPACE] trả tiền"],
 	["Màn 6 – Boss Capstone", "gõ chữ trên đạn · [BACKSPACE] xoá · [TAB] đổi người · [ENTER] skill / gọi điện · [SPACE] mash khi gọi · [←]/[→] chọn khối code conflict"],
-	["Extra – Giám thị EOS", "[WASD] đi tuần (theo hướng camera) · [C] CCTV · [S] chụp bằng chứng · [E] soi / lập biên bản · [Shift]+[SPACE] ép biên bản"]
+	["Extra – Giám thị EOS", "[WASD] đi tuần (theo hướng camera) · [C] CCTV · [S] chụp bằng chứng · [E] soi / lập biên bản · [Shift]+[SPACE] ép biên bản"],
+	["Thế giới mở", "[WASD] đi · [Shift] chạy · chuột xoay camera (click để bắt, ESC thả) · [Q]/[E] xoay · [F] lên/xuống xe máy · [E] vào màn tại cột sáng · [T] giờ trong ngày · [M] bản đồ"]
 ]
 var pause_layer: CanvasLayer
 # Thẻ chuyển cảnh giữa các màn
@@ -83,6 +88,15 @@ const PROGRESS_PATH: String = "user://progress.cfg"
 
 var current_stage: int = StageID.STAGE_1_RACE
 var modal_layer: CanvasLayer
+
+# ----- Thế giới mở (FreeRoam) -----
+## true khi màn hiện tại được mở từ một hotspot của thế giới mở: report_stage_result() hiện nút "Về campus".
+var return_to_roam: bool = false
+## Transform3D (vị trí + hướng) để FreeRoam spawn lại cạnh hotspot vừa chơi; null = spawn mặc định ở BE6.
+var roam_spawn: Variant = null
+## FreeRoam đặt true: phím [M] là bản đồ của thế giới mở, không mở Campaign Hub.
+var hub_key_blocked: bool = false
+var roam_return_layer: CanvasLayer
 ## Kỷ lục lưu trên đĩa: stage_id -> {"score": int, "rank": String, "wins": int, "plays": int}
 var best_stats: Dictionary = {}
 
@@ -100,12 +114,15 @@ func _ready() -> void:
 	_create_stage_select_ui()
 	_create_pause_ui()
 	_create_transition_ui()
+	_create_roam_return_ui()
 
 # ---------------------------------------------------------------------------
 # MENU CHÍNH & LƯU KỶ LỤC
 # ---------------------------------------------------------------------------
 func go_to_main_menu() -> void:
 	typing_mode = false
+	return_to_roam = false
+	_hide_roam_return()
 	if modal_layer:
 		modal_layer.visible = false
 	if pause_layer and pause_layer.visible:
@@ -119,8 +136,73 @@ func go_to_main_menu() -> void:
 func start_new_day() -> void:
 	inventory = {"monster": 0, "coffee": 0, "banh_bao": 0}
 	run_stats.clear()
+	return_to_roam = false
 	_refresh_rank_labels()
 	change_stage(StageID.STAGE_1_RACE)
+
+# ---------------------------------------------------------------------------
+# THẾ GIỚI MỞ (FreeRoam.tscn)
+# ---------------------------------------------------------------------------
+## Hotspot của thế giới mở gọi: vào màn `stage_id` theo đường chuyển màn bình thường, nhớ quay về campus
+## (`spawn` = Transform3D cạnh hotspot, hoặc null = spawn mặc định BE6).
+func start_stage_from_roam(stage_id: int, spawn: Variant = null) -> void:
+	if not stage_scenes.has(stage_id) or stage_id == StageID.FREE_ROAM:
+		return
+	return_to_roam = true
+	roam_spawn = spawn if spawn is Transform3D else null
+	change_stage(stage_id)
+
+## Nạp thế giới mở ngay (không thẻ chuyển cảnh): menu chính "Khám phá campus" hoặc nút "Về campus" sau một màn.
+func go_to_roam() -> void:
+	typing_mode = false
+	return_to_roam = false
+	_hide_roam_return()
+	if modal_layer:
+		modal_layer.visible = false
+	if pause_layer and pause_layer.visible:
+		pause_layer.visible = false
+	get_tree().paused = false
+	Engine.time_scale = 1.0
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if transition_active:
+		_finish_transition_silent()
+	current_stage = StageID.FREE_ROAM
+	get_tree().change_scene_to_file(stage_scenes[StageID.FREE_ROAM])
+
+func _finish_transition_silent() -> void:
+	transition_active = false
+	if _transition_tween and _transition_tween.is_valid():
+		_transition_tween.kill()
+	if transition_layer:
+		transition_layer.visible = false
+
+## Nút "Về campus" (đáy giữa, trên modal kết quả của màn) – chỉ hiện khi màn được mở từ thế giới mở.
+func _create_roam_return_ui() -> void:
+	roam_return_layer = CanvasLayer.new()
+	roam_return_layer.layer = 117
+	roam_return_layer.visible = false
+	roam_return_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(roam_return_layer)
+	var panel: PanelContainer = GameFX.anchored_panel(roam_return_layer, Control.PRESET_CENTER_BOTTOM, Vector2(0, 0), 18, Color("#2ECC71"))
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 12)
+	panel.add_child(hb)
+	var lbl: Label = GameFX.make_label("Xong màn này rồi – quay lại thế giới mở?", 14, Color("#DFE6E9"))
+	lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	hb.add_child(lbl)
+	var btn: Button = _pause_button("🏫   VỀ CAMPUS  (thế giới mở)")
+	btn.custom_minimum_size = Vector2(300, 42)
+	btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	btn.pressed.connect(go_to_roam)
+	hb.add_child(btn)
+
+func _show_roam_return() -> void:
+	if roam_return_layer:
+		roam_return_layer.visible = true
+
+func _hide_roam_return() -> void:
+	if roam_return_layer:
+		roam_return_layer.visible = false
 
 func load_progress() -> void:
 	best_stats.clear()
@@ -173,7 +255,7 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.is_pressed() and not event.is_echo():
 		if event.physical_keycode == KEY_M:
-			if typing_mode or _is_text_input_focused():
+			if typing_mode or hub_key_blocked or _is_text_input_focused():
 				return
 			toggle_stage_select()
 		elif event.physical_keycode == KEY_TAB and (Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_SHIFT)):
@@ -344,7 +426,11 @@ func _refresh_pause_quality() -> void:
 func change_stage(stage_id: int) -> void:
 	if not stage_scenes.has(stage_id):
 		return
+	if stage_id == StageID.FREE_ROAM:
+		go_to_roam()
+		return
 	typing_mode = false
+	_hide_roam_return()
 	if modal_layer:
 		modal_layer.visible = false
 	if pause_layer and pause_layer.visible:
@@ -380,6 +466,8 @@ func _transition_quip(from_stage: int, to_stage: int) -> String:
 	var r: Dictionary = run_stats.get(from_stage, {})
 	var result: String = String(r.get("result", ""))
 	var rank: String = String(r.get("rank", ""))
+	if from_stage == -1 and return_to_roam:
+		return "Từ thế giới mở bước vào màn chơi. Xong màn là quay lại campus ngay."
 	if from_stage == -1:
 		return "Một ngày mới ở FPTU bắt đầu. Báo thức đã reo 3 lần rồi đó."
 	if result == "win" and rank == "S":
@@ -397,7 +485,7 @@ func _begin_transition(stage_id: int) -> void:
 	_transition_target = stage_id
 	var cs: Node = get_tree().current_scene
 	var from_stage: int = -1
-	if cs and not (cs is MainMenu):
+	if cs and not (cs is MainMenu) and stage_info.has(current_stage):
 		from_stage = current_stage
 	var from_clock: String = _clock_of(String(stage_info[from_stage]["title"])) if from_stage != -1 else "06:45"
 	var to_clock: String = _clock_of(String(stage_info[stage_id]["title"]))
@@ -521,6 +609,8 @@ func report_stage_result(stage_id: int, result: Dictionary) -> void:
 	best_stats[stage_id] = b
 	save_progress()
 	_refresh_rank_labels()
+	if return_to_roam:
+		_show_roam_return()
 
 func get_stage_rank_text(stage_id: int) -> String:
 	var best: String = ""
@@ -642,7 +732,9 @@ func _create_stage_select_ui() -> void:
 		play_btn.custom_minimum_size = Vector2(150, 46)
 		play_btn.text = "▶️ CHƠI NGAY"
 		play_btn.add_theme_font_size_override("font_size", 15)
-		play_btn.pressed.connect(func() -> void: change_stage(stage_id))
+		play_btn.pressed.connect(func() -> void:
+			return_to_roam = false # Chơi nhanh từ hub: kết thúc màn không quay về thế giới mở
+			change_stage(stage_id))
 		hbox.add_child(play_btn)
 
 	var bottom_hbox := HBoxContainer.new()

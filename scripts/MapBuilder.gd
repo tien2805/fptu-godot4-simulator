@@ -94,7 +94,8 @@ class Batch:
 
 ## Builds one region ("campus" | "corridor" | "vinhomes") under `parent` and returns its root Node3D.
 ## opts: colliders (true), roads (true), buildings (true), water (true), areas (true), trees (true), labels (true),
-##       skip_building_ids ([]), lod (0 full | 1 no labels/trees | 2 boxes only), y (0.0 ground offset).
+##       skip_building_ids ([]), skip_area_ids ([]: area ids drawn by someone else, e.g. the FPT plot that
+##       FPTUCampusBuilder covers with its own grass), lod (0 full | 1 no labels/trees | 2 boxes only), y (0.0 ground offset).
 static func build_region(parent: Node3D, md: MapData, region: String, opts: Dictionary = {}) -> Node3D:
 	var t0: int = Time.get_ticks_msec()
 	var o: Dictionary = _defaults(opts)
@@ -402,7 +403,7 @@ static func materials() -> Dictionary:
 # ===========================================================================
 
 static func _defaults(opts: Dictionary) -> Dictionary:
-	var o: Dictionary = {"colliders": true, "roads": true, "buildings": true, "water": true, "areas": true, "trees": true, "labels": true, "skip_building_ids": [], "lod": 0, "y": 0.0}
+	var o: Dictionary = {"colliders": true, "roads": true, "buildings": true, "water": true, "areas": true, "trees": true, "labels": true, "skip_building_ids": [], "skip_area_ids": [], "lod": 0, "y": 0.0}
 	for k: Variant in opts.keys():
 		o[k] = opts[k]
 	return o
@@ -456,7 +457,10 @@ static func _build_areas(root: Node3D, md: MapData, region: String, water_polys:
 	var lines := Batch.new()
 	var tree_pts := PackedVector2Array()
 	var lod: int = int(o["lod"])
+	var skip_areas: Array = o["skip_area_ids"]
 	for a: Dictionary in md.areas(region):
+		if skip_areas.has(int(a.get("id", 0))):
+			continue
 		var kind: String = str(a.get("kind", "other"))
 		var tag: String = str(a.get("tag", ""))
 		var area_m2: float = float(a.get("area", 0.0))

@@ -1,5 +1,5 @@
 # File: res://tests/test_hud_bounds.gd
-# Kiểm tra HUD không bị cắt: nạp menu + 7 màn ở 3 độ phân giải cửa sổ (1280x720, 1920x1080, 2560x1440),
+# Kiểm tra HUD không bị cắt: nạp menu + 7 màn + thế giới mở ở 3 độ phân giải cửa sổ (1280x720, 1920x1080, 2560x1440),
 # chờ vài frame rồi duyệt mọi Control đang hiển thị; rect toàn cục phải nằm trong viewport (dung sai 1 px).
 # Chạy:  godot --headless --path . --script tests/test_hud_bounds.gd
 extends SceneTree
@@ -12,7 +12,8 @@ const SCENES: Array[String] = [
 	"res://scenes/Stage4_Vovinam.tscn",
 	"res://scenes/Stage5_Canteen.tscn",
 	"res://scenes/Stage6_CapstoneBoss.tscn",
-	"res://scenes/StageExtra_EOSExam.tscn"
+	"res://scenes/StageExtra_EOSExam.tscn",
+	"res://scenes/FreeRoam.tscn"
 ]
 const SIZES: Array[Vector2i] = [Vector2i(1280, 720), Vector2i(1920, 1080), Vector2i(2560, 1440)]
 const SETTLE_FRAMES: int = 8

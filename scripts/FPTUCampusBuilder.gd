@@ -1616,8 +1616,9 @@ static func build_d1_road_piece(parent: Node3D, z_center: float, x0: float, x1: 
 ## Viện Công nghệ cao HUTECH đối diện FPT (khối kính tối màu lam trắng dọc + cổng xanh/vàng), origin = tim cổng trên
 ## hàng rào mặt D1 (hệ cục bộ campus: hutech_origin_local() = (136, 0, −46)). v8: khối chính theo footprint thật
 ## 94 × 32 m, tâm cách cổng HUTECH_BLOCK_OFFSET = 42 m về phía sau; trước hàng rào là vỉa hè + làn xe D1 phía xa
-## (lấp dải −26..−46 giữa đoạn D1 của build_d1_road_piece và hàng rào).
-static func build_hutech(parent: Node3D, origin: Vector3, m: Dictionary, colliders: bool = false) -> Node3D:
+## (lấp dải −26..−46 giữa đoạn D1 của build_d1_road_piece và hàng rào). `draw_d1 = false` bỏ dải vỉa hè + làn xe
+## đó (thế giới mở: MapBuilder đã dựng đường D1 thật ngay tại chỗ, vẽ chồng sẽ z-fight).
+static func build_hutech(parent: Node3D, origin: Vector3, m: Dictionary, colliders: bool = false, draw_d1: bool = true) -> Node3D:
 	var prev_opts: Dictionary = _opts
 	_opts = {"colliders": colliders}
 	var campus := Node3D.new()
@@ -1673,16 +1674,17 @@ static func build_hutech(parent: Node3D, origin: Vector3, m: Dictionary, collide
 	_col_box(campus, Vector3(-62.0, 10.0, -30.0), Vector3(28.0, 20.0, 20.0))
 	# Trước hàng rào: vỉa hè lát gạch, rồi làn xe D1 phía xa (3 làn một chiều) nối tới mép vỉa hè đối diện của
 	# build_d1_road_piece (v ≈ −26), dải phân cách cỏ hẹp
-	_box(campus, Vector3(-34.0, 0.14, 2.9), Vector3(188.0, 0.28, 5.2), m["sidewalk"])
-	_box(campus, Vector3(-34.0, 0.2, 5.65), Vector3(188.0, 0.4, 0.3), m["granite"])
-	# mặt nhựa nhô 2 cm trên y = 0 để không z-fight với mặt đất của màn (Màn 1 đặt mặt đất tại y = 0)
-	_box(campus, Vector3(-34.0, -0.105, 12.8), Vector3(188.0, 0.25, 14.0), m["asphalt"])
-	_box(campus, Vector3(-34.0, 0.03, 19.65), Vector3(188.0, 0.02, 0.15), m["line"])
-	var dx: float = -126.0
-	while dx < 58.0:
-		for lz: float in [9.4, 14.0]:
-			_box(campus, Vector3(dx, 0.03, lz), Vector3(3.0, 0.02, 0.15), m["line"])
-		dx += 9.0
+	if draw_d1:
+		_box(campus, Vector3(-34.0, 0.14, 2.9), Vector3(188.0, 0.28, 5.2), m["sidewalk"])
+		_box(campus, Vector3(-34.0, 0.2, 5.65), Vector3(188.0, 0.4, 0.3), m["granite"])
+		# mặt nhựa nhô 2 cm trên y = 0 để không z-fight với mặt đất của màn (Màn 1 đặt mặt đất tại y = 0)
+		_box(campus, Vector3(-34.0, -0.105, 12.8), Vector3(188.0, 0.25, 14.0), m["asphalt"])
+		_box(campus, Vector3(-34.0, 0.03, 19.65), Vector3(188.0, 0.02, 0.15), m["line"])
+		var dx: float = -126.0
+		while dx < 58.0:
+			for lz: float in [9.4, 14.0]:
+				_box(campus, Vector3(dx, 0.03, lz), Vector3(3.0, 0.02, 0.15), m["line"])
+			dx += 9.0
 	for x_offset: float in [-110.0, -70.0, -35.0, -18.0, 18.0, 35.0, 52.0]:
 		build_tropical_tree(campus, Vector3(x_offset, 0.0, -4.0), m, 1.0, 700 + int(x_offset))
 	_opts = prev_opts

@@ -3,7 +3,8 @@
 #   Nền 3D: chính khuôn viên ĐH FPT thật (cùng FPTUCampusBuilder với 7 màn) + HUTECH + đường D1, camera bay chậm
 #   qua 5 góc (toàn cảnh từ phía HUTECH, dolly dọc D1, sân trong + hồ sen, sân trước + cầu thang ngoài trời, flycam),
 #   xe máy sinh viên chạy qua lại trên D1, nắng sớm vàng.
-#   Nút: ▶ BẮT ĐẦU NGÀY MỚI (reset hành trình → Màn 1) · 📋 CHỌN MÀN (Campaign Hub có rank) · 🎮 HƯỚNG DẪN ĐIỀU KHIỂN
+#   Nút: ▶ BẮT ĐẦU NGÀY MỚI (reset hành trình → Màn 1) · 📋 CHỌN MÀN (Campaign Hub có rank) · 🌏 KHÁM PHÁ CAMPUS
+#        (thế giới mở FreeRoam: spawn ở BE6 Vinhomes Grand Park, đi/chạy xe tới campus) · 🎮 HƯỚNG DẪN ĐIỀU KHIỂN
 #        · ⚙ CÀI ĐẶT ĐỒ HOẠ (3 mức chất lượng + toàn màn hình, lưu user://settings.cfg) · ✖ THOÁT.
 #   Bảng "Nhật ký hành trình" hiện kỷ lục từng màn (lưu user://progress.cfg). Điều hướng: chuột hoặc ↑↓ + Enter, [M] mở hub.
 class_name MainMenu
@@ -32,6 +33,7 @@ var campus_mats: Dictionary = {}
 
 var btn_start: Button
 var btn_hub: Button
+var btn_roam: Button
 var btn_guide: Button
 var btn_settings: Button
 var btn_quit: Button
@@ -148,7 +150,7 @@ func _style_button(btn: Button, accent: Color = GameFX.FPT_ORANGE) -> void:
 func _menu_button(text: String, accent: Color = GameFX.FPT_ORANGE) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(400, 50)
+	b.custom_minimum_size = Vector2(400, 46)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.add_theme_font_size_override("font_size", 19)
 	b.focus_mode = Control.FOCUS_ALL
@@ -180,7 +182,7 @@ func _build_ui() -> void:
 	margin.add_theme_constant_override("margin_right", 24)
 	ui.add_child(margin)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", 6)
 	margin.add_child(col)
 
 	var kicker: Label = GameFX.make_label("TRƯỜNG ĐẠI HỌC FPT TP.HCM · KHU CÔNG NGHỆ CAO · ĐƯỜNG D1", 12, Color("#BDC3C7"), HORIZONTAL_ALIGNMENT_LEFT)
@@ -208,6 +210,9 @@ func _build_ui() -> void:
 	btn_hub = _menu_button("📋   CHỌN MÀN CHƠI  (Campaign Hub · rank)  [M]", Color("#F1C40F"))
 	btn_hub.pressed.connect(_on_hub_pressed)
 	col.add_child(btn_hub)
+	btn_roam = _menu_button("🌏   KHÁM PHÁ CAMPUS  (thế giới mở · BE6 → FPTU)", Color("#1ABC9C"))
+	btn_roam.pressed.connect(_on_roam_pressed)
+	col.add_child(btn_roam)
 	btn_guide = _menu_button("🎮   HƯỚNG DẪN ĐIỀU KHIỂN", Color("#3498DB"))
 	btn_guide.pressed.connect(_show_guide)
 	col.add_child(btn_guide)
@@ -418,6 +423,13 @@ func _on_start_pressed() -> void:
 func _on_hub_pressed() -> void:
 	GameFX.play_sfx("pop", -6.0)
 	StageManager.open_stage_select()
+
+## Thế giới mở: spawn mặc định ở BE6 (Vinhomes Grand Park), đi bộ / xe máy 5,5 km tới campus FPTU.
+func _on_roam_pressed() -> void:
+	GameFX.play_sfx("success", -4.0)
+	GameFX.flash(Color.WHITE, 0.5, 0.4)
+	StageManager.roam_spawn = null
+	StageManager.go_to_roam()
 
 func _on_quit_pressed() -> void:
 	get_tree().quit()
