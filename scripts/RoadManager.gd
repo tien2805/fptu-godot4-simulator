@@ -745,7 +745,8 @@ func _build_hutech_campus() -> void:
 	# Theo OSM: mặt tiền HUTECH bắt đầu cách cổng chính FPT ~40 m và kéo dài qua cổng bãi xe FPT;
 	# cổng HUTECH đối diện khoảng giữa các module cánh trước của FPT (x ≈ 350). Dùng chung builder với Màn 2.
 	var cm: Dictionary = FPTUCampusBuilder.make_materials()
-	FPTUCampusBuilder.build_hutech(scenery_root, Vector3(350.0, 0.0, -1608.0), cm)
+	# v8: cổng HUTECH theo footprint thật (hệ cục bộ campus (136, 0, −46)); campus Màn 1 đặt tại (215, 0, −1582), quay 0°
+	FPTUCampusBuilder.build_hutech(scenery_root, Vector3(215.0, 0.0, -1582.0) + FPTUCampusBuilder.hutech_origin_local(), cm)
 
 
 func _process(_delta: float) -> void:

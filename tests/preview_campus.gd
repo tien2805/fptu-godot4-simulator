@@ -8,14 +8,17 @@ extends SceneTree
 var cam: Camera3D
 var frames: int = 0
 var shot_idx: int = -1
+# Campus Màn 1 đặt tại (215, 0, -1582) quay 0°: thế giới = (215 + u, y, -1582 + v). v8: lô 190 × 116 m, cổng chính u = 7,
+# cổng tây u = 181, vòng nhà u 14..175 × v 16..93, sân trong u 42..147 × v 30..79, sảnh u ≈ 85, HUTECH sau hàng rào v = -46.
 var shots: Array = [
 	{"name": "01_driver_view_d1", "pos": Vector3(140.0, 2.2, -1596.0), "look": Vector3(330.0, 8.0, -1578.0), "fov": 70.0},
-	{"name": "02_main_gate", "pos": Vector3(238.0, 3.5, -1606.0), "look": Vector3(221.0, 5.0, -1578.0), "fov": 65.0},
-	{"name": "03_birdseye_campus", "pos": Vector3(305.0, 95.0, -1700.0), "look": Vector3(305.0, 0.0, -1530.0), "fov": 60.0},
-	{"name": "04_courtyard", "pos": Vector3(343.0, 5.0, -1532.0), "look": Vector3(262.0, 9.0, -1526.0), "fov": 72.0},
-	{"name": "07_courtyard_from_lobby", "pos": Vector3(295.0, 3.0, -1544.0), "look": Vector3(340.0, 10.0, -1512.0), "fov": 74.0},
-	{"name": "05_finish_both_campuses", "pos": Vector3(400.0, 30.0, -1596.0), "look": Vector3(250.0, 4.0, -1595.0), "fov": 68.0},
-	{"name": "06_hutech_side", "pos": Vector3(300.0, 2.2, -1593.0), "look": Vector3(350.0, 8.0, -1625.0), "fov": 70.0}
+	{"name": "02_main_gate", "pos": Vector3(240.0, 3.5, -1606.0), "look": Vector3(222.0, 5.0, -1580.0), "fov": 65.0},
+	{"name": "03_birdseye_campus", "pos": Vector3(310.0, 230.0, -1560.0), "look": Vector3(310.0, 0.0, -1524.0), "fov": 60.0},
+	{"name": "08_birdseye_back", "pos": Vector3(310.0, 110.0, -1380.0), "look": Vector3(310.0, 0.0, -1515.0), "fov": 62.0},
+	{"name": "04_courtyard", "pos": Vector3(358.0, 5.0, -1534.0), "look": Vector3(265.0, 9.0, -1524.0), "fov": 72.0},
+	{"name": "07_courtyard_from_lobby", "pos": Vector3(301.0, 3.0, -1549.0), "look": Vector3(345.0, 10.0, -1507.0), "fov": 74.0},
+	{"name": "05_finish_both_campuses", "pos": Vector3(407.0, 30.0, -1596.0), "look": Vector3(250.0, 4.0, -1595.0), "fov": 68.0},
+	{"name": "06_hutech_side", "pos": Vector3(305.0, 2.2, -1593.0), "look": Vector3(351.0, 10.0, -1642.0), "fov": 70.0}
 ]
 var out_dir: String = ""
 
