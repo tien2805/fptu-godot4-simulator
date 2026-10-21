@@ -20,3 +20,6 @@ build/
 
 # Claude Code local settings and agent worktrees
 .claude/
+
+# Raw third-party building footprint tiles (large; only the scoped extract is committed)
+reference_data/msbuildings/*.gz

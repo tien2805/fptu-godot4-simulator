@@ -18,6 +18,12 @@ import io, json, math, os, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "reference_data", "osm")
 OUT = os.path.join(ROOT, "assets", "data", "mapdata.json")
+# Microsoft Global ML Building Footprints (CDLA-Permissive-2.0), already filtered to the game scope by
+# reference_data/msbuildings/scope_extract.json (see reference_data/README.md). Optional: skipped if absent.
+MS_EXTRACT = os.path.join(ROOT, "reference_data", "msbuildings", "scope_extract.json")
+MS_ID_BASE = 9000000000            # synthetic integer ids for Microsoft footprints (OSM ids are < 2e10 but never this range in scope)
+VINHOMES_LANDUSE_WAY = 1223373335  # whole Vinhomes Grand Park compound: OSM is complete inside, Microsoft imagery predates the towers
+MS_ATTRIBUTION = "Building footprints (c) Microsoft, Global ML Building Footprints, CDLA-Permissive-2.0 (https://cdla.dev/permissive-2-0/)."
 LAT0, LON0 = 10.8414168, 106.8100745
 KX = 111320.0 * math.cos(math.radians(LAT0))
 KY = 110574.0
@@ -117,7 +123,141 @@ def r2(v):
     return round(v, 2)
 
 
+def point_in_poly(p, poly):
+    x, z = p
+    inside = False
+    n = len(poly)
+    j = n - 1
+    for i in range(n):
+        xi, zi = poly[i]
+        xj, zj = poly[j]
+        if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / ((zj - zi) or 1e-12) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def bbox_of(pts):
+    xs = [p[0] for p in pts]
+    zs = [p[1] for p in pts]
+    return (min(xs), min(zs), max(xs), max(zs))
+
+
+class Grid:
+    """Uniform grid of items by bounding box for fast neighbourhood queries."""
+    def __init__(self, cell=50.0):
+        self.cell = cell
+        self.cells = {}
+
+    def _keys(self, bb):
+        c = self.cell
+        for gx in range(int(math.floor(bb[0] / c)), int(math.floor(bb[2] / c)) + 1):
+            for gz in range(int(math.floor(bb[1] / c)), int(math.floor(bb[3] / c)) + 1):
+                yield (gx, gz)
+
+    def add(self, bb, item):
+        for k in self._keys(bb):
+            self.cells.setdefault(k, []).append(item)
+
+    def query(self, bb):
+        seen = set()
+        for k in self._keys(bb):
+            for it in self.cells.get(k, []):
+                if id(it) not in seen:
+                    seen.add(id(it))
+                    yield it
+
+
+def merge_microsoft(buildings, roads, water, els, plot, hutech_plot):
+    """Add Microsoft footprints where OSM has no building. Returns (added, stats)."""
+    if not os.path.exists(MS_EXTRACT):
+        return [], {"skipped": "no extract"}
+    ms = json.load(io.open(MS_EXTRACT, encoding="utf-8"))["buildings"]
+    vin = els.get(("way", VINHOMES_LANDUSE_WAY))
+    vin_poly = rings_of(vin)[0] if vin else []
+    osm_grid = Grid(60.0)
+    for b in buildings:
+        poly = [tuple(p) for p in b["outer"]]
+        osm_grid.add(bbox_of(poly), poly)
+    road_grid = Grid(40.0)
+    for r in roads:
+        if r["lanes"] <= 0:
+            continue
+        pts = r["points"]
+        half = r["width"] * 0.5 + 0.5
+        for i in range(len(pts) - 1):
+            a, b = pts[i], pts[i + 1]
+            road_grid.add((min(a[0], b[0]) - half, min(a[1], b[1]) - half, max(a[0], b[0]) + half, max(a[1], b[1]) + half), (a, b, half))
+    water_polys = [[tuple(p) for p in w["outer"]] for w in water if w.get("kind") == "area"]
+    stats = {"input": len(ms), "small": 0, "huge": 0, "osm_dup": 0, "vinhomes": 0, "campus_plot": 0, "hutech_plot": 0, "road": 0, "water": 0}
+    added = []
+    for idx, m in enumerate(ms):
+        poly = [tuple(p) for p in m["outer"]]
+        a = float(m["area"])
+        if a < 25.0:
+            stats["small"] += 1
+            continue
+        if a > 30000.0:
+            stats["huge"] += 1
+            continue
+        c = centroid(poly[:-1] if poly[0] == poly[-1] else poly)
+        if vin_poly and point_in_poly(c, vin_poly):
+            stats["vinhomes"] += 1
+            continue
+        if point_in_poly(c, plot):
+            stats["campus_plot"] += 1
+            continue
+        if point_in_poly(c, hutech_plot):
+            stats["hutech_plot"] += 1
+            continue
+        bb = bbox_of(poly)
+        dup = False
+        for op in osm_grid.query(bb):
+            if point_in_poly(c, op) or point_in_poly(centroid(op), poly) or sum(1 for p in poly[:-1] if point_in_poly(p, op)) * 2 >= len(poly) - 1:
+                dup = True
+                break
+        if dup:
+            stats["osm_dup"] += 1
+            continue
+        on_road = False
+        for (ra, rb, half) in road_grid.query((c[0], c[1], c[0], c[1])):
+            if seg_dist(c, ra, rb) < half:
+                on_road = True
+                break
+        if on_road:
+            stats["road"] += 1
+            continue
+        if any(point_in_poly(c, wp) for wp in water_polys):
+            stats["water"] += 1
+            continue
+        h = ((idx + 1) * 2654435761) % 1000 / 1000.0      # deterministic 0..1 per footprint
+        if a < 60.0:
+            lv, style = 2 + int(h * 2), "shophouse"           # 2-3
+        elif a < 200.0:
+            lv, style = 2 + int(h * 3), "shophouse"           # 2-4 tube houses
+        elif a < 600.0:
+            lv, style = 2 + int(h * 2), "shophouse"           # 2-3
+        elif a < 3000.0:
+            lv, style = 1 + int(h * 2), "industrial"          # 1-2
+        else:
+            lv, style = 2, "industrial"
+        if float(m.get("height", -1.0)) > 0.0:
+            lv = max(1, int(round(float(m["height"]) / 3.6)))
+        added.append({"id": MS_ID_BASE + idx, "name": "", "display": "", "kind": "yes", "levels": lv, "height": r2(lv * 3.6),
+                      "style": style, "region": m["region"], "area": r2(a), "source": "msft",
+                      "outer": [[r2(x), r2(z)] for x, z in simplify(poly, 0.3)], "inner": []})
+    stats["added"] = len(added)
+    return added, stats
+
+
 def main():
+    out_path = OUT
+    use_ms = True
+    args = sys.argv[1:]
+    if "--out" in args:
+        out_path = args[args.index("--out") + 1]
+    if "--no-ms" in args:
+        use_ms = False
     els = {}
     for fn in ["fpt_campus_900m.json", "vinhomes_gp_1600m.json", "roads_bbox_fpt_vinhomes.json"]:
         for e in load(fn):
@@ -200,7 +340,7 @@ def main():
             style = "tower" if kind == "apartments" or lv >= 10 else ("mall" if a > 5000 else ("industrial" if kind in ("industrial", "warehouse") or (a > 1500 and lv <= 3) else "shophouse"))
             if name.upper().startswith("TÒA BE") or name.startswith("BS") or name.startswith("GH") or name.startswith("Tòa OS"):
                 style = "beverly"
-            buildings.append({"id": e["id"], "name": name, "display": DISPLAY_NAME.get(name, name), "kind": kind, "levels": lv, "height": r2(lv * (3.2 if style in ("tower", "beverly") else 3.6)),
+            buildings.append({"id": e["id"], "source": "osm", "name": name, "display": DISPLAY_NAME.get(name, name), "kind": kind, "levels": lv, "height": r2(lv * (3.2 if style in ("tower", "beverly") else 3.6)),
                               "style": style, "region": reg, "area": r2(a), "outer": [[r2(x), r2(z)] for x, z in simplify(outer, 0.3)],
                               "inner": [[[r2(x), r2(z)] for x, z in simplify(r, 0.3)] for r in rings[1:]]})
         elif t.get("natural") == "water" or t.get("water") or t.get("waterway") in ("river", "stream", "canal", "riverbank"):
@@ -245,8 +385,15 @@ def main():
     nx, nz = nx / nl, nz / nl
     spawn = {"x": r2(door_mid[0] + nx * 6.0), "z": r2(door_mid[1] + nz * 6.0), "yaw_deg": r2(math.degrees(math.atan2(-nx, -nz))), "note": "6 m outside the BE6 lobby door, facing away from the tower"}
 
+    ms_stats = {"skipped": "--no-ms"}
+    if use_ms:
+        added, ms_stats = merge_microsoft(buildings, roads, water, els, plot, hutech_plot)
+        buildings.extend(added)
+    attribution = "Map data (c) OpenStreetMap contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright). Derived 2026-10-21."
+    if use_ms and ms_stats.get("added", 0) > 0:
+        attribution += " " + MS_ATTRIBUTION
     out = {
-        "attribution": "Map data (c) OpenStreetMap contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright). Derived 2026-10-21.",
+        "attribution": attribution,
         "frame": {"origin_lat": LAT0, "origin_lon": LON0, "x": "metres east", "z": "metres south (Godot -Z = north)", "y": "up"},
         "scope": {"campus_radius": CAMPUS_R, "vinhomes_radius": VIN_R, "vinhomes_center": [r2(be6_c[0]), r2(be6_c[1])], "corridor_radius": CORR_R},
         "landmarks": {
@@ -263,11 +410,12 @@ def main():
         "route_be6_to_fptu": {"length_m": r2(route_raw["length_m"]), "roads": route_raw["roads"], "points": [[r2(x), r2(z)] for x, z in simplify(route, 0.5)]},
         "roads": roads, "buildings": buildings, "water": water, "areas": areas, "pois": pois,
     }
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    with io.open(OUT, "w", encoding="utf-8", newline="\n") as f:
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with io.open(out_path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
     from collections import Counter
-    print("mapdata.json written: %.1f MB" % (os.path.getsize(OUT) / 1e6))
+    print("mapdata.json written to %s: %.2f MB" % (out_path, os.path.getsize(out_path) / 1e6))
+    print("microsoft merge:", ms_stats)
     print("roads", len(roads), Counter(r["region"] for r in roads), Counter(r["class"] for r in roads).most_common(8))
     print("buildings", len(buildings), Counter(b["region"] for b in buildings), Counter(b["style"] for b in buildings))
     print("water", len(water), "areas", len(areas), Counter(a["kind"] for a in areas), "pois", len(pois))
