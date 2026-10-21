@@ -17,3 +17,6 @@ push_to_github.ps1
 # Build output (export)
 build/
 *.tpz
+
+# Claude Code local settings and agent worktrees
+.claude/
