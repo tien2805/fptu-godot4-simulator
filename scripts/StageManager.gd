@@ -68,7 +68,7 @@ const CONTROLS_GUIDE: Array = [
 	["Màn 5 – Căn tin", "[WASD] đi · [E] lấy khay / giao / vào 7-Eleven · đứng yên giữ [SPACE] cân khay · cửa hàng: [←→↑↓] chọn, [ENTER] thêm, [BACKSPACE] bỏ, [SPACE] trả tiền"],
 	["Màn 6 – Boss Capstone", "gõ chữ trên đạn · [BACKSPACE] xoá · [TAB] đổi người · [ENTER] skill / gọi điện · [SPACE] mash khi gọi · [←]/[→] chọn khối code conflict"],
 	["Extra – Giám thị EOS", "[WASD] đi tuần (theo hướng camera) · [C] CCTV · [S] chụp bằng chứng · [E] soi / lập biên bản · [Shift]+[SPACE] ép biên bản"],
-	["Thế giới mở", "[WASD] đi · [Shift] chạy · chuột xoay camera (click để bắt, ESC thả) · [Q]/[E] xoay · [F] lên/xuống xe máy · [E] vào màn tại cột sáng · [T] giờ trong ngày · [M] bản đồ"]
+	["Thế giới mở", "[WASD] đi · [Shift] chạy · chuột xoay camera (click để bắt, ESC thả) · [Z]/[C] xoay · [F] lên/xuống xe máy · [E] vào màn tại cột sáng · [T] giờ trong ngày · [M] bản đồ"]
 ]
 var pause_layer: CanvasLayer
 # Thẻ chuyển cảnh giữa các màn
@@ -81,7 +81,11 @@ var _transition_target: int = -1
 var _transition_tween: Tween
 const TRANSITION_SECONDS: float = 3.0
 var pause_settings_box: VBoxContainer
+## Bảng phím trong menu tạm dừng: VBox nằm trong pause_controls_scroll (cao tối đa PAUSE_CONTROLS_MAX_H) để nút
+## "VỀ MENU CHÍNH" không bị đẩy khỏi màn 720 px khi bảng phím mở.
 var pause_controls_box: VBoxContainer
+var pause_controls_scroll: ScrollContainer
+const PAUSE_CONTROLS_MAX_H: float = 260.0
 var pause_resume_btn: Button
 var pause_quality_buttons: Array[Button] = []
 const PROGRESS_PATH: String = "user://progress.cfg"
@@ -115,6 +119,15 @@ func _ready() -> void:
 	_create_pause_ui()
 	_create_transition_ui()
 	_create_roam_return_ui()
+	get_tree().node_added.connect(_on_node_added)
+
+## Nút "Chơi lại" của các màn dùng get_tree().reload_current_scene() (không qua change_stage): khi một cảnh gốc mới
+## vào cây (cùng phép thử GameFX._on_node_added) thì ẩn lớp "VỀ CAMPUS" của lượt trước. return_to_roam giữ nguyên
+## nên kết quả của lượt chơi lại vẫn hiện nút đó.
+func _on_node_added(node: Node) -> void:
+	var tree: SceneTree = get_tree()
+	if tree and node.get_parent() == tree.root and node == tree.current_scene:
+		_hide_roam_return()
 
 # ---------------------------------------------------------------------------
 # MENU CHÍNH & LƯU KỶ LỤC
@@ -122,6 +135,7 @@ func _ready() -> void:
 func go_to_main_menu() -> void:
 	typing_mode = false
 	return_to_roam = false
+	roam_spawn = null
 	_hide_roam_return()
 	if modal_layer:
 		modal_layer.visible = false
@@ -148,9 +162,8 @@ func start_new_day() -> void:
 func start_stage_from_roam(stage_id: int, spawn: Variant = null) -> void:
 	if not stage_scenes.has(stage_id) or stage_id == StageID.FREE_ROAM:
 		return
-	return_to_roam = true
 	roam_spawn = spawn if spawn is Transform3D else null
-	change_stage(stage_id)
+	change_stage(stage_id, true)
 
 ## Nạp thế giới mở ngay (không thẻ chuyển cảnh): menu chính "Khám phá campus" hoặc nút "Về campus" sau một màn.
 func go_to_roam() -> void:
@@ -291,7 +304,7 @@ func pause_game() -> void:
 		return
 	pause_layer.visible = true
 	pause_settings_box.visible = false
-	pause_controls_box.visible = false
+	pause_controls_scroll.visible = false
 	get_tree().paused = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	GameFX.play_ui("pop", -6.0, 0.8)
@@ -339,7 +352,7 @@ func _create_pause_ui() -> void:
 	var settings_btn: Button = _pause_button("⚙   CÀI ĐẶT (đồ hoạ · âm lượng)")
 	settings_btn.pressed.connect(func() -> void:
 		pause_settings_box.visible = not pause_settings_box.visible
-		pause_controls_box.visible = false)
+		pause_controls_scroll.visible = false)
 	vb.add_child(settings_btn)
 	pause_settings_box = VBoxContainer.new()
 	pause_settings_box.add_theme_constant_override("separation", 8)
@@ -367,13 +380,20 @@ func _create_pause_ui() -> void:
 
 	var controls_btn: Button = _pause_button("🎮   ĐIỀU KHIỂN")
 	controls_btn.pressed.connect(func() -> void:
-		pause_controls_box.visible = not pause_controls_box.visible
+		pause_controls_scroll.visible = not pause_controls_scroll.visible
 		pause_settings_box.visible = false)
 	vb.add_child(controls_btn)
+	# Bảng phím (9 dòng) cuộn trong khung cao tối đa PAUSE_CONTROLS_MAX_H như danh sách Campaign Hub
+	pause_controls_scroll = ScrollContainer.new()
+	pause_controls_scroll.name = "ControlsScroll"
+	pause_controls_scroll.custom_minimum_size = Vector2(0, PAUSE_CONTROLS_MAX_H)
+	pause_controls_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	pause_controls_scroll.visible = false
+	vb.add_child(pause_controls_scroll)
 	pause_controls_box = VBoxContainer.new()
 	pause_controls_box.add_theme_constant_override("separation", 4)
-	pause_controls_box.visible = false
-	vb.add_child(pause_controls_box)
+	pause_controls_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pause_controls_scroll.add_child(pause_controls_box)
 	for ln: Array in CONTROLS_GUIDE:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
@@ -423,7 +443,9 @@ func _refresh_pause_quality() -> void:
 # ---------------------------------------------------------------------------
 # CHUYỂN MÀN
 # ---------------------------------------------------------------------------
-func change_stage(stage_id: int) -> void:
+## `from_roam` = true chỉ khi vào từ hotspot của thế giới mở (start_stage_from_roam); mọi đường khác ("Màn tiếp",
+## "Chơi lại toàn bộ chiến dịch", Campaign Hub...) tắt return_to_roam và quên roam_spawn.
+func change_stage(stage_id: int, from_roam: bool = false) -> void:
 	if not stage_scenes.has(stage_id):
 		return
 	if stage_id == StageID.FREE_ROAM:
@@ -440,6 +462,9 @@ func change_stage(stage_id: int) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if transition_active:
 		return
+	return_to_roam = from_roam
+	if not from_roam:
+		roam_spawn = null
 	# Headless (bot test) hoặc chưa có cảnh: chuyển thẳng
 	if DisplayServer.get_name() == "headless" or transition_layer == null:
 		current_stage = stage_id
@@ -732,9 +757,7 @@ func _create_stage_select_ui() -> void:
 		play_btn.custom_minimum_size = Vector2(150, 46)
 		play_btn.text = "▶️ CHƠI NGAY"
 		play_btn.add_theme_font_size_override("font_size", 15)
-		play_btn.pressed.connect(func() -> void:
-			return_to_roam = false # Chơi nhanh từ hub: kết thúc màn không quay về thế giới mở
-			change_stage(stage_id))
+		play_btn.pressed.connect(func() -> void: change_stage(stage_id)) # từ hub: from_roam = false
 		hbox.add_child(play_btn)
 
 	var bottom_hbox := HBoxContainer.new()
