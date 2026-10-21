@@ -1,6 +1,8 @@
 # File: res://tests/test_hud_bounds.gd
 # Kiểm tra HUD không bị cắt: nạp menu + 7 màn + thế giới mở ở 3 độ phân giải cửa sổ (1280x720, 1920x1080, 2560x1440),
 # chờ vài frame rồi duyệt mọi Control đang hiển thị; rect toàn cục phải nằm trong viewport (dung sai 1 px).
+# Menu chính được kiểm khi đang mở bảng Hướng dẫn (bảng phím + khối "Nguồn dữ liệu bản đồ"), thế giới mở khi đang
+# mở bản đồ [M].
 # Chạy:  godot --headless --path . --script tests/test_hud_bounds.gd
 extends SceneTree
 
@@ -70,6 +72,12 @@ func _process(_d: float) -> bool:
 		root.add_child(current)
 		frames = 0
 		return false
+	if frames == SETTLE_FRAMES - 4:
+		# lớp phủ mở bằng phím / nút: bảng Hướng dẫn của menu, bản đồ [M] của thế giới mở
+		if current.has_method("_show_guide"):
+			current.call("_show_guide")
+		elif current.has_method("toggle_map"):
+			current.call("toggle_map")
 	if frames >= SETTLE_FRAMES:
 		var size: Vector2i = SIZES[combo % SIZES.size()]
 		var scene_name: String = SCENES[combo / SIZES.size()].get_file()
