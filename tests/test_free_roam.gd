@@ -4,12 +4,24 @@
 # giữ W 60 frame vật lý -> đi được > 2 m; mount_bike() -> xe hiện, camera chuyển sang xe; dismount_bike();
 # dịch người chơi tới 30 m ngoài cổng chính -> không hotspot nào chạm; đặt lên hotspot cổng sau (Màn 2) ->
 # Area3D thấy người chơi + gợi ý "[E] Chơi ..."; preset đêm đổi hotspot Lab 402 thành Màn 6; phím M bị chặn ở hub.
+# Hồi quy (review 2026-10-22):
+#   - [T] đêm -> bình minh -> sáng: ánh sáng môi trường về lại Environment gốc (không dính màu/độ sáng đêm).
+#   - Lớp "VỀ CAMPUS" của StageManager ẩn khi một cảnh gốc mới vào cây (reload_current_scene của nút Chơi lại),
+#     return_to_roam vẫn true và kết quả lượt sau hiện lại nút đó.
+#   - Mọi hotspot: tia từ tâm tìm thấy sàn đi được trong 0,5 m bên dưới; đứng ở return_spawn -> đi về phía hotspot thì
+#     vào được Area3D, và đi được > 2 m theo một hướng trong 120 frame vật lý, is_on_floor().
+#   - Vỉa hè mặt tiền D1 có va chạm (đứng trên đó ở ~0,28 m) và bước từ nền đất qua bó vỉa lên được.
+#   - Xe đang đỗ là vật cản; ở xa thì gợi ý "[F] xe máy cách N m", bản đồ [M] vẽ xe.
+#   - Sát bờ kênh: xuống xe không bao giờ đặt người lên mặt nước (xe trên mặt nước -> từ chối; xe sát bờ -> xuống phía
+#     bờ), đi thẳng vào kênh bị tường bờ chặn.
+#   - Menu tạm dừng mở bảng phím vẫn nằm gọn trong 1280 x 720.
 # Mọi kiểm tra dùng _check() + quit(2) (assert hỏng trong _initialize làm treo --script), có watchdog.
 # Chạy:  godot --headless --path . --script tests/test_free_roam.gd
 extends SceneTree
 
 const BUILD_BUDGET_MS: int = 15000
-const WATCHDOG_FRAMES: int = 4000
+const WATCHDOG_FRAMES: int = 6000
+const WALK_FRAMES: int = 40          # mỗi lần thử đi từ return_spawn (3 lần = 120 frame vật lý)
 
 var roam: Node3D
 var player: CharacterBody3D
@@ -24,6 +36,16 @@ var mark: int = 0
 var spawn: Transform3D
 var walk_start: Vector3
 var gate_hot: Area3D
+var md: MapData
+var water: Array = []
+# hotspot reachability
+var hs_list: Array = []
+var hs_i: int = 0
+var hs_attempt: int = -1
+var hs_walked: bool = false
+# canal
+var canal_n := Vector2.ZERO      # pháp tuyến mép kênh hướng ra bờ (đất)
+var canal_mid := Vector2.ZERO
 
 
 func _initialize() -> void:
@@ -34,14 +56,16 @@ func _initialize() -> void:
 			n.name = pair[0]
 			root.add_child(n)
 	sm = root.get_node("StageManager")
-	print("--- TEST FREE ROAM: BE6 spawn, walk, bike, hotspots ---")
+	print("--- TEST FREE ROAM: BE6 spawn, walk, bike, hotspots, reachability, canal, retry overlay ---")
 	var packed: PackedScene = load("res://scenes/FreeRoam.tscn")
 	if packed == null:
 		_fail("scenes/FreeRoam.tscn missing")
 		return
 	roam = packed.instantiate()
 	root.add_child(roam)   # _ready chạy ở frame đầu tiên của vòng lặp (sau _initialize), nên kiểm tra trong _process
-	spawn = MapData.load_default().spawn_transform()
+	md = MapData.load_default()
+	spawn = md.spawn_transform()
+	water = MapBuilder._water_polygons(md)
 	started = true
 
 
@@ -83,6 +107,105 @@ func _fail(msg: String) -> void:
 func _cam_inside(n: Node) -> bool:
 	var cam: Camera3D = root.get_camera_3d()
 	return cam != null and n.is_ancestor_of(cam)
+
+
+func _space() -> PhysicsDirectSpaceState3D:
+	return roam.get_world_3d().direct_space_state
+
+
+## Tia thẳng đứng a -> b (bỏ qua Area3D và người chơi).
+func _ray(a: Vector3, b: Vector3) -> Dictionary:
+	var rq := PhysicsRayQueryParameters3D.create(a, b)
+	rq.collide_with_areas = false
+	rq.exclude = [player.get_rid()]
+	return _space().intersect_ray(rq)
+
+
+func _in_water(p: Vector2) -> bool:
+	for poly: PackedVector2Array in water:
+		if Geometry2D.is_point_in_polygon(p, poly):
+			return true
+	return false
+
+
+func _xz(v: Vector3) -> Vector2:
+	return Vector2(v.x, v.z)
+
+
+## Đặt người chơi tại pos, hướng camera/thân theo dir (mặt phẳng ngang) để "tiến" = dir.
+func _place_facing(pos: Vector3, dir: Vector3) -> void:
+	player.call("teleport", pos, atan2(-dir.x, -dir.z))
+
+
+## Điểm / hướng trong hệ cục bộ campus (u, y, v) -> thế giới.
+func campus_local(p: Vector3) -> Vector3:
+	return FPTUCampusBuilder.real_plot_transform() * p
+
+
+func campus_dir(d: Vector3) -> Vector3:
+	return FPTUCampusBuilder.real_plot_transform().basis * d
+
+
+func _release_input() -> void:
+	player.set("input_override", null)
+	player.set("sprint_override", false)
+
+
+## Khoảng cách nhỏ nhất từ p tới tim mọi con đường (dừng sớm khi < limit).
+func _near_road(p: Vector2, limit: float) -> bool:
+	for r: Dictionary in md.roads():
+		var pts: PackedVector2Array = MapData.poly(r.get("points", []))
+		for i: int in range(pts.size() - 1):
+			var a: Vector2 = pts[i]
+			var b: Vector2 = pts[i + 1]
+			if minf(a.x, b.x) - limit > p.x or maxf(a.x, b.x) + limit < p.x or minf(a.y, b.y) - limit > p.y or maxf(a.y, b.y) + limit < p.y:
+				continue
+			if Geometry2D.get_closest_point_to_segment(p, a, b).distance_to(p) < limit:
+				return true
+	return false
+
+
+## Mép một mặt nước rộng gần spawn BE6, xa đường >= 40 m (không có khe tường): ghi canal_mid + canal_n (ra phía đất).
+func _pick_canal_edge() -> bool:
+	var cands: Array = []
+	var sp := _xz(spawn.origin)
+	for poly: PackedVector2Array in water:
+		var ring: PackedVector2Array = MapBuilder._open(poly)
+		for k: int in range(ring.size()):
+			var a: Vector2 = ring[k]
+			var b: Vector2 = ring[(k + 1) % ring.size()]
+			if a.distance_to(b) < 8.0:
+				continue
+			var mid: Vector2 = (a + b) * 0.5
+			cands.append([mid.distance_to(sp), mid, (b - a).normalized()])
+	cands.sort_custom(func(x: Array, y: Array) -> bool: return float(x[0]) < float(y[0]))
+	for c: Array in cands:
+		var mid: Vector2 = c[1]
+		var e: Vector2 = c[2]
+		var n := Vector2(-e.y, e.x)
+		if _in_water(mid + n * 0.5):
+			n = -n
+		# đất phía ngoài 0,5..4 m, nước phía trong 0,5..7 m (đủ rộng để xe đứng giữa dòng)
+		var ok: bool = true
+		for d: float in [0.5, 1.0, 2.0, 3.0, 4.0]:
+			if _in_water(mid + n * d):
+				ok = false
+		for d: float in [0.5, 2.0, 4.5, 7.0]:
+			if not _in_water(mid - n * d):
+				ok = false
+		if not ok:
+			continue
+		# bờ trống (không nhà / cây sát mép) để đứng và xuống xe
+		for d: float in [2.3, 3.0]:
+			var q: Vector2 = mid + n * d
+			if roam.call("free_spot_at", Vector3(q.x, 0.0, q.y), 0.0) == null:
+				ok = false
+		if not ok or _near_road(mid, 40.0):
+			continue
+		canal_mid = mid
+		canal_n = n
+		return true
+	return false
 
 
 func _process(_delta: float) -> bool:
@@ -152,7 +275,7 @@ func _process(_delta: float) -> bool:
 					return true
 				if not _check(player.global_position.y > -1.0, "player on the ground after dismount"):
 					return true
-				var gate: Array = MapData.load_default().landmark("campus_main_gate")
+				var gate: Array = md.landmark("campus_main_gate")
 				var g := Vector3(float(gate[0]), 0.0, float(gate[1]))
 				var far_pos: Vector3 = g + Vector3(0.0, 0.0, 30.0)
 				player.call("teleport", far_pos, 0.0)
@@ -211,8 +334,321 @@ func _process(_delta: float) -> bool:
 				phase = 6
 		6:
 			if pf >= mark + 2:
-				done = true
-				print("✅ SUCCESS: FREE ROAM OK (build %d ms, 6 hotspots, bike mount/dismount, night Lab 402 -> Màn 6)" % int(roam.get("build_ms")))
-				quit(0)
+				if not _phase_tod_and_retry():
+					return true
+				hs_list = roam.get("hotspots")
+				hs_i = 0
+				hs_attempt = -1
+				phase = 7
+		7:
+			if not _phase_hotspot_step(pf):
 				return true
+		75:
+			if pf >= mark + 20:
+				var y: float = player.global_position.y
+				print("  standing on the D1 frontage sidewalk: y = %.3f, on_floor %s" % [y, str(player.is_on_floor())])
+				if not _check(absf(y - 0.28) < 0.05 and player.is_on_floor(), "player stands on the frontage sidewalk (y ~0.28, got %.3f) instead of sinking into it" % y):
+					return true
+				# từ nền đất giữa đường D1 và bó vỉa (v -6,5) đi vào campus: bước qua bó vỉa lên vỉa hè
+				_place_facing(campus_local(Vector3(100.0, 0.0, -6.5)), campus_dir(Vector3(0.0, 0.0, 1.0)))
+				player.set("input_override", Vector2(0.0, -1.0))
+				mark = pf
+				phase = 76
+		76:
+			if pf >= mark + 45:
+				var lp: Vector3 = FPTUCampusBuilder.real_plot_transform().affine_inverse() * player.global_position
+				_release_input()
+				print("  walked from the D1 verge over the granite kerb: local v %.2f, y %.3f" % [lp.z, lp.y])
+				if not _check(lp.z > -5.0 and lp.y > 0.2 and player.is_on_floor(), "walking from the verge steps over the kerb onto the sidewalk (local v %.2f, y %.3f)" % [lp.z, lp.y]):
+					return true
+				phase = 8
+		8:
+			if not _phase_canal_setup(pf):
+				return true
+		81:
+			if pf >= mark + 15:
+				# xe đứng giữa dòng kênh: hai bên đều là nước -> phải từ chối, người chơi vẫn trên xe
+				var ok: bool = bool(roam.call("dismount_bike"))
+				print("  bike in the canal at %s: dismount -> %s" % [str(bike.global_position), str(ok)])
+				if not _check(not ok and bool(roam.get("mounted")), "dismount over water is refused (player stays on the bike)"):
+					return true
+				var no_room: String = (roam.get_script() as GDScript).get_script_constant_map()["HINT_NO_DISMOUNT"]
+				if not _check(String(roam.get("_hint_flash")) == no_room and (roam.get("hint_label") as Label).text == no_room, "refused dismount shows the no-room hint"):
+					return true
+				# xe lên bờ, cách mép nước 1 m, bên phải xe hướng ra kênh (xuống mặc định bên phải = 0,3 m trong nước)
+				var land: Vector2 = canal_mid + canal_n * 1.0
+				var w: Vector2 = -canal_n
+				bike.global_position = Vector3(land.x, 0.3, land.y)
+				bike.rotation = Vector3(0.0, atan2(-w.y, w.x), 0.0)
+				bike.velocity = Vector3.ZERO
+				mark = pf
+				phase = 82
+		82:
+			if pf >= mark + 15:
+				var right: Vector3 = bike.global_transform.basis.x
+				if not _check(Vector2(right.x, right.z).dot(-canal_n) > 0.95, "test setup: the bike's right side faces the canal"):
+					return true
+				var ok: bool = bool(roam.call("dismount_bike"))
+				var pp: Vector3 = player.global_position
+				print("  bike on the bank at %s: dismount -> %s, player at %s" % [str(bike.global_position), str(ok), str(pp)])
+				if not _check(ok and not bool(roam.get("mounted")), "dismount next to the canal succeeds on the bank side"):
+					return true
+				if not _check(not _in_water(_xz(pp)), "dismount never puts the player inside a water polygon (player at %s)" % str(pp)):
+					return true
+				if not _check((_xz(pp) - _xz(bike.global_position)).dot(canal_n) > 0.5, "dismount chose the bank side, not the water side"):
+					return true
+				var hit: Dictionary = _ray(pp + Vector3(0.0, 0.5, 0.0), pp - Vector3(0.0, 1.0, 0.0))
+				if not _check(not hit.is_empty() and (hit["position"] as Vector3).y > -0.15, "dismount spot stands on ground, not on the water floor"):
+					return true
+				# đi thẳng vào kênh (bắt đầu 3 m dọc bờ, tránh xe vừa đỗ): tường bờ chặn
+				var t := Vector2(-canal_n.y, canal_n.x)
+				var s2: Vector2 = canal_mid + t * 3.0 + canal_n * 1.2
+				if not _check(not _in_water(s2), "test setup: walk start on the bank"):
+					return true
+				_place_facing(Vector3(s2.x, 0.0, s2.y), Vector3(-canal_n.x, 0.0, -canal_n.y))
+				player.set("input_override", Vector2(0.0, -1.0))
+				player.set("sprint_override", true)
+				mark = pf
+				phase = 83
+		83:
+			if pf >= mark + 60:
+				var pp: Vector3 = player.global_position
+				_release_input()
+				var past: float = -(_xz(pp) - canal_mid).dot(canal_n)
+				print("  sprinted 60 frames at the canal from 1.2 m: player at %s (%.2f m past the edge line)" % [str(pp), past])
+				if not _check(not _in_water(_xz(pp)) and pp.y > -0.15 and past < 0.0, "bank walls stop the player walking into the canal (%.2f m past the edge)" % past):
+					return true
+				if not _check(past > -0.8, "the player really walked up to the bank wall (stopped %.2f m before the edge)" % -past):
+					return true
+				if not _check(roam.call("free_spot_at", Vector3(canal_mid.x - canal_n.x * 2.0, 0.0, canal_mid.y - canal_n.y * 2.0), 0.0) == null, "free_spot_at() rejects a point over water"):
+					return true
+				phase = 9
+		9:
+			if not _phase_pause_open():
+				return true
+			mark = frames
+			phase = 91
+		91:
+			if frames >= mark + 4:
+				if not _phase_pause_check():
+					return true
+				phase = 10
+		10:
+			done = true
+			print("✅ SUCCESS: FREE ROAM OK (build %d ms, 6 reachable hotspots, bike mount/dismount, canal-safe dismount, night Lab 402 -> Màn 6, retry overlay hidden)" % int(roam.get("build_ms")))
+			quit(0)
+			return true
 	return false
+
+
+# ---------------------------------------------------------------------------
+# [T] ĐÊM -> BÌNH MINH -> SÁNG  +  LỚP "VỀ CAMPUS" KHI CHƠI LẠI
+# ---------------------------------------------------------------------------
+func _phase_tod_and_retry() -> bool:
+	var we: WorldEnvironment = roam.get_node("WorldEnvironment")
+	var base: Environment = roam.get("_base_env")
+	if not _check(base != null, "FreeRoam keeps the scene's base Environment"):
+		return false
+	var presets: Dictionary = (load("res://scripts/GameFX.gd") as GDScript).get_script_constant_map()["TOD_PRESETS"]
+	roam.call("cycle_time_of_day")   # night -> dawn
+	var e: Environment = we.environment
+	print("  [T] night -> %s: ambient %.2f %s (base %.2f %s)" % [String(roam.get("tod_preset")), e.ambient_light_energy, str(e.ambient_light_color), base.ambient_light_energy, str(base.ambient_light_color)])
+	if not _check(String(roam.get("tod_preset")) == "dawn", "T after night cycles to dawn"):
+		return false
+	if not _check(e.ambient_light_color.is_equal_approx(base.ambient_light_color), "dawn after night: ambient colour is the day colour again (got %s)" % str(e.ambient_light_color)):
+		return false
+	if not _check(absf(e.ambient_light_energy - float(presets["dawn"]["ambient"])) < 0.001, "dawn ambient energy = its preset value"):
+		return false
+	roam.call("cycle_time_of_day")   # dawn -> morning
+	e = we.environment
+	if not _check(String(roam.get("tod_preset")) == "morning" and absf(e.ambient_light_energy - base.ambient_light_energy) < 0.001 and e.ambient_light_color.is_equal_approx(base.ambient_light_color), "morning after night/dawn restores the base ambient energy %.2f (got %.2f)" % [base.ambient_light_energy, e.ambient_light_energy]):
+		return false
+	if not _check(base.ambient_light_energy == 1.0 and base != e, "base Environment itself is never modified"):
+		return false
+	# Lớp VỀ CAMPUS: kết quả màn mở từ thế giới mở -> hiện; "Chơi lại" (reload_current_scene) -> cảnh gốc mới -> ẩn
+	var layer: CanvasLayer = sm.get("roam_return_layer")
+	sm.set("return_to_roam", true)
+	sm.call("report_stage_result", 3, {"result": "win", "score": 100, "rank": "A", "detail": "test"})
+	if not _check(layer.visible, "report_stage_result with return_to_roam shows the VỀ CAMPUS overlay"):
+		return false
+	var fake := Node.new()
+	fake.name = "ReloadedStage"
+	root.add_child(fake)
+	if not _check(layer.visible, "a non-current root child does not hide the overlay"):
+		return false
+	current_scene = fake
+	node_added.emit(fake)   # = reload_current_scene(): current_scene mới vào cây
+	if not _check(not layer.visible, "a reloaded current scene hides the VỀ CAMPUS overlay"):
+		return false
+	if not _check(bool(sm.get("return_to_roam")), "return_to_roam stays true for the replayed run"):
+		return false
+	sm.call("report_stage_result", 3, {"result": "fail", "score": 0, "rank": "C", "detail": "test"})
+	if not _check(layer.visible, "the replayed run's result offers VỀ CAMPUS again"):
+		return false
+	sm.call("_hide_roam_return")
+	sm.set("return_to_roam", false)
+	current_scene = null
+	fake.queue_free()
+	print("  retry flow: VỀ CAMPUS overlay hidden on reload, shown again at the replayed result")
+	return true
+
+
+# ---------------------------------------------------------------------------
+# HOTSPOT ĐI TỚI ĐƯỢC
+# ---------------------------------------------------------------------------
+func _phase_hotspot_step(pf: int) -> bool:
+	if hs_i >= hs_list.size():
+		_release_input()
+		# vỉa hè mặt tiền D1 (cục bộ u 100, v -2,7; đỉnh 0,28 m): thả người chơi từ 0,6 m
+		_place_facing(campus_local(Vector3(100.0, 0.6, -2.7)), campus_dir(Vector3(0.0, 0.0, 1.0)))
+		mark = pf
+		phase = 75
+		return true
+	var h: Area3D = hs_list[hs_i]
+	var rs: Transform3D = h.get_meta("return_spawn")
+	if hs_attempt == -1:
+		var c: Vector3 = h.global_position
+		var hit: Dictionary = _ray(c + Vector3(0.0, 0.25, 0.0), c - Vector3(0.0, 0.5, 0.0))
+		if not _check(not hit.is_empty(), "%s: no floor within 0.5 m below its centre %s" % [h.name, str(c)]):
+			return false
+		var hp: Vector3 = hit["position"]
+		if not _check((hit["normal"] as Vector3).y > 0.7 and hp.y >= c.y - 0.5 and hp.y > -0.15, "%s: walkable floor (not water) below its centre (hit %s)" % [h.name, str(hp)]):
+			return false
+		if not _check(absf(rs.origin.y - c.y) < 0.5 and Vector2(rs.origin.x - c.x, rs.origin.z - c.z).length() < 9.0, "%s: return_spawn %s is at ground level next to the hotspot" % [h.name, str(rs.origin)]):
+			return false
+		hs_walked = false
+		hs_attempt = 0
+		_start_attempt(h, rs, pf)
+		return true
+	if pf < mark + WALK_FRAMES:
+		return true
+	var moved: Vector3 = player.global_position - rs.origin
+	moved.y = 0.0
+	var on_floor: bool = player.is_on_floor()
+	if hs_attempt == 0:
+		var inside: bool = h.overlaps_body(player)
+		print("  %s: return_spawn %s -> walked %.2f m toward it, inside=%s, on_floor=%s" % [h.name, str(rs.origin), moved.length(), str(inside), str(on_floor)])
+		if not _check(inside, "%s: walking from its return_spawn toward it enters the hotspot (player at %s)" % [h.name, str(player.global_position)]):
+			return false
+	if moved.length() > 2.0 and on_floor:
+		hs_walked = true
+	if hs_walked or hs_attempt >= 2:
+		if not _check(hs_walked, "%s: from return_spawn %s the player cannot walk > 2 m on the floor in 120 physics frames (last %.2f m, on_floor %s)" % [h.name, str(rs.origin), moved.length(), str(on_floor)]):
+			return false
+		hs_i += 1
+		hs_attempt = -1
+		_release_input()
+		return true
+	hs_attempt += 1
+	_start_attempt(h, rs, pf)
+	return true
+
+
+## Lần thử 0: về phía tâm hotspot; 1: ngược lại (về phía sân / mốc); 2: vuông góc.
+func _start_attempt(h: Area3D, rs: Transform3D, pf: int) -> void:
+	var to_h: Vector3 = h.global_position - rs.origin
+	to_h.y = 0.0
+	to_h = to_h.normalized() if to_h.length_squared() > 0.001 else Vector3(0.0, 0.0, -1.0)
+	var dir: Vector3 = to_h
+	if hs_attempt == 1:
+		dir = -to_h
+	elif hs_attempt == 2:
+		dir = Vector3(-to_h.z, 0.0, to_h.x)
+	_place_facing(rs.origin, dir)
+	player.set("input_override", Vector2(0.0, -1.0))
+	player.set("sprint_override", true)
+	mark = pf
+
+
+# ---------------------------------------------------------------------------
+# XE ĐỖ + BỜ KÊNH
+# ---------------------------------------------------------------------------
+func _phase_canal_setup(pf: int) -> bool:
+	# xe đang đỗ ở BE6 (từ pha 3), người chơi ở campus: gợi ý khoảng cách, F không lên xe, bản đồ vẽ xe, xe là vật cản
+	if not _check(bool(roam.get("bike_parked")) and not bool(roam.get("mounted")), "bike parked after the first dismount"):
+		return false
+	if not _check(bike.disable_mode == CollisionObject3D.DISABLE_MODE_KEEP_ACTIVE, "parked bike keeps its collision (DISABLE_MODE_KEEP_ACTIVE)"):
+		return false
+	var sq := PhysicsShapeQueryParameters3D.new()
+	var sph := SphereShape3D.new()
+	sph.radius = 0.3
+	sq.shape = sph
+	sq.transform = Transform3D(Basis.IDENTITY, bike.global_transform * Vector3(0.0, 0.55, 0.0))
+	var solid: bool = false
+	for r: Dictionary in _space().intersect_shape(sq, 8):
+		if r.get("collider") == bike:
+			solid = true
+	if not _check(solid, "parked bike is solid (a shape query at its body finds it)"):
+		return false
+	roam.call("_physics_process", 1.0)
+	var n_m: int = int(roam.call("bike_distance_m"))
+	var hint: String = (roam.get("hint_label") as Label).text
+	print("  parked bike %d m away: hint '%s'" % [n_m, hint])
+	if not _check(hint.contains("[F] xe máy cách %d m" % n_m), "out of range the hint shows '[F] xe máy cách %d m'" % n_m):
+		return false
+	roam.call("toggle_bike")
+	if not _check(not bool(roam.get("mounted")) and (roam.get("hint_label") as Label).text.contains("cách %d m" % n_m), "F out of range does not mount and says how far the bike is"):
+		return false
+	roam.call("toggle_map")
+	roam.call("_physics_process", 1.0)
+	var mo: Control = roam.get("map_overlay")
+	if not _check(bool(mo.get("bike_shown")) and (mo.get("bike_pos") as Vector2).distance_to(_xz(bike.global_position)) < 0.5, "M map draws the parked bike"):
+		return false
+	roam.call("toggle_map")
+	roam.set("_hint_flash_t", 0.0)
+	# bờ kênh gần BE6
+	if not _check(_pick_canal_edge(), "test setup: found a canal edge near BE6 away from roads"):
+		return false
+	print("  canal edge at %s, bank normal %s" % [str(canal_mid), str(canal_n)])
+	var land: Vector2 = canal_mid + canal_n * 3.0
+	_place_facing(Vector3(land.x, 0.0, land.y), Vector3(-canal_n.x, 0.0, -canal_n.y))
+	roam.set("bike_parked", false)   # lấy xe ngay tại chỗ người chơi
+	roam.call("mount_bike")
+	if not _check(bool(roam.get("mounted")), "mount_bike() at the canal"):
+		return false
+	var wet: Vector2 = canal_mid - canal_n * 4.5
+	bike.global_position = Vector3(wet.x, 0.3, wet.y)
+	var w: Vector2 = -canal_n
+	bike.rotation = Vector3(0.0, atan2(-w.y, w.x), 0.0)
+	bike.velocity = Vector3.ZERO
+	mark = pf
+	phase = 81
+	return true
+
+
+# ---------------------------------------------------------------------------
+# MENU TẠM DỪNG + BẢNG PHÍM TRONG 1280 x 720
+# ---------------------------------------------------------------------------
+func _phase_pause_open() -> bool:
+	root.size = Vector2i(1280, 720)
+	sm.call("pause_game")
+	var scroll: Control = sm.get("pause_controls_scroll")
+	if not _check(scroll is ScrollContainer, "pause controls live in a ScrollContainer"):
+		return false
+	scroll.visible = true
+	return true
+
+
+func _phase_pause_check() -> bool:
+	var vp: Rect2 = root.get_visible_rect()
+	var scroll: ScrollContainer = sm.get("pause_controls_scroll")
+	var layer: CanvasLayer = sm.get("pause_layer")
+	var bad: Array = []
+	var menu_found: bool = false
+	for b: Node in layer.find_children("*", "Button", true, false):
+		var btn: Button = b
+		if not btn.is_visible_in_tree():
+			continue
+		var r: Rect2 = btn.get_global_rect()
+		if btn.text.contains("VỀ MENU CHÍNH"):
+			menu_found = true
+			print("  pause menu with controls open: 'VỀ MENU CHÍNH' at %s (viewport %s, controls box %.0f px high)" % [str(r), str(vp), scroll.size.y])
+		if r.position.y < vp.position.y - 1.0 or r.end.y > vp.end.y + 1.0:
+			bad.append("%s %s" % [btn.text, str(r)])
+	sm.call("resume_game")
+	if not _check(menu_found, "pause menu has the VỀ MENU CHÍNH button"):
+		return false
+	var cap: float = float((sm.get_script() as GDScript).get_script_constant_map()["PAUSE_CONTROLS_MAX_H"])
+	if not _check(scroll.size.y <= cap + 1.0, "controls box height is capped at %.0f (got %.0f)" % [cap, scroll.size.y]):
+		return false
+	return _check(bad.is_empty(), "pause menu buttons stay inside 1280x720 with the controls open: %s" % str(bad))

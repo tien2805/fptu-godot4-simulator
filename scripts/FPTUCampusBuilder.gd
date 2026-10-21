@@ -36,6 +36,8 @@
 #
 # opts (Dictionary) cho build_authentic_campus:
 #   "colliders": bool        – tạo StaticBody3D cho nhà, xe, cây, rào, hồ (Màn 2 cần cho xe máy)
+#   "walk_colliders": bool   – (cần "colliders") thêm va chạm cho các tấm lát nhô cao đi lên được: vỉa hè mặt tiền,
+#                              bó vỉa đá, thảm đỏ ở hai cổng (mặc định false: 7 màn chơi giữ nguyên; FreeRoam bật)
 #   "parking_gaps": Array[Vector2(u, v)] – chừa trống các ô đỗ xe trong bãi
 #   "skip_barrier_at": float – không dựng thanh barie ở cổng u này (màn tự điều khiển barie)
 #   "grass": bool            – cỏ billboard MultiMesh (mặc định true)
@@ -373,6 +375,17 @@ static func _col_box(parent: Node3D, pos: Vector3, size: Vector3, rot_y_deg: flo
 	if rot_y_deg != 0.0:
 		sb.rotation_degrees.y = rot_y_deg
 	parent.add_child(sb)
+
+## Va chạm cho tấm lát nhô cao người đi bộ bước lên được (bậc ≤ 0,35 m của ThirdPersonController): chỉ khi opts
+## "walk_colliders" (thế giới mở), để các màn chơi cũ không đổi. Hộp đặt trên mặt đất (đáy y = 0), đỉnh = đỉnh tấm lát
+## nhưng tối đa WALK_COL_MAX_TOP: bó vỉa đá cao 0,4 m nằm sát nền đất y = 0 nên va chạm hạ còn 0,32 m để bước qua được.
+const WALK_COL_MAX_TOP: float = 0.32
+
+static func _walk_col_box(parent: Node3D, pos: Vector3, size: Vector3) -> void:
+	if not bool(_opt("walk_colliders", false)):
+		return
+	var top: float = minf(pos.y + size.y * 0.5, WALK_COL_MAX_TOP)
+	_col_box(parent, Vector3(pos.x, top * 0.5, pos.z), Vector3(size.x, top, size.z))
 
 static func _col_cyl(parent: Node3D, pos: Vector3, radius: float, height: float) -> void:
 	if not bool(_opt("colliders", false)):
@@ -1117,11 +1130,15 @@ static func _build_ground_and_boundary(root: Node3D, m: Dictionary) -> void:
 		var a: float = float(seg[0])
 		var b: float = float(seg[1])
 		_box(root, Vector3((a + b) * 0.5, 0.14, -2.7), Vector3(b - a, 0.28, 5.4), m["sidewalk"])
+		_walk_col_box(root, Vector3((a + b) * 0.5, 0.14, -2.7), Vector3(b - a, 0.28, 5.4))
 		_box(root, Vector3((a + b) * 0.5, 0.2, -5.3), Vector3(b - a, 0.4, 0.3), m["granite"])
+		_walk_col_box(root, Vector3((a + b) * 0.5, 0.2, -5.3), Vector3(b - a, 0.4, 0.3))
 	for gu: float in [MAIN_GATE_U, PARK_GATE_U]:
 		_box(root, Vector3(gu, 0.05, -2.7), Vector3(14.0, 0.1, 5.4), m["red_plaza"])
+		_walk_col_box(root, Vector3(gu, 0.05, -2.7), Vector3(14.0, 0.1, 5.4))
 		for sx: float in [-1.0, 1.0]:
 			_box(root, Vector3(gu + sx * 7.1, 0.2, -5.3), Vector3(0.3, 0.4, 0.3), m["granite"])
+			_walk_col_box(root, Vector3(gu + sx * 7.1, 0.2, -5.3), Vector3(0.3, 0.4, 0.3))
 	# Hàng rào mặt tiền (tường thấp + hàng rào cây) đúng ranh giới lô 0..PLOT_U, chừa cổng chính & cổng tây
 	var gaps: Array = [[MAIN_GATE_U - 6.5, MAIN_GATE_U + 6.5], [WEST_GATE_U - 6.5, WEST_GATE_U + 6.5]]
 	var u: float = -0.5

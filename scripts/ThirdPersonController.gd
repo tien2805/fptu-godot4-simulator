@@ -1,6 +1,7 @@
 # File: res://scripts/ThirdPersonController.gd
 # Nhân vật đi bộ góc nhìn thứ ba cho thế giới mở (FreeRoam): WASD theo hướng camera, Shift chạy, trọng lực,
-# bước lên bậc/bó vỉa tới 0,35 m, chuột xoay camera (bắt chuột khi click, thả khi ESC), Q/E xoay quanh nhân vật,
+# bước lên bậc/bó vỉa tới 0,35 m, chuột xoay camera (bắt chuột khi click, thả khi ESC), Z/C xoay quanh nhân vật
+# (không dùng Q/E: [E] là phím vào màn ở cột sáng của FreeRoam),
 # cần camera 3,2 m phía sau ở độ cao 1,6 m có RayCast3D để tường không che nhân vật. Hình nhân vật = CharacterBuilder
 # (preset "player", thân rigged), bước chân theo tốc độ ngang qua CharacterBuilder.set_speed().
 # Tách từ StageExtra_EOSExam._handle_movement() / _update_walk_camera() và Stage5_Canteen._process_walk(), bỏ kẹp phòng.
@@ -22,7 +23,9 @@ const CAM_DISTANCE: float = 3.2
 const CAM_HEIGHT: float = 1.6
 const CAM_MARGIN: float = 0.25
 const MOUSE_SENS: float = 0.0022
-const ORBIT_SPEED: float = 2.2          # rad/s khi giữ Q/E
+const ORBIT_SPEED: float = 2.2          # rad/s khi giữ Z/C
+const ORBIT_LEFT_KEY: Key = KEY_Z
+const ORBIT_RIGHT_KEY: Key = KEY_C
 const PITCH_MIN: float = -1.1
 const PITCH_MAX: float = 0.55
 const DEFAULT_PITCH: float = -0.2
@@ -168,9 +171,9 @@ func _physics_process(delta: float) -> void:
 	input_dir = _read_input()
 	is_sprinting = sprint_override or (controls_enabled and InputMap.has_action("sprint") and Input.is_action_pressed("sprint"))
 	if controls_enabled:
-		if Input.is_physical_key_pressed(KEY_Q):
+		if Input.is_physical_key_pressed(ORBIT_LEFT_KEY):
 			yaw += ORBIT_SPEED * delta
-		if Input.is_physical_key_pressed(KEY_E):
+		if Input.is_physical_key_pressed(ORBIT_RIGHT_KEY):
 			yaw -= ORBIT_SPEED * delta
 	var f := Vector3(-sin(yaw), 0.0, -cos(yaw))
 	var r := Vector3(cos(yaw), 0.0, -sin(yaw))
