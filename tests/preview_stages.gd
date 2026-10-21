@@ -9,7 +9,8 @@
 # FPS_WINDOW frame ngay trước khi chụp.
 # Màn 1 (tuyến thật BE6 -> FPTU) dùng "shots" đặt theo offset trên curve RoadSystem/RoadTrack/RoadPath
 # và các mốc route_marks: s1_01_start_be6 (xuất phát, tháp BE6 phía sau), s1_02_nguyen_van_tang
-# (đường thẳng Nguyễn Văn Tăng), s1_03_finish_d1_gate (vạch đích trước cổng chính trên D1).
+# (đường thẳng Nguyễn Văn Tăng), s1_03_finish_d1_gate (vạch đích trước cổng chính trên D1),
+# s1_04_rain_nguyen_van_tang (góc s1_02 khi đang mưa: sương của RoadEvents dày lên).
 extends SceneTree
 
 const SCENES: Array = [
@@ -18,6 +19,8 @@ const SCENES: Array = [
 		{"name": "s1_01_start_be6", "cam_off": 24.0, "cam_lat": 3.6, "cam_h": 2.4, "look_off": 0.0, "look_lat": -1.0, "look_h": 9.0, "fov": 72.0},
 		{"name": "s1_02_nguyen_van_tang", "mark": "nvt_start", "cam_off": 520.0, "cam_lat": 1.8, "cam_h": 2.3, "look_off": 600.0, "look_lat": 0.0, "look_h": 1.6, "fov": 70.0},
 		{"name": "s1_03_finish_d1_gate", "mark": "finish", "cam_off": -58.0, "cam_lat": -1.5, "cam_h": 4.2, "look_off": 10.0, "look_lat": 7.0, "look_h": 2.5, "fov": 66.0},
+		# cùng góc s1_02 nhưng bật cơn mưa của RoadEvents (sương dày lên); chờ 180 frame cho tween sương 1,2 s xong
+		{"name": "s1_04_rain_nguyen_van_tang", "mark": "nvt_start", "cam_off": 520.0, "cam_lat": 1.8, "cam_h": 2.3, "look_off": 600.0, "look_lat": 0.0, "look_h": 1.6, "fov": 70.0, "rain": true, "frames": 180},
 	]},
 	{"key": "s2", "path": "res://scenes/Stage2_Parking.tscn", "extra": [{"pos": Vector3(143.0, 2.0, -9.7), "look": Vector3(192.0, 5.0, -4.0), "fov": 72.0}, {"pos": Vector3(122.0, 2.4, 76.0), "look": Vector3(90.0, 5.0, 48.0), "fov": 72.0}]},
 	{"key": "s3", "path": "res://scenes/Stage3_ClassroomFAP.tscn", "extra": [{"pos": Vector3(-1.5, 1.7, 2.2), "look": Vector3(7.0, 1.3, -2.5), "fov": 72.0}]},
@@ -38,6 +41,7 @@ var current: Node = null
 var out_dir: String
 var step: int = 0
 var only: String = ""
+var next_save: int = 0                # Màn 1: frame lưu góc chụp hiện tại (mỗi góc giữ "frames" hoặc SHOT_FRAMES)
 var _ticks: Array[int] = []
 
 func _initialize() -> void:
@@ -103,7 +107,23 @@ func _set_route_cam(shot: Dictionary) -> bool:
 	cam.fov = float(shot["fov"])
 	cam.look_at_from_position(pos, look, Vector3.UP)
 	cam.current = true
+	if bool(shot.get("rain", false)):
+		_start_rain(rs)
 	return true
+
+## Ép cơn mưa của RoadEvents (bình thường 50% số lần chơi, khi xe tới đoạn Nguyễn Văn Tăng). Ở --script,
+## current_scene chưa có lúc RoadEvents.setup nên nối WorldEnvironment bằng tay.
+func _start_rain(rs: Node) -> void:
+	var ev: Node = rs.get("road_events")
+	if ev == null:
+		return
+	ev.set("world_env", current.get_node_or_null("WorldEnvironment"))
+	ev.set("rain_possible", true)
+	ev.set("rain_done", false)
+	ev.call("_update_rain", float(ev.get("rain_from")) + 1.0)
+
+func _shot_frames(shot: Dictionary) -> int:
+	return int(shot.get("frames", SHOT_FRAMES))
 
 func _finish_scene() -> void:
 	cam.current = false
@@ -139,12 +159,14 @@ func _process(_d: float) -> bool:
 		# Góc chụp theo tuyến đường (Màn 1): đặt camera, chờ SHOT_FRAMES frame rồi lưu
 		var shots: Array = SCENES[scene_idx]["shots"]
 		if frames == 50:
+			next_save = 50 + _shot_frames(shots[0])
 			if not _set_route_cam(shots[0]):
 				_finish_scene()
-		elif frames > 50 and (frames - 50) % SHOT_FRAMES == 0:
+		elif frames > 50 and frames == next_save:
 			_save(str(shots[step]["name"]))
 			step += 1
 			if step < shots.size():
+				next_save = frames + _shot_frames(shots[step])
 				if not _set_route_cam(shots[step]):
 					_finish_scene()
 			else:

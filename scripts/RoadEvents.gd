@@ -55,6 +55,19 @@ var is_raining: bool = false
 var rain_done: bool = false
 var rain_particles: CPUParticles3D
 var world_env: WorldEnvironment
+# Sương khi mưa. Sương mũ (classic, FOG_MODE_EXPONENTIAL): tăng fog_density. Sương DEPTH (phong cách vice): fog_density
+# là độ đặc TỐI ĐA (1.0 lúc bình minh) nên giữ nguyên, kéo vùng sương lại gần (fog_depth_begin/end/curve). Tạnh mưa
+# trả về đúng giá trị đã lưu lúc mưa bắt đầu (không phải một hằng số cố định).
+# Sương DEPTH = smoothstep(begin, end, d)^curve x density: 0/400/0.6 cho ~12% ở 40 m, ~33% ở 100 m, ~66% ở 200 m,
+# ~90% ở 300 m, gần với sương mũ 0.0045 của classic (16% / 36% / 59% / 74%). smoothstep làm sương gần rất mỏng:
+# 18/350 với curve 1.4 chỉ ~0,2% ở 40 m và ~7% ở 100 m, ảnh preview mưa gần như không khác lúc khô.
+const RAIN_FOG_DENSITY_EXP: float = 0.0045
+const RAIN_FOG_DEPTH_BEGIN: float = 0.0
+const RAIN_FOG_DEPTH_END: float = 400.0
+const RAIN_FOG_DEPTH_CURVE: float = 0.6
+var rain_fog_saved: Dictionary = {}     # fog_density / fog_depth_begin / fog_depth_end / fog_depth_curve trước mưa
+var _rain_env: Environment = null       # Environment đang mang sương mưa
+var _rain_fog_tween: Tween = null
 
 func setup(path: Path3D, bike: CharacterBody3D, manager: Node = null) -> void:
 	road_path = path
@@ -577,8 +590,7 @@ func _update_rain(player_offset: float) -> void:
 		emit_signal("banner", "🌧 MƯA RÀO BẤT CHỢT TRÊN NGUYỄN VĂN TĂNG! ĐƯỜNG TRƠN – LÁI NHẸ TAY, DRIFT DỄ VĂNG!", Color("#74B9FF"), 2.6)
 		GameFX.play_sfx("whoosh", -2.0, 0.6)
 		if world_env and world_env.environment:
-			var tw := create_tween()
-			tw.tween_property(world_env.environment, "fog_density", 0.0045, 1.2)
+			_rain_fog_start(world_env.environment)
 	elif is_raining and player_offset >= rain_to:
 		is_raining = false
 		rain_done = true
@@ -587,9 +599,34 @@ func _update_rain(player_offset: float) -> void:
 			player_bike.set_rain(false)
 		emit_signal("rain_changed", false)
 		emit_signal("banner", "☀️ TẠNH MƯA RỒI! VÍT GA TIẾP!", Color("#FDCB6E"), 1.6)
-		if world_env and world_env.environment:
-			var tw := create_tween()
-			tw.tween_property(world_env.environment, "fog_density", 0.0006, 1.5)
+		_rain_fog_end()
+
+func _rain_fog_start(env: Environment) -> void:
+	_rain_env = env
+	rain_fog_saved = {"fog_density": env.fog_density, "fog_depth_begin": env.fog_depth_begin,
+		"fog_depth_end": env.fog_depth_end, "fog_depth_curve": env.fog_depth_curve}
+	if _rain_fog_tween:
+		_rain_fog_tween.kill()
+	_rain_fog_tween = create_tween().set_parallel(true)
+	if env.fog_mode == Environment.FOG_MODE_DEPTH:
+		_rain_fog_tween.tween_property(env, "fog_depth_begin", minf(env.fog_depth_begin, RAIN_FOG_DEPTH_BEGIN), 1.2)
+		_rain_fog_tween.tween_property(env, "fog_depth_end", minf(env.fog_depth_end, RAIN_FOG_DEPTH_END), 1.2)
+		_rain_fog_tween.tween_property(env, "fog_depth_curve", minf(env.fog_depth_curve, RAIN_FOG_DEPTH_CURVE), 1.2)
+	else:
+		_rain_fog_tween.tween_property(env, "fog_density", RAIN_FOG_DENSITY_EXP, 1.2)
+
+func _rain_fog_end() -> void:
+	if _rain_fog_tween:
+		_rain_fog_tween.kill()
+		_rain_fog_tween = null
+	var env: Environment = _rain_env
+	_rain_env = null
+	# Environment đã bị thay giữa cơn mưa (đổi phong cách đồ hoạ / áp lại preset): cái mới đã mang sương gốc của nó
+	if env == null or world_env == null or world_env.environment != env:
+		return
+	_rain_fog_tween = create_tween().set_parallel(true)
+	for prop: String in rain_fog_saved:
+		_rain_fog_tween.tween_property(env, prop, rain_fog_saved[prop], 1.5)
 
 # ---------------------------------------------------------------------------
 func _process(delta: float) -> void:
