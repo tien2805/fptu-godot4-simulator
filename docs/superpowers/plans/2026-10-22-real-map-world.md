@@ -121,7 +121,20 @@ func _initialize() -> void:
 
 **Files:**
 - Create: `generate_city_textures.py`
-- Output: `assets/textures/city_tower_facade.png` (+`_n`), `city_beverly_facade.png` (+`_n`), `city_mall_facade.png`, `city_shophouse_facade.png`, `city_industrial_facade.png`, `city_canal_water.png`, `city_road_overlay.png` (lane dashes + edge lines, RGBA), `city_roof_flat.png`, each 512 px wide, tileable horizontally; one tile = one storey vertically for facades (so `uv1_scale.y = levels`).
+- Output: `assets/textures/city_tower_facade.png` (+`_n`), `city_beverly_facade.png` (+`_n`), `city_mall_facade.png`, `city_shophouse_facade.png`, `city_industrial_facade.png`, `city_canal_water.png`, `city_road_overlay.png` (lane dashes + edge lines, RGBA), `city_roof_flat.png`, each 512 px wide and tileable horizontally. The tiles are NOT all 3 m x one storey; one tile covers the real-world size below (image bottom = floor line, so the per-storey facades also tile vertically):
+
+| Texture | One tile covers | Tiles along v |
+|---|---|---|
+| `city_tower_facade.png` (+`_n`) | 3.0 m x 1 storey (3.2 m), 512 x 546 px | yes |
+| `city_beverly_facade.png` (+`_n`) | 3.0 m x 1 storey (3.2 m), 512 x 546 px | yes |
+| `city_mall_facade.png` | 6.0 m x 1 storey (3.2 m), 512 x 273 px | yes |
+| `city_industrial_facade.png` | 6.0 m x 1 storey (3.2 m), 512 x 273 px | yes |
+| `city_shophouse_facade.png` | 12.0 m x 2 storeys (7.2 m, 3.6 m per storey): 3 shophouses of 4 m from parapet to pavement = one whole `levels = 2` / `height = 7.2` building, which is every `style == "shophouse"` building in `mapdata.json`; 512 x 307 px | no (one tile = one building) |
+| `city_road_overlay.png` (RGBA) | 4 m along u x 1 carriageway across v, 512 x 256 px | no |
+| `city_canal_water.png` | 8 m x 8 m, 512 x 512 px | yes |
+| `city_roof_flat.png` | 4 m x 4 m, 512 x 512 px | yes |
+
+The facade rows are the `TILE_W` / `TILE_STOREYS` constants in `generate_city_textures.py` (the same table, so Task 3 never has to read the generator's drawing code); `tests/test_city_textures.py` checks the pixel sizes, the seams, and that the shophouse tile matches the shophouse `levels`/`height` in `mapdata.json`.
 
 **Interfaces:** Produces file names above; consumed by `MapBuilder._mat_for_style(style)`.
 
@@ -140,7 +153,8 @@ func _initialize() -> void:
 - Produces:
   - `static func build_region(parent: Node3D, md: MapData, region: String, opts: Dictionary = {}) -> Node3D`; opts: `colliders: bool = true`, `roads: bool = true`, `buildings: bool = true`, `water: bool = true`, `areas: bool = true`, `trees: bool = true`, `labels: bool = true`, `skip_building_ids: Array = []` (campus ring and HUTECH are built by FPTUCampusBuilder, so FreeRoam passes their ids), `lod: int = 0` (0 full, 1 no labels/trees, 2 boxes only).
   - `static func build_road(parent: Node3D, points: PackedVector2Array, width: float, opts: Dictionary = {}) -> MeshInstance3D` (ribbon with mitred joints, 0.15 m kerb boxes on both sides unless `opts.kerb == false`, lane overlay texture, `StaticBody3D` collider).
-  - `static func build_building(parent: Node3D, b: Dictionary, opts: Dictionary = {}) -> Node3D` (walls: SurfaceTool quads per edge with UV u = edge length / 3.0 m, v = levels; roof: `Geometry2D.triangulate_polygon` of outer minus inner; `ConvexPolygonShape3D` per edge box or a `ConcavePolygonShape3D` from the wall mesh; Label3D with `display` name on the roof edge when `labels`).
+  - `static func build_building(parent: Node3D, b: Dictionary, opts: Dictionary = {}) -> Node3D` (walls: SurfaceTool quads per edge with UV u = edge length / 3.0 m, v = levels, and the wall material from `_mat_for_style(b.style)` below, which rescales those UVs to the Task 2 tile table; roof: `Geometry2D.triangulate_polygon` of outer minus inner; `ConvexPolygonShape3D` per edge box or a `ConcavePolygonShape3D` from the wall mesh; Label3D with `display` name on the roof edge when `labels`).
+  - `static func _mat_for_style(style: String) -> StandardMaterial3D` (cached per style): albedo `city_<style>_facade.png` (+ `_n` normal map for tower and beverly) and `uv1_scale = Vector3(3.0 / TILE_W[style], 1.0 / TILE_STOREYS[style], 1.0)` with `const TILE_W = {"tower": 3.0, "beverly": 3.0, "mall": 6.0, "industrial": 6.0, "shophouse": 12.0}` and `const TILE_STOREYS = {"tower": 1, "beverly": 1, "mall": 1, "industrial": 1, "shophouse": 2}` (copied from the Task 2 table = the constants of the same name in `generate_city_textures.py`). So one tile = 3 m of wall per storey for tower/beverly, 6 m per storey for mall/industrial, and 12 m x the whole building for the shophouse (every shophouse in `mapdata.json` has `levels = 2`, so `1 / TILE_STOREYS = 1 / levels` there). `uv1_scale = Vector3(1, 1, 1)` would squash the mall and industrial facades 2x and the shophouse 4x horizontally and stack its storeys.
   - `static func build_water(parent, w: Dictionary)`, `static func build_area(parent, a: Dictionary, m: Dictionary)` (park = grass plane + 1 tree per 250 m2 inside the polygon using rejection sampling with `Geometry2D.is_point_in_polygon`; pitch = green plane + white lines; parking = dark plane + bay stripes; pool = blue plane -0.3 m; campus/other = light plane).
   - All geometry is y = 0 ground unless `opts.y` given; roads at y = 0.02, pavements at 0.12.
 

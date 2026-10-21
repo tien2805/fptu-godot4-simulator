@@ -4,13 +4,16 @@ mặt đứng pastel (hồng / bạc hà / đào / tím nhạt) với các dải
 tô phẳng kiểu PS2. Vẽ hoàn toàn bằng code Pillow/numpy, KHÔNG dùng ảnh thật, KHÔNG dùng ảnh AI.
 
 Mỗi file rộng 512 px, lặp được theo x; mặt đứng 1 tầng cũng lặp được theo y. "Tile" = kích thước thật một lần lặp
-phủ lên tường. Mesh của MapBuilder có UV u = chiều dài cạnh / 3 m, v = số tầng, nên _mat_for_style(style) đặt
-uv1_scale = (3.0 / tile_w_m, 1.0 / số_tầng_mỗi_tile, 1). Mép DƯỚI ảnh = mạch sàn (tầng trệt với shophouse).
+phủ lên tường, ghi trong bảng TILE_W / TILE_STOREYS dưới đây (plan Task 2 Output và Task 3 build_building chép lại
+bảng này). Mesh của MapBuilder có UV u = chiều dài cạnh / 3 m, v = số tầng (levels), nên _mat_for_style(style) đặt
+uv1_scale = Vector3(3.0 / TILE_W[style], 1.0 / TILE_STOREYS[style], 1.0). Quy tắc duy nhất cho trục v: 1 / số tầng
+mỗi tile; với shophouse TILE_STOREYS = 2 = levels của mọi shophouse trong mapdata.json (height 7,2 m), tức một tile
+phủ trọn một căn từ lan can mái xuống vỉa hè. Mép DƯỚI ảnh = mạch sàn (vỉa hè với shophouse).
 
   city_tower_facade.png (+_n)    3,0 m x 1 tầng    tháp kính (Rainbow S1..S10): 1 nhịp = 2 ô kính 1,16 m, trụ hồng, dải spandrel
   city_beverly_facade.png (+_n)  3,0 m x 1 tầng    The Beverly: tường kem, sàn ban công trắng, lan can kính xanh ngọc, cửa lùa
   city_mall_facade.png           6,0 m x 1 tầng    Vincom: 4 tấm kính lớn 1,3 m dưới dải biển hiệu cam
-  city_shophouse_facade.png     12,0 m x 3 tầng    3 nhà phố 4 m: cửa cuốn + bảng hiệu, 2 cửa sổ mỗi tầng, mỗi căn một màu pastel
+  city_shophouse_facade.png     12,0 m x 2 tầng    3 nhà phố 4 m cao 7,2 m (tầng 3,6 m như mapdata): cửa cuốn + bảng hiệu, 2 cửa sổ tầng trên, mỗi căn một màu pastel
   city_industrial_facade.png     6,0 m x 1 tầng    tôn sóng bạc hà, cửa cuốn, ô cửa sổ cao 1,2 m, ống thoát nước
   city_canal_water.png           8 m x 8 m          nước kênh xanh ngọc, lặp 2 chiều
   city_road_overlay.png (RGBA)   4 m dọc x 1 lòng đường ngang: vạch mép trắng + vạch tim vàng đứt (2 m vạch / 2 m trống)
@@ -29,7 +32,11 @@ os.makedirs(OUT_DIR, exist_ok=True)
 random.seed(1986)
 
 W = 512          # chiều rộng mọi texture
-STOREY_M = 3.2   # chiều cao một tầng (MapBuilder: BE6 30 tầng ~ 96 m)
+STOREY_M = 3.2   # chiều cao một tầng nhà cao tầng (mapdata: tower/beverly height = levels x 3,2; BE6 30 tầng = 96 m)
+SHOPHOUSE_STOREY_M = 3.6   # tầng nhà phố theo mapdata (mọi shophouse: levels 2, height 7,2 m)
+# Hợp đồng tile cho MapBuilder._mat_for_style(style): uv1_scale = Vector3(3.0 / TILE_W[style], 1.0 / TILE_STOREYS[style], 1.0)
+TILE_W = {"tower": 3.0, "beverly": 3.0, "mall": 6.0, "industrial": 6.0, "shophouse": 12.0}   # m tường thật mỗi lần lặp theo u
+TILE_STOREYS = {"tower": 1, "beverly": 1, "mall": 1, "industrial": 1, "shophouse": 2}        # số tầng mỗi lần lặp theo v
 
 # Bảng màu Vice City (Miami thập niên 80)
 PAL = {
@@ -206,7 +213,7 @@ def ppm_for(tile_w_m):
 # ---------------------------------------------------------------- mặt đứng
 def make_tower():
     """Tháp kính 3 m x 1 tầng: trụ hồng rộng 0,6 m nằm giữa mép tile, 2 ô kính 1,16 m, spandrel đào với dải xanh ngọc."""
-    ppm, H = ppm_for(3.0)
+    ppm, H = ppm_for(TILE_W["tower"])
     P = lambda m: int(round(m * ppm))
     c = Canvas(W, H, PAL["cream"], noise_amp=4, seed=11, height=0.7)
     y_sp = P(2.3)
@@ -230,7 +237,7 @@ def make_tower():
 def make_beverly():
     """The Beverly 3 m x 1 tầng: sàn ban công trắng 0,3 m vắt qua mạch tầng, lan can kính xanh ngọc 1,1 m,
     cửa lùa kính phía sau, tường kem, pinstripe xanh ngọc trên lanh tô."""
-    ppm, H = ppm_for(3.0)
+    ppm, H = ppm_for(TILE_W["beverly"])
     P = lambda m: int(round(m * ppm))
     c = Canvas(W, H, PAL["cream"], noise_amp=4, seed=21, height=0.75)
     c.rect([0, P(0.14), W, P(0.20)], PAL["teal"], 0.78)                      # pinstripe lanh tô
@@ -251,7 +258,7 @@ def make_beverly():
 
 def make_mall():
     """Vincom 6 m x 1 tầng: dải biển hiệu cam (gradient) với hoạ tiết thoi, 4 tấm kính 1,3 m, trụ tím nhạt giữa mép."""
-    ppm, H = ppm_for(6.0)
+    ppm, H = ppm_for(TILE_W["mall"])
     P = lambda m: int(round(m * ppm))
     c = Canvas(W, H, PAL["lilac_light"], noise_amp=3, seed=31, height=0.7)
     c.rect([0, H - P(0.05), W, H], PAL["slab"], 0.6)
@@ -273,13 +280,15 @@ def make_mall():
 
 
 def make_shophouse():
-    """3 nhà phố 4 m x 3 tầng (12 m x 9,6 m): mỗi căn một màu pastel, lan can/gờ trắng, 2 cửa sổ 1,2 m mỗi tầng,
-    tầng trệt cửa cuốn 3 m + bảng hiệu; vách ngăn 0,2 m tại x = 0 / 4 / 8 m (0 nằm giữa mép tile)."""
-    ppm = W / 12.0
-    H = int(round(3 * STOREY_M * ppm))
+    """3 nhà phố 4 m x 2 tầng (12 m x 7,2 m, tầng 3,6 m = levels 2 / height 7,2 m của mọi shophouse trong mapdata.json):
+    mỗi căn một màu pastel, lan can mái + gờ sàn trắng, tầng trên 2 cửa sổ 1,2 m, tầng trệt bảng hiệu + cửa cuốn 3 m;
+    vách ngăn 0,2 m tại x = 0 / 4 / 8 m (0 nằm giữa mép tile). Một tile phủ trọn một căn (uv1_scale.y = 1/2 trên
+    tường có v = levels = 2) nên ảnh không lặp theo y: mép trên = lan can mái, mép dưới = vỉa hè."""
+    ppm = W / TILE_W["shophouse"]
+    H = int(round(TILE_STOREYS["shophouse"] * SHOPHOUSE_STOREY_M * ppm))                  # 307 px
     P = lambda m: int(round(m * ppm))
     rng = random.Random(1986)
-    cols, cw = 3, 4.0
+    cols, cw, g0 = 3, 4.0, SHOPHOUSE_STOREY_M                                             # g0 = mạch sàn tầng trệt (m từ mép trên)
     pastels = rng.sample([PAL["pink"], PAL["mint"], PAL["peach"], PAL["lilac"], PAL["lemon"], PAL["sky"]], cols)
     accents = rng.sample([PAL["teal"], PAL["hot_pink"], PAL["magenta"], PAL["orange"]], cols)
     words = rng.sample(SIGN_WORDS, cols)
@@ -290,20 +299,18 @@ def make_shophouse():
         c.rect([P(x0), 0, P(x0 + cw), H], pastels[i], 0.7)
         c.rect([P(x0), 0, P(x0 + cw), P(0.35)], PAL["white"], 0.8)                         # lan can mái
         c.rect([P(x0), P(0.12), P(x0 + cw), P(0.18)], accents[i], 0.8)
-        for fy in (STOREY_M, 2 * STOREY_M):
-            c.rect([P(x0), P(fy) - P(0.14), P(x0 + cw), P(fy)], PAL["white"], 0.8)          # gờ sàn
-        for fy in (0.0, STOREY_M):
-            for wx in (0.55, 2.25):
-                bx = [P(x0 + wx), P(fy + 0.9), P(x0 + wx + 1.2), P(fy + 2.4)]
-                c.rect([bx[0] - 3, bx[1] - 3, bx[2] + 3, bx[3] + 3], PAL["white"], 0.66)   # khung
-                c.glass(bx, seed=5 + i, height=0.42)
-                c.rect([P(x0 + wx + 0.6) - 1, bx[1], P(x0 + wx + 0.6) + 1, bx[3]], PAL["white"], 0.66)
-                c.rect([bx[0] - 5, bx[3] + 3, bx[2] + 5, bx[3] + 7], PAL["white"], 0.72)   # bệ cửa
-        c.rect([P(x0), P(9.35), P(x0 + cw), H], PAL["concrete"], 0.7)                      # chân tường
-        c.rect([P(x0 + 0.3), P(6.55), P(x0 + 3.7), P(7.25)], accents[i], 0.74)             # bảng hiệu
-        c.text((P(x0 + 2.0), P(6.9)), words[i], PAL["white"] + (255,), fnt)
-        c.rect([P(x0 + 0.45), P(7.25), P(x0 + 3.55), P(7.42)], (120, 120, 130), 0.7)       # hộp cửa cuốn
-        c.slats([P(x0 + 0.5), P(7.42), P(x0 + 3.5), H], PAL["shutter"], P(0.1), 0.62)      # cửa cuốn
+        c.rect([P(x0), P(g0) - P(0.14), P(x0 + cw), P(g0)], PAL["white"], 0.8)             # gờ sàn tầng trên
+        for wx in (0.55, 2.25):                                                           # 2 cửa sổ 1,2 x 1,5 m tầng trên
+            bx = [P(x0 + wx), P(1.0), P(x0 + wx + 1.2), P(2.5)]
+            c.rect([bx[0] - 3, bx[1] - 3, bx[2] + 3, bx[3] + 3], PAL["white"], 0.66)       # khung
+            c.glass(bx, seed=5 + i, height=0.42)
+            c.rect([P(x0 + wx + 0.6) - 1, bx[1], P(x0 + wx + 0.6) + 1, bx[3]], PAL["white"], 0.66)
+            c.rect([bx[0] - 5, bx[3] + 3, bx[2] + 5, bx[3] + 7], PAL["white"], 0.72)       # bệ cửa
+        c.rect([P(x0), H - P(0.25), P(x0 + cw), H], PAL["concrete"], 0.7)                  # chân tường
+        c.rect([P(x0 + 0.3), P(g0 + 0.25), P(x0 + 3.7), P(g0 + 0.95)], accents[i], 0.74)   # bảng hiệu 0,7 m
+        c.text((P(x0 + 2.0), P(g0 + 0.6)), words[i], PAL["white"] + (255,), fnt)
+        c.rect([P(x0 + 0.45), P(g0 + 0.95), P(x0 + 3.55), P(g0 + 1.12)], (120, 120, 130), 0.7)   # hộp cửa cuốn
+        c.slats([P(x0 + 0.5), P(g0 + 1.12), P(x0 + 3.5), H], PAL["shutter"], P(0.1), 0.62)       # cửa cuốn 3 x 2,5 m
     for i in range(cols):
         c.rect([P(i * cw) - P(0.1), 0, P(i * cw) + P(0.1), H], PAL["white_warm"], 0.85)   # vách ngăn
     save(c.im, "city_shophouse_facade.png")
@@ -312,7 +319,7 @@ def make_shophouse():
 def make_industrial():
     """Nhà xưởng 6 m x 1 tầng: tôn sóng bạc hà (40 sóng / tile), dải mái cá hồi, cửa cuốn xanh ngọc 2,8 m,
     ô cửa sổ cao 1,2 m, chân tường bê tông, ống thoát nước."""
-    ppm, H = ppm_for(6.0)
+    ppm, H = ppm_for(TILE_W["industrial"])
     P = lambda m: int(round(m * ppm))
     x = np.arange(W, dtype=np.float32)
     rib = np.sin(2.0 * np.pi * x * 40.0 / W)

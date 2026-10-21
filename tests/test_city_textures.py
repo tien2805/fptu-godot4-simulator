@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """Checks the code-drawn city textures written by generate_city_textures.py (plan Task 2):
 existence + .import "keep" stub, 512 px width, the documented tile sizes, RGBA road overlay,
-normal maps mostly facing +Z, and seamless tiling along x (and along y where one tile = one storey).
+normal maps mostly facing +Z, seamless tiling along x (and along y where one tile = one storey), and that the
+shophouse tile (one tile = one whole building) matches the levels/height of every shophouse in mapdata.json.
 Run from the project root:  python tests/test_city_textures.py   (exit code 0 = OK)
 """
+import json
 import os
 import sys
 
@@ -20,12 +22,40 @@ SPEC = {
     "city_beverly_facade.png": (512, 546, "RGB", True),
     "city_beverly_facade_n.png": (512, 546, "RGB", True),
     "city_mall_facade.png": (512, 273, "RGB", True),
-    "city_shophouse_facade.png": (512, 410, "RGB", False),
+    "city_shophouse_facade.png": (512, 307, "RGB", False),   # 12 m x 2 storeys of 3.6 m = one whole shophouse
     "city_industrial_facade.png": (512, 273, "RGB", True),
     "city_canal_water.png": (512, 512, "RGB", True),
     "city_road_overlay.png": (512, 256, "RGBA", False),
     "city_roof_flat.png": (512, 512, "RGB", True),
 }
+# Shophouse tile contract (generate_city_textures.TILE_W / TILE_STOREYS): MapBuilder sets
+# uv1_scale.y = 1 / SHOPHOUSE_STOREYS on a wall with v = levels, so one tile is stretched over one whole building.
+SHOPHOUSE_TILE_W_M = 12.0
+SHOPHOUSE_STOREYS = 2
+
+
+def check_shophouse_fits_data(errors, png_height):
+    """Every style == "shophouse" building in mapdata.json must have exactly SHOPHOUSE_STOREYS levels and one
+    common height, and the tile must be drawn at that height (px/m = 512 / tile width), or the single tile
+    stretched over the building shows the wrong number of storeys / squashed windows."""
+    with open(os.path.join(ROOT, "assets", "data", "mapdata.json"), encoding="utf-8") as f:
+        shops = [b for b in json.load(f)["buildings"] if b.get("style") == "shophouse"]
+    if not shops:
+        errors.append("mapdata.json: no shophouse buildings, nothing to fit the tile to")
+        return
+    levels = sorted({int(b["levels"]) for b in shops})
+    heights = sorted({round(float(b["height"]), 2) for b in shops})
+    if levels != [SHOPHOUSE_STOREYS]:
+        errors.append("city_shophouse_facade.png: tile draws %d storeys but mapdata shophouses have levels %s"
+                      % (SHOPHOUSE_STOREYS, levels))
+    if len(heights) != 1:
+        errors.append("city_shophouse_facade.png: mapdata shophouses have several heights %s, one tile cannot fit all"
+                      % heights)
+    ppm = 512 / SHOPHOUSE_TILE_W_M
+    want = int(round(heights[0] * ppm))
+    if png_height != want:
+        errors.append("city_shophouse_facade.png: height %d px, but a %.1f m shophouse at %.2f px/m is %d px"
+                      % (png_height, heights[0], ppm, want))
 
 
 def seam(a, axis):
@@ -53,6 +83,8 @@ def main():
             errors.append("%s: size %s, expected %s" % (name, im.size, (w, h)))
         if im.mode != mode:
             errors.append("%s: mode %s, expected %s" % (name, im.mode, mode))
+        if name == "city_shophouse_facade.png":
+            check_shophouse_fits_data(errors, im.size[1])
         a = np.asarray(im.convert(mode), dtype=np.float32)
         s, adj = seam(a, 1)
         if s > max(8.0, 2.5 * adj):
