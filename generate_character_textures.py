@@ -235,6 +235,21 @@ def make_shirt_fpt():
     save(im.convert("RGB"), "char_shirt_fpt.png")
 
 
+def make_logo_patch():
+    """Miếng logo FPT University (RGBA có alpha) dán ngực trái thân mô hình rigged."""
+    W, H = 128, 64
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im, "RGBA")
+    f = font(30)
+    tw = d.textlength("FPT", font=f)
+    d.rounded_rectangle([4, 4, W - 4, 44], radius=8, fill=(255, 255, 255, 240))
+    d.text(((W - tw) * 0.5, 2), "FPT", font=f, fill=(243, 112, 33, 255))
+    f2 = font(11, False)
+    tw2 = d.textlength("UNIVERSITY", font=f2)
+    d.text(((W - tw2) * 0.5, 47), "UNIVERSITY", font=f2, fill=(255, 250, 240, 255))
+    save(im, "char_fpt_logo.png")
+
+
 # ---------------------------------------------------------------- VẢI / DENIM / TÓC / DA (normal map)
 def make_cloth_normal():
     W = H = 256
@@ -285,6 +300,7 @@ if __name__ == "__main__":
             for ex in EXPRESSIONS:
                 make_face(t, s, ex)
     make_cloth_folds()
+    make_logo_patch()
     make_shirt_fpt()
     make_cloth_normal()
     make_denim()

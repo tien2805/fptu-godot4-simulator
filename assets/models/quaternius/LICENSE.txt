@@ -1,0 +1,10 @@
+Ultimate Modular Men Pack (Feb 2022) and Ultimate Modular Women Pack (April 2022) by @Quaternius
+https://quaternius.com  -  https://www.patreon.com/quaternius
+
+License: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Files used in this project (Individual Characters / glTF, unmodified):
+  men/Casual_2.gltf, men/Casual_Hoodie.gltf, men/Suit.gltf, men/Worker.gltf
+  women/Casual.gltf, women/Formal.gltf, women/Worker.gltf
+Heads are replaced at runtime by code-generated heads (CharacterBuilder); clothing colours are overridden by code.
