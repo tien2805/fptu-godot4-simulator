@@ -1,6 +1,6 @@
 # <img src="assets/icon/cocvang_icon_256.png" width="56" align="top"> FPTU Student Simulator: Đường Đến Trường
 
-Game 3D hài hước mô phỏng **một ngày của sinh viên Đại học FPT TP.HCM** (Khu Công nghệ cao, đường D1), làm bằng **Godot 4.7** thuần GDScript. Khuôn viên trường được dựng lại theo **ảnh flycam thật và mặt bằng OpenStreetMap**: vòng nhà chữ nhật khép kín với sân trong, hồ sen, bãi xe máy, cầu thang ngoài trời, đối diện HUTECH qua đường D1. Toàn bộ 7 màn chơi diễn ra trong chính khuôn viên đó.
+Game 3D hài hước mô phỏng **một ngày của sinh viên Đại học FPT TP.HCM** (Khu Công nghệ cao, đường D1), làm bằng **Godot 4.7** thuần GDScript. Khuôn viên trường được dựng lại theo **ảnh flycam thật và mặt bằng OpenStreetMap**: vòng nhà chữ nhật khép kín với sân trong, hồ sen, bãi xe máy, cầu thang ngoài trời, đối diện HUTECH qua đường D1. Toàn bộ 7 màn chơi diễn ra trong chính khuôn viên đó, và chế độ **Thế giới mở** cho bạn đi bộ hoặc chạy xe máy từ toà BE6 ở Vinhomes Grand Park tới trường trên bản đồ thật.
 
 ![Menu chính](docs/preview/menu_01_gameplay_cam.png)
 
@@ -22,7 +22,7 @@ Yêu cầu: Windows 10/11 64-bit, card đồ hoạ hỗ trợ Vulkan 1.0 (hoặc
 
 | Giờ | Màn | Nội dung |
 | :--- | :--- | :--- |
-| 07:05 | **1 · Đua xe** | Phóng xe máy từ Vinhomes Grand Park qua Nguyễn Xiển, cầu Trau Trảu, đại lộ D2 tới cổng FPTU trước 07:30. Drift, núp gió xe buýt, lách sát xe ngược chiều, né ổ gà, dừng đèn đỏ. |
+| 07:05 | **1 · Đua xe** | Phóng xe máy từ sảnh toà BE6 (Vinhomes Grand Park) theo **đúng tuyến đường thật 5,5 km**: Cầu Vồng 5, Nguyễn Xiển, cầu Rạch Hầm, Nguyễn Văn Tăng, D2B, vòng xoay rồi đường D1 tới cổng FPTU trước 07:30 (5 phút chơi). Drift, núp gió xe buýt, lách sát xe ngược chiều, né ổ gà, dừng đèn đỏ. |
 | 07:26 | **2 · Bãi xe & chạy bộ** | Quét thẻ ở cổng bãi xe D1, tranh ô đỗ với xe khác, đỗ cho thẳng, rồi chạy bộ xuyên campus và leo 105 bậc cầu thang ngoài trời lên Lab 402. |
 | 07:30 | **3 · Roll call FAP** | Đoán mã điểm danh qua Wi-Fi lag hoặc chờ 4G, rồi sinh tồn trong phòng lạnh 16°C: giữ tỉnh táo, chống đói, trả lời khi bị gọi tên, giấu điện thoại. |
 | 09:30 | **4 · Vovinam** | Rhythm game 3 vòng nhanh dần giữa sân trong, hít đất nếu sai nhịp, kết thúc bằng chuỗi Đòn chân kẹp cổ số 21. |
@@ -31,6 +31,31 @@ Yêu cầu: Windows 10/11 64-bit, card đồ hoạ hỗ trợ Vulkan 1.0 (hoặc
 | 08:00 | **Extra · Giám thị EOS** | Đi tuần phòng thi 311 hoặc xem CCTV, chụp bằng chứng đúng lúc, lập biên bản 5 thánh tool mà không bắt oan. |
 
 Vật phẩm mua ở 7-Eleven (Màn 5) dùng được ở Màn 2 và 3. Kết quả từng màn có rank S/A/B/C, kỷ lục được lưu và hiện trong menu.
+
+## 🌏 Thế giới mở
+
+Chọn **🌏 KHÁM PHÁ CAMPUS** trong menu chính. Bạn xuất phát ngay trước sảnh **toà BE6 (The Beverly, Vinhomes Grand Park)**, bấm `F` lấy xe máy rồi tự chạy **tuyến đường thật 5,5 km** tới campus FPTU (Cầu Vồng 5, Nguyễn Xiển, cầu Rạch Hầm, Nguyễn Văn Tăng, D2B, đường D1), hoặc đi bộ ngắm khu đô thị, kênh đào Hoa giấy, dãy nhà ống hai bên đường. Góc trên phải luôn báo còn bao nhiêu mét tới cổng FPTU.
+
+| Xuất phát ở BE6 | Bản đồ `M` |
+| :---: | :---: |
+| ![](docs/preview/roam_01_spawn_be6.png) | ![](docs/preview/roam_08_map.png) |
+
+**Điều khiển:** `WASD` đi · `Shift` chạy · `Z`/`C` xoay camera · chuột nhìn (bấm chuột để bắt, `ESC` thả) · `F` lên/xuống xe máy (khi lái: `W/S` ga/phanh, `A/D` lái, `SPACE` drift, `H` còi) · `E` vào điểm nóng để chơi màn · `T` đổi giờ (bình minh, sáng, trưa, đêm) · `M` bản đồ · `ESC` tạm dừng.
+
+**6 điểm nóng** (cột sáng màu, đứng vào vòng sáng rồi bấm `E`):
+
+| Điểm nóng | Màn chơi |
+| :--- | :--- |
+| Sân trước sảnh BE6 | Màn 1 · Đua xe trên tuyến thật tới cổng FPTU |
+| Cổng sau campus, cạnh bãi xe | Màn 2 · Bãi xe & chạy bộ |
+| Cửa kính sảnh thông tầng nhìn ra sân trong | Màn 3 · Roll call FAP ban ngày, **Màn 6 · Boss Capstone** ban đêm (bấm `T` tới Đêm khuya) |
+| Đầu sân bóng, ngoài hàng rào | Màn 4 · Vovinam |
+| Căn tin tầng trệt | Màn 5 · Căn tin |
+| Sân trong, trước phòng 311 | Extra · Giám thị EOS |
+
+Chơi xong một màn mở từ điểm nóng, bảng kết quả có nút **🏫 VỀ CAMPUS** để quay lại thế giới mở ngay cạnh điểm nóng đó (Màn 1 đưa bạn về BE6). Bấm *Chơi lại* thì nút này vẫn hiện ở lượt sau. Xe máy đang đỗ hiện trên bản đồ, đi xa thì dòng gợi ý báo xe cách bao nhiêu mét; lỡ rơi xuống kênh thì sau 1 giây bạn được đưa lên chỗ khô gần nhất.
+
+Bản đồ thế giới mở dựng từ dữ liệu **OpenStreetMap** (© OpenStreetMap contributors, [ODbL](https://www.openstreetmap.org/copyright)) và footprint nhà ống **Microsoft Global ML Building Footprints** (© Microsoft, [CDLA-Permissive-2.0](https://cdla.dev/permissive-2-0/)); trên bản đồ `M`, nhà lấy từ OpenStreetMap tô đậm hơn nhà lấy từ dữ liệu Microsoft.
 
 ## 🕹️ Điều khiển
 
@@ -42,6 +67,7 @@ Vật phẩm mua ở 7-Eleven (Màn 5) dùng được ở Màn 2 và 3. Kết qu
 * **Màn 5:** `WASD` đi · `E` tương tác · đứng yên giữ `SPACE` cân khay · kéo thả món vào giỏ.
 * **Màn 6:** gõ chữ trên đạn · `TAB` đổi người · `ENTER` skill / gọi điện · `←/→` chọn khối code.
 * **Extra:** `WASD` đi tuần (theo hướng camera) · `C` CCTV · `S` chụp · `E` soi / lập biên bản.
+* **Thế giới mở:** `WASD` đi · `Shift` chạy · `Z/C` xoay camera · chuột nhìn · `F` lên/xuống xe máy · `E` vào điểm nóng chơi màn · `T` đổi giờ · `M` bản đồ · `ESC` tạm dừng.
 
 ## 🛠️ Chạy từ mã nguồn / tự build
 
@@ -59,13 +85,13 @@ Phát hành tự động: push một tag `v*` lên GitHub, workflow `.github/wor
 
 Icon game (Cóc Vàng áo cam) được tạo bằng `generate_icon.py` từ ảnh gốc `assets/icon/source_frog.png`: tách nền, đổi tông màu da và áo, vẽ logo – thuần xử lý ảnh bằng Pillow. Exporter của Godot tự nhúng icon này vào file exe.
 
-Kiểm thử headless (không cần cửa sổ): `tests/smoke_all_stages.gd`, `tests/test_stage*.gd`, `tests/test_main_menu.gd`. Chi tiết thiết kế xem [PLAN.md](PLAN.md).
+Kiểm thử headless (không cần cửa sổ): `tests/smoke_all_stages.gd`, `tests/test_stage*.gd`, `tests/test_main_menu.gd`, `tests/test_free_roam.gd` (thế giới mở), `tests/test_mapdata.gd` / `tests/test_mapbuilder.gd` (bản đồ thật). Chi tiết thiết kế xem [PLAN.md](PLAN.md).
 
 ## 🧱 Công nghệ & tư liệu
 
 * Godot 4.7 Forward+, GDScript 100%, không plugin. Đồ hoạ: SDFGI, SSIL, SSR, sương thể tích, bóng mềm; 3 mức chất lượng.
 * Khuôn viên dựng bằng code theo footprint thật trên OpenStreetMap và ảnh flycam (`scripts/FPTUCampusBuilder.gd` v8: kích thước khu đất, hướng toà nhà, cổng D1, bãi xe phía sau đúng thực tế), dùng chung cho menu và cả 7 màn.
-* Bản đồ thế giới mở (Vinhomes Grand Park quanh toà BE6, tuyến đường thật 5,5 km tới trường, khu Công nghệ cao quanh campus) dựng từ dữ liệu **OpenStreetMap**: © OpenStreetMap contributors, giấy phép [ODbL 1.0](https://www.openstreetmap.org/copyright). Dữ liệu gốc lưu ở `reference_data/osm/` (không đóng gói vào game); file đã chuyển đổi `assets/data/mapdata.json` được tạo bằng `tools/osm_to_mapdata.py`. Tên cửa hàng, thương hiệu trên bản đồ đã được đổi tên vui; tên đường, khu vực, trường học giữ nguyên.
+* Bản đồ thế giới mở (Vinhomes Grand Park quanh toà BE6, tuyến đường thật 5,5 km tới trường, khu Công nghệ cao quanh campus) dựng từ dữ liệu **OpenStreetMap**: © OpenStreetMap contributors, giấy phép [ODbL 1.0](https://www.openstreetmap.org/copyright), cùng footprint nhà của **Microsoft** (© Microsoft, giấy phép [CDLA-Permissive-2.0](https://cdla.dev/permissive-2-0/), chi tiết ở dòng dưới). Dữ liệu gốc lưu ở `reference_data/osm/` (không đóng gói vào game); file đã chuyển đổi `assets/data/mapdata.json` được tạo bằng `tools/osm_to_mapdata.py`. Tên cửa hàng, thương hiệu trên bản đồ đã được đổi tên vui; tên đường, khu vực, trường học giữ nguyên.
 * Dãy nhà ống dọc các con đường (khoảng 2 500 căn mà OpenStreetMap chưa vẽ) lấy footprint từ **Microsoft Global ML Building Footprints** © Microsoft, giấy phép [CDLA-Permissive-2.0](https://cdla.dev/permissive-2-0/) (bản trích phạm vi game ở `reference_data/msbuildings/`, gộp vào `mapdata.json` với `"source": "msft"`); `scripts/MapBuilder.gd` dựng chúng thành khối gộp theo ô 128 m, có bồn nước inox trên mái.
 * Texture mặt tiền, hồ sen và các bảng ảnh là **ảnh chụp thật** cấp phép Creative Commons từ Wikimedia Commons (nguồn ghi trong [reference_photos/README.md](reference_photos/README.md)). Texture còn lại vẽ bằng code (Pillow). **Không dùng AI tạo ảnh.**
 * Âm thanh tổng hợp bằng code.
