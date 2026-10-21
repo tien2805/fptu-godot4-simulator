@@ -604,7 +604,8 @@ func _build_world() -> void:
 	# Campus FPTU v8 trên lô đất thật + HUTECH đối diện (cùng hệ cục bộ -> cùng góc quay)
 	var xf: Transform3D = FPTUCampusBuilder.real_plot_transform()
 	FPTUCampusBuilder.build_authentic_campus(scenery_root, xf.origin, FPTUCampusBuilder.REAL_ROT_Y_DEG, {"colliders": false})
-	var hutech: Node3D = FPTUCampusBuilder.build_hutech(scenery_root, xf * FPTUCampusBuilder.hutech_origin_local(), FPTUCampusBuilder.make_materials())
+	# draw_d1 = false: MapBuilder already draws the real Đường D1; HUTECH's own far-D1 strip would double the asphalt
+	var hutech: Node3D = FPTUCampusBuilder.build_hutech(scenery_root, xf * FPTUCampusBuilder.hutech_origin_local(), FPTUCampusBuilder.make_materials(), false, false)
 	if hutech:
 		hutech.rotation_degrees.y = FPTUCampusBuilder.REAL_ROT_Y_DEG
 	_build_finish_line()

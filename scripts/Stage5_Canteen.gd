@@ -44,6 +44,8 @@ const SHOP_FRONT: Vector3 = Vector3(8.0, 0.0, -5.4)
 const WALK_SPEED: float = 4.3
 const WALK_SPEED_FREE: float = 5.4
 const HALL_HALF: Vector2 = Vector2(14.5, 11.0)
+## Vị trí bàn thiết kế -> vị trí thật sau khi né cột căn tin (lưới cột đổi theo bề rộng module của campus)
+var table_spots: Dictionary = {}
 
 const ORDERS: Array = [
 	{"food": "🍛 CƠM TẤM SƯỜN TRỨNG", "table": Vector3(10.0, 0.0, 5.0), "friend": "Minh 'ăn chực'"},
@@ -315,13 +317,21 @@ func _build_hall() -> void:
 	fridge.position = Vector3(12.3, 1.0, -7.1)
 	hall.add_child(fridge)
 
-	# Bàn ăn gỗ chân thép + ghế đẩu + dù cam (PropBuilder)
-	var positions: Array[Vector3] = [Vector3(-10, 0, 0), Vector3(10, 0, 0), Vector3(-10, 0, 5), Vector3(-4, 0, 5), Vector3(4, 0, 5), Vector3(10, 0, 5), Vector3(-4, 0, 10), Vector3(4, 0, 10)]
+	# Bàn ăn gỗ chân thép + ghế đẩu + dù cam (PropBuilder). Vị trí thiết kế được dịch nhẹ nếu trùng cột của campus
+	# (cột tròn tầng trệt mở đặt theo bề rộng module – v8 đổi lưới cột), để lối đi quanh bàn luôn đủ 0,9 m.
+	var columns: Array[Vector2] = _campus_columns(world)
+	var design: Array[Vector3] = [Vector3(-10, 0, 0), Vector3(10, 0, 0), Vector3(-10, 0, 5), Vector3(-4, 0, 5), Vector3(4, 0, 5), Vector3(10, 0, 5), Vector3(-4, 0, 10), Vector3(4, 0, 10), Vector3(-4.0, 0.0, -1.5), Vector3(4.0, 0.0, -1.5)]
+	var placed: Array[Vector3] = []
+	for p: Vector3 in design:
+		var q: Vector3 = _clear_table_spot(p, columns, placed)
+		table_spots[p] = q
+		placed.append(q)
+	var positions: Array[Vector3] = []
+	for i: int in range(8):
+		positions.append(placed[i])
 	for p: Vector3 in positions:
 		PropBuilder.build_table(hall, p, Vector3(3.0, 0.76, 1.6))
-	var all_tables: Array = positions.duplicate()
-	all_tables.append(Vector3(-4.0, 0.0, -1.5))
-	all_tables.append(Vector3(4.0, 0.0, -1.5))
+	var all_tables: Array = placed.duplicate()
 	var stool_cols: Array[Color] = [Color("#1F5FA8"), Color("#C0392B"), Color("#27AE60"), Color("#F39C12")]
 	var si: int = 0
 	for p: Vector3 in all_tables:
@@ -568,12 +578,64 @@ func _interact() -> void:
 # PHA 1
 # ===========================================================================
 func _current_table() -> Vector3:
-	return ORDERS[order_idx]["table"]
+	var p: Vector3 = ORDERS[order_idx]["table"]
+	return table_spots.get(p, p)
+
+
+## Cột tròn của campus (CylinderShape3D bán kính < 0,5 m, cao > 3 m) trong hệ toạ độ của sảnh căn tin (x, z)
+func _campus_columns(campus_world: Node) -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	var stack: Array[Node] = [campus_world]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is CollisionShape3D:
+			var cs := n as CollisionShape3D
+			if cs.shape is CylinderShape3D:
+				var cyl := cs.shape as CylinderShape3D
+				if cyl.radius < 0.5 and cyl.height > 3.0:
+					var lp: Vector3 = hall.to_local(cs.global_position)
+					if absf(lp.x) < HALL_HALF.x + 4.0 and absf(lp.z) < HALL_HALF.y + 4.0:
+						out.append(Vector2(lp.x, lp.z))
+		for c: Node in n.get_children():
+			stack.append(c)
+	return out
+
+
+## Bàn 3,0 x 1,6 m + 4 ghế đẩu (z ±1,25) cần vùng trống ±(1,5 + 0,9) x ±(1,45 + 0,9) quanh tâm; thử dịch dần ra xa vị trí
+## thiết kế (ưu tiên trục x, bước 0,5 m tới 3 m), không đè bàn khác và không ra khỏi sảnh.
+func _clear_table_spot(p: Vector3, columns: Array[Vector2], placed: Array[Vector3]) -> Vector3:
+	var offsets: Array[Vector2] = [Vector2.ZERO]
+	for k: int in range(1, 7):
+		var d: float = 0.5 * float(k)
+		offsets.append(Vector2(d, 0.0))
+		offsets.append(Vector2(-d, 0.0))
+	for k: int in range(1, 4):
+		var dz: float = 0.5 * float(k)
+		for dx: float in [0.0, 0.5, -0.5, 1.0, -1.0, 1.5, -1.5]:
+			offsets.append(Vector2(dx, dz))
+			offsets.append(Vector2(dx, -dz))
+	for off: Vector2 in offsets:
+		var q := Vector3(p.x + off.x, 0.0, p.z + off.y)
+		if absf(q.x) > HALL_HALF.x - 1.6 or absf(q.z) > HALL_HALF.y - 1.2:
+			continue
+		var ok: bool = true
+		for c: Vector2 in columns:
+			if absf(c.x - q.x) < 1.5 + 0.9 + 0.34 and absf(c.y - q.z) < 1.45 + 0.9 + 0.34:
+				ok = false
+				break
+		if ok:
+			for o: Vector3 in placed:
+				if absf(o.x - q.x) < 3.0 + 0.9 and absf(o.z - q.z) < 2.9 + 0.9:
+					ok = false
+					break
+		if ok:
+			return q
+	return p
 
 func _set_order(idx: int) -> void:
 	order_idx = clampi(idx, 0, ORDERS.size() - 1)
 	var o: Dictionary = ORDERS[order_idx]
-	friend_root.position = o["table"] + Vector3(0.0, 0.0, 1.3)
+	friend_root.position = table_spots.get(o["table"], o["table"]) + Vector3(0.0, 0.0, 1.3)
 	friend_label.text = "🙋 %s: 'ĐÂY NÈ!! %s CỦA TUI ĐÂU?!'" % [o["friend"], o["food"]]
 	mission_label.text = "ĐƠN %d/2: LẤY %s Ở QUẦY → GIAO TỚI BÀN %s (%s)" % [order_idx + 1, o["food"], ("BÊN PHẢI" if o["table"].x > 0 else "BÊN TRÁI"), o["friend"]]
 
