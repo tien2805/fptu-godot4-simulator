@@ -18,6 +18,10 @@
 #     cống (4251.7, 167.4)): chạy ngang ra mép mặt cầu cả hai bên -> lan can vô hình chặn, không bao giờ rơi xuống kênh.
 #   - Lưới an toàn: người chơi / xe đang cưỡi nằm dưới kênh ~1 s -> được đưa về chỗ khô gần nhất + gợi ý.
 #   - Menu tạm dừng mở bảng phím vẫn nằm gọn trong 1280 x 720.
+#   - Bản đồ [M] hai lớp: lớp tĩnh (mesh 2D cả 143 nhà OSM + 2 548 nhà Microsoft theo đường viền thật, OSM đậm hơn,
+#     ghi công OSM + Microsoft) chỉ vẽ ở lần mở đầu, khi hotspot đổi màu và khi đổi kích thước – KHÔNG vẽ lại khi mở
+#     lại hay theo nhịp HUD (đếm static_draws); lớp động vẽ lại theo nhịp HUD; đo chi phí một lần vẽ lại lớp động
+#     (queue_redraw + 1 frame, và thời gian trong _draw).
 # Mọi kiểm tra dùng _check() + quit(2) (assert hỏng trong _initialize làm treo --script), có watchdog.
 # Chạy:  godot --headless --path . --script tests/test_free_roam.gd
 extends SceneTree
@@ -30,6 +34,8 @@ const DECK_POINTS: Array[Vector2] = [Vector2(4433.2, 89.6), Vector2(4432.1, 77.1
 const DECK_WALK_FRAMES: int = 50     # chạy (7 m/s) ngang ra mép mặt cầu
 const DECK_SETTLE_FRAMES: int = 40
 const RESCUE_WAIT_FRAMES: int = 80   # > RESCUE_AFTER_S (1 s = 60 frame)
+const MAP_HUD_FRAMES: int = 75       # 1,25 s vật lý = 6 nhịp HUD (0,2 s) khi bản đồ đang mở
+const MAP_DYNAMIC_BUDGET_USEC: int = 2000   # một lần vẽ lại lớp động (trong _draw) phải dưới 2 ms
 
 var roam: Node3D
 var player: CharacterBody3D
@@ -62,6 +68,11 @@ var deck_dry_spot := Vector3.ZERO   # giữa mặt đường qua cống
 var deck_wet_spot := Vector3.ZERO   # dưới kênh, cạnh đường qua cống
 var rescues0: int = 0
 var wall_min_y: float = 99.0     # thấp nhất khi trượt dọc tường bờ kênh (WaterFloor phải nằm ngoài tầm floor snap)
+# bản đồ [M]: số lần vẽ lớp tĩnh / động tại các mốc, thời điểm queue_redraw cưỡng bức
+var map_s1: int = 0
+var map_d0: int = 0
+var map_d1: int = 0
+var map_t0: int = 0
 
 
 func _initialize() -> void:
@@ -358,10 +369,23 @@ func _process(_delta: float) -> bool:
 			if pf >= mark + 2:
 				if not _phase_tod_and_retry():
 					return true
-				hs_list = roam.get("hotspots")
-				hs_i = 0
-				hs_attempt = -1
-				phase = 7
+				if not _phase_map_open():
+					return true
+				mark = pf
+				phase = 60
+		60:
+			if pf >= mark + MAP_HUD_FRAMES:
+				if not _phase_map_hud_refreshes():
+					return true
+				phase = 61
+		61:
+			# một frame sau queue_redraw cưỡng bức của lớp động
+			if not _phase_map_forced_redraw():
+				return true
+			hs_list = roam.get("hotspots")
+			hs_i = 0
+			hs_attempt = -1
+			phase = 7
 		7:
 			if not _phase_hotspot_step(pf):
 				return true
@@ -554,7 +578,7 @@ func _process(_delta: float) -> bool:
 		10:
 			done = true
 			print("  %d process frames for %d physics frames" % [frames, Engine.get_physics_frames() - pf0])
-			print("✅ SUCCESS: FREE ROAM OK (build %d ms, 6 reachable hotspots, bike mount/dismount, canal-safe dismount, low decks guarded + canal rescue, water floor below snap reach + wall slide, night Lab 402 -> Màn 6, retry overlay hidden)" % int(roam.get("build_ms")))
+			print("✅ SUCCESS: FREE ROAM OK (build %d ms, 6 reachable hotspots, bike mount/dismount, canal-safe dismount, low decks guarded + canal rescue, water floor below snap reach + wall slide, night Lab 402 -> Màn 6, retry overlay hidden, map static layer drawn once + dynamic layer at the HUD rate)" % int(roam.get("build_ms")))
 			quit(0)
 			return true
 	return false
@@ -610,6 +634,91 @@ func _phase_tod_and_retry() -> bool:
 	fake.queue_free()
 	print("  retry flow: VỀ CAMPUS overlay hidden on reload, shown again at the replayed result")
 	return true
+
+
+# ---------------------------------------------------------------------------
+# BẢN ĐỒ [M]: LỚP TĨNH VẼ MỘT LẦN, LỚP ĐỘNG THEO NHỊP HUD
+# ---------------------------------------------------------------------------
+## Pha 5 đã mở + đóng bản đồ một lần (ban đêm) -> lớp tĩnh vẽ đúng 1 lần. Sau đó [T] về ban ngày đổi màu hotspot
+## Lab 402 khi bản đồ đang đóng -> lần mở kế tiếp vẽ lại lớp tĩnh đúng 1 lần; đóng rồi mở lại -> không vẽ lại.
+func _phase_map_open() -> bool:
+	var mo: Control = roam.get("map_overlay")
+	var consts: Dictionary = (mo.get_script() as GDScript).get_script_constant_map()
+	var n_osm: int = 0
+	var n_msft: int = 0
+	for b: Dictionary in md.buildings():
+		if str(b.get("source", "osm")) == "msft":
+			n_msft += 1
+		else:
+			n_osm += 1
+	if not _check(int(mo.get("osm_buildings")) == n_osm and int(mo.get("msft_buildings")) == n_msft and n_msft > 2000, "map draws every building outline: %d OSM + %d Microsoft (data %d + %d)" % [int(mo.get("osm_buildings")), int(mo.get("msft_buildings")), n_osm, n_msft]):
+		return false
+	if not _check(int(mo.get("triangles")) > (n_osm + n_msft) * 2, "map buildings are real outlines (%d triangles in the static mesh)" % int(mo.get("triangles"))):
+		return false
+	for region: String in ["vinhomes", "corridor", "campus"]:
+		var c_osm: Color = mo.call("building_color", region, false)
+		var c_msft: Color = mo.call("building_color", region, true)
+		if not _check(c_osm.get_luminance() < c_msft.get_luminance() - 0.05, "%s: OSM buildings are darker than Microsoft ones on the map" % region):
+			return false
+	var a_osm: String = consts["ATTR_OSM"]
+	var a_msft: String = consts["ATTR_MSFT"]
+	if not _check(a_osm.contains("OpenStreetMap") and a_osm.contains("ODbL") and a_msft.contains("Microsoft") and a_msft.contains("CDLA-Permissive-2.0"), "map legend keeps the ODbL line and adds the Microsoft line"):
+		return false
+	var s0: int = int(mo.get("static_draws"))
+	if not _check(s0 == 1, "the first map open drew the static layer once (static_draws %d)" % s0):
+		return false
+	roam.call("toggle_map")   # mở: hotspot Lab 402 đã đổi màu (đêm -> ngày) khi bản đồ đóng
+	map_s1 = int(mo.get("static_draws"))
+	if not _check(mo.visible and map_s1 == s0 + 1, "reopening after the Lab 402 hotspot changed colour redraws the static layer once (static_draws %d -> %d)" % [s0, map_s1]):
+		return false
+	roam.call("toggle_map")
+	roam.call("toggle_map")
+	if not _check(mo.visible and int(mo.get("static_draws")) == map_s1, "closing and reopening the map does not redraw the static layer (static_draws %d)" % int(mo.get("static_draws"))):
+		return false
+	if not _check(not (roam.get("hint_holder") as Control).visible, "the bottom hint panel hides while the map is open (no overlap with the map credits)"):
+		return false
+	map_d0 = int(mo.get("dynamic_draws"))
+	return true
+
+
+## Bản đồ mở suốt MAP_HUD_FRAMES frame vật lý (~6 nhịp HUD): lớp động vẽ lại theo nhịp, lớp tĩnh không vẽ lại.
+## Rồi xếp một lần vẽ lại cưỡng bức lớp động để đo ở frame sau.
+func _phase_map_hud_refreshes() -> bool:
+	var mo: Control = roam.get("map_overlay")
+	var dyn: int = int(mo.get("dynamic_draws")) - map_d0
+	print("  map open for %d physics frames: dynamic layer redrawn %d x, static layer draws %d" % [MAP_HUD_FRAMES, dyn, int(mo.get("static_draws"))])
+	if not _check(int(mo.get("static_draws")) == map_s1, "HUD refreshes never redraw the static map layer (static_draws %d, expected %d)" % [int(mo.get("static_draws")), map_s1]):
+		return false
+	if not _check(dyn >= 4, "the dynamic map layer redraws at the HUD rate (%d redraws in %d physics frames)" % [dyn, MAP_HUD_FRAMES]):
+		return false
+	var dl: Control = mo.get("dynamic_layer")
+	map_d1 = int(mo.get("dynamic_draws"))
+	map_t0 = Time.get_ticks_usec()
+	dl.queue_redraw()
+	return true
+
+
+## Một frame sau queue_redraw cưỡng bức: lớp động vẽ đúng 1 lần, rẻ (< MAP_DYNAMIC_BUDGET_USEC trong _draw); lớp tĩnh
+## vẫn không vẽ lại. Đổi kích thước bản đồ -> lớp tĩnh vẽ lại đúng 1 lần mỗi lần đổi.
+func _phase_map_forced_redraw() -> bool:
+	var frame_us: int = Time.get_ticks_usec() - map_t0
+	var mo: Control = roam.get("map_overlay")
+	var draw_us: int = int(mo.get("dynamic_draw_usec"))
+	print("  map dynamic redraw: %.3f ms in _draw, %.2f ms for queue_redraw + one frame; static layer: %d triangles built once in %.1f ms at load, last draw %.2f ms, %d draws" % [draw_us / 1000.0, frame_us / 1000.0, int(mo.get("triangles")), int(mo.get("setup_usec")) / 1000.0, int(mo.get("static_draw_usec")) / 1000.0, int(mo.get("static_draws"))])
+	if not _check(int(mo.get("dynamic_draws")) == map_d1 + 1, "a forced dynamic redraw draws the dynamic layer once within one frame (%d -> %d)" % [map_d1, int(mo.get("dynamic_draws"))]):
+		return false
+	if not _check(draw_us < MAP_DYNAMIC_BUDGET_USEC, "the dynamic map redraw costs < %.1f ms (got %.3f ms)" % [MAP_DYNAMIC_BUDGET_USEC / 1000.0, draw_us / 1000.0]):
+		return false
+	if not _check(int(mo.get("static_draws")) == map_s1, "the forced dynamic redraw leaves the static layer alone"):
+		return false
+	mo.offset_right -= 40.0
+	if not _check(int(mo.get("static_draws")) == map_s1 + 1, "resizing the open map redraws the static layer once (static_draws %d)" % int(mo.get("static_draws"))):
+		return false
+	mo.offset_right += 40.0
+	if not _check(int(mo.get("static_draws")) == map_s1 + 2, "resizing back redraws the static layer once more (static_draws %d)" % int(mo.get("static_draws"))):
+		return false
+	roam.call("toggle_map")
+	return _check(not mo.visible and (roam.get("hint_holder") as Control).visible, "M closes the map and brings the hint panel back")
 
 
 # ---------------------------------------------------------------------------

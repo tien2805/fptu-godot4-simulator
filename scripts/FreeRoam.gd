@@ -21,7 +21,8 @@
 #     hotspot về phía tâm sân trong / về spawn BE6, đã kiểm chỗ trống).
 #   - HUD (anchors): gợi ý đáy giữa, giờ trong ngày trên trái, FPS + khoảng cách tới cổng FPTU trên phải.
 #     [T] đổi preset giờ (GameFX.TOD_PRESETS ngoài trời + đêm; luôn áp lên Environment gốc của cảnh), [M] bản đồ
-#     (vẽ bằng _draw, có xe đang đỗ), [Z]/[C] xoay camera, [ESC] tạm dừng (StageManager).
+#     (RoamMap: lớp tĩnh = 1 mesh 2D dựng sẵn, chỉ vẽ khi mở lần đầu / đổi kích thước / đổi màu hotspot; lớp động =
+#     người chơi + xe đang đỗ, vẽ lại theo nhịp HUD), [Z]/[C] xoay camera, [ESC] tạm dừng (StageManager).
 # Autoload chỉ dùng qua get_node_or_null("/root/GameFX" | "/root/StageManager") (test headless chạy được không cần
 # autoload); hàm tĩnh / enum lấy qua preload script.
 extends Node3D
@@ -61,6 +62,8 @@ const DISMOUNT_OFFSETS: Array[float] = [1.3, 2.0]
 const BIKE_FLOOR_OFFSET: float = 0.13    # gốc PlayerBike nằm dưới mặt sàn 0,13 m (capsule nằm r 0,42 tâm y 0,55)
 const HINT_FLASH_S: float = 2.5
 const HUD_REFRESH: float = 0.2
+const MAP_TOP: float = 66.0              # bản đồ [M] bắt đầu dưới bảng giờ / FPS (cao ~56 px)
+const MAP_BOTTOM: float = 30.0
 const HINT_DEFAULT: String = "[WASD] đi · [Shift] chạy · [Z]/[C] xoay camera · [F] xe máy · [T] giờ trong ngày · [M] bản đồ · [ESC] tạm dừng"
 const HINT_RIDING: String = "[F] xuống xe · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [H] còi"
 const HINT_NO_DISMOUNT: String = "Không có chỗ trống cạnh xe để xuống (nước / tường / vật cản) – chạy ra chỗ rộng rồi bấm [F]"
@@ -90,6 +93,7 @@ var water_floor: StaticBody3D
 var bank_walls: StaticBody3D
 
 var hint_label: Label
+var hint_holder: Control
 var tod_label: Label
 var stats_label: Label
 var map_overlay: RoamMap
@@ -747,6 +751,7 @@ func _refresh_lab_hotspot() -> void:
 	var key: Label3D = _lab_hotspot.get_node_or_null("Key") as Label3D
 	if key:
 		key.modulate = col
+	_sync_map_hotspots()
 
 
 func _update_hotspot() -> void:
@@ -955,12 +960,40 @@ func cycle_time_of_day() -> void:
 	set_time_of_day(tod_cycle[(i + 1) % tod_cycle.size()])
 
 
+## [M]: hiện / ẩn bản đồ. Lần mở đầu tiên RoamMap gửi lớp tĩnh (mesh nhà/đường/nước dựng sẵn trong setup); các lần
+## sau chỉ lớp động được vẽ lại.
 func toggle_map() -> void:
-	if map_overlay:
-		map_overlay.visible = not map_overlay.visible
-		if map_overlay.visible:
-			_hud_timer = 0.0
-			map_overlay.queue_redraw()
+	if map_overlay == null:
+		return
+	map_overlay.visible = not map_overlay.visible
+	if hint_holder:
+		hint_holder.visible = not map_overlay.visible   # bản đồ có tiêu đề + chú giải riêng
+	if map_overlay.visible:
+		_hud_timer = HUD_REFRESH
+		_update_map_dynamic()
+
+
+## Lớp động của bản đồ: vị trí + hướng người chơi (hoặc xe đang cưỡi), xe đang đỗ. Gọi theo nhịp HUD khi bản đồ mở.
+func _update_map_dynamic() -> void:
+	var pos: Vector3 = roam_position()
+	var fwd: Vector3 = -bike.global_transform.basis.z if mounted else player.facing_dir()
+	map_overlay.player_pos = Vector2(pos.x, pos.z)
+	map_overlay.player_dir = Vector2(fwd.x, fwd.z)
+	map_overlay.bike_shown = bike_parked and not mounted
+	map_overlay.bike_pos = Vector2(bike.global_position.x, bike.global_position.z)
+	map_overlay.bike_dist = bike_distance_m()
+	map_overlay.refresh_dynamic()
+
+
+## Hotspot (vị trí + màu theo màn hiện tại) thuộc lớp tĩnh: RoamMap chỉ vẽ lại lớp tĩnh khi danh sách thật sự đổi
+## (Lab 402 đổi Màn 3 <-> Màn 6 theo ngày/đêm).
+func _sync_map_hotspots() -> void:
+	if map_overlay == null:
+		return
+	var pts: Array = []
+	for h: Area3D in hotspots:
+		pts.append([Vector2(h.global_position.x, h.global_position.z), HOTSPOT_COLORS.get(int(h.get_meta("stage_id")), Color.WHITE)])
+	map_overlay.set_hotspots(pts)
 
 
 ## Gợi ý tạm thời (HINT_FLASH_S giây) đè lên dòng gợi ý đáy.
@@ -974,6 +1007,7 @@ func flash_hint(text: String) -> void:
 
 func _build_hud() -> void:
 	var hint_panel: PanelContainer = GameFXScript.anchored_panel(hud, Control.PRESET_CENTER_BOTTOM, Vector2(760, 0), 24, Color("#F37021"))
+	hint_holder = hint_panel.get_parent() as Control
 	hint_label = GameFXScript.make_label(HINT_DEFAULT, 15, Color("#F4F5F6"))
 	hint_panel.add_child(hint_label)
 	var tod_panel: PanelContainer = GameFXScript.anchored_panel(hud, Control.PRESET_TOP_LEFT, Vector2(0, 0), 20, Color("#F1C40F"))
@@ -987,14 +1021,17 @@ func _build_hud() -> void:
 	map_overlay = RoamMap.new()
 	map_overlay.name = "MapOverlay"
 	map_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# dưới hai bảng giờ / FPS ở mép trên; bảng gợi ý đáy ẩn khi bản đồ mở (toggle_map) nên mép dưới sát hơn
 	map_overlay.offset_left = 48.0
-	map_overlay.offset_top = 48.0
+	map_overlay.offset_top = MAP_TOP
 	map_overlay.offset_right = -48.0
-	map_overlay.offset_bottom = -48.0
+	map_overlay.offset_bottom = -MAP_BOTTOM
 	map_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	map_overlay.clip_contents = true      # chấm người chơi đi ra ngoài khung bản đồ bị cắt ở mép
 	map_overlay.visible = false
-	map_overlay.setup(md, gate_xz)
+	map_overlay.setup(md, gate_xz, MapBuilder._water_polygons(md))
 	hud.add_child(map_overlay)
+	_sync_map_hotspots()
 
 
 func _hint_text() -> String:
@@ -1029,16 +1066,7 @@ func _physics_process(delta: float) -> void:
 	if hint_label:
 		hint_label.text = _hint_text()
 	if map_overlay and map_overlay.visible:
-		var fwd: Vector3 = -bike.global_transform.basis.z if mounted else player.facing_dir()
-		map_overlay.player_pos = Vector2(pos.x, pos.z)
-		map_overlay.player_dir = Vector2(fwd.x, fwd.z)
-		map_overlay.bike_shown = bike_parked and not mounted
-		map_overlay.bike_pos = Vector2(bike.global_position.x, bike.global_position.z)
-		map_overlay.bike_dist = bike_distance_m()
-		map_overlay.hotspot_pts.clear()
-		for h: Area3D in hotspots:
-			map_overlay.hotspot_pts.append([Vector2(h.global_position.x, h.global_position.z), HOTSPOT_COLORS.get(int(h.get_meta("stage_id")), Color.WHITE)])
-		map_overlay.queue_redraw()
+		_update_map_dynamic()   # chỉ lớp động; lớp tĩnh không vẽ lại theo nhịp HUD
 
 
 static func _thousands(n: int) -> String:
@@ -1076,79 +1104,337 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 # ===========================================================================
-# BẢN ĐỒ [M]: nhà = hình chữ nhật bao (theo vùng), tuyến BE6 -> FPTU, hotspot, xe đang đỗ, chấm người chơi
+# BẢN ĐỒ [M] – hai lớp vẽ:
+#   TĨNH  (Control "Static" + canvas item RID con do RoamMap tự quản; phần bản đồ nằm dưới Control "MapClip"
+#         clip_contents đặt đúng content_rect() để đường chạy ra ngoài không đè chú giải): nền, công viên / sân
+#         bóng, nước, đường, cả 2 691 nhà theo ĐÚNG đường viền (MapData.poly; nhà có sân trong cắt bằng MapBuilder._subtract), nhà OSM đậm
+#         hơn nhà Microsoft (màu theo vùng), tất cả gộp sẵn trong setup() thành MỘT ArrayMesh 2D toạ độ bản đồ (vẽ bằng
+#         đúng 1 lệnh canvas_item_add_mesh + Transform2D bản đồ -> màn hình); tuyến BE6 -> FPTU, cổng, hotspot, nhãn
+#         BE6 / ĐH FPT, chú giải + 2 dòng ghi công (OSM ODbL, Microsoft CDLA-Permissive-2.0). Lệnh vẽ chỉ được gửi khi
+#         mở bản đồ lần đầu, khi đổi kích thước hoặc khi màu hotspot đổi (Lab 402 ngày / đêm). Ẩn / hiện bản đồ khiến
+#         Godot vẽ lại các Control nhưng không xoá canvas item con này, nên mở lại không gửi lại gì.
+#   ĐỘNG  (Control "Dynamic", vẽ qua tín hiệu draw): chấm người chơi + hướng, xe đang đỗ + khoảng cách; FreeRoam gọi
+#         refresh_dynamic() theo nhịp HUD (HUD_REFRESH).
+# static_draws / dynamic_draws và static_draw_usec / dynamic_draw_usec: số lần vẽ + thời gian lần vẽ gần nhất của từng
+# lớp (tests/test_free_roam.gd đo).
 # ===========================================================================
 class RoamMap extends Control:
-	var rects: Array = []            # [Rect2, Color]
+	const BG := Color(0.03, 0.05, 0.09, 0.95)
+	const FRAME := Color(0.95, 0.44, 0.13, 0.9)
+	const WATER := Color(0.17, 0.45, 0.78)
+	const AREA_COLORS: Dictionary = {"park": Color(0.12, 0.3, 0.17), "pitch": Color(0.16, 0.4, 0.21), "campus": Color(0.13, 0.19, 0.29), "pool": Color(0.17, 0.45, 0.78)}
+	const ROAD_MAJOR := Color(0.82, 0.77, 0.62)
+	const ROAD_MINOR := Color(0.45, 0.48, 0.54)
+	const MAJOR_CLASSES: Array = ["motorway", "primary", "secondary", "tertiary"]
+	const REGION_COLORS: Dictionary = {"vinhomes": Color(0.98, 0.62, 0.3), "campus": Color(0.45, 0.78, 0.98), "corridor": Color(0.76, 0.76, 0.74)}
+	const OSM_DARKEN: float = 0.3
+	const ROUTE := Color(0.95, 0.44, 0.13)
+	const CASING := Color(0.02, 0.03, 0.06, 0.92)
+	const GATE := Color(0.18, 0.8, 0.44)
+	const BIKE := Color(0.3, 0.85, 1.0)
+	const INK := Color(0.02, 0.05, 0.1)
+	const TEXT := Color(0.96, 0.96, 0.96)
+	const DIM := Color(0.8, 0.82, 0.85)
+	const PAD: float = 16.0
+	const TOP_RESERVE: float = 84.0      # tiêu đề + 2 dòng chú giải
+	const BOTTOM_RESERVE: float = 46.0   # 2 dòng ghi công
+	const LEGEND_SIZE: int = 13
+	const ATTR_OSM: String = "Bản đồ © OpenStreetMap contributors (ODbL 1.0)"
+	const ATTR_MSFT: String = "Nhà ống © Microsoft Global ML Building Footprints (CDLA-Permissive-2.0)"
+
 	var route := PackedVector2Array()
 	var bounds := Rect2()
-	var hotspot_pts: Array = []      # [Vector2, Color]
+	var hotspot_pts: Array = []          # [Vector2, Color] – lớp tĩnh (set_hotspots)
+	var labels: Array = []               # [Vector2, String, Vector2 lệch px] – nhãn địa danh trên lớp tĩnh
+	var gate := Vector2.ZERO
 	var player_pos := Vector2.ZERO
 	var player_dir := Vector2(0.0, -1.0)
-	var gate := Vector2.ZERO
-	var bike_shown: bool = false     # xe máy đang đỗ (người chơi đã xuống xe)
+	var bike_shown: bool = false         # xe máy đang đỗ (người chơi đã xuống xe)
 	var bike_pos := Vector2.ZERO
 	var bike_dist: int = 0
+	var static_layer: Control
+	var dynamic_layer: Control
+	var static_draws: int = 0
+	var dynamic_draws: int = 0
+	var static_draw_usec: int = 0
+	var dynamic_draw_usec: int = 0
+	var osm_buildings: int = 0
+	var msft_buildings: int = 0
+	var triangles: int = 0
+	var setup_usec: int = 0              # dựng mesh tĩnh (một lần, lúc nạp cảnh)
+	var _mesh: ArrayMesh
+	var _ci := RID()
+	var _map_ci := RID()
+	var _map_clip: Control
+	var _static_dirty: bool = true
+	var _static_size := Vector2(-1.0, -1.0)
 
-	func setup(md: MapData, gate_xz: Vector2) -> void:
+	## Dựng một lần (lúc FreeRoam._build_hud): mesh 2D của lớp tĩnh + hai Control con. `water` = các đa giác nước
+	## (MapBuilder._water_polygons, đã cache).
+	func setup(md: MapData, gate_xz: Vector2, water: Array = []) -> void:
+		var t0: int = Time.get_ticks_usec()
 		gate = gate_xz
+		var verts := PackedVector2Array()
+		var cols := PackedColorArray()
+		for a: Dictionary in md.areas():
+			var kind: String = str(a.get("kind", ""))
+			if AREA_COLORS.has(kind) and float(a.get("area", 0.0)) <= MapBuilder.BIG_AREA_SKIP_M2:
+				_add_poly(verts, cols, MapData.poly(a.get("outer", [])), AREA_COLORS[kind])
+		for w: PackedVector2Array in water:
+			_add_poly(verts, cols, w, WATER)
+		for r: Dictionary in md.roads():
+			if int(r.get("lanes", 2)) <= 0:
+				continue   # lối đi bộ / bậc thang: bỏ cho bản đồ đỡ rối
+			var cls: String = str(r.get("class", ""))
+			var major: bool = MAJOR_CLASSES.has(String(MapBuilder.CLASS_ALIAS.get(cls, cls)))
+			var w: float = float(r.get("width", 6.0))
+			# bề rộng phóng to cho dễ nhìn ở tỉ lệ ~0,2 px/m (đường lớn >= 12 m, đường nhỏ >= 7 m)
+			var half: float = maxf(w * 0.7, 6.0) if major else maxf(w * 0.6, 3.5)
+			_add_road(verts, cols, MapData.poly(r.get("points", [])), half, ROAD_MAJOR if major else ROAD_MINOR)
 		var started: bool = false
 		for b: Dictionary in md.buildings():
-			var pts: PackedVector2Array = MapData.poly(b.get("outer", []))
-			if pts.size() < 3:
+			var outer: PackedVector2Array = MapBuilder._open(MapData.poly(b.get("outer", [])))
+			if outer.size() < 3:
 				continue
-			var r := Rect2(pts[0], Vector2.ZERO)
-			for p: Vector2 in pts:
-				r = r.expand(p)
-			var region: String = str(b.get("region", ""))
-			var col: Color = Color(0.98, 0.62, 0.3, 0.95)
-			if region == "campus":
-				col = Color(0.45, 0.78, 0.98, 0.95)
-			elif region == "corridor":
-				col = Color(0.72, 0.72, 0.7, 0.85)
-			rects.append([r, col])
-			bounds = r if not started else bounds.merge(r)
+			var msft: bool = MapBuilder.is_msft(b)
+			var col: Color = building_color(str(b.get("region", "")), msft)
+			var inners: Array = []
+			for ring: Variant in b.get("inner", []):
+				var hole: PackedVector2Array = MapBuilder._open(MapData.poly(ring))
+				if hole.size() >= 3:
+					inners.append(hole)
+			var pieces: Array = [outer] if inners.is_empty() else MapBuilder._subtract([outer], inners)
+			for piece: PackedVector2Array in pieces:
+				_add_poly(verts, cols, piece, col)
+			if msft:
+				msft_buildings += 1
+			else:
+				osm_buildings += 1
+			var bb: Rect2 = MapBuilder._bbox(outer)
+			bounds = bb if not started else bounds.merge(bb)
 			started = true
 		route = md.route_points(40.0)
 		for p: Vector2 in route:
 			bounds = bounds.expand(p) if started else Rect2(p, Vector2.ZERO)
 			started = true
 		bounds = bounds.grow(150.0)
+		var be6: Variant = md.landmark("be6_center")
+		if be6 is Array and (be6 as Array).size() >= 2:
+			labels.append([Vector2(float(be6[0]), float(be6[1])), "BE6 · Vinhomes Grand Park", Vector2(0.0, -16.0)])
+		# gốc toạ độ mapdata = trọng tâm campus FPT; nhãn đặt cao hơn cụm 5 hotspot campus
+		labels.append([Vector2.ZERO, "ĐH FPT", Vector2(0.0, -34.0)])
+		triangles = verts.size() / 3
+		if triangles > 0:
+			var arrays: Array = []
+			arrays.resize(Mesh.ARRAY_MAX)
+			arrays[Mesh.ARRAY_VERTEX] = verts
+			arrays[Mesh.ARRAY_COLOR] = cols
+			_mesh = ArrayMesh.new()
+			_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		static_layer = _make_layer("Static")
+		_map_clip = Control.new()
+		_map_clip.name = "MapClip"
+		_map_clip.clip_contents = true
+		_map_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		static_layer.add_child(_map_clip)
+		dynamic_layer = _make_layer("Dynamic")
+		dynamic_layer.draw.connect(_draw_dynamic)
+		setup_usec = Time.get_ticks_usec() - t0
 
-	func _scale() -> float:
-		if bounds.size.x <= 0.0 or bounds.size.y <= 0.0:
-			return 1.0
-		return minf(size.x / bounds.size.x, size.y / bounds.size.y)
+	func _make_layer(layer_name: String) -> Control:
+		var c := Control.new()
+		c.name = layer_name
+		c.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(c)
+		return c
 
-	func _to_screen(p: Vector2) -> Vector2:
-		return (p - bounds.get_center()) * _scale() + size * 0.5
+	## Màu nhà theo vùng; nhà OpenStreetMap đậm hơn nhà Microsoft cùng vùng.
+	static func building_color(region: String, msft: bool) -> Color:
+		var base: Color = REGION_COLORS.get(region, REGION_COLORS["corridor"])
+		return base if msft else base.darkened(OSM_DARKEN)
 
-	func _draw() -> void:
-		draw_rect(Rect2(Vector2.ZERO, size), Color(0.03, 0.05, 0.09, 0.88))
-		draw_rect(Rect2(Vector2.ZERO, size), Color(0.95, 0.44, 0.13, 0.9), false, 2.0)
-		var s: float = _scale()
-		for e: Array in rects:
-			var r: Rect2 = e[0]
-			draw_rect(Rect2(_to_screen(r.position), r.size * s), e[1])
+	static func _add_poly(verts: PackedVector2Array, cols: PackedColorArray, poly: PackedVector2Array, col: Color) -> void:
+		var p: PackedVector2Array = MapBuilder._open(poly)
+		if p.size() < 3:
+			return
+		for i: int in MapBuilder._triangulate(p):
+			verts.append(p[i])
+			cols.append(col)
+
+	## Dải đường: mỗi đoạn một quad nửa bề rộng `half`, kéo dài `half` ở hai đầu để che khe ở chỗ gấp khúc.
+	static func _add_road(verts: PackedVector2Array, cols: PackedColorArray, pts: PackedVector2Array, half: float, col: Color) -> void:
+		for i: int in range(pts.size() - 1):
+			var d: Vector2 = pts[i + 1] - pts[i]
+			if d.length_squared() < 1e-6:
+				continue
+			d = d.normalized()
+			var n := Vector2(-d.y, d.x) * half
+			var a: Vector2 = pts[i] - d * half
+			var c: Vector2 = pts[i + 1] + d * half
+			verts.append_array(PackedVector2Array([a + n, c + n, c - n, a + n, c - n, a - n]))
+			for k: int in range(6):
+				cols.append(col)
+
+	## Vùng vẽ bản đồ (chừa chỗ chú giải trên, ghi công dưới); nội dung bản đồ bị cắt đúng khung này.
+	func content_rect() -> Rect2:
+		return Rect2(PAD, TOP_RESERVE, maxf(1.0, size.x - PAD * 2.0), maxf(1.0, size.y - TOP_RESERVE - BOTTOM_RESERVE))
+
+	## Bản đồ -> màn hình: khung bounds vừa khít content_rect().
+	func map_xform() -> Transform2D:
+		var area: Rect2 = content_rect()
+		var s: float = 1.0
+		if bounds.size.x > 0.0 and bounds.size.y > 0.0:
+			s = minf(area.size.x / bounds.size.x, area.size.y / bounds.size.y)
+		return Transform2D(0.0, Vector2(s, s), 0.0, area.get_center() - bounds.get_center() * s)
+
+	func to_screen(p: Vector2) -> Vector2:
+		return map_xform() * p
+
+	## Hotspot thuộc lớp tĩnh: chỉ vẽ lại khi danh sách (vị trí / màu) thật sự đổi.
+	func set_hotspots(pts: Array) -> void:
+		if pts == hotspot_pts:
+			return
+		hotspot_pts = pts.duplicate(true)
+		_static_dirty = true
+		_ensure_static()
+
+	## Lớp động: xếp một lần vẽ lại (người chơi, xe đang đỗ).
+	func refresh_dynamic() -> void:
+		if dynamic_layer and is_visible_in_tree():
+			dynamic_layer.queue_redraw()
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_RESIZED or what == NOTIFICATION_VISIBILITY_CHANGED:
+			_ensure_static()
+		elif what == NOTIFICATION_PREDELETE and _ci.is_valid():
+			RenderingServer.free_rid(_map_ci)
+			RenderingServer.free_rid(_ci)
+			_map_ci = RID()
+			_ci = RID()
+
+	func _ensure_static() -> void:
+		if static_layer == null or not is_visible_in_tree() or size.x < 4.0 or size.y < 4.0:
+			return
+		if _static_dirty or not size.is_equal_approx(_static_size):
+			_submit_static()
+
+	## Gửi toàn bộ lệnh vẽ lớp tĩnh (xoá lệnh cũ trước) vào hai canvas item tự quản: _ci (con của "Static") = nền,
+	## khung, chú giải, ghi công; _map_ci (con của "Static/MapClip", cắt theo content_rect) = mesh, tuyến, nhãn, cổng,
+	## hotspot.
+	func _submit_static() -> void:
+		var t0: int = Time.get_ticks_usec()
+		if not _ci.is_valid():
+			_ci = RenderingServer.canvas_item_create()
+			RenderingServer.canvas_item_set_parent(_ci, static_layer.get_canvas_item())
+			RenderingServer.canvas_item_set_draw_index(_ci, -1)   # nền vẽ trước MapClip (chỉ số cảnh 0)
+			_map_ci = RenderingServer.canvas_item_create()
+			RenderingServer.canvas_item_set_parent(_map_ci, _map_clip.get_canvas_item())
+		RenderingServer.canvas_item_clear(_ci)
+		RenderingServer.canvas_item_clear(_map_ci)
+		# khung cắt = Control "MapClip" (clip_contents) đặt đúng content_rect; _map_ci vẽ theo toạ độ của RoamMap
+		var area: Rect2 = content_rect()
+		_map_clip.position = area.position
+		_map_clip.size = area.size
+		RenderingServer.canvas_item_set_transform(_map_ci, Transform2D(0.0, -area.position))
+		_static_dirty = false
+		_static_size = size
+		var ci: RID = _ci
+		var mci: RID = _map_ci
+		var font: Font = ThemeDB.fallback_font
+		var xf: Transform2D = map_xform()
+		RenderingServer.canvas_item_add_rect(ci, Rect2(Vector2.ZERO, size), BG)
+		if _mesh:
+			RenderingServer.canvas_item_add_mesh(mci, _mesh.get_rid(), xf)
 		if route.size() >= 2:
 			var pts := PackedVector2Array()
 			for p: Vector2 in route:
-				pts.append(_to_screen(p))
-			draw_polyline(pts, Color(0.95, 0.44, 0.13, 1.0), 2.5, true)
-		var gp: Vector2 = _to_screen(gate)
-		draw_circle(gp, 6.0, Color(0.18, 0.8, 0.44))
+				pts.append(xf * p)
+			RenderingServer.canvas_item_add_polyline(mci, pts, PackedColorArray([CASING]), 6.0, true)
+			RenderingServer.canvas_item_add_polyline(mci, pts, PackedColorArray([ROUTE]), 3.0, true)
+		for lb: Array in labels:
+			_outlined_text(mci, font, xf * (lb[0] as Vector2) + (lb[2] as Vector2), String(lb[1]), 14, TEXT, true)
+		var gp: Vector2 = xf * gate
+		RenderingServer.canvas_item_add_circle(mci, gp, 8.0, INK)
+		RenderingServer.canvas_item_add_circle(mci, gp, 6.0, GATE)
 		for h: Array in hotspot_pts:
-			draw_circle(_to_screen(h[0]), 5.0, h[1])
+			var hp: Vector2 = xf * (h[0] as Vector2)
+			RenderingServer.canvas_item_add_circle(mci, hp, 7.0, INK)
+			RenderingServer.canvas_item_add_circle(mci, hp, 5.0, h[1])
+		RenderingServer.canvas_item_add_polyline(ci, PackedVector2Array([Vector2.ZERO, Vector2(size.x, 0.0), size, Vector2(0.0, size.y), Vector2.ZERO]), PackedColorArray([FRAME]), 2.0)
+		# tiêu đề + chú giải (hai dòng) + ghi công (hai dòng)
+		font.draw_string(ci, Vector2(PAD, 28.0), "BẢN ĐỒ  ·  [M] đóng", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, TEXT)
+		var x: float = PAD
+		var y1: float = 52.0
+		x = _legend(ci, font, x, y1, "split", REGION_COLORS["vinhomes"], "Vinhomes Grand Park")
+		x = _legend(ci, font, x, y1, "split", REGION_COLORS["corridor"], "dọc tuyến đường")
+		x = _legend(ci, font, x, y1, "split", REGION_COLORS["campus"], "khu campus FPTU")
+		font.draw_string(ci, Vector2(x, y1), "(nửa đậm: nhà OpenStreetMap · nửa nhạt: nhà Microsoft)", HORIZONTAL_ALIGNMENT_LEFT, -1, LEGEND_SIZE, DIM)
+		x = PAD
+		var y2: float = 72.0
+		x = _legend(ci, font, x, y2, "rect", WATER, "nước")
+		x = _legend(ci, font, x, y2, "rect", AREA_COLORS["park"], "công viên")
+		x = _legend(ci, font, x, y2, "line", ROAD_MAJOR, "đường lớn")
+		x = _legend(ci, font, x, y2, "line", ROAD_MINOR, "đường nhỏ")
+		x = _legend(ci, font, x, y2, "route", ROUTE, "tuyến BE6 → FPTU 5,5 km")
+		x = _legend(ci, font, x, y2, "dot", GATE, "cổng FPTU")
+		x = _legend(ci, font, x, y2, "dot", Color("#F1C40F"), "điểm nóng [E] chơi màn")
+		x = _legend(ci, font, x, y2, "dot", Color.WHITE, "bạn")
+		_legend(ci, font, x, y2, "diamond", BIKE, "xe máy đang đỗ")
+		font.draw_string(ci, Vector2(PAD, size.y - 30.0), ATTR_OSM, HORIZONTAL_ALIGNMENT_LEFT, -1, LEGEND_SIZE, DIM)
+		font.draw_string(ci, Vector2(PAD, size.y - 12.0), ATTR_MSFT, HORIZONTAL_ALIGNMENT_LEFT, -1, LEGEND_SIZE, DIM)
+		static_draws += 1
+		static_draw_usec = Time.get_ticks_usec() - t0
+
+	## Một mục chú giải tại đường chân chữ y: ô mẫu 14 x 10 px + nhãn; trả về x cho mục kế tiếp.
+	func _legend(ci: RID, font: Font, x: float, y: float, kind: String, col: Color, text: String) -> float:
+		var c := Vector2(x + 7.0, y - 5.0)
+		match kind:
+			"split":
+				RenderingServer.canvas_item_add_rect(ci, Rect2(x, y - 10.0, 7.0, 10.0), col.darkened(OSM_DARKEN))
+				RenderingServer.canvas_item_add_rect(ci, Rect2(x + 7.0, y - 10.0, 7.0, 10.0), col)
+			"rect":
+				RenderingServer.canvas_item_add_rect(ci, Rect2(x, y - 10.0, 14.0, 10.0), col)
+			"line":
+				RenderingServer.canvas_item_add_line(ci, Vector2(x, y - 5.0), Vector2(x + 14.0, y - 5.0), col, 3.0)
+			"route":
+				RenderingServer.canvas_item_add_line(ci, Vector2(x, y - 5.0), Vector2(x + 14.0, y - 5.0), CASING, 6.0)
+				RenderingServer.canvas_item_add_line(ci, Vector2(x, y - 5.0), Vector2(x + 14.0, y - 5.0), col, 3.0)
+			"dot":
+				RenderingServer.canvas_item_add_circle(ci, c, 6.0, INK)
+				RenderingServer.canvas_item_add_circle(ci, c, 4.5, col)
+			"diamond":
+				RenderingServer.canvas_item_add_polygon(ci, PackedVector2Array([c + Vector2(0.0, -6.0), c + Vector2(6.0, 0.0), c + Vector2(0.0, 6.0), c + Vector2(-6.0, 0.0)]), PackedColorArray([col]))
+		font.draw_string(ci, Vector2(x + 19.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, LEGEND_SIZE, DIM)
+		return x + 19.0 + font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, LEGEND_SIZE).x + 16.0
+
+	## Chữ có viền tối (đọc được trên nền nhà / đường), căn giữa tại pos khi centred.
+	static func _outlined_text(ci: RID, font: Font, pos: Vector2, text: String, font_size: int, col: Color, centred: bool) -> void:
+		var p: Vector2 = pos
+		if centred:
+			p.x -= font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x * 0.5
+		font.draw_string_outline(ci, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, 5, INK)
+		font.draw_string(ci, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, col)
+
+	## Lớp động (tín hiệu draw của "Dynamic"): xe đang đỗ + chấm người chơi có vạch hướng.
+	func _draw_dynamic() -> void:
+		var t0: int = Time.get_ticks_usec()
+		var layer: Control = dynamic_layer
+		var xf: Transform2D = map_xform()
 		var font: Font = ThemeDB.fallback_font
 		if bike_shown:
-			var bp: Vector2 = _to_screen(bike_pos)
+			var bp: Vector2 = xf * bike_pos
 			var dia := PackedVector2Array([bp + Vector2(0.0, -8.0), bp + Vector2(8.0, 0.0), bp + Vector2(0.0, 8.0), bp + Vector2(-8.0, 0.0)])
-			draw_colored_polygon(dia, Color(0.3, 0.85, 1.0))
-			draw_polyline(PackedVector2Array([dia[0], dia[1], dia[2], dia[3], dia[0]]), Color(0.02, 0.05, 0.1), 1.5)
-			draw_string(font, bp + Vector2(11.0, 5.0), "XE", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.3, 0.85, 1.0))
-			draw_string(font, Vector2(16.0, 52.0), "Ô thoi xanh lơ: xe máy đang đỗ (cách %d m)" % bike_dist, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.3, 0.85, 1.0))
-		var pp: Vector2 = _to_screen(player_pos)
-		draw_circle(pp, 7.0, Color.WHITE)
-		draw_line(pp, pp + player_dir.normalized() * 18.0, Color.WHITE, 3.0)
-		draw_string(font, Vector2(16.0, 30.0), "BẢN ĐỒ · [M] đóng · cam: Vinhomes Grand Park · xanh: khu campus · vạch cam: tuyến BE6 → FPTU · chấm xanh: cổng FPTU", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.96, 0.96, 0.96))
-		draw_string(font, Vector2(16.0, size.y - 14.0), "Bản đồ (c) OpenStreetMap contributors (ODbL) · Nhà ống (c) Microsoft Global ML Building Footprints (CDLA-Permissive-2.0)", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.75, 0.75, 0.75))
+			layer.draw_colored_polygon(dia, BIKE)
+			layer.draw_polyline(PackedVector2Array([dia[0], dia[1], dia[2], dia[3], dia[0]]), INK, 1.5)
+			layer.draw_string_outline(font, bp + Vector2(11.0, 5.0), "XE", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, INK)
+			layer.draw_string(font, bp + Vector2(11.0, 5.0), "XE", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, BIKE)
+			layer.draw_string(font, Vector2(PAD, 28.0), "Xe máy đang đỗ cách %d m" % bike_dist, HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, 15, BIKE)
+		var pp: Vector2 = xf * player_pos
+		var dir: Vector2 = player_dir.normalized() if player_dir.length_squared() > 1e-6 else Vector2(0.0, -1.0)
+		layer.draw_line(pp, pp + dir * 20.0, INK, 6.0)
+		layer.draw_line(pp, pp + dir * 19.0, Color.WHITE, 3.0)
+		layer.draw_circle(pp, 8.5, INK)
+		layer.draw_circle(pp, 6.5, Color.WHITE)
+		dynamic_draws += 1
+		dynamic_draw_usec = Time.get_ticks_usec() - t0
