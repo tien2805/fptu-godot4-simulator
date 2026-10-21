@@ -6,17 +6,34 @@
 #
 # OUTPUT TREE (build_region): Map_<region> (meta region) -> Ground, Areas_<kind>, AreaLines, Water, Banks,
 #   Roads_<class> (+StaticBody3D), Kerbs (+body), RoadLines, Footways (+body), BridgeParts (+body),
-#   Buildings/<B<id> | name> (MeshInstance3D, meta building_id, +StaticBody3D/ConcavePolygonShape3D, Label3D),
+#   Buildings/<B<id> | name> (OSM buildings: MeshInstance3D, meta building_id, +StaticBody3D/ConcavePolygonShape3D,
+#   Label3D), Buildings/MSChunk_<gx>_<gz> (Microsoft footprints merged per MSFT_CHUNK_M cell, see below),
 #   Trees/Trees_<variant> (MultiMeshInstance3D) (+TreeColliders), POIs (Label3D + POISigns/POIPlates).
 #   Every direct child of the region root carries meta "region" too.
 #
 # FACADE UV CONTRACT (walls, see Task 2 tile table): every facade material has uv1_scale = (1, 1, 1); the repeats
-#   are baked into the mesh UVs. u = distance along the edge / TILE_W[style] (restarts at 0 on every building edge,
-#   so each facade starts on a whole bay). v = 0 at the roof edge and v = levels / TILE_STOREYS[style] at the
-#   ground: the image bottom (floor line) lands exactly on the pavement and the image top (parapet band) on the
-#   roof. One tile therefore covers TILE_STOREYS storeys of the building's own storey height (height / levels:
-#   3.2 m towers, 3.6 m shophouse/mall); equivalent to the plan's "u = length / 3 m, v = levels" with
-#   uv1_scale = (3 / TILE_W, 1 / TILE_STOREYS, 1) folded into the UVs. Roof uv = world (x, z) / 4 m.
+#   are baked into the mesh UVs. u = u0 + distance along the edge / TILE_W[style], growing to the right as seen from
+#   outside whatever the ring winding (sign text never mirrored), restarting at u0 at the left end of every building
+#   edge, so each facade starts on a whole bay (u0 = 0 for OSM buildings). One-storey tiles (TILE_STOREYS 1): v = 0
+#   at the roof edge and v = levels at the ground. The 2-storey shophouse tile (shutters + sign below, windows under
+#   the cornice band above): the ground storey maps v 1 -> 0.5 and every upper storey v 0.5 -> 0, so the image bottom
+#   (floor line) lands on the pavement and the shopfront stays on the ground floor for any storey count; for the
+#   OSM shophouses (all levels 2) this is exactly v = levels / TILE_STOREYS = 1 at the ground .. 0 at the roof.
+#   One tile row covers one storey of the building's own storey height (height / levels: 3.2 m towers, 3.6 m
+#   shophouse/mall); equivalent to the plan's "u = length / 3 m, v = levels" with uv1_scale = (3 / TILE_W,
+#   1 / TILE_STOREYS, 1) folded into the UVs. Roof uv = world (x, z) / 4 m.
+#
+# MICROSOFT FOOTPRINTS ("source": "msft", ~2.5k unnamed tube houses / warehouses merged by tools/osm_to_mapdata.py,
+#   ids >= 9e9): never one node per building. msft_footprints() first clips every footprint MSFT_ROAD_CLEAR m off each
+#   carriageway ribbon (+ kerb), out of OSM buildings, water and the msft footprints placed before it (the imagery
+#   outlines overlap the OSM road widths by up to 4 m and each other at party walls); pieces under MSFT_MIN_PIECE_M2
+#   or thinner than MSFT_MIN_WIDTH_M are dropped. _build_msft_chunks() groups the buildings by the MSFT_CHUNK_M cell of
+#   their centroid and appends the same _emit_building() geometry as build_building() into per-material batches:
+#   one MeshInstance3D "MSChunk_<gx>_<gz>" per cell (surfaces walls_<style>, roof, parapet, tank; lod 2: one box
+#   surface), meta source = "msft", building_ids (Array[int]) and tank_count, visibility_range_end 700 m (lod 0) /
+#   450 m (lod >= 1) with a 40 m self fade, one trimesh StaticBody3D "Col" per chunk, no Label3D. Shophouse facades
+#   start on a per-id whole 4 m bay (u0) so neighbours differ in colour; ~MSFT_TANK_SHARE of the roofs (deterministic
+#   per id) carry a stainless-steel water tank on two legs. skip_building_ids applies before clipping.
 #
 # Y STACK: ground -0.03 | area planes 0.0..0.035 by kind | roads 0.05 | lane overlay +0.01 | footways 0.12
 #   (dipping to 0.03 where they cross a carriageway) | kerb top 0.15 | water -0.3 (ground cut out around it,
@@ -64,6 +81,21 @@ const BIG_AREA_SKIP_M2: float = 300000.0   # district-level landuse polygons are
 const AREA_Y: Dictionary = {"other": 0.0, "campus": 0.005, "park": 0.01, "pitch": 0.02, "parking": 0.02, "pool": POOL_Y, "water_park": POOL_Y}
 const CLASS_ALIAS: Dictionary = {"primary_link": "primary", "secondary_link": "secondary", "tertiary_link": "tertiary", "motorway_link": "motorway", "unclassified": "residential", "living_street": "residential"}
 const INVALID_NAME_CHARS: Array[String] = [".", ":", "@", "/", "\"", "%"]
+# Microsoft footprints (header "MICROSOFT FOOTPRINTS")
+const MSFT_CHUNK_M: float = 128.0
+const MSFT_VIS_END_LOD0: float = 700.0
+const MSFT_VIS_END_FAR: float = 450.0
+const MSFT_VIS_MARGIN: float = 40.0
+const MSFT_ROAD_CLEAR: float = 0.7      # gap between a clipped footprint and the kerb (or the edge of a kerb-less lane)
+const MSFT_MIN_PIECE_M2: float = 6.0
+const MSFT_MIN_WIDTH_M: float = 1.0     # 2 * area / perimeter of a kept piece (~ its width)
+const MSFT_TANK_SHARE: float = 0.4
+const SHOPHOUSE_BAY_M: float = 4.0      # one house of the 12 m shophouse tile
+const TANK_R: float = 0.45
+const TANK_L: float = 1.6
+const TANK_LEG_H: float = 0.3
+const TANK_CLEAR: float = 0.4           # tank footprint margin to the roof edge (parapet 0.3 m thick)
+const TANK_SEGMENTS: int = 12
 
 static var _mats: Dictionary = {}
 static var _style_mats: Dictionary = {}
@@ -74,8 +106,13 @@ static var _carriageways: Array = []         # [PackedVector2Array points, float
 static var _discs: Array = []                # [Vector2 centre, float radius] junction discs (no kerb / no lines inside)
 static var _disc_hash: Dictionary = {}       # Vector2i cell -> Array[int]
 static var _max_disc_r: float = 0.0
+static var _max_road_w: float = 0.0
 static var _water_cache_md: MapData = null
 static var _water_cache: Array = []          # PackedVector2Array polygons of every water body (all regions)
+static var _osm_md: MapData = null
+static var _osm_polys: Array = []            # PackedVector2Array outer ring of every OSM building (all regions)
+static var _osm_boxes: Array = []            # Rect2 per _osm_polys entry
+static var _osm_hash: Dictionary = {}        # Vector2i cell -> Array[int] into _osm_polys
 
 
 ## A SurfaceTool plus its vertex count (SurfaceTool cannot be asked whether it is empty).
@@ -94,7 +131,7 @@ class Batch:
 
 ## Builds one region ("campus" | "corridor" | "vinhomes") under `parent` and returns its root Node3D.
 ## opts: colliders (true), roads (true), buildings (true), water (true), areas (true), trees (true), labels (true),
-##       skip_building_ids ([]), skip_area_ids ([]: area ids drawn by someone else, e.g. the FPT plot that
+##       skip_building_ids ([]: OSM or msft ids), skip_area_ids ([]: area ids drawn by someone else, e.g. the FPT plot that
 ##       FPTUCampusBuilder covers with its own grass), lod (0 full | 1 no labels/trees | 2 boxes only), y (0.0 ground offset).
 static func build_region(parent: Node3D, md: MapData, region: String, opts: Dictionary = {}) -> Node3D:
 	var t0: int = Time.get_ticks_msec()
@@ -205,14 +242,13 @@ static func build_road(parent: Node3D, points: PackedVector2Array, width: float,
 
 ## One building: walls (facade tile UVs, see header), flat roof (city_roof_flat.png), parapet, optional rooftop
 ## plant room, StaticBody3D with a ConcavePolygonShape3D of the whole mesh, Label3D with the display name.
+## The geometry is _emit_building(), shared with the merged Microsoft chunks.
 static func build_building(parent: Node3D, b: Dictionary, opts: Dictionary = {}) -> Node3D:
 	var o: Dictionary = _defaults(opts)
 	var m: Dictionary = materials()
 	var style: String = str(b.get("style", "shophouse"))
-	var levels: int = maxi(1, int(b.get("levels", 2)))
-	var height: float = float(b.get("height", 0.0))
-	if height < 1.0:
-		height = float(levels) * STOREY_M
+	var levels: int = _building_levels(b)
+	var height: float = _building_height(b)
 	var outer: PackedVector2Array = _open(MapData.poly(b.get("outer", [])))
 	if outer.size() < 3:
 		return null
@@ -221,40 +257,22 @@ static func build_building(parent: Node3D, b: Dictionary, opts: Dictionary = {})
 		var r: PackedVector2Array = _open(MapData.poly(ring))
 		if r.size() >= 3:
 			inners.append(r)
-	var tile_w: float = float(TILE_W.get(style, 12.0))
-	var v_ground: float = float(levels) / float(TILE_STOREYS.get(style, 2))
-	var mesh := ArrayMesh.new()
-	# walls
 	var wb := Batch.new()
-	_emit_walls(wb, outer, 0.0, height, tile_w, v_ground, false)
-	for r: PackedVector2Array in inners:
-		_emit_walls(wb, r, 0.0, height, tile_w, v_ground, true)
+	var rb := Batch.new()
+	var pb := Batch.new()
+	_emit_building(wb, rb, pb, outer, inners, style, levels, height, 0.0)
+	var mesh := ArrayMesh.new()
 	wb.st.generate_tangents()
 	wb.st.commit(mesh)
 	mesh.surface_set_name(0, "walls")
 	mesh.surface_set_material(0, _mat_for_style(style))
-	# roof
-	var rb := Batch.new()
-	for piece: PackedVector2Array in _subtract([outer], inners):
-		_emit_polygon(rb, piece, height, Vector3.UP, 1.0 / ROOF_TILE_M)
-	if rb.n == 0:
-		_emit_polygon(rb, outer, height, Vector3.UP, 1.0 / ROOF_TILE_M)
 	rb.st.commit(mesh)
 	mesh.surface_set_name(1, "roof")
 	mesh.surface_set_material(1, m["roof"])
-	# parapet + rooftop plant room
-	var pb := Batch.new()
-	var ph: float = 0.4 if style in NORMAL_MAPPED_STYLES else 0.25
-	_emit_parapet(pb, outer, height, ph, 0.3, false)
-	for r: PackedVector2Array in inners:
-		_emit_parapet(pb, r, height, ph, 0.3, true)
-	if levels >= 10 and inners.is_empty():
-		var c: Vector2 = _centroid(outer)
-		if Geometry2D.is_point_in_polygon(c, outer):
-			_emit_box(pb, Vector3(c.x, height + 1.3, c.y), Vector3(6.0, 2.6, 4.0))
 	pb.st.commit(mesh)
 	mesh.surface_set_name(2, "parapet")
 	mesh.surface_set_material(2, m["parapet"])
+	var ph: float = _parapet_h(style)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.name = building_node_name(b)
@@ -395,6 +413,9 @@ static func materials() -> Dictionary:
 	m["pole"] = _plain(Color(0.35, 0.37, 0.4), 0.45)
 	m["sign_blue"] = _plain(Color(0.12, 0.38, 0.78), 0.5)
 	m["box"] = _plain(Color(0.84, 0.80, 0.78), 0.9)
+	var tank: StandardMaterial3D = _plain(Color(0.80, 0.81, 0.83), 0.3)   # brushed stainless steel water tank
+	tank.metallic = 0.8
+	m["tank"] = tank
 	return m
 
 
@@ -604,6 +625,8 @@ static func _build_buildings(root: Node3D, md: MapData, region: String, m: Dicti
 	var lod: int = int(o["lod"])
 	var boxes := Batch.new()
 	for b: Dictionary in md.buildings(region):
+		if is_msft(b):
+			continue   # merged per chunk below
 		if skip.has(int(b.get("id", 0))):
 			continue
 		if lod >= 2:
@@ -621,6 +644,7 @@ static func _build_buildings(root: Node3D, md: MapData, region: String, m: Dicti
 			holder.add_child(mi)
 			if bool(o["colliders"]):
 				_add_trimesh_collider(mi)
+	_build_msft_chunks(holder, md, region, m, o)
 
 
 static func _build_pois(root: Node3D, md: MapData, region: String, m: Dictionary) -> void:
@@ -655,6 +679,309 @@ static func _build_pois(root: Node3D, md: MapData, region: String, m: Dictionary
 	var bmi: MeshInstance3D = _commit(plates, m["sign_blue"], "POIPlates")
 	if bmi:
 		holder.add_child(bmi)
+
+
+# ===========================================================================
+# MICROSOFT FOOTPRINTS (clipped, merged per MSFT_CHUNK_M cell; header "MICROSOFT FOOTPRINTS")
+# ===========================================================================
+
+## True for a Microsoft Global ML Building Footprints entry ("source": "msft" from tools/osm_to_mapdata.py).
+## Buildings without a source tag (older data) count as OSM.
+static func is_msft(b: Dictionary) -> bool:
+	return str(b.get("source", "osm")) == "msft"
+
+
+## The region's Microsoft buildings (minus `skip` ids) with their final footprints, in data order:
+## [[building Dictionary, pieces], ...], pieces = Array of open PackedVector2Array rings clipped MSFT_ROAD_CLEAR m off
+## every carriageway ribbon (+ kerb), out of every OSM building, every water body and the msft pieces placed before
+## it; slivers (< MSFT_MIN_PIECE_M2 or thinner than MSFT_MIN_WIDTH_M) are dropped, so pieces can be empty.
+static func msft_footprints(md: MapData, region: String, skip: Array = []) -> Array:
+	_prepare_road_index(md)
+	_prepare_osm_index(md)
+	var water: Array = _water_polygons(md)
+	var water_boxes: Array = []
+	for w: PackedVector2Array in water:
+		water_boxes.append(_bbox(w))
+	var placed: Array = []           # accepted msft pieces
+	var placed_boxes: Array = []
+	var placed_hash: Dictionary = {}  # Vector2i cell -> Array[int] into placed
+	var out: Array = []
+	for b: Dictionary in md.buildings(region):
+		if not is_msft(b) or skip.has(int(b.get("id", 0))):
+			continue
+		var outer: PackedVector2Array = _open(MapData.poly(b.get("outer", [])))
+		if outer.size() < 3:
+			out.append([b, []])
+			continue
+		var bb: Rect2 = _bbox(outer)
+		var cells: Array = _cells_of_box(bb, 0.0)
+		var cutters: Array = _road_cutters(bb)
+		var seen: Dictionary = {}
+		for cell: Vector2i in cells:
+			for oi: int in _osm_hash.get(cell, []):
+				if not seen.has(oi) and (_osm_boxes[oi] as Rect2).intersects(bb):
+					seen[oi] = true
+					cutters.append(_osm_polys[oi])
+		for wi: int in range(water.size()):
+			if (water_boxes[wi] as Rect2).intersects(bb):
+				cutters.append(water[wi])
+		seen = {}
+		for cell: Vector2i in cells:
+			for pi: int in placed_hash.get(cell, []):
+				if not seen.has(pi) and (placed_boxes[pi] as Rect2).intersects(bb):
+					seen[pi] = true
+					cutters.append(placed[pi])
+		var pieces: Array = [outer] if cutters.is_empty() else _subtract([outer], cutters)
+		var keep: Array = []
+		for p: PackedVector2Array in pieces:
+			var q: PackedVector2Array = _open(p)
+			if q.size() < 3:
+				continue
+			var area: float = _abs_area(q)
+			if area < MSFT_MIN_PIECE_M2 or 2.0 * area / maxf(_perimeter(q), 0.001) < MSFT_MIN_WIDTH_M:
+				continue
+			keep.append(q)
+			var qb: Rect2 = _bbox(q)
+			var qi: int = placed.size()
+			placed.append(q)
+			placed_boxes.append(qb)
+			for cell: Vector2i in _cells_of_box(qb, 0.0):
+				if not placed_hash.has(cell):
+					placed_hash[cell] = []
+				(placed_hash[cell] as Array).append(qi)
+		out.append([b, keep])
+	return out
+
+
+## One merged MeshInstance3D per MSFT_CHUNK_M cell of the building centroids (name MSChunk_<gx>_<gz>, meta source,
+## building_ids, tank_count), visibility range by lod, one trimesh StaticBody3D when opts.colliders. Ids whose
+## footprint was clipped away entirely are listed in the holder's meta "msft_dropped_ids".
+static func _build_msft_chunks(holder: Node3D, md: MapData, region: String, m: Dictionary, o: Dictionary) -> void:
+	var lod: int = int(o["lod"])
+	var cells: Dictionary = {}
+	var order: Array = []
+	var dropped: Array = []
+	for e: Array in msft_footprints(md, region, o["skip_building_ids"]):
+		var b: Dictionary = e[0]
+		if (e[1] as Array).is_empty():
+			dropped.append(int(b.get("id", 0)))
+			continue
+		var key: Vector2i = msft_chunk_key(b)
+		if not cells.has(key):
+			cells[key] = []
+			order.append(key)
+		(cells[key] as Array).append(e)
+	holder.set_meta("msft_dropped_ids", dropped)
+	for key: Vector2i in order:
+		var mi: MeshInstance3D = _build_msft_chunk(cells[key], lod, m)
+		if mi == null:
+			continue
+		mi.name = "MSChunk_%d_%d" % [key.x, key.y]
+		mi.visibility_range_end = MSFT_VIS_END_LOD0 if lod == 0 else MSFT_VIS_END_FAR
+		mi.visibility_range_end_margin = MSFT_VIS_MARGIN
+		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		holder.add_child(mi)
+		if bool(o["colliders"]):
+			_add_trimesh_collider(mi)
+
+
+## Grid cell (MSFT_CHUNK_M) of a building's centroid (vertex average of the data outer ring).
+static func msft_chunk_key(b: Dictionary) -> Vector2i:
+	var c: Vector2 = _centroid(_open(MapData.poly(b.get("outer", []))))
+	return Vector2i(floori(c.x / MSFT_CHUNK_M), floori(c.y / MSFT_CHUNK_M))
+
+
+## Merged mesh of one chunk: _emit_building() per piece into per-material batches (walls per style, roof, parapet,
+## tank), or plain boxes for lod >= 2 (like the OSM BuildingBoxes). Null when nothing was emitted.
+static func _build_msft_chunk(entries: Array, lod: int, m: Dictionary) -> MeshInstance3D:
+	var ids: Array = []
+	var walls: Dictionary = {}
+	var styles: Array = []
+	var roof := Batch.new()
+	var parapet := Batch.new()
+	var tank := Batch.new()
+	var boxes := Batch.new()
+	var tanks: int = 0
+	for e: Array in entries:
+		var b: Dictionary = e[0]
+		var pieces: Array = e[1]
+		var id: int = int(b.get("id", 0))
+		ids.append(id)
+		var style: String = str(b.get("style", "shophouse"))
+		var levels: int = _building_levels(b)
+		var height: float = _building_height(b)
+		if lod >= 2:
+			var hb: float = maxf(3.0, height)
+			for p: PackedVector2Array in pieces:
+				_emit_walls(boxes, p, 0.0, hb, 1.0, 1.0, false)
+				_emit_polygon(boxes, p, hb, Vector3.UP, 0.25)
+			continue
+		if not walls.has(style):
+			walls[style] = Batch.new()
+			styles.append(style)
+		var u0: float = _msft_bay(id, style)
+		var biggest: PackedVector2Array = pieces[0]
+		for p: PackedVector2Array in pieces:
+			_emit_building(walls[style], roof, parapet, p, [], style, levels, height, u0)
+			if _abs_area(p) > _abs_area(biggest):
+				biggest = p
+		if _hash01(id, 1) < MSFT_TANK_SHARE and _emit_roof_tank(tank, biggest, height):
+			tanks += 1
+	var mesh := ArrayMesh.new()
+	if lod >= 2:
+		if boxes.n == 0:
+			return null
+		boxes.st.commit(mesh)
+		mesh.surface_set_name(0, "boxes")
+		mesh.surface_set_material(0, m["box"])
+	else:
+		for style: String in styles:
+			var wb: Batch = walls[style]
+			if wb.n == 0:
+				continue
+			if style in NORMAL_MAPPED_STYLES:
+				wb.st.generate_tangents()
+			wb.st.commit(mesh)
+			mesh.surface_set_name(mesh.get_surface_count() - 1, "walls_" + style)
+			mesh.surface_set_material(mesh.get_surface_count() - 1, _mat_for_style(style))
+		for pair: Array in [[roof, "roof"], [parapet, "parapet"], [tank, "tank"]]:
+			var bt: Batch = pair[0]
+			if bt.n == 0:
+				continue
+			bt.st.commit(mesh)
+			mesh.surface_set_name(mesh.get_surface_count() - 1, String(pair[1]))
+			mesh.surface_set_material(mesh.get_surface_count() - 1, m[String(pair[1])])
+	if mesh.get_surface_count() == 0:
+		return null
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.set_meta("source", "msft")
+	mi.set_meta("building_ids", ids)
+	mi.set_meta("tank_count", tanks)
+	return mi
+
+
+## Shophouse facades start on a per-id whole bay of the 12 m tile (3 houses of 4 m in 3 colours); other styles 0.
+static func _msft_bay(id: int, style: String) -> float:
+	if style != "shophouse":
+		return 0.0
+	var bays: int = int(round(float(TILE_W["shophouse"]) / SHOPHOUSE_BAY_M))
+	return float(int(_hash01(id, 2) * float(bays))) / float(bays)
+
+
+## Deterministic 0..1 per (id, salt): two xorshift-multiply rounds on 32 bits (no int64 overflow).
+static func _hash01(id: int, salt: int) -> float:
+	var x: int = (id ^ (salt * 0x9E3779B1)) & 0xFFFFFFFF
+	x = (((x >> 16) ^ x) * 0x45D9F3B) & 0xFFFFFFFF
+	x = (((x >> 16) ^ x) * 0x45D9F3B) & 0xFFFFFFFF
+	x = (x >> 16) ^ x
+	return float(x % 10000) / 10000.0
+
+
+## Rectangles of the carriageway segments near `bb`, each MSFT_ROAD_CLEAR m (+ KERB_W where kerbs are drawn) wider
+## than the ribbon half width on both sides, extended by that half width past interior vertices (covers the mitred
+## joints) and 0.3 m past the ends of a way (dead ends do not cut into the house in front of them).
+static func _road_cutters(bb: Rect2) -> Array:
+	var out: Array = []
+	var seen: Dictionary = {}
+	var c: Vector2 = bb.get_center()
+	var rad: float = bb.size.length() * 0.5
+	for cell: Vector2i in _cells_of_box(bb, _max_road_w * 0.5 + KERB_W + MSFT_ROAD_CLEAR):
+		if not _seg_hash.has(cell):
+			continue
+		for sv: Vector2i in _seg_hash[cell]:
+			if seen.has(sv):
+				continue
+			seen[sv] = true
+			var cw: Array = _carriageways[sv.x]
+			var pts: PackedVector2Array = cw[0]
+			var w: float = cw[1]
+			var half: float = w * 0.5 + MSFT_ROAD_CLEAR + (KERB_W if w >= KERB_MIN_ROAD_W else 0.0)
+			var a: Vector2 = pts[sv.y]
+			var e: Vector2 = pts[sv.y + 1]
+			if _dist_point_segment(c, a, e) > half + rad:
+				continue
+			var d: Vector2 = e - a
+			var len: float = d.length()
+			if len < 0.01:
+				continue
+			d /= len
+			var n := Vector2(-d.y, d.x) * half
+			var a2: Vector2 = a - d * (half if sv.y > 0 else 0.3)
+			var e2: Vector2 = e + d * (half if sv.y < pts.size() - 2 else 0.3)
+			out.append(PackedVector2Array([a2 + n, e2 + n, e2 - n, a2 - n]))
+	return out
+
+
+## Spatial hash of every OSM building outer ring (all regions; cached per MapData) for msft_footprints().
+static func _prepare_osm_index(md: MapData) -> void:
+	if _osm_md == md:
+		return
+	_osm_md = md
+	_osm_polys = []
+	_osm_boxes = []
+	_osm_hash = {}
+	for b: Dictionary in md.buildings():
+		if is_msft(b):
+			continue
+		var p: PackedVector2Array = _open(MapData.poly(b.get("outer", [])))
+		if p.size() < 3:
+			continue
+		var bb: Rect2 = _bbox(p)
+		var i: int = _osm_polys.size()
+		_osm_polys.append(p)
+		_osm_boxes.append(bb)
+		for cell: Vector2i in _cells_of_box(bb, 0.0):
+			if not _osm_hash.has(cell):
+				_osm_hash[cell] = []
+			(_osm_hash[cell] as Array).append(i)
+
+
+## Stainless-steel rooftop water tank (bồn nước inox, the classic Vietnamese tube-house roof): a horizontal cylinder
+## TANK_R x TANK_L lying on two saddle legs, centred on the roof piece with its axis along the longest edge, at least
+## TANK_CLEAR inside the roof outline (clear of the parapet). Returns false when it does not fit.
+static func _emit_roof_tank(b: Batch, piece: PackedVector2Array, roof_y: float) -> bool:
+	var ring: PackedVector2Array = _open(piece)
+	if ring.size() < 3:
+		return false
+	var c: Vector2 = _area_centroid(ring)
+	var ax := Vector2.RIGHT
+	var best: float = 0.0
+	for i: int in range(ring.size()):
+		var d: Vector2 = ring[(i + 1) % ring.size()] - ring[i]
+		if d.length() > best:
+			best = d.length()
+			ax = d / best
+	var side := Vector2(-ax.y, ax.x)
+	var hx: float = TANK_L * 0.5 + TANK_CLEAR
+	var hz: float = TANK_R + TANK_CLEAR
+	for k: Vector2 in [ax * hx + side * hz, ax * hx - side * hz, -ax * hx + side * hz, -ax * hx - side * hz, Vector2.ZERO]:
+		if not Geometry2D.is_point_in_polygon(c + k, ring):
+			return false
+	var a3 := Vector3(ax.x, 0.0, ax.y)
+	var s3 := Vector3(side.x, 0.0, side.y)
+	var centre := Vector3(c.x, roof_y + TANK_LEG_H + TANK_R, c.y)
+	var e0: Vector3 = centre - a3 * (TANK_L * 0.5)
+	var e1: Vector3 = centre + a3 * (TANK_L * 0.5)
+	for k: int in range(TANK_SEGMENTS):
+		var t0: float = TAU * float(k) / float(TANK_SEGMENTS)
+		var t1: float = TAU * float(k + 1) / float(TANK_SEGMENTS)
+		var n0: Vector3 = s3 * cos(t0) + Vector3.UP * sin(t0)
+		var n1: Vector3 = s3 * cos(t1) + Vector3.UP * sin(t1)
+		var p00: Vector3 = e0 + n0 * TANK_R
+		var p01: Vector3 = e1 + n0 * TANK_R
+		var p10: Vector3 = e0 + n1 * TANK_R
+		var p11: Vector3 = e1 + n1 * TANK_R
+		_tri_smooth(b, p00, p01, p11, n0, n0, n1, n0 + n1)
+		_tri_smooth(b, p00, p11, p10, n0, n1, n1, n0 + n1)
+		_tri(b, e0, p10, p00, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, -a3)
+		_tri(b, e1, p01, p11, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, a3)
+	# saddle legs: flat plates across the axis, their tops hidden inside the drum
+	var leg_h: float = TANK_LEG_H + TANK_R * 0.35
+	for f: float in [-0.3, 0.3]:
+		var base: Vector3 = Vector3(c.x, roof_y, c.y) + a3 * (TANK_L * f)
+		_emit_obox(b, base + Vector3(0.0, leg_h * 0.5, 0.0), a3 * 0.04, s3 * (TANK_R * 0.85), Vector3(0.0, leg_h * 0.5, 0.0))
+	return true
 
 
 # ===========================================================================
@@ -1032,9 +1359,64 @@ static func _emit_bridge_parts(b: Batch, pts: PackedVector3Array, width: float) 
 # BUILDING GEOMETRY
 # ===========================================================================
 
-## Wall quads for one ring: u = edge length / tile_w (restarting per edge), v = 0 at y1 (roof) .. v_ground at y0.
+static func _building_levels(b: Dictionary) -> int:
+	return maxi(1, int(b.get("levels", 2)))
+
+
+## Data height, or levels x STOREY_M when the data has none.
+static func _building_height(b: Dictionary) -> float:
+	var height: float = float(b.get("height", 0.0))
+	if height < 1.0:
+		height = float(_building_levels(b)) * STOREY_M
+	return height
+
+
+static func _parapet_h(style: String) -> float:
+	return 0.4 if style in NORMAL_MAPPED_STYLES else 0.25
+
+
+## One building's geometry appended to three batches: facade walls (UV contract in the header, every edge starts at
+## u0 tiles), flat roof at `height` with the courtyards cut out, parapet ring(s) and, for >= 10 storeys without a
+## courtyard, a rooftop plant room. Shared by build_building() (one node per OSM building) and the msft chunks.
+static func _emit_building(walls: Batch, roof: Batch, parapet: Batch, outer: PackedVector2Array, inners: Array, style: String, levels: int, height: float, u0: float) -> void:
+	var tile_w: float = float(TILE_W.get(style, 12.0))
+	var storeys: int = int(TILE_STOREYS.get(style, 2))
+	_emit_facade(walls, outer, height, levels, tile_w, storeys, u0, false)
+	for r: PackedVector2Array in inners:
+		_emit_facade(walls, r, height, levels, tile_w, storeys, u0, true)
+	var n0: int = roof.n
+	for piece: PackedVector2Array in _subtract([outer], inners):
+		_emit_polygon(roof, piece, height, Vector3.UP, 1.0 / ROOF_TILE_M)
+	if roof.n == n0:
+		_emit_polygon(roof, outer, height, Vector3.UP, 1.0 / ROOF_TILE_M)
+	var ph: float = _parapet_h(style)
+	_emit_parapet(parapet, outer, height, ph, 0.3, false)
+	for r: PackedVector2Array in inners:
+		_emit_parapet(parapet, r, height, ph, 0.3, true)
+	if levels >= 10 and inners.is_empty():
+		var c: Vector2 = _centroid(outer)
+		if Geometry2D.is_point_in_polygon(c, outer):
+			_emit_box(parapet, Vector3(c.x, height + 1.3, c.y), Vector3(6.0, 2.6, 4.0))
+
+
+## Facade walls of one ring (header "FACADE UV CONTRACT"). One-storey tiles: one quad per edge, v = 0 at the roof ..
+## levels at the ground. Multi-storey tiles (shophouse): the ground storey gets the bottom 1 / storeys of the tile
+## (shutters + sign) and every upper storey the top 1 / storeys (windows under the cornice band), one quad each.
+static func _emit_facade(b: Batch, ring: PackedVector2Array, height: float, levels: int, tile_w: float, storeys: int, u0: float, inward: bool) -> void:
+	if storeys <= 1:
+		_emit_walls(b, ring, 0.0, height, tile_w, float(levels), inward, 0.0, u0)
+		return
+	var sh: float = height / float(levels)
+	var band: float = 1.0 / float(storeys)
+	_emit_walls(b, ring, 0.0, sh, tile_w, 1.0, inward, 1.0 - band, u0)
+	for k: int in range(1, levels):
+		_emit_walls(b, ring, sh * float(k), sh * float(k + 1), tile_w, band, inward, 0.0, u0)
+
+
+## Wall quads for one ring: u = u0 .. u0 + edge length / tile_w (restarting per edge) growing to the right as seen
+## from outside (signs and windows never read mirrored, whatever the ring winding), v = v_top at y1 .. v_ground at y0.
 ## Outer rings face away from the ring interior, inner rings (courtyards) face into it.
-static func _emit_walls(b: Batch, ring: PackedVector2Array, y0: float, y1: float, tile_w: float, v_ground: float, inward: bool) -> void:
+static func _emit_walls(b: Batch, ring: PackedVector2Array, y0: float, y1: float, tile_w: float, v_ground: float, inward: bool, v_top: float = 0.0, u0: float = 0.0) -> void:
 	var sgn: float = 1.0 if _signed_area(ring) > 0.0 else -1.0
 	var n: int = ring.size()
 	for i: int in range(n):
@@ -1049,8 +1431,13 @@ static func _emit_walls(b: Batch, ring: PackedVector2Array, y0: float, y1: float
 		if inward:
 			outward = -outward
 		var want := Vector3(outward.x, 0.0, outward.y)
-		var u1: float = len / tile_w
-		_quad(b, Vector3(a.x, y0, a.y), Vector3(c.x, y0, c.y), Vector3(c.x, y1, c.y), Vector3(a.x, y1, a.y), Vector2(0.0, v_ground), Vector2(u1, v_ground), Vector2(u1, 0.0), Vector2(0.0, 0.0), want)
+		# viewer outside looks along -outward: its right hand is (-outward) x up = (outward.z, -outward.x) in the plane
+		var ua: float = u0
+		var uc: float = u0 + len / tile_w
+		if d.dot(Vector2(outward.y, -outward.x)) < 0.0:
+			ua = uc
+			uc = u0
+		_quad(b, Vector3(a.x, y0, a.y), Vector3(c.x, y0, c.y), Vector3(c.x, y1, c.y), Vector3(a.x, y1, a.y), Vector2(ua, v_ground), Vector2(uc, v_ground), Vector2(uc, v_top), Vector2(ua, v_top), want)
 
 
 ## Parapet ring on the roof edge: outer face, top and inner face, `t` thick and `h` high.
@@ -1218,6 +1605,7 @@ static func _prepare_road_index(md: MapData) -> void:
 	_discs = []
 	_disc_hash = {}
 	_max_disc_r = 0.0
+	_max_road_w = 0.0
 	for r: Dictionary in md.roads():
 		if int(r.get("lanes", 0)) <= 0:
 			continue
@@ -1226,6 +1614,7 @@ static func _prepare_road_index(md: MapData) -> void:
 			continue
 		var ci: int = _carriageways.size()
 		_carriageways.append([pts, float(r.get("width", 6.0))])
+		_max_road_w = maxf(_max_road_w, float(r.get("width", 6.0)))
 		for si: int in range(pts.size() - 1):
 			for cell: Vector2i in _cells_of_box(_seg_box(pts[si], pts[si + 1]), 0.0):
 				if not _seg_hash.has(cell):
@@ -1520,6 +1909,31 @@ static func _tri(b: Batch, p0: Vector3, p1: Vector3, p2: Vector3, uv0: Vector2, 
 	b.n += 3
 
 
+## Like _tri() (front side towards `want`, clockwise winding) but with per-vertex shading normals (smooth drums).
+static func _tri_smooth(b: Batch, p0: Vector3, p1: Vector3, p2: Vector3, n0: Vector3, n1: Vector3, n2: Vector3, want: Vector3) -> void:
+	var nrm: Vector3 = (p1 - p0).cross(p2 - p0)
+	if nrm.length_squared() < 1e-10:
+		return
+	var verts: Array = [[p0, n0], [p2, n2], [p1, n1]] if nrm.dot(want) > 0.0 else [[p0, n0], [p1, n1], [p2, n2]]
+	for v: Array in verts:
+		b.st.set_normal(v[1])
+		b.st.set_uv(Vector2.ZERO)
+		b.st.add_vertex(v[0])
+	b.n += 3
+
+
+## Oriented box without a bottom face: centre +- the half-axis vectors hu, hv, hw (hw = up).
+static func _emit_obox(b: Batch, c: Vector3, hu: Vector3, hv: Vector3, hw: Vector3) -> void:
+	var uv: Array = [Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]
+	for s: float in [-1.0, 1.0]:
+		var fu: Vector3 = c + hu * s
+		_quad(b, fu - hv - hw, fu + hv - hw, fu + hv + hw, fu - hv + hw, uv[0], uv[1], uv[2], uv[3], hu * s)
+		var fv: Vector3 = c + hv * s
+		_quad(b, fv - hu - hw, fv + hu - hw, fv + hu + hw, fv - hu + hw, uv[0], uv[1], uv[2], uv[3], hv * s)
+	var top: Vector3 = c + hw
+	_quad(b, top - hu - hv, top + hu - hv, top + hu + hv, top - hu + hv, uv[0], uv[1], uv[2], uv[3], hw)
+
+
 static func _commit(b: Batch, mat: Material, name: String) -> MeshInstance3D:
 	if b.n == 0:
 		return null
@@ -1587,6 +2001,30 @@ static func _centroid(ring: PackedVector2Array) -> Vector2:
 	for p: Vector2 in ring:
 		c += p
 	return c / float(ring.size())
+
+
+## Area centroid of a simple ring (falls back to the vertex average for degenerate rings).
+static func _area_centroid(ring: PackedVector2Array) -> Vector2:
+	var n: int = ring.size()
+	var a2: float = 0.0
+	var acc := Vector2.ZERO
+	for i: int in range(n):
+		var p: Vector2 = ring[i]
+		var q: Vector2 = ring[(i + 1) % n]
+		var cr: float = p.x * q.y - q.x * p.y
+		a2 += cr
+		acc += (p + q) * cr
+	if absf(a2) < 1e-6:
+		return _centroid(ring)
+	return acc / (3.0 * a2)
+
+
+static func _perimeter(ring: PackedVector2Array) -> float:
+	var s: float = 0.0
+	var n: int = ring.size()
+	for i: int in range(n):
+		s += ring[i].distance_to(ring[(i + 1) % n])
+	return s
 
 
 static func _bbox(poly: PackedVector2Array) -> Rect2:
