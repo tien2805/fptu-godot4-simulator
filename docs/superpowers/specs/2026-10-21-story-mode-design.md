@@ -1,3 +1,5 @@
+> **Superseded on 2026-10-22:** the owner dropped this weekday story (T2-T7) entirely. The new story is `docs/superpowers/specs/2026-10-22-story-tool-den-design.md` ("TOOL ĐEN – 7 ngày minh oan"). Kept for history only.
+
 # Thiết kế chế độ CỐT TRUYỆN và THẾ GIỚI MỞ – FPTU Student Simulator v1.2
 
 Ngày: 2026-10-21 · Trạng thái: đã duyệt từng phần với chủ dự án qua hội thoại, chờ duyệt bản viết này.
