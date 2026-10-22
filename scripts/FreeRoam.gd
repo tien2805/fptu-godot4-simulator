@@ -25,6 +25,8 @@
 #     [T] đổi preset giờ (GameFX.TOD_PRESETS ngoài trời + đêm; luôn áp lên Environment gốc của cảnh), [M] bản đồ
 #     (RoamMap: lớp tĩnh = 1 mesh 2D dựng sẵn, chỉ vẽ khi mở lần đầu / đổi kích thước / đổi màu hotspot; lớp động =
 #     người chơi + xe đang đỗ, vẽ lại theo nhịp HUD), [Z]/[C] xoay camera, [ESC] tạm dừng (StageManager).
+#   - Đám đông ba tầng (PedestrianSpawner "Pedestrians", spec vice-people Phần 3): dựng cuối _ready khi crowd_enabled,
+#     tránh cột sáng hotspot và điểm spawn.
 # Autoload chỉ dùng qua get_node_or_null("/root/GameFX" | "/root/StageManager") (test headless chạy được không cần
 # autoload); hàm tĩnh / enum lấy qua preload script.
 extends Node3D
@@ -81,6 +83,9 @@ const HOTSPOT_COLORS: Dictionary = {1: Color("#F37021"), 2: Color("#3498DB"), 3:
 var md: MapData
 var player: ThirdPersonController
 var bike: PlayerBike
+var pedestrians: PedestrianSpawner
+## false = không dựng người đi đường / xe chạy (test_free_roam đặt trước add_child để các pha kiểm tra cố định)
+var crowd_enabled: bool = true
 var mounted: bool = false
 var bike_parked: bool = false
 var campus_xf: Transform3D = Transform3D.IDENTITY
@@ -151,6 +156,8 @@ func _ready() -> void:
 		if bool(tod.get("outdoor", false)) or k == "night":
 			tod_cycle.append(k)
 	set_time_of_day("morning")
+	if crowd_enabled:
+		_build_pedestrians()
 	player.camera.make_current()
 	var sm: Node = get_node_or_null("/root/StageManager")
 	if sm:
@@ -528,6 +535,17 @@ func _build_bike() -> void:
 	bike.visible = false
 	bike.process_mode = Node.PROCESS_MODE_DISABLED
 	bike.global_position = Vector3(0.0, -50.0, 0.0)
+
+
+## Đám đông ba tầng (spec vice-people-and-movement, Phần 3 + Amendment): tránh cột sáng hotspot và điểm spawn.
+func _build_pedestrians() -> void:
+	pedestrians = PedestrianSpawner.new()
+	pedestrians.name = "Pedestrians"
+	add_child(pedestrians)
+	var avoid: Array = [spawn_xf.origin]
+	for h: Area3D in hotspots:
+		avoid.append(h.global_position)
+	pedestrians.setup(md, player, {"bike": bike, "roam": self, "avoid": avoid})
 
 
 func _apply_spawn() -> void:

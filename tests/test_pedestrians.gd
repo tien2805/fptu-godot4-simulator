@@ -11,7 +11,7 @@
 extends SceneTree
 
 const PART_B: bool = true   # Task 10 bật
-const PART_C: bool = false   # Task 12 bật
+const PART_C: bool = true   # Task 12 bật
 
 var done: bool = false
 var frames: int = 0
@@ -197,6 +197,282 @@ func _on_physics_b() -> void:
 					print("✅ SUCCESS: PEDESTRIANS (parts A + B)")
 					done = true
 					quit(0)
+				if PART_C:
+					b_phase = ""
+					_part_c_start()
+
+
+const MIN_NEAR: Array[int] = [40, 30, 15]   # spec Amendment: người đi đường trong 80 m – campus / dân cư / đường
+const ROAD_SPOT := Vector3(2058.0, 0.0, -71.0)   # giữa đường Nguyễn Xiển (hành lang)
+
+## Nút chạy SAU mọi _physics_process khác: cùng mốc đầu khung (đặt ở đầu _on_physics_c, tín hiệu physics_frame phát trước
+## khi các nút xử lý vật lý) đo thời gian phía script của từng bước vật lý. Performance.TIME_PHYSICS_PROCESS không dùng
+## được: Godot chỉ cập nhật nó mỗi giây bằng bước chậm nhất trong giây đó.
+class PhysTail extends Node:
+	var on_tail: Callable
+
+	func _physics_process(_d: float) -> void:
+		on_tail.call()
+
+
+var roam: Node3D
+var c_phase: String = ""
+var c_t0: int = 0
+var c_frames: int = 0
+var phys_with: float = 0.0
+var phys_without: float = 0.0
+var timing: bool = false
+var _pt0: int = 0
+var p_usec: int = 0
+var p_n: int = 0
+var snap: Dictionary = {}           # wid -> identity của mọi người nộm trước khi tiến lại gần
+var day_t: Vector2i
+
+
+func _part_c_start() -> void:
+	for n: Node in [ped, jogger, statue, world_b, stub_player, stub_bike]:
+		n.queue_free()
+	for pair: Array in [["StageManager", "res://scripts/StageManager.gd"], ["GameFX", "res://scripts/GameFX.gd"]]:
+		if not root.has_node(pair[0]):
+			var s: Script = load(pair[1])
+			var n2: Node = s.new()
+			n2.name = pair[0]
+			root.add_child(n2)
+	var tail := PhysTail.new()
+	tail.name = "PhysTail"
+	tail.process_physics_priority = 1 << 30
+	tail.on_tail = _phys_tail
+	root.add_child(tail)
+	roam = (load("res://scenes/FreeRoam.tscn") as PackedScene).instantiate()
+	root.add_child(roam)
+	c_phase = "settle"
+	c_t0 = c_frames
+	physics_frame.connect(_on_physics_c)
+
+
+func _phys_tail() -> void:
+	if timing:
+		p_usec += Time.get_ticks_usec() - _pt0
+		p_n += 1
+
+
+func _sp() -> PedestrianSpawner:
+	return roam.get("pedestrians") as PedestrianSpawner
+
+
+func _player() -> Node3D:
+	return roam.get("player") as Node3D
+
+
+func _flat(a: Vector3, b: Vector3) -> float:
+	return Vector2(a.x - b.x, a.z - b.z).length()
+
+
+func _teleport(p: Vector3) -> void:
+	var spot: Variant = roam.call("find_free_spot", Vector3(p.x, 0.0, p.z), 0.0, 8)
+	var at: Vector3 = spot if spot is Vector3 else Vector3(p.x, 0.5, p.z)
+	_player().call("teleport", at + Vector3(0.0, 0.05, 0.0), 0.0)
+
+
+func _same_identity(a: Dictionary, b: Dictionary) -> bool:
+	for k: String in ["v", "preset", "seed", "female", "profile", "wseed", "wid"]:
+		if str(a.get(k, "-")) != str(b.get(k, "-")):
+			return false
+	return true
+
+
+## Mật độ theo khu, trần các tầng, tầng gần trong 35 m, không ai rơi, người nộm trong vòng 225 m.
+func _density_ok(label: String) -> bool:
+	var sp: PedestrianSpawner = _sp()
+	var c: Vector3 = _player().global_position
+	var zone: int = sp.zone_at(c)
+	var peds: Array = sp.pedestrians()
+	var n80: int = 0
+	var near: int = 0
+	for p: Pedestrian in peds:
+		var d: float = _flat(p.global_position, c)
+		if d <= 80.0:
+			n80 += 1
+		if not p.lod_far:
+			near += 1
+			if not _check(d <= PedestrianSpawner.NEAR_R + 4.0, "%s: a near-tier pedestrian is %.1f m away (near tier <= 35 m)" % [label, d]):
+				return false
+		if not _check(p.global_position.y > -1.0, "%s: a pedestrian fell through the world" % label):
+			return false
+	var imp: int = sp.impostors.count()
+	print("  %s: zone %d, %d pedestrians within 80 m (%d total, %d near), %d impostors" % [label, zone, n80, peds.size(), near, imp])
+	if not _check(n80 >= MIN_NEAR[zone], "%s: at least %d pedestrians within 80 m in zone %d (got %d)" % [label, MIN_NEAR[zone], zone, n80]):
+		return false
+	if not _check(peds.size() <= PedestrianSpawner.PED_CAP and near <= PedestrianSpawner.NEAR_CAP and imp <= PedestrianSpawner.IMP_CAP, "%s: tier caps (pedestrians %d / 80, near %d / 40, impostors %d / 200)" % [label, peds.size(), near, imp]):
+		return false
+	if not _check(imp >= int(float(sp.targets().y) * 0.6), "%s: impostors %d below 60 %% of the target %d" % [label, imp, sp.targets().y]):
+		return false
+	for q: Vector3 in sp.impostors.positions():
+		if not _check(_flat(q, c) <= PedestrianSpawner.CULL_R + 5.0, "%s: an impostor %.0f m away (cull at 225 m)" % [label, _flat(q, c)]):
+			return false
+	return true
+
+
+func _on_physics_c() -> void:
+	_pt0 = Time.get_ticks_usec()
+	if done:
+		return
+	c_frames += 1
+	var t: int = c_frames - c_t0
+	match c_phase:
+		"settle":
+			if t == 150:
+				if not _check(_sp() != null, "FreeRoam must expose a pedestrians spawner"):
+					return
+				if not _check(_sp().zone_at(_player().global_position) == PedWalkGraph.ZONE_RESIDENTIAL, "the BE6 spawn is in the residential zone"):
+					return
+				if not _density_ok("BE6 spawn"):
+					return
+				for h: Variant in roam.get("hotspots"):
+					var hn: Node3D = h
+					for p: Pedestrian in _sp().pedestrians():
+						if not _check(_flat(p.global_position, hn.global_position) >= 2.5, "pedestrian %.1f m from a hotspot (keep 3 m)" % _flat(p.global_position, hn.global_position)):
+							return
+				_teleport(ROAD_SPOT)
+				c_phase = "road"
+				c_t0 = c_frames
+		"road":
+			if t == 45:
+				if not _check(_sp().zone_at(_player().global_position) == PedWalkGraph.ZONE_ROAD, "test setup: Nguyễn Xiển is in the road zone"):
+					return
+				if not _density_ok("Nguyễn Xiển"):
+					return
+				var cc: Vector2 = FPTUCampusBuilder.ring_courtyard_rect().get_center()
+				_teleport(FPTUCampusBuilder.real_plot_transform() * Vector3(cc.x, 0.0, cc.y))
+				c_phase = "campus"
+				c_t0 = c_frames
+		"campus":
+			if t == 45:
+				if not _check(_sp().zone_at(_player().global_position) == PedWalkGraph.ZONE_CAMPUS, "test setup: the courtyard is in the campus zone"):
+					return
+				if not _density_ok("campus courtyard"):
+					return
+				_sp().set_physics_process(false)   # dừng việc kiểm / dựng của spawner (con vẫn chạy): chỉ đo đám đông
+				p_usec = 0
+				p_n = 0
+				timing = true
+				c_phase = "perf_with"
+				c_t0 = c_frames
+		"perf_with":
+			if t == 60:
+				phys_with = float(p_usec) / float(maxi(1, p_n))
+				_sp().process_mode = Node.PROCESS_MODE_DISABLED
+				p_usec = 0
+				p_n = 0
+				c_phase = "perf_without"
+				c_t0 = c_frames
+		"perf_without":
+			if t == 60:
+				phys_without = float(p_usec) / float(maxi(1, p_n))
+				timing = false
+				var cost_ms: float = (phys_with - phys_without) / 1000.0
+				print("  crowd physics cost %.2f ms per physics frame (%.0f vs %.0f us)" % [cost_ms, phys_with, phys_without])
+				if not _check(cost_ms < 5.0, "the crowd (40 near + 40 mid + impostors) must cost < 5 ms per physics frame (got %.2f)" % cost_ms):
+					return
+				_sp().process_mode = Node.PROCESS_MODE_INHERIT
+				_sp().set_physics_process(true)
+				# danh tính: chụp mọi người nộm, tiến 45 m về phía người nộm gần nhất (dưới ngưỡng dịch chuyển 120 m)
+				var sp: PedestrianSpawner = _sp()
+				var c: Vector3 = _player().global_position
+				snap.clear()
+				var best: Vector3 = Vector3.INF
+				for i: int in range(sp.impostors.count()):
+					var st: Dictionary = sp.impostors.state_at(i)
+					snap[int(st["wid"])] = st["identity"]
+					var q: Vector3 = st["pos"]
+					if best == Vector3.INF or _flat(q, c) < _flat(best, c):
+						best = q
+				var u: Vector3 = Vector3(best.x - c.x, 0.0, best.z - c.z).normalized()
+				sp.promotions.clear()
+				sp.demotions.clear()
+				roam.set_meta("dir_u", u)
+				_teleport(c + u * 45.0)
+				c_phase = "promote"
+				c_t0 = c_frames
+		"promote":
+			if t == 120:
+				var sp2: PedestrianSpawner = _sp()
+				var ok: int = 0
+				for e: Dictionary in sp2.promotions:
+					var wid: int = int(e["wid"])
+					if not snap.has(wid):
+						continue
+					if not _check(_same_identity(e["identity"], snap[wid]), "a promoted walker keeps its identity (wid %d)" % wid):
+						return
+					var found: Pedestrian = null
+					for p: Pedestrian in sp2.pedestrians():
+						if int(p.identity.get("wid", -1)) == wid:
+							found = p
+					if found == null:
+						continue   # đã bị bỏ trước lúc kiểm (ngoài tầm camera khi quá mục tiêu)
+					if not _check(_same_identity(found.identity, snap[wid]), "the pedestrian of promoted wid %d has the impostor's identity" % wid):
+						return
+					var jump: float = (e["from"] as Vector3).distance_to(e["to"] as Vector3)
+					if not _check(jump < 6.5, "promotion moved walker %d by %.1f m (keep < 6.5)" % [wid, jump]):
+						return
+					ok += 1
+				print("  promotions checked: %d (log %d)" % [ok, sp2.promotions.size()])
+				if not _check(ok >= 1, "walking 45 m toward the impostors must promote at least one of them"):
+					return
+				var u2: Vector3 = roam.get_meta("dir_u")
+				_teleport(_player().global_position - u2 * 110.0)
+				c_phase = "demote"
+				c_t0 = c_frames
+		"demote":
+			if t == 60:
+				var sp3: PedestrianSpawner = _sp()
+				var okd: int = 0
+				for e2: Dictionary in sp3.demotions:
+					var w2: int = int(e2["wid"])
+					var idx: int = sp3.impostors.wids().find(w2)
+					if idx < 0:
+						continue   # đã ra ngoài 225 m
+					if not _check(_same_identity(sp3.impostors.state_at(idx)["identity"], e2["identity"]), "a demoted walker keeps its identity as an impostor (wid %d)" % w2):
+						return
+					okd += 1
+				print("  demotions checked: %d (log %d)" % [okd, sp3.demotions.size()])
+				if not _check(okd >= 1, "walking 110 m away must demote at least one pedestrian into an impostor"):
+					return
+				day_t = sp3.targets()
+				roam.call("set_time_of_day", "night")
+				c_phase = "night"
+				c_t0 = c_frames
+		"night":
+			if t == 30:
+				var sp4: PedestrianSpawner = _sp()
+				var nt: Vector2i = sp4.targets()
+				print("  night: targets %s (day %s), pedestrians %d, impostors %d" % [nt, day_t, sp4.pedestrians().size(), sp4.impostors.count()])
+				if not _check(nt.x == maxi(1, roundi(float(day_t.x) * 0.3)) and nt.y == maxi(1, roundi(float(day_t.y) * 0.3)), "night targets are 30 %% of the day targets"):
+					return
+				if not _check(sp4.pedestrians().size() <= nt.x and sp4.impostors.count() <= nt.y, "switching to night trims the crowd at once"):
+					return
+				roam.call("set_time_of_day", "morning")
+				roam.call("mount_bike")
+				c_phase = "bike_hit"
+				c_t0 = c_frames
+		"bike_hit":
+			var bike: Node3D = roam.get("bike")
+			if t == 30:
+				var victim: Pedestrian = _sp().pedestrians()[0]
+				victim.process_mode = Node.PROCESS_MODE_INHERIT
+				victim.set_far(false)
+				victim.global_position = bike.global_position - bike.global_basis.z * 0.9 + Vector3(0.0, 0.05, 0.0)
+				bike.set("current_speed_ms", 6.0)
+				roam.set_meta("victim", victim)
+			if t == 34:
+				var v: Pedestrian = roam.get_meta("victim")
+				var bs: float = float(bike.get("current_speed_ms"))
+				print("  bike hit: pedestrian state %d, bike speed %.2f" % [v.state, bs])
+				if not _check(v.state == Pedestrian.State.KNOCKDOWN and bs <= 4.8, "a bike hit must knock the pedestrian down and cost the bike 25 %% of its speed (state %d, speed %.2f)" % [v.state, bs]):
+					return
+				print("✅ SUCCESS: PEDESTRIANS (parts A + B + C)")
+				done = true
+				quit(0)
 
 
 func _part_a() -> bool:

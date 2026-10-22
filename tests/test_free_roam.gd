@@ -95,6 +95,7 @@ func _initialize() -> void:
 		_fail("scenes/FreeRoam.tscn missing")
 		return
 	roam = packed.instantiate()
+	roam.set("crowd_enabled", false)   # các pha kiểm tra cố định: không người đi đường / xe chạy chen vào
 	root.add_child(roam)   # _ready chạy ở frame đầu tiên của vòng lặp (sau _initialize), nên kiểm tra trong _process
 	md = MapData.load_default()
 	spawn = md.spawn_transform()
