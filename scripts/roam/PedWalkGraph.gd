@@ -11,7 +11,9 @@ class_name PedWalkGraph
 extends RefCounted
 
 const SAMPLE_M: float = 6.0
-const VERGE_OFFSET: float = 0.45
+## Lề cách mép ngoài bó vỉa 0,35 m = giữa khe MapBuilder.MSFT_ROAD_CLEAR (0,7 m) tới đường viền nhà Microsoft đã cắt,
+## nên capsule người đi đường (r 0,28) đứng được ở cả hai bên.
+const VERGE_OFFSET: float = 0.35
 const ROAD_CLEAR: float = 0.3
 const WATER_CLEAR: float = 0.8
 const LINK_R: float = 6.0

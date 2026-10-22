@@ -591,8 +591,9 @@ func _apply_spawn() -> void:
 # ===========================================================================
 ## Mặt sàn đứng được tại (p.x, p.z) quanh độ cao base_y: tia từ base_y + FLOOR_PROBE_UP xuống base_y - FLOOR_PROBE_DOWN
 ## phải chạm sàn hướng lên, cao hơn mực nước (không phải WaterFloor), và capsule người chơi (r 0,4, cao 1,7, tâm +0,85)
-## đặt trên đó không chạm vật nào. Trả về điểm sàn (Vector3) hoặc null.
-func free_spot_at(p: Vector3, base_y: float, exclude: Array[RID] = []) -> Variant:
+## đặt trên đó không chạm vật nào (probe: capsule khác, vd. cỡ người đi đường của PedestrianSpawner). Trả về điểm sàn
+## (Vector3) hoặc null.
+func free_spot_at(p: Vector3, base_y: float, exclude: Array[RID] = [], probe: CapsuleShape3D = null) -> Variant:
 	if not is_inside_tree():
 		return null
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
@@ -610,9 +611,10 @@ func free_spot_at(p: Vector3, base_y: float, exclude: Array[RID] = []) -> Varian
 	var fy: float = (hit["position"] as Vector3).y
 	if fy < MapBuilder.WATER_Y + 0.12 or hit.get("collider") == water_floor:
 		return null
+	var cap: CapsuleShape3D = probe if probe != null else _probe_capsule
 	var q := PhysicsShapeQueryParameters3D.new()
-	q.shape = _probe_capsule
-	q.transform = Transform3D(Basis.IDENTITY, Vector3(p.x, fy + SPOT_LIFT + PLAYER_HEIGHT * 0.5, p.z))
+	q.shape = cap
+	q.transform = Transform3D(Basis.IDENTITY, Vector3(p.x, fy + SPOT_LIFT + cap.height * 0.5, p.z))
 	q.exclude = excl
 	q.collide_with_areas = false
 	if not space.intersect_shape(q, 1).is_empty():

@@ -7,9 +7,10 @@
 # Mục tiêu ban ngày theo khu quanh người chơi (PedWalkGraph.zone_at): campus 60 / dân cư 45 / đường 25 người đi đường
 # trong 90 m và 150 / 120 / 60 người nộm; ban đêm (FreeRoam.tod_preset == "night") còn 30 %, cắt ngay khi đổi giờ.
 # Người đi đường ra ngoài 95 m thành người nộm, người nộm vào trong 90 m thành người đi đường (khi còn dưới mục tiêu,
-# hoặc khi đang trong tầm camera để không ai đứng hình trước mặt), cùng wid + danh tính (preset, seed, female, profile,
-# wseed). Dựng / lên tầng tối đa 2 người mỗi 0.25 s và tối đa một người mỗi khung (mỗi lần dựng ~15 ms), bù người ngoài
-# tầm camera trước; quá mục tiêu thì bỏ người xa nhất ngoài tầm camera; người bị bỏ vào pool theo biến thể để dùng lại.
+# hoặc khi đang trong tầm camera để không ai đứng hình trước mặt – quá mục tiêu + 8 thì chỉ trong 60 m, quá + 16 thì
+# thôi), cùng wid + danh tính (preset, seed, female, profile, wseed). Dựng / lên tầng tối đa 2 người mỗi 0.25 s và tối đa
+# một người mỗi khung (mỗi lần dựng ~15 ms), bù người ngoài tầm camera trước; quá mục tiêu thì bỏ người xa nhất ngoài tầm
+# camera; người bị bỏ vào pool theo biến thể để dùng lại (pool đầy thì giải phóng người cũ nhất).
 # Dịch chuyển > 120 m thì lấp đầy lại ngay.
 # Một bong bóng thoại dùng chung (mỗi 4 s tối đa một câu); nước rút tông người -> người chơi chậm 0.2 s, xe tông -> xe
 # mất 25 % tốc độ. Không dùng autoload ở đây.
@@ -40,6 +41,12 @@ const BUILDS_PER_CHECK: int = 2
 const IMP_SPAWNS_PER_CHECK: int = 12
 const TRIM_SLACK: int = 4
 const VIEW_SPAWN_R: float = 70.0
+## Người nộm trong tầm camera lên tầng cả khi đã đủ người, nhưng có trần (vd. chạy xe nhanh vào khu thưa): quá mục tiêu
+## + VIEW_SOFT_OVER thì chỉ người nộm trong VIEW_NEAR_R, quá + VIEW_HARD_OVER thì thôi hẳn. Người nộm không được lên tầng
+## vẫn là người nộm đi tiếp (không bỏ), nên đám đông không phình theo tốc độ xe.
+const VIEW_NEAR_R: float = 60.0
+const VIEW_SOFT_OVER: int = 2 * TRIM_SLACK
+const VIEW_HARD_OVER: int = 4 * TRIM_SLACK
 const TELEPORT_M: float = 120.0
 const POOL_MAX: int = 24
 const HOTSPOT_CLEAR: float = 3.0
@@ -61,11 +68,17 @@ var spawned: int = 0
 var recycled: int = 0
 var promoted: int = 0
 var demoted: int = 0
-var promotions: Array = []         # test: {wid, identity, from, to}
+var pool_hits: int = 0              # lần dựng dùng lại người trong pool
+var pool_evicted: int = 0           # người cũ nhất bị giải phóng vì pool đầy
+var promotions: Array = []         # test: {wid, identity, from, to, via ("under" | "view")}
 var demotions: Array = []          # test: {wid, identity, pos}
 var _peds: Array = []
 var _pool: Dictionary = {}         # v -> Array[Pedestrian] đã tách khỏi cây
-var _pool_n: int = 0
+## Mọi người trong pool, cũ trước. Biến thể gắn với khu (v = khu x 8 + k): pool đầy thì người cũ nhất bị giải phóng để
+## người của khu mới vào, nếu không sau lần đổi khu đầu tiên pool nằm lì biến thể khu cũ và không bao giờ trúng nữa.
+var _pool_order: Array = []
+var _spot_probe: CapsuleShape3D     # capsule cỡ người đi đường cho phép kiểm chỗ đứng (free_spot_at)
+var _no_rids: Array[RID] = []
 var _by_zone: Array = [[], [], []] # khu -> biến thể của khu (CrowdImpostors.variants())
 var _avoid: Array = []
 var _rng := RandomNumberGenerator.new()
@@ -86,6 +99,9 @@ func setup(map_data: MapData, player_node: Node3D, opts: Dictionary = {}) -> voi
 	roam = opts.get("roam", null)
 	_avoid = opts.get("avoid", [])
 	_rng.seed = int(opts.get("seed", 2026))
+	_spot_probe = CapsuleShape3D.new()
+	_spot_probe.radius = Pedestrian.RADIUS
+	_spot_probe.height = Pedestrian.HEIGHT
 	graph = PedWalkGraph.build(md)
 	if graph.node_count() == 0:
 		push_warning("PedestrianSpawner: đồ thị lối đi bộ rỗng, tắt người đi đường")
@@ -201,15 +217,20 @@ func _physics_process(delta: float) -> void:
 
 
 ## Một lần dựng / lên tầng: người nộm gần nhất trong PROMOTE_R lên tầng khi còn dưới mục tiêu, hoặc khi đang trong tầm
-## camera (tới trần PED_CAP); không có thì bù một người mới ở vòng RING_MIN..RING_MAX, ngoài tầm camera trước.
+## camera (trong PROMOTE_R tới mục tiêu + VIEW_SOFT_OVER, trong VIEW_NEAR_R tới + VIEW_HARD_OVER, rồi thôi); không có thì
+## bù một người mới ở vòng RING_MIN..RING_MAX, ngoài tầm camera trước.
 func _build_one(center: Vector3) -> void:
 	_tokens -= 1
-	if _peds.size() >= PED_CAP:
+	var n: int = _peds.size()
+	if n >= PED_CAP:
 		return
-	var under: bool = _peds.size() < mini(targets_at(center).x, PED_CAP)
-	var got: Array = impostors.take_within(center, PROMOTE_R, 1, func(q: Vector3) -> bool: return under or _in_view(q, CULL_R))
+	var want: int = mini(targets_at(center).x, PED_CAP)
+	var under: bool = n < want
+	var view_r: float = PROMOTE_R if n < want + VIEW_SOFT_OVER else (VIEW_NEAR_R if n < want + VIEW_HARD_OVER else 0.0)
+	var got: Array = impostors.take_within(center, PROMOTE_R, 1, func(q: Vector3) -> bool:
+		return under or (_flat(q, center) < view_r and _in_view(q, CULL_R)))
 	if not got.is_empty():
-		_promote(got[0])
+		_promote(got[0], "under" if under else "view")
 		return
 	if under:
 		for k: int in range(6):
@@ -230,12 +251,11 @@ func _process(delta: float) -> void:
 
 ## Người trong pool đã tách khỏi cây: giải phóng khi spawner rời cây (đổi cảnh) để không rò Node.
 func _exit_tree() -> void:
-	for list: Variant in _pool.values():
-		for p: Variant in list:
-			if is_instance_valid(p):
-				(p as Node).queue_free()
+	for p: Variant in _pool_order:
+		if is_instance_valid(p):
+			(p as Node).queue_free()
 	_pool.clear()
-	_pool_n = 0
+	_pool_order.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -361,7 +381,8 @@ func _spawn_ped(node: int, prev: int, at: Vector3, ident: Dictionary) -> Pedestr
 	var pool: Array = _pool.get(v, [])
 	if not pool.is_empty():
 		p = pool.pop_back()
-		_pool_n -= 1
+		_pool_order.erase(p)
+		pool_hits += 1
 	else:
 		p = Pedestrian.new()
 		p.name = "Ped_%d" % spawned
@@ -385,17 +406,25 @@ func _spawn_ped(node: int, prev: int, at: Vector3, ident: Dictionary) -> Pedestr
 	return p
 
 
-## Người nộm -> người đi đường tại chỗ người nộm đứng (hoặc nút nó đang tới); không có chỗ cho thân thật thì bỏ.
-func _promote(st: Dictionary) -> void:
-	var at: Variant = _free_spot(st["pos"])
-	if not (at is Vector3):
-		at = _free_spot(graph.node_pos(int(st["node"])))
+## Người nộm -> người đi đường tại chỗ người nộm đứng, không được thì ở nút gần hơn trong hai nút của cạnh nó đang đi
+## (nút đang tới / nút vừa rời), rồi nút còn lại; không có chỗ cho thân thật thì bỏ. via: "under" (dưới mục tiêu) /
+## "view" (trong tầm camera) – ghi vào nhật ký cho test.
+func _promote(st: Dictionary, via: String) -> void:
+	var pos: Vector3 = st["pos"]
+	var a: Vector3 = graph.node_pos(int(st["node"]))
+	var b: Vector3 = graph.node_pos(int(st["prev"]))
+	var tries: Array = [pos, a, b] if _flat(a, pos) <= _flat(b, pos) else [pos, b, a]
+	var at: Variant = null
+	for q: Vector3 in tries:
+		at = _free_spot(q)
+		if at is Vector3:
+			break
 	if not (at is Vector3):
 		recycled += 1
 		return
 	var p: Pedestrian = _spawn_ped(int(st["node"]), int(st["prev"]), at, st["identity"])
 	promoted += 1
-	_log(promotions, {"wid": int(st["wid"]), "identity": p.identity, "from": st["pos"], "to": p.global_position})
+	_log(promotions, {"wid": int(st["wid"]), "identity": p.identity, "from": pos, "to": p.global_position, "via": via})
 
 
 func _demote(p: Pedestrian, center: Vector3) -> void:
@@ -407,24 +436,34 @@ func _demote(p: Pedestrian, center: Vector3) -> void:
 	_release(p)
 
 
-## Bỏ một người đi đường khỏi đám: vào pool của biến thể (tách khỏi cây) nếu còn chỗ, không thì giải phóng.
+## Bỏ một người đi đường khỏi đám: vào pool của biến thể (tách khỏi cây); pool đầy thì giải phóng người cũ nhất trong
+## pool trước (FIFO). Người kẹt (stuck_out) hoặc không rõ biến thể thì giải phóng luôn.
 func _release(p: Pedestrian) -> void:
 	_peds.erase(p)
 	if _bubble_ped == p and _bubble:
 		_bubble.visible = false
 	var v: int = int(p.identity.get("v", -1))
-	if v >= 0 and _pool_n < POOL_MAX and not p.stuck_out:
-		remove_child(p)
-		if not _pool.has(v):
-			_pool[v] = []
-		(_pool[v] as Array).append(p)
-		_pool_n += 1
-	else:
-		if player and player.get("cam_ray"):
-			(player.get("cam_ray") as RayCast3D).remove_exception(p)
-		if bike and bike.get("spring_arm"):
-			(bike.get("spring_arm") as SpringArm3D).remove_excluded_object(p.get_rid())
-		p.queue_free()
+	if v < 0 or p.stuck_out:
+		_free_ped(p)
+		return
+	if _pool_order.size() >= POOL_MAX:
+		var old: Pedestrian = _pool_order.pop_front()
+		(_pool[int(old.identity.get("v", -1))] as Array).erase(old)
+		pool_evicted += 1
+		_free_ped(old)
+	remove_child(p)
+	if not _pool.has(v):
+		_pool[v] = []
+	(_pool[v] as Array).append(p)
+	_pool_order.append(p)
+
+
+func _free_ped(p: Pedestrian) -> void:
+	if player and player.get("cam_ray"):
+		(player.get("cam_ray") as RayCast3D).remove_exception(p)
+	if bike and bike.get("spring_arm"):
+		(bike.get("spring_arm") as SpringArm3D).remove_excluded_object(p.get_rid())
+	p.queue_free()
 
 
 # ---------------------------------------------------------------------------
@@ -444,9 +483,10 @@ func _is_night() -> bool:
 	return roam != null and String(roam.get("tod_preset")) == "night"
 
 
+## Chỗ đứng cho một người đi đường tại (p.x, p.z): FreeRoam.free_spot_at với capsule cỡ người đi đường (r 0,28).
 func _free_spot(p: Vector3) -> Variant:
 	if roam and roam.has_method("free_spot_at"):
-		return roam.call("free_spot_at", Vector3(p.x, 0.0, p.z), 0.0)
+		return roam.call("free_spot_at", Vector3(p.x, 0.0, p.z), 0.0, _no_rids, _spot_probe)
 	return Vector3(p.x, 0.0, p.z)
 
 

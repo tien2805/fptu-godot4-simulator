@@ -6,7 +6,8 @@
 #   B (Task 10): người đi đường trên đồ thị tự dựng: tốc độ theo kiểu đi, đi bộ + chạy bộ, va nhẹ -> STUMBLE, nước rút
 #                -> KNOCKDOWN rồi đi lại trong 3 s, xe > 3 m/s -> KNOCKDOWN (tín hiệu "bike"), tầng giữa không va chạm.
 #   C (Task 12): FreeRoam: mật độ theo khu (campus >= 40, dân cư >= 30, đường >= 15 người trong 80 m), trần từng tầng,
-#                đêm còn 30 %, lên/xuống tầng giữ nguyên danh tính, tránh hotspot, xe tông người bị chậm lại, chi phí.
+#                đêm còn 30 %, lên/xuống tầng giữ nguyên danh tính (cả đường "trong tầm camera" khi đã đủ người, có trần),
+#                pool bỏ người cũ sau khi đổi khu, tránh hotspot, xe tông người bị chậm lại, chi phí.
 # Chạy:  godot --headless --path . --script tests/test_pedestrians.gd
 extends SceneTree
 
@@ -226,6 +227,7 @@ var _pt0: int = 0
 var p_usec: int = 0
 var p_n: int = 0
 var snap: Dictionary = {}           # wid -> identity của mọi người nộm trước khi tiến lại gần
+var inject: Dictionary = {}         # wid -> identity của người nộm test thả trước camera
 var day_t: Vector2i
 
 
@@ -272,6 +274,130 @@ func _teleport(p: Vector3) -> void:
 	var spot: Variant = roam.call("find_free_spot", Vector3(p.x, 0.0, p.z), 0.0, 8)
 	var at: Vector3 = spot if spot is Vector3 else Vector3(p.x, 0.5, p.z)
 	_player().call("teleport", at + Vector3(0.0, 0.05, 0.0), 0.0)
+
+
+## Quay người chơi (teleport tại chỗ) về hướng (12 cung 30°) có nhiều nút lối đi bộ nhất ở MỌI vành [r_min, r_max]
+## trong bands, để camera nhìn thẳng vào chỗ test thả người nộm.
+func _aim_at_walk_nodes(bands: Array) -> void:
+	var g: PedWalkGraph = _sp().graph
+	var c: Vector3 = _player().global_position
+	var counts: Array = []
+	for _b: Variant in bands:
+		var row: Array[int] = []
+		row.resize(12)
+		row.fill(0)
+		counts.append(row)
+	for i: int in range(g.node_count()):
+		if g.neighbours(i).is_empty():
+			continue
+		var q: Vector3 = g.node_pos(i)
+		var d: float = _flat(q, c)
+		for k: int in range(bands.size()):
+			if d >= float(bands[k][0]) and d <= float(bands[k][1]):
+				var bin: int = posmod(floori((atan2(-(q.x - c.x), -(q.z - c.z)) + PI) / (TAU / 12.0)), 12)
+				counts[k][bin] += 1
+	var best: int = 0
+	var best_n: int = -1
+	for bin2: int in range(12):
+		var m: int = 1 << 30
+		for row2: Array[int] in counts:
+			m = mini(m, row2[bin2])
+		if m > best_n:
+			best_n = m
+			best = bin2
+	_player().call("teleport", c, -PI + (float(best) + 0.5) * TAU / 12.0)
+
+
+func _clear_impostors_within(r: float) -> void:
+	var c: Vector3 = _player().global_position
+	_sp().impostors.remove_where(func(q: Vector3) -> bool: return _flat(q, c) < r)
+
+
+## Tối đa max_n nút lối đi bộ (có cạnh, cách nhau >= 4 m) cách người chơi r_min..r_max, trong tầm camera (lệch hướng
+## nhìn < 25°) và có chỗ đứng cho người đi đường.
+func _view_nodes(r_min: float, r_max: float, max_n: int) -> Array:
+	var sp: PedestrianSpawner = _sp()
+	var g: PedWalkGraph = sp.graph
+	var c: Vector3 = _player().global_position
+	var cam: Camera3D = root.get_camera_3d()
+	var f3: Vector3 = -cam.global_basis.z
+	var fwd := Vector2(f3.x, f3.z).normalized()
+	var out: Array = []
+	for i: int in range(g.node_count()):
+		var q: Vector3 = g.node_pos(i)
+		var d: float = _flat(q, c)
+		if d < r_min or d > r_max or g.neighbours(i).is_empty():
+			continue
+		if Vector2(q.x - cam.global_position.x, q.z - cam.global_position.z).normalized().dot(fwd) < cos(deg_to_rad(25.0)):
+			continue
+		if not sp._in_view(q, PedestrianSpawner.CULL_R):
+			continue
+		var spread: bool = true
+		for j: int in out:
+			if _flat(g.node_pos(j), q) < 4.0:
+				spread = false
+		if not spread or not (sp._free_spot(q) is Vector3):
+			continue
+		out.append(i)
+		if out.size() >= max_n:
+			break
+	return out
+
+
+## Thả một người nộm danh tính mới (wid mới) ở nút nd, đang đi sang một nút kề; trả về wid (-1 nếu bị từ chối).
+func _add_impostor(nd: int) -> int:
+	var sp: PedestrianSpawner = _sp()
+	var ident: Dictionary = sp._new_identity(sp.graph.zone_at(nd))
+	var nb: Array = sp.graph.neighbours(nd)
+	var st: Dictionary = {"wid": int(ident["wid"]), "identity": ident, "node": int(nb[0]) if not nb.is_empty() else nd, "prev": nd,
+		"pos": sp.graph.node_pos(nd), "speed": Pedestrian.speed_for(String(ident["profile"]), int(ident["wseed"]))}
+	if not sp.impostors.add(st):
+		return -1
+	inject[int(ident["wid"])] = ident.duplicate()
+	return int(ident["wid"])
+
+
+## Trần đường lên tầng "trong tầm camera" (gọi thẳng _build_one khi spawner tạm dừng, nên tất định): quá mục tiêu
+## + VIEW_HARD_OVER thì người nộm trong tầm camera ở 25-55 m vẫn là người nộm (đi tiếp, không bỏ); quá + VIEW_SOFT_OVER
+## (dưới + HARD) thì người nộm trong 60 m lên tầng, người nộm ở 70-85 m thì không.
+func _cap_ok() -> bool:
+	var sp: PedestrianSpawner = _sp()
+	sp.set_physics_process(false)
+	var c: Vector3 = _player().global_position
+	var want: int = sp.targets().x
+	var hard: int = want + PedestrianSpawner.VIEW_HARD_OVER
+	var tries: int = 0
+	while sp.pedestrians().size() < hard and tries < 600:
+		tries += 1
+		sp._spawn_new(c, PedestrianSpawner.INITIAL_MIN, PedestrianSpawner.RING_MAX, false)
+	if not _check(sp.pedestrians().size() >= hard, "test setup: could not fill the crowd to target + %d (%d / %d)" % [PedestrianSpawner.VIEW_HARD_OVER, sp.pedestrians().size(), hard]):
+		return false
+	_clear_impostors_within(PedestrianSpawner.PROMOTE_R)
+	var near: Array = _view_nodes(25.0, 55.0, 1)
+	var far: Array = _view_nodes(70.0, 85.0, 1)
+	if not _check(near.size() == 1 and far.size() == 1, "test setup: need in-view walk nodes 25-55 m and 70-85 m away (got %d, %d)" % [near.size(), far.size()]):
+		return false
+	var a: int = _add_impostor(near[0])
+	var n0: int = sp.pedestrians().size()
+	sp._tokens = 1
+	sp._build_one(c)
+	var kept_hard: bool = sp.impostors.wids().has(a) and sp.pedestrians().size() == n0
+	while sp.pedestrians().size() > want + PedestrianSpawner.VIEW_SOFT_OVER + 1:
+		sp._release(sp.pedestrians().back())
+	var b: int = _add_impostor(far[0])
+	sp._tokens = 2
+	sp._build_one(c)
+	sp._build_one(c)
+	var via_a: String = ""
+	for e: Dictionary in sp.promotions:
+		if int(e["wid"]) == a:
+			via_a = String(e.get("via", ""))
+	var kept_b: bool = sp.impostors.wids().has(b)
+	print("  in-view cap: at target + %d the impostor %.0f m away stayed (%s); at target + %d it was promoted (via %s) and the one %.0f m away stayed (%s)" % [
+		n0 - want, _flat(sp.graph.node_pos(near[0]), c), kept_hard, PedestrianSpawner.VIEW_SOFT_OVER + 1, via_a, _flat(sp.graph.node_pos(far[0]), c), kept_b])
+	sp.set_physics_process(true)
+	return _check(kept_hard and via_a == "view" and kept_b, "in-view promotion is capped: none above target + %d, only within %.0f m above target + %d" % [
+		PedestrianSpawner.VIEW_HARD_OVER, PedestrianSpawner.VIEW_NEAR_R, PedestrianSpawner.VIEW_SOFT_OVER])
 
 
 func _same_identity(a: Dictionary, b: Dictionary) -> bool:
@@ -359,6 +485,9 @@ func _on_physics_c() -> void:
 				c_phase = "perf_with"
 				c_t0 = c_frames
 		"perf_with":
+			if t == 1:   # bỏ mẫu của khung chuyển pha: nó gồm cả phép kiểm mật độ nặng của pha campus
+				p_usec = 0
+				p_n = 0
 			if t == 60:
 				phys_with = float(p_usec) / float(maxi(1, p_n))
 				_sp().process_mode = Node.PROCESS_MODE_DISABLED
@@ -367,6 +496,9 @@ func _on_physics_c() -> void:
 				c_phase = "perf_without"
 				c_t0 = c_frames
 		"perf_without":
+			if t == 1:   # bỏ mẫu của khung chuyển pha (tắt spawner gỡ các thân người đi đường khỏi không gian vật lý)
+				p_usec = 0
+				p_n = 0
 			if t == 60:
 				phys_without = float(p_usec) / float(maxi(1, p_n))
 				timing = false
@@ -390,6 +522,7 @@ func _on_physics_c() -> void:
 				var u: Vector3 = Vector3(best.x - c.x, 0.0, best.z - c.z).normalized()
 				sp.promotions.clear()
 				sp.demotions.clear()
+				roam.set_meta("pool0", sp.pool_hits)
 				roam.set_meta("dir_u", u)
 				_teleport(c + u * 45.0)
 				c_phase = "promote"
@@ -418,6 +551,72 @@ func _on_physics_c() -> void:
 					ok += 1
 				print("  promotions checked: %d (log %d)" % [ok, sp2.promotions.size()])
 				if not _check(ok >= 1, "walking 45 m toward the impostors must promote at least one of them"):
+					return
+				c_phase = "inview_wait"
+				c_t0 = c_frames
+		"inview_wait":
+			# đường lên tầng "trong tầm camera": cần đủ người đi đường (không còn dưới mục tiêu) trước khi thả người nộm
+			if _sp().pedestrians().size() >= _sp().targets().x:
+				_aim_at_walk_nodes([[40.0, 52.0]])
+				c_phase = "inview_aim"
+				c_t0 = c_frames
+			elif t >= 900:
+				_check(false, "test setup: the campus crowd never reached its target (%d / %d)" % [_sp().pedestrians().size(), _sp().targets().x])
+				return
+		"inview_aim":
+			if t == 3:
+				var spa: PedestrianSpawner = _sp()
+				if spa.pedestrians().size() < spa.targets().x:
+					c_phase = "inview_wait"   # vừa có người bị hạ / bỏ: chờ đủ lại
+					c_t0 = c_frames
+					return
+				_clear_impostors_within(PedestrianSpawner.PROMOTE_R)
+				var picks: Array = _view_nodes(40.0, 52.0, 4)
+				if not _check(picks.size() >= 3, "test setup: need >= 3 walk nodes 40-52 m in front of the camera (got %d)" % picks.size()):
+					return
+				inject.clear()
+				for nd: int in picks:
+					var wid: int = _add_impostor(nd)
+					if not _check(wid >= 0, "test setup: impostors.add() refused an impostor"):
+						return
+				print("  in-view: %d impostors placed 40-52 m in front of the camera, pedestrians %d / target %d" % [inject.size(), spa.pedestrians().size(), spa.targets().x])
+				c_phase = "inview"
+				c_t0 = c_frames
+		"inview":
+			if t == 90:
+				var spi: PedestrianSpawner = _sp()
+				var okv: int = 0
+				for wid: int in inject.keys():
+					var e: Dictionary = {}
+					for pe: Dictionary in spi.promotions:
+						if int(pe["wid"]) == wid:
+							e = pe
+					if not _check(not e.is_empty(), "an impostor in the camera view (wid %d) must be promoted while the crowd is at its target" % wid):
+						return
+					if not _check(String(e.get("via", "")) == "view", "wid %d must be promoted through the in-view path (via %s)" % [wid, e.get("via", "")]):
+						return
+					if not _check(_same_identity(e["identity"], inject[wid]), "an in-view promotion keeps the identity (wid %d)" % wid):
+						return
+					var found: Pedestrian = null
+					for p: Pedestrian in spi.pedestrians():
+						if int(p.identity.get("wid", -1)) == wid:
+							found = p
+					if not _check(found != null and _same_identity(found.identity, inject[wid]), "the pedestrian of in-view wid %d exists with the impostor's identity" % wid):
+						return
+					okv += 1
+				print("  in-view promotions: %d of %d (via view, same identity)" % [okv, inject.size()])
+				_aim_at_walk_nodes([[25.0, 55.0], [70.0, 85.0]])
+				c_phase = "cap"
+				c_t0 = c_frames
+		"cap":
+			if t == 3:
+				# pool sau lần đổi khu đường -> campus (pool đầy người khu đường): phải bỏ người cũ và được dùng lại
+				var spi: PedestrianSpawner = _sp()
+				var hits: int = spi.pool_hits - int(roam.get_meta("pool0"))
+				print("  pool after the road -> campus change: %d reuses, %d evicted, %d pooled" % [hits, spi.pool_evicted, spi._pool_order.size()])
+				if not _check(hits >= 1 and spi.pool_evicted >= 1 and spi._pool_order.size() <= PedestrianSpawner.POOL_MAX, "after a zone change the pool must evict old-zone walkers (FIFO) and be reused (reuses %d, evicted %d)" % [hits, spi.pool_evicted]):
+					return
+				if not _cap_ok():
 					return
 				var u2: Vector3 = roam.get_meta("dir_u")
 				_teleport(_player().global_position - u2 * 110.0)
