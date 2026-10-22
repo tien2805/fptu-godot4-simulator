@@ -818,6 +818,13 @@ static func _body_fit(rel: String, model: Node3D, sk: Skeleton3D) -> Dictionary:
 	for q: Vector2 in [Vector2(0.05, y0), Vector2(0.03, (y0 + y2) * 0.5), Vector2(0.007, y2)]:
 		lz.append(minf(_front(pts, mx - q.x, q.y, 0.015, 0.015, zc, zcard), _front(pts, mx + q.x, q.y, 0.015, 0.015, zc, zcard)) - 0.005)
 	lz[2] = minf(lz[2], zcard - 0.006)   # đỉnh chữ V chạm mép trên thẻ
+	# dây nằm TRÊN logo polo: điểm giữa ngực trước mặt logo, và đoạn giữa ngực -> cổ ở độ cao mép trên logo cũng vậy (thân nam
+	# có hõm cổ sâu 2-3 cm: đoạn thẳng tới cổ đo được lùi sau logo, logo che dây) -> kéo điểm cổ ra vừa đủ
+	var zlogo: float = (f["logo"] as Vector3).z - 0.003
+	lz[1] = minf(lz[1], zlogo)
+	var tl: float = (ly + 0.0175 - (y0 + y2) * 0.5) / (y0 - (y0 + y2) * 0.5)   # mép trên logo trên đoạn giữa ngực -> cổ
+	if tl > 0.0:
+		lz[0] = minf(lz[0], lz[1] + (zlogo - lz[1]) / tl)
 	var lan: Array = []
 	for sx: float in [-1.0, 1.0]:
 		lan.append([Vector3(mx + sx * 0.05, y0, lz[0]), Vector3(mx + sx * 0.03, (y0 + y2) * 0.5, lz[1]), Vector3(mx + sx * 0.007, y2, lz[2])])
@@ -878,18 +885,32 @@ static func _body_fit(rel: String, model: Node3D, sk: Skeleton3D) -> Dictionary:
 	_body_fit_cache[rel] = f
 	return f
 
+## Số lần nới hộp mẫu rỗng của _env (mỗi lần +25 % kích thước ngang; tối đa gấp 3).
+const ENV_GROW_STEPS: int = 8
+
 ## Cực trị toạ độ axis (2 = z, 1 = y) của các điểm pts trong hộp [lo, hi]: sgn -1 lấy nhỏ nhất (mặt trước thân, phía -Z), +1 lớn
-## nhất (mặt sau, đỉnh vai). Hộp không có điểm nào -> fallback, ghi hộp vào _env_misses (món đồ có thể lơ lửng hoặc chìm vào
-## thân; _body_fit cảnh báo gộp một lần mỗi mô hình).
+## nhất (mặt sau, đỉnh vai). Thân nam ít đa giác có ô rộng hơn hộp mẫu 3-4 cm: hộp rỗng được nới hai chiều còn lại quanh tâm
+## (không nới trục đo, giữ giới hạn nửa trước / nửa sau), mỗi lần thêm 25 %, tới khi có đỉnh (thân hiện có cần tối đa 4 lần =
+## gấp 2). Nới ít nhất có thể: cực trị của hộp to hơn nhô ra hơn mặt thân tại đúng chỗ. Hết ENV_GROW_STEPS lần vẫn rỗng ->
+## fallback, ghi hộp vào _env_misses (món đồ có thể lơ lửng hoặc chìm vào thân; _body_fit cảnh báo gộp một lần mỗi mô hình).
 static func _env(pts: PackedVector3Array, lo: Vector3, hi: Vector3, axis: int, sgn: float, fallback: float) -> float:
-	var best: float = -INF
-	for p: Vector3 in pts:
-		if p.x >= lo.x and p.x <= hi.x and p.y >= lo.y and p.y <= hi.y and p.z >= lo.z and p.z <= hi.z:
-			best = maxf(best, p[axis] * sgn)
-	if best == -INF:
-		_env_misses.append("%s..%s" % [lo, hi])   # _body_fit cảnh báo gộp một lần mỗi mô hình
-		return fallback
-	return best * sgn
+	var c: Vector3 = (lo + hi) * 0.5
+	var h: Vector3 = (hi - lo) * 0.5
+	for grow: int in range(ENV_GROW_STEPS + 1):
+		var a: Vector3 = lo
+		var b: Vector3 = hi
+		for i: int in range(3):
+			if i != axis:
+				a[i] = c[i] - h[i] * (1.0 + 0.25 * float(grow))
+				b[i] = c[i] + h[i] * (1.0 + 0.25 * float(grow))
+		var best: float = -INF
+		for p: Vector3 in pts:
+			if p.x >= a.x and p.x <= b.x and p.y >= a.y and p.y <= b.y and p.z >= a.z and p.z <= b.z:
+				best = maxf(best, p[axis] * sgn)
+		if best != -INF:
+			return best * sgn
+	_env_misses.append("%s..%s" % [lo, hi])   # _body_fit cảnh báo gộp một lần mỗi mô hình
+	return fallback
 
 ## Mặt trước thân (z nhỏ nhất của nửa trước z < zc) trong ô (x +- hx, y +- hy).
 static func _front(pts: PackedVector3Array, x: float, y: float, hx: float, hy: float, zc: float, fallback: float) -> float:
@@ -2314,7 +2335,6 @@ class RigAnimator extends Node:
 	var _src: Animator                  # nguồn tư thế clip (không nằm trong cây; tạo khi cần, xem _clip_source)
 	var _bone: Dictionary = {}          # khớp của ta → chỉ số xương
 	var _rest_local: Dictionary = {}    # xương → Basis rest cục bộ
-	var _parent_rest: Dictionary = {}   # xương → Basis rest toàn cục của xương cha
 	var _body_bone: int = -1
 	var _body_rest_pos: Vector3
 	var _cur_anim: String = ""
@@ -2322,6 +2342,9 @@ class RigAnimator extends Node:
 	var _lod_t: float = 0.0
 	var _lod_skip: int = 1
 	var _frame: int = 0
+	const OVERLAY_EASE: float = 10.0    # 1/s: trọng số lớp cộng thêm tiến về đích (clip gói bắt đầu: mờ trong 0.1 s)
+	var _overlay_w: float = 1.0         # trọng số hiện tại của lớp cộng thêm (nước rút, lăn hông)
+	var _hips_keyed: Dictionary = {}    # tên animation → có track xoay Hips (cache, xem _hips_roll)
 	const FIDGETS: Array[String] = ["look", "shift", "neutral"]
 	var fidget_count: int = 0           # số động tác vặt khi đứng yên đã bắt đầu (cho test)
 	var _fidget: String = ""
@@ -2340,8 +2363,6 @@ class RigAnimator extends Node:
 			if b >= 0:
 				_bone[k] = b
 				_rest_local[b] = skeleton.get_bone_rest(b).basis
-				var pb: int = skeleton.get_bone_parent(b)
-				_parent_rest[b] = skeleton.get_bone_global_rest(pb).basis if pb >= 0 else Basis.IDENTITY
 		_body_bone = skeleton.find_bone("Body")
 		if _body_bone >= 0:
 			_body_rest_pos = skeleton.get_bone_rest(_body_bone).origin
@@ -2455,9 +2476,11 @@ class RigAnimator extends Node:
 			_play_anim("Run")
 			player.speed_scale = clampf(speed / 3.2, 0.7, 1.5) * (1.0 + 0.35 * sprint)
 		# --- lớp cộng thêm (nước rút, nghiêng hông) theo phần tư thế còn do đi/đứng quyết định; clip gói hoặc clip tự
-		# dựng đã hoà đủ thì 0 (hông về rest, xem _hips_roll)
+		# dựng đã hoà đủ thì 0 (hông về rest, xem _hips_roll). Trọng số tiến dần về đích (OVERLAY_EASE): clip gói bắt đầu
+		# thì thân không bật thẳng dậy trong một khung
 		var free_w: float = (1.0 - clip_weight) if _pack_clip_playing == "" else 0.0
-		_overlay(sprint * free_w, (float(params.get("lean", 0.0)) + _fidget_sway) * free_w)
+		_overlay_w = move_toward(_overlay_w, free_w, OVERLAY_EASE * dt)
+		_overlay(sprint * _overlay_w, (float(params.get("lean", 0.0)) + _fidget_sway) * _overlay_w)
 		# --- clip tự dựng: xoay xương theo bảng clip của Animator
 		if clip != "" and _pack_clip_playing == "" and clip_weight > 0.001:
 			var src: Animator = _clip_source()
@@ -2491,7 +2514,7 @@ class RigAnimator extends Node:
 		_hips_roll(roll)
 
 	## Xoay cộng thêm (Euler hệ nhân vật) lên tư thế hiện tại của xương khớp k. Chỉ dùng cho xương animation gói có track
-	## xoay (ghi lại mỗi khung) nên không cộng dồn; Hips không có track, xem _hips_roll.
+	## xoay (ghi lại mỗi khung) nên không cộng dồn; Hips thường không có track, xem _hips_roll.
 	func _add_rot(k: String, e: Vector3) -> void:
 		if not _bone.has(k):
 			return
@@ -2499,13 +2522,27 @@ class RigAnimator extends Node:
 		var r: Basis = CharacterBuilder._char_rot_local(skeleton, b, e)
 		skeleton.set_bone_pose_rotation(b, (r * Basis(skeleton.get_bone_pose_rotation(b))).get_rotation_quaternion())
 
-	## Lăn hông (Euler z hệ nhân vật, dương = nghiêng trái), đặt TUYỆT ĐỐI so với rest mỗi khung qua _apply_bone_pose: không
-	## animation nào của gói có track xoay Hips nên cộng dồn từng khung sẽ trôi mãi. Hips chỉ mang thân trên (chân là con của
-	## Body), nên chân và giày đứng yên. Clip tự dựng có khoá "hips" (ride) áp sau, đè lên.
+	## Lăn hông (Euler z hệ nhân vật, dương = nghiêng trái), đặt TUYỆT ĐỐI so với rest mỗi khung qua _apply_bone_pose: trong
+	## tệp glTF chỉ Run_Left / Run_Right có kênh xoay Hips, mà kênh đó là hằng số bằng rest nên bộ nhập (remove_immutable_tracks)
+	## bỏ đi; lúc chạy Hips không có track nào ghi lại mỗi khung, cộng dồn từng khung sẽ trôi mãi. Animation đang phát mà CÓ track
+	## xoay Hips (đổi thiết lập nhập, gói khác) thì bỏ qua, không đè track đó. Hips chỉ mang thân trên (chân là con của Body), nên
+	## chân và giày đứng yên. Clip tự dựng có khoá "hips" (ride) áp sau, đè lên.
 	func _hips_roll(roll: float) -> void:
+		if _anim_keys_hips(player.current_animation):
+			return
 		CharacterBuilder._apply_bone_pose(skeleton, {"hips": Vector3(0.0, 0.0, roll)}, 1.0)
 
-	## Động tác vặt khi đứng yên, mỗi 6..12 s: nhìn quanh (đầu ±50°), đổi chân (lăn hông), Idle_Neutral.
+	## Animation a của AnimationPlayer có track xoay xương Hips không (tra một lần mỗi tên, cache).
+	func _anim_keys_hips(a: String) -> bool:
+		if a == "":
+			return false
+		if not _hips_keyed.has(a):
+			var path := NodePath(String(player.get_node(player.root_node).get_path_to(skeleton)) + ":Hips")
+			_hips_keyed[a] = player.has_animation(a) and player.get_animation(a).find_track(path, Animation.TYPE_ROTATION_3D) >= 0
+		return _hips_keyed[a]
+
+	## Động tác vặt khi đứng yên, mỗi 6..12 s: nhìn quanh (đầu ±50°), đổi chân (lăn hông), Idle_Neutral. Đang nhìn một điểm
+	## (look_target: NPC sân khấu quay về người chơi khi thoại) thì không nhìn quanh.
 	func _fidget_update(dt: float) -> void:
 		if clip != "":
 			_fidget_stop()
@@ -2515,20 +2552,22 @@ class RigAnimator extends Node:
 			if _fidget_t <= 0.0:
 				_fidget_t = randf_range(6.0, 12.0)
 				_fidget = FIDGETS[randi() % FIDGETS.size()]
+				if _fidget == "neutral" and not player.has_animation("Idle_Neutral"):
+					_fidget = "look"
+				if _fidget == "look" and look_target != null:
+					_fidget = "shift"
 				_fidget_time = 0.0
 				fidget_count += 1
 				if _fidget == "neutral":
-					if player.has_animation("Idle_Neutral"):
-						_cur_anim = "Idle_Neutral"
-						player.play("Idle_Neutral", 0.25)
-					else:
-						_fidget = "look"
+					_cur_anim = "Idle_Neutral"
+					player.play("Idle_Neutral", 0.25)
+					player.speed_scale = 1.0   # có thể bắt đầu ngay khung đầu đứng lại, khi speed_scale còn của Walk / Run
 			return
 		_fidget_time += dt
 		match _fidget:
 			"look":
 				_fidget_yaw = sin(_fidget_time / 3.0 * TAU) * 0.92   # ≈ ±50° sau bộ lọc của _look (lệch 0.92 lần ở chu kỳ 3 s)
-				if _fidget_time >= 3.0:
+				if _fidget_time >= 3.0 or look_target != null:
 					_fidget_stop()
 			"shift":
 				_fidget_sway = 0.06 * sin(_fidget_time / 2.5 * PI)
