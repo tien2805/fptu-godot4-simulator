@@ -84,6 +84,7 @@ var md: MapData
 var player: ThirdPersonController
 var bike: PlayerBike
 var pedestrians: PedestrianSpawner
+var traffic: RoamTraffic
 ## false = không dựng người đi đường / xe chạy (test_free_roam đặt trước add_child để các pha kiểm tra cố định)
 var crowd_enabled: bool = true
 var mounted: bool = false
@@ -158,6 +159,7 @@ func _ready() -> void:
 	set_time_of_day("morning")
 	if crowd_enabled:
 		_build_pedestrians()
+		_build_traffic()
 	player.camera.make_current()
 	var sm: Node = get_node_or_null("/root/StageManager")
 	if sm:
@@ -546,6 +548,23 @@ func _build_pedestrians() -> void:
 	for h: Area3D in hotspots:
 		avoid.append(h.global_position)
 	pedestrians.setup(md, player, {"bike": bike, "roam": self, "avoid": avoid})
+
+
+## Xe chạy (spec vice-people-and-movement, Amendment 2026-10-22): làn bên phải, dừng trước người / xe; camera đi xuyên xe.
+func _build_traffic() -> void:
+	traffic = RoamTraffic.new()
+	traffic.name = "Traffic"
+	add_child(traffic)
+	var opts: Dictionary = {"bike": bike, "roam": self}
+	if pedestrians:
+		opts["peds_fn"] = pedestrians.pedestrians
+	traffic.setup(md, player, opts)
+	for b: Variant in traffic.bodies():
+		var body: CollisionObject3D = b
+		if player and player.cam_ray:
+			player.cam_ray.add_exception(body)
+		if bike and bike.spring_arm:
+			bike.spring_arm.add_excluded_object(body.get_rid())
 
 
 func _apply_spawn() -> void:

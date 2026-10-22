@@ -6,6 +6,7 @@
 #                                                     opts.baked = true → gộp thành 1 MeshInstance3D (xe NPC, menu)
 #   build_scooter_parts(root, front, rear, handlebar) lắp chi tiết vào các pivot có sẵn (PlayerBike.tscn)
 #   build_bus(parent, is_fbus)                        xe buýt F-Bus / VinBus (thân bo, dải kính + trụ, cửa, gương, đèn, 6 bánh)
+#   build_car(parent, paint, baked)                   ô tô con hatchback (xe chạy FreeRoam), mặt trước -Z
 #   build_training_dummy(parent, mat)                 nộm gỗ Vovinam (thân, 3 tay, chân, đệm đầu da, đế)
 #   build_tree(parent, pos, m, scale, seed)           cây tán rộng: thân cong, rễ bạnh, cành, 8–10 khối lá
 #   build_lamp_post(parent, pos, height, m)           cột đèn cao áp 2 nhánh
@@ -363,6 +364,38 @@ static func build_bus(parent: Node3D, is_fbus: bool, baked: bool = true) -> Node
 	if baked:
 		var mi: MeshInstance3D = bake_into(parent, root, "BusModel", Vector3.ZERO)
 		return mi
+	parent.add_child(root)
+	return root
+
+# ===========================================================================
+# Ô TÔ CON (xe chạy FreeRoam)
+# ===========================================================================
+## Ô tô con kiểu hatchback ~3,9 x 1,7 x 1,5 m, mặt trước hướng -Z như xe máy / xe buýt; baked = 1 MeshInstance3D.
+static func build_car(parent: Node3D, paint_color: Color, baked: bool = true) -> Node3D:
+	var root := Node3D.new()
+	root.name = "CarModel"
+	var pm: Material = paint(paint_color)
+	var dark: Material = black_plastic()
+	var glass: Material = glass_dark()
+	# thân dưới, nắp capô, khoang kính, mui
+	CharacterBuilder._box(root, Vector3(0.0, 0.62, 0.0), Vector3(1.7, 0.62, 3.9), pm)
+	CharacterBuilder._box(root, Vector3(0.0, 0.98, -1.25), Vector3(1.62, 0.12, 1.3), pm)
+	CharacterBuilder._box(root, Vector3(0.0, 1.22, 0.25), Vector3(1.56, 0.6, 2.1), glass)
+	CharacterBuilder._box(root, Vector3(0.0, 1.55, 0.3), Vector3(1.5, 0.08, 1.8), pm)
+	for sx: float in [-1.0, 1.0]:
+		CharacterBuilder._box(root, Vector3(sx * 0.79, 1.22, -0.78), Vector3(0.06, 0.58, 0.08), pm)      # trụ A
+		CharacterBuilder._box(root, Vector3(sx * 0.79, 1.22, 1.27), Vector3(0.06, 0.58, 0.12), pm)       # trụ C
+		CharacterBuilder._box(root, Vector3(sx * 0.86, 0.42, 0.0), Vector3(0.04, 0.16, 3.0), dark)       # ốp sườn
+		CharacterBuilder._box(root, Vector3(sx * 0.62, 0.78, -1.96), Vector3(0.34, 0.14, 0.04), lens(Color("#FFF4C8"), 1.4))
+		CharacterBuilder._box(root, Vector3(sx * 0.66, 0.85, 1.96), Vector3(0.28, 0.16, 0.04), lens(Color("#E53935"), 1.0))
+		CharacterBuilder._box(root, Vector3(sx * 0.95, 1.1, -0.72), Vector3(0.14, 0.1, 0.2), dark)       # gương
+	CharacterBuilder._box(root, Vector3(0.0, 0.42, -1.97), Vector3(1.72, 0.22, 0.08), dark)             # cản trước
+	CharacterBuilder._box(root, Vector3(0.0, 0.42, 1.97), Vector3(1.72, 0.22, 0.08), dark)              # cản sau
+	for z: float in [-1.25, 1.25]:
+		for sx: float in [-1.0, 1.0]:
+			build_wheel(root, Vector3(sx * 0.78, 0.32, z), 0.32, 0.2, 5, Color("#B0B6BC"))
+	if baked:
+		return bake_into(parent, root, "CarModel", Vector3.ZERO)
 	parent.add_child(root)
 	return root
 
