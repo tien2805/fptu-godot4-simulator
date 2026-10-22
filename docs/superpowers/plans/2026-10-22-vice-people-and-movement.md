@@ -510,7 +510,7 @@ Create `scripts/characters/PS2Head.gd`:
 # chiếu phẳng từ phía trước (atlas 4 x 2 ô biểu cảm; đổi ô bằng uv1_offset của vật liệu riêng mỗi nhân vật), tóc là vỏ
 # ít mặt theo kiểu tóc. Cùng hệ toạ độ với đầu tự dựng cũ của CharacterBuilder (pivot "Head" ở chân cằm, mặt nhìn -Z,
 # tâm đầu ~y 0.12) nên kính / mũ bảo hiểm / mũ bảo vệ / mũ đầu bếp cũ vẫn khớp.
-# Không dùng GameFX / StageManager ở đây (class_name biên dịch trước autoload khi chạy test --script).
+# Không dùng autoload ở đây (class_name biên dịch trước autoload khi chạy test --script).
 class_name PS2Head
 extends RefCounted
 
@@ -2923,7 +2923,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-> **Re-plan pending (2026-10-22):** the owner asked for dense crowds and ambient traffic (spec Part 3, "Amendment 2026-10-22"). Tasks 9-12 below cover the original 24-pedestrian ring only; before Task 9 starts the controller re-plans Tasks 9-12 (three NPC tiers with MultiMesh crowd impostors, zone densities, night scaling, `RoamTraffic`). Do not execute Tasks 9-12 from this text until that re-plan replaces this note.
+> **Part 3 re-planned (2026-10-22)** for the spec's "Amendment 2026-10-22: dense crowds and ambient traffic": Task 9 walk graph with zones, Task 10 pedestrian with walk profiles, Task 11 far crowd impostors, Task 12 tiered spawner + FreeRoam wiring, Task 13 ambient traffic, Task 14 docs.
 
 ### Task 9: `PedWalkGraph`
 
@@ -2933,7 +2933,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `MapData`, `MapBuilder._water_polygons(md)`, `MapBuilder.is_msft(b)`, `MapBuilder.region_shape(md, region)`, `MapBuilder.KERB_MIN_ROAD_W`, `MapBuilder.KERB_W`, `FPTUCampusBuilder.real_plot_transform()`, `plot_rect()`, `ring_outer_rect()`, `ring_courtyard_rect()`, `main_gate_local()`, `west_gate_local()`, `back_gate_local()`.
-- Produces (Tasks 10-11): `PedWalkGraph.build(md: MapData, opts: Dictionary = {}) -> PedWalkGraph`, `PedWalkGraph.from_lines(lines: Array) -> PedWalkGraph` (no filtering; tests), `node_count() -> int`, `node_pos(i: int) -> Vector3`, `neighbours(i: int) -> Array`, `next_node(node: int, came_from: int, rng: RandomNumberGenerator = null) -> int`, `nearest(p: Vector3, max_r: float = 30.0) -> int`, `random_point_near(p: Vector3, r_min: float, r_max: float, rng: RandomNumberGenerator) -> int` (-1 when none), `block_near(points: Array, r: float) -> void` (cuts every edge passing within r of a point).
+- Produces (Tasks 10-13): zones `PedWalkGraph.ZONE_CAMPUS` (0, within 60 m of the campus plot), `ZONE_RESIDENTIAL` (1, inside the Vinhomes region shape), `ZONE_ROAD` (2, everything else), `zone_at(i: int) -> int`; `PedWalkGraph.build(md: MapData, opts: Dictionary = {}) -> PedWalkGraph`, `PedWalkGraph.from_lines(lines: Array) -> PedWalkGraph` (no filtering; tests), `node_count() -> int`, `node_pos(i: int) -> Vector3`, `neighbours(i: int) -> Array`, `next_node(node: int, came_from: int, rng: RandomNumberGenerator = null) -> int`, `nearest(p: Vector3, max_r: float = 30.0) -> int`, `random_point_near(p: Vector3, r_min: float, r_max: float, rng: RandomNumberGenerator, zone: int = -1) -> int` (-1 when none; zone >= 0 keeps only that zone), `block_near(points: Array, r: float) -> void` (cuts every edge passing within r of a point).
 
 - [ ] **Step 1: Write the failing test (part A)**
 
@@ -2946,13 +2946,13 @@ Create `tests/test_pedestrians.gd`:
 #                truy vấn random_point_near / next_node.
 #   B (Task 10): một người đi đường trên đồ thị tự dựng: đi bộ, va nhẹ -> STUMBLE, nước rút -> KNOCKDOWN rồi đi lại
 #                trong 3.2 s, xe > 3 m/s -> KNOCKDOWN (tín hiệu "bike").
-#   C (Task 11): FreeRoam: 18..30 người trong 80 m, tránh hotspot, thay người khi đi xa, xe tông người bị chậm lại,
-#                chi phí vật lý.
+#   C (Task 12): FreeRoam: mật độ theo khu (campus >= 40, dân cư >= 30, đường >= 15 người trong 80 m), trần từng tầng,
+#                đêm còn 30 %, lên/xuống tầng giữ nguyên danh tính, tránh hotspot, xe tông người bị chậm lại, chi phí.
 # Chạy:  godot --headless --path . --script tests/test_pedestrians.gd
 extends SceneTree
 
 const PART_B: bool = false   # Task 10 bật
-const PART_C: bool = false   # Task 11 bật
+const PART_C: bool = false   # Task 12 bật
 
 var done: bool = false
 var frames: int = 0
@@ -3016,6 +3016,18 @@ func _part_a() -> bool:
 			hits += 1
 	if not _check(hits >= 30, "random_point_near found nodes 40..80 m from the BE6 spawn only %d / 40 times" % hits):
 		return false
+	var zc: Array = [0, 0, 0]
+	for i2: int in range(g.node_count()):
+		var z: int = g.zone_at(i2)
+		zc[z] = int(zc[z]) + 1
+		if z == PedWalkGraph.ZONE_CAMPUS and not _near_campus(Vector2(g.node_pos(i2).x, g.node_pos(i2).z)):
+			return _check(false, "campus-zone node %d lies more than 60 m from the campus plot" % i2)
+	print("  zones: campus %d, residential %d, road %d" % zc)
+	if not _check(int(zc[0]) >= 50 and int(zc[1]) >= 50 and int(zc[2]) >= 50, "every zone needs >= 50 nodes (campus %d, residential %d, road %d)" % zc):
+		return false
+	var rj: int = g.random_point_near(spawn, 0.0, 400.0, rng, PedWalkGraph.ZONE_RESIDENTIAL)
+	if not _check(rj >= 0 and g.zone_at(rj) == PedWalkGraph.ZONE_RESIDENTIAL, "random_point_near with a zone filter must return a node of that zone"):
+		return false
 	var deg2: int = -1
 	for i: int in range(g.node_count()):
 		if g.neighbours(i).size() >= 2:
@@ -3032,6 +3044,11 @@ func _part_a() -> bool:
 func _campus_node(p: Vector2) -> bool:
 	var local: Vector3 = FPTUCampusBuilder.real_plot_transform().affine_inverse() * Vector3(p.x, 0.0, p.y)
 	return FPTUCampusBuilder.plot_rect().grow(3.0).has_point(Vector2(local.x, local.z))
+
+
+func _near_campus(p: Vector2) -> bool:
+	var local: Vector3 = FPTUCampusBuilder.real_plot_transform().affine_inverse() * Vector3(p.x, 0.0, p.y)
+	return FPTUCampusBuilder.plot_rect().grow(PedWalkGraph.CAMPUS_NEAR_M + 1.0).has_point(Vector2(local.x, local.z))
 
 
 func _check(ok: bool, msg: String) -> bool:
@@ -3057,7 +3074,7 @@ Create `scripts/roam/PedWalkGraph.gd`:
 # >= MapBuilder.KERB_MIN_ROAD_W, đường đi bộ (lanes == 0), vòng quanh nhà campus + sân trong + lối qua ba cổng.
 # Bỏ điểm dưới / sát nước, trong nhà OSM, trên lòng đường, ngoài ba vùng đã dựng, (đường OSM) trong lô campus; nối các
 # đường gần nhau (góc phố, băng qua đường). Nhà Microsoft và vật cản dựng thêm do PedestrianSpawner kiểm bằng vật lý.
-# Không dùng GameFX / StageManager ở đây (class_name biên dịch trước autoload khi chạy test --script).
+# Không dùng autoload ở đây (class_name biên dịch trước autoload khi chạy test --script).
 class_name PedWalkGraph
 extends RefCounted
 
@@ -3072,10 +3089,16 @@ const SEG_CELL: float = 32.0
 const CAMPUS_LOOP_GROW: float = 5.0
 const COURTYARD_INSET: float = 1.5
 const REGIONS: Array[String] = ["vinhomes", "corridor", "campus"]
+## Khu (mật độ + preset người đi đường): campus = trong vòng 60 m quanh lô campus; dân cư = trong vùng Vinhomes; còn lại = đường.
+const ZONE_CAMPUS: int = 0
+const ZONE_RESIDENTIAL: int = 1
+const ZONE_ROAD: int = 2
+const CAMPUS_NEAR_M: float = 60.0
 
 var pos: PackedVector3Array = PackedVector3Array()
 var adj: Array = []             # Array of Array[int]
 var line_of: PackedInt32Array = PackedInt32Array()
+var zone_of: PackedByteArray = PackedByteArray()
 var _hash: Dictionary = {}      # Vector2i -> Array[int]
 
 
@@ -3129,6 +3152,10 @@ static func from_lines(lines: Array) -> PedWalkGraph:
 # ===========================================================================
 # TRUY VẤN
 # ===========================================================================
+func zone_at(i: int) -> int:
+	return zone_of[i]
+
+
 func node_count() -> int:
 	return pos.size()
 
@@ -3188,7 +3215,7 @@ func block_near(points: Array, r: float) -> void:
 					break
 
 
-func random_point_near(p: Vector3, r_min: float, r_max: float, rng: RandomNumberGenerator) -> int:
+func random_point_near(p: Vector3, r_min: float, r_max: float, rng: RandomNumberGenerator, zone: int = -1) -> int:
 	var cands: Array[int] = []
 	var c0: Vector2i = _cell(Vector2(p.x, p.z))
 	var reach: int = ceili(r_max / CELL)
@@ -3196,7 +3223,7 @@ func random_point_near(p: Vector3, r_min: float, r_max: float, rng: RandomNumber
 		for dz: int in range(-reach, reach + 1):
 			for i: int in _hash.get(Vector2i(c0.x + dx, c0.y + dz), []):
 				var d: float = Vector2(pos[i].x - p.x, pos[i].z - p.z).length()
-				if d >= r_min and d <= r_max:
+				if d >= r_min and d <= r_max and (zone < 0 or zone_of[i] == zone):
 					cands.append(i)
 	if cands.is_empty():
 		return -1
@@ -3210,11 +3237,12 @@ func _cell(p: Vector2) -> Vector2i:
 	return Vector2i(floori(p.x / CELL), floori(p.y / CELL))
 
 
-func _add_node(p: Vector2, line_id: int) -> int:
+func _add_node(p: Vector2, line_id: int, zone: int = ZONE_ROAD) -> int:
 	var id: int = pos.size()
 	pos.append(Vector3(p.x, 0.0, p.y))
 	adj.append([])
 	line_of.append(line_id)
+	zone_of.append(zone)
 	var c: Vector2i = _cell(p)
 	if not _hash.has(c):
 		_hash[c] = []
@@ -3241,7 +3269,7 @@ func _add_line(pts: PackedVector2Array, ctx: Dictionary, line_id: int, check_bui
 			if not _ok(p, ctx, check_buildings, check_roads, outside_plot):
 				prev = -1
 				continue
-			var id: int = _add_node(p, line_id)
+			var id: int = _add_node(p, line_id, _zone(p, ctx))
 			if prev >= 0 and prev_p.distance_to(p) <= SAMPLE_M * 1.6:
 				_connect(prev, id)
 			prev = id
@@ -3355,7 +3383,23 @@ static func _context(md: MapData) -> Dictionary:
 		var w3: Vector3 = xf * Vector3(c.x, 0.0, c.y)
 		plot.append(Vector2(w3.x, w3.z))
 	ctx["plot"] = plot
+	var near := PackedVector2Array()
+	var pg: Rect2 = pr.grow(CAMPUS_NEAR_M)
+	for c2: Vector2 in [pg.position, Vector2(pg.end.x, pg.position.y), pg.end, Vector2(pg.position.x, pg.end.y)]:
+		var w4: Vector3 = xf * Vector3(c2.x, 0.0, c2.y)
+		near.append(Vector2(w4.x, w4.z))
+	ctx["campus_near"] = near
+	ctx["vinhomes"] = MapBuilder.region_shape(md, "vinhomes")
 	return ctx
+
+
+static func _zone(p: Vector2, ctx: Dictionary) -> int:
+	if Geometry2D.is_point_in_polygon(p, ctx["campus_near"]):
+		return ZONE_CAMPUS
+	for poly: PackedVector2Array in ctx["vinhomes"]:
+		if Geometry2D.is_point_in_polygon(p, poly):
+			return ZONE_RESIDENTIAL
+	return ZONE_ROAD
 
 
 static func _campus_lines() -> Array:
@@ -3594,7 +3638,7 @@ Create `scripts/roam/Pedestrian.gd`:
 # thỉnh thoảng đứng lại; tự đo va chạm với người chơi (đi bộ) / xe (khi cưỡi) bằng khoảng cách và phản ứng:
 #   va nhẹ -> STUMBLE (lảo đảo, né 0.6 m), nước rút > 6 m/s -> KNOCKDOWN (ngã rồi đứng dậy, bỏ chạy),
 #   xe > 3 m/s -> KNOCKDOWN văng 2..4 m; mỗi lần một câu càu nhàu (spawner giới hạn nhịp). Không phạt gì.
-# Không dùng GameFX / StageManager ở đây (class_name biên dịch trước autoload khi chạy test --script).
+# Không dùng autoload ở đây (class_name biên dịch trước autoload khi chạy test --script).
 class_name Pedestrian
 extends CharacterBody3D
 
@@ -4080,7 +4124,7 @@ Create `scripts/roam/PedestrianSpawner.gd`:
 # (lần đầu từ initial_min), ưu tiên ngoài tầm camera, kiểm chỗ đứng bằng FreeRoam.free_spot_at; người xa hơn `despawn`
 # hoặc kẹt bị thay (tối đa 2 người mới mỗi 0.25 s để không giật). LOD: xa > 45 m di chuyển rẻ, > 90 m ẩn.
 # Một bong bóng thoại dùng chung (mỗi 4 s tối đa một câu). Hậu quả va chạm: nước rút -> người chơi chậm 0.2 s,
-# xe tông -> xe mất 25 % tốc độ. Không dùng GameFX / StageManager ở đây.
+# xe tông -> xe mất 25 % tốc độ. Không dùng autoload ở đây.
 class_name PedestrianSpawner
 extends Node3D
 
