@@ -357,7 +357,9 @@ def _ps2_cell(tone_key, sex, variant, expr):
                 continue
             if (x / 0.055) ** 2 + ((y - 0.035) / 0.045) ** 2 > 1.0:
                 continue
-            d.point(P(x, y), fill=(40, 30, 26, 70))
+            # chấm tròn ~2.4 px siêu mẫu: chấm 1 px biến mất sau khi thu nhỏ LANCZOS 4x nên râu không nhìn thấy
+            px, py = P(x, y)
+            d.ellipse([px - 1.2, py - 1.2, px + 1.2, py + 1.2], fill=(40, 30, 26, 60))
     if sex == "m" and variant == 2:
         d.line([P(-0.017, 0.071), P(0.0, 0.074), P(0.017, 0.071)], fill=(46, 32, 24, 200), width=S * 3)
         d.line([P(-0.024, 0.098), P(-0.021, 0.064)], fill=dark + (55,), width=S * 2)
@@ -387,7 +389,8 @@ def _ps2_cell(tone_key, sex, variant, expr):
             d.arc([*P(ex - 0.012, ey + 0.002), *P(ex + 0.012, ey - 0.010)], 190, 350, fill=line, width=S * 2)
             continue
         if expr == "pain":
-            d.line([P(ex - 0.012 * sx, ey + 0.004), P(ex + 0.010 * sx, ey), P(ex - 0.012 * sx, ey - 0.004)], fill=line, width=S * 2)
+            # nhăn mắt kiểu "> <": đỉnh chữ V hướng về phía mũi, hai đầu mở ra phía thái dương
+            d.line([P(ex + 0.012 * sx, ey + 0.004), P(ex - 0.010 * sx, ey), P(ex + 0.012 * sx, ey - 0.004)], fill=line, width=S * 2)
             continue
         rx, ry = 0.0125, 0.0055
         if expr == "surprised":
@@ -460,6 +463,7 @@ def make_ps2_hair():
     strands = np.tile(cols[None, :], (H, 1))
     strands = np.asarray(Image.fromarray((strands * 255).astype(np.uint8), "L").filter(ImageFilter.GaussianBlur(0.6)), dtype=np.float32) / 255.0
     n = noise(W, H, 3, 0.55, 93)
+    n = 0.5 * (n + n[::-1])  # đối xứng theo V: hàng cuối nối liền hàng đầu nên lặp theo V không lộ vệt
     val = 0.72 + 0.22 * strands + 0.12 * (n - 0.5)
     save(Image.fromarray(np.clip(val * 255, 0, 255).astype(np.uint8), "L").convert("RGB"), "char_ps2_hair.png")
 
