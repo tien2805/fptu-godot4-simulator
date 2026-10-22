@@ -45,9 +45,23 @@ static var _mesh_cache: Dictionary = {}
 ## Phong cách hoạt hình: toon diffuse/specular + viền đen (next_pass) cho mọi vật liệu nhân vật & đồ vật.
 ## Autoload hiệu ứng đặt toon = (art_style == "classic") lúc khởi động, trước khi cảnh nào dựng nhân vật.
 static var toon: bool = true
-## Tỉ lệ đầu tự dựng trên thân có xương khi opts không có head_scale: 1.3 (cổ điển, đầu to hoạt hình), autoload hiệu ứng đặt 1.15
-## cho phong cách Vice City (plan vice-city D3).
+## Tỉ lệ đầu tự dựng trên thân có xương khi opts không có head_scale: 1.3 (cổ điển, đầu to hoạt hình), autoload hiệu ứng đặt 1.0
+## cho phong cách Vice City (ở đó thân rigged dùng đầu PS2 với PS2_HEAD_SCALE_RIG, xem ps2).
 static var head_scale_default: float = 1.3
+## Phong cách Vice City (autoload hiệu ứng đặt = art_style == "vice", xem _apply_art_style_statics): mọi preset dựng trên thân Quaternius
+## với đầu PS2 (PS2Head), tỉ lệ người thật; cổ điển (false) giữ nguyên nhân vật hiện tại.
+static var ps2: bool = false
+const PS2_HEAD_SCALE_RIG: float = 1.06
+## Pivot gắn đồ của thân rigged: khóa thân tự dựng -> [xương, độ dời (m, hệ gốc nhân vật) dọc chi ở tư thế nghỉ]
+## (bàn chân: 0.42 m xuống dọc ống chân từ gối; xem _rig_attach_pivots).
+const ATTACH_BONES: Dictionary = {
+	"torso": ["Torso", Vector3.ZERO], "neck": ["Neck", Vector3.ZERO],
+	"shoulder_l": ["UpperArm.L", Vector3.ZERO], "shoulder_r": ["UpperArm.R", Vector3.ZERO],
+	"elbow_l": ["LowerArm.L", Vector3.ZERO], "elbow_r": ["LowerArm.R", Vector3.ZERO],
+	"thigh_l": ["UpperLeg.L", Vector3.ZERO], "thigh_r": ["UpperLeg.R", Vector3.ZERO],
+	"knee_l": ["LowerLeg.L", Vector3.ZERO], "knee_r": ["LowerLeg.R", Vector3.ZERO],
+	"foot_l": ["LowerLeg.L", Vector3(0.0, -0.42, 0.0)], "foot_r": ["LowerLeg.R", Vector3(0.0, -0.42, 0.0)],
+}
 static var _outline_cache: Dictionary = {}
 const EXPRESSIONS: Array[String] = ["open", "closed", "happy", "angry", "surprised", "done"]
 
@@ -96,7 +110,7 @@ static func _style_mat(m: StandardMaterial3D, outline_width: float = 0.012) -> S
 # API TĨNH
 # ===========================================================================
 static func build(opts: Dictionary = {}) -> Node3D:
-	if bool(opts.get("rigged", rigged_default)):
+	if bool(opts.get("rigged", rigged_default or ps2)):
 		var r: Node3D = _build_rigged(opts)
 		if r:
 			return r
@@ -183,9 +197,13 @@ static func build(opts: Dictionary = {}) -> Node3D:
 	# --- Cổ, đầu
 	var neck := _pivot(torso, "Neck", Vector3(0.0, TORSO_H - 0.01, 0.0))
 	_cyl(neck, Vector3(0.0, 0.04, 0.005), 0.042 * width, 0.05 * width, 0.09, skin)
-	var head: Node3D = _build_head(neck, Vector3(0.0, 0.065, 0.0), skin_idx, female, width, hair_style, hair_idx, outfit, rng, rig)
-	var face_mat: StandardMaterial3D = _face_mat(skin_idx, female)
+	var head: Node3D
+	if ps2:
+		head = PS2Head.build(neck, Vector3(0.0, 0.065, 0.0), {"skin": skin_idx, "female": female, "hair_style": hair_style, "hair_color": hair_idx, "width": width, "seed": rng.randi(), "outfit": outfit}, rig)
+	else:
+		head = _build_head(neck, Vector3(0.0, 0.065, 0.0), skin_idx, female, width, hair_style, hair_idx, outfit, rng, rig)
 	var head_mi: MeshInstance3D = rig["face_mesh"]
+	var face_mat: StandardMaterial3D = head_mi.material_override as StandardMaterial3D if ps2 else _face_mat(skin_idx, female)
 
 	# --- Tay
 	for side: Array in [["L", -1.0], ["R", 1.0]]:
@@ -246,7 +264,7 @@ static func build(opts: Dictionary = {}) -> Node3D:
 				_box(foot, Vector3(0.0, 0.0, -0.05), Vector3(0.09, 0.01, 0.025), outfit["sole_mat"])
 
 	# --- Tỉ lệ cách điệu (hoạt hình): đầu to, tay chân ngắn, bàn tay to; hông hạ theo chân ngắn
-	var stylized: bool = bool(opts.get("stylized", true))
+	var stylized: bool = bool(opts.get("stylized", not ps2))
 	var leg_scale: float = 1.0
 	if stylized:
 		head.scale = Vector3(1.26, 1.26, 1.26)
@@ -274,6 +292,8 @@ static func build(opts: Dictionary = {}) -> Node3D:
 	root.set_meta("height", height)
 	root.set_meta("hip_base", HIP_Y * leg_scale)
 	root.set_meta("skin_idx", skin_idx)
+	if ps2:
+		root.set_meta("ps2_head", true)
 	# --- Animator
 	if bool(opts.get("animate", true)):
 		var an := Animator.new()
@@ -281,16 +301,25 @@ static func build(opts: Dictionary = {}) -> Node3D:
 		an.rig = rig
 		an.blink_enabled = bool(opts.get("blink", true))
 		if an.blink_enabled:
-			var open_tex: Texture2D = face_mat.albedo_texture
-			var closed_tex: Texture2D = _tex("char_face_%s%s_closed.png" % [SKIN_KEYS[skin_idx], "f" if female else "m"])
-			if open_tex and closed_tex:
-				var own: StandardMaterial3D = face_mat.duplicate()
-				head_mi.material_override = own
-				an.face_mat = own
-				an.face_open = open_tex
-				an.face_closed = closed_tex
+			if ps2:
+				if face_mat and bool(face_mat.get_meta("ps2_face", false)):
+					an.face_mat = face_mat
+					an.face_cells = true
+					an.face_cell_open = PS2Head.cell_offset("open")
+					an.face_cell_closed = PS2Head.cell_offset("closed")
+				else:
+					an.blink_enabled = false
 			else:
-				an.blink_enabled = false
+				var open_tex: Texture2D = face_mat.albedo_texture
+				var closed_tex: Texture2D = _tex("char_face_%s%s_closed.png" % [SKIN_KEYS[skin_idx], "f" if female else "m"])
+				if open_tex and closed_tex:
+					var own: StandardMaterial3D = face_mat.duplicate()
+					head_mi.material_override = own
+					an.face_mat = own
+					an.face_open = open_tex
+					an.face_closed = closed_tex
+				else:
+					an.blink_enabled = false
 		an.rng_phase = rng.randf() * TAU
 		an.hip_base = HIP_Y * leg_scale
 		root.add_child(an)
@@ -382,7 +411,8 @@ static func _body_scene(rel: String) -> PackedScene:
 	return ps
 
 ## Thân Quaternius + đầu tự dựng. opts thêm: body ("casual|hoodie|suit|worker|formal"), head_scale (mặc định head_scale_default: 1.3 – đầu to kiểu
-## hoạt hình, 1.15 ở phong cách Vice City), rigged=true. Trả về null nếu không có mô hình (build() sẽ quay về thân tự dựng).
+## hoạt hình; chế độ ps2: đầu PS2 với PS2_HEAD_SCALE_RIG), body_width (chỉ ps2, mặc định ngẫu nhiên 0.92..1.12), rigged=true.
+## Trả về null nếu không có mô hình (build() sẽ quay về thân tự dựng).
 static func _build_rigged(opts: Dictionary) -> Node3D:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(opts.get("seed", randi()))
@@ -420,6 +450,11 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 	model.name = "Model"
 	model.rotation.y = MODEL_YAW
 	root.add_child(model)
+	var hs: float = float(opts.get("head_scale", PS2_HEAD_SCALE_RIG if ps2 else head_scale_default))
+	var wk: float = 1.0
+	if ps2:
+		wk = float(opts.get("body_width", rng.randf_range(0.92, 1.12)))
+		model.scale = Vector3(wk, 1.0, wk)
 	var sk: Skeleton3D = model.find_child("Skeleton3D", true, false) as Skeleton3D
 	var ap: AnimationPlayer = model.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if sk == null or ap == null:
@@ -468,17 +503,29 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 				m = _rig_extra_mat(src, outfit, cloth_i)
 				cloth_i += 1
 			mi.set_surface_override_material(si, m)
+		if not is_legs and not is_feet and main_si >= 0 and not rig.has("torso_mesh"):
+			rig["torso_mesh"] = mi
 	# --- đầu tự dựng gắn xương Head
 	var hb: int = sk.find_bone("Head")
 	var att := BoneAttachment3D.new()
 	att.name = "HeadBone"
 	sk.add_child(att)
 	att.bone_name = "Head"
-	var hs: float = float(opts.get("head_scale", head_scale_default))
-	var head_pivot: Node3D = _build_head(att, Vector3(0.0, 0.0, 0.0), skin_idx, female, width, hair_style, hair_idx, outfit, rng, rig)
-	head_pivot.rotation.y = PI   # đầu tự dựng nhìn về -Z của pivot; xương Head nhìn về +Z của mô hình (đã quay PI)
+	var head_pivot: Node3D
+	if ps2:
+		# xương Head nghỉ cúi ~4° (đầu gốc skinned bù bằng bind pose): nút bù tư thế nghỉ để đầu PS2 nhìn thẳng như đầu gốc
+		# rồi đi theo độ xoay của xương so với tư thế nghỉ (cùng cách với _rig_attach_pivots)
+		var upright := Node3D.new()
+		upright.name = "HeadUpright"
+		if hb >= 0:
+			upright.basis = sk.get_bone_global_rest(hb).basis.orthonormalized().inverse()
+		att.add_child(upright)
+		head_pivot = PS2Head.build(upright, Vector3.ZERO, {"skin": skin_idx, "female": female, "hair_style": hair_style, "hair_color": hair_idx, "width": width, "seed": rng.randi(), "outfit": outfit}, rig)
+	else:
+		head_pivot = _build_head(att, Vector3(0.0, 0.0, 0.0), skin_idx, female, width, hair_style, hair_idx, outfit, rng, rig)
+	head_pivot.rotation.y = PI   # đầu nhìn về -Z của pivot; xương Head nhìn về +Z của mô hình (đã quay PI)
 	head_pivot.position = Vector3(0.0, -0.045 + (hs - 1.0) * 0.1, 0.0)
-	head_pivot.scale = Vector3(hs, hs, hs)
+	head_pivot.scale = Vector3(hs / wk, hs, hs / wk)   # bù bề ngang thân (wk) để mặt không méo
 	# --- các pivot gắn đồ (tay, ngực) qua BoneAttachment3D
 	for key: String in ["hand_l", "hand_r", "chest", "hips"]:
 		var a := BoneAttachment3D.new()
@@ -487,6 +534,8 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 		a.bone_name = BONE_OF[key]
 		rig[key] = a
 	_rig_torso_extras(rig["chest"], rig["hips"], outfit, width)
+	if ps2:
+		_rig_attach_pivots(root, sk, rig)   # chỉ ps2: thân rigged cổ điển (người chơi FreeRoam) giữ nguyên cây node
 	root.set_meta("rig", rig)
 	root.set_meta("rigged", true)
 	root.set_meta("preset", preset)
@@ -494,6 +543,8 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 	root.set_meta("height", height)
 	root.set_meta("skin_idx", skin_idx)
 	root.set_meta("skeleton", sk)
+	if ps2:
+		root.set_meta("ps2_head", true)
 	# --- Animator
 	if bool(opts.get("animate", true)):
 		var an := RigAnimator.new()
@@ -504,16 +555,26 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 		an.head_pivot = head_pivot
 		an.blink_enabled = bool(opts.get("blink", true))
 		if an.blink_enabled:
-			var face_mat: StandardMaterial3D = _face_mat(skin_idx, female)
-			var closed_tex: Texture2D = _tex("char_face_%s%s_closed.png" % [SKIN_KEYS[skin_idx], "f" if female else "m"])
-			if face_mat.albedo_texture and closed_tex:
-				var own: StandardMaterial3D = face_mat.duplicate()
-				(rig["face_mesh"] as MeshInstance3D).material_override = own
-				an.face_mat = own
-				an.face_open = face_mat.albedo_texture
-				an.face_closed = closed_tex
+			if ps2:
+				var face_mat: StandardMaterial3D = (rig["face_mesh"] as MeshInstance3D).material_override as StandardMaterial3D
+				if face_mat and bool(face_mat.get_meta("ps2_face", false)):
+					an.face_mat = face_mat
+					an.face_cells = true
+					an.face_cell_open = PS2Head.cell_offset("open")
+					an.face_cell_closed = PS2Head.cell_offset("closed")
+				else:
+					an.blink_enabled = false
 			else:
-				an.blink_enabled = false
+				var face_mat: StandardMaterial3D = _face_mat(skin_idx, female)
+				var closed_tex: Texture2D = _tex("char_face_%s%s_closed.png" % [SKIN_KEYS[skin_idx], "f" if female else "m"])
+				if face_mat.albedo_texture and closed_tex:
+					var own: StandardMaterial3D = face_mat.duplicate()
+					(rig["face_mesh"] as MeshInstance3D).material_override = own
+					an.face_mat = own
+					an.face_open = face_mat.albedo_texture
+					an.face_closed = closed_tex
+				else:
+					an.blink_enabled = false
 		an.rng_phase = rng.randf() * TAU
 		root.add_child(an)
 		var clip: String = String(opts.get("clip", ""))
@@ -559,11 +620,44 @@ static func _rig_torso_extras(chest: Node3D, hips: Node3D, outfit: Dictionary, w
 		_box(chest, Vector3(-0.07 * width, 0.05, front * (cz + 0.01)), Vector3(0.05, 0.022, 0.006), _mat("badge", Color("#D4AF37"), 0.3, 0.9))
 	if outfit.get("apron", false):
 		_box(hips, Vector3(0.0, 0.1, front * (cz + 0.03)), Vector3(0.30 * width, 0.62, 0.012), outfit["apron_mat"])
+	if outfit.get("vovinam_belt", false):
+		var vb: Material = outfit["vbelt_mat"]
+		_box(hips, Vector3(0.0, 0.12, 0.0), Vector3(0.34 * width, 0.06, 0.25 * width), vb)
+		_box(hips, Vector3(-0.03, 0.02, front * (cz + 0.012)), Vector3(0.03, 0.2, 0.012), vb, Vector3(0.0, 0.0, 0.1))
+		_box(hips, Vector3(0.03, 0.02, front * (cz + 0.012)), Vector3(0.03, 0.2, 0.012), vb, Vector3(0.0, 0.0, -0.1))
 	if outfit.get("backpack", false):
 		var bp: Material = outfit["backpack_mat"]
 		_box(chest, Vector3(0.0, -0.08, -front * (cz + 0.08)), Vector3(0.25 * width, 0.33, 0.12), bp)
 		_box(chest, Vector3(0.0, 0.03, -front * (cz + 0.145)), Vector3(0.22 * width, 0.10, 0.03), bp)
 		_box(chest, Vector3(0.0, -0.19, -front * (cz + 0.145)), Vector3(0.18 * width, 0.14, 0.03), outfit["backpack_pocket_mat"])
+
+## Pivot gắn đồ cho thân rigged theo quy ước thân tự dựng: Node3D đặt tại khớp, trục trùng trục gốc nhân vật ở tư thế
+## nghỉ, rồi đi theo xương. Tay / chân: như thân tự dựng, -Y của pivot chạy DỌC CHI (tư thế nghỉ Quaternius lệch: tay buông
+## chéo ~28°, cẳng tay phải gập ra trước 23°, đùi phải bước tới 24°, ống chân trái 18°), nên trục gốc được xoay ít nhất để -Y
+## trùng trục +Y của xương (hướng về khớp con) và độ dời trong ATTACH_BONES đo dọc chi; thân / cổ giữ trục gốc nhân vật.
+## Chỉ để gắn đồ (đồng hồ, tai nghe...): xoay pivot này KHÔNG xoay xương.
+static func _rig_attach_pivots(root: Node3D, sk: Skeleton3D, rig: Dictionary) -> void:
+	var to_root: Transform3D = _local_xform(sk, root)
+	for key: String in ATTACH_BONES.keys():
+		if rig.has(key):
+			continue
+		var spec: Array = ATTACH_BONES[key]
+		var b: int = sk.find_bone(String(spec[0]))
+		if b < 0:
+			continue
+		var att := BoneAttachment3D.new()
+		att.name = "Att_" + key
+		sk.add_child(att)
+		att.bone_name = String(spec[0])
+		var rest: Transform3D = to_root * sk.get_bone_global_rest(b)
+		var axes := Basis.IDENTITY
+		if key != "torso" and key != "neck":
+			axes = Basis(Quaternion(Vector3.DOWN, (rest.basis * Vector3.UP).normalized()))
+		var pivot := Node3D.new()
+		pivot.name = "Pivot_" + key
+		pivot.transform = rest.affine_inverse() * Transform3D(axes, rest.origin + axes * (spec[1] as Vector3))
+		att.add_child(pivot)
+		rig[key] = pivot
 
 ## Node Animator của nhân vật (Animator hoặc RigAnimator – cùng giao diện; null nếu dựng với animate=false)
 static func get_animator(root: Node3D) -> Node:
@@ -634,10 +728,21 @@ static func look_at_point(root: Node3D, global_point: Variant) -> void:
 		an.look_target = global_point
 
 ## Đổi biểu cảm mặt: "open" (bình thường), "happy", "angry", "surprised", "done" (cạn lời). Chớp mắt vẫn hoạt động.
+## Đầu PS2: thêm "talk", "pain"; đổi ô atlas (uv1_offset của vật liệu mặt riêng) thay vì đổi texture.
 static func set_expression(root: Node3D, expr: String) -> void:
 	var an: Node = get_animator(root)
 	var face: MeshInstance3D = get_pivot(root, "face_mesh") as MeshInstance3D
 	if face == null:
+		return
+	var fmat: StandardMaterial3D = face.material_override as StandardMaterial3D
+	if fmat and bool(fmat.get_meta("ps2_face", false)):
+		var off: Vector3 = PS2Head.cell_offset(expr if expr in PS2Head.CELLS else "open")
+		if an and bool(an.get("face_cells")):
+			an.face_cell_open = off
+			if an._blink_closed <= 0.0:
+				fmat.uv1_offset = off
+		else:
+			fmat.uv1_offset = off
 		return
 	var idx: int = int(root.get_meta("skin_idx", 1))
 	var female: bool = bool(root.get_meta("female", false))
@@ -1269,6 +1374,9 @@ class Animator extends Node:
 	var face_mat: StandardMaterial3D
 	var face_open: Texture2D
 	var face_closed: Texture2D
+	var face_cells: bool = false         # đầu PS2: chớp mắt / biểu cảm bằng ô atlas (uv1_offset) thay vì đổi texture
+	var face_cell_open: Vector3 = Vector3.ZERO
+	var face_cell_closed: Vector3 = Vector3.ZERO
 	var rng_phase: float = 0.0
 	var _t: float = 0.0
 	var _phase: float = 0.0
@@ -1342,13 +1450,19 @@ class Animator extends Node:
 		if _blink_closed > 0.0:
 			_blink_closed -= dt
 			if _blink_closed <= 0.0:
-				face_mat.albedo_texture = face_open
+				_show_face(false)
 			return
 		_blink_t -= dt
 		if _blink_t <= 0.0:
 			_blink_t = randf_range(2.0, 5.5)
 			_blink_closed = 0.13
-			face_mat.albedo_texture = face_closed
+			_show_face(true)
+
+	func _show_face(closed: bool) -> void:
+		if face_cells:
+			face_mat.uv1_offset = face_cell_closed if closed else face_cell_open
+		else:
+			face_mat.albedo_texture = face_closed if closed else face_open
 
 	# --- Tư thế đi/đứng (idle ↔ walk/run theo amp)
 	func _loco_pose(amp: float) -> Dictionary:
@@ -1660,6 +1774,9 @@ class RigAnimator extends Node:
 	var face_mat: StandardMaterial3D
 	var face_open: Texture2D
 	var face_closed: Texture2D
+	var face_cells: bool = false         # đầu PS2: chớp mắt / biểu cảm bằng ô atlas (uv1_offset) thay vì đổi texture
+	var face_cell_open: Vector3 = Vector3.ZERO
+	var face_cell_closed: Vector3 = Vector3.ZERO
 	var rng_phase: float = 0.0
 	var _t: float = 0.0
 	var _phase: float = 0.0
@@ -1836,10 +1953,16 @@ class RigAnimator extends Node:
 		if _blink_closed > 0.0:
 			_blink_closed -= dt
 			if _blink_closed <= 0.0:
-				face_mat.albedo_texture = face_open
+				_show_face(false)
 			return
 		_blink_t -= dt
 		if _blink_t <= 0.0:
 			_blink_t = randf_range(2.0, 5.5)
 			_blink_closed = 0.13
-			face_mat.albedo_texture = face_closed
+			_show_face(true)
+
+	func _show_face(closed: bool) -> void:
+		if face_cells:
+			face_mat.uv1_offset = face_cell_closed if closed else face_cell_open
+		else:
+			face_mat.albedo_texture = face_closed if closed else face_open

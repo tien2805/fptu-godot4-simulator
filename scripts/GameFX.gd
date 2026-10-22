@@ -277,11 +277,13 @@ func set_trails(on: bool, persist: bool = true) -> void:
 	if art_style == "vice" and cs and cs.has_meta("visual_preset"):
 		upgrade_scene_visuals(cs, String(cs.get_meta("visual_preset")))
 
-## Kiểu nhân vật theo phong cách: cổ điển = toon + viền, đầu 1.3; Vice City = không viền, đầu 1.15 (plan D3).
+## Kiểu nhân vật theo phong cách: cổ điển = toon + viền, đầu 1.3; Vice City = người PS2 (CharacterBuilder.ps2: thân
+## Quaternius + đầu PS2 tỉ lệ thật, không viền) theo spec 2026-10-22-vice-people-and-movement-design.md.
 func _apply_art_style_statics() -> void:
 	var classic: bool = art_style == "classic"
 	CharacterBuilder.toon = classic
-	CharacterBuilder.head_scale_default = 1.3 if classic else 1.15
+	CharacterBuilder.ps2 = not classic
+	CharacterBuilder.head_scale_default = 1.3 if classic else 1.0
 
 func set_visual_quality(q: int) -> void:
 	visual_quality = clampi(q, 0, 2)

@@ -147,11 +147,11 @@ func _process(_d: float) -> bool:
 	print("  before: %d materials, %d with outline next_pass, %d with normal maps" % [before.size(), had_outline, had_normal])
 	if not _check(had_outline > 0, "CharacterBuilder (toon mặc định) phải có vật liệu viền để test có nghĩa"):
 		return true
-	# autoload GameFX (nếu có trong lần chạy --script) đặt tỉ lệ đầu theo phong cách: 1.15 vice / 1.3 cổ điển
+	# autoload GameFX (nếu có trong lần chạy --script) đặt tỉ lệ đầu theo phong cách: 1.0 vice (người PS2) / 1.3 cổ điển
 	var fx: Node = root.get_node_or_null("GameFX")
 	var want_hs: float = 1.3
 	if fx and String(fx.get("art_style")) == "vice":
-		want_hs = 1.15
+		want_hs = 1.0
 	if not _check(is_equal_approx(CharacterBuilder.head_scale_default, want_hs), "CharacterBuilder.head_scale_default cần %.2f, đang %s" % [want_hs, str(CharacterBuilder.head_scale_default)]):
 		return true
 	if fx and not _check(CharacterBuilder.toon == (String(fx.get("art_style")) == "classic"), "GameFX phải đặt CharacterBuilder.toon theo phong cách"):
