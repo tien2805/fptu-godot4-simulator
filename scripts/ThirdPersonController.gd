@@ -1,23 +1,61 @@
 # File: res://scripts/ThirdPersonController.gd
-# Nhân vật đi bộ góc nhìn thứ ba cho thế giới mở (FreeRoam): WASD theo hướng camera, Shift chạy, trọng lực,
-# bước lên bậc/bó vỉa tới 0,35 m, chuột xoay camera (bắt chuột khi click, thả khi ESC), Z/C xoay quanh nhân vật
-# (không dùng Q/E: [E] là phím vào màn ở cột sáng của FreeRoam),
-# cần camera 3,2 m phía sau ở độ cao 1,6 m có RayCast3D để tường không che nhân vật. Hình nhân vật = CharacterBuilder
-# (preset "player", thân rigged), bước chân theo tốc độ ngang qua CharacterBuilder.set_speed().
+# Nhân vật đi bộ góc nhìn thứ ba cho thế giới mở (FreeRoam), di chuyển kiểu GTA: WASD theo hướng camera, mặc định chạy
+# bộ 4,2 m/s, giữ Ctrl đi bộ 1,7 m/s, giữ Shift nước rút 7,5 m/s (thể lực 6 s, hồi sau 1 s), quán tính + trượt chân khi
+# thả phím lúc nước rút, quay thân với tốc độ góc giới hạn và nghiêng người khi cua, Space nhảy (đệm phím + coyote time),
+# rơi: < 2,5 m nhún, 2,5..6 m lăn, > 6 m ngã sóng soài 1,5 s (khoá điều khiển) rồi đứng dậy – không bao giờ mất máu.
+# Trọng lực, bước lên bậc/bó vỉa tới 0,35 m, chuột xoay camera (bắt chuột khi click, thả khi ESC), Z/C xoay quanh nhân
+# vật (không dùng Q/E: [E] là phím vào màn ở cột sáng của FreeRoam), camera 3,2 m phía sau ở độ cao 1,6 m có RayCast3D để
+# tường không che nhân vật, FOV rộng thêm khi nước rút, nhún nhẹ theo bước chạy, rung khi tiếp đất mạnh. Hình nhân vật =
+# CharacterBuilder (preset "player", thân rigged), bước chân theo tốc độ ngang qua CharacterBuilder.set_speed().
 # Tách từ StageExtra_EOSExam._handle_movement() / _update_walk_camera() và Stage5_Canteen._process_walk(), bỏ kẹp phòng.
 # Không dùng GameFX / StageManager ở đây (script class_name biên dịch trước autoload khi chạy test --script).
 #
 # API: input_dir (Vector2: x phải, y = -1 tiến; đọc từ InputMap mỗi frame vật lý, hoặc gán input_override cho bot/test),
-#      set_facing(yaw), facing_yaw(), teleport(pos, yaw), controls_enabled, camera, model, horizontal_speed.
-# Actions InputMap tự đăng ký: move_forward (W/↑), move_back (S/↓), move_left (A/←), move_right (D/→), sprint (Shift).
+#      sprint_override / walk_override / jump_override (bot / test; jump_override là một lần nhấn, tự xoá),
+#      set_facing(yaw), facing_yaw(), teleport(pos, yaw), controls_enabled, camera, model, horizontal_speed, is_sprinting,
+#      move_state (GROUND | JUMP | AIR | LAND_SOFT | LAND_ROLL | SPLAT), stamina (0..1), slow_t (giây chậm một nửa),
+#      landings (nhật ký kiểu tiếp đất), tín hiệu landed(kind, drop).
+# Actions InputMap tự đăng ký: move_forward (W/↑), move_back (S/↓), move_left (A/←), move_right (D/→), sprint (Shift),
+# walk (Ctrl), jump (Space; trên xe Space vẫn là drift của PlayerBike).
 class_name ThirdPersonController
 extends CharacterBody3D
 
-const WALK_SPEED: float = 4.2
-const RUN_SPEED: float = 7.0
+signal landed(kind: String, drop: float)
+
+const WALK_SPEED: float = 1.7            # giữ Ctrl
+const JOG_SPEED: float = 4.2             # mặc định
+const SPRINT_SPEED: float = 7.5          # giữ Shift
+const RUN_SPEED: float = SPRINT_SPEED    # tên cũ (mã ngoài / test)
 const GRAVITY: float = 20.0
-const ACCEL: float = 18.0
-const DECEL: float = 24.0
+const ACCEL_JOG: float = 14.0
+const ACCEL_SPRINT: float = 9.0
+const DECEL: float = 18.0
+const TURN_RATE_JOG: float = 10.0
+const TURN_RATE_SPRINT: float = 6.0
+const LEAN_K: float = 0.6                # độ nghiêng (độ) = LEAN_K × tốc độ quay (rad/s) × tốc độ (m/s)
+const LEAN_MAX_DEG: float = 14.0
+const STAMINA_MAX_S: float = 6.0
+const STAMINA_DRAIN: float = 1.0
+const STAMINA_REGEN: float = 0.8
+const STAMINA_REGEN_DELAY: float = 1.0
+const STAMINA_RESUME: float = 0.25
+const SKID_MIN_SPEED: float = 6.0
+const SKID_TIME: float = 0.25
+const JUMP_APEX: float = 0.9
+const JUMP_BUFFER: float = 0.12
+const COYOTE: float = 0.1
+const AIR_CONTROL: float = 0.3
+const SOFT_LAND_MAX: float = 2.5
+const ROLL_LAND_MAX: float = 6.0
+const SOFT_LAND_TIME: float = 0.15
+const ROLL_TIME: float = 0.8
+const ROLL_KEEP: float = 0.7
+const SPLAT_TIME: float = 1.5
+const GETUP_TIME: float = 0.9
+const FLAIL_AFTER: float = 0.5
+const FLAIL_VY: float = -6.0
+const FLOOR_SNAP: float = 0.4
+const SPRINT_FOV_ADD: float = 6.0
 const STEP_HEIGHT: float = 0.35
 const CAM_DISTANCE: float = 3.2
 const CAM_HEIGHT: float = 1.6
@@ -29,7 +67,6 @@ const ORBIT_RIGHT_KEY: Key = KEY_C
 const PITCH_MIN: float = -1.1
 const PITCH_MAX: float = 0.55
 const DEFAULT_PITCH: float = -0.2
-const TURN_LERP: float = 12.0
 
 ## Tuỳ chọn truyền cho CharacterBuilder.build() (đặt trước khi vào cây).
 var character_opts: Dictionary = {"preset": "player", "rigged": true, "seed": 2805, "name": "PlayerModel"}
@@ -45,6 +82,32 @@ var yaw: float = 0.0           # yaw camera (rad), 0 = nhìn về -Z
 var pitch: float = DEFAULT_PITCH
 var horizontal_speed: float = 0.0
 var is_sprinting: bool = false
+## Trạng thái di chuyển: GROUND | JUMP | AIR | LAND_SOFT | LAND_ROLL | SPLAT.
+var move_state: String = "GROUND"
+## Thể lực nước rút 0..1 (1 = STAMINA_MAX_S giây).
+var stamina: float = 1.0
+var walk_override: bool = false
+## Bot / test: nhấn nhảy một lần (tự xoá sau khi đọc).
+var jump_override: bool = false
+## Giây còn lại bị chậm một nửa (va người đi đường khi nước rút).
+var slow_t: float = 0.0
+## Nhật ký kiểu tiếp đất (test).
+var landings: Array[String] = []
+var _exhausted: bool = false
+var _stamina_wait: float = 0.0
+var _state_t: float = 0.0
+var _air_t: float = 0.0
+var _peak_y: float = 0.0
+var _last_floor_y: float = 0.0
+var _jump_buffer_t: float = 0.0
+var _coyote_t: float = 0.0
+var _skid_t: float = 0.0
+var _lean: float = 0.0
+var _air_clip: String = ""
+var _splat_phase: int = 0
+var _shake_t: float = 0.0
+var _shake_amp: float = 0.0
+var _fov_base: float = 70.0
 
 var model: Node3D
 var cam_pivot: Node3D
@@ -64,7 +127,7 @@ func _build() -> void:
 	if _built:
 		return
 	_built = true
-	floor_snap_length = 0.4
+	floor_snap_length = FLOOR_SNAP
 	safe_margin = 0.02
 	floor_max_angle = deg_to_rad(46.0)
 	_shape = CollisionShape3D.new()
@@ -110,7 +173,9 @@ func _ensure_input_map() -> void:
 		"move_back": [KEY_S, KEY_DOWN],
 		"move_left": [KEY_A, KEY_LEFT],
 		"move_right": [KEY_D, KEY_RIGHT],
-		"sprint": [KEY_SHIFT]
+		"sprint": [KEY_SHIFT],
+		"walk": [KEY_CTRL],
+		"jump": [KEY_SPACE]
 	}
 	for action: String in bindings.keys():
 		if not InputMap.has_action(action):
@@ -148,6 +213,12 @@ func teleport(pos: Vector3, yaw_rad: float) -> void:
 	global_position = pos
 	velocity = Vector3.ZERO
 	horizontal_speed = 0.0
+	move_state = "GROUND"
+	floor_snap_length = FLOOR_SNAP
+	_peak_y = pos.y
+	_last_floor_y = pos.y
+	_air_clip = ""
+	_state_t = 0.0
 	set_facing(yaw_rad)
 	if model:
 		CharacterBuilder.set_speed(model, 0.0)
@@ -169,7 +240,11 @@ func _physics_process(delta: float) -> void:
 	if not _built:
 		return
 	input_dir = _read_input()
-	is_sprinting = sprint_override or (controls_enabled and InputMap.has_action("sprint") and Input.is_action_pressed("sprint"))
+	var want_sprint: bool = sprint_override or (controls_enabled and _pressed("sprint"))
+	var want_walk: bool = walk_override or (controls_enabled and _pressed("walk"))
+	if jump_override or (controls_enabled and InputMap.has_action("jump") and Input.is_action_just_pressed("jump")):
+		_jump_buffer_t = JUMP_BUFFER
+	jump_override = false
 	if controls_enabled:
 		if Input.is_physical_key_pressed(ORBIT_LEFT_KEY):
 			yaw += ORBIT_SPEED * delta
@@ -180,25 +255,207 @@ func _physics_process(delta: float) -> void:
 	var move: Vector3 = f * (-input_dir.y) + r * input_dir.x
 	if move.length_squared() > 1.0:
 		move = move.normalized()
-	var speed: float = RUN_SPEED if is_sprinting else WALK_SPEED
-	var target: Vector3 = move * speed
-	var rate: float = ACCEL if move.length_squared() > 0.0001 else DECEL
-	velocity.x = move_toward(velocity.x, target.x, rate * delta)
-	velocity.z = move_toward(velocity.z, target.z, rate * delta)
-	if is_on_floor():
-		velocity.y = minf(velocity.y, 0.0)
-	else:
-		velocity.y -= GRAVITY * delta
-	if move.length_squared() > 0.0001 and is_on_floor():
-		_try_step_up(move, delta)
-	move_and_slide()
+	_state_t += delta
+	_jump_buffer_t = maxf(0.0, _jump_buffer_t - delta)
+	_coyote_t = COYOTE if is_on_floor() else maxf(0.0, _coyote_t - delta)
+	slow_t = maxf(0.0, slow_t - delta)
+	match move_state:
+		"GROUND":
+			_ground(delta, move, want_sprint, want_walk)
+		"JUMP", "AIR":
+			_air(delta, move)
+		"LAND_SOFT":
+			_ground(delta, move, want_sprint, want_walk)
+			if move_state == "LAND_SOFT" and _state_t >= SOFT_LAND_TIME:
+				move_state = "GROUND"
+		"LAND_ROLL":
+			_roll(delta, move)
+		"SPLAT":
+			_splat(delta)
 	horizontal_speed = Vector2(velocity.x, velocity.z).length()
 	if model:
-		if move.length_squared() > 0.0001:
-			model.rotation.y = lerp_angle(model.rotation.y, atan2(-move.x, -move.z), minf(1.0, delta * TURN_LERP))
-		CharacterBuilder.set_speed(model, horizontal_speed)
-		CharacterBuilder.set_param(model, "run", 0.45 if (is_sprinting and horizontal_speed > WALK_SPEED + 0.5) else 0.0)
+		var moving_state: bool = move_state == "GROUND" or move_state == "LAND_SOFT"
+		var sprint_anim: bool = is_sprinting and horizontal_speed > JOG_SPEED + 0.5
+		CharacterBuilder.set_speed(model, horizontal_speed if moving_state else 0.0)
+		CharacterBuilder.set_param(model, "run", 0.45 if sprint_anim else 0.0)
+		CharacterBuilder.set_param(model, "sprint", 1.0 if sprint_anim else 0.0)
+		CharacterBuilder.set_param(model, "lean", _lean)
 	_update_camera(false)
+
+
+func _pressed(action: String) -> bool:
+	return InputMap.has_action(action) and Input.is_action_pressed(action)
+
+
+func _play(clip: String, duration: float = -1.0) -> void:
+	if model:
+		CharacterBuilder.play(model, clip, duration)
+
+
+## Thể lực: tụt 1/s khi đang nước rút nhanh hơn 5 m/s; hồi 0.8/s sau 1 s không nước rút; cạn thì chỉ chạy lại khi > 25 %.
+func _update_stamina(delta: float, sprinting_now: bool) -> void:
+	var s: float = stamina * STAMINA_MAX_S
+	if sprinting_now and horizontal_speed > 5.0:
+		s = maxf(0.0, s - STAMINA_DRAIN * delta)
+		_stamina_wait = STAMINA_REGEN_DELAY
+		if s <= 0.0:
+			_exhausted = true
+	else:
+		_stamina_wait = maxf(0.0, _stamina_wait - delta)
+		if _stamina_wait <= 0.0:
+			s = minf(STAMINA_MAX_S, s + STAMINA_REGEN * delta)
+	if _exhausted and s > STAMINA_RESUME * STAMINA_MAX_S:
+		_exhausted = false
+	stamina = s / STAMINA_MAX_S
+
+
+func _ground(delta: float, move: Vector3, want_sprint: bool, want_walk: bool) -> void:
+	var has_input: bool = move.length_squared() > 0.0001
+	is_sprinting = want_sprint and has_input and not _exhausted
+	_update_stamina(delta, is_sprinting)
+	var speed: float = SPRINT_SPEED if is_sprinting else (WALK_SPEED if want_walk else JOG_SPEED)
+	if slow_t > 0.0:
+		speed *= 0.5
+	if has_input:
+		var accel: float = ACCEL_SPRINT if is_sprinting else ACCEL_JOG
+		velocity.x = move_toward(velocity.x, move.x * speed, accel * delta)
+		velocity.z = move_toward(velocity.z, move.z * speed, accel * delta)
+		_skid_t = 0.0
+	else:
+		if horizontal_speed > SKID_MIN_SPEED and _skid_t <= 0.0 and move_state == "GROUND":
+			_skid_t = SKID_TIME
+			_play("skid", SKID_TIME)
+		velocity.x = move_toward(velocity.x, 0.0, DECEL * delta)
+		velocity.z = move_toward(velocity.z, 0.0, DECEL * delta)
+	_skid_t = maxf(0.0, _skid_t - delta)
+	if is_on_floor():
+		velocity.y = minf(velocity.y, 0.0)
+		_last_floor_y = global_position.y
+	else:
+		velocity.y -= GRAVITY * delta
+	if _jump_buffer_t > 0.0 and _coyote_t > 0.0:
+		_start_jump()
+		return
+	if has_input and is_on_floor():
+		_try_step_up(move, delta)
+	move_and_slide()
+	_turn(delta, move, TURN_RATE_SPRINT if is_sprinting else TURN_RATE_JOG)
+	if not is_on_floor() and _coyote_t <= 0.0:
+		_enter_air(false)
+
+
+func _start_jump() -> void:
+	_jump_buffer_t = 0.0
+	_coyote_t = 0.0
+	velocity.y = sqrt(2.0 * GRAVITY * JUMP_APEX)
+	_enter_air(true)
+	_play("jump_takeoff", 0.12)
+	move_and_slide()
+
+
+func _enter_air(jumped: bool) -> void:
+	move_state = "JUMP" if jumped else "AIR"
+	_state_t = 0.0
+	_air_t = 0.0
+	_air_clip = ""
+	_peak_y = maxf(global_position.y, _last_floor_y)
+	floor_snap_length = 0.0
+
+
+func _air(delta: float, move: Vector3) -> void:
+	_air_t += delta
+	_update_stamina(delta, false)
+	is_sprinting = false
+	if move.length_squared() > 0.0001:
+		var speed: float = maxf(JOG_SPEED, horizontal_speed)
+		velocity.x = move_toward(velocity.x, move.x * speed, ACCEL_JOG * AIR_CONTROL * delta)
+		velocity.z = move_toward(velocity.z, move.z * speed, ACCEL_JOG * AIR_CONTROL * delta)
+	velocity.y -= GRAVITY * delta
+	move_and_slide()
+	_peak_y = maxf(_peak_y, global_position.y)
+	_turn(delta, move, TURN_RATE_SPRINT * AIR_CONTROL)
+	if move_state == "JUMP" and velocity.y <= 0.0:
+		move_state = "AIR"
+	var clip: String = "fall_flail" if (_air_t > FLAIL_AFTER or velocity.y < FLAIL_VY) else ("jump_air" if _air_t > 0.1 else "")
+	if clip != "" and clip != _air_clip:
+		_air_clip = clip
+		_play(clip)
+	if is_on_floor() and velocity.y <= 0.0 and _air_t > 0.05:
+		_land(_peak_y - global_position.y)
+
+
+func _land(drop: float) -> void:
+	floor_snap_length = FLOOR_SNAP
+	_air_clip = ""
+	_state_t = 0.0
+	_last_floor_y = global_position.y
+	if drop < SOFT_LAND_MAX:
+		move_state = "LAND_SOFT"
+		_play("land_soft", SOFT_LAND_TIME)
+	elif drop < ROLL_LAND_MAX:
+		move_state = "LAND_ROLL"
+		var fwd: Vector3 = facing_dir()
+		var sp: float = maxf(horizontal_speed * ROLL_KEEP, 2.5)
+		velocity.x = fwd.x * sp
+		velocity.z = fwd.z * sp
+		_play("roll", ROLL_TIME)
+		_shake(0.25)
+	else:
+		move_state = "SPLAT"
+		velocity.x = 0.0
+		velocity.z = 0.0
+		_splat_phase = 0
+		_play("knockdown")
+		_shake(0.5)
+	landings.append(move_state)
+	landed.emit(move_state, drop)
+
+
+## Lăn: chỉ lái hướng; vận tốc bám hướng thân, giảm dần.
+func _roll(delta: float, move: Vector3) -> void:
+	_turn(delta, move, TURN_RATE_SPRINT)
+	var sp: float = move_toward(Vector2(velocity.x, velocity.z).length(), 0.0, 2.0 * delta)
+	var fwd: Vector3 = facing_dir()
+	velocity.x = fwd.x * sp
+	velocity.z = fwd.z * sp
+	velocity.y = minf(velocity.y, 0.0) if is_on_floor() else velocity.y - GRAVITY * delta
+	move_and_slide()
+	if _state_t >= ROLL_TIME:
+		move_state = "GROUND"
+
+
+## Ngã sóng soài: khoá điều khiển SPLAT_TIME, rồi đứng dậy (getup) GETUP_TIME.
+func _splat(delta: float) -> void:
+	velocity.x = move_toward(velocity.x, 0.0, DECEL * delta)
+	velocity.z = move_toward(velocity.z, 0.0, DECEL * delta)
+	velocity.y = minf(velocity.y, 0.0) if is_on_floor() else velocity.y - GRAVITY * delta
+	move_and_slide()
+	if _splat_phase == 0 and _state_t >= SPLAT_TIME:
+		_splat_phase = 1
+		_play("getup")
+	elif _splat_phase == 1 and _state_t >= SPLAT_TIME + GETUP_TIME:
+		move_state = "GROUND"
+		_state_t = 0.0
+		if model:
+			CharacterBuilder.stop_clip(model)
+
+
+## Quay thân về hướng di chuyển với tốc độ góc cố định (rad/s); nghiêng người theo tốc độ quay × tốc độ chạy.
+func _turn(delta: float, move: Vector3, rate: float) -> void:
+	if model == null:
+		return
+	var before: float = model.rotation.y
+	if move.length_squared() > 0.0001:
+		var diff: float = wrapf(atan2(-move.x, -move.z) - before, -PI, PI)
+		model.rotation.y = before + clampf(diff, -rate * delta, rate * delta)
+	var turn_rate: float = wrapf(model.rotation.y - before, -PI, PI) / maxf(delta, 0.0001)
+	var lean_deg: float = clampf(LEAN_K * turn_rate * horizontal_speed, -LEAN_MAX_DEG, LEAN_MAX_DEG)
+	_lean = lerpf(_lean, deg_to_rad(lean_deg), minf(1.0, delta * 8.0))
+
+
+func _shake(amp: float) -> void:
+	_shake_amp = amp
+	_shake_t = 0.35
 
 
 ## Bước lên bậc thấp (bó vỉa 0,15 m, bậc thang 0,17 m, tối đa STEP_HEIGHT): nếu đường đi bị chặn ở độ cao bàn chân
@@ -253,6 +510,20 @@ func _update_camera(snap: bool) -> void:
 		camera.position = Vector3(0.0, 0.0, dist)
 	else:
 		camera.position.z = lerpf(camera.position.z, dist, 0.35 if dist < camera.position.z else 0.12)
+	var sprinting: bool = is_sprinting and horizontal_speed > JOG_SPEED + 0.5
+	camera.fov = lerpf(camera.fov, _fov_base + (SPRINT_FOV_ADD if sprinting else 0.0), 0.08)
+	var bob: float = 0.0
+	if move_state == "GROUND" and horizontal_speed > JOG_SPEED - 0.5:
+		bob = sin(float(Time.get_ticks_msec()) * 0.001 * TAU * horizontal_speed / 2.6) * 0.03 * clampf(horizontal_speed / SPRINT_SPEED, 0.0, 1.0)
+	var sx: float = 0.0
+	var sy: float = 0.0
+	if _shake_t > 0.0:
+		_shake_t -= get_process_delta_time()
+		var k: float = _shake_amp * clampf(_shake_t / 0.35, 0.0, 1.0) * 0.12
+		sx = randf_range(-k, k)
+		sy = randf_range(-k, k)
+	camera.position.x = sx
+	camera.position.y = bob + sy
 
 
 func _unhandled_input(event: InputEvent) -> void:
