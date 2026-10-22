@@ -5,6 +5,9 @@
 # 2) Menu tạm dừng (ESC) + hộp cài đặt (chất lượng + âm lượng)   -> m1_pause_menu.png, m1_pause_settings.png
 # 3) Thẻ chuyển cảnh Màn 1 -> Màn 2 (đồng hồ chạy, câu thoại)    -> m1_transition_card.png, m1_after_transition.png
 # 4) Màn 5: cửa hàng 7-Eleven điều khiển bằng phím (ô đang chọn) -> m1_shop_keyboard.png
+# 5) Menu chính: màn tiêu đề + bảng cài đặt (phong cách đồ hoạ, vệt sáng) -> m1_main_menu.png, m1_menu_settings.png
+# Biến môi trường chỉ dùng cho ảnh preview (không ghi settings.cfg): VICE_STYLE=vice|classic ép phong cách đồ hoạ,
+# PREVIEW_DIR=<thư mục tuyệt đối> thay cho user://preview.
 extends SceneTree
 
 var frames: int = 0
@@ -22,7 +25,16 @@ func _initialize() -> void:
 			n.name = pair[0]
 			root.add_child(n)
 	sm = root.get_node("StageManager")
-	out_dir = ProjectSettings.globalize_path("user://preview")
+	var fx: Node = root.get_node("GameFX")
+	var style: String = OS.get_environment("VICE_STYLE")
+	if style != "":
+		# autoload GameFX nạp settings.cfg trong _ready (sau _initialize): ép phong cách ngay sau tín hiệu ready
+		if fx.is_node_ready():
+			fx.call("set_art_style", style, false)
+		else:
+			fx.ready.connect(func() -> void: fx.call("set_art_style", style, false), CONNECT_ONE_SHOT)
+	var dir_env: String = OS.get_environment("PREVIEW_DIR")
+	out_dir = dir_env if dir_env != "" else ProjectSettings.globalize_path("user://preview")
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	print("PREVIEW OUT DIR: ", out_dir)
 	_load("res://scenes/Main.tscn")
@@ -93,6 +105,19 @@ func _process(_d: float) -> bool:
 			elif frames == 54:
 				print("  shop focus idx=", stage.get("shop_focus_idx"), " basket=", (stage.get("basket") as Array).size())
 				_save("m1_shop_keyboard")
+				stage.queue_free()
+				step = 5
+				t_mark = frames
+		5:
+			if frames == t_mark + 4:
+				_load("res://scenes/MainMenu.tscn")
+				step = 6
+		6:
+			if frames == 120:
+				_save("m1_main_menu")
+				stage.call("_show_settings")
+			elif frames == 128:
+				_save("m1_menu_settings")
 				print("PREVIEW M1 DONE")
 				quit(0)
 				return true

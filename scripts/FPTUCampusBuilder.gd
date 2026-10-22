@@ -241,6 +241,9 @@ static func make_materials() -> Dictionary:
 	m["pitch"] = _mat(Color("#2E8B3A"), 0.95)
 	m["line"] = _mat(Color.WHITE, 0.8, 0.0, 0.2)
 	m["yellow_line"] = _mat(Color("#FBC531"), 0.7, 0.0, 0.3)
+	# ViceStyle: vạch sơn chỉ phát sáng nhẹ ban đêm (ban ngày không quầng); cổ điển giữ emission như cũ
+	m["line"].set_meta("night_line", true)
+	m["yellow_line"].set_meta("night_line", true)
 	m["flag"] = _tex_mat("vietnam_flag.png", Color("#DA251D"), false, Vector3(1.0, 1.0, 1.0), 0.9)
 	m["board"] = _tex_mat("fpt_university_board.png", Color("#F37021"), false, Vector3(1.0, 1.0, 1.0), 0.6)
 	m["lamp"] = _mat(Color("#FFF3C4"), 0.4, 0.0, 1.2)

@@ -309,6 +309,7 @@ func pause_game() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	GameFX.play_ui("pop", -6.0, 0.8)
 	_refresh_pause_quality()
+	GameFX.sync_style_settings(pause_settings_box)
 	pause_resume_btn.call_deferred("grab_focus")
 
 func resume_game() -> void:
@@ -364,9 +365,11 @@ func _create_pause_ui() -> void:
 	pause_settings_box.add_child(qrow)
 	pause_quality_buttons.clear()
 	for q: int in range(3):
-		var qb: Button = _pause_button(["🟢 Thấp", "🟡 Trung bình", "🔴 Cao"][q])
-		qb.custom_minimum_size = Vector2(170, 40)
+		var qb: Button = _pause_button(_pause_quality_text(q))
+		qb.name = "PauseQuality%d" % q
+		qb.custom_minimum_size = Vector2(170, 48)
 		qb.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		qb.add_theme_font_size_override("font_size", 13)
 		qb.pressed.connect(func() -> void:
 			GameFX.set_visual_quality(q)
 			var cs: Node = get_tree().current_scene
@@ -376,6 +379,10 @@ func _create_pause_ui() -> void:
 			GameFX.play_ui("pop", -6.0))
 		qrow.add_child(qb)
 		pause_quality_buttons.append(qb)
+	# Phong cách đồ hoạ (Vice City / Cổ điển) + vệt sáng: đổi là áp lại preset ánh sáng của màn đang chơi, không nạp lại;
+	# chú thích nút mức đồ hoạ theo phong cách mới
+	GameFX.build_style_settings(pause_settings_box)
+	GameFX.art_style_changed.connect(_on_art_style_changed)
 	GameFX.build_audio_settings(pause_settings_box)
 
 	var controls_btn: Button = _pause_button("🎮   ĐIỀU KHIỂN")
@@ -434,9 +441,18 @@ func _pause_button(text: String) -> Button:
 	b.mouse_entered.connect(func() -> void: GameFX.play_ui("tick", -12.0, 1.4))
 	return b
 
+## Chữ trên nút mức đồ hoạ q của menu tạm dừng theo phong cách hiện tại: "🟢 Thấp\nbóng cơ bản"...
+func _pause_quality_text(q: int) -> String:
+	var cap: PackedStringArray = GameFX.quality_caption(q)
+	return "%s %s\n%s" % [["🟢", "🟡", "🔴"][q], ["Thấp", "Trung bình", "Cao"][q], cap[1]]
+
+func _on_art_style_changed(_style: String) -> void:
+	_refresh_pause_quality()
+
 func _refresh_pause_quality() -> void:
 	for q: int in range(pause_quality_buttons.size()):
 		var b: Button = pause_quality_buttons[q]
+		b.text = _pause_quality_text(q)
 		var active: bool = q == GameFX.visual_quality
 		b.add_theme_color_override("font_color", Color("#F1C40F") if active else Color("#F4F5F6"))
 

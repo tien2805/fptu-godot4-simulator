@@ -1,6 +1,9 @@
 # File: res://tests/test_main_menu.gd
 # Test headless MENU CHÍNH: scene nạp được, đủ 5 nút, mở/đóng Hướng dẫn (có khối "Nguồn dữ liệu bản đồ" OSM +
-# Microsoft, cả bảng nằm gọn trong viewport), đổi mức đồ hoạ (lưu user://settings.cfg),
+# Microsoft, cả bảng nằm gọn trong viewport), đổi mức đồ hoạ (lưu user://settings.cfg), bảng cài đặt có hàng
+# "Phong cách đồ hoạ" (Vice City / Cổ điển, đổi qua UI áp lại nền menu; chú thích nút mức đồ hoạ ở menu chính và menu
+# tạm dừng đổi theo phong cách, vice không quảng cáo SDFGI / SSAO) + "Vệt sáng (trails)", thẻ tạm dừng mở
+# cài đặt vẫn gọn trong viewport,
 # mở Campaign Hub, rồi "Bắt đầu ngày mới" phải reset hành trình và chuyển sang Màn 1 (scene Main).
 # Chạy:  godot --headless --path . --script tests/test_main_menu.gd
 extends SceneTree
@@ -78,6 +81,90 @@ func _process(_d: float) -> bool:
 				return true
 			menu.call("_set_quality", 2)
 			print("  đổi mức đồ hoạ + lưu settings OK")
+			menu.call("_show_settings")
+		23:
+			# Bảng cài đặt: hàng phong cách đồ hoạ (Vice City / Cổ điển) + vệt sáng + gợi ý, nằm gọn trong viewport
+			var sp: Control = menu.get("settings_panel")
+			var vp2: Rect2 = root.get_visible_rect()
+			if not vp2.grow(1.0).encloses(sp.get_global_rect()):
+				_fail("bảng cài đặt tràn khỏi viewport: %s" % str(sp.get_global_rect()))
+				return true
+			var opt: OptionButton = sp.find_child("ArtStyleOption", true, false) as OptionButton
+			var trails: CheckButton = sp.find_child("TrailsCheck", true, false) as CheckButton
+			var hint: Label = sp.find_child("ArtStyleHint", true, false) as Label
+			if opt == null or trails == null or hint == null:
+				_fail("bảng cài đặt thiếu hàng phong cách đồ hoạ / vệt sáng / gợi ý")
+				return true
+			if opt.item_count != 2 or opt.get_item_text(0) != "Vice City" or opt.get_item_text(1) != "Cổ điển":
+				_fail("OptionButton phong cách phải có 'Vice City' / 'Cổ điển'")
+				return true
+			if trails.text != "Vệt sáng (trails)" or not hint.text.contains("Cổ điển áp dụng đầy đủ khi vào lại màn"):
+				_fail("nhãn vệt sáng / gợi ý sai: %s | %s" % [trails.text, hint.text])
+				return true
+			# Đổi phong cách qua UI rồi đổi lại (settings.cfg của người chơi giữ nguyên lựa chọn cũ)
+			var orig: String = String(fx.get("art_style"))
+			var other: String = "classic" if orig == "vice" else "vice"
+			for st: String in [other, orig]:
+				var idx: int = 0 if st == "vice" else 1
+				opt.select(idx)
+				opt.item_selected.emit(idx)
+				if String(fx.get("art_style")) != st:
+					_fail("chọn %s không đổi GameFX.art_style" % st)
+					return true
+				var vice_on: bool = menu.has_meta("vice_look")
+				if vice_on != (st == "vice") or String(menu.get_meta("visual_preset", "")) != "dawn":
+					_fail("đổi sang %s không áp lại preset dawn của menu (vice_look=%s)" % [st, str(menu.get_meta("vice_look", ""))])
+					return true
+				if CharacterBuilder.toon != (st == "classic") or not is_equal_approx(CharacterBuilder.head_scale_default, 1.3 if st == "classic" else 1.15):
+					_fail("%s: CharacterBuilder.toon / head_scale_default sai" % st)
+					return true
+				# Nút mức đồ hoạ (menu chính + menu tạm dừng) đổi chú thích theo phong cách: vice không quảng cáo SDFGI / SSAO
+				var pause_btns: Array = sm.get("pause_quality_buttons")
+				for q: int in range(3):
+					var cap: PackedStringArray = fx.call("quality_caption", q)
+					var mb: Button = sp.find_child("QualityButton%d" % q, true, false) as Button
+					if mb == null or pause_btns.size() != 3:
+						_fail("thiếu nút mức đồ hoạ ở menu chính / menu tạm dừng")
+						return true
+					var pb: Button = pause_btns[q]
+					if not mb.text.contains(cap[0]) or not mb.text.contains(cap[1]) or not pb.text.contains(cap[1]):
+						_fail("%s: chú thích nút mức %d chưa đổi theo phong cách (%s | %s, cần %s)" % [st, q, mb.text.replace("\n", " / "), pb.text.replace("\n", " / "), " · ".join(cap)])
+						return true
+					if st == "vice" and (mb.text.contains("SDFGI") or mb.text.contains("SSAO") or pb.text.contains("SDFGI") or pb.text.contains("SSAO")):
+						_fail("vice: nút mức đồ hoạ còn quảng cáo tính năng cổ điển: %s" % mb.text)
+						return true
+				print("  %s: quality buttons %s" % [st, " | ".join(PackedStringArray([(sp.find_child("QualityButton0", true, false) as Button).text.replace("\n", " · "), (sp.find_child("QualityButton2", true, false) as Button).text.replace("\n", " · ")]))])
+			var orig_trails: bool = bool(fx.get("trails_enabled"))
+			trails.button_pressed = not orig_trails
+			if bool(fx.get("trails_enabled")) == orig_trails:
+				_fail("CheckButton vệt sáng không đổi GameFX.trails_enabled")
+				return true
+			trails.button_pressed = orig_trails
+			var cfg := ConfigFile.new()
+			cfg.load("user://settings.cfg")
+			if String(cfg.get_value("video", "art_style", "")) != orig or bool(cfg.get_value("video", "trails", not orig_trails)) != orig_trails:
+				_fail("settings.cfg không lưu video/art_style + video/trails")
+				return true
+			menu.call("_hide_modals")
+			print("  bảng cài đặt: phong cách %s <-> %s áp lại menu, vệt sáng lưu, gọn trong viewport OK" % [orig, other])
+		25:
+			# Menu tạm dừng mở hộp cài đặt (có thêm hàng phong cách) vẫn nằm gọn trong màn 720 px
+			sm.call("pause_game")
+			(sm.get("pause_settings_box") as Control).visible = true
+		27:
+			var box: Control = sm.get("pause_settings_box")
+			var card: Node = box
+			while card and not (card is PanelContainer):
+				card = card.get_parent()
+			var r2: Rect2 = (card as Control).get_global_rect()
+			print("  thẻ tạm dừng + cài đặt: %s trong %s" % [str(r2), str(root.get_visible_rect())])
+			if box.find_child("ArtStyleOption", true, false) == null:
+				_fail("menu tạm dừng thiếu hàng phong cách đồ hoạ")
+				return true
+			if not root.get_visible_rect().grow(1.0).encloses(r2):
+				_fail("thẻ tạm dừng tràn khỏi viewport khi mở cài đặt: %s" % str(r2))
+				return true
+			sm.call("resume_game")
 		30:
 			(menu.get("btn_hub") as Button).emit_signal("pressed")
 			if not (sm.get("modal_layer") as CanvasLayer).visible:

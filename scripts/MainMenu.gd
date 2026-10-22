@@ -6,7 +6,8 @@
 #   Nút: ▶ BẮT ĐẦU NGÀY MỚI (reset hành trình → Màn 1) · 📋 CHỌN MÀN (Campaign Hub có rank) · 🌏 KHÁM PHÁ CAMPUS
 #        (thế giới mở FreeRoam: spawn ở BE6 Vinhomes Grand Park, đi/chạy xe tới campus) · 🎮 HƯỚNG DẪN ĐIỀU KHIỂN
 #        (bảng phím + khối "Nguồn dữ liệu bản đồ": OpenStreetMap ODbL, footprint nhà Microsoft CDLA-Permissive-2.0)
-#        · ⚙ CÀI ĐẶT ĐỒ HOẠ (3 mức chất lượng + toàn màn hình, lưu user://settings.cfg) · ✖ THOÁT.
+#        · ⚙ CÀI ĐẶT ĐỒ HOẠ (3 mức chất lượng + toàn màn hình + phong cách Vice City / Cổ điển + vệt sáng, lưu
+#        user://settings.cfg) · ✖ THOÁT.
 #   Bảng "Nhật ký hành trình" hiện kỷ lục từng màn (lưu user://progress.cfg). Điều hướng: chuột hoặc ↑↓ + Enter, [M] mở hub.
 class_name MainMenu
 extends Node3D
@@ -55,6 +56,8 @@ func _ready() -> void:
 	_build_world()
 	_build_ui()
 	GameFX.upgrade_scene_visuals(self, "dawn")
+	# đổi phong cách (bảng cài đặt) -> chú thích nút mức đồ hoạ theo phong cách mới (tự ngắt khi menu bị giải phóng)
+	GameFX.art_style_changed.connect(_on_art_style_changed)
 	GameFX.music_play("menu", 0.2)
 	_apply_shot(0.0)
 	fade_rect.color = Color(0.0, 0.0, 0.0, 1.0)
@@ -353,17 +356,17 @@ func _build_settings_panel() -> PanelContainer:
 	v.add_theme_constant_override("separation", 10)
 	m.add_child(v)
 	v.add_child(GameFX.make_label("⚙ CÀI ĐẶT ĐỒ HOẠ", 24, Color("#2ECC71")))
-	var desc: Label = GameFX.make_label("Game mặc định chạy mức CAO (SDFGI, SSIL, phản xạ màn hình, sương thể tích, bóng mềm 8K). Máy yếu chọn mức thấp hơn – áp dụng ngay và lưu cho lần sau.", 13, Color("#BDC3C7"))
+	var desc: Label = GameFX.make_label("Phong cách Vice City (mặc định) dùng ánh sáng phẳng kiểu PS2, nhẹ máy; mức đồ hoạ đổi bóng đổ và khử răng cưa. Phong cách Cổ điển ở mức CAO bật SDFGI, SSIL, phản xạ màn hình, sương thể tích. Áp dụng ngay và lưu cho lần sau.", 13, Color("#BDC3C7"))
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(desc)
 	var qrow := HBoxContainer.new()
 	qrow.alignment = BoxContainer.ALIGNMENT_CENTER
 	qrow.add_theme_constant_override("separation", 10)
 	v.add_child(qrow)
-	var names: Array = ["🟢 THẤP\nkhông GI, bóng cơ bản", "🟡 TRUNG BÌNH\nSSAO + phản xạ, không SDFGI", "🔴 CAO (mặc định)\nSDFGI + SSIL + sương thể tích"]
 	quality_buttons.clear()
 	for q: int in range(3):
-		var b := _menu_button(String(names[q]), Color("#2ECC71"))
+		var b := _menu_button(_quality_text(q), Color("#2ECC71"))
+		b.name = "QualityButton%d" % q
 		b.custom_minimum_size = Vector2(225, 64)
 		b.alignment = HORIZONTAL_ALIGNMENT_CENTER
 		b.add_theme_font_size_override("font_size", 14)
@@ -381,6 +384,8 @@ func _build_settings_panel() -> PanelContainer:
 	frow.alignment = BoxContainer.ALIGNMENT_CENTER
 	frow.add_child(fullscreen_check)
 	v.add_child(frow)
+	# Phong cách đồ hoạ (Vice City / Cổ điển) + vệt sáng: GameFX.set_art_style() áp lại nền 3D của menu ngay
+	GameFX.build_style_settings(v)
 	v.add_child(GameFX.make_label("🔈 ÂM LƯỢNG", 18, Color("#2ECC71")))
 	GameFX.build_audio_settings(v)
 	var close := _menu_button("✔   LƯU & ĐÓNG  [ESC]", Color("#2ECC71"))
@@ -394,9 +399,18 @@ func _build_settings_panel() -> PanelContainer:
 	_refresh_quality_buttons()
 	return panel
 
+## Chữ trên nút mức đồ hoạ q theo phong cách hiện tại (GameFX.quality_caption): "🟢 THẤP\nbóng cơ bản"...
+func _quality_text(q: int) -> String:
+	var cap: PackedStringArray = GameFX.quality_caption(q)
+	return "%s %s%s\n%s" % [["🟢", "🟡", "🔴"][q], cap[0], " (mặc định)" if q == 2 else "", cap[1]]
+
+func _on_art_style_changed(_style: String) -> void:
+	_refresh_quality_buttons()
+
 func _refresh_quality_buttons() -> void:
 	for q: int in range(quality_buttons.size()):
 		var b: Button = quality_buttons[q]
+		b.text = _quality_text(q)
 		var active: bool = q == GameFX.visual_quality
 		b.add_theme_color_override("font_color", GameFX.FPT_YELLOW if active else Color("#F4F5F6"))
 		b.add_theme_stylebox_override("normal", GameFX.make_panel_style(GameFX.FPT_YELLOW if active else Color(0.18, 0.8, 0.44, 0.45), Color(0.12, 0.1, 0.03, 0.96) if active else Color(0.05, 0.07, 0.12, 0.86), 10))
@@ -419,6 +433,7 @@ func _show_settings() -> void:
 	GameFX.play_sfx("pop", -6.0)
 	_refresh_quality_buttons()
 	fullscreen_check.button_pressed = GameFX.fullscreen
+	GameFX.sync_style_settings(settings_panel)
 	modal_dim.visible = true
 	settings_panel.visible = true
 	guide_panel.visible = false
@@ -434,7 +449,7 @@ func _set_quality(q: int) -> void:
 	_refresh_quality_buttons()
 	GameFX.upgrade_scene_visuals(self, "dawn")
 	GameFX.play_sfx("pop", -4.0)
-	GameFX.popup("Đã áp dụng mức đồ hoạ: %s" % ["THẤP", "TRUNG BÌNH", "CAO"][clampi(q, 0, 2)], GameFX.FPT_GREEN, 22, 1.0)
+	GameFX.popup("Đã áp dụng mức đồ hoạ: %s" % " · ".join(GameFX.quality_caption(q)), GameFX.FPT_GREEN, 22, 1.0)
 
 func _on_start_pressed() -> void:
 	GameFX.play_sfx("success", -2.0)

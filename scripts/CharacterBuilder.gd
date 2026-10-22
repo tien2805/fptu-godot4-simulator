@@ -42,8 +42,12 @@ const HEAD_R: float = 0.105
 static var _tex_cache: Dictionary = {}
 static var _mat_cache: Dictionary = {}
 static var _mesh_cache: Dictionary = {}
-## Phong cách hoạt hình: toon diffuse/specular + viền đen (next_pass) cho mọi vật liệu nhân vật & đồ vật
+## Phong cách hoạt hình: toon diffuse/specular + viền đen (next_pass) cho mọi vật liệu nhân vật & đồ vật.
+## Autoload hiệu ứng đặt toon = (art_style == "classic") lúc khởi động, trước khi cảnh nào dựng nhân vật.
 static var toon: bool = true
+## Tỉ lệ đầu tự dựng trên thân có xương khi opts không có head_scale: 1.3 (cổ điển, đầu to hoạt hình), autoload hiệu ứng đặt 1.15
+## cho phong cách Vice City (plan vice-city D3).
+static var head_scale_default: float = 1.3
 static var _outline_cache: Dictionary = {}
 const EXPRESSIONS: Array[String] = ["open", "closed", "happy", "angry", "surprised", "done"]
 
@@ -377,8 +381,8 @@ static func _body_scene(rel: String) -> PackedScene:
 	_scene_cache[rel] = ps
 	return ps
 
-## Thân Quaternius + đầu tự dựng. opts thêm: body ("casual|hoodie|suit|worker|formal"), head_scale (mặc định 1.3 – đầu to kiểu
-## hoạt hình), rigged=true. Trả về null nếu không có mô hình (build() sẽ quay về thân tự dựng).
+## Thân Quaternius + đầu tự dựng. opts thêm: body ("casual|hoodie|suit|worker|formal"), head_scale (mặc định head_scale_default: 1.3 – đầu to kiểu
+## hoạt hình, 1.15 ở phong cách Vice City), rigged=true. Trả về null nếu không có mô hình (build() sẽ quay về thân tự dựng).
 static func _build_rigged(opts: Dictionary) -> Node3D:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(opts.get("seed", randi()))
@@ -470,7 +474,7 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 	att.name = "HeadBone"
 	sk.add_child(att)
 	att.bone_name = "Head"
-	var hs: float = float(opts.get("head_scale", 1.3))
+	var hs: float = float(opts.get("head_scale", head_scale_default))
 	var head_pivot: Node3D = _build_head(att, Vector3(0.0, 0.0, 0.0), skin_idx, female, width, hair_style, hair_idx, outfit, rng, rig)
 	head_pivot.rotation.y = PI   # đầu tự dựng nhìn về -Z của pivot; xương Head nhìn về +Z của mô hình (đã quay PI)
 	head_pivot.position = Vector3(0.0, -0.045 + (hs - 1.0) * 0.1, 0.0)

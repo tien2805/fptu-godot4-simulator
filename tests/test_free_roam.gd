@@ -5,7 +5,8 @@
 # dịch người chơi tới 30 m ngoài cổng chính -> không hotspot nào chạm; đặt lên hotspot cổng sau (Màn 2) ->
 # Area3D thấy người chơi + gợi ý "[E] Chơi ..."; preset đêm đổi hotspot Lab 402 thành Màn 6; phím M bị chặn ở hub.
 # Hồi quy (review 2026-10-22):
-#   - [T] đêm -> bình minh -> sáng: ánh sáng môi trường về lại Environment gốc (không dính màu/độ sáng đêm).
+#   - [T] đêm -> bình minh -> sáng: ánh sáng môi trường về lại Environment gốc (không dính màu/độ sáng đêm); phong cách
+#     Vice City: ambient theo look dawn / day của ViceStyle, Environment gốc không bị sửa.
 #   - Lớp "VỀ CAMPUS" của StageManager ẩn khi một cảnh gốc mới vào cây (reload_current_scene của nút Chơi lại),
 #     return_to_roam vẫn true và kết quả lượt sau hiện lại nút đó.
 #   - Mọi hotspot: tia từ tâm tìm thấy sàn đi được trong 0,5 m bên dưới; đứng ở return_spawn -> đi về phía hotspot thì
@@ -593,6 +594,29 @@ func _phase_tod_and_retry() -> bool:
 	if not _check(base != null, "FreeRoam keeps the scene's base Environment"):
 		return false
 	var presets: Dictionary = (load("res://scripts/GameFX.gd") as GDScript).get_script_constant_map()["TOD_PRESETS"]
+	# Phong cách Vice City (mặc định): mỗi lần đổi giờ dựng Environment mới theo look -> ambient của bình minh / ban ngày
+	# là của look đó, không dính màu đêm; Environment gốc không bị sửa. Sau đó chạy lại đúng hồi quy cũ ở phong cách
+	# cổ điển (chỉ đổi biến art_style của GameFX, không ghi settings.cfg).
+	var fx: Node = root.get_node_or_null("GameFX")
+	var saved_style: String = String(fx.get("art_style")) if fx else "vice"
+	if fx:
+		fx.set("art_style", "vice")
+	roam.call("cycle_time_of_day")   # night -> dawn
+	var ve: Environment = we.environment
+	var vdawn: Dictionary = ViceStyle.params_for("dawn")
+	print("  [T] vice night -> %s: ambient %.2f %s" % [String(roam.get("tod_preset")), ve.ambient_light_energy, str(ve.ambient_light_color)])
+	if not _check(String(roam.get("tod_preset")) == "dawn" and ve.ambient_light_color.is_equal_approx(vdawn["amb_col"]) and absf(ve.ambient_light_energy - float(vdawn["amb"])) < 0.001, "vice: dawn after night uses the dawn look ambient"):
+		return false
+	roam.call("cycle_time_of_day")   # dawn -> morning (vice day)
+	ve = we.environment
+	var vday: Dictionary = ViceStyle.params_for("morning")
+	if not _check(String(roam.get("tod_preset")) == "morning" and ve.ambient_light_color.is_equal_approx(vday["amb_col"]) and absf(ve.ambient_light_energy - float(vday["amb"])) < 0.001 and String(roam.get_meta("vice_look", "")) == "day", "vice: morning after dawn uses the day look"):
+		return false
+	if not _check(base.ambient_light_energy == 1.0 and base != ve, "vice: base Environment itself is never modified"):
+		return false
+	if fx:
+		fx.set("art_style", "classic")
+	roam.call("set_time_of_day", "night")
 	roam.call("cycle_time_of_day")   # night -> dawn
 	var e: Environment = we.environment
 	print("  [T] night -> %s: ambient %.2f %s (base %.2f %s)" % [String(roam.get("tod_preset")), e.ambient_light_energy, str(e.ambient_light_color), base.ambient_light_energy, str(base.ambient_light_color)])
@@ -608,6 +632,8 @@ func _phase_tod_and_retry() -> bool:
 		return false
 	if not _check(base.ambient_light_energy == 1.0 and base != e, "base Environment itself is never modified"):
 		return false
+	if fx:
+		fx.set("art_style", saved_style)
 	# Lớp VỀ CAMPUS: kết quả màn mở từ thế giới mở -> hiện; "Chơi lại" (reload_current_scene) -> cảnh gốc mới -> ẩn
 	var layer: CanvasLayer = sm.get("roam_return_layer")
 	sm.set("return_to_roam", true)

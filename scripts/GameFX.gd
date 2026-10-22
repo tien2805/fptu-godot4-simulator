@@ -44,11 +44,28 @@ void fragment() {
 """
 
 # ---------------------------------------------------------------------------
-# CÀI ĐẶT (lưu user://settings.cfg): mức đồ hoạ 0 thấp / 1 trung bình / 2 cao, toàn màn hình
+# CÀI ĐẶT (lưu user://settings.cfg): mức đồ hoạ 0 thấp / 1 trung bình / 2 cao, toàn màn hình,
+# phong cách đồ hoạ "vice" (Vice City, mặc định – ViceStyle.gd) / "classic" (đường render SDFGI cũ), vệt sáng (trails)
 # ---------------------------------------------------------------------------
 const SETTINGS_PATH: String = "user://settings.cfg"
+const ART_STYLES: Array[String] = ["vice", "classic"]
+const ART_STYLE_NAMES: Dictionary = {"vice": "Vice City", "classic": "Cổ điển"}
+const ART_STYLE_HINT: String = "Áp dụng ngay cho màn đang mở · Cổ điển áp dụng đầy đủ khi vào lại màn"
+## Nút mức đồ hoạ (menu chính, menu tạm dừng): tên + mô tả theo phong cách. Vice City không dùng SDFGI / SSIL / SSAO /
+## SSR / sương thể tích, mức chỉ đổi bóng nắng (2 / 4 lớp, tầm xa) và khử răng cưa (MSAA) nên không quảng cáo chúng.
+const QUALITY_NAMES: Array[String] = ["THẤP", "TRUNG BÌNH", "CAO"]
+const QUALITY_DESC: Dictionary = {
+	"vice": ["bóng cơ bản", "bóng 4 lớp", "bóng xa + khử răng cưa"],
+	"classic": ["không GI, bóng cơ bản", "SSAO + phản xạ, không SDFGI", "SDFGI + SSIL + sương thể tích"],
+}
+## Phát sau set_art_style() (kể cả khi chọn lại phong cách đang dùng): menu làm mới chú thích nút mức đồ hoạ.
+signal art_style_changed(style: String)
 var visual_quality: int = 2
 var fullscreen: bool = false
+## Phong cách đồ hoạ (video/art_style). Đổi qua set_art_style() để áp lại cảnh hiện tại.
+var art_style: String = "vice"
+## Vệt sáng kiểu PS2 lúc hoàng hôn / ban đêm (video/trails). Hiện chỉ lưu cờ; hiệu ứng ở Task VC-7.
+var trails_enabled: bool = true
 ## Âm lượng tuyến tính 0..1 theo bus (lưu trong settings.cfg)
 const AUDIO_BUSES: Array[String] = ["Master", "Music", "SFX", "UI"]
 var volumes: Dictionary = {"Master": 1.0, "Music": 0.8, "SFX": 1.0, "UI": 0.9}
@@ -60,16 +77,22 @@ func load_settings() -> void:
 	if cfg.load(SETTINGS_PATH) == OK:
 		visual_quality = clampi(int(cfg.get_value("video", "quality", 2)), 0, 2)
 		fullscreen = bool(cfg.get_value("video", "fullscreen", false))
+		var st: String = String(cfg.get_value("video", "art_style", "vice"))
+		art_style = st if st in ART_STYLES else "vice"
+		trails_enabled = bool(cfg.get_value("video", "trails", true))
 		for b: String in AUDIO_BUSES:
 			volumes[b] = clampf(float(cfg.get_value("audio", "vol_" + b.to_lower(), volumes[b])), 0.0, 1.0)
 	_apply_global_quality()
 	_apply_window_mode()
 	_apply_volumes()
+	_apply_art_style_statics()
 
 func save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("video", "quality", visual_quality)
 	cfg.set_value("video", "fullscreen", fullscreen)
+	cfg.set_value("video", "art_style", art_style)
+	cfg.set_value("video", "trails", trails_enabled)
 	for b: String in AUDIO_BUSES:
 		cfg.set_value("audio", "vol_" + b.to_lower(), float(volumes[b]))
 	cfg.save(SETTINGS_PATH)
@@ -166,6 +189,100 @@ func build_audio_settings(parent: Control) -> void:
 			pct.text = "%d%%" % int(round(v * 100.0))
 			play_ui("tick", -12.0, 1.0 + v * 0.5))
 
+## Hàng "Phong cách đồ hoạ" (OptionButton Vice City / Cổ điển) + "Vệt sáng (trails)" (CheckButton) + dòng gợi ý cho
+## bảng cài đặt (menu chính & tạm dừng). Node tên ArtStyleOption / TrailsCheck để sync_style_settings() tìm lại.
+func build_style_settings(parent: Control) -> void:
+	var row := HBoxContainer.new()
+	row.name = "ArtStyleRow"
+	row.add_theme_constant_override("separation", 12)
+	parent.add_child(row)
+	var lbl: Label = make_label("🎨 Phong cách đồ hoạ", 15, Color("#DFE6E9"), HORIZONTAL_ALIGNMENT_LEFT)
+	lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	lbl.custom_minimum_size = Vector2(130, 0)
+	row.add_child(lbl)
+	var opt := OptionButton.new()
+	opt.name = "ArtStyleOption"
+	for i: int in range(ART_STYLES.size()):
+		opt.add_item(String(ART_STYLE_NAMES[ART_STYLES[i]]), i)
+		opt.set_item_metadata(i, ART_STYLES[i])
+	opt.custom_minimum_size = Vector2(150, 30)
+	opt.add_theme_font_size_override("font_size", 15)
+	opt.focus_mode = Control.FOCUS_ALL
+	row.add_child(opt)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(spacer)
+	var trails := CheckButton.new()
+	trails.name = "TrailsCheck"
+	trails.text = "Vệt sáng (trails)"
+	trails.add_theme_font_size_override("font_size", 15)
+	row.add_child(trails)
+	var hint: Label = make_label(ART_STYLE_HINT, 12, Color("#95A5A6"), HORIZONTAL_ALIGNMENT_LEFT)
+	hint.name = "ArtStyleHint"
+	parent.add_child(hint)
+	sync_style_settings(row)
+	opt.item_selected.connect(func(idx: int) -> void:
+		set_art_style(String(opt.get_item_metadata(idx)))
+		play_ui("pop", -6.0))
+	trails.toggled.connect(func(on: bool) -> void:
+		set_trails(on)
+		play_ui("tick", -10.0, 1.3))
+
+## Đồng bộ các hàng do build_style_settings() dựng (dưới `root`) với cài đặt hiện tại, không phát tín hiệu.
+func sync_style_settings(root: Node) -> void:
+	if root == null:
+		return
+	var opt: OptionButton = root.find_child("ArtStyleOption", true, false) as OptionButton
+	if opt:
+		opt.select(maxi(0, ART_STYLES.find(art_style)))
+	var trails: CheckButton = root.find_child("TrailsCheck", true, false) as CheckButton
+	if trails:
+		trails.set_pressed_no_signal(trails_enabled)
+
+## Đổi phong cách đồ hoạ: lưu cài đặt (persist), đặt kiểu nhân vật dựng sau này (CharacterBuilder.toon, tỉ lệ đầu), quên
+## cache vật liệu dùng chung (cả hai chiều: cache còn giữ vật liệu của phong cách cũ) rồi áp lại preset ánh sáng của cảnh
+## hiện tại (meta "visual_preset") mà không nạp lại cảnh. Sang "classic": trả Environment gốc + lớp đêm cũ, đường cổ điển
+## của upgrade_scene_visuals() trả vật liệu đã chuyển kiểu về gốc (ViceStyle.unstylize_materials).
+func set_art_style(style: String, persist: bool = true) -> void:
+	var s: String = style if style in ART_STYLES else "vice"
+	var changed: bool = s != art_style
+	art_style = s
+	_apply_art_style_statics()
+	if persist:
+		save_settings()
+	if changed:
+		ViceStyle.forget_cached_materials()
+	var tree: SceneTree = get_tree()
+	var cs: Node = tree.current_scene if tree else null
+	if cs and cs.has_meta("visual_preset"):
+		if s == "classic":
+			ViceStyle.restore_classic(cs)
+		upgrade_scene_visuals(cs, String(cs.get_meta("visual_preset")))
+	art_style_changed.emit(s)
+
+## Chú thích nút mức đồ hoạ q theo phong cách (mặc định phong cách hiện tại): [tên, mô tả].
+func quality_caption(q: int, style: String = "") -> PackedStringArray:
+	var st: String = style if style in ART_STYLES else art_style
+	var qi: int = clampi(q, 0, QUALITY_NAMES.size() - 1)
+	var desc: Array = QUALITY_DESC.get(st, QUALITY_DESC["vice"])
+	return PackedStringArray([QUALITY_NAMES[qi], String(desc[qi])])
+
+## Vệt sáng: hiện chỉ lưu cờ (hiệu ứng ở Task VC-7); ở phong cách vice áp lại cảnh để meta "vice_trails" đúng ngay.
+func set_trails(on: bool, persist: bool = true) -> void:
+	trails_enabled = on
+	if persist:
+		save_settings()
+	var tree: SceneTree = get_tree()
+	var cs: Node = tree.current_scene if tree else null
+	if art_style == "vice" and cs and cs.has_meta("visual_preset"):
+		upgrade_scene_visuals(cs, String(cs.get_meta("visual_preset")))
+
+## Kiểu nhân vật theo phong cách: cổ điển = toon + viền, đầu 1.3; Vice City = không viền, đầu 1.15 (plan D3).
+func _apply_art_style_statics() -> void:
+	var classic: bool = art_style == "classic"
+	CharacterBuilder.toon = classic
+	CharacterBuilder.head_scale_default = 1.3 if classic else 1.15
+
 func set_visual_quality(q: int) -> void:
 	visual_quality = clampi(q, 0, 2)
 	_apply_global_quality()
@@ -234,6 +351,23 @@ static func _quality() -> int:
 		if g:
 			return int(g.get("visual_quality"))
 	return 2
+
+## Phong cách đồ hoạ từ autoload /root/GameFX, giống _quality() (không có node /root/GameFX -> "vice").
+static func _art_style() -> String:
+	var ml: SceneTree = Engine.get_main_loop() as SceneTree
+	if ml and ml.root:
+		var g: Node = ml.root.get_node_or_null("GameFX")
+		if g:
+			return String(g.get("art_style"))
+	return "vice"
+
+static func _trails() -> bool:
+	var ml: SceneTree = Engine.get_main_loop() as SceneTree
+	if ml and ml.root:
+		var g: Node = ml.root.get_node_or_null("GameFX")
+		if g:
+			return bool(g.get("trails_enabled"))
+	return true
 
 var music: MusicDirector
 
@@ -690,9 +824,17 @@ static func _ensure_sky(e: Environment, night: bool, top: Color = Color(0.3, 0.6
 
 ## Gọi ở cuối _ready của mỗi màn: preset "outdoor" (đường, campus, sân võ), "indoor" (phòng học, căn tin...)
 ## hoặc "night" (phòng lab 23:59 – trời đêm, trăng xanh, đèn trần & màn hình là nguồn sáng chính).
+## Phong cách "vice" (mặc định): ViceStyle.apply() (bảng map preset -> look trong ViceStyle.PRESET_LOOK); phần còn lại
+## của hàm là đường render "classic" giữ nguyên.
 static func upgrade_scene_visuals(root: Node, preset: String = "outdoor") -> void:
 	if root == null:
 		return
+	if _art_style() == "vice":
+		ViceStyle.apply(root, preset, _quality(), _trails())
+		return
+	# vật liệu đã chuyển kiểu vice trong phiên này (sub-resource .tscn dùng lại khi nạp lại cùng cảnh, vật liệu đang hiển
+	# thị khi đổi phong cách lúc chạy) -> trả về gốc; phiên chỉ chơi cổ điển thì không làm gì
+	ViceStyle.unstylize_materials(root)
 	var key: String = String(TOD_ALIASES.get(preset, preset))
 	if not TOD_PRESETS.has(key):
 		key = "morning"

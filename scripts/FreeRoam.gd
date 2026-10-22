@@ -747,7 +747,13 @@ func _refresh_lab_hotspot() -> void:
 	for pair: Array in [["Pillar", 0.3], ["Ring", 0.55]]:
 		var mi: MeshInstance3D = _lab_hotspot.get_node_or_null(String(pair[0])) as MeshInstance3D
 		if mi:
-			mi.material_override = _glow_material(col, float(pair[1]))
+			# Đổi màu vật liệu sẵn có (đã qua upgrade_scene_visuals) thay vì gán vật liệu mới chưa chuyển kiểu.
+			var gm: StandardMaterial3D = mi.material_override as StandardMaterial3D
+			if gm:
+				gm.albedo_color = Color(col.r, col.g, col.b, float(pair[1]))
+				gm.emission = col
+			else:
+				mi.material_override = _glow_material(col, float(pair[1]))
 	var key: Label3D = _lab_hotspot.get_node_or_null("Key") as Label3D
 	if key:
 		key.modulate = col

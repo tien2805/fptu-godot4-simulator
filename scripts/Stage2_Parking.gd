@@ -151,6 +151,11 @@ func _ready() -> void:
 	_build_monster_machine()
 	_build_phase2_hud()
 	_apply_spot(0)
+	if marker_pad and not (marker_pad.material_override is StandardMaterial3D):
+		# Tạo vật liệu nhấp nháy trước upgrade_scene_visuals để nó được chuyển kiểu cùng cảnh (_process chỉ đổi màu).
+		var pad_mat := StandardMaterial3D.new()
+		pad_mat.emission_enabled = true
+		marker_pad.material_override = pad_mat
 	GameFX.disable_button_focus(hud)
 	GameFX.upgrade_scene_visuals(self, "morning")
 	GameFX.music_play("parking", 0.35)
