@@ -15,6 +15,7 @@ const VERGE_OFFSET: float = 0.45
 const ROAD_CLEAR: float = 0.3
 const WATER_CLEAR: float = 0.8
 const LINK_R: float = 6.0
+const BRIDGE_R: float = 12.0        # cổng campus / vòng BE6 -> nút phố gần nhất (xa hơn LINK_R)
 const MAX_LINKS: int = 3
 const CELL: float = 16.0
 const SEG_CELL: float = 32.0
@@ -36,6 +37,7 @@ var adj: Array = []             # Array of Array[int]
 var line_of: PackedInt32Array = PackedInt32Array()
 var zone_of: PackedByteArray = PackedByteArray()
 var _hash: Dictionary = {}      # Vector2i -> Array[int]
+var closed_lines: int = 0       # số polyline khép kín đã nối vòng (chẩn đoán cho test)
 
 
 # ===========================================================================
@@ -74,17 +76,47 @@ static func _build_uncached(md: MapData) -> PedWalkGraph:
 			if not bool(r.get("oneway", false)):   # đường một chiều (nửa đường đôi): bên trái là dải phân cách
 				g._add_line(_offset(pts, -off), ctx, line_id, true, true, true)
 				line_id += 1
+	var street_lines: int = line_id   # id < street_lines: lề đường / đường đi bộ
+	var be6_lines: Array[int] = []
 	var be6: Variant = md.landmark("be6_outer")
 	if be6 is Array and (be6 as Array).size() >= 3:
 		for ring: PackedVector2Array in Geometry2D.offset_polygon(MapData.poly(be6), BE6_PLAZA_M):
 			var loop: PackedVector2Array = ring.duplicate()
 			loop.append(ring[0])
 			g._add_line(loop, ctx, line_id, true, true, true)
+			be6_lines.append(line_id)
 			line_id += 1
-	for line: PackedVector2Array in _campus_lines():
-		g._add_line(line, ctx, line_id, false, false, false)
+	var gate_ends: Array[int] = []
+	var campus: Array = _campus_lines()
+	for ci: int in range(campus.size()):
+		var first: int = g.pos.size()
+		g._add_line(campus[ci], ctx, line_id, false, false, false)
+		# ba đường cổng là ba đường cuối; điểm đầu của chúng ở phía phố
+		if ci >= campus.size() - 3 and first < g.pos.size() and g.line_of[first] == line_id:
+			gate_ends.append(first)
 		line_id += 1
 	g._link(ctx)
+	# cổng campus và vòng quảng trường BE6 cách lề phố quá LINK_R: nối tay tới nút phố gần nhất trong BRIDGE_R
+	for ge: int in gate_ends:
+		var sn: int = g._nearest_street(g.pos[ge], BRIDGE_R, street_lines)
+		if sn >= 0 and not _wet((Vector2(g.pos[ge].x, g.pos[ge].z) + Vector2(g.pos[sn].x, g.pos[sn].z)) * 0.5, ctx):
+			g._connect(ge, sn)
+	for rl: int in be6_lines:
+		var best_a: int = -1
+		var best_b: int = -1
+		var best_d: float = INF
+		for i: int in range(g.pos.size()):
+			if g.line_of[i] != rl:
+				continue
+			var sn2: int = g._nearest_street(g.pos[i], BRIDGE_R, street_lines)
+			if sn2 >= 0:
+				var d: float = Vector2(g.pos[i].x - g.pos[sn2].x, g.pos[i].z - g.pos[sn2].z).length()
+				if d < best_d and not _wet((Vector2(g.pos[i].x, g.pos[i].z) + Vector2(g.pos[sn2].x, g.pos[sn2].z)) * 0.5, ctx):
+					best_d = d
+					best_a = i
+					best_b = sn2
+		if best_a >= 0:
+			g._connect(best_a, best_b)
 	return g
 
 
@@ -110,6 +142,7 @@ func _copy() -> PedWalkGraph:
 	g.line_of = line_of
 	g.zone_of = zone_of
 	g._hash = _hash
+	g.closed_lines = closed_lines
 	for a: Array in adj:
 		g.adj.append(a.duplicate())
 	return g
@@ -195,6 +228,8 @@ func random_point_ring(p: Vector3, r_min: float, r_max: float, rng: RandomNumber
 		if cell.is_empty():
 			continue
 		var i: int = int(cell[rng.randi_range(0, cell.size() - 1)])
+		if (adj[i] as Array).is_empty():   # nút cô lập (bị block_near cắt, hoặc lẻ loi): người đi đường đứng im ở đó
+			continue
 		var d: float = Vector2(pos[i].x - p.x, pos[i].z - p.z).length()
 		if d >= r_min and d <= r_max:
 			return i
@@ -228,24 +263,57 @@ func _connect(a: int, b: int) -> void:
 	(adj[b] as Array).append(a)
 
 
+## Nút gần p nhất (trong max_r) thuộc đường phố (line id < street_lines) và đã có cạnh – đích nối cổng campus / vòng BE6.
+func _nearest_street(p: Vector3, max_r: float, street_lines: int) -> int:
+	var best: int = -1
+	var best_d: float = max_r * max_r
+	var c0: Vector2i = _cell(Vector2(p.x, p.z))
+	var reach: int = ceili(max_r / CELL)
+	for dx: int in range(-reach, reach + 1):
+		for dz: int in range(-reach, reach + 1):
+			for i: int in _hash.get(Vector2i(c0.x + dx, c0.y + dz), []):
+				if line_of[i] >= street_lines or (adj[i] as Array).is_empty():
+					continue
+				var d: float = Vector2(pos[i].x - p.x, pos[i].z - p.z).length_squared()
+				if d < best_d:
+					best_d = d
+					best = i
+	return best
+
+
 ## Lấy mẫu polyline mỗi SAMPLE_M m; điểm hỏng cắt đường; hai điểm liền nhau chỉ nối khi trung điểm không ướt (kênh hẹp).
+## Polyline khép kín (điểm cuối trùng điểm đầu): mẫu cuối không thành nút mới mà nối về nút đầu, nên không có mối nối
+## làm người đi đường quay đầu (vòng BE6, sân trong campus).
 func _add_line(pts: PackedVector2Array, ctx: Dictionary, line_id: int, check_buildings: bool, check_roads: bool, outside_plot: bool) -> void:
 	var prev: int = -1
 	var prev_p := Vector2.ZERO
+	var first: int = -1
+	var first_p := Vector2.ZERO
+	# lề của đường khép kín: hai đầu dời theo pháp tuyến của đoạn đầu / đoạn cuối nên lệch nhau vài mét
+	var closed: bool = pts.size() >= 4 and pts[0].distance_to(pts[pts.size() - 1]) < SAMPLE_M * 0.5
 	for i: int in range(pts.size() - 1):
 		var a: Vector2 = pts[i]
 		var b: Vector2 = pts[i + 1]
 		var n: int = maxi(1, ceili(a.distance_to(b) / SAMPLE_M))
 		for s: int in range(0 if i == 0 else 1, n + 1):
 			var p: Vector2 = a.lerp(b, float(s) / float(n))
+			if closed and first >= 0 and i == pts.size() - 2 and s == n and p.distance_to(first_p) < 0.5:
+				break   # mẫu cuối trùng nút đầu: không tạo nút đôi, nối về nút đầu ở dưới
 			if not _ok(p, ctx, check_buildings, check_roads, outside_plot):
 				prev = -1
 				continue
 			var id: int = _add_node(p, line_id, _zone(p, ctx))
+			if i == 0 and s == 0:
+				first = id
+				first_p = p
 			if prev >= 0 and prev_p.distance_to(p) <= SAMPLE_M * 1.6 and not _wet((prev_p + p) * 0.5, ctx):
 				_connect(prev, id)
 			prev = id
 			prev_p = p
+	if closed and first >= 0 and prev >= 0 and prev != first and prev_p.distance_to(first_p) <= SAMPLE_M * 1.6 \
+			and not _wet((prev_p + first_p) * 0.5, ctx):
+		_connect(prev, first)
+		closed_lines += 1
 
 
 ## Nối nút của các đường khác nhau trong LINK_R (góc phố, băng qua đường): mỗi nút tối đa MAX_LINKS, gần nhất trước,

@@ -157,6 +157,11 @@ func set_far(far: bool) -> void:
 		return
 	lod_far = far
 	_shadows(not far)
+	# tầng giữa không phản ứng va chạm nên cũng không được là capsule cứng chắn người chơi / xe
+	if far:
+		collision_layer = 0
+	elif state != State.KNOCKDOWN:
+		collision_layer = 1
 	if not far:
 		snap_to_floor()
 
@@ -284,6 +289,10 @@ func _walk(delta: float) -> void:
 
 func _arrive() -> void:
 	var nxt: int = graph.next_node(target_node, prev_node, _rng)
+	if nxt == target_node:
+		# nút cô lập (bậc 0, ví dụ bị block_near cắt): không có đường đi, cho spawner thu hồi thay vì đứng "tới nơi" mãi
+		stuck_out = true
+		return
 	prev_node = target_node
 	target_node = nxt
 	_walked += 1

@@ -18,6 +18,7 @@ var frames: int = 0
 var world_b: Node3D
 var ped: Pedestrian
 var jogger: Pedestrian
+var statue: Pedestrian
 var stub_player: CharacterBody3D
 var stub_bike: CharacterBody3D
 var mounted: bool = false
@@ -159,7 +160,9 @@ func _on_physics_b() -> void:
 					return
 				mounted = true
 				stub_bike.set("speed_value", 6.0)
-				stub_bike.global_position = ped.global_position + Vector3(-0.8, 0.0, 0.0)
+				# lệch 0,9 m dọc trục dài xe (Z) và 0,5 m ngang: tới gốc xe 1,03 m (> 0,93 m) nhưng tới trục capsule 0,74 m,
+				# nên chỉ trúng khi đo tới trục (BIKE_HALF_AXIS)
+				stub_bike.global_position = ped.global_position + Vector3(-0.5, 0.0, 0.9)
 				b_phase = "bike"
 				b_t0 = frames
 		"bike":
@@ -177,9 +180,19 @@ func _on_physics_b() -> void:
 		"mid":
 			if t == 3:
 				print("  mid-tier contact -> jogger hits %s, state %d" % [jogger.hits, jogger.state])
-				if not _check(jogger.hits.is_empty() and jogger.state == Pedestrian.State.WALK, "a mid-tier pedestrian (lod_far) makes no contact checks"):
+				if not _check(jogger.hits.is_empty() and jogger.state == Pedestrian.State.WALK and jogger.collision_layer == 0, "a mid-tier pedestrian (lod_far) makes no contact checks and is not solid (layer %d)" % jogger.collision_layer):
 					return
 				stub_player.global_position = Vector3(40.0, 0.0, 5000.0)
+				# người đi đường trên nút bậc 0 (một điểm lẻ): phải tự báo stuck_out để spawner thu hồi
+				var lone := PackedVector2Array([Vector2(20.0, 5024.0)])
+				statue = _ped(PedWalkGraph.from_lines([lone]), 0, {"preset": "student", "seed": 13}, Vector3(20.0, 0.05, 5024.0))
+				b_phase = "statue"
+				b_t0 = frames
+		"statue":
+			if t == 10:
+				print("  degree-0 pedestrian -> stuck_out %s" % statue.stuck_out)
+				if not _check(statue.stuck_out, "a pedestrian on a degree-0 node must set stuck_out within a few frames"):
+					return
 				if not PART_C:
 					print("✅ SUCCESS: PEDESTRIANS (parts A + B)")
 					done = true
@@ -262,6 +275,8 @@ func _part_a() -> bool:
 		var nxt: int = g.next_node(deg2, a, rng)
 		if not _check(nxt != a and g.neighbours(deg2).has(nxt), "next_node must pick a neighbour other than came_from"):
 			return false
+	if not _check(_campus_reaches_street(g), "the campus path network must reach a street node outside the plot (gates / links)"):
+		return false
 	var keep: int = g.neighbours(deg2).size()
 	var t1: int = Time.get_ticks_msec()
 	var g2: PedWalkGraph = PedWalkGraph.build(md)
@@ -271,6 +286,49 @@ func _part_a() -> bool:
 		return false
 	g2.block_near([g2.node_pos(deg2)], 3.0)
 	return _check(g2.neighbours(deg2).is_empty() and g.neighbours(deg2).size() == keep, "block_near on one copy must not cut another copy or the cache")
+
+
+## Thành phần liên thông chứa một nút trong lô campus có tới được nút ngoài lô không; in số thành phần / nút bậc 0 theo khu.
+func _campus_reaches_street(g: PedWalkGraph) -> bool:
+	var comp := PackedInt32Array()
+	comp.resize(g.node_count())
+	comp.fill(-1)
+	var sizes: Array[int] = []
+	for s: int in range(g.node_count()):
+		if comp[s] >= 0:
+			continue
+		var cid: int = sizes.size()
+		var stack: Array[int] = [s]
+		comp[s] = cid
+		var n: int = 0
+		while not stack.is_empty():
+			var v: int = stack.pop_back()
+			n += 1
+			for w: int in g.neighbours(v):
+				if comp[w] < 0:
+					comp[w] = cid
+					stack.append(w)
+		sizes.append(n)
+	var deg0: Array[int] = [0, 0, 0]
+	for i: int in range(g.node_count()):
+		if g.neighbours(i).is_empty():
+			deg0[g.zone_at(i)] += 1
+	var big: Array[int] = sizes.duplicate()
+	big.sort()
+	big.reverse()
+	var campus_comp: int = -1
+	for i2: int in range(g.node_count()):
+		if _campus_node(Vector2(g.node_pos(i2).x, g.node_pos(i2).z)) and not g.neighbours(i2).is_empty():
+			campus_comp = comp[i2]
+			break
+	var reaches: bool = false
+	for i3: int in range(g.node_count()):
+		if comp[i3] == campus_comp and not _campus_node(Vector2(g.node_pos(i3).x, g.node_pos(i3).z)):
+			reaches = true
+			break
+	print("  components: %d (largest %s), campus component %d nodes, degree-0 campus/residential/road %s, closed loops %d" % [
+		sizes.size(), str(big.slice(0, 4)), sizes[campus_comp] if campus_comp >= 0 else 0, str(deg0), g.closed_lines])
+	return reaches
 
 
 func _campus_node(p: Vector2) -> bool:
