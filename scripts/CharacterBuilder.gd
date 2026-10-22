@@ -85,7 +85,13 @@ const BONE_OF: Dictionary = {"hips": "Hips", "torso": "Torso", "head": "Head", "
 	"hand_l": "Wrist.L", "hand_r": "Wrist.R", "thigh_l": "UpperLeg.L", "thigh_r": "UpperLeg.R", "knee_l": "LowerLeg.L", "knee_r": "LowerLeg.R"}
 ## clip của ta → animation có sẵn trong gói (các clip khác dựng bằng xoay xương từ bảng clip của Animator)
 const PACK_CLIP: Dictionary = {"wave": "Wave", "punch": "Punch_Right", "kick": "Kick_Right", "flinch": "HitRecieve", "roll": "Roll",
-	"interact": "Interact", "lie": "Death", "chop": "Sword_Slash"}
+	"interact": "Interact", "lie": "Death", "chop": "Sword_Slash", "stumble": "HitRecieve", "knockdown": "Death"}
+## Clip gói giữ khung cuối tới khi có clip khác (không tự hết giờ).
+const HOLD_CLIPS: Array[String] = ["lie", "knockdown"]
+## Tốc độ phát ngược Death cho "getup" (Death ~1.3 s -> đứng dậy ~0.9 s).
+const GETUP_SPEED: float = 1.4
+## Tốc độ hoà clip tự dựng (1/s); mặc định 5.
+const FAST_BLEND: Dictionary = {"jump_takeoff": 14.0, "jump_air": 10.0, "fall_flail": 8.0, "land_soft": 14.0, "skid": 10.0, "stumble": 10.0}
 static var _scene_cache: Dictionary = {}
 static var _smooth_cache: Dictionary = {}
 static var _skin_cache: Dictionary = {}   # [id mesh, transform skin các xương] -> mesh skinned bằng CPU, xem _skin_cpu
@@ -970,8 +976,9 @@ static func _mark_bone_poses_dirty(sk: Skeleton3D) -> void:
 
 
 ## Áp tư thế {khớp: Euler hệ nhân vật} lên xương Quaternius, trộn với tư thế hiện tại theo w (1 = đè hẳn):
-## local = (Pg⁻¹·R·Pg)·rest_local; "hips_y" dời xương Body (đơn vị mô hình). Nơi DUY NHẤT chứa phép này:
-## pose() tĩnh và RigAnimator._apply_bones() đều gọi hàm này. Gọi được cả khi skeleton ngoài cây (tự đánh dấu xương).
+## local = (Pg⁻¹·R·Pg)·rest_local (Pg⁻¹·R·Pg ở _char_rot_local); "hips_y" dời xương Body (đơn vị mô hình). Nơi DUY NHẤT
+## chứa phép này: pose() tĩnh và RigAnimator (_apply_bones, _hips_roll) đều gọi hàm này. Gọi được cả khi skeleton ngoài
+## cây (tự đánh dấu xương).
 static func _apply_bone_pose(sk: Skeleton3D, cpose: Dictionary, w: float) -> void:
 	for k: String in cpose.keys():
 		if not BONE_OF.has(k):
@@ -979,13 +986,7 @@ static func _apply_bone_pose(sk: Skeleton3D, cpose: Dictionary, w: float) -> voi
 		var b: int = sk.find_bone(String(BONE_OF[k]))
 		if b < 0:
 			continue
-		var e: Vector3 = cpose[k]
-		if MODEL_YAW != 0.0:
-			e = Vector3(-e.x, e.y, -e.z)
-		var r := Basis.from_euler(e)
-		var pb: int = sk.get_bone_parent(b)
-		var pg: Basis = sk.get_bone_global_rest(pb).basis if pb >= 0 else Basis.IDENTITY
-		var local: Basis = (pg.inverse() * r * pg) * sk.get_bone_rest(b).basis
+		var local: Basis = _char_rot_local(sk, b, cpose[k]) * sk.get_bone_rest(b).basis
 		var q_cur: Quaternion = sk.get_bone_pose_rotation(b)
 		sk.set_bone_pose_rotation(b, q_cur.slerp(local.get_rotation_quaternion(), w))
 	if cpose.has("hips_y"):
@@ -1020,6 +1021,16 @@ static func _apply_bone_pose(sk: Skeleton3D, cpose: Dictionary, w: float) -> voi
 		sk.set_bone_pose_position(fb, sk.get_bone_pose_position(fb).lerp(local.origin, w))
 		sk.set_bone_pose_rotation(fb, sk.get_bone_pose_rotation(fb).slerp(local.basis.get_rotation_quaternion(), w))
 	_mark_bone_poses_dirty(sk)
+
+
+## Xoay e (Euler hệ nhân vật) đổi sang hệ cục bộ của xương b: Pg⁻¹·R·Pg, Pg = rest toàn cục của xương cha (mô hình quay
+## MODEL_YAW nên đảo dấu x, z). Dùng chung cho _apply_bone_pose (tư thế tuyệt đối) và RigAnimator._add_rot (xoay cộng thêm).
+static func _char_rot_local(sk: Skeleton3D, b: int, e: Vector3) -> Basis:
+	if MODEL_YAW != 0.0:
+		e = Vector3(-e.x, e.y, -e.z)
+	var pb: int = sk.get_bone_parent(b)
+	var pg: Basis = sk.get_bone_global_rest(pb).basis if pb >= 0 else Basis.IDENTITY
+	return pg.inverse() * Basis.from_euler(e) * pg
 
 
 ## Tư thế toàn cục hiện tại của xương b tính từ các tư thế cục bộ (đúng cả ngoài cây và ngay sau khi vừa đặt tư thế, nơi
@@ -1842,7 +1853,8 @@ class Animator extends Node:
 	var _frame: int = 0
 	var _look_yaw: float = 0.0
 	var _look_pitch: float = 0.0
-	const ONE_SHOT: Dictionary = {"flinch": 0.9, "facepalm": 1.6, "bow": 1.4, "cheer_once": 1.6, "nod": 0.8}
+	const ONE_SHOT: Dictionary = {"flinch": 0.9, "facepalm": 1.6, "bow": 1.4, "cheer_once": 1.6, "nod": 0.8,
+		"jump_takeoff": 0.12, "land_soft": 0.18, "skid": 0.3, "stumble": 0.8, "getup": 0.9}
 
 	func _ready() -> void:
 		_t = rng_phase
@@ -1885,7 +1897,7 @@ class Animator extends Node:
 		var dt: float = delta * float(maxi(_lod_skip, 1))
 		if clip != "":
 			clip_time += dt
-			clip_weight = minf(1.0, clip_weight + dt * 5.0)
+			clip_weight = minf(1.0, clip_weight + dt * float(FAST_BLEND.get(clip, 5.0)))
 			if clip_duration > 0.0 and clip_time >= clip_duration:
 				clip = base_clip
 				clip_time = 0.0
@@ -2081,7 +2093,7 @@ class Animator extends Node:
 				p["thigh_l"] = Vector3(0.0, 0.0, 0.12)
 				p["thigh_r"] = Vector3(0.0, 0.0, -0.12)
 				p["torso"] = Vector3(0.05, 0.0, 0.0)
-			"lie":
+			"lie", "knockdown":
 				p["thigh_l"] = Vector3(0.05, 0.0, 0.1)
 				p["thigh_r"] = Vector3(0.05, 0.0, -0.1)
 				p["knee_l"] = Vector3(-0.1, 0.0, 0.0)
@@ -2136,7 +2148,7 @@ class Animator extends Node:
 				p["shoulder_r"] = Vector3(1.1, 0.0, -0.3)
 				p["elbow_l"] = Vector3(1.4, 0.0, 0.0)
 				p["elbow_r"] = Vector3(1.0, 0.0, 0.0)
-			"jump":
+			"jump", "jump_air":
 				# co gối giữa không trung, tay vung ra sau
 				p["thigh_l"] = Vector3(1.3, 0.0, 0.15)
 				p["thigh_r"] = Vector3(0.95, 0.0, -0.15)
@@ -2161,6 +2173,72 @@ class Animator extends Node:
 				p["torso"] = Vector3(0.35, 0.0, 0.0)
 				p["head"] = Vector3(-0.45, 0.0, 0.0)
 				p["hips_y"] = -0.12
+			"jump_takeoff":
+				p["thigh_l"] = Vector3(0.55, 0.0, 0.08)
+				p["thigh_r"] = Vector3(0.55, 0.0, -0.08)
+				p["knee_l"] = Vector3(-1.05, 0.0, 0.0)
+				p["knee_r"] = Vector3(-1.05, 0.0, 0.0)
+				p["foot_l"] = Vector3(0.45, 0.0, 0.0)
+				p["foot_r"] = Vector3(0.45, 0.0, 0.0)
+				p["hips_y"] = -0.14
+				p["torso"] = Vector3(-0.32, 0.0, 0.0)
+				p["shoulder_l"] = Vector3(-0.65, 0.0, 0.18)
+				p["shoulder_r"] = Vector3(-0.65, 0.0, -0.18)
+				p["elbow_l"] = Vector3(0.35, 0.0, 0.0)
+				p["elbow_r"] = Vector3(0.35, 0.0, 0.0)
+			"fall_flail":
+				var f: float = sin(ct * 11.0)
+				var g: float = sin(ct * 9.0 + 1.3)
+				p["shoulder_l"] = Vector3(2.3 + 0.45 * f, 0.0, 0.55)
+				p["shoulder_r"] = Vector3(2.3 - 0.45 * f, 0.0, -0.55)
+				p["elbow_l"] = Vector3(0.5 + 0.3 * g, 0.0, 0.0)
+				p["elbow_r"] = Vector3(0.5 - 0.3 * g, 0.0, 0.0)
+				p["thigh_l"] = Vector3(0.55 + 0.45 * g, 0.0, 0.12)
+				p["thigh_r"] = Vector3(0.55 - 0.45 * g, 0.0, -0.12)
+				p["knee_l"] = Vector3(-0.9 - 0.3 * f, 0.0, 0.0)
+				p["knee_r"] = Vector3(-0.9 + 0.3 * f, 0.0, 0.0)
+				p["torso"] = Vector3(0.12, 0.0, 0.0)
+				p["head"] = Vector3(0.25, 0.0, 0.0)
+			"land_soft":
+				var k: float = sin(clampf(ct / 0.18, 0.0, 1.0) * PI)
+				p["thigh_l"] = Vector3(0.75 * k, 0.0, 0.1)
+				p["thigh_r"] = Vector3(0.75 * k, 0.0, -0.1)
+				p["knee_l"] = Vector3(-1.25 * k, 0.0, 0.0)
+				p["knee_r"] = Vector3(-1.25 * k, 0.0, 0.0)
+				p["foot_l"] = Vector3(0.5 * k, 0.0, 0.0)
+				p["foot_r"] = Vector3(0.5 * k, 0.0, 0.0)
+				p["hips_y"] = -0.2 * k
+				p["torso"] = Vector3(-0.3 * k, 0.0, 0.0)
+				p["shoulder_l"] = Vector3(0.45 * k, 0.0, 0.3)
+				p["shoulder_r"] = Vector3(0.45 * k, 0.0, -0.3)
+			"skid":
+				p["thigh_l"] = Vector3(0.7, 0.0, 0.1)
+				p["thigh_r"] = Vector3(-0.25, 0.0, -0.1)
+				p["knee_l"] = Vector3(-0.15, 0.0, 0.0)
+				p["knee_r"] = Vector3(-0.6, 0.0, 0.0)
+				p["hips_y"] = -0.1
+				p["torso"] = Vector3(0.28, 0.0, 0.0)
+				p["shoulder_l"] = Vector3(0.9, 0.0, 0.45)
+				p["shoulder_r"] = Vector3(0.7, 0.0, -0.45)
+				p["elbow_l"] = Vector3(0.5, 0.0, 0.0)
+				p["elbow_r"] = Vector3(0.6, 0.0, 0.0)
+				p["head"] = Vector3(-0.15, 0.0, 0.0)
+			"stumble":
+				var k2: float = sin(clampf(ct / 0.8, 0.0, 1.0) * PI)
+				p["torso"] = Vector3(0.35 * k2, 0.25 * k2, 0.15 * k2)
+				p["shoulder_l"] = Vector3(1.2 * k2, 0.0, 0.8 * k2)
+				p["shoulder_r"] = Vector3(0.6 * k2, 0.0, -0.9 * k2)
+				p["thigh_r"] = Vector3(-0.35 * k2, 0.0, -0.1)
+				p["knee_r"] = Vector3(-0.3 * k2, 0.0, 0.0)
+				p["head"] = Vector3(0.2 * k2, 0.0, 0.0)
+			"getup":
+				var k3: float = 1.0 - clampf(ct / 0.9, 0.0, 1.0)
+				p["torso"] = Vector3(-0.9 * k3, 0.0, 0.0)
+				p["thigh_l"] = Vector3(1.2 * k3, 0.0, 0.1)
+				p["thigh_r"] = Vector3(1.2 * k3, 0.0, -0.1)
+				p["knee_l"] = Vector3(-1.6 * k3, 0.0, 0.0)
+				p["knee_r"] = Vector3(-1.6 * k3, 0.0, 0.0)
+				p["hips_y"] = -0.5 * k3
 		return p
 
 	func _apply(loco: Dictionary, cpose: Dictionary, w: float, dt: float) -> void:
@@ -2244,11 +2322,19 @@ class RigAnimator extends Node:
 	var _lod_t: float = 0.0
 	var _lod_skip: int = 1
 	var _frame: int = 0
+	const FIDGETS: Array[String] = ["look", "shift", "neutral"]
+	var fidget_count: int = 0           # số động tác vặt khi đứng yên đã bắt đầu (cho test)
+	var _fidget: String = ""
+	var _fidget_t: float = 8.0
+	var _fidget_time: float = 0.0
+	var _fidget_yaw: float = 0.0
+	var _fidget_sway: float = 0.0
 
 	func _ready() -> void:
 		process_priority = 10   # chạy SAU AnimationPlayer để ghi đè tư thế xương
 		_t = rng_phase
 		_blink_t = randf_range(1.5, 4.5)
+		_fidget_t = randf_range(6.0, 12.0)   # đám đông không fidget cùng lúc
 		for k: String in BONE_OF.keys():
 			var b: int = skeleton.find_bone(BONE_OF[k])
 			if b >= 0:
@@ -2284,13 +2370,22 @@ class RigAnimator extends Node:
 		clip = name
 		clip_time = 0.0
 		clip_duration = duration if duration > 0.0 else float(Animator.ONE_SHOT.get(name, -1.0))
+		_fidget_stop()   # Idle_Neutral của fidget không được giữ lại sau clip
+		if name == "getup" and player.has_animation("Death"):
+			_pack_clip_playing = "Death"
+			player.play("Death", 0.05, -GETUP_SPEED, true)
+			player.speed_scale = 1.0
+			_cur_anim = "Death"
+			if duration <= 0.0:
+				clip_duration = player.get_animation("Death").length / GETUP_SPEED
+			return
 		if PACK_CLIP.has(name) and player.has_animation(PACK_CLIP[name]):
 			var a: String = PACK_CLIP[name]
 			_pack_clip_playing = a
 			player.play(a, 0.12)
 			player.speed_scale = 1.0
 			_cur_anim = a
-			if clip_duration < 0.0 and name != "lie":
+			if clip_duration < 0.0 and not (name in HOLD_CLIPS):
 				clip_duration = player.get_animation(a).length
 		else:
 			_pack_clip_playing = ""
@@ -2331,7 +2426,7 @@ class RigAnimator extends Node:
 		var dt: float = delta * float(maxi(_lod_skip, 1))
 		if clip != "":
 			clip_time += dt
-			clip_weight = minf(1.0, clip_weight + dt * 5.0)
+			clip_weight = minf(1.0, clip_weight + dt * float(FAST_BLEND.get(clip, 5.0)))
 			if clip_duration > 0.0 and clip_time >= clip_duration:
 				stop_clip()
 				if base_clip != "":
@@ -2342,18 +2437,27 @@ class RigAnimator extends Node:
 		# --- đi/chạy từ gói; khi clip gói đang chạy thì giữ nó, khi clip tự dựng thì đứng Idle làm nền
 		var amp: float = clampf(speed / 1.4, 0.0, 1.6)
 		_phase += dt * TAU * speed / 1.5
+		var sprint: float = clampf(float(params.get("sprint", 0.0)), 0.0, 1.0)
 		if _pack_clip_playing != "":
 			if clip == "lie" and not player.is_playing():
 				pass   # giữ khung cuối (Death)
 		elif amp < 0.08:
-			_play_anim("Idle")
-			player.speed_scale = 1.0
+			_fidget_update(dt)
+			if _fidget != "neutral":
+				_play_anim("Idle")
+				player.speed_scale = 1.0
 		elif amp < 1.05 and float(params.get("run", 0.0)) < 0.3:
+			_fidget_stop()
 			_play_anim("Walk")
 			player.speed_scale = clampf(speed / 1.25, 0.6, 1.6)
 		else:
+			_fidget_stop()
 			_play_anim("Run")
-			player.speed_scale = clampf(speed / 3.2, 0.7, 1.5)
+			player.speed_scale = clampf(speed / 3.2, 0.7, 1.5) * (1.0 + 0.35 * sprint)
+		# --- lớp cộng thêm (nước rút, nghiêng hông) theo phần tư thế còn do đi/đứng quyết định; clip gói hoặc clip tự
+		# dựng đã hoà đủ thì 0 (hông về rest, xem _hips_roll)
+		var free_w: float = (1.0 - clip_weight) if _pack_clip_playing == "" else 0.0
+		_overlay(sprint * free_w, (float(params.get("lean", 0.0)) + _fidget_sway) * free_w)
 		# --- clip tự dựng: xoay xương theo bảng clip của Animator
 		if clip != "" and _pack_clip_playing == "" and clip_weight > 0.001:
 			var src: Animator = _clip_source()
@@ -2369,6 +2473,76 @@ class RigAnimator extends Node:
 	func _apply_bones(cpose: Dictionary, w: float) -> void:
 		CharacterBuilder._apply_bone_pose(skeleton, cpose, w)
 
+	## Lớp cộng thêm sau AnimationPlayer: nước rút (vung tay rộng hơn quanh tư thế nghỉ, thân đổ trước 12°), lăn hông.
+	func _overlay(sprint: float, roll: float) -> void:
+		if sprint > 0.01:
+			for k: String in ["shoulder_l", "shoulder_r", "elbow_l", "elbow_r"]:
+				if not _bone.has(k):
+					continue
+				var b: int = _bone[k]
+				var rest_q: Quaternion = (_rest_local[b] as Basis).get_rotation_quaternion()
+				var d: Quaternion = rest_q.inverse() * skeleton.get_bone_pose_rotation(b)
+				if d.w < 0.0:
+					d = -d   # cùng phép xoay, góc ngắn (< PI) để nhân góc không vòng ngược
+				var ang: float = d.get_angle()
+				if ang > 0.0001:
+					skeleton.set_bone_pose_rotation(b, rest_q * Quaternion(d.get_axis().normalized(), ang * (1.0 + 0.6 * sprint)))
+			_add_rot("torso", Vector3(-0.21 * sprint, 0.0, 0.0))
+		_hips_roll(roll)
+
+	## Xoay cộng thêm (Euler hệ nhân vật) lên tư thế hiện tại của xương khớp k. Chỉ dùng cho xương animation gói có track
+	## xoay (ghi lại mỗi khung) nên không cộng dồn; Hips không có track, xem _hips_roll.
+	func _add_rot(k: String, e: Vector3) -> void:
+		if not _bone.has(k):
+			return
+		var b: int = _bone[k]
+		var r: Basis = CharacterBuilder._char_rot_local(skeleton, b, e)
+		skeleton.set_bone_pose_rotation(b, (r * Basis(skeleton.get_bone_pose_rotation(b))).get_rotation_quaternion())
+
+	## Lăn hông (Euler z hệ nhân vật, dương = nghiêng trái), đặt TUYỆT ĐỐI so với rest mỗi khung qua _apply_bone_pose: không
+	## animation nào của gói có track xoay Hips nên cộng dồn từng khung sẽ trôi mãi. Hips chỉ mang thân trên (chân là con của
+	## Body), nên chân và giày đứng yên. Clip tự dựng có khoá "hips" (ride) áp sau, đè lên.
+	func _hips_roll(roll: float) -> void:
+		CharacterBuilder._apply_bone_pose(skeleton, {"hips": Vector3(0.0, 0.0, roll)}, 1.0)
+
+	## Động tác vặt khi đứng yên, mỗi 6..12 s: nhìn quanh (đầu ±50°), đổi chân (lăn hông), Idle_Neutral.
+	func _fidget_update(dt: float) -> void:
+		if clip != "":
+			_fidget_stop()
+			return
+		if _fidget == "":
+			_fidget_t -= dt
+			if _fidget_t <= 0.0:
+				_fidget_t = randf_range(6.0, 12.0)
+				_fidget = FIDGETS[randi() % FIDGETS.size()]
+				_fidget_time = 0.0
+				fidget_count += 1
+				if _fidget == "neutral":
+					if player.has_animation("Idle_Neutral"):
+						_cur_anim = "Idle_Neutral"
+						player.play("Idle_Neutral", 0.25)
+					else:
+						_fidget = "look"
+			return
+		_fidget_time += dt
+		match _fidget:
+			"look":
+				_fidget_yaw = sin(_fidget_time / 3.0 * TAU) * 0.92   # ≈ ±50° sau bộ lọc của _look (lệch 0.92 lần ở chu kỳ 3 s)
+				if _fidget_time >= 3.0:
+					_fidget_stop()
+			"shift":
+				_fidget_sway = 0.06 * sin(_fidget_time / 2.5 * PI)
+				if _fidget_time >= 2.5:
+					_fidget_stop()
+			"neutral":
+				if _fidget_time >= player.get_animation("Idle_Neutral").length:
+					_fidget_stop()
+
+	func _fidget_stop() -> void:
+		_fidget = ""
+		_fidget_yaw = 0.0
+		_fidget_sway = 0.0
+
 	func _look(dt: float) -> void:
 		var ty: float = 0.0
 		var tp: float = 0.0
@@ -2383,7 +2557,8 @@ class RigAnimator extends Node:
 				if absf(ty) > 1.19:
 					ty = 0.0
 					tp = 0.0
-		_look_yaw = lerp_angle(_look_yaw, ty, minf(1.0, dt * 5.0))
+		# fidget nhìn quanh đi qua cùng bộ lọc: dừng giữa chừng (bắt đầu đi) thì đầu quay về êm, không giật
+		_look_yaw = lerp_angle(_look_yaw, clampf(ty + _fidget_yaw, -1.2, 1.2), minf(1.0, dt * 5.0))
 		_look_pitch = lerpf(_look_pitch, tp, minf(1.0, dt * 5.0))
 		if head_pivot:
 			head_pivot.rotation = Vector3(_look_pitch, PI + _look_yaw, 0.0)
