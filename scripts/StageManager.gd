@@ -76,6 +76,9 @@ var transition_layer: CanvasLayer
 var transition_clock: Label
 var transition_line: Label
 var transition_sub: Label
+var transition_strip: TextureRect
+var pause_title: Label
+var hub_title: Label
 var transition_active: bool = false
 var _transition_target: int = -1
 var _transition_tween: Tween
@@ -128,6 +131,7 @@ func _ready() -> void:
 	_create_transition_ui()
 	_create_roam_return_ui()
 	get_tree().node_added.connect(_on_node_added)
+	_restyle_ui.call_deferred()
 
 ## Nút "Chơi lại" của các màn dùng get_tree().reload_current_scene() (không qua change_stage): khi một cảnh gốc mới
 ## vào cây (cùng phép thử GameFX._on_node_added) thì ẩn lớp "VỀ CAMPUS" của lượt trước. return_to_roam giữ nguyên
@@ -365,7 +369,7 @@ func _create_pause_ui() -> void:
 	dim.add_child(center)
 	var card := PanelContainer.new()
 	card.custom_minimum_size = Vector2(620, 0)
-	card.add_theme_stylebox_override("panel", GameFX.make_panel_style(Color("#F37021"), Color(0.05, 0.07, 0.12, 0.97), 12))
+	card.add_theme_stylebox_override("panel", GameFX.make_panel_style(GameFX.UI_DEFAULT, Color(0.05, 0.07, 0.12, 0.97), 12))
 	center.add_child(card)
 	var margin := MarginContainer.new()
 	for side: String in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
@@ -374,7 +378,8 @@ func _create_pause_ui() -> void:
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 10)
 	margin.add_child(vb)
-	vb.add_child(GameFX.make_label("⏸ TẠM DỪNG", 26, Color("#F37021")))
+	pause_title = GameFX.make_label("⏸ TẠM DỪNG", 26, GameFX.ui_accent())
+	vb.add_child(pause_title)
 	var sub: Label = GameFX.make_label("Thời gian trong game đã dừng. Giảng viên vẫn chưa điểm danh… tranh thủ đi.", 13, Color("#BDC3C7"))
 	vb.add_child(sub)
 
@@ -465,9 +470,10 @@ func _pause_button(text: String) -> Button:
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.add_theme_font_size_override("font_size", 17)
 	b.focus_mode = Control.FOCUS_ALL
+	# viền: classic cam (UI_DEFAULT = cam FPT ở classic), vice hồng (nút không mang thương hiệu FPT)
 	b.add_theme_stylebox_override("normal", GameFX.make_panel_style(Color(0.95, 0.44, 0.13, 0.55), Color(0.07, 0.09, 0.15, 0.9), 10))
-	b.add_theme_stylebox_override("hover", GameFX.make_panel_style(Color("#F37021"), Color(0.1, 0.12, 0.2, 0.96), 10))
-	b.add_theme_stylebox_override("focus", GameFX.make_panel_style(Color("#F37021"), Color(0.1, 0.12, 0.2, 0.96), 10))
+	b.add_theme_stylebox_override("hover", GameFX.make_panel_style(GameFX.UI_DEFAULT, Color(0.1, 0.12, 0.2, 0.96), 10))
+	b.add_theme_stylebox_override("focus", GameFX.make_panel_style(GameFX.UI_DEFAULT, Color(0.1, 0.12, 0.2, 0.96), 10))
 	b.add_theme_stylebox_override("pressed", GameFX.make_panel_style(Color("#F1C40F"), Color(0.18, 0.1, 0.03, 0.98), 10))
 	b.mouse_entered.connect(func() -> void: GameFX.play_ui("tick", -12.0, 1.4))
 	return b
@@ -478,7 +484,42 @@ func _pause_quality_text(q: int) -> String:
 	return "%s %s\n%s" % [["🟢", "🟡", "🔴"][q], ["Thấp", "Trung bình", "Cao"][q], cap[1]]
 
 func _on_art_style_changed(_style: String) -> void:
+	_restyle_ui()
+
+## Giao diện của StageManager (menu tạm dừng, thẻ chuyển cảnh, nút "Về campus", tiêu đề Campaign Hub) theo phong cách
+## hiện tại: GameFX.restyle_tree() dựng lại kiểu do helper tạo, rồi các chi tiết riêng. Gọi trì hoãn sau _ready (autoload
+## GameFX nạp settings.cfg sau StageManager nên lúc dựng chưa biết phong cách đã lưu) và mỗi lần đổi phong cách.
+func _restyle_ui() -> void:
+	for layer: CanvasLayer in [pause_layer, transition_layer, roam_return_layer]:
+		if layer:
+			GameFX.restyle_tree(layer)
+	if pause_title:
+		pause_title.add_theme_color_override("font_color", GameFX.ui_accent())
+	if hub_title:
+		hub_title.add_theme_color_override("font_color", GameFX.ui_accent())
+	_style_transition()
 	_refresh_pause_quality()
+
+## Thẻ chuyển cảnh: vice = đồng hồ chữ nghiêng vàng pastel, dải gradient pastel, tên màn hồng, nền tím than; classic =
+## như cũ (đồng hồ vàng, tên màn cam, nền xanh đen).
+func _style_transition() -> void:
+	if transition_clock == null:
+		return
+	var vice: bool = GameFX.is_vice_ui()
+	transition_clock.add_theme_color_override("font_color", Color("#FFD166") if vice else Color("#F1C40F"))
+	transition_clock.add_theme_constant_override("outline_size", 12)
+	transition_clock.add_theme_color_override("font_outline_color", GameFX.VICE_INK if vice else Color(0.02, 0.03, 0.06, 0.9))
+	if vice:
+		transition_clock.add_theme_font_override("font", GameFX.vice_font(0.9, 0.28))
+	else:
+		transition_clock.remove_theme_font_override("font")
+	transition_sub.add_theme_color_override("font_color", GameFX.ui_accent())
+	if transition_strip:
+		transition_strip.visible = vice
+	var dim: ColorRect = transition_layer.get_node_or_null("Dim") as ColorRect
+	if dim:
+		var base: Color = Color(0.04, 0.02, 0.09) if vice else Color(0.02, 0.03, 0.06)
+		dim.color = Color(base.r, base.g, base.b, dim.color.a)
 
 func _refresh_pause_quality() -> void:
 	for q: int in range(pause_quality_buttons.size()):
@@ -620,12 +661,17 @@ func _create_transition_ui() -> void:
 	center.add_child(vb)
 	transition_clock = GameFX.make_label("07:05", 96, Color("#F1C40F"))
 	transition_clock.autowrap_mode = TextServer.AUTOWRAP_OFF
-	transition_clock.add_theme_constant_override("outline_size", 12)
-	transition_clock.add_theme_color_override("font_outline_color", Color(0.02, 0.03, 0.06, 0.9))
 	vb.add_child(transition_clock)
-	transition_sub = GameFX.make_label("", 22, Color("#F37021"))
+	# dải gradient pastel giữa đồng hồ và tên màn: chỉ ở phong cách vice
+	transition_strip = GameFX.pastel_strip(6.0)
+	transition_strip.custom_minimum_size = Vector2(520.0, 6.0)
+	transition_strip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	transition_strip.set_meta("vice_only", true)
+	vb.add_child(transition_strip)
+	transition_sub = GameFX.make_label("", 22, GameFX.ui_accent())
 	transition_sub.autowrap_mode = TextServer.AUTOWRAP_OFF
 	vb.add_child(transition_sub)
+	_style_transition()
 	transition_line = GameFX.make_label("", 17, Color("#DFE6E9"))
 	transition_line.custom_minimum_size = Vector2(760, 0)
 	vb.add_child(transition_line)
@@ -689,8 +735,95 @@ func report_stage_result(stage_id: int, result: Dictionary) -> void:
 	else:
 		save_progress()
 	_refresh_rank_labels()
+	_apply_result_card(result)
 	if return_to_roam:
 		_show_roam_return()
+
+## Thẻ kết quả của màn (HUD/ModalOverlay/.../VBox ở Màn 2..Extra, HUD/AbsentOverlay/.../VBoxContainer ở Màn 1): ở
+## phong cách vice chèn lên đầu thẻ khối "ViceResult" = tiêu đề nghiêng lớn (result_banner_title), dải gradient pastel,
+## dòng "+N Cóc Vàng" khi thắng; nền phủ + panel thẻ sang giao diện vice. Báo kết quả lần nữa thì thay khối cũ (không
+## chồng); classic chỉ gỡ khối cũ nếu có. Màn chơi gọi report_stage_result ngay trước khi hiện thẻ nên khối có sẵn khi
+## thẻ mờ dần lên.
+func _apply_result_card(result: Dictionary) -> void:
+	var vb: VBoxContainer = _result_card_box()
+	if vb == null:
+		return
+	var old: Node = vb.get_node_or_null("ViceResult")
+	if old:
+		vb.remove_child(old)
+		old.queue_free()
+	if not GameFX.is_vice_ui():
+		return
+	var n: Node = vb.get_parent()
+	while n and not (n is CanvasLayer):
+		if n is PanelContainer:
+			(n as PanelContainer).add_theme_stylebox_override("panel", GameFX.make_panel_style(GameFX.UI_DEFAULT, Color(0.07, 0.04, 0.14, 0.97)))
+		elif n is ColorRect:
+			var cr: ColorRect = n
+			cr.color = Color(0.05, 0.02, 0.1, maxf(cr.color.a, 0.9))
+			# nền phủ lên trên mọi panel HUD thêm bằng code sau .tscn (bảng thưởng / chuỗi sát nút của Màn 1)
+			if cr.get_parent() is CanvasLayer:
+				cr.get_parent().move_child(cr, cr.get_parent().get_child_count() - 1)
+		n = n.get_parent()
+	# tiêu đề riêng của màn: màn tô bằng modulate (đỏ / xanh) nhân với màu chữ .tscn (xanh lá) -> chữ trắng để màu
+	# modulate hiện đúng (đỏ x xanh lá ra màu ô liu tối khó đọc)
+	var stage_title: Label = vb.get_node_or_null("TitleLabel") as Label
+	if stage_title:
+		stage_title.add_theme_color_override("font_color", Color.WHITE)
+	var won: bool = result.get("result", "") == "win"
+	var caught: bool = not won and bool(result.get("caught", false))
+	var box := VBoxContainer.new()
+	box.name = "ViceResult"
+	box.add_theme_constant_override("separation", 6)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var title := Label.new()
+	title.name = "BannerTitle"
+	title.text = result_banner_title(result)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_override("font", GameFX.vice_font(0.9, 0.28))
+	title.add_theme_font_size_override("font_size", 56)
+	title.add_theme_color_override("font_color", GameFX.VICE_PINK if won else (GameFX.VICE_CYAN if caught else Color("#FF5F7E")))
+	title.add_theme_color_override("font_outline_color", GameFX.VICE_INK)
+	title.add_theme_constant_override("outline_size", 10)
+	title.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.55))
+	title.add_theme_constant_override("shadow_offset_x", 4)
+	title.add_theme_constant_override("shadow_offset_y", 4)
+	box.add_child(title)
+	box.add_child(GameFX.pastel_strip(6.0))
+	var coins: int = int(result.get("coins", 0))
+	if coins > 0:
+		var cl := Label.new()
+		cl.name = "BannerCoins"
+		cl.text = coins_text(coins)
+		cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cl.add_theme_font_override("font", GameFX.vice_font(0.6, 0.22))
+		cl.add_theme_font_size_override("font_size", 24)
+		cl.add_theme_color_override("font_color", Color("#9BEA7A"))
+		cl.add_theme_color_override("font_outline_color", Color("#0B1A06"))
+		cl.add_theme_constant_override("outline_size", 6)
+		box.add_child(cl)
+	vb.add_child(box)
+	vb.move_child(box, 0)
+
+## VBox của thẻ kết quả trong cảnh đang chơi (current_scene; test --script thêm màn thẳng vào root nên dò cả các con
+## của root, mới nhất trước).
+func _result_card_box() -> VBoxContainer:
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return null
+	var candidates: Array[Node] = []
+	if tree.current_scene:
+		candidates.append(tree.current_scene)
+	for i: int in range(tree.root.get_child_count() - 1, -1, -1):
+		var ch: Node = tree.root.get_child(i)
+		if ch != self and ch != tree.current_scene and ch.name != "GameFX":
+			candidates.append(ch)
+	for cand: Node in candidates:
+		for path: String in ["HUD/ModalOverlay/Center/Card/Margin/VBox", "HUD/AbsentOverlay/CenterContainer/VBoxContainer"]:
+			var vb: VBoxContainer = cand.get_node_or_null(path) as VBoxContainer
+			if vb:
+				return vb
+	return null
 
 ## Tiêu đề lớn của thẻ kết quả (phong cách vice): thắng "QUA MÔN!", thua vì bị bắt "BỊ BẮT", thua "TRƯỢT MÔN".
 static func result_banner_title(result: Dictionary) -> String:
@@ -761,8 +894,9 @@ func _create_stage_select_ui() -> void:
 	title.text = "📋 FPTU STUDENT SIMULATOR - CHỌN MÀN CHƠI (CAMPAIGN HUB)"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size", 22)
-	title.add_theme_color_override("font_color", Color("#F37021"))
+	title.add_theme_color_override("font_color", GameFX.ui_accent())
 	header_hbox.add_child(title)
+	hub_title = title
 
 	var quick_close := Button.new()
 	quick_close.text = " ✖ [ESC] "
