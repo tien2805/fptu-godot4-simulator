@@ -45,7 +45,9 @@ const GROUND_MESH_Y: float = -0.05
 const GROUND_COLLIDER_Y: float = 0.0
 const BANK_WALL_H: float = 1.6           # tường bờ kênh vô hình: từ dưới mặt nước lên 1,6 m trên mặt đất
 const BANK_GAP_DECK_MAX: float = 1.65    # tường bờ chỉ khoét dưới đoạn ribbon có mặt thấp hơn đỉnh tường (+5 cm)
-const DECK_GUARD_MAX_H: float = 1.5      # đoạn ribbon trên mặt nước thấp hơn ROAD_Y + 1,5 m: lan can vô hình 2 mép
+# đoạn ribbon trên mặt nước thấp hơn ROAD_Y + DECK_GUARD_MAX_H: lan can vô hình 2 mép. Suy từ BANK_GAP_DECK_MAX để
+# mọi đoạn được khoét khe tường bờ đều có lan can (không còn đoạn có khe mà hở mép).
+const DECK_GUARD_MAX_H: float = BANK_GAP_DECK_MAX - MapBuilder.ROAD_Y
 const DECK_GUARD_ABOVE: float = 1.6      # lan can vô hình cao tới mặt đường + 1,6 m (cú nhảy ~0,95 m không qua được)
 const WALL_BOTTOM_BELOW_WATER: float = 0.3
 const ROAD_HASH_CELL: float = 64.0

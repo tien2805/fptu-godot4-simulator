@@ -69,6 +69,7 @@ var deck_i: int = 0
 var deck_min_y: float = 0.0
 var jump_y0: float = 0.0
 var deck_jumped: bool = false
+var jump_peak_y: float = 0.0     # đỉnh y của người chơi trong cú nhảy đang kiểm (nhảy thật phải lên > 0,5 m)
 var deck_dry_spot := Vector3.ZERO   # giữa mặt đường qua cống
 var deck_wet_spot := Vector3.ZERO   # dưới kênh, cạnh đường qua cống
 var rescues0: int = 0
@@ -322,13 +323,17 @@ func _process(_delta: float) -> bool:
 				if not _check(moved.normalized().dot(-spawn.basis.z) > 0.8, "W moves along the camera/spawn forward"):
 					return true
 				jump_y0 = player.global_position.y
+				jump_peak_y = jump_y0
 				player.set("jump_override", true)
 				mark = pf
 				phase = 100
 		100:
+			jump_peak_y = maxf(jump_peak_y, player.global_position.y)
 			if pf >= mark + 90:
 				var st: String = String(player.get("move_state"))
-				print("  jump at the spawn: state %s, y %.2f (start %.2f)" % [st, player.global_position.y, jump_y0])
+				print("  jump at the spawn: state %s, y %.2f (start %.2f, peak %.2f)" % [st, player.global_position.y, jump_y0, jump_peak_y])
+				if not _check(jump_peak_y > jump_y0 + 0.5, "a jump at the spawn really leaves the ground (peak %.2f, start %.2f)" % [jump_peak_y, jump_y0]):
+					return true
 				if not _check(st == "GROUND" and absf(player.global_position.y - jump_y0) < 0.3, "a jump at the spawn lands back on the ground state within 1.5 s"):
 					return true
 				if not _check(roam.get("stamina_bar") != null, "FreeRoam exposes a stamina bar"):
@@ -540,6 +545,9 @@ func _process(_delta: float) -> bool:
 				if lat > float(dw[2]) - 1.2:
 					player.set("jump_override", true)
 					deck_jumped = true
+					jump_peak_y = player.global_position.y
+			if deck_jumped:
+				jump_peak_y = maxf(jump_peak_y, player.global_position.y)
 			deck_min_y = minf(deck_min_y, player.global_position.y)
 			if pf >= mark + DECK_WALK_FRAMES and player.get("input_override") != null:
 				_release_input()
@@ -784,6 +792,10 @@ func _phase_map_hud_refreshes() -> bool:
 	# Giữ nhịp HUD của FreeRoam (0,2 s) đứng yên tới lần đo ở frame sau: headless chạy ~145 fps nên đôi khi một nhịp
 	# HUD rơi đúng vào khoảng đo và vẽ lớp động thêm lần nữa (test chập chờn). Như vậy chỉ lần vẽ cưỡng bức được đếm.
 	roam.set("_hud_timer", 1.0e9)
+	# đổi tên biến trong FreeRoam thì set() lặng lẽ không làm gì và test chập chờn trở lại: kiểm luôn
+	var hud_t: Variant = roam.get("_hud_timer")
+	if not _check(hud_t != null and float(hud_t) > 1e8,"FreeRoam._hud_timer exists and holds the HUD tick for the forced-redraw window"):
+		return false
 	map_d1 = int(mo.get("dynamic_draws"))
 	map_t0 = Time.get_ticks_usec()
 	dl.queue_redraw()
@@ -1035,6 +1047,12 @@ func _finish_deck_walk() -> bool:
 	var hw: float = w[2]
 	var lateral: float = (_xz(p) - (w[3] as Vector2)).dot(Vector2(dir.x, dir.z))
 	print("  deck %s: min y %.2f, end %s, %.2f m sideways (half width %.1f)" % [String(w[4]), deck_min_y, str(p.snappedf(0.01)), lateral, hw])
+	if w.size() > 5 and bool(w[5]):
+		print("    jump peak %.2f (deck %.2f)" % [jump_peak_y, (w[0] as Vector3).y - 0.05])
+		if not _check(deck_jumped, "deck %s: the walk asked for a jump but none was triggered" % String(w[4])):
+			return false
+		if not _check(jump_peak_y > (w[0] as Vector3).y - 0.05 + 0.5, "deck %s: the jump really left the deck (peak %.2f)" % [String(w[4]), jump_peak_y]):
+			return false
 	if not _check(deck_min_y > -0.15 and p.y > -0.15, "deck %s: running sideways off a low deck never drops the player into the canal (min y %.2f)" % [String(w[4]), deck_min_y]):
 		return false
 	# cú nhảy không được đưa người chơi lên đứng trên đỉnh lan can vô hình (từ đó bước ra ngoài là rơi xuống kênh)
