@@ -1,9 +1,9 @@
 # File: res://scripts/characters/PS2Head.gd
 # Đầu người kiểu PS2 (phong cách Vice City): khối ít mặt (~330 tam giác) dựng từ bảng vòng RINGS (sọ, gờ mày, gò má, hàm,
 # cằm) + mũi hình nêm + tai phẳng; mặt vẽ Pillow chiếu phẳng từ phía trước (atlas 4 x 2 ô biểu cảm; đổi ô bằng uv1_offset của
-# vật liệu riêng mỗi nhân vật), tóc là vỏ ít mặt theo kiểu tóc. Cùng hệ toạ độ với đầu tự dựng cũ của CharacterBuilder (pivot
-# "Head" ở chân cằm, mặt nhìn -Z, tâm đầu ~y 0.12); mũ lưỡi trai / mũ bảo hiểm / mũ đầu bếp của bộ dựng cũ (cỡ cho đầu rộng hơn)
-# được thu vào đầu này bằng nút "HatFit"; kính vẽ riêng cho đầu này.
+# vật liệu riêng mỗi nhân vật), tóc là vỏ ít mặt theo kiểu tóc (cả khi đội mũ). Cùng hệ toạ độ với đầu tự dựng cũ của
+# CharacterBuilder (pivot "Head" ở chân cằm, mặt nhìn -Z, tâm đầu ~y 0.12). Mũ trong nút "HatFit": mũ lưỡi trai / mũ đầu bếp dựng
+# cho đầu này; mũ bảo hiểm của bộ dựng cũ (cỡ cho đầu rộng hơn) thu vào đầu này, tấm che + quai dựng lại; kính vẽ riêng.
 # Không dùng autoload ở đây (class_name biên dịch trước autoload khi chạy test --script).
 class_name PS2Head
 extends RefCounted
@@ -44,16 +44,35 @@ const SMOOTH_EAR_IN: int = 4
 const WELD: float = 0.000001
 ## Bước lượng tử hoá w / jaw / nose trong build(): nhân vật gần giống nhau dùng chung một lưới (cache có giới hạn ~200 lưới đầu).
 const K_STEP: float = 0.04
-## Nút "HatFit": mũ lưỡi trai / mũ đầu bếp / mũ bảo hiểm của bộ dựng cũ được cỡ cho đầu tròn bán kính 0.105 m nên thu vào đầu
-## PS2 này (hẹp hơn theo x, hơi sâu hơn theo z). Mũ lưỡi trai + mũ đầu bếp: phần tóc cũ dưới mũ (vòm + gáy) phải còn cách sọ >= 2 mm
-## ở mọi điểm (số đo bằng probe: (0.82, 0.95, 0.86) làm vòm tóc / vành mũ lún vào sọ tới 14 mm nên z-fight), vì vậy cao 1.0, sâu 1.05.
-const HAT_FIT_SCALE: Vector3 = Vector3(0.82, 1.0, 1.05)
-## Mũ bảo hiểm: vòm cách sọ ~1.4 cm hai bên (đỉnh vòm y 0.258, đỉnh đầu 0.235), vành y 0.154..0.173 và tấm che y 0.163..0.170 nằm
-## trên mắt (mắt y 0.116..0.134) và trên lông mày thường; nâng 0.08 để vành tựa lên trên chân tóc. Sâu 1.0 để vỏ tóc "short" dưới mũ
-## lọt hẳn trong vành + vòm (probe: giá trị ellipsoid tệ nhất 0.925 < 1; với sâu 0.9 là 1.057 nên tóc đâm xuyên mũ). Quai được dựng lại
-## trong hệ đầu (xem _build_helmet_straps) vì quai của bộ dựng cũ không thể chạm tới cằm.
+## Nút "HatFit" chứa mũ. Mũ bảo hiểm: mũ của bộ dựng cũ (cỡ cho đầu tròn bán kính 0.105 m) thu vào đầu PS2: vòm cách sọ ~1.4 cm
+## hai bên (đỉnh vòm y 0.258, đỉnh đầu 0.235), vành y 0.154..0.173 nằm trên mắt (mắt y 0.116..0.134) và trên lông mày thường; nâng
+## 0.08 để vành tựa lên trên chân tóc. Sâu 1.0 để phần tóc trong mũ (vỏ phồng như tóc ngắn, xem COVER_Y) lọt hẳn trong vành + vòm
+## (probe: giá trị ellipsoid tệ nhất 0.925 < 1; với sâu 0.9 là 1.057 nên tóc đâm xuyên mũ). Tấm che phía trước và quai được dựng lại
+## trong hệ đầu (_build_helmet_visor, _build_helmet_straps): tấm che cũ là tấm phẳng 8 cm, quai cũ không thể chạm tới cằm.
 const HELMET_FIT_SCALE: Vector3 = Vector3(0.74, 0.64, 1.0)
 const HELMET_LIFT: float = 0.08
+## Mũ lưỡi trai (bảo vệ / công an) và mũ đầu bếp dựng thẳng cho đầu PS2 (HatFit không co giãn): vành là trụ elip tâm (0, HAT_Z)
+## từ HAT_BOTTOM (ngay trên gờ mày 0.140) lên, ôm phần tóc trong mũ (vỏ phồng như tóc ngắn: ngang 0.083, sâu 0.112 ở vòng 0.160;
+## sọ là siêu elip n 2.6 nên bốn góc chéo của vỏ nhô ra ngoài elip cùng bán trục: vành rộng hơn ~7 % và lùi tâm 4 mm về sau vì
+## sọ sâu phía sau hơn; đo: đỉnh tóc xa nhất ở góc thái dương / chéo sau đạt 0.97 bán kính vành). Bán trục ngang nhân bề ngang đầu w
+## như vỏ tóc. Tóc lộ ra hai bên tai và sau gáy dưới vành. [bán trục ngang, chiều cao, bán trục sâu] của vành; chóp mũ lưỡi trai là
+## nửa elip cao CAP_CROWN_H (đỉnh y 0.257, trên đỉnh vỏ tóc 0.246); mũ đầu bếp: miệng vành loe CHEF_FLARE lần đáy, trên là bánh
+## phồng (bán trục CHEF_PUFF) rộng hơn miệng vành. Bản cũ đặt ống mũ đầu bếp từ y 0.23 (ngồi trên đỉnh đầu 0.235, như bay lơ lửng).
+const HAT_BOTTOM: float = 0.150
+const HAT_Z: float = 0.004
+const CAP_BAND: Vector3 = Vector3(0.094, 0.035, 0.125)
+const CAP_CROWN_H: float = 0.072
+const CHEF_BAND: Vector3 = Vector3(0.094, 0.125, 0.125)
+const CHEF_FLARE: float = 1.08
+const CHEF_PUFF: Vector3 = Vector3(0.112, 0.048, 0.138)
+## Tóc dưới mũ / mũ bảo hiểm: vòng từ COVER_Y trở lên phồng như tóc ngắn (nằm gọn trong mũ), vòng thấp hơn giữ độ phồng của kiểu
+## tóc (bob / dài lộ ra dưới vành, che tai).
+const COVER_Y: float = 0.16
+## Rèm tóc dài: buông từ vòng CURTAIN_RING (y 0.050, mép dưới vỏ tóc hai bên, ngang hàm) ở hai bên + sau gáy (|θ| >= 70°), loe ra
+## CURTAIN_FLARE ở mép dưới; mép dưới y 0.0 ở hai bên (cằm, trên đỉnh vai), -0.08 sau gáy (ngang vai, còn cách lưng trên ~1.5 cm
+## ở tư thế nghỉ). Thay hai tấm phẳng cũ (tấm sau gáy dài tới -0.20, nhìn từ sau / bên như tấm ván).
+const CURTAIN_RING: int = 2
+const CURTAIN_FLARE: float = 1.12
 const HAIR_STYLES: Array[String] = ["short", "side_part", "spiky", "undercut", "bob", "ponytail", "long", "bun"]
 const HAIR_PUFF: float = 1.07
 ## Bob / tóc dài phồng thêm 10 % so với các kiểu khác: đủ để tai (nhô ra tới x 0.087) nằm lọt dưới vỏ tóc thay vì đâm xuyên.
@@ -62,9 +81,10 @@ const LONG_HAIR_VOLUME: float = 1.10
 ## mép trước và hai bên (xem _hairline). Một dải của vỏ tóc chỉ được vẽ khi vòng DƯỚI của dải đó cao hơn hoặc bằng giá trị này
 ## (xem hair_mesh), nên mép thực tế bị làm tròn LÊN tới vòng kế tiếp trong RINGS (vd. trước 0.180 -> vòng 0.183, hai bên 0.125 ->
 ## vòng 0.140, thái dương 0.1525 -> vòng 0.160): muốn mép tóc ở một vòng thì đặt giá trị trong khoảng (vòng liền dưới, vòng đó].
+## Undercut: mép như tóc ngắn, phần đỉnh phồng hơn (_ring_puff); bản cũ [0.176, 0.172, 0.150] để hai bên + sau đầu trọc.
 const HAIRLINES: Dictionary = {
 	"short": [0.180, 0.125, 0.040], "side_part": [0.172, 0.125, 0.040], "spiky": [0.182, 0.130, 0.045],
-	"undercut": [0.176, 0.172, 0.150], "bob": [0.158, 0.030, 0.020], "ponytail": [0.176, 0.120, 0.060],
+	"undercut": [0.176, 0.125, 0.040], "bob": [0.158, 0.030, 0.020], "ponytail": [0.176, 0.120, 0.060],
 	"long": [0.158, 0.030, 0.010], "bun": [0.178, 0.122, 0.070],
 }
 ## Phần rẽ ngôi của "side_part": nửa trái hạ mép trước 2 cm (0.172 -> 0.152 rơi vào vòng 0.160 thay vì 0.183).
@@ -102,30 +122,36 @@ static func build(parent: Node3D, pos: Vector3, opts: Dictionary, rig: Dictionar
 	rig["face_mesh"] = mi
 	var outfit: Dictionary = opts.get("outfit", {})
 	var hair_idx: int = clampi(int(opts.get("hair_color", 0)), 0, CharacterBuilder.HAIR_COLORS.size() - 1)
-	var hat: bool = bool(outfit.get("chef_hat", false)) or bool(outfit.get("cap", false))
+	var chef: bool = bool(outfit.get("chef_hat", false))
+	var cap: bool = bool(outfit.get("cap", false))
 	var helmet: bool = bool(outfit.get("helmet", false))
-	var fit: Node3D = null
-	if hat or helmet:
-		# mũ của bộ dựng cũ (cỡ cho đầu rộng hơn) nằm trong HatFit để thu vào đầu PS2; mũ bảo hiểm nâng thêm để vành trên mắt
-		fit = Node3D.new()
-		fit.name = "HatFit"
-		fit.scale = HELMET_FIT_SCALE if helmet else HAT_FIT_SCALE
-		fit.position = Vector3(0.0, HELMET_LIFT if helmet else 0.0, 0.0)
-		head.add_child(fit)
-	if hat:
-		CharacterBuilder._build_hair(fit, "short", hair_idx, outfit, width, rng)   # mũ + tóc ngắn của bộ dựng cũ
-	else:
-		var hm := MeshInstance3D.new()
-		hm.name = "Hair"
-		# dưới mũ bảo hiểm tóc bị ép phẳng: vỏ "short" lọt hẳn trong vòm; bob / dài / undercut phồng hơn nên đâm xuyên mũ, gai / búi / đuôi cũng vậy
-		hm.mesh = hair_mesh("short" if helmet else String(opts.get("hair_style", "short")), k)
-		hm.material_override = hair_material(hair_idx)
-		head.add_child(hm)
+	var covered: bool = chef or cap or helmet
+	# tóc luôn là vỏ PS2; dưới mũ / mũ bảo hiểm: phần trong mũ ép như tóc ngắn, tóc dài / bob / đuôi ngựa lộ ra dưới vành (xem
+	# covered_style, hair_mesh); gai / búi / undercut thành tóc ngắn
+	var style: String = String(opts.get("hair_style", "short"))
+	var hm := MeshInstance3D.new()
+	hm.name = "Hair"
+	hm.mesh = hair_mesh(covered_style(style) if covered else style, k, true, covered)
+	hm.material_override = hair_material(hair_idx)
+	head.add_child(hm)
 	if bool(outfit.get("glasses", false)):
 		_build_glasses(head, k)
-	if helmet:
-		CharacterBuilder._build_helmet(fit, outfit.get("helmet_color", Color("#F1C40F")), width)
-		_build_helmet_straps(head, fit, k)
+	if covered:
+		var fit := Node3D.new()
+		fit.name = "HatFit"
+		head.add_child(fit)
+		if helmet:
+			# mũ bảo hiểm của bộ dựng cũ (cỡ cho đầu tròn rộng hơn) thu vào đầu PS2 và nâng để vành ở trên mắt
+			fit.scale = HELMET_FIT_SCALE
+			fit.position = Vector3(0.0, HELMET_LIFT, 0.0)
+			var hc: Color = outfit.get("helmet_color", Color("#F1C40F"))
+			CharacterBuilder._build_helmet(fit, hc, width)
+			_build_helmet_visor(fit, hc, width)
+			_build_helmet_straps(head, fit, k)
+		elif cap:
+			_build_cap(fit, outfit.get("cap_color", Color("#1C2A4A")), float(k["w"]))
+		else:
+			_build_chef_hat(fit, float(k["w"]))
 	var top := Node3D.new()
 	top.name = "HeadTop"
 	top.position = Vector3(0.0, 0.27, 0.0)
@@ -250,36 +276,37 @@ static func head_mesh(k: Dictionary) -> ArrayMesh:
 # ===========================================================================
 # TÓC
 # ===========================================================================
-## with_extras = false chỉ trả VỎ tóc (và tấm tóc dài), bỏ gai / búi / đuôi ngựa (các phần đó cố ý cắm vào đầu); test dùng để
-## kiểm tra vỏ không chìm vào hoặc đâm xuyên da đầu. Khoá cache có with_extras.
-static func hair_mesh(style: String, k: Dictionary, with_extras: bool = true) -> ArrayMesh:
-	var key: String = "hair_%s_%.2f_%.2f_%d" % [style, float(k.get("w", 1.0)), float(k.get("jaw", 1.0)), 1 if with_extras else 0]
+## with_extras = false chỉ trả VỎ tóc (và rèm tóc dài), bỏ gai / búi / đuôi ngựa (các phần đó cố ý cắm vào đầu); test dùng để
+## kiểm tra vỏ không chìm vào hoặc đâm xuyên da đầu. covered = dưới mũ / mũ bảo hiểm (độ phồng theo vòng, xem _ring_puff; đuôi ngựa
+## mọc thấp hơn, dưới vành). Khoá cache có with_extras và covered.
+static func hair_mesh(style: String, k: Dictionary, with_extras: bool = true, covered: bool = false) -> ArrayMesh:
+	var key: String = "hair_%s_%.2f_%.2f_%d%d" % [style, float(k.get("w", 1.0)), float(k.get("jaw", 1.0)), 1 if with_extras else 0, 1 if covered else 0]
 	if _mesh_cache.has(key):
 		return _mesh_cache[key]
 	var lines: Array = HAIRLINES.get(style, HAIRLINES["short"])
-	var puff: float = HAIR_PUFF * (LONG_HAIR_VOLUME if style in ["bob", "long"] else 1.0)
-	var lift: float = 0.006 + (0.012 if style == "undercut" else 0.0)
-	var w: float = float(k.get("w", 1.0))
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var step: float = TAU / float(SEGMENTS)
 	for i: int in range(RINGS.size() - 1):
 		var y0: float = float(RINGS[i][0])
+		var p0: Vector2 = _ring_puff(style, y0, covered)
+		var p1: Vector2 = _ring_puff(style, float(RINGS[i + 1][0]), covered)
 		for j: int in range(SEGMENTS):
 			var th1: float = -PI + float(j) * step
 			var th2: float = th1 + step
 			if y0 < _hairline(style, lines, th1 + step * 0.5):
 				continue
-			var a: Vector3 = _puffed(_ring_point(RINGS[i], th1, k), puff, lift)
-			var b: Vector3 = _puffed(_ring_point(RINGS[i], th2, k), puff, lift)
-			var c: Vector3 = _puffed(_ring_point(RINGS[i + 1], th1, k), puff, lift)
-			var d: Vector3 = _puffed(_ring_point(RINGS[i + 1], th2, k), puff, lift)
+			var a: Vector3 = _puffed(_ring_point(RINGS[i], th1, k), p0.x, p0.y)
+			var b: Vector3 = _puffed(_ring_point(RINGS[i], th2, k), p0.x, p0.y)
+			var c: Vector3 = _puffed(_ring_point(RINGS[i + 1], th1, k), p1.x, p1.y)
+			var d: Vector3 = _puffed(_ring_point(RINGS[i + 1], th2, k), p1.x, p1.y)
 			_quad(st, a, b, c, d, _huv(th1, a.y), _huv(th2, b.y), _huv(th1, c.y), _huv(th2, d.y), _outward((a + b + c + d) * 0.25))
 	match style:
 		"spiky":
+			var ps: Vector2 = _ring_puff(style, float(RINGS[SPIKE_RING][0]), covered)
 			for s: int in range(7 if with_extras else 0):
 				var th: float = -0.9 + float(s) * 0.3
-				var base: Vector3 = _puffed(_ring_point(RINGS[SPIKE_RING], th, k), puff, lift)
+				var base: Vector3 = _puffed(_ring_point(RINGS[SPIKE_RING], th, k), ps.x, ps.y)
 				var out: Vector3 = _outward(base)
 				var tip: Vector3 = base + out * 0.04 + Vector3(0.0, 0.025, 0.0)
 				var side := Vector3(cos(th), 0.0, sin(th)) * 0.014
@@ -295,18 +322,51 @@ static func hair_mesh(style: String, k: Dictionary, with_extras: bool = true) ->
 				_add_blob(st, Vector3(0.0, 0.205, 0.085), 0.042)
 		"ponytail":
 			if with_extras:
-				_add_tube(st, Vector3(0.0, 0.15, 0.112), Vector3(0.0, -0.07, 0.17), 0.03, 0.016, 6)
+				# dưới mũ: đuôi mọc từ sau gáy ngay dưới vành (vòng đầu ống thấp hơn đáy vành 0.154)
+				_add_tube(st, Vector3(0.0, 0.12 if covered else 0.15, 0.112), Vector3(0.0, -0.07, 0.17), 0.03, 0.016, 6)
 		"long":
-			# tấm sau gáy + hai tấm hai bên (rộng theo w của đầu); thuộc hình dáng kiểu tóc nên giữ cả khi with_extras = false
-			_quad(st, Vector3(-0.088 * w, -0.20, 0.10), Vector3(0.088 * w, -0.20, 0.10), Vector3(-0.092 * w, 0.07, 0.112), Vector3(0.092 * w, 0.07, 0.112),
-				Vector2(0.0, 0.0), Vector2(1.0, 0.0), Vector2(0.0, 2.7), Vector2(1.0, 2.7), Vector3(0.0, 0.0, 1.0))
-			for sx: float in [-1.0, 1.0]:
-				_quad(st, Vector3(sx * 0.088 * w, -0.02, -0.03), Vector3(sx * 0.090 * w, -0.02, 0.07), Vector3(sx * 0.086 * w, 0.15, -0.04), Vector3(sx * 0.090 * w, 0.15, 0.08),
-					Vector2(0.0, 0.0), Vector2(1.0, 0.0), Vector2(0.0, 1.7), Vector2(1.0, 1.7), Vector3(sx, 0.0, 0.0))
+			# rèm tóc thay hai tấm phẳng cũ (nhìn từ sau / bên là tấm ván); thuộc hình dáng kiểu tóc nên giữ cả khi with_extras = false
+			_add_curtain(st, k, _ring_puff(style, float(RINGS[CURTAIN_RING][0]), covered))
 	st.generate_normals()
 	var mesh: ArrayMesh = st.commit()
 	_mesh_cache[key] = mesh
 	return mesh
+
+
+## Kiểu tóc khi đội mũ / mũ bảo hiểm: bob, dài, đuôi ngựa giữ (lộ ra dưới vành); gai, búi, undercut và các kiểu ngắn thành "short"
+## (gai / búi / phần đỉnh phồng sẽ đâm xuyên mũ).
+static func covered_style(style: String) -> String:
+	return style if style in ["bob", "long", "ponytail"] else "short"
+
+
+## Độ phồng (x) và độ nâng (y) của vòng tóc ở độ cao y: bob / dài phồng thêm LONG_HAIR_VOLUME (tai lọt dưới vỏ), trừ phần trong mũ
+## (covered, y >= COVER_Y) phồng như tóc ngắn để nằm gọn trong mũ; undercut nâng phần đỉnh (y >= 0.18) thêm 1.2 cm, hai bên / gáy
+## sát như tóc ngắn (cũ: hai bên / gáy trọc).
+static func _ring_puff(style: String, y: float, covered: bool) -> Vector2:
+	var vol: bool = style in ["bob", "long"] and not (covered and y >= COVER_Y)
+	return Vector2(HAIR_PUFF * (LONG_HAIR_VOLUME if vol else 1.0), 0.006 + (0.012 if style == "undercut" and y >= 0.18 else 0.0))
+
+
+## Rèm tóc dài (xem CURTAIN_RING): mỗi ô của vòng y 0.050 ở hai bên + sau gáy buông thẳng xuống, loe CURTAIN_FLARE ở mép dưới;
+## mép trên trùng mép dưới vỏ tóc hai bên (vỏ sau gáy thấp hơn nằm lọt bên trong rèm). Hai mặt (vật liệu tóc không cull).
+static func _add_curtain(st: SurfaceTool, k: Dictionary, pl: Vector2) -> void:
+	var step: float = TAU / float(SEGMENTS)
+	var ring: Array = RINGS[CURTAIN_RING]
+	for j: int in range(SEGMENTS):
+		var th1: float = -PI + float(j) * step
+		var th2: float = th1 + step
+		if absf(rad_to_deg(th1 + step * 0.5)) < 70.0:
+			continue
+		var a: Vector3 = _puffed(_ring_point(ring, th1, k), pl.x, pl.y)
+		var b: Vector3 = _puffed(_ring_point(ring, th2, k), pl.x, pl.y)
+		var a2 := Vector3(a.x * CURTAIN_FLARE, _curtain_bottom(th1), a.z * CURTAIN_FLARE)
+		var b2 := Vector3(b.x * CURTAIN_FLARE, _curtain_bottom(th2), b.z * CURTAIN_FLARE)
+		_quad(st, a2, b2, a, b, _huv(th1, a2.y), _huv(th2, b2.y), _huv(th1, a.y), _huv(th2, b.y), Vector3(a.x + b.x, 0.0, a.z + b.z))
+
+
+## Mép dưới rèm tóc dài ở góc th: 0.0 ở hai bên (ngang cằm), xuống -0.08 sau gáy.
+static func _curtain_bottom(th: float) -> float:
+	return lerpf(0.0, -0.08, smoothstep(80.0, 150.0, absf(rad_to_deg(th))))
 
 
 ## Mép tóc (y) của dải ở góc giữa th: trước (|θ| < 50°), thái dương (50..70°: nửa đường giữa mép trước và mép hai bên, để mép
@@ -355,19 +415,21 @@ static func _build_glasses(head: Node3D, k: Dictionary) -> void:
 	CharacterBuilder._box(head, Vector3(0.0, y + 0.006, z), Vector3(0.008, 0.003, 0.004), gm)
 
 
-## Thanh vuông (cạnh thick) nối p0 -> p1 theo hướng bất kỳ: gọng kính và quai mũ bảo hiểm.
-static func _bar(parent: Node3D, p0: Vector3, p1: Vector3, mat: Material, thick: float = 0.003) -> void:
+## Thanh hộp nối p0 -> p1 theo hướng bất kỳ, chiều dài theo trục Z cục bộ: gọng kính (vuông, cạnh thick); quai mũ bảo hiểm dẹt
+## (width > 0: bản rộng width, dày thick, mặt rộng quay về phía out).
+static func _bar(parent: Node3D, p0: Vector3, p1: Vector3, mat: Material, thick: float = 0.003, width: float = 0.0, out: Vector3 = Vector3.ZERO) -> void:
 	var d: Vector3 = p1 - p0
 	var dir: Vector3 = d.normalized()
-	var up: Vector3 = Vector3.UP if absf(dir.y) < 0.99 else Vector3.RIGHT
-	CharacterBuilder._box(parent, (p0 + p1) * 0.5, Vector3(thick, thick, d.length()), mat, Basis.looking_at(dir, up).get_euler())
+	var up: Vector3 = out if out != Vector3.ZERO else (Vector3.UP if absf(dir.y) < 0.99 else Vector3.RIGHT)
+	CharacterBuilder._box(parent, (p0 + p1) * 0.5, Vector3(width if width > 0.0 else thick, thick, d.length()), mat, Basis.looking_at(dir, up).get_euler())
 
 
 # ===========================================================================
-# QUAI MŨ BẢO HIỂM
+# MŨ BẢO HIỂM: QUAI + TẤM CHE
 # ===========================================================================
 ## Bỏ quai của bộ dựng cũ (hộp cao 0.12 nghiêng ra ngoài, treo lơ lửng cạnh má, không bao giờ chạm cằm) và dựng quai mới trong hệ
-## đầu: từ vành xuống má (ngoài gò má 3..6 mm), vòng góc hàm, xuống cằm; một dây luồn dưới cằm nối hai bên.
+## đầu: từ vành xuống má (ngoài gò má 3..6 mm), vòng góc hàm, xuống cằm; một dây luồn dưới cằm nối hai bên. Quai dẹt 12 x 3 mm như
+## dây vải (bản cũ thanh vuông 6 mm trông như dây thép), mặt rộng áp theo má / hàm.
 static func _build_helmet_straps(head: Node3D, fit: Node3D, k: Dictionary) -> void:
 	for ch: Node in fit.get_children():
 		var mi := ch as MeshInstance3D
@@ -380,9 +442,94 @@ static func _build_helmet_straps(head: Node3D, fit: Node3D, k: Dictionary) -> vo
 		var rim := Vector3(sx * 0.090 * w, 0.152, -0.012)
 		var jaw := Vector3(sx * 0.077 * w, 0.050, -0.022)
 		var chin := Vector3(sx * 0.030 * w, -0.008, -0.032)
-		_bar(head, rim, jaw, sm, 0.006)
-		_bar(head, jaw, chin, sm, 0.006)
-	_bar(head, Vector3(-0.030 * w, -0.008, -0.032), Vector3(0.030 * w, -0.008, -0.032), sm, 0.006)
+		_bar(head, rim, jaw, sm, 0.003, 0.012, Vector3(sx, 0.0, -0.15))
+		_bar(head, jaw, chin, sm, 0.003, 0.012, Vector3(sx * 0.6, -0.8, -0.2))
+	_bar(head, Vector3(-0.030 * w, -0.008, -0.032), Vector3(0.030 * w, -0.008, -0.032), sm, 0.003, 0.012, Vector3(0.0, -1.0, -0.3))
+
+
+## Tấm che trước mũ bảo hiểm: lưỡi liềm cùng màu mũ ôm cung trước của vành (hệ đầu: ngang 0.126 * 0.98 * width * 0.74, sâu
+## 0.126 * 1.02; xem HELMET_FIT_SCALE), gắn ở nửa trên vành (y 0.166), nhô 4.5 cm, chúi 0.8 cm: mép thấp nhất 0.155 vẫn trên đáy
+## vành 0.154 (phần tóc lộ dưới vành không bị tính là xuyên mũ) và trên mắt. Thay tấm phẳng 8 cm của bộ dựng cũ (nhận ra bằng vật
+## liệu "helmet_visor"). Nằm trong HatFit với co giãn bù lại (kiểm tra "trên mắt" đo mọi phần trong HatFit).
+static func _build_helmet_visor(fit: Node3D, color: Color, width: float) -> void:
+	var old_mat: Material = CharacterBuilder._mat("helmet_visor", Color("#111318"), 0.2, 0.3)
+	for ch: Node in fit.get_children():
+		var mi := ch as MeshInstance3D
+		if mi != null and mi.material_override == old_mat:
+			fit.remove_child(mi)
+			mi.free()
+	var v := MeshInstance3D.new()
+	v.name = "Visor"
+	v.mesh = _visor_mesh(0.126 * 0.98 * width * HELMET_FIT_SCALE.x, 0.126 * 1.02 * HELMET_FIT_SCALE.z, 0.045, 0.008, 0.006)
+	v.material_override = CharacterBuilder._mat("helmet_" + color.to_html(false), color, 0.25, 0.1)
+	v.scale = Vector3.ONE / HELMET_FIT_SCALE
+	v.position = Vector3(0.0, 0.166 - HELMET_LIFT, 0.0) / HELMET_FIT_SCALE
+	fit.add_child(v)
+
+
+# ===========================================================================
+# MŨ LƯỠI TRAI / MŨ ĐẦU BẾP (dựng cho đầu PS2, xem HAT_BOTTOM)
+# ===========================================================================
+## Mũ lưỡi trai đồng phục: vành trụ elip (CAP_BAND, ngang nhân w), chóp nửa elip cao CAP_CROWN_H, lưỡi trai lưỡi liềm ôm mép trước
+## vành (nhô 6.5 cm, chúi 1.4 cm; bản cũ là tấm phẳng 10 cm), phù hiệu vàng trước chóp nghiêng theo mặt chóp. Bốn phần, hệ đầu.
+static func _build_cap(fit: Node3D, color: Color, w: float) -> void:
+	var cm: StandardMaterial3D = CharacterBuilder._cloth_mat("cap_" + color.to_html(false), color)
+	var a: float = CAP_BAND.x * w
+	var b: float = CAP_BAND.z
+	var top: float = HAT_BOTTOM + CAP_BAND.y
+	CharacterBuilder._cyl(fit, Vector3(0.0, HAT_BOTTOM + CAP_BAND.y * 0.5, HAT_Z), 0.1, 0.1, CAP_BAND.y, cm, Vector3.ZERO, Vector3(a / 0.1, 1.0, b / 0.1))
+	CharacterBuilder._hemisphere(fit, Vector3(0.0, top, HAT_Z), 0.1, cm, Vector3.ZERO, Vector3(a / 0.1, CAP_CROWN_H / 0.1, b / 0.1))
+	var visor := MeshInstance3D.new()
+	visor.name = "Visor"
+	visor.mesh = _visor_mesh(a, b, 0.065, 0.014, 0.006)
+	visor.material_override = CharacterBuilder._mat("cap_brim", Color("#101418"), 0.5)
+	visor.position = Vector3(0.0, HAT_BOTTOM + 0.004, HAT_Z)
+	fit.add_child(visor)
+	var h: float = 0.018   # phù hiệu: 1.8 cm trên đáy chóp, mặt chóp ở đó nghiêng ra sau ~23°
+	CharacterBuilder._box(fit, Vector3(0.0, top + h, HAT_Z - b * sqrt(1.0 - pow(h / CAP_CROWN_H, 2.0)) - 0.002), Vector3(0.026, 0.022, 0.006), CharacterBuilder._mat("cap_badge", Color("#D4AF37"), 0.3, 0.9), Vector3(0.4, 0.0, 0.0))
+
+
+## Mũ đầu bếp: vành trụ elip (ngang nhân w) từ HAT_BOTTOM cao CHEF_BAND.y, miệng loe CHEF_FLARE, trên là bánh phồng dẹt rộng hơn
+## miệng vành.
+static func _build_chef_hat(fit: Node3D, w: float) -> void:
+	var wm: StandardMaterial3D = CharacterBuilder._mat("chef_hat", Color("#FAFAFA"), 0.8)
+	var a: float = CHEF_BAND.x * w
+	var b: float = CHEF_BAND.z
+	CharacterBuilder._cyl(fit, Vector3(0.0, HAT_BOTTOM + CHEF_BAND.y * 0.5, HAT_Z), 0.1 * CHEF_FLARE, 0.1, CHEF_BAND.y, wm, Vector3.ZERO, Vector3(a / 0.1, 1.0, b / 0.1))
+	CharacterBuilder._sphere(fit, Vector3(0.0, HAT_BOTTOM + CHEF_BAND.y + CHEF_PUFF.y * 0.3, HAT_Z), 0.1, wm, Vector3(CHEF_PUFF.x * w, CHEF_PUFF.y, CHEF_PUFF.z) / 0.1)
+
+
+## Lưỡi trai hình lưỡi liềm trong mặt XZ (y 0 = mặt giữa, dày thick, mặt trước -Z): mép trong là cung trước của elip (a, b) quanh
+## gốc (ôm vành mũ, +-65°), mép ngoài nhô về PHÍA TRƯỚC tối đa `out` ở giữa (loe ngang 25 % theo pháp tuyến), nhỏ dần về 0 ở hai đầu,
+## chúi xuống tối đa `droop`: nhìn thẳng chỉ thấy lưỡi trước trán, không thành vành tròn kiểu mũ quả dưa. Cache theo tham số.
+static func _visor_mesh(a: float, b: float, out: float, droop: float, thick: float) -> ArrayMesh:
+	var key: String = "visor_%.4f_%.4f_%.3f_%.3f_%.3f" % [a, b, out, droop, thick]
+	if _mesh_cache.has(key):
+		return _mesh_cache[key]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n: int = 10
+	var span: float = deg_to_rad(65.0)
+	var hh := Vector3(0.0, thick * 0.5, 0.0)
+	var uv := Vector2(0.5, 0.5)
+	var prev_in := Vector3.ZERO
+	var prev_out := Vector3.ZERO
+	for s: int in range(n + 1):
+		var t: float = -span + 2.0 * span * float(s) / float(n)
+		var p_in := Vector3(a * sin(t), 0.0, -b * cos(t))
+		var nrm := Vector3(b * sin(t), 0.0, -a * cos(t)).normalized()   # pháp tuyến ngoài của elip tại p_in
+		var e: float = out * pow(cos(t / span * PI * 0.5), 0.6)
+		var p_out: Vector3 = p_in + Vector3(nrm.x * 0.25, 0.0, -1.0) * e + Vector3(0.0, -droop * e / out, 0.0)
+		if s > 0:
+			_quad(st, prev_in + hh, p_in + hh, prev_out + hh, p_out + hh, uv, uv, uv, uv, Vector3.UP)
+			_quad(st, prev_in - hh, p_in - hh, prev_out - hh, p_out - hh, uv, uv, uv, uv, Vector3.DOWN)
+			_quad(st, prev_out - hh, p_out - hh, prev_out + hh, p_out + hh, uv, uv, uv, uv, nrm)
+		prev_in = p_in
+		prev_out = p_out
+	st.generate_normals()
+	var mesh: ArrayMesh = st.commit()
+	_mesh_cache[key] = mesh
+	return mesh
 
 
 # ===========================================================================

@@ -275,7 +275,8 @@ Implementation plan: `docs/superpowers/plans/2026-10-22-real-map-world.md` (Task
 | `godot --path . --script tests/preview_m1_ui.gd` (cần cửa sổ) | Chụp bảng chuỗi near-miss, menu tạm dừng + cài đặt, thẻ chuyển cảnh, cửa hàng bằng phím |
 | `godot --path . --script tests/preview_characters.gd` (cần cửa sổ) | Studio nhân vật: 12 preset, cận mặt, 12 clip, nhìn sau, đám đông bake 60 người |
 | `godot --path . --script tests/preview_props.gd` (cần cửa sổ) | Studio đồ vật: xe tay ga, xe buýt, nộm, cây + đèn, bàn ghế dù, khay |
-| `PEOPLE_ONLY=s1,s5 godot --path . --script tests/preview_people.gd` (cần cửa sổ) | Người & đồ vật trong từng màn từ camera gameplay + góc cận |
+| `PEOPLE_ONLY=s1,s5 godot --path . --script tests/preview_stage_people.gd` (cần cửa sổ) | Người & đồ vật trong từng màn từ camera gameplay + góc cận |
+| `PREVIEW_DIR=<thư mục> godot --path . --script tests/preview_people.gd` (cần cửa sổ) | Người PS2 (Vice City): hàng 13 preset, 8 biểu cảm cận mặt, cận mũ (bảo vệ / công an / đầu bếp / người đi xe), clip, so với cổ điển → `vice_people_*.png` |
 
 **Đồ hoạ ("nặng cũng được"):** `project.godot` bật MSAA 2x + FXAA + debanding, lọc dị hướng, shadow map 8192 bóng mềm chất lượng cao, SSAO/SSIL/SSR chất lượng cao, SDFGI hội tụ nhanh, sương thể tích độ phân giải cao. Mỗi màn gọi `GameFX.upgrade_scene_visuals(self, "outdoor"/"indoor")` ở cuối `_ready`: nhân bản Environment rồi bật SDFGI (6/4 cascade), SSIL, SSR, glow softlight, tonemap ACES, chỉnh màu nhẹ, sương + sương thể tích (outdoor), bán cầu dưới sky trung tính; nắng dùng PSSM 4 split, bóng mềm. Headless không kiểm được visual → tự render bằng 2 script preview ở trên và xem ảnh.
 

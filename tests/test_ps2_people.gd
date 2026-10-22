@@ -159,6 +159,11 @@ func _process(_d: float) -> bool:
 # --- Task 4: tư thế tĩnh (pose) + bake thân rigged; thời gian dựng ------------------------
 func _task4_start() -> void:
 	phase_task4 = true
+	# GameFX._ready (chạy sau _initialize) áp lại phong cách đã lưu trong settings.cfg: ép lại chế độ vice để pha này không phụ thuộc
+	# phong cách mà máy đang lưu
+	CharacterBuilder.ps2 = true
+	CharacterBuilder.toon = false
+	CharacterBuilder.head_scale_default = 1.0
 	static_c = CharacterBuilder.build({"preset": "student", "seed": 77, "animate": false})
 	static_c.position = Vector3(0.0, 0.0, 4.0)
 	world.add_child(static_c)

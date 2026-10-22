@@ -495,12 +495,14 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 		var is_legs: bool = n.ends_with("_Legs")
 		var is_feet: bool = n.ends_with("_Feet")
 		mi.mesh = _smooth_mesh(mi.mesh)
-		# mặt vải lớn nhất (nhiều tam giác nhất, không phải da) = áo/quần chính
+		# mặt vải lớn nhất (nhiều tam giác nhất, không phải da) = áo/quần chính. Vice: áo gi-lê phản quang của thân Worker
+		# ("Worker_Vest" cam, sọc "Worker_Yellow") không phải trang phục hiện tại của bảo vệ / công an / đầu bếp: không tính là áo
+		# chính và tô màu cổ áo của trang phục (gi-lê cùng tông đồng phục, xem nhánh dưới)
 		var main_si: int = -1
 		var main_tris: int = -1
 		for si: int in mi.mesh.get_surface_count():
 			var src0: Material = mi.get_active_material(si)
-			if src0 and src0.resource_name.begins_with("Skin"):
+			if src0 and (src0.resource_name.begins_with("Skin") or (ps2 and src0.resource_name.begins_with("Worker_"))):
 				continue
 			var arr: Array = mi.mesh.surface_get_arrays(si)
 			var tris: int = arr[Mesh.ARRAY_INDEX].size() if arr[Mesh.ARRAY_INDEX] != null else arr[Mesh.ARRAY_VERTEX].size()
@@ -521,6 +523,8 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 				m = outfit["trousers"]
 			elif src_name == "Tie" and outfit.has("tie_mat"):
 				m = outfit["tie_mat"]
+			elif ps2 and src_name.begins_with("Worker_"):
+				m = outfit["collar_mat"]
 			elif si == main_si:
 				m = outfit["shirt_plain"]
 			else:
@@ -550,6 +554,10 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 	head_pivot.rotation.y = PI   # đầu nhìn về -Z của pivot; xương Head nhìn về +Z của mô hình (đã quay PI)
 	head_pivot.position = Vector3(0.0, -0.045 + (hs - 1.0) * 0.1, 0.0)
 	head_pivot.scale = Vector3(hs / wk, hs, hs / wk)   # bù bề ngang thân (wk) để mặt không méo
+	if ps2 and female:
+		# cổ của thân nữ (da) dừng 1-2 cm dưới cằm PS2 ở phía trước (cổ áo thân nam che chỗ này): trụ cổ bằng da nối từ trong cổ
+		# thân lên trong hàm; bán kính 0.035 nằm trong mặt cổ thân (đo ở tư thế nghỉ: trước 0.040, sau 0.036 tính từ trục cằm)
+		_cyl(head_pivot.get_parent(), head_pivot.position + Vector3(0.0, -0.012, 0.0), 0.035, 0.035, 0.08, skin).name = "NeckFill"
 	# --- các pivot gắn đồ (tay, ngực) qua BoneAttachment3D
 	for key: String in ["hand_l", "hand_r", "chest", "hips"]:
 		var a := BoneAttachment3D.new()
@@ -557,9 +565,11 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 		sk.add_child(a)
 		a.bone_name = BONE_OF[key]
 		rig[key] = a
-	_rig_torso_extras(rig["chest"], rig["hips"], outfit, width)
 	if ps2:
 		_rig_attach_pivots(root, sk, rig, String(table[body_key]))   # chỉ ps2: thân rigged cổ điển (người chơi FreeRoam) giữ nguyên cây node
+		_rig_torso_extras_ps2(model, sk, rig, outfit, String(table[body_key]))
+	else:
+		_rig_torso_extras(rig["chest"], rig["hips"], outfit, width)
 	root.set_meta("rig", rig)
 	root.set_meta("rigged", true)
 	root.set_meta("preset", preset)
@@ -647,6 +657,227 @@ static func _rig_torso_extras(chest: Node3D, hips: Node3D, outfit: Dictionary, w
 		_box(chest, Vector3(0.0, -0.08, -front * (cz + 0.08)), Vector3(0.25 * width, 0.33, 0.12), bp)
 		_box(chest, Vector3(0.0, 0.03, -front * (cz + 0.145)), Vector3(0.22 * width, 0.10, 0.03), bp)
 		_box(chest, Vector3(0.0, -0.19, -front * (cz + 0.145)), Vector3(0.18 * width, 0.14, 0.03), outfit["backpack_pocket_mat"])
+
+## Vice (ps2): logo polo FPT, dây thẻ chữ V từ cổ xuống thẻ, bảng tên, ba lô áp lưng + quai qua vai, tạp dề, đai Vovinam ôm eo,
+## đặt theo dáng thân đo được (_body_fit) trong các nút "khớp" có trục nhân vật ở tư thế nghỉ (_fit_node: xương Hips nghỉ của
+## Quaternius xoay ~27° quanh Y, Chest cúi ~8°, nên hộp gắn thẳng vào xương bị lệch / lơ lửng). Nút nằm trong mô hình nên đồ co
+## giãn theo bề ngang wk cùng thân. Kích thước đồ như thân tự dựng; cổ điển giữ _rig_torso_extras.
+static func _rig_torso_extras_ps2(model: Node3D, sk: Skeleton3D, rig: Dictionary, outfit: Dictionary, rel: String) -> void:
+	var f: Dictionary = _body_fit(rel, model, sk)
+	var c_xf: Transform3D = f["c_xf"]
+	var chest: Node3D = _fit_node(rig["chest"], sk, c_xf, "Chest", "ChestFit")
+	var front := Vector3(0.0, 0.0, -1.0)
+	if outfit.get("fpt_polo", false):
+		var logo: Texture2D = _tex("char_fpt_logo.png")
+		if logo:
+			var qm := QuadMesh.new()
+			qm.size = Vector2(0.07, 0.035)
+			var lm := StandardMaterial3D.new()
+			lm.albedo_texture = logo
+			lm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+			lm.alpha_scissor_threshold = 0.5
+			lm.roughness = 0.9
+			var mi := MeshInstance3D.new()
+			mi.mesh = qm
+			mi.material_override = lm
+			var n: Vector3 = f["logo_n"]   # pháp tuyến mặt ngực (hướng -Z), mặt quad (+Z cục bộ) quay theo
+			var up: Vector3 = Vector3(0.0, -n.z, n.y)
+			mi.basis = Basis(up.cross(n), up, n)
+			mi.position = f["logo"]
+			chest.add_child(mi)
+	if outfit.get("lanyard", false):
+		var ly: Material = _mat("lanyard", Color("#1F4FA3"), 0.9)
+		for side: Array in f["lanyard"]:   # mỗi bên: cổ -> giữa ngực -> đỉnh chữ V trên thẻ
+			_strap(chest, side[0], side[1], 0.012, 0.003, ly, front)
+			_strap(chest, side[1], side[2], 0.012, 0.003, ly, front)
+		var card := _box(chest, f["card"], Vector3(0.062, 0.088, 0.004), _mat("id_card", Color("#F7F7F7"), 0.5))
+		_box(card, Vector3(0.0, 0.03, -0.003), Vector3(0.062, 0.02, 0.002), _mat("id_stripe", FPT_ORANGE, 0.5))
+		_box(card, Vector3(0.0, -0.012, -0.003), Vector3(0.036, 0.034, 0.002), _mat("id_photo", Color("#B9C2CC"), 0.6))
+	if outfit.get("badge", false):
+		_box(chest, f["badge"], Vector3(0.05, 0.022, 0.006), _mat("badge", Color("#D4AF37"), 0.3, 0.9))
+	if outfit.get("backpack", false):
+		var bp: Material = outfit["backpack_mat"]
+		var pc: Vector3 = f["pack"]   # tâm khối ba lô: mặt trước áp vào chỗ lưng nhô nhất trong vùng ba lô
+		_box(chest, pc, Vector3(0.25, 0.33, 0.12), bp)
+		_box(chest, pc + Vector3(0.0, 0.115, 0.075), Vector3(0.22, 0.10, 0.03), bp)
+		_box(chest, pc + Vector3(0.0, -0.075, 0.075), Vector3(0.18, 0.14, 0.03), outfit["backpack_pocket_mat"])
+		for side: Array in f["pack_straps"]:   # mỗi bên: mép trên ba lô -> đỉnh vai -> mép trước vai -> trước ngực
+			_strap(chest, side[0], side[1], 0.03, 0.012, bp, Vector3.UP)
+			_strap(chest, side[1], side[2], 0.03, 0.012, bp, Vector3(0.0, 1.0, -1.0))
+			_strap(chest, side[2], side[3], 0.03, 0.012, bp, front)
+	if outfit.get("apron", false) and rig.has("torso"):
+		var am: Material = outfit["apron_mat"]
+		var tf: Node3D = _fit_node((rig["torso"] as Node3D).get_parent() as Node3D, sk, c_xf, "Torso", "TorsoFit")
+		var ap: Vector3 = f["apron"]
+		_box(tf, ap, Vector3(0.30, f["apron_h"], 0.012), am)
+		for side: Array in f["apron_straps"]:   # góc trên yếm -> hai bên cổ
+			_strap(tf, side[0], side[1], 0.016, 0.006, am, front)
+	if outfit.get("vovinam_belt", false):
+		var vb: Material = outfit["vbelt_mat"]
+		var hf: Node3D = _fit_node(rig["hips"], sk, c_xf, "Hips", "HipsFit")
+		var bc: Vector3 = f["belt_c"]
+		var ab: Vector2 = f["belt_ab"]   # bán trục ngang / sâu của vòng đai (ôm mọi đỉnh của eo)
+		_cyl(hf, bc, 0.1, 0.1, 0.05, vb, Vector3.ZERO, Vector3(ab.x / 0.1, 1.0, ab.y / 0.1))
+		_box(hf, f["belt_knot"], Vector3(0.07, 0.05, 0.02), vb)
+		for side: Array in f["belt_tails"]:
+			_strap(hf, side[0], side[1], 0.03, 0.012, vb, front)
+
+## Nút con của BoneAttachment3D att có trục = trục nhân vật ở tư thế nghỉ và gốc tại gốc hệ C (hệ nhân vật chưa nhân bề ngang wk;
+## c_xf: skeleton -> C): con của nút đặt thẳng bằng toạ độ hệ C, rồi đi theo xương bone.
+static func _fit_node(att: Node3D, sk: Skeleton3D, c_xf: Transform3D, bone: String, node_name: String) -> Node3D:
+	var n := Node3D.new()
+	n.name = node_name
+	n.transform = (c_xf * sk.get_bone_global_rest(sk.find_bone(bone))).affine_inverse()
+	att.add_child(n)
+	return n
+
+## Dải phẳng rộng w, dày t (quai, dây) nối p0 -> p1 trong parent; mặt rộng quay về phía out (vd -Z: áp lên ngực).
+static func _strap(parent: Node3D, p0: Vector3, p1: Vector3, w: float, t: float, mat: Material, out: Vector3) -> MeshInstance3D:
+	var d: Vector3 = p1 - p0
+	var y: Vector3 = d.normalized()
+	var x: Vector3 = y.cross(out).normalized()
+	var mi := _box(parent, (p0 + p1) * 0.5, Vector3(w, d.length(), t), mat)
+	mi.basis = Basis(x, y, x.cross(y))
+	return mi
+
+## Dáng thân Quaternius cho _rig_torso_extras_ps2, đo MỘT lần mỗi tệp mô hình (cache): đỉnh của các mesh skinned đang hiện (trừ
+## giày) skin ở tư thế NGHỈ (bind pose glTF khác tư thế nghỉ) trong hệ C (mặt trước -Z, phải +X, đơn vị gốc trước root.scale),
+## rồi chỗ đặt từng món đồ: cực trị (_env) của các đỉnh trong hộp quanh chỗ đó, nên đồ nằm ngoài mặt thân (+ khe vài mm).
+## Độ cao tính từ gốc xương (Neck / Chest / Hips) nên khớp cả thân nam lẫn nữ.
+static var _body_fit_cache: Dictionary = {}
+
+static func _body_fit(rel: String, model: Node3D, sk: Skeleton3D) -> Dictionary:
+	if _body_fit_cache.has(rel):
+		return _body_fit_cache[rel]
+	var c_xf: Transform3D = Transform3D(Basis(Vector3.UP, MODEL_YAW), Vector3.ZERO) * _local_xform(sk, model)
+	var pts := PackedVector3Array()
+	for mi: MeshInstance3D in _mesh_instances(sk):
+		if not mi.visible or mi.skin == null or mi.mesh == null or String(mi.name).ends_with("_Feet"):
+			continue
+		var skin: Skin = mi.skin
+		var xfs: Array[Transform3D] = []
+		var arm: Array[bool] = []   # tay buông hai bên (cánh tay, cổ tay, ngón) không thuộc dáng thân: bỏ
+		for i: int in range(skin.get_bind_count()):
+			var bn: StringName = skin.get_bind_name(i)
+			var b: int = sk.find_bone(String(bn)) if bn != &"" else skin.get_bind_bone(i)
+			xfs.append(c_xf * sk.get_bone_global_rest(b) * skin.get_bind_pose(i) if b >= 0 else c_xf)
+			var nm: String = sk.get_bone_name(b) if b >= 0 else ""
+			arm.append(nm.contains("Arm") or nm.contains("Wrist") or nm.contains("Thumb") or nm.contains("Index") or nm.contains("Middle") or nm.contains("Ring") or nm.contains("Pinky"))
+		for si: int in range(mi.mesh.get_surface_count()):
+			var arr: Array = mi.mesh.surface_get_arrays(si)
+			if arr[Mesh.ARRAY_BONES] == null or arr[Mesh.ARRAY_WEIGHTS] == null:
+				continue
+			var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var bones: PackedInt32Array = arr[Mesh.ARRAY_BONES]
+			var weights: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+			var per: int = bones.size() / maxi(verts.size(), 1)
+			for i: int in range(verts.size()):
+				var p := Vector3.ZERO
+				var w_arm: float = 0.0
+				for k: int in range(per):
+					var wt: float = weights[i * per + k]
+					if wt > 0.0:
+						p += (xfs[bones[i * per + k]] * verts[i]) * wt
+						if arm[bones[i * per + k]]:
+							w_arm += wt
+				if w_arm < 0.5:
+					pts.append(p)
+	var oc: Vector3 = (c_xf * sk.get_bone_global_rest(sk.find_bone("Chest"))).origin
+	var on: Vector3 = (c_xf * sk.get_bone_global_rest(sk.find_bone("Neck"))).origin
+	var oh: Vector3 = (c_xf * sk.get_bone_global_rest(sk.find_bone("Hips"))).origin
+	var zc: float = oc.z   # mặt phẳng giữa thân (trước: z < zc)
+	var mx: float = oc.x   # đường giữa thân ở ngực (xương thân nữ lệch +1.4 cm)
+	var f: Dictionary = {"c_xf": c_xf}
+	# logo ngực trái (-X), nghiêng theo dốc ngực
+	var ly: float = oc.y + 0.035
+	var zl: float = _front(pts, mx - 0.062, ly, 0.022, 0.02, zc, zc - 0.12)
+	var dz: float = _front(pts, mx - 0.062, ly + 0.03, 0.022, 0.015, zc, zl) - _front(pts, mx - 0.062, ly - 0.03, 0.022, 0.015, zc, zl)
+	f["logo"] = Vector3(mx - 0.062, ly, zl - 0.003)
+	f["logo_n"] = Vector3(0.0, dz / 0.06, -1.0).normalized()
+	# bảng tên ngực trái như thân tự dựng (ngoài dây thẻ)
+	var yb: float = oc.y + 0.05
+	f["badge"] = Vector3(mx - 0.075, yb, _front(pts, mx - 0.075, yb, 0.025, 0.02, zc, zc - 0.12) - 0.006)
+	# dây thẻ: hai bên cổ (x 0.05, ngang cổ áo) -> giữa ngực -> đỉnh chữ V ngay trên mép thẻ (đối xứng: lấy bên nhô hơn); thẻ
+	# treo thẳng trước ngực
+	var yc: float = oc.y - 0.10
+	var zcard: float = _front(pts, mx, yc, 0.035, 0.045, zc, zc - 0.12)
+	f["card"] = Vector3(mx, yc, zcard - 0.006)
+	var y0: float = on.y - 0.035
+	var y2: float = yc + 0.048
+	var lz: Array = []
+	for q: Vector2 in [Vector2(0.05, y0), Vector2(0.03, (y0 + y2) * 0.5), Vector2(0.007, y2)]:
+		lz.append(minf(_front(pts, mx - q.x, q.y, 0.015, 0.015, zc, zcard), _front(pts, mx + q.x, q.y, 0.015, 0.015, zc, zcard)) - 0.005)
+	lz[2] = minf(lz[2], zcard - 0.006)   # đỉnh chữ V chạm mép trên thẻ
+	var lan: Array = []
+	for sx: float in [-1.0, 1.0]:
+		lan.append([Vector3(mx + sx * 0.05, y0, lz[0]), Vector3(mx + sx * 0.03, (y0 + y2) * 0.5, lz[1]), Vector3(mx + sx * 0.007, y2, lz[2])])
+	f["lanyard"] = lan
+	# ba lô: đỉnh ngang bả vai, cao 0.33; mặt trước áp chỗ lưng nhô nhất trong vùng |x| < 0.12. Quai (3 đoạn): mép trên ba lô ->
+	# đỉnh vai (x 0.105: vai thân Quaternius dốc lên sát cổ tới ngang cằm) -> mép trước vai -> trước ngực ngang nách
+	var top: float = oc.y + 0.085
+	var zback: float = _env(pts, Vector3(mx - 0.12, top - 0.33, zc), Vector3(mx + 0.12, top, 1.0), 2, 1.0, zc + 0.12)
+	f["pack"] = Vector3(mx, top - 0.165, zback + 0.006 + 0.06)
+	var straps: Array = []
+	for sx: float in [-1.0, 1.0]:
+		var xs: float = mx + sx * 0.105
+		var ysh: float = _env(pts, Vector3(xs - 0.015, oc.y - 0.05, zc - 0.08), Vector3(xs + 0.015, on.y + 0.08, zc + 0.08), 1, 1.0, top + 0.03)
+		var yft: float = ysh - 0.035
+		var zft: float = _front(pts, xs, yft, 0.015, 0.015, zc + 0.04, zc - 0.06)
+		var ylow: float = oc.y - 0.06
+		var zlow: float = _front(pts, xs, ylow, 0.02, 0.02, zc, zc - 0.1)
+		straps.append([Vector3(mx + sx * 0.1, top - 0.012, zback + 0.008), Vector3(xs, ysh + 0.01, zc), Vector3(xs, yft, zft - 0.008), Vector3(xs, ylow, minf(zlow, zft) - 0.008)])
+	f["pack_straps"] = straps
+	# tạp dề: từ giữa đùi tới ngực, áp chỗ thân nhô nhất từ trên háng lên (đùi để tự do: tư thế nghỉ chân phải bước tới)
+	var ap_bot: float = oh.y - 0.22
+	var ap_top: float = oc.y
+	var zap: float = _env(pts, Vector3(mx - 0.15, oh.y + 0.08, -1.0), Vector3(mx + 0.15, ap_top, zc), 2, -1.0, zc - 0.15) - 0.012
+	f["apron"] = Vector3(mx, (ap_bot + ap_top) * 0.5, zap)
+	f["apron_h"] = ap_top - ap_bot
+	var zn: float = minf(_front(pts, mx - 0.052, y0, 0.018, 0.02, zc, zap), _front(pts, mx + 0.052, y0, 0.018, 0.02, zc, zap))
+	var ast: Array = []
+	for sx: float in [-1.0, 1.0]:
+		ast.append([Vector3(mx + sx * 0.11, ap_top - 0.006, zap - 0.004), Vector3(mx + sx * 0.052, y0 + 0.01, zn - 0.004)])
+	f["apron_straps"] = ast
+	# đai Vovinam ở eo: 0.58 chiều cao mô hình (vòng hẹp nhất đo được: nam 1.078, nữ 1.086), elip ôm mọi đỉnh của lát eo
+	var ybelt: float = MODEL_HEIGHT * 0.58
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	var ring := PackedVector2Array()
+	for p: Vector3 in pts:
+		if absf(p.y - ybelt) < 0.025 and absf(p.x - oh.x) < 0.25 and absf(p.z - oh.z) < 0.25:
+			ring.append(Vector2(p.x, p.z))
+			lo = Vector2(minf(lo.x, p.x), minf(lo.y, p.z))
+			hi = Vector2(maxf(hi.x, p.x), maxf(hi.y, p.z))
+	var cen: Vector2 = (lo + hi) * 0.5 if ring.size() > 0 else Vector2(oh.x, oh.z)
+	var half: Vector2 = (hi - lo) * 0.5 if ring.size() > 0 else Vector2(0.15, 0.11)
+	var kmax: float = 1.0
+	for q: Vector2 in ring:
+		kmax = maxf(kmax, Vector2((q.x - cen.x) / half.x, (q.y - cen.y) / half.y).length())
+	var ab: Vector2 = half * kmax + Vector2(0.006, 0.006)
+	f["belt_c"] = Vector3(cen.x, ybelt, cen.y)
+	f["belt_ab"] = ab
+	f["belt_knot"] = Vector3(cen.x, ybelt, cen.y - ab.y - 0.006)   # nút thắt 0.02 dày, trước vòng đai
+	var zk: float = cen.y - ab.y - 0.022   # hai đuôi đai buông từ mặt trước nút
+	var ztail: float = _front(pts, cen.x, ybelt - 0.125, 0.07, 0.095, zc, zk)
+	var tails: Array = []
+	for sx: float in [-1.0, 1.0]:
+		tails.append([Vector3(cen.x + sx * 0.02, ybelt - 0.02, zk), Vector3(cen.x + sx * 0.035, ybelt - 0.2, minf(ztail - 0.008, zk))])
+	f["belt_tails"] = tails
+	_body_fit_cache[rel] = f
+	return f
+
+## Cực trị toạ độ axis (2 = z, 1 = y) của các điểm pts trong hộp [lo, hi]: sgn -1 lấy nhỏ nhất (mặt trước thân, phía -Z), +1 lớn
+## nhất (mặt sau, đỉnh vai). Hộp không có điểm nào -> fallback.
+static func _env(pts: PackedVector3Array, lo: Vector3, hi: Vector3, axis: int, sgn: float, fallback: float) -> float:
+	var best: float = -INF
+	for p: Vector3 in pts:
+		if p.x >= lo.x and p.x <= hi.x and p.y >= lo.y and p.y <= hi.y and p.z >= lo.z and p.z <= hi.z:
+			best = maxf(best, p[axis] * sgn)
+	return best * sgn if best > -INF else fallback
+
+## Mặt trước thân (z nhỏ nhất của nửa trước z < zc) trong ô (x +- hx, y +- hy).
+static func _front(pts: PackedVector3Array, x: float, y: float, hx: float, hy: float, zc: float, fallback: float) -> float:
+	return _env(pts, Vector3(x - hx, y - hy, -1.0), Vector3(x + hx, y + hy, zc), 2, -1.0, fallback)
 
 ## Pivot gắn đồ cho thân rigged theo quy ước thân tự dựng: Node3D đặt tại khớp, trục trùng trục gốc nhân vật ở tư thế
 ## nghỉ, rồi đi theo xương. Tay / chân: như thân tự dựng, -Y của pivot chạy DỌC CHI (tư thế nghỉ Quaternius lệch: tay buông
@@ -1079,6 +1310,7 @@ static func _outfit_for(preset: String, female: bool, rng: RandomNumberGenerator
 		"student", "student_m", "student_f", "player", "rider":
 			o["shirt"] = _shirt_fpt_mat()
 			o["shirt_plain"] = _cloth_mat("fpt_orange", FPT_ORANGE)
+			o["fpt_polo"] = true   # áo polo FPT (logo ngực trái); vice: logo chỉ trên áo này như thân tự dựng
 			o["trousers"] = jeans if rng.randf() < 0.7 else trousers_dark
 			o["backpack"] = bool(opts.get("backpack", preset == "player" or rng.randf() < 0.55))
 			var bp_col: Color = [Color("#1F2A44"), Color("#2E3A2F"), Color("#4A2E6B"), Color("#222222"), Color("#7A1F2B")][rng.randi_range(0, 4)]
@@ -1162,6 +1394,7 @@ static func _outfit_for(preset: String, female: bool, rng: RandomNumberGenerator
 				o["shoe_mat"] = _mat("sandal", Color("#5B3A1E"), 0.6)
 	if opts.has("shirt_color"):
 		var c: Color = opts["shirt_color"]
+		o["fpt_polo"] = false
 		o["shirt"] = _cloth_mat("custom_" + c.to_html(false), c)
 		o["shirt_plain"] = o["shirt"]
 		o["collar_mat"] = _cloth_mat("custom_collar_" + c.to_html(false), c.darkened(0.15))

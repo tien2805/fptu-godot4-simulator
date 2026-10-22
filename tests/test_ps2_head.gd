@@ -2,7 +2,8 @@
 # Test headless PS2Head: số tam giác (250..400), kích thước, chiều quấn mặt hướng ra ngoài, UV mặt trước / sau đầu, đỉnh hàn
 # bit-chính-xác trên kinh tuyến, nếp hàm và pháp tuyến hai mặt của tai, mọi kiểu tóc bao đỉnh đầu, VỎ tóc không chìm vào và không
 # đâm xuyên da đầu (5 bộ k), build() ghi rig + vật liệu RIÊNG một ô atlas, 8 ô biểu cảm, lưới đầu dùng chung giữa các nhân vật
-# gần giống nhau, kính, mũ lưỡi trai / mũ bảo hiểm / mũ đầu bếp dựng trong nút HatFit (mũ bảo hiểm không che mắt).
+# gần giống nhau, kính, mũ lưỡi trai / mũ bảo hiểm / mũ đầu bếp dựng trong nút HatFit (mũ bảo hiểm không che mắt), tóc dưới mọi
+# loại mũ là vỏ PS2 không xuyên mũ (tóc dài vẫn buông dưới mũ bảo hiểm).
 # Chạy:  godot --headless --path . --script tests/test_ps2_head.gd
 extends SceneTree
 
@@ -210,22 +211,36 @@ func _initialize() -> void:
 			var hs: Node3D = PS2Head.build(_fresh_parent(), Vector3.ZERO, {"hair_style": style, "female": female, "seed": 3}, rs)
 			if not _check(hs.get_node_or_null("Hair") != null and hs.get_node_or_null("HatFit") == null and rs.has("head_top"), "build() with hair style %s (female %s)" % [style, female]):
 				return
-	# mũ đầu bếp / mũ lưỡi trai: mũ của bộ dựng cũ nằm trong nút HatFit (thu nhỏ vào đầu PS2), không có vỏ tóc
+	# mũ đầu bếp / mũ lưỡi trai: mũ dựng cho đầu PS2 trong nút HatFit không co giãn / không nâng, tóc vẫn là vỏ PS2 (nút Hair). Đúng
+	# các phần: mũ lưỡi trai = vành trụ, chóp bán cầu, lưỡi trai, phù hiệu; mũ đầu bếp = vành trụ, bánh phồng. Không còn vòm tóc +
+	# khối gáy của bộ dựng cũ trong HatFit (khối gáy lộ thành vệt tối sau đầu bảo vệ / công an / đầu bếp)
 	var rig2: Dictionary = {}
 	var chef: Node3D = PS2Head.build(_fresh_parent(), Vector3.ZERO, {"skin": 0, "seed": 3, "outfit": {"chef_hat": true}}, rig2)
 	var chef_fit: Node3D = chef.get_node_or_null("HatFit") as Node3D
-	if not _check(chef.get_node_or_null("Hair") == null and chef_fit != null and chef_fit.get_child_count() >= 4 and absf(chef_fit.position.y) < 0.0001, "chef hat path builds the hat under HatFit instead of the hair shell"):
+	var chef_parts: String = _hat_parts(chef_fit) if chef_fit else "-"
+	if not _check(chef.get_node_or_null("Hair") != null and chef_fit != null and chef_fit.transform.is_equal_approx(Transform3D.IDENTITY) and chef_parts == "cyl,sph", "chef hat path: band + puff under an unscaled HatFit, hair shell under Head (parts %s)" % chef_parts):
 		return
 	var rig3: Dictionary = {}
 	var cap: Node3D = PS2Head.build(_fresh_parent(), Vector3.ZERO, {"skin": 1, "seed": 4, "outfit": {"cap": true, "cap_color": Color("#1C2A4A")}}, rig3)
 	var cap_fit: Node3D = cap.get_node_or_null("HatFit") as Node3D
-	if not _check(cap.get_node_or_null("Hair") == null and cap_fit != null and cap_fit.get_child_count() >= 4 and absf(cap_fit.position.y) < 0.0001 and rig3.has("head_top"), "cap path builds the cap under HatFit instead of the hair shell"):
+	var cap_parts: String = _hat_parts(cap_fit) if cap_fit else "-"
+	if not _check(cap.get_node_or_null("Hair") != null and cap_fit != null and cap_fit.transform.is_equal_approx(Transform3D.IDENTITY) and cap_parts == "cyl,hemi,mesh,box" and rig3.has("head_top"), "cap path: band, crown, visor, badge under an unscaled HatFit, hair shell under Head (parts %s)" % cap_parts):
 		return
-	# phần mũ (trừ khối tóc gáy cuối cùng, cố ý chìm trong đầu) không được lún vào sọ: lún = z-fight (vệt xanh / đen trên mũ)
+	# không phần mũ nào lún vào sọ (kiểm mọi phần: không còn khối gáy cố ý chìm): lún = z-fight (vệt xanh / đen trên mũ)
 	for pair: Array in [["chef", chef_fit, rig2], ["cap", cap_fit, rig3]]:
 		var sinks: int = _hat_sink_count(pair[1] as Node3D, _mesh_tris((pair[2]["face_mesh"] as MeshInstance3D).mesh as ArrayMesh))
 		if not _check(sinks == 0, "%s parts under HatFit sink into the skull (%d vertices inside)" % [pair[0], sinks]):
 			return
+	# tóc dưới mũ lưỡi trai / mũ đầu bếp không xuyên mũ: mọi đỉnh tóc cao hơn đáy vành nằm trong vành / chóp / bánh phồng, mọi kiểu tóc
+	# (bob / dài / đuôi ngựa lộ ra dưới vành), cả hai giới và hai cực bề ngang
+	for style: String in PS2Head.HAIR_STYLES:
+		for combo: Array in [[0.94, true], [1.06, false]]:
+			for hat: String in ["cap", "chef_hat"]:
+				var hh: Node3D = PS2Head.build(_fresh_parent(), Vector3.ZERO, {"hair_style": style, "width": combo[0], "female": combo[1], "seed": 9, "outfit": {hat: true}}, {})
+				var out_n: int = _hair_outside_hat(hh)
+				if not _check(out_n == 0, "hair %s (width %s) pokes out of the %s at %d vertices above its band bottom" % [style, combo[0], hat, out_n]):
+					return
+	print("  hair under caps / chef hats stays inside the hat: %d styles x 2 widths x 2 hats" % PS2Head.HAIR_STYLES.size())
 	# mũ bảo hiểm: HatFit nâng lên, vỏ tóc vẫn nằm dưới mũ, kính ở trên Head; vành và tấm che không được che mắt (mắt y 0.116..0.134)
 	var rig4: Dictionary = {}
 	var rider: Node3D = PS2Head.build(_fresh_parent(), Vector3.ZERO, {"skin": 3, "seed": 5, "hair_style": "bob", "female": true, "outfit": {"helmet": true, "helmet_color": Color("#E74C3C"), "glasses": true}}, rig4)
@@ -236,16 +251,19 @@ func _initialize() -> void:
 	print("  helmet lowest non-strap point y %.3f" % low)
 	if not _check(low >= 0.14, "helmet rim / visor must sit above the eyes (lowest non-strap point y %.3f, eyes up to 0.134)" % low):
 		return
-	# vòm sát sọ (không còn là cái xô: đỉnh đầu 0.235, bề ngang sọ 0.079), không còn quai cũ trong HatFit
+	# vòm sát sọ (không còn là cái xô: đỉnh đầu 0.235, bề ngang sọ 0.079), không còn quai cũ và tấm che phẳng 8 cm cũ trong HatFit
 	var dome: MeshInstance3D = null
 	var old_straps: int = 0
+	var old_visor: int = 0
 	for ch: Node in rider_fit.get_children():
 		var part := ch as MeshInstance3D
 		if part != null and part.mesh is SphereMesh and dome == null:
 			dome = part
 		if part != null and part.mesh is BoxMesh and (part.mesh as BoxMesh).size.y >= 0.1:
 			old_straps += 1
-	if not _check(dome != null and old_straps == 0, "helmet needs its dome and no old floating straps under HatFit (old straps %d)" % old_straps):
+		if part != null and part.mesh is BoxMesh and (part.mesh as BoxMesh).size.z >= 0.07:
+			old_visor += 1
+	if not _check(dome != null and old_straps == 0 and old_visor == 0 and rider_fit.get_node_or_null("Visor") != null, "helmet needs its dome, the new visor and no old floating straps / flat 8 cm visor under HatFit (old straps %d, old visor %d)" % [old_straps, old_visor]):
 		return
 	var dome_box: AABB = (rider_fit.transform * dome.transform) * dome.mesh.get_aabb()
 	var dome_x: float = maxf(absf(dome_box.position.x), absf(dome_box.end.x))
@@ -257,10 +275,13 @@ func _initialize() -> void:
 	var strap_low: float = 99.0
 	var strap_in: int = 0
 	var strap_mat: Material = CharacterBuilder._mat("helmet_strap", Color("#222222"), 0.8)
+	var thin_straps: int = 0
 	for ch: Node in rider.get_children():
 		var bar := ch as MeshInstance3D
 		if bar == null or bar.material_override != strap_mat:
 			continue
+		if (bar.mesh as BoxMesh).size.x < 0.01:
+			thin_straps += 1   # quai dẹt như dây vải (bản >= 1 cm), không phải thanh mảnh như dây thép
 		var half: float = (bar.mesh as BoxMesh).size.z * 0.5
 		for t: float in [-1.0, -0.5, 0.0, 0.5, 1.0]:
 			var q: Vector3 = bar.position + bar.basis.z * (t * half)
@@ -268,15 +289,22 @@ func _initialize() -> void:
 			if _inside(q, rider_tris):
 				strap_in += 1
 	print("  helmet straps: lowest point y %.3f, samples inside the head %d" % [strap_low, strap_in])
-	if not _check(strap_low <= 0.0 and strap_in == 0, "helmet straps must reach the chin (low y %.3f <= 0) and stay outside the skin (%d samples inside)" % [strap_low, strap_in]):
+	if not _check(strap_low <= 0.0 and strap_in == 0 and thin_straps == 0, "helmet straps must reach the chin (low y %.3f <= 0), stay outside the skin (%d samples inside) and be flat webbing (%d thin bars)" % [strap_low, strap_in, thin_straps]):
 		return
-	# tóc dưới mũ bảo hiểm không được đâm xuyên vòm / vành (vệt đen lởm chởm sau gáy): bob / dài / undercut phồng nhất, và hai cực bề ngang
-	for style: String in ["long", "undercut", "spiky"]:
+	# tóc dưới mũ bảo hiểm không được đâm xuyên vòm / vành (vệt đen lởm chởm sau gáy): mọi kiểu tóc (bob / dài / đuôi ngựa lộ ra dưới
+	# vành), hai giới và hai cực bề ngang
+	for style: String in PS2Head.HAIR_STYLES:
 		for combo: Array in [[0.94, true], [1.0, false], [1.06, false]]:
 			var hh: Node3D = PS2Head.build(_fresh_parent(), Vector3.ZERO, {"hair_style": style, "width": combo[0], "female": combo[1], "seed": 9, "outfit": {"helmet": true}}, {})
 			var poking: int = _hair_through_helmet(hh)
 			if not _check(poking == 0, "hair under the helmet (%s, width %s) pokes through the dome / rim at %d vertices" % [style, combo[0], poking]):
 				return
+	# tóc dài của người đội mũ bảo hiểm vẫn buông dưới vành tới ngang vai (bản cũ: mọi kiểu thành tóc ngắn dưới mũ)
+	var long_rider: Node3D = PS2Head.build(_fresh_parent(), Vector3.ZERO, {"hair_style": "long", "female": true, "seed": 9, "outfit": {"helmet": true}}, {})
+	var long_low: float = ((long_rider.get_node("Hair") as MeshInstance3D).mesh as ArrayMesh).get_aabb().position.y
+	print("  long hair under the helmet reaches y %.3f" % long_low)
+	if not _check(long_low < -0.05, "long hair under the helmet must hang below the rim to the shoulders (lowest y %.3f)" % long_low):
+		return
 	print("✅ SUCCESS: PS2 HEAD MESH, UV, NORMALS, HAIR SHELLS, CELLS, MATERIALS, HATS AND ACCESSORIES OK")
 	quit(0)
 
@@ -346,12 +374,11 @@ func _shell_problem(style: String, k: Dictionary, head_tris: Array, head_boxes: 
 	return ""
 
 
-## Số đỉnh của các phần mũ trong HatFit (bỏ khối cuối = tóc gáy cố ý chìm; bỏ đáy bán cầu và tâm nắp trụ nằm trên trục) nằm TRONG sọ.
+## Số đỉnh của MỌI phần mũ trong HatFit (bỏ đáy bán cầu và tâm nắp trụ / cực cầu nằm trên trục của phần đó) nằm TRONG sọ.
 func _hat_sink_count(fit: Node3D, head_tris: Array) -> int:
 	var inside: int = 0
-	var parts: Array = fit.get_children()
-	for pi: int in range(parts.size() - 1):
-		var mi := parts[pi] as MeshInstance3D
+	for ch: Node in fit.get_children():
+		var mi := ch as MeshInstance3D
 		if mi == null:
 			continue
 		var xf: Transform3D = fit.transform * mi.transform
@@ -368,6 +395,73 @@ func _hat_sink_count(fit: Node3D, head_tris: Array) -> int:
 			if _inside(p, head_tris):
 				inside += 1
 	return inside
+
+
+## Các phần trong HatFit theo thứ tự: cyl (CylinderMesh), hemi (bán cầu), sph (cầu), box, mesh (ArrayMesh); "hair" nếu phần đó
+## dùng vật liệu tóc (vòm tóc / khối gáy của bộ dựng cũ).
+func _hat_parts(fit: Node3D) -> String:
+	var hair_mats: Array = []
+	for i: int in range(CharacterBuilder.HAIR_COLORS.size()):
+		hair_mats.append(CharacterBuilder._hair_mat(i))
+		hair_mats.append(PS2Head.hair_material(i))
+	var out: PackedStringArray = []
+	for ch: Node in fit.get_children():
+		var mi := ch as MeshInstance3D
+		if mi == null:
+			continue
+		if mi.material_override in hair_mats:
+			out.append("hair")
+		elif mi.mesh is CylinderMesh:
+			out.append("cyl")
+		elif mi.mesh is SphereMesh:
+			out.append("hemi" if (mi.mesh as SphereMesh).is_hemisphere else "sph")
+		elif mi.mesh is BoxMesh:
+			out.append("box")
+		else:
+			out.append("mesh")
+	return ",".join(out)
+
+
+## Số đỉnh tóc (kể cả đuôi ngựa / gai / búi) cao hơn đáy vành mũ (đáy trụ thấp nhất trong HatFit) mà nằm NGOÀI mọi phần kín của mũ:
+## trụ / nón cụt (CylinderMesh), bán cầu, cầu, đo trong hệ của từng phần (bỏ co giãn); mỗi phần thu 2 % vì mặt mesh là đa giác nội
+## tiếp (18..22 cạnh), phẳng hơn mặt cong chuẩn.
+func _hair_outside_hat(head: Node3D) -> int:
+	var fit: Node3D = head.get_node("HatFit") as Node3D
+	var parts: Array = []
+	var bottom: float = INF
+	for ch: Node in fit.get_children():
+		var mi := ch as MeshInstance3D
+		if mi == null or not (mi.mesh is CylinderMesh or mi.mesh is SphereMesh):
+			continue
+		var xf: Transform3D = fit.transform * mi.transform
+		parts.append([mi.mesh, xf.affine_inverse()])
+		if mi.mesh is CylinderMesh:
+			bottom = minf(bottom, (xf * Vector3(0.0, -(mi.mesh as CylinderMesh).height * 0.5, 0.0)).y)
+	var outside: int = 0
+	var seen: Dictionary = {}
+	for tr: Array in _mesh_tris((head.get_node("Hair") as MeshInstance3D).mesh as ArrayMesh):
+		for p: Vector3 in tr:
+			if seen.has(p) or p.y <= bottom:
+				continue
+			seen[p] = true
+			var inside: bool = false
+			for part: Array in parts:
+				var q: Vector3 = (part[1] as Transform3D) * p
+				if part[0] is CylinderMesh:
+					var cm: CylinderMesh = part[0]
+					var t: float = q.y / cm.height + 0.5
+					if t >= 0.0 and t <= 1.0 and Vector2(q.x, q.z).length() <= lerpf(cm.bottom_radius, cm.top_radius, t) * 0.98:
+						inside = true
+				else:
+					var sm: SphereMesh = part[0]
+					var semi_y: float = sm.height if sm.is_hemisphere else sm.height * 0.5
+					if (not sm.is_hemisphere or q.y >= 0.0) and Vector3(q.x / sm.radius, q.y / semi_y, q.z / sm.radius).length() <= 0.98:
+						inside = true
+				if inside:
+					break
+			if not inside:
+				outside += 1
+	return outside
 
 
 ## Số đỉnh vỏ tóc nằm trên đáy vành mà KHÔNG nằm trong vòm hoặc vành mũ bảo hiểm (đếm tia trên lưới kín của vòm / vành, hệ đầu).
