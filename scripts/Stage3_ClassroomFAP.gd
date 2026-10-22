@@ -205,7 +205,7 @@ func _build_lab_402_world() -> void:
 	world.position = Vector3(c.x, -c.y, c.z)
 	world.rotation_degrees.y = 180.0
 	add_child(world)
-	FPTUCampusBuilder.build_authentic_campus(world, Vector3.ZERO, 0.0, {"grass": true})
+	FPTUCampusBuilder.build_authentic_campus(world, Vector3.ZERO, 0.0, {"grass": true, "palms": GameFX.art_style == "vice"})
 	FPTUCampusBuilder.build_hutech(world, FPTUCampusBuilder.hutech_origin_local(), cm)
 	FPTUCampusBuilder.build_d1_road_piece(world, -13.0, -80.0, 300.0, cm, 0.0)
 	FPTUCampusBuilder.build_room_interior($Room, FPTUCampusBuilder.lab402_room_size(), cm, {

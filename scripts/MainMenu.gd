@@ -69,7 +69,7 @@ func _ready() -> void:
 # ===========================================================================
 func _build_world() -> void:
 	campus_mats = FPTUCampusBuilder.make_materials()
-	FPTUCampusBuilder.build_authentic_campus(world, Vector3.ZERO, 0.0, {"grass": true})
+	FPTUCampusBuilder.build_authentic_campus(world, Vector3.ZERO, 0.0, {"grass": true, "palms": GameFX.art_style == "vice"})
 	FPTUCampusBuilder.build_hutech(world, FPTUCampusBuilder.hutech_origin_local(), campus_mats)
 	FPTUCampusBuilder.build_d1_road_piece(world, -13.0, -140.0, 340.0, campus_mats, 0.0)
 	# Mặt đất xa + nền cỏ bao quanh

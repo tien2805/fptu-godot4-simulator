@@ -11,6 +11,10 @@
 #   build_lamp_post(parent, pos, height, m)           cột đèn cao áp 2 nhánh
 #   build_tray(parent, kind)                          khay cơm căn tin có dĩa cơm, chén canh, đồ ăn, ly, đũa
 #   build_table(parent, pos), build_stool(parent, pos), build_umbrella(parent, pos)
+#   palm_meshes()                                     cọ Vice City v2 (plan VC-2): mesh thân 5 khoanh thuôn + mesh tán
+#                                                     12 tàu lá rủ + 3 trái dừa, dùng chung, cache tĩnh
+#   build_palm_field(parent, points, opts)            cả rừng cọ = 2 MultiMeshInstance3D (thân, tán), collider tuỳ chọn
+#   build_palm(parent, pos, height, seed)             một cây cọ lẻ (2 MeshInstance3D dùng chung mesh của rừng cọ)
 # KHÔNG dùng định danh autoload ở đây (xem ghi chú ở CharacterBuilder).
 class_name PropBuilder
 extends RefCounted
@@ -443,6 +447,262 @@ static func build_lamp_post(parent: Node3D, pos: Vector3, height: float = 8.5, t
 		CharacterBuilder._box(root, Vector3(sx * 1.85, height + 0.22, 0.0), Vector3(0.6, 0.03, 0.24), lens(Color("#FFF2CC"), 1.5))
 	var mi: MeshInstance3D = bake_into(parent, root, "LampPost", pos, yaw)
 	return mi
+
+# ===========================================================================
+# CÂY CỌ v2 (phong cách Vice City, plan VC-2; port từ look-dev tests/preview_vice_lookdev.gd _frond / _vice_palm)
+#   Thân: mesh CAO 1 m (y 0..1) gồm 5 khoanh thuôn, mỗi khoanh loe ở chân (gờ khoanh như thân cọ thật), hai màu xen kẽ
+#   = 2 surface; cong sẵn PALM_CURVE m theo +X (t²). Mỗi instance kéo giãn Y = chiều cao (8,5..13 m) + trượt ngang theo
+#   độ nghiêng (0..0,12 m/m), quay yaw ngẫu nhiên. Pháp tuyến thân nằm ngang (y = 0) nên phép kéo giãn Y không đổi hướng
+#   pháp tuyến, dù renderer biến đổi nó bằng chính ma trận instance hay bằng nghịch đảo chuyển vị.
+#   Tán: 12 tàu lá rủ cong hình chữ V nông (_palm_frond_mesh) + 3 trái dừa gộp thành 1 mesh (2 surface: lá, dừa),
+#   đặt lên ngọn thân (đã tính độ cong + nghiêng), yaw và tỉ lệ 0,9..1,15 ngẫu nhiên.
+# ===========================================================================
+const PALM_H_MIN: float = 8.5
+const PALM_H_MAX: float = 13.0
+const PALM_LEAN_MAX: float = 0.12        # độ nghiêng thân (m ngang / m cao), như look-dev
+const PALM_CURVE: float = 0.45           # độ cong nướng sẵn trong mesh thân: ngọn lệch 0,45 m (cong dần theo t²)
+const PALM_BANDS: int = 5
+const PALM_SIDES: int = 10
+const PALM_FRONDS: int = 12
+const PALM_COLLIDER_R: float = 0.28
+const PALM_SINK: float = 0.1             # gốc thân lún 10 cm: mặt đất các cảnh nằm ở y -0,05..0
+
+static var _palm_cache: Dictionary = {}
+
+## {"trunk": ArrayMesh, "crown": ArrayMesh, "materials": {"leaf", "trunk", "ring", "nut"}} – dựng một lần, cache tĩnh.
+static func palm_meshes() -> Dictionary:
+	if not _palm_cache.is_empty():
+		return _palm_cache
+	var mats: Dictionary = _palm_materials()
+	_palm_cache = {"trunk": _palm_trunk_mesh(mats), "crown": _palm_crown_mesh(mats), "materials": mats}
+	return _palm_cache
+
+static func _palm_materials() -> Dictionary:
+	var leaf := StandardMaterial3D.new()
+	leaf.albedo_color = Color("#3f9e52")
+	leaf.roughness = 0.9
+	leaf.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var trunk := StandardMaterial3D.new()
+	trunk.albedo_color = Color("#a08c70")
+	trunk.roughness = 0.95
+	var ring := StandardMaterial3D.new()
+	ring.albedo_color = Color("#7d6b55")
+	ring.roughness = 0.95
+	var nut := StandardMaterial3D.new()
+	nut.albedo_color = Color("#6b4a2a")
+	nut.roughness = 0.8
+	return {"leaf": leaf, "trunk": trunk, "ring": ring, "nut": nut}
+
+## Tam giác có mặt trước hướng `want` (Godot: mặt trước theo chiều kim đồng hồ, (b - a) x (c - a) ngược hướng want).
+static func _palm_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, na: Vector3, nb: Vector3, nc: Vector3, want: Vector3) -> void:
+	if (b - a).cross(c - a).dot(want) > 0.0:
+		var t: Vector3 = b
+		b = c
+		c = t
+		var tn: Vector3 = nb
+		nb = nc
+		nc = tn
+	st.set_normal(na)
+	st.add_vertex(a)
+	st.set_normal(nb)
+	st.add_vertex(b)
+	st.set_normal(nc)
+	st.add_vertex(c)
+
+static func _palm_trunk_mesh(mats: Dictionary) -> ArrayMesh:
+	var sts: Array[SurfaceTool] = [SurfaceTool.new(), SurfaceTool.new()]
+	for st: SurfaceTool in sts:
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var prev_top_r: float = 0.0
+	for i: int in range(PALM_BANDS):
+		var t0: float = float(i) / float(PALM_BANDS)
+		var t1: float = float(i + 1) / float(PALM_BANDS)
+		# bán kính như look-dev: chân khoanh loe rộng hơn ngọn khoanh dưới -> gờ khoanh
+		var rb: float = lerpf(0.26, 0.18, t0)
+		var rt: float = lerpf(0.22, 0.16, t0 + 0.2)
+		var st: SurfaceTool = sts[i % 2]
+		var c0 := Vector3(PALM_CURVE * t0 * t0, t0, 0.0)
+		var c1 := Vector3(PALM_CURVE * t1 * t1, t1, 0.0)
+		for k: int in range(PALM_SIDES):
+			var a0: float = TAU * float(k) / float(PALM_SIDES)
+			var a1: float = TAU * float(k + 1) / float(PALM_SIDES)
+			var d0 := Vector3(cos(a0), 0.0, sin(a0))
+			var d1 := Vector3(cos(a1), 0.0, sin(a1))
+			var out_n: Vector3 = (d0 + d1).normalized()
+			_palm_tri(st, c0 + d0 * rb, c0 + d1 * rb, c1 + d1 * rt, d0, d1, d1, out_n)
+			_palm_tri(st, c0 + d0 * rb, c1 + d1 * rt, c1 + d0 * rt, d0, d1, d0, out_n)
+			if i > 0:
+				# gờ dưới chân khoanh (vành từ ngọn khoanh dưới ra chân khoanh này), nhìn thấy khi ngước lên
+				_palm_tri(st, c0 + d0 * prev_top_r, c0 + d1 * prev_top_r, c0 + d1 * rb, Vector3.DOWN, Vector3.DOWN, Vector3.DOWN, Vector3.DOWN)
+				_palm_tri(st, c0 + d0 * prev_top_r, c0 + d1 * rb, c0 + d0 * rb, Vector3.DOWN, Vector3.DOWN, Vector3.DOWN, Vector3.DOWN)
+			if i == PALM_BANDS - 1:
+				_palm_tri(st, c1, c1 + d0 * rt, c1 + d1 * rt, Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP)
+		prev_top_r = rt
+	var mesh := ArrayMesh.new()
+	for si: int in range(sts.size()):
+		sts[si].index()
+		sts[si].commit(mesh)
+		mesh.surface_set_material(si, mats["trunk"] if si == 0 else mats["ring"])
+	return mesh
+
+## Một tàu lá (look-dev _frond): 8 đốt 0,5 m, chếch lên 28° rồi rủ dần 13°/đốt, rộng nhất ở giữa, gập chữ V nông.
+static func _palm_frond_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var segs: int = 8
+	var seg_len: float = 0.5
+	var p := Vector3.ZERO
+	var pitch: float = deg_to_rad(28.0)
+	var pts: Array[Vector3] = []
+	var widths: Array[float] = []
+	for i: int in range(segs + 1):
+		pts.append(p)
+		var t: float = float(i) / float(segs)
+		widths.append(lerpf(0.12, 0.95, sin(t * PI) * 0.9 + 0.1) * (1.0 - t * 0.55))
+		p += Vector3(0.0, sin(pitch), cos(pitch)) * seg_len
+		pitch -= deg_to_rad(13.0)
+	for i: int in range(segs):
+		var a: Vector3 = pts[i]
+		var b: Vector3 = pts[i + 1]
+		var wa: float = widths[i] * 0.5
+		var wb: float = widths[i + 1] * 0.5
+		var fold: float = 0.06
+		var a_l := a + Vector3(-wa, -fold, 0.0)
+		var a_r := a + Vector3(wa, -fold, 0.0)
+		var b_l := b + Vector3(-wb, -fold, 0.0)
+		var b_r := b + Vector3(wb, -fold, 0.0)
+		for tri: Array in [[a, b, a_l], [a_l, b, b_l], [a, a_r, b], [a_r, b_r, b]]:
+			for v: Vector3 in tri:
+				st.set_normal(Vector3.UP)
+				st.add_vertex(v)
+	st.generate_normals()
+	return st.commit()
+
+static func _palm_crown_mesh(mats: Dictionary) -> ArrayMesh:
+	var frond: ArrayMesh = _palm_frond_mesh()
+	var leaf := SurfaceTool.new()
+	leaf.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	for k: int in range(PALM_FRONDS):
+		var rot := Vector3(deg_to_rad(rng.randf_range(-8.0, 10.0)), float(k) * TAU / float(PALM_FRONDS) + rng.randf_range(-0.12, 0.12), 0.0)
+		var basis: Basis = Basis.from_euler(rot) * Basis.from_scale(Vector3.ONE * rng.randf_range(1.05, 1.35))
+		leaf.append_from(frond, 0, Transform3D(basis, Vector3.ZERO))
+	var nut := SurfaceTool.new()
+	nut.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var sm := SphereMesh.new()
+	sm.radius = 0.16
+	sm.height = 0.32
+	sm.radial_segments = 8
+	sm.rings = 4
+	for k: int in range(3):
+		nut.append_from(sm, 0, Transform3D(Basis.IDENTITY, Vector3(cos(k * 2.1) * 0.2, -0.25, sin(k * 2.1) * 0.2)))
+	var mesh := ArrayMesh.new()
+	leaf.commit(mesh)
+	mesh.surface_set_material(0, mats["leaf"])
+	nut.commit(mesh)
+	mesh.surface_set_material(1, mats["nut"])
+	return mesh
+
+## [Transform3D thân, Transform3D tán] của một cây cọ gốc tại `pos` (hệ của parent).
+static func _palm_xforms(pos: Vector3, height: float, yaw: float, lean: float, crown_yaw: float, crown_scale: float) -> Array[Transform3D]:
+	var rot := Basis(Vector3.UP, yaw)
+	var base: Vector3 = pos - Vector3(0.0, PALM_SINK, 0.0)
+	# cột Y = (lean * h, h, 0): kéo giãn mesh cao 1 m thành h, trượt ngọn lệch lean * h theo +X cục bộ
+	var trunk := Transform3D(rot * Basis(Vector3.RIGHT, Vector3(lean * height, height, 0.0), Vector3.BACK), base)
+	var top: Vector3 = base + rot * Vector3(PALM_CURVE + lean * height, height + PALM_SINK, 0.0)
+	var crown := Transform3D(Basis(Vector3.UP, crown_yaw) * Basis.from_scale(Vector3.ONE * crown_scale), top)
+	return [trunk, crown]
+
+## Dáng từng cây của một rừng cọ (hàm thuần, cùng seed -> cùng kết quả): {"trunk": Array[Transform3D],
+## "crown": Array[Transform3D], "heights": PackedFloat32Array}. opts như build_palm_field (seed, heights).
+static func palm_field_xforms(points: PackedVector3Array, opts: Dictionary = {}) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(opts.get("seed", 1))
+	var fixed: PackedFloat32Array = opts.get("heights", PackedFloat32Array())
+	var trunks: Array[Transform3D] = []
+	var crowns: Array[Transform3D] = []
+	var heights := PackedFloat32Array()
+	for i: int in range(points.size()):
+		var h: float = rng.randf_range(PALM_H_MIN, PALM_H_MAX)
+		if i < fixed.size():
+			h = fixed[i]
+		var xf: Array[Transform3D] = _palm_xforms(points[i], h, rng.randf() * TAU, rng.randf_range(0.0, PALM_LEAN_MAX), rng.randf() * TAU, rng.randf_range(0.9, 1.15))
+		trunks.append(xf[0])
+		crowns.append(xf[1])
+		heights.append(h)
+	return {"trunk": trunks, "crown": crowns, "heights": heights}
+
+## Rừng cọ: ONE MultiMeshInstance3D "Trunks" + ONE "Crowns" dưới Node3D "PalmField", toạ độ `points` trong hệ của
+## `parent` (y = mặt đất). Meta: palm_count, palm_points (= points), palm_heights (chiều cao thân từng cây).
+## opts: seed (1), heights (PackedFloat32Array theo điểm, mặc định ngẫu nhiên 8,5..13 m), cast_shadow (true: thân lẫn tán
+## đổ bóng), colliders (false: chỉ để nhìn; true = một StaticBody3D "PalmColliders" với một CylinderShape3D r 0,28 m cao
+## bằng thân mỗi cây). Không có điểm -> null.
+static func build_palm_field(parent: Node3D, points: PackedVector3Array, opts: Dictionary = {}) -> Node3D:
+	if points.is_empty():
+		return null
+	var pm: Dictionary = palm_meshes()
+	var xfs: Dictionary = palm_field_xforms(points, opts)
+	var heights: PackedFloat32Array = xfs["heights"]
+	var n: int = points.size()
+	var mm_t := MultiMesh.new()
+	mm_t.transform_format = MultiMesh.TRANSFORM_3D
+	mm_t.mesh = pm["trunk"]
+	mm_t.instance_count = n
+	var mm_c := MultiMesh.new()
+	mm_c.transform_format = MultiMesh.TRANSFORM_3D
+	mm_c.mesh = pm["crown"]
+	mm_c.instance_count = n
+	var field := Node3D.new()
+	field.name = "PalmField"
+	var body: StaticBody3D = null
+	if bool(opts.get("colliders", false)):
+		body = StaticBody3D.new()
+		body.name = "PalmColliders"
+	for i: int in range(n):
+		mm_t.set_instance_transform(i, xfs["trunk"][i])
+		mm_c.set_instance_transform(i, xfs["crown"][i])
+		if body:
+			var shape := CylinderShape3D.new()
+			shape.radius = PALM_COLLIDER_R
+			shape.height = heights[i]
+			var cs := CollisionShape3D.new()
+			cs.shape = shape
+			cs.position = points[i] + Vector3(0.0, heights[i] * 0.5, 0.0)
+			body.add_child(cs)
+	var shadow: GeometryInstance3D.ShadowCastingSetting = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if bool(opts.get("cast_shadow", true)) else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for pair: Array in [["Trunks", mm_t], ["Crowns", mm_c]]:
+		var mmi := MultiMeshInstance3D.new()
+		mmi.name = pair[0]
+		mmi.multimesh = pair[1]
+		mmi.cast_shadow = shadow
+		field.add_child(mmi)
+	if body:
+		field.add_child(body)
+	field.set_meta("palm_count", n)
+	field.set_meta("palm_points", points)
+	field.set_meta("palm_heights", heights)
+	parent.add_child(field)
+	return field
+
+## Một cây cọ lẻ (FPTUCampusBuilder.build_royal_palm ở phong cách vice): Node3D "Palm" tại `pos` với MeshInstance3D
+## "Trunk" + "Crown" dùng chung mesh của build_palm_field; dáng (yaw, nghiêng, tán) theo `seed_val`.
+static func build_palm(parent: Node3D, pos: Vector3, height: float, seed_val: int = 0) -> Node3D:
+	var pm: Dictionary = palm_meshes()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_val
+	var xf: Array[Transform3D] = _palm_xforms(Vector3.ZERO, height, rng.randf() * TAU, rng.randf_range(0.0, PALM_LEAN_MAX), rng.randf() * TAU, rng.randf_range(0.9, 1.15))
+	var p := Node3D.new()
+	p.name = "Palm"
+	p.position = pos
+	parent.add_child(p)
+	for pair: Array in [["Trunk", pm["trunk"], xf[0]], ["Crown", pm["crown"], xf[1]]]:
+		var mi := MeshInstance3D.new()
+		mi.name = pair[0]
+		mi.mesh = pair[1]
+		mi.transform = pair[2]
+		p.add_child(mi)
+	return p
 
 # ===========================================================================
 # CĂN TIN: khay cơm, bàn, ghế đẩu, dù

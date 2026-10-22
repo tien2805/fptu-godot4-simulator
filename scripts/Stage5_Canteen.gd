@@ -194,6 +194,7 @@ func _build_hall() -> void:
 	FPTUCampusBuilder.build_authentic_campus(world, Vector3.ZERO, 0.0, {
 		"colliders": true,
 		"open_front_modules": [3, 4],
+		"palms": GameFX.art_style == "vice",
 		"no_grass_rects": [Rect2(cc.x - 15.5, FPTUCampusBuilder.RING_V0 + FPTUCampusBuilder.LONG_D - 1.0, 31.0, 13.0)]
 	})
 	FPTUCampusBuilder.build_hutech(world, FPTUCampusBuilder.hutech_origin_local(), cmat)

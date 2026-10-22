@@ -4,8 +4,10 @@
 # chunks (MSChunk_<gx>_<gz>: every msft id in exactly one chunk, lean colliders (one convex / concave shape per
 # footprint piece, < 40 % of the render triangles, nothing above the roofs), <= 30-triangle water tanks, visibility
 # range, outward walls, nothing on a carriageway or footway ribbon or inside an OSM building, no piece under 1 m
-# wide) and the time budget. Every check goes through _check() (a failed assert inside _initialize would hang a
-# --script run); a watchdog quits if _initialize aborts anyway.
+# wide) and the time budget; palms (plan VC-2, header "PALMS" of MapBuilder) only with opts.palms: one PalmField of
+# 2 MultiMeshInstance3D, visual-only unless palm_colliders (placement rules: tests/test_palms.gd). Every check goes
+# through _check() (a failed assert inside _initialize would hang a --script run); a watchdog quits if _initialize
+# aborts anyway.
 # Run:  godot --headless --path . --script tests/test_mapbuilder.gd
 extends SceneTree
 
@@ -170,6 +172,23 @@ func _run() -> String:
 	_check(_count(lod2, "Label3D") == 0 and _count(lod2, "MultiMeshInstance3D") == 0, "lod 2 has no labels/trees")
 	_check(_count(lod2, "StaticBody3D") == 0, "colliders false -> no bodies")
 	_check(_check_msft(md, lod2, "campus", [], 2, false) > 0, "lod 2 keeps the msft chunks (boxes)")
+
+	# --- palms (VC-2): nothing without opts.palms, one visual-only PalmField with it -------------
+	for r: Node3D in [vin, cor, cam, lod2]:
+		_check(r.find_child("PalmField", true, false) == null, "%s: no opts.palms -> no PalmField" % r.name)
+	var palm_reg: Node3D = MapBuilder.build_region(world, md, "campus", {"lod": 2, "colliders": false, "palms": true})
+	var pf: Node3D = palm_reg.get_node_or_null("PalmField") as Node3D
+	if _check(pf != null and palm_reg.find_children("PalmField", "", true, false).size() == 1, "opts.palms -> one PalmField under the region root"):
+		_check(_count(pf, "MultiMeshInstance3D") == 2 and int(pf.get_meta("palm_count", 0)) >= 200, "PalmField: 2 MultiMeshInstance3D, >= 200 palms (got %d)" % int(pf.get_meta("palm_count", 0)))
+		_check(_count(palm_reg, "StaticBody3D") == 0, "palms are visual-only unless palm_colliders")
+		_check(String(pf.get_meta("region", "")) == "campus", "PalmField carries meta region")
+	var palm_col: Node3D = MapBuilder.build_region(world, md, "campus", {"lod": 2, "colliders": false, "palms": true, "palm_colliders": true})
+	var pcf: Node3D = palm_col.get_node_or_null("PalmField") as Node3D
+	if _check(pcf != null, "palm_colliders build has a PalmField"):
+		var bodies: Array = pcf.find_children("*", "StaticBody3D", true, false)
+		_check(bodies.size() == 1 and (bodies[0] as Node).get_child_count() == int(pcf.get_meta("palm_count", 0)), "palm_colliders -> one StaticBody3D, one shape per palm")
+	palm_reg.free()
+	palm_col.free()
 
 	# --- standalone build_road -----------------------------------------------------------
 	var pts := PackedVector2Array([Vector2(0, 0), Vector2(40, 0), Vector2(80, 30), Vector2(120, 30)])
