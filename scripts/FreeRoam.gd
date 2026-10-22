@@ -97,6 +97,11 @@ var hint_holder: Control
 var tod_label: Label
 var stats_label: Label
 var map_overlay: RoamMap
+## HUD kiểu thập niên 80 (Task VC-4): chỉ hiện ở phong cách vice; giờ = huy hiệu giờ trong ngày, ví Cóc Vàng, radar
+## (blip hotspot theo màu màn, xe đang đỗ khi đi bộ, tuyến BE6 -> FPTU màu hồng), tên khu vực, "Xe máy" khi lên xe.
+var vice_hud: ViceHUD
+var tod_holder: Control
+var stats_holder: Control
 var _hud_timer: float = 0.0
 var _lab_hotspot: Area3D = null
 var _base_env: Environment = null
@@ -825,6 +830,8 @@ func mount_bike() -> void:
 	player.visible = false
 	player.process_mode = Node.PROCESS_MODE_DISABLED
 	active_hotspot = null
+	if vice_hud:
+		vice_hud.show_vehicle("Xe máy")
 	var fx: Node = get_node_or_null("/root/GameFX")
 	if fx and fx.has_method("music_play"):
 		fx.music_play("ride", 0.3)
@@ -863,6 +870,8 @@ func dismount_bike() -> bool:
 	player.controls_enabled = true
 	player.teleport(spot, bike.rotation.y)
 	player.camera.make_current()
+	if vice_hud:
+		vice_hud.hide_vehicle()
 	var fx: Node = get_node_or_null("/root/GameFX")
 	if fx and fx.has_method("music_play"):
 		fx.music_play("menu", 0.15)
@@ -957,6 +966,10 @@ func set_time_of_day(preset: String) -> void:
 	_refresh_lab_hotspot()
 	if tod_label:
 		tod_label.text = "🕒 %s · [T] đổi giờ" % String(TOD_NAMES.get(key, key))
+	if vice_hud:
+		# giờ của ViceHUD = phần "HH:MM" cuối tên preset ("Buổi sáng 07:30" -> "07:30")
+		var tod_name: String = String(TOD_NAMES.get(key, ""))
+		vice_hud.set_clock(tod_name.right(5) if tod_name.length() >= 5 else "")
 
 
 func cycle_time_of_day() -> void:
@@ -974,6 +987,8 @@ func toggle_map() -> void:
 	map_overlay.visible = not map_overlay.visible
 	if hint_holder:
 		hint_holder.visible = not map_overlay.visible   # bản đồ có tiêu đề + chú giải riêng
+	if vice_hud:
+		vice_hud.suppressed = map_overlay.visible        # bản đồ phủ cả radar / cột giờ - ví
 	if map_overlay.visible:
 		_hud_timer = HUD_REFRESH
 		_update_map_dynamic()
@@ -1012,7 +1027,7 @@ func flash_hint(text: String) -> void:
 
 
 func _build_hud() -> void:
-	var hint_panel: PanelContainer = GameFXScript.anchored_panel(hud, Control.PRESET_CENTER_BOTTOM, Vector2(760, 0), 24, Color("#F37021"))
+	var hint_panel: PanelContainer = GameFXScript.anchored_panel(hud, Control.PRESET_CENTER_BOTTOM, Vector2(760, 0), 24)
 	hint_holder = hint_panel.get_parent() as Control
 	hint_label = GameFXScript.make_label(HINT_DEFAULT, 15, Color("#F4F5F6"))
 	hint_panel.add_child(hint_label)
@@ -1020,10 +1035,12 @@ func _build_hud() -> void:
 	tod_label = GameFXScript.make_label("🕒 —", 14, Color("#F1C40F"), HORIZONTAL_ALIGNMENT_LEFT)
 	tod_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	tod_panel.add_child(tod_label)
+	tod_holder = tod_panel.get_parent() as Control
 	var stats_panel: PanelContainer = GameFXScript.anchored_panel(hud, Control.PRESET_TOP_RIGHT, Vector2(0, 0), 20, Color("#2ECC71"))
 	stats_label = GameFXScript.make_label("FPS — · Cổng FPTU — m", 14, Color("#DFE6E9"), HORIZONTAL_ALIGNMENT_RIGHT)
 	stats_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	stats_panel.add_child(stats_label)
+	stats_holder = stats_panel.get_parent() as Control
 	map_overlay = RoamMap.new()
 	map_overlay.name = "MapOverlay"
 	map_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1038,6 +1055,59 @@ func _build_hud() -> void:
 	map_overlay.setup(md, gate_xz, MapBuilder._water_polygons(md))
 	hud.add_child(map_overlay)
 	_sync_map_hotspots()
+	_build_vice_hud()
+
+
+## ViceHUD (nút con của cảnh, lớp vẽ 0 dưới HUD): tên khu vực nằm trên dòng gợi ý 2 dòng ở đáy (đáy 104 px).
+func _build_vice_hud() -> void:
+	vice_hud = ViceHUD.new()
+	vice_hud.name = "ViceHUD"
+	vice_hud.md = md
+	vice_hud.area_margin = Vector2(34.0, 104.0)
+	add_child(vice_hud)
+	vice_hud.radar.route = md.route_points(40.0)
+	var fx: Node = get_node_or_null("/root/GameFX")
+	if fx and fx.has_signal("art_style_changed"):
+		fx.connect("art_style_changed", _on_art_style_changed)
+	_apply_hud_style()
+
+
+func _on_art_style_changed(_style: String) -> void:
+	_apply_hud_style()
+
+
+## Bố cục HUD theo phong cách: vice = ViceHUD (giờ + ví góc trên phải) thay huy hiệu giờ, bảng FPS / khoảng cách sang
+## góc trên trái; classic = như cũ (giờ trên trái, FPS trên phải, không ViceHUD).
+func _apply_hud_style() -> void:
+	var vice: bool = ViceHUD.style_active()
+	if tod_holder:
+		tod_holder.visible = not vice
+	if stats_holder:
+		stats_holder.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT if vice else Control.PRESET_TOP_RIGHT)
+		stats_holder.grow_horizontal = Control.GROW_DIRECTION_END if vice else Control.GROW_DIRECTION_BEGIN
+		stats_holder.grow_vertical = Control.GROW_DIRECTION_END
+		stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if vice else HORIZONTAL_ALIGNMENT_RIGHT
+	if vice_hud:
+		vice_hud.suppressed = map_overlay != null and map_overlay.visible
+		_update_vice_hud(true)
+
+
+## Radar theo người chơi / xe đang cưỡi (mỗi frame vật lý chỉ gán tâm + hướng); blip hotspot + xe đỗ theo nhịp HUD.
+func _update_vice_hud(blips_too: bool) -> void:
+	if vice_hud == null or not vice_hud.visible or player == null or bike == null:
+		return
+	var pos: Vector3 = roam_position()
+	var cam: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+	var yaw: float = cam.global_rotation.y if cam else player.facing_yaw()
+	vice_hud.track(Vector2(pos.x, pos.z), yaw)
+	if not blips_too:
+		return
+	var bl: Array[Dictionary] = []
+	for h: Area3D in hotspots:
+		bl.append({"pos": Vector2(h.global_position.x, h.global_position.z), "color": HOTSPOT_COLORS.get(int(h.get_meta("stage_id")), Color.WHITE), "shape": "circle"})
+	if bike_parked and not mounted:
+		bl.append({"pos": Vector2(bike.global_position.x, bike.global_position.z), "color": RoamMap.BIKE, "shape": "diamond"})
+	vice_hud.radar.blips = bl
 
 
 func _hint_text() -> String:
@@ -1063,8 +1133,10 @@ func _physics_process(delta: float) -> void:
 		_hint_flash_t -= delta
 	_hud_timer -= delta
 	if _hud_timer > 0.0:
+		_update_vice_hud(false)
 		return
 	_hud_timer = HUD_REFRESH
+	_update_vice_hud(true)
 	var pos: Vector3 = roam_position()
 	var dist: float = Vector2(pos.x, pos.z).distance_to(gate_xz)
 	if stats_label:

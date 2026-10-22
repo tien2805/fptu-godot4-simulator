@@ -106,6 +106,9 @@ var phone_confiscated: bool = false
 
 var hunger_bar: ProgressBar
 var attention_bar: ProgressBar
+## Phong cách vice (Task VC-4): 5 sao = thanh "giảng viên để ý" (sao = floori(để ý / 20)), góc trên trái dưới thanh trên.
+var vice_hud: ViceHUD
+const STARS_LABEL: String = "GIẢNG VIÊN ĐỂ Ý"
 var watch_label: Label
 var banhbao_btn: Button
 var beat_panel: PanelContainer
@@ -153,6 +156,7 @@ func _ready() -> void:
 	_build_room_extras()
 	_build_fap_ui()
 	_build_survive_ui()
+	_build_vice_hud()
 
 	switch_4g_btn.pressed.connect(_on_switch_4g_pressed)
 	submit_btn.pressed.connect(_on_submit_fap_pressed)
@@ -342,6 +346,19 @@ func _build_survive_ui() -> void:
 	quiz_vbox.add_child(answer_input)
 	quiz_bar = GameFX.make_bar(100.0, Color("#FF7675"), 12)
 	quiz_vbox.add_child(quiz_bar)
+
+## ViceHUD chỉ có hàng sao (không radar / ví / giờ) ở góc trên trái, dưới thanh giờ + nhiệm vụ. Cổng điểm danh FAP là
+## giao diện của ĐH FPT nên giữ viền cam ở phong cách vice (meta "fpt_brand").
+func _build_vice_hud() -> void:
+	fap_panel.set_meta("fpt_brand", true)
+	vice_hud = ViceHUD.new()
+	vice_hud.name = "ViceHUD"
+	vice_hud.show_radar = false
+	vice_hud.show_money = false
+	vice_hud.show_clock = false
+	vice_hud.top_preset = Control.PRESET_TOP_LEFT
+	vice_hud.top_margin = Vector2(28.0, 92.0)
+	hud.add_child(vice_hud)
 
 func _set_event_prompt(text: String, color: Color = Color("#FF7675")) -> void:
 	var panel: PanelContainer = event_prompt.get_meta("panel")
@@ -647,6 +664,8 @@ func _process_survive(delta: float) -> void:
 	GameFX.set_bar_color(sleep_bar, Color("#74B9FF") if sleepiness < 60.0 else (Color("#F1C40F") if sleepiness < 85.0 else Color("#E74C3C")))
 	hunger_bar.value = hunger
 	attention_bar.value = attention
+	if vice_hud:
+		vice_hud.set_stars(floori(attention / 20.0), STARS_LABEL)
 	var vig: float = clampf((sleepiness - 55.0) / 45.0, 0.0, 0.85)
 	GameFX.set_vignette(vig, Color(0.05, 0.08, 0.2), 0.0)
 
@@ -654,7 +673,7 @@ func _process_survive(delta: float) -> void:
 	if sleepiness >= 100.0:
 		_fail_stage("BẠN NGỦ GỤC TRÊN BÀN TRONG PHÒNG 16°C! Giảng viên: 'Em ra ngoài rửa mặt rồi khỏi vào nữa.'")
 	elif attention >= 100.0:
-		_fail_stage("GIẢNG VIÊN ĐỂ Ý QUÁ MỨC: 'Em thu dọn ra ngoài giùm cô!' – BỊ MỜI RA KHỎI LỚP.")
+		_fail_stage("GIẢNG VIÊN ĐỂ Ý QUÁ MỨC: 'Em thu dọn ra ngoài giùm cô!' – BỊ MỜI RA KHỎI LỚP.", true)
 	elif time_left <= 0.0:
 		_complete_stage()
 
@@ -858,7 +877,8 @@ func _complete_stage() -> void:
 	var tween: Tween = create_tween()
 	tween.tween_property(modal_overlay, "modulate:a", 1.0, 0.5)
 
-func _fail_stage(reason: String) -> void:
+## `caught` = bị giảng viên để ý tới mức mời ra khỏi lớp: thẻ kết quả vice ghi "BỊ BẮT" thay cho "TRƯỢT MÔN".
+func _fail_stage(reason: String, caught: bool = false) -> void:
 	if is_stage_ended:
 		return
 	is_stage_ended = true
@@ -869,7 +889,7 @@ func _fail_stage(reason: String) -> void:
 	_set_event_prompt("")
 	GameFX.clear_vignette()
 	GameFX.play_sfx("res://assets/audio/absent_gameover.wav", 2.0)
-	StageManager.report_stage_result(StageManager.StageID.STAGE_3_CLASSROOM, {"result": "fail", "score": 0, "rank": "C", "detail": reason})
+	StageManager.report_stage_result(StageManager.StageID.STAGE_3_CLASSROOM, {"result": "fail", "score": 0, "rank": "C", "detail": reason, "caught": caught})
 	modal_title.text = "❌ THẤT BẠI - BỊ ĐÁNH ABSENT!"
 	modal_title.modulate = Color("#E74C3C")
 	modal_sub.text = reason

@@ -328,7 +328,7 @@ func _refresh_cards() -> void:
 		if m["shield"] > 0:
 			sk.text += " · 🛡x%d" % m["shield"]
 		var card: PanelContainer = c["card"]
-		var border: Color = Color("#F37021") if i == active_idx else Color(0.3, 0.35, 0.45)
+		var border: Color = GameFX.ui_accent() if i == active_idx else Color(0.3, 0.35, 0.45)
 		if m["down"]:
 			border = Color("#E74C3C")
 		card.add_theme_stylebox_override("panel", GameFX.make_panel_style(border, Color(0.06, 0.08, 0.14, 0.95), 8))

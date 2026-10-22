@@ -206,13 +206,13 @@ func _say(text: String, color: Color = GameFX.FPT_YELLOW, duration: float = 2.5)
 	prompt_timer = duration
 
 func _build_phase2_hud() -> void:
-	hud_run_panel = GameFX.anchored_panel(hud, Control.PRESET_CENTER_TOP, Vector2(620, 0), 92, GameFX.FPT_ORANGE)
+	hud_run_panel = GameFX.anchored_panel(hud, Control.PRESET_CENTER_TOP, Vector2(620, 0), 92)
 	hud_run_panel.visible = false
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 6)
 	hud_run_panel.add_child(vb)
 	vb.add_child(GameFX.make_label("🏁 BÃI XE → LỐI SAU → SÂN TRONG → SẢNH → CẦU THANG NGOÀI TRỜI → LAB 402", 13, GameFX.FPT_YELLOW))
-	run_progress_bar = GameFX.make_bar(0.0, GameFX.FPT_ORANGE, 16)
+	run_progress_bar = GameFX.make_bar(0.0, GameFX.ui_accent(), 16)
 	vb.add_child(run_progress_bar)
 	monster_label = GameFX.make_label("", 13, Color("#BDC3C7"))
 	vb.add_child(monster_label)
@@ -853,7 +853,7 @@ func _start_phase_2_stairs_climb() -> void:
 		rival_done = true
 
 	mission_label.text = "🏃 PHA 2: CHẠY BỘ XUYÊN CAMPUS & LEO 105 BẬC THANG NGOÀI TRỜI! NÉ SINH VIÊN ÁO CAM, XE ĐẨY, BĂNG RÔN – TỚI LAB 402 TRƯỚC 07:29!"
-	mission_label.add_theme_color_override("font_color", Color("#F37021"))
+	mission_label.add_theme_color_override("font_color", GameFX.ui_accent())
 	stamina_panel.visible = true
 	stamina_label.text = "⚡ THỂ LỰC (GIỮ SHIFT ĐỂ SPRINT – HẾT LÀ HỤT HƠI!)"
 	hud_run_panel.visible = true
@@ -865,7 +865,7 @@ func _start_phase_2_stairs_climb() -> void:
 	_spawn_obstacles()
 	GameFX.flash(Color.WHITE, 0.6, 0.5)
 	GameFX.play_sfx("whoosh")
-	_say("⚡ [A/D] ĐỔI LÀN · [SPACE] NHẢY QUA XE ĐẨY/VŨNG NƯỚC · [S] TRƯỢT DƯỚI BĂNG RÔN · [SHIFT] SPRINT · [Q] MONSTER", GameFX.FPT_ORANGE, 5.0)
+	_say("⚡ [A/D] ĐỔI LÀN · [SPACE] NHẢY QUA XE ĐẨY/VŨNG NƯỚC · [S] TRƯỢT DƯỚI BĂNG RÔN · [SHIFT] SPRINT · [Q] MONSTER", GameFX.ui_accent(), 5.0)
 
 func _spawn_runner() -> void:
 	runner_body = Node3D.new()
