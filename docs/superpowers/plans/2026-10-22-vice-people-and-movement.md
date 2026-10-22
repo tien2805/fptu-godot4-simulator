@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** PS2-era Vice City-like people (realistic proportions, low-poly heads with painted faces) in the vice art style, GTA-style on-foot movement for the FreeRoam player, and wandering pedestrians that react to bumps and bike hits.
+**Goal:** PS2-era Vice City-like people (realistic proportions, low-poly heads with painted faces) in the vice art style, GTA-style on-foot movement for the FreeRoam player, and a dense FreeRoam crowd (three tiers: physics, no-physics, MultiMesh impostors) that reacts to bumps and bike hits, plus ambient traffic.
 
-**Architecture:** `CharacterBuilder` gains a `ps2` mode (set by GameFX for the vice style) that builds every preset on the Quaternius rigged body with a new code-built `PS2Head` (faceted mesh, Pillow face atlas with 8 expression cells switched through `uv1_offset`). `RigAnimator` gets a locomotion layer (sprint overlay, lean, idle fidgets) and new clips (jump, fall, land, skid, stumble, knockdown, get-up). `ThirdPersonController` becomes a small movement state machine. Three new FreeRoam classes add pedestrians: `PedWalkGraph` (walk network from MapData), `Pedestrian` (CharacterBody3D with reactions) and `PedestrianSpawner` (spawn ring, recycling, speech bubbles).
+**Architecture:** `CharacterBuilder` gains a `ps2` mode (set by GameFX for the vice style) that builds every preset on the Quaternius rigged body with a new code-built `PS2Head` (faceted mesh, Pillow face atlas with 8 expression cells switched through `uv1_offset`). `RigAnimator` gets a locomotion layer (sprint overlay, lean, idle fidgets) and new clips (jump, fall, land, skid, stumble, knockdown, get-up). `ThirdPersonController` becomes a small movement state machine. Five new FreeRoam classes add the crowd and the traffic: `PedWalkGraph` (walk network from MapData, with campus/residential/road zones), `Pedestrian` (CharacterBody3D with walk profiles and reactions), `CrowdImpostors` (far tier: 24 baked variants drawn as MultiMeshes), `PedestrianSpawner` (three tiers by distance, zone densities, night scaling, identity-keeping promotion/demotion, pool, speech bubbles) and `RoamTraffic` (motorbikes, cars and buses on right-hand lanes with look-ahead stopping).
 
 **Tech Stack:** Godot 4.7.2, pure GDScript, Pillow/numpy (code-drawn textures), headless SceneTree tests, windowed preview scripts.
 
@@ -15,17 +15,17 @@
 - Pure GDScript, Godot 4.2+ API; no C#, no plugins or addons; keep folder structure, scene names and `class_name`s.
 - No AI-generated images; textures only drawn by code (Pillow); every new PNG gets an `.import` stub with `importer="keep"` and is loaded through `CharacterBuilder._tex()` (FileAccess) so exported builds work.
 - Style homage only: no Rockstar assets, fonts, logos, names. Never a real person's likeness. Pedestrian lines are fictional and mild.
-- `class_name` scripts never write the identifiers `GameFX` or `StageManager` (`CharacterBuilder.gd`, `PS2Head.gd`, `PedWalkGraph.gd`, `Pedestrian.gd`, `PedestrianSpawner.gd`, `ThirdPersonController.gd`, `MapBuilder.gd`, `MapData.gd`, `FPTUCampusBuilder.gd`). Read settings through `get_node_or_null("/root/GameFX")`.
+- `class_name` scripts never write the identifiers `GameFX` or `StageManager` (`CharacterBuilder.gd`, `PS2Head.gd`, `PedWalkGraph.gd`, `Pedestrian.gd`, `CrowdImpostors.gd`, `PedestrianSpawner.gd`, `RoamTraffic.gd`, `PropBuilder.gd`, `ThirdPersonController.gd`, `MapBuilder.gd`, `MapData.gd`, `FPTUCampusBuilder.gd`). Read settings through `get_node_or_null("/root/GameFX")`.
 - Models change only in vice (`CharacterBuilder.ps2 == true`); classic characters stay exactly as today (P-D2). Movement and pedestrians apply in both styles (P-D3). Clothing unchanged (P-D8).
 - Controls (P-D4): jog by default; hold Shift = sprint with 6 s stamina; hold Ctrl = walk; Space = jump on foot (Space stays "drift" on the bike); F, E, T, M, Z, C, Esc unchanged.
 - Falls never hurt (P-D5): < 2.5 m soft landing, 2.5..6 m roll, > 6 m splat 1.5 s then get up. Hitting pedestrians has no penalty (P-D6). Pedestrians only in FreeRoam (P-D7).
-- Performance gates (RTX 4050, 1280x720, quality 2, V-Sync off): FreeRoam with 24 pedestrians >= 45 fps at the BE6 spawn and the campus gate; every stage >= 45 fps; building one character < 15 ms after the first.
+- Performance gates (RTX 4050, 1280x720, quality 2, V-Sync off): FreeRoam with full daytime density (three crowd tiers + ambient traffic) >= 45 fps at the BE6 spawn, the campus main gate and on Nguyễn Xiển; every stage >= 45 fps; building one character < 15 ms after the first.
 - Headless safety: no RenderingDevice work when `DisplayServer.get_name() == "headless"`.
 - Test hygiene: never pipe Godot output through `head`/`grep` directly (redirect to a log, then grep); a failed `assert` inside `_initialize` hangs `--script` runs, so tests use a `_check(cond, msg)` helper that prints and calls `quit(2)`; if Godot exits 139 right after a SUCCESS line, re-run once (known shutdown crash).
 - A fresh git worktree has no `.godot` cache: run `godot --headless --import --path .` before any test, and again after adding a new `class_name` script; confirm the class appears in `.godot/global_script_class_cache.cfg`. Do the same on main after every merge.
 - Write files that contain Vietnamese text with the file tools, never bash heredocs. Python printing Vietnamese needs `PYTHONIOENCODING=utf-8`.
 - Full regression after every task: `godot --headless --quit --check-only --path .` (0 `ERROR`), `tests/smoke_all_stages.gd` (0 `ERROR:` / `SCRIPT ERROR`), and every `tests/test_*.gd` (list: `ls tests/test_*.gd`). Commit after every green task; commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Never push, tag or release.
-- Scheduling: Tasks 1-7 only touch character, controller and texture files and may run before the VC-2/VC-4 branches merge. Tasks 8-12 edit `scripts/FreeRoam.gd` and must start after VC-2 and VC-4 are merged into main.
+- Scheduling: Tasks 1-7 only touch character, controller and texture files and may run before the VC-2/VC-4 branches merge. Tasks 8-14 (Tasks 8, 12 and 13 edit `scripts/FreeRoam.gd`) must start after VC-2 and VC-4 are merged into main (merged 2026-10-22).
 
 Regression command used by every task (run from the repo root; it prints one line per test):
 
@@ -47,15 +47,19 @@ godot --headless --path . --script tests/smoke_all_stages.gd > $L/smoke.log 2>&1
 |---|---|---|
 | `generate_character_textures.py` | modify | PS2 face atlases (`char_ps2_face_<tone><sex><variant>.png`) and hair strands (`char_ps2_hair.png`) |
 | `scripts/characters/PS2Head.gd` | create | Faceted head mesh, face atlas material and expression cells, hair shells, PS2 glasses |
-| `scripts/CharacterBuilder.gd` | modify | `ps2` mode, rigged-for-all routing, PS2 head on rigged and code bodies, attach pivots, face-cell blink and expressions, rigged `pose()`/`bake()`, PS2 baked riders, new clips, RigAnimator locomotion layer |
+| `scripts/CharacterBuilder.gd` | modify | `ps2` mode, rigged-for-all routing, PS2 head on rigged and code bodies, attach pivots, face-cell blink and expressions, rigged `pose()`/`bake()`, PS2 baked riders, new clips, RigAnimator locomotion layer, static `stride` clip (crowd impostors) |
 | `scripts/GameFX.gd` | modify (1 function) | `_apply_art_style_statics()` sets `CharacterBuilder.ps2` and head scale |
 | `scripts/ThirdPersonController.gd` | modify | Movement state machine, stamina, jump/landing, lean, camera FOV/bob/shake, `walk`/`jump` actions |
-| `scripts/roam/PedWalkGraph.gd` | create | Walk network from MapData with spatial queries |
-| `scripts/roam/Pedestrian.gd` | create | Pedestrian body, wandering, contact detection, reactions, lines |
-| `scripts/roam/PedestrianSpawner.gd` | create | Spawn ring, recycling, LOD, speech bubble, hit consequences |
-| `scripts/FreeRoam.gd` | modify | Stamina bar and hint text, pedestrian spawner wiring |
-| `tests/test_ps2_textures.gd`, `tests/test_ps2_head.gd`, `tests/test_ps2_people.gd`, `tests/test_locomotion_anim.gd`, `tests/test_locomotion.gd`, `tests/test_pedestrians.gd` | create | Headless tests |
-| `tests/test_free_roam.gd` | modify | Jump checks near water guards |
+| `scripts/roam/PedWalkGraph.gd` | create | Walk network from MapData with campus/residential/road zones and spatial queries |
+| `scripts/roam/Pedestrian.gd` | create | Pedestrian body, walk profiles and identity, wandering, mid tier without physics, contact detection, reactions, lines |
+| `scripts/roam/CrowdImpostors.gd` | create | Far crowd tier: 24 fixed variants baked in a stride pose, one MultiMesh each, gliding along the walk graph |
+| `scripts/roam/PedestrianSpawner.gd` | create | Three crowd tiers, zone densities, night scaling, identity-keeping promotion/demotion, pool, speech bubble, hit consequences |
+| `scripts/roam/RoamTraffic.gd` | create | Ambient vehicles on right-hand lanes of MapData carriageways, Bezier turns, look-ahead stopping, recycling, night scaling |
+| `scripts/PropBuilder.gd` | modify (1 function) | `build_car()` hatchback for ambient traffic |
+| `scripts/FreeRoam.gd` | modify | Stamina bar and hint text, `crowd_enabled`, crowd spawner and traffic wiring |
+| `tests/test_ps2_textures.gd`, `tests/test_ps2_head.gd`, `tests/test_ps2_people.gd`, `tests/test_locomotion_anim.gd`, `tests/test_locomotion.gd`, `tests/test_pedestrians.gd`, `tests/test_crowd_impostors.gd`, `tests/test_roam_traffic.gd` | create | Headless tests |
+| `tests/support/stub_mover.gd`, `tests/support/stub_roam.gd` | create | Test stubs (player / bike speed, FreeRoam flags) |
+| `tests/test_free_roam.gd` | modify | Jump checks near water guards; builds FreeRoam with `crowd_enabled = false` |
 | `tests/preview_people.gd`, `tests/preview_movement.gd`, `tests/preview_peds.gd` | create | Windowed previews |
 | `README.md`, `PLAN.md`, `docs/superpowers/plans/2026-10-22-vice-city-art-direction.md`, the spec | modify | Docs |
 
@@ -2130,7 +2134,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: Task 6 clips and params.
-- Produces (used by Tasks 8, 10, 11):
+- Produces (used by Tasks 8, 10, 12):
   - Constants `WALK_SPEED = 1.7`, `JOG_SPEED = 4.2`, `SPRINT_SPEED = 7.5`, `RUN_SPEED = SPRINT_SPEED` (old name kept), `STAMINA_MAX_S = 6.0`, landing thresholds `SOFT_LAND_MAX = 2.5`, `ROLL_LAND_MAX = 6.0`.
   - Members `move_state: String` (`GROUND|JUMP|AIR|LAND_SOFT|LAND_ROLL|SPLAT`), `stamina: float` (0..1), `horizontal_speed`, `is_sprinting`, `walk_override: bool`, `jump_override: bool` (one-shot press for bots/tests), `slow_t: float` (seconds of half speed; the pedestrian spawner sets it), `landings: Array[String]` (test log).
   - Signal `landed(kind: String, drop: float)`.
@@ -2923,7 +2927,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-> **Part 3 re-planned (2026-10-22)** for the spec's "Amendment 2026-10-22: dense crowds and ambient traffic": Task 9 walk graph with zones, Task 10 pedestrian with walk profiles, Task 11 far crowd impostors, Task 12 tiered spawner + FreeRoam wiring, Task 13 ambient traffic, Task 14 docs.
+> **Part 3 re-planned (2026-10-22)** for the spec's "Amendment 2026-10-22: dense crowds and ambient traffic": Task 9 walk graph with zones and a cheap ring sampler, Task 10 pedestrian with walk profiles and a stable identity, Task 11 far crowd impostors, Task 12 three-tier spawner + FreeRoam wiring, Task 13 ambient traffic, Task 14 docs.
 
 ### Task 9: `PedWalkGraph`
 
@@ -2933,7 +2937,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `MapData`, `MapBuilder._water_polygons(md)`, `MapBuilder.is_msft(b)`, `MapBuilder.region_shape(md, region)`, `MapBuilder.KERB_MIN_ROAD_W`, `MapBuilder.KERB_W`, `FPTUCampusBuilder.real_plot_transform()`, `plot_rect()`, `ring_outer_rect()`, `ring_courtyard_rect()`, `main_gate_local()`, `west_gate_local()`, `back_gate_local()`.
-- Produces (Tasks 10-13): zones `PedWalkGraph.ZONE_CAMPUS` (0, within 60 m of the campus plot), `ZONE_RESIDENTIAL` (1, inside the Vinhomes region shape), `ZONE_ROAD` (2, everything else), `zone_at(i: int) -> int`; `PedWalkGraph.build(md: MapData, opts: Dictionary = {}) -> PedWalkGraph`, `PedWalkGraph.from_lines(lines: Array) -> PedWalkGraph` (no filtering; tests), `node_count() -> int`, `node_pos(i: int) -> Vector3`, `neighbours(i: int) -> Array`, `next_node(node: int, came_from: int, rng: RandomNumberGenerator = null) -> int`, `nearest(p: Vector3, max_r: float = 30.0) -> int`, `random_point_near(p: Vector3, r_min: float, r_max: float, rng: RandomNumberGenerator, zone: int = -1) -> int` (-1 when none; zone >= 0 keeps only that zone), `block_near(points: Array, r: float) -> void` (cuts every edge passing within r of a point).
+- Produces (Tasks 10-13): zones `PedWalkGraph.ZONE_CAMPUS` (0, within 60 m of the campus plot), `ZONE_RESIDENTIAL` (1, inside the Vinhomes region shape), `ZONE_ROAD` (2, everything else), `zone_at(i: int) -> int`; `PedWalkGraph.build(md: MapData, opts: Dictionary = {}) -> PedWalkGraph`, `PedWalkGraph.from_lines(lines: Array) -> PedWalkGraph` (no filtering; tests), `node_count() -> int`, `node_pos(i: int) -> Vector3`, `neighbours(i: int) -> Array`, `next_node(node: int, came_from: int, rng: RandomNumberGenerator = null) -> int`, `nearest(p: Vector3, max_r: float = 30.0) -> int`, `random_point_ring(p: Vector3, r_min: float, r_max: float, rng: RandomNumberGenerator, tries: int = 12) -> int` (-1 when none; cheap even for the 150-220 m impostor ring), `block_near(points: Array, r: float) -> void` (cuts every edge passing within r of a point).
 
 - [ ] **Step 1: Write the failing test (part A)**
 
@@ -2943,9 +2947,9 @@ Create `tests/test_pedestrians.gd`:
 # File: res://tests/test_pedestrians.gd
 # Test headless người đi đường FreeRoam (spec vice-people-and-movement, Phần 3).
 #   A (Task 9):  đồ thị lối đi bộ từ mapdata: > 500 nút, không nút nào dưới nước / trong nhà OSM / trên lòng đường,
-#                truy vấn random_point_near / next_node.
-#   B (Task 10): một người đi đường trên đồ thị tự dựng: đi bộ, va nhẹ -> STUMBLE, nước rút -> KNOCKDOWN rồi đi lại
-#                trong 3.2 s, xe > 3 m/s -> KNOCKDOWN (tín hiệu "bike").
+#                ba khu (campus / dân cư / đường) đủ nút, truy vấn random_point_ring / next_node.
+#   B (Task 10): người đi đường trên đồ thị tự dựng: tốc độ theo kiểu đi, đi bộ + chạy bộ, va nhẹ -> STUMBLE, nước rút
+#                -> KNOCKDOWN rồi đi lại trong 3 s, xe > 3 m/s -> KNOCKDOWN (tín hiệu "bike"), tầng giữa không va chạm.
 #   C (Task 12): FreeRoam: mật độ theo khu (campus >= 40, dân cư >= 30, đường >= 15 người trong 80 m), trần từng tầng,
 #                đêm còn 30 %, lên/xuống tầng giữ nguyên danh tính, tránh hotspot, xe tông người bị chậm lại, chi phí.
 # Chạy:  godot --headless --path . --script tests/test_pedestrians.gd
@@ -3006,16 +3010,17 @@ func _part_a() -> bool:
 				if d < float(rd[1]) - 0.05 and not _campus_node(p):
 					return _check(false, "node %d %s lies on a carriageway (%.2f m from the centreline, half width %.1f)" % [i, p, d, rd[1]])
 	var spawn: Vector3 = md.spawn_transform().origin
-	var hits: int = 0
-	for n: int in range(40):
-		var j: int = g.random_point_near(spawn, 40.0, 80.0, rng)
-		if j >= 0:
-			var d2: float = Vector2(g.node_pos(j).x - spawn.x, g.node_pos(j).z - spawn.z).length()
-			if not _check(d2 >= 40.0 and d2 <= 80.0, "random_point_near returned a node %.1f m away (40..80)" % d2):
-				return false
-			hits += 1
-	if not _check(hits >= 30, "random_point_near found nodes 40..80 m from the BE6 spawn only %d / 40 times" % hits):
-		return false
+	for ring: Vector2 in [Vector2(40.0, 80.0), Vector2(95.0, 220.0)]:
+		var hits: int = 0
+		for n: int in range(40):
+			var j: int = g.random_point_ring(spawn, ring.x, ring.y, rng)
+			if j >= 0:
+				var d2: float = Vector2(g.node_pos(j).x - spawn.x, g.node_pos(j).z - spawn.z).length()
+				if not _check(d2 >= ring.x and d2 <= ring.y, "random_point_ring returned a node %.1f m away (%.0f..%.0f)" % [d2, ring.x, ring.y]):
+					return false
+				hits += 1
+		if not _check(hits >= 30, "random_point_ring found nodes %.0f..%.0f m from the BE6 spawn only %d / 40 times" % [ring.x, ring.y, hits]):
+			return false
 	var zc: Array = [0, 0, 0]
 	for i2: int in range(g.node_count()):
 		var z: int = g.zone_at(i2)
@@ -3025,8 +3030,8 @@ func _part_a() -> bool:
 	print("  zones: campus %d, residential %d, road %d" % zc)
 	if not _check(int(zc[0]) >= 50 and int(zc[1]) >= 50 and int(zc[2]) >= 50, "every zone needs >= 50 nodes (campus %d, residential %d, road %d)" % zc):
 		return false
-	var rj: int = g.random_point_near(spawn, 0.0, 400.0, rng, PedWalkGraph.ZONE_RESIDENTIAL)
-	if not _check(rj >= 0 and g.zone_at(rj) == PedWalkGraph.ZONE_RESIDENTIAL, "random_point_near with a zone filter must return a node of that zone"):
+	var ns: int = g.nearest(spawn, 60.0)
+	if not _check(ns >= 0 and g.zone_at(ns) == PedWalkGraph.ZONE_RESIDENTIAL, "the BE6 spawn must lie in the residential zone (nearest node %d)" % ns):
 		return false
 	var deg2: int = -1
 	for i: int in range(g.node_count()):
@@ -3074,6 +3079,7 @@ Create `scripts/roam/PedWalkGraph.gd`:
 # >= MapBuilder.KERB_MIN_ROAD_W, đường đi bộ (lanes == 0), vòng quanh nhà campus + sân trong + lối qua ba cổng.
 # Bỏ điểm dưới / sát nước, trong nhà OSM, trên lòng đường, ngoài ba vùng đã dựng, (đường OSM) trong lô campus; nối các
 # đường gần nhau (góc phố, băng qua đường). Nhà Microsoft và vật cản dựng thêm do PedestrianSpawner kiểm bằng vật lý.
+# Mỗi nút mang khu (campus: trong 60 m quanh lô campus / dân cư: trong vùng Vinhomes / đường) cho PedestrianSpawner.
 # Không dùng autoload ở đây (class_name biên dịch trước autoload khi chạy test --script).
 class_name PedWalkGraph
 extends RefCounted
@@ -3215,19 +3221,20 @@ func block_near(points: Array, r: float) -> void:
 					break
 
 
-func random_point_near(p: Vector3, r_min: float, r_max: float, rng: RandomNumberGenerator, zone: int = -1) -> int:
-	var cands: Array[int] = []
-	var c0: Vector2i = _cell(Vector2(p.x, p.z))
-	var reach: int = ceili(r_max / CELL)
-	for dx: int in range(-reach, reach + 1):
-		for dz: int in range(-reach, reach + 1):
-			for i: int in _hash.get(Vector2i(c0.x + dx, c0.y + dz), []):
-				var d: float = Vector2(pos[i].x - p.x, pos[i].z - p.z).length()
-				if d >= r_min and d <= r_max and (zone < 0 or zone_of[i] == zone):
-					cands.append(i)
-	if cands.is_empty():
-		return -1
-	return cands[rng.randi_range(0, cands.size() - 1)]
+## Nút ngẫu nhiên trong vành r_min..r_max quanh p, rẻ cả với vành rộng (người nộm ở 150-220 m): thử `tries` điểm rải đều
+## theo diện tích, mỗi điểm lấy một nút của ô băm chứa nó nếu nút đó nằm trong vành. -1 nếu không trúng lần nào.
+func random_point_ring(p: Vector3, r_min: float, r_max: float, rng: RandomNumberGenerator, tries: int = 12) -> int:
+	for k: int in range(tries):
+		var ang: float = rng.randf() * TAU
+		var r: float = sqrt(rng.randf_range(r_min * r_min, r_max * r_max))
+		var cell: Array = _hash.get(_cell(Vector2(p.x + cos(ang) * r, p.z + sin(ang) * r)), [])
+		if cell.is_empty():
+			continue
+		var i: int = int(cell[rng.randi_range(0, cell.size() - 1)])
+		var d: float = Vector2(pos[i].x - p.x, pos[i].z - p.z).length()
+		if d >= r_min and d <= r_max:
+			return i
+	return -1
 
 
 # ===========================================================================
@@ -3428,7 +3435,8 @@ static func _local_line(pts: Array, xf: Transform3D) -> PackedVector2Array:
 	return out
 
 
-## Polyline dời sang trái (off > 0) / phải (off < 0) theo pháp tuyến trung bình ở mỗi đỉnh (giới hạn mitre).
+## Polyline dời sang PHẢI chiều đi (off > 0; hệ x đông / z nam: pháp tuyến (-dz, dx)) / trái (off < 0) theo pháp tuyến
+## trung bình ở mỗi đỉnh (giới hạn mitre). RoamTraffic dùng off = +rộng/4 cho làn bên phải.
 static func _offset(pts: PackedVector2Array, off: float) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	var n: int = pts.size()
@@ -3453,8 +3461,8 @@ Run: `godot --headless --import --path . > /tmp/imp.log 2>&1; grep -c PedWalkGra
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `godot --headless --path . --script tests/test_pedestrians.gd > /tmp/t9.log 2>&1; grep -E "walk graph|SUCCESS|FAILED" /tmp/t9.log`
-Expected: `walk graph: N nodes in M ms` (N > 500, M < 1500) then `✅ SUCCESS: PEDESTRIANS (part A: walk graph)`.
+Run: `godot --headless --path . --script tests/test_pedestrians.gd > /tmp/t9.log 2>&1; grep -E "walk graph|zones|SUCCESS|FAILED" /tmp/t9.log`
+Expected: `walk graph: N nodes in M ms` (N > 500, M < 1500), `zones: campus a, residential b, road c` (each ≥ 50), then `✅ SUCCESS: PEDESTRIANS (part A: walk graph)`.
 
 - [ ] **Step 5: Regression and commit**
 
@@ -3462,27 +3470,37 @@ Run the regression command (all green), then:
 
 ```bash
 git add scripts/roam/PedWalkGraph.gd tests/test_pedestrians.gd
-git commit -m "feat(peds): pedestrian walk graph from the real map (verges behind kerbs, footways, campus loops and gates) with spatial queries
+git commit -m "feat(peds): pedestrian walk graph from the real map (verges behind kerbs, footways, campus loops and gates) with campus/residential/road zones and spatial queries
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 10: `Pedestrian` (wandering and reactions)
+### Task 10: `Pedestrian` (wandering, walk profiles, reactions)
 
 **Files:**
 - Create: `scripts/roam/Pedestrian.gd`
+- Create: `tests/support/stub_mover.gd`
 - Modify: `tests/test_pedestrians.gd` (part B)
 
 **Interfaces:**
 - Consumes: `PedWalkGraph` (Task 9), Task 6 clips (`stumble`, `knockdown`, `getup`), PS2 expressions (`angry`, `pain`, `open`).
-- Produces (Task 11):
+- Produces (Tasks 11-13):
   - `class_name Pedestrian extends CharacterBody3D`; `enum State { WALK, IDLE, STUMBLE, KNOCKDOWN, FLEE }`; `var state: int`.
-  - `setup(g: PedWalkGraph, node: int, preset_opts: Dictionary, seed: int) -> void` (builds the model; call before `add_child`).
-  - Wiring members set by the spawner: `player: Node3D`, `bike: Node3D`, `mounted_fn: Callable` (returns bool), `crowd: Array` (shared list of pedestrians), `spawner: Node` (for `request_line`), `lod_far: bool`.
-  - `react(kind: String, away: Vector3, speed: float) -> void`; signal `hit(ped: Pedestrian, kind: String)`; `hits: Array[String]` (test log); `stuck_out: bool` (spawner recycles when true).
-  - Constants `PED_LINES: Dictionary` (kind -> Array[String]).
+  - Walker identity: a Dictionary that survives every tier change. Keys: `preset` (String), `seed` (int, model), `female` (bool, optional), `profile` (`"walk"` | `"jog"` | `"stroll"`, default `"walk"`), `wseed` (int, the walker's own randomness: speed and idle stops; default = `seed`), `wid` (int, unique walker id from the spawner; default -1), `v` (int, crowd variant from `CrowdImpostors.variants()`; default -1). Extra keys (for example `zone`) are kept as they are.
+  - `setup(g: PedWalkGraph, node: int, identity: Dictionary) -> void`: the first call builds the capsule and the model. Later calls on a detached (pooled) pedestrian reset only the walker state; the model is rebuilt only when `preset`, `seed` or `female` differ. Call it while the pedestrian is not in the tree.
+  - `static func model_opts(identity: Dictionary) -> Dictionary`: the `CharacterBuilder.build` options for an identity. The impostor bake in Task 11 uses the same function, so a walker never changes look.
+  - `static func speed_for(profile: String, wseed: int) -> float`: deterministic speed inside `PROFILES[profile]`, where `const PROFILES: Dictionary = {"walk": [1.1, 1.6], "jog": [2.4, 2.8], "stroll": [0.7, 0.9]}`.
+  - Members set by the spawner:
+    - `player: Node3D`, `bike: Node3D`, `mounted_fn: Callable` (returns bool);
+    - `crowd: Array` (shared list of pedestrians), `spawner: Node` (for `request_line`);
+    - `lod_far: bool`: mid tier, with no `move_and_slide`, no gravity, no contact checks and no separation.
+  - Read by the spawner: `identity: Dictionary`, `target_node: int`, `prev_node: int`, `walk_speed: float`, and `snap_to_floor() -> void` (puts the pedestrian back on the floor when it leaves the mid tier).
+  - Reactions and logs:
+    - `react(kind: String, away: Vector3, speed: float) -> void` and signal `hit(ped: Pedestrian, kind: String)`;
+    - `hits: Array[String]` (test log) and `stuck_out: bool` (the spawner recycles the pedestrian when true);
+    - `PED_LINES: Dictionary` (kind -> Array[String]).
 
 - [ ] **Step 1: Write the failing test (part B)**
 
@@ -3498,15 +3516,23 @@ and add these members and functions:
 ```gdscript
 var world_b: Node3D
 var ped: Pedestrian
+var jogger: Pedestrian
 var stub_player: CharacterBody3D
 var stub_bike: CharacterBody3D
 var mounted: bool = false
 var b_phase: String = ""
 var b_t0: int = 0
 var b_hits: Array[String] = []
+var jog_start: Vector3
 
 
 func _part_b_start() -> void:
+	for prof: String in Pedestrian.PROFILES.keys():
+		var lim: Array = Pedestrian.PROFILES[prof]
+		for s: int in range(20):
+			var v: float = Pedestrian.speed_for(prof, s)
+			if not _check(v >= float(lim[0]) and v <= float(lim[1]) and v == Pedestrian.speed_for(prof, s), "speed_for(%s, %d) = %.2f must be deterministic and inside %s" % [prof, s, v, str(lim)]):
+				return
 	world_b = Node3D.new()
 	world_b.position = Vector3(0.0, 0.0, 5000.0)   # xa thế giới thật của phần A (không dựng gì ở đây)
 	root.add_child(world_b)
@@ -3518,23 +3544,32 @@ func _part_b_start() -> void:
 	sb.add_child(cs)
 	sb.position = Vector3(0.0, -0.5, 0.0)
 	world_b.add_child(sb)
-	# đường thẳng 60 m dọc trục X (toạ độ bản đồ = thế giới của world_b)
+	# hai đường thẳng 60 m dọc trục X cách nhau 12 m (toạ độ bản đồ = thế giới của world_b): nút 0..10 và 11..21
 	var line := PackedVector2Array()
+	var line2 := PackedVector2Array()
 	for i: int in range(11):
 		line.append(Vector2(-30.0 + float(i) * 6.0, 5000.0))
-	var g: PedWalkGraph = PedWalkGraph.from_lines([line])
-	ped = Pedestrian.new()
-	ped.setup(g, 5, {"preset": "student"}, 11)
+		line2.append(Vector2(-30.0 + float(i) * 6.0, 5012.0))
+	var g: PedWalkGraph = PedWalkGraph.from_lines([line, line2])
 	stub_player = _stub("StubPlayer", Vector3(40.0, 0.0, 5000.0), 0.4)
 	stub_bike = _stub("StubBike", Vector3(-40.0, 0.0, 5000.0), 0.6)
-	ped.player = stub_player
-	ped.bike = stub_bike
-	ped.mounted_fn = func() -> bool: return mounted
+	ped = _ped(g, 5, {"preset": "student", "seed": 11}, Vector3(0.0, 0.05, 5000.0))
 	ped.hit.connect(func(_p: Pedestrian, kind: String) -> void: b_hits.append(kind))
-	root.add_child(ped)
-	ped.global_position = Vector3(0.0, 0.05, 5000.0)
+	jogger = _ped(g, 16, {"preset": "casual", "seed": 12, "profile": "jog", "wseed": 3}, Vector3(0.0, 0.05, 5012.0))
+	jog_start = jogger.global_position
 	b_phase = "walk"
 	b_t0 = 0
+
+
+func _ped(g: PedWalkGraph, node: int, ident: Dictionary, at: Vector3) -> Pedestrian:
+	var p := Pedestrian.new()
+	p.setup(g, node, ident)
+	p.player = stub_player
+	p.bike = stub_bike
+	p.mounted_fn = func() -> bool: return mounted
+	root.add_child(p)
+	p.global_position = at
+	return p
 
 
 func _stub(name: String, at: Vector3, r: float) -> CharacterBody3D:
@@ -3563,8 +3598,11 @@ func _process(_d: float) -> bool:
 		"walk":
 			if t == 90:
 				var moved: float = Vector2(ped.global_position.x, ped.global_position.z - 5000.0).length()
-				print("  pedestrian walked %.2f m in 1.5 s (state %d)" % [moved, ped.state])
+				var jogged: float = jogger.global_position.distance_to(jog_start)
+				print("  pedestrian walked %.2f m in 1.5 s (state %d), jogger %.2f m" % [moved, ped.state, jogged])
 				if not _check(moved > 1.2 and ped.state == Pedestrian.State.WALK, "a pedestrian must walk along the graph (moved %.2f m)" % moved):
+					return true
+				if not _check(jogged > 2.9 and jogger.state == Pedestrian.State.WALK, "a jogger must cover > 2.9 m in 1.5 s (got %.2f m)" % jogged):
 					return true
 				stub_player.set("speed_value", 3.0)
 				stub_player.global_position = ped.global_position + Vector3(0.65, 0.0, 0.0)
@@ -3600,6 +3638,19 @@ func _process(_d: float) -> bool:
 				print("  bike hit -> state %d, hits %s" % [ped.state, b_hits])
 				if not _check(ped.state == Pedestrian.State.KNOCKDOWN and b_hits.back() == "bike", "a bike hit above 3 m/s must give KNOCKDOWN with kind 'bike'"):
 					return true
+				mounted = false
+				stub_bike.global_position = Vector3(-40.0, 0.0, 5000.0)
+				jogger.lod_far = true
+				stub_player.set("speed_value", 7.0)
+				stub_player.global_position = jogger.global_position + Vector3(0.65, 0.0, 0.0)
+				b_phase = "mid"
+				b_t0 = frames
+		"mid":
+			if t == 3:
+				print("  mid-tier contact -> jogger hits %s, state %d" % [jogger.hits, jogger.state])
+				if not _check(jogger.hits.is_empty() and jogger.state == Pedestrian.State.WALK, "a mid-tier pedestrian (lod_far) makes no contact checks"):
+					return true
+				stub_player.global_position = Vector3(40.0, 0.0, 5000.0)
 				if not PART_C:
 					print("✅ SUCCESS: PEDESTRIANS (parts A + B)")
 					done = true
@@ -3607,11 +3658,11 @@ func _process(_d: float) -> bool:
 	return done
 ```
 
-Create the tiny stub script `tests/support/stub_mover.gd` (a body whose speed the test sets; the pedestrian reads `horizontal_speed` from a player and `current_speed_ms` from a bike):
+Create the tiny stub script `tests/support/stub_mover.gd`. It is a body whose speed the test sets; the pedestrian reads `horizontal_speed` from a player and `current_speed_ms` from a bike:
 
 ```gdscript
 # File: res://tests/support/stub_mover.gd
-# Thân giả cho test người đi đường: speed_value đóng vai horizontal_speed (người chơi) và current_speed_ms (xe).
+# Thân giả cho test người đi đường / xe chạy: speed_value đóng vai horizontal_speed (người chơi) và current_speed_ms (xe).
 extends CharacterBody3D
 
 var speed_value: float = 0.0
@@ -3634,11 +3685,13 @@ Create `scripts/roam/Pedestrian.gd`:
 
 ```gdscript
 # File: res://scripts/roam/Pedestrian.gd
-# Người đi đường FreeRoam: thân CharacterBuilder (rigged; đầu PS2 ở phong cách Vice City), đi theo PedWalkGraph,
-# thỉnh thoảng đứng lại; tự đo va chạm với người chơi (đi bộ) / xe (khi cưỡi) bằng khoảng cách và phản ứng:
-#   va nhẹ -> STUMBLE (lảo đảo, né 0.6 m), nước rút > 6 m/s -> KNOCKDOWN (ngã rồi đứng dậy, bỏ chạy),
-#   xe > 3 m/s -> KNOCKDOWN văng 2..4 m; mỗi lần một câu càu nhàu (spawner giới hạn nhịp). Không phạt gì.
-# Không dùng autoload ở đây (class_name biên dịch trước autoload khi chạy test --script).
+# Người đi đường FreeRoam: thân CharacterBuilder (rigged; đầu PS2 ở phong cách Vice City), đi theo PedWalkGraph với kiểu
+# đi walk / jog / stroll, thỉnh thoảng đứng lại; tự đo va chạm với người chơi (đi bộ) / xe (khi cưỡi) bằng khoảng cách và
+# phản ứng: va nhẹ -> STUMBLE (lảo đảo, né 0.6 m), nước rút > 6 m/s -> KNOCKDOWN (ngã rồi đứng dậy, bỏ chạy),
+# xe > 3 m/s -> KNOCKDOWN văng 2..4 m; mỗi lần một câu càu nhàu (spawner giới hạn nhịp). Không phạt gì.
+# Tầng giữa (lod_far, PedestrianSpawner đặt): trượt theo đồ thị không vật lý, không đo va chạm, không tách đám.
+# Danh tính (identity) giữ nguyên khi đổi tầng: preset / seed / female quyết định mô hình (model_opts), profile / wseed
+# quyết định cách đi. Không dùng autoload ở đây (class_name biên dịch trước autoload khi chạy test --script).
 class_name Pedestrian
 extends CharacterBody3D
 
@@ -3649,8 +3702,8 @@ enum State { WALK, IDLE, STUMBLE, KNOCKDOWN, FLEE }
 const RADIUS: float = 0.28
 const HEIGHT: float = 1.7
 const GRAVITY: float = 20.0
-const WALK_MIN: float = 1.1
-const WALK_MAX: float = 1.6
+## Khoảng tốc độ (m/s) theo kiểu đi (spec Amendment: người chạy bộ ~2.5 m/s, người tản bộ ~0.8 m/s).
+const PROFILES: Dictionary = {"walk": [1.1, 1.6], "jog": [2.4, 2.8], "stroll": [0.7, 0.9]}
 const FLEE_SPEED: float = 3.2
 const STUMBLE_TIME: float = 0.8
 const FALL_TIME: float = 1.2
@@ -3661,6 +3714,7 @@ const SIDESTEP_M: float = 0.6
 const STUCK_TIME: float = 3.0
 const STUCK_RECYCLE: float = 10.0
 const SEPARATION_R: float = 1.2
+const SEPARATION_EVERY: int = 4          # tính lực tách đám mỗi 4 khung vật lý (lệch pha theo wseed)
 const PLAYER_RADIUS: float = 0.4
 const BIKE_RADIUS: float = 0.6
 const SPRINT_HIT_SPEED: float = 6.0
@@ -3675,6 +3729,7 @@ const PED_LINES: Dictionary = {
 
 var graph: PedWalkGraph
 var model: Node3D
+var identity: Dictionary = {}
 var state: int = State.WALK
 var walk_speed: float = 1.3
 var target_node: int = -1
@@ -3692,39 +3747,98 @@ var _cool: float = 0.0
 var _stuck_t: float = 0.0
 var _stuck_total: float = 0.0
 var _last_pos: Vector3
+var _has_last: bool = false
 var _throw_v: Vector3 = Vector3.ZERO
 var _away: Vector3 = Vector3.ZERO
 var _getting_up: bool = false
 var _idle_left: float = 0.0
+var _walked: int = 0
+var _sep: Vector3 = Vector3.ZERO
+var _sep_phase: int = 0
 var _rng := RandomNumberGenerator.new()
 
 
-## Dựng thân + capsule; gọi trước add_child. preset_opts: tuỳ chọn CharacterBuilder.build() (preset...).
-func setup(g: PedWalkGraph, node: int, preset_opts: Dictionary, seed: int) -> void:
+## Tuỳ chọn CharacterBuilder.build() của một danh tính (dùng chung với bake người nộm của CrowdImpostors).
+static func model_opts(ident: Dictionary) -> Dictionary:
+	var o: Dictionary = {"preset": String(ident.get("preset", "student")), "seed": int(ident.get("seed", 0)), "rigged": true}
+	if ident.has("female"):
+		o["female"] = bool(ident["female"])
+	return o
+
+
+## Tốc độ đi (m/s) theo kiểu đi và wseed – cố định, nên người nộm và người đi đường cùng danh tính đi cùng tốc độ.
+static func speed_for(profile: String, wseed: int) -> float:
+	var lim: Array = PROFILES.get(profile, PROFILES["walk"])
+	var r := RandomNumberGenerator.new()
+	r.seed = wseed * 7919 + 17
+	return r.randf_range(float(lim[0]), float(lim[1]))
+
+
+## Dựng (lần đầu) hoặc đặt lại (người trong pool của spawner) một người đi đường; gọi khi chưa ở trong cây.
+## Mô hình chỉ dựng lại khi preset / seed / female khác mô hình đang có.
+func setup(g: PedWalkGraph, node: int, ident: Dictionary) -> void:
 	graph = g
-	_rng.seed = seed
+	identity = ident.duplicate()
+	identity["profile"] = String(identity.get("profile", "walk"))
+	identity["wseed"] = int(identity.get("wseed", int(identity.get("seed", 0))))
+	identity["wid"] = int(identity.get("wid", -1))
+	identity["v"] = int(identity.get("v", -1))
+	_rng.seed = int(identity["wseed"])
+	walk_speed = speed_for(String(identity["profile"]), int(identity["wseed"]))
+	_sep_phase = int(identity["wseed"]) % SEPARATION_EVERY
 	prev_node = node
 	target_node = node
-	walk_speed = _rng.randf_range(WALK_MIN, WALK_MAX)
+	state = State.WALK
+	velocity = Vector3.ZERO
+	hits.clear()
+	stuck_out = false
+	lod_far = false
+	collision_layer = 1
+	_t = 0.0
+	_cool = 0.0
+	_stuck_t = 0.0
+	_stuck_total = 0.0
+	_has_last = false
+	_throw_v = Vector3.ZERO
+	_getting_up = false
+	_walked = 0
+	_sep = Vector3.ZERO
 	floor_snap_length = 0.4
-	var cs := CollisionShape3D.new()
-	cs.name = "Capsule"
-	var cap := CapsuleShape3D.new()
-	cap.radius = RADIUS
-	cap.height = HEIGHT
-	cs.shape = cap
-	cs.position = Vector3(0.0, HEIGHT * 0.5, 0.0)
-	add_child(cs)
-	var o: Dictionary = preset_opts.duplicate()
-	o["seed"] = seed
-	o["rigged"] = true
+	if get_node_or_null("Capsule") == null:
+		var cs := CollisionShape3D.new()
+		cs.name = "Capsule"
+		var cap := CapsuleShape3D.new()
+		cap.radius = RADIUS
+		cap.height = HEIGHT
+		cs.shape = cap
+		cs.position = Vector3(0.0, HEIGHT * 0.5, 0.0)
+		add_child(cs)
+	var key: String = "%s|%d|%s" % [String(identity.get("preset", "student")), int(identity.get("seed", 0)), str(identity.get("female", "-"))]
+	if model != null and String(model.get_meta("ped_key", "")) == key:
+		CharacterBuilder.stop_clip(model)
+		CharacterBuilder.set_expression(model, "open")
+		CharacterBuilder.set_speed(model, 0.0)
+		return
+	if model != null:
+		model.free()
+	var o: Dictionary = model_opts(identity)
 	o["name"] = "Model"
 	model = CharacterBuilder.build(o)
+	model.set_meta("ped_key", key)
 	add_child(model)
 
 
-func _ready() -> void:
-	_last_pos = global_position
+## Đặt lại độ cao lên mặt sàn ngay dưới chân (khi vừa từ tầng giữa – không vật lý – về tầng gần).
+func snap_to_floor() -> void:
+	if not is_inside_tree():
+		return
+	var rq := PhysicsRayQueryParameters3D.create(global_position + Vector3(0.0, 1.0, 0.0), global_position - Vector3(0.0, 1.5, 0.0))
+	rq.exclude = [get_rid()]
+	rq.collide_with_areas = false
+	var hit_info: Dictionary = get_world_3d().direct_space_state.intersect_ray(rq)
+	if not hit_info.is_empty():
+		global_position.y = (hit_info["position"] as Vector3).y + 0.02
+		velocity.y = 0.0
 
 
 func _physics_process(delta: float) -> void:
@@ -3746,7 +3860,7 @@ func _physics_process(delta: float) -> void:
 # VA CHẠM
 # ---------------------------------------------------------------------------
 func _check_contacts() -> void:
-	if _cool > 0.0 or state == State.KNOCKDOWN:
+	if lod_far or _cool > 0.0 or state == State.KNOCKDOWN:
 		return
 	var mounted: bool = bool(mounted_fn.call()) if mounted_fn.is_valid() else false
 	var other: Node3D = bike if mounted else player
@@ -3804,14 +3918,17 @@ func _walk(delta: float) -> void:
 	if to.length() < ARRIVE_R:
 		_arrive()
 		return
-	var dir: Vector3 = (to.normalized() + _separation() * 0.8).normalized()
+	if not lod_far and (Engine.get_physics_frames() + _sep_phase) % SEPARATION_EVERY == 0:
+		_sep = _separation()
+	var dir: Vector3 = (to.normalized() + (Vector3.ZERO if lod_far else _sep * 0.8)).normalized()
 	var sp: float = FLEE_SPEED if state == State.FLEE else walk_speed
 	velocity.x = dir.x * sp
 	velocity.z = dir.z * sp
-	_gravity(delta)
 	if lod_far:
+		velocity.y = 0.0
 		global_position += Vector3(velocity.x, 0.0, velocity.z) * delta
 	else:
+		_gravity(delta)
 		move_and_slide()
 	_face(dir, delta)
 	CharacterBuilder.set_speed(model, sp)
@@ -3824,7 +3941,9 @@ func _arrive() -> void:
 	var nxt: int = graph.next_node(target_node, prev_node, _rng)
 	prev_node = target_node
 	target_node = nxt
-	if state == State.WALK and _rng.randf() < IDLE_CHANCE:
+	_walked += 1
+	# không dừng ở nút đầu tiên (vừa xuất hiện); người chạy bộ không dừng
+	if state == State.WALK and _walked > 1 and String(identity.get("profile", "walk")) != "jog" and _rng.randf() < IDLE_CHANCE:
 		state = State.IDLE
 		_idle_left = _rng.randf_range(2.0, 6.0)
 		CharacterBuilder.set_speed(model, 0.0)
@@ -3835,8 +3954,10 @@ func _arrive() -> void:
 func _idle(delta: float) -> void:
 	velocity.x = 0.0
 	velocity.z = 0.0
-	_gravity(delta)
-	if not lod_far:
+	if lod_far:
+		velocity.y = 0.0
+	else:
+		_gravity(delta)
 		move_and_slide()
 	_idle_left -= delta
 	if _idle_left <= 0.0:
@@ -3913,7 +4034,9 @@ func _separation() -> Vector3:
 	for o: Variant in crowd:
 		if o == self or not is_instance_valid(o):
 			continue
-		var on: Node3D = o
+		var on: Pedestrian = o
+		if on.lod_far:
+			continue
 		var d := Vector3(global_position.x - on.global_position.x, 0.0, global_position.z - on.global_position.z)
 		var l: float = d.length()
 		if l > 0.01 and l < SEPARATION_R:
@@ -3927,6 +4050,11 @@ func _separation() -> Vector3:
 
 
 func _stuck_check(delta: float) -> void:
+	if not _has_last:
+		_has_last = true
+		_last_pos = global_position
+		_stuck_t = 0.0
+		return
 	_stuck_t += delta
 	if _stuck_t < STUCK_TIME:
 		return
@@ -3950,8 +4078,8 @@ Run: `godot --headless --import --path . > /tmp/imp.log 2>&1; grep -c "Pedestria
 
 - [ ] **Step 3: Run the test to verify it passes**
 
-Run: `godot --headless --path . --script tests/test_pedestrians.gd > /tmp/t10.log 2>&1; grep -E "pedestrian walked|bump|after knockdown|bike hit|SUCCESS|FAILED" /tmp/t10.log`
-Expected: the four diagnostics, then `✅ SUCCESS: PEDESTRIANS (parts A + B)`.
+Run: `godot --headless --path . --script tests/test_pedestrians.gd > /tmp/t10.log 2>&1; grep -E "pedestrian walked|bump|after knockdown|bike hit|mid-tier|SUCCESS|FAILED" /tmp/t10.log`
+Expected: the five diagnostics, then `✅ SUCCESS: PEDESTRIANS (parts A + B)`.
 
 - [ ] **Step 4: Regression and commit**
 
@@ -3959,49 +4087,572 @@ Run the regression command (all green), then:
 
 ```bash
 git add scripts/roam/Pedestrian.gd tests/test_pedestrians.gd tests/support/stub_mover.gd
-git commit -m "feat(peds): Pedestrian - wanders the walk graph, detects bumps/sprint hits/bike hits by distance, stumbles or falls and gets up, mild fictional complaints
+git commit -m "feat(peds): Pedestrian - walk/jog/stroll profiles with a stable identity, wanders the walk graph, mid tier without physics, bumps/sprint hits/bike hits by distance, stumbles or falls and gets up, mild fictional complaints
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 11: `PedestrianSpawner` and FreeRoam wiring (after VC-2 and VC-4 are merged)
+### Task 11: `CrowdImpostors` (far crowd tier) and the static "stride" pose
+
+**Files:**
+- Create: `scripts/roam/CrowdImpostors.gd`
+- Modify: `scripts/CharacterBuilder.gd` (one new branch `"stride"` in `Animator._clip_pose`)
+- Create: `tests/test_crowd_impostors.gd`
+
+**Interfaces:**
+- Consumes: `PedWalkGraph` (Task 9), `Pedestrian.model_opts()` (Task 10), `CharacterBuilder.build/pose/bake` (Task 4).
+- Produces (Task 12):
+  - `CharacterBuilder.pose(root, "stride")`: a frozen walking stride (front thigh forward, back thigh back, arms swung against the legs), on code bodies and rigged bodies.
+  - Variant table:
+    - `CrowdImpostors.VARIANTS_PER_ZONE = 8` and `ZONE_PRESETS`;
+    - `static func variants() -> Array`: 24 fixed identities `{"v", "zone", "preset", "seed", "female"}`, where the index equals `v`;
+    - `static func bake_variant(identity) -> Array`: returns `[ArrayMesh, Vector3 root scale]`.
+  - `setup(g: PedWalkGraph, opts := {})` with opts `cap` (default 200) and `seed`. It bakes all 24 variants once into one `MultiMeshInstance3D` per variant (shadows off) and records `bake_ms`.
+  - Adding and reading impostors:
+    - `add(state: Dictionary) -> bool`. The state has `wid`, `identity` (with `v`), `node` (the node being walked to), `prev`, `pos` and `speed`. It returns false at the cap or for an unknown variant.
+    - `count() -> int`, `state_at(i) -> Dictionary` (the same keys plus `yaw`), `positions() -> PackedVector3Array`, `wids() -> PackedInt32Array`.
+  - Moving and drawing: `step(dt: float)` moves impostors along graph edges (`_physics_process` calls it at 10 Hz), and `flush()` writes the MultiMesh transforms.
+  - Removing impostors:
+    - `take_within(center: Vector3, r: float, max_n: int) -> Array` removes the impostors within r and returns their states, closest first;
+    - `remove_where(pred: Callable) -> int` uses `pred(pos: Vector3) -> bool`;
+    - `remove_farthest(center: Vector3, n: int) -> int`.
+  - Test accessors: `multimesh(v) -> MultiMesh`, `variant_mesh(v) -> ArrayMesh`, `variant_scale(v) -> Vector3`.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/test_crowd_impostors.gd`:
+
+```gdscript
+# File: res://tests/test_crowd_impostors.gd
+# Test headless tầng xa của đám đông FreeRoam (CrowdImpostors, plan Task 11): 24 biến thể cố định (3 khu x 8), clip tĩnh
+# "stride" (hai gối tách trước / sau), mỗi biến thể bake thành người cao 1,5-2,0 m với một MultiMesh cỡ bằng trần, người
+# nộm trượt theo cạnh đồ thị, số instance hiện = số người nộm, take_within (gần trước, giữ danh tính), remove_where,
+# remove_farthest, trần.
+# Chạy:  godot --headless --path . --script tests/test_crowd_impostors.gd
+extends SceneTree
+
+var done: bool = false
+
+
+func _initialize() -> void:
+	CharacterBuilder.ps2 = true      # mặc định của game là vice (người PS2); test --script không có GameFX
+	CharacterBuilder.toon = false
+	CharacterBuilder.head_scale_default = 1.0
+	if not _variants_ok() or not _stride_ok() or not _crowd_ok():
+		return
+	print("✅ SUCCESS: CROWD IMPOSTORS")
+	done = true
+	quit(0)
+
+
+func _variants_ok() -> bool:
+	var vs: Array = CrowdImpostors.variants()
+	if not _check(vs.size() == 24, "24 crowd variants (got %d)" % vs.size()):
+		return false
+	var students_campus: int = 0
+	var females: int = 0
+	for i: int in range(vs.size()):
+		var v: Dictionary = vs[i]
+		var zone_want: int = int(float(i) / float(CrowdImpostors.VARIANTS_PER_ZONE))
+		if not _check(int(v["v"]) == i and int(v["zone"]) == zone_want, "variant %d has v %d zone %d" % [i, int(v["v"]), int(v["zone"])]):
+			return false
+		if int(v["zone"]) == PedWalkGraph.ZONE_CAMPUS and String(v["preset"]) == "student":
+			students_campus += 1
+		if bool(v["female"]):
+			females += 1
+	if not _check(students_campus == 7 and females == 12, "campus: 7 student variants (got %d); 12 female variants (got %d)" % [students_campus, females]):
+		return false
+	return _check(str(CrowdImpostors.variants()) == str(vs), "variants() returns the same table every call")
+
+
+func _stride_ok() -> bool:
+	var rig: Node3D = CharacterBuilder.build({"preset": "student", "seed": 3, "rigged": true, "animate": false})
+	var sk: Skeleton3D = rig.get_meta("skeleton", null) as Skeleton3D
+	if not _check(sk != null, "a rigged body exposes its skeleton (meta 'skeleton')"):
+		return false
+	var kl0: Vector3 = CharacterBuilder._bone_global_now(sk, sk.find_bone("LowerLeg.L")).origin
+	var kr0: Vector3 = CharacterBuilder._bone_global_now(sk, sk.find_bone("LowerLeg.R")).origin
+	CharacterBuilder.pose(rig, "stride")
+	var kl: Vector3 = CharacterBuilder._bone_global_now(sk, sk.find_bone("LowerLeg.L")).origin
+	var kr: Vector3 = CharacterBuilder._bone_global_now(sk, sk.find_bone("LowerLeg.R")).origin
+	rig.free()
+	print("  stride: knee gap along Z %.2f (rest %.2f, model units)" % [absf(kl.z - kr.z), absf(kl0.z - kr0.z)])
+	return _check(absf(kl.z - kr.z) > 0.2 and absf(kl0.z - kr0.z) < 0.05, "the stride pose splits the legs front/back (knee gap %.2f, rest %.2f)" % [absf(kl.z - kr.z), absf(kl0.z - kr0.z)])
+
+
+func _crowd_ok() -> bool:
+	var line := PackedVector2Array()
+	for i: int in range(21):
+		line.append(Vector2(-60.0 + float(i) * 6.0, 7000.0))
+	var g: PedWalkGraph = PedWalkGraph.from_lines([line])
+	var imp := CrowdImpostors.new()
+	root.add_child(imp)
+	imp.setup(g, {"cap": 40, "seed": 5})
+	print("  baked 24 variants in %d ms" % imp.bake_ms)
+	if not _check(imp.bake_ms < 8000, "baking 24 variants must take < 8 s headless (took %d ms)" % imp.bake_ms):
+		return false
+	for v: int in range(24):
+		var m: ArrayMesh = imp.variant_mesh(v)
+		var h: float = m.get_aabb().size.y * imp.variant_scale(v).y if m else 0.0
+		if not _check(m != null and m.get_surface_count() > 0 and h > 1.5 and h < 2.0, "variant %d bakes a 1.5-2.0 m person (height %.2f)" % [v, h]):
+			return false
+		if not _check(imp.multimesh(v).mesh == m and imp.multimesh(v).instance_count == 40, "variant %d: one MultiMesh sized to the cap" % v):
+			return false
+	var vs: Array = CrowdImpostors.variants()
+	if not _check(not imp.add({"wid": 1, "identity": {"v": 99}, "node": 1, "prev": 0, "pos": g.node_pos(0), "speed": 1.0}), "add() refuses an unknown variant"):
+		return false
+	for k: int in range(30):
+		var ident: Dictionary = (vs[k % 24] as Dictionary).duplicate()
+		ident["wid"] = 100 + k
+		var node: int = 2 + (k % 17)
+		if not _check(imp.add({"wid": 100 + k, "identity": ident, "node": node + 1, "prev": node, "pos": g.node_pos(node), "speed": 1.3}), "add() below the cap"):
+			return false
+	var start: PackedVector3Array = imp.positions()
+	imp.step(1.0)
+	imp.step(1.0)
+	var moved_ok: int = 0
+	for i: int in range(imp.count()):
+		var p: Vector3 = imp.positions()[i]
+		if not _check(absf(p.z - 7000.0) < 0.01, "impostor %d left the walk line (z %.2f)" % [i, p.z]):
+			return false
+		if absf(p.distance_to(start[i]) - 2.6) < 0.05:
+			moved_ok += 1
+	if not _check(moved_ok == 30, "every impostor glides 2.6 m in 2 s at 1.3 m/s (%d / 30)" % moved_ok):
+		return false
+	imp.flush()
+	var vis: int = 0
+	for v2: int in range(24):
+		vis += imp.multimesh(v2).visible_instance_count
+	if not _check(vis == 30, "visible instances %d == impostors 30" % vis):
+		return false
+	var center := Vector3(0.0, 0.0, 7000.0)
+	var before: int = imp.count()
+	var got: Array = imp.take_within(center, 20.0, 5)
+	var last_d: float = -1.0
+	for st: Dictionary in got:
+		var d: float = (st["pos"] as Vector3).distance_to(center)
+		if not _check(d <= 20.0 and d >= last_d, "take_within returns states within 20 m, closest first (%.1f after %.1f)" % [d, last_d]):
+			return false
+		last_d = d
+		var w: int = int(st["wid"])
+		if not _check(w == int((st["identity"] as Dictionary)["wid"]) and imp.wids().find(w) < 0, "a taken impostor keeps its identity and leaves the crowd (wid %d)" % w):
+			return false
+	if not _check(got.size() == 5 and imp.count() == before - 5, "take_within took 5 (got %d), count %d -> %d" % [got.size(), before, imp.count()]):
+		return false
+	var cut: int = imp.remove_where(func(q: Vector3) -> bool: return q.x > 30.0)
+	for q2: Vector3 in imp.positions():
+		if not _check(q2.x <= 30.0, "remove_where left an impostor at x %.1f" % q2.x):
+			return false
+	var far_before: float = 0.0
+	for q3: Vector3 in imp.positions():
+		far_before = maxf(far_before, q3.distance_to(center))
+	var n_before: int = imp.count()
+	imp.remove_farthest(center, 3)
+	var far_after: float = 0.0
+	for q4: Vector3 in imp.positions():
+		far_after = maxf(far_after, q4.distance_to(center))
+	print("  remove_where cut %d; remove_farthest: %d -> %d, farthest %.1f -> %.1f m" % [cut, n_before, imp.count(), far_before, far_after])
+	if not _check(imp.count() == n_before - 3 and far_after < far_before, "remove_farthest removes the 3 farthest"):
+		return false
+	while imp.count() < 40:
+		imp.add({"wid": 999, "identity": vs[0], "node": 1, "prev": 0, "pos": g.node_pos(0), "speed": 1.0})
+	if not _check(not imp.add({"wid": 1000, "identity": vs[0], "node": 1, "prev": 0, "pos": g.node_pos(0), "speed": 1.0}), "add() refuses beyond the cap"):
+		return false
+	imp.queue_free()
+	return true
+
+
+func _check(ok: bool, msg: String) -> bool:
+	if not ok and not done:
+		done = true
+		print("❌ FAILED: ", msg)
+		quit(2)
+	return ok
+```
+
+Run: `godot --headless --path . --script tests/test_crowd_impostors.gd > /tmp/t11.log 2>&1; grep -E "SUCCESS|FAILED|Identifier" /tmp/t11.log`
+Expected: `Identifier "CrowdImpostors" not declared in the current scope.`
+
+- [ ] **Step 2: The static "stride" clip**
+
+In `scripts/CharacterBuilder.gd`, inside `Animator._clip_pose`, add this branch to the `match name:` block (next to `"sleepy"`). It returns the procedural walk cycle frozen at the widest stride, so `pose()` works on code bodies and, through `_apply_bone_pose`, on rigged bodies:
+
+```gdscript
+			"stride":   # bước đi đứng hình cho người nộm đám đông xa (CrowdImpostors): tư thế đi ở pha sải chân rộng nhất
+				var keep: float = _phase
+				_phase = PI * 0.5
+				p = _loco_pose(1.0)
+				_phase = keep
+				p.erase("breathe")
+```
+
+- [ ] **Step 3: Implement `CrowdImpostors`**
+
+Create `scripts/roam/CrowdImpostors.gd`:
+
+```gdscript
+# File: res://scripts/roam/CrowdImpostors.gd
+# Tầng xa của đám đông FreeRoam (spec vice-people-and-movement, "Amendment 2026-10-22"): người đi đường ở 90-225 m là
+# "người nộm" – mỗi biến thể (preset + seed + female, 8 biến thể mỗi khu) bake MỘT lần ở tư thế "stride" thành một
+# ArrayMesh và vẽ bằng một MultiMeshInstance3D (không đổ bóng); người nộm trượt theo cạnh PedWalkGraph, transform cập nhật
+# 10 lần / giây. Cùng danh tính (identity) với Pedestrian nên PedestrianSpawner đổi qua lại hai tầng mà người đi không đổi
+# mặt. Mảng song song, xoá bằng cách đổi chỗ với phần tử cuối.
+# Không dùng autoload ở đây (class_name biên dịch trước autoload khi chạy test --script).
+class_name CrowdImpostors
+extends Node3D
+
+const VARIANTS_PER_ZONE: int = 8
+## Preset 8 biến thể mỗi khu (chỉ số = PedWalkGraph.ZONE_*): campus 7 sinh viên + 1 giảng viên; dân cư và đường: dân
+## thường (casual) nhiều nhất, có sinh viên ở trọ và giảng viên / dân văn phòng (spec Phần 3: 90/10 và 60/30/10).
+const ZONE_PRESETS: Array = [
+	["student", "student", "student", "student", "student", "student", "student", "lecturer"],
+	["casual", "casual", "casual", "casual", "casual", "student", "student", "lecturer"],
+	["casual", "casual", "casual", "casual", "student", "student", "student", "lecturer"],
+]
+const DEFAULT_CAP: int = 200
+const TICK_S: float = 0.1
+
+var graph: PedWalkGraph
+var cap: int = DEFAULT_CAP
+var bake_ms: int = 0
+var _meshes: Array = []            # v -> ArrayMesh
+var _scales: Array = []            # v -> Vector3 (root.scale của nhân vật lúc bake)
+var _mm: Array = []                # v -> MultiMesh
+var _wid := PackedInt32Array()
+var _v := PackedInt32Array()
+var _node := PackedInt32Array()
+var _prev := PackedInt32Array()
+var _pos := PackedVector3Array()
+var _speed := PackedFloat32Array()
+var _yaw := PackedFloat32Array()
+var _ident: Array = []             # Dictionary danh tính đầy đủ của từng người nộm
+var _rng := RandomNumberGenerator.new()
+var _acc: float = 0.0
+var _dirty: bool = false
+
+
+## Bảng 24 biến thể (3 khu x 8), cố định giữa các lần chạy: {"v", "zone", "preset", "seed", "female"}.
+static func variants() -> Array:
+	var out: Array = []
+	for z: int in range(ZONE_PRESETS.size()):
+		var list: Array = ZONE_PRESETS[z]
+		for k: int in range(list.size()):
+			out.append({"v": z * VARIANTS_PER_ZONE + k, "zone": z, "preset": String(list[k]), "seed": 7100 + z * 100 + k * 7, "female": k % 2 == 1})
+	return out
+
+
+## Bake một biến thể: nhân vật rigged (người PS2 ở Vice City) ở tư thế "stride" -> [ArrayMesh, root.scale].
+static func bake_variant(ident: Dictionary) -> Array:
+	var o: Dictionary = Pedestrian.model_opts(ident)
+	o["animate"] = false
+	var rig: Node3D = CharacterBuilder.build(o)
+	CharacterBuilder.pose(rig, "stride")
+	var mesh: ArrayMesh = CharacterBuilder.bake(rig)
+	var s: Vector3 = rig.scale
+	rig.free()
+	return [mesh, s]
+
+
+func setup(g: PedWalkGraph, opts: Dictionary = {}) -> void:
+	graph = g
+	cap = int(opts.get("cap", DEFAULT_CAP))
+	_rng.seed = int(opts.get("seed", 4242))
+	var t0: int = Time.get_ticks_msec()
+	for ident: Dictionary in variants():
+		var baked: Array = bake_variant(ident)
+		_meshes.append(baked[0])
+		_scales.append(baked[1])
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = baked[0]
+		mm.instance_count = cap
+		mm.visible_instance_count = 0
+		_mm.append(mm)
+		var mmi := MultiMeshInstance3D.new()
+		mmi.name = "Variant_%d" % int(ident["v"])
+		mmi.multimesh = mm
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mmi)
+	bake_ms = Time.get_ticks_msec() - t0
+
+
+## Thêm một người nộm. state: wid, identity (có "v"), node (nút đang tới), prev, pos, speed. false khi đầy / biến thể lạ.
+func add(state: Dictionary) -> bool:
+	if _wid.size() >= cap:
+		return false
+	var ident: Dictionary = state["identity"]
+	var v: int = int(ident.get("v", -1))
+	if v < 0 or v >= _mm.size():
+		return false
+	_wid.append(int(state.get("wid", -1)))
+	_v.append(v)
+	_node.append(int(state["node"]))
+	_prev.append(int(state.get("prev", int(state["node"]))))
+	_pos.append(state["pos"])
+	_speed.append(float(state.get("speed", 1.3)))
+	_yaw.append(float(state.get("yaw", 0.0)))
+	_ident.append(ident)
+	_dirty = true
+	return true
+
+
+func count() -> int:
+	return _wid.size()
+
+
+func state_at(i: int) -> Dictionary:
+	return {"wid": _wid[i], "identity": _ident[i], "node": _node[i], "prev": _prev[i], "pos": _pos[i], "speed": _speed[i], "yaw": _yaw[i]}
+
+
+func positions() -> PackedVector3Array:
+	return _pos
+
+
+func wids() -> PackedInt32Array:
+	return _wid
+
+
+func multimesh(v: int) -> MultiMesh:
+	return _mm[v]
+
+
+func variant_mesh(v: int) -> ArrayMesh:
+	return _meshes[v]
+
+
+func variant_scale(v: int) -> Vector3:
+	return _scales[v]
+
+
+## Lấy ra (xoá khỏi đám) tối đa max_n người nộm trong bán kính r quanh center, gần trước; trả về state của họ.
+func take_within(center: Vector3, r: float, max_n: int) -> Array:
+	if max_n <= 0:
+		return []
+	var near: Array = []
+	for i: int in range(_wid.size()):
+		var d: float = _flat(_pos[i], center)
+		if d <= r:
+			near.append([d, i])
+	near.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+	near.resize(mini(near.size(), max_n))
+	var states: Array = []
+	for e: Array in near:
+		states.append(state_at(int(e[1])))
+	_remove_indices(near.map(func(e: Array) -> int: return int(e[1])))
+	return states
+
+
+## Xoá mọi người nộm mà pred(pos: Vector3) trả true; trả về số người đã xoá.
+func remove_where(pred: Callable) -> int:
+	var n: int = 0
+	for i: int in range(_wid.size() - 1, -1, -1):
+		if bool(pred.call(_pos[i])):
+			_remove(i)
+			n += 1
+	return n
+
+
+func remove_farthest(center: Vector3, n: int) -> int:
+	if n <= 0:
+		return 0
+	var all: Array = []
+	for i: int in range(_wid.size()):
+		all.append([_flat(_pos[i], center), i])
+	all.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) > float(b[0]))
+	all.resize(mini(all.size(), n))
+	_remove_indices(all.map(func(e: Array) -> int: return int(e[1])))
+	return all.size()
+
+
+## Đi tiếp dt giây theo cạnh đồ thị; tới nút thì chọn nút kế (next_node); nút cô lập (block_near) thì đứng yên.
+func step(dt: float) -> void:
+	if graph == null:
+		return
+	for i: int in range(_wid.size()):
+		var p: Vector3 = _pos[i]
+		var left: float = _speed[i] * dt
+		var guard: int = 0
+		while left > 0.0 and guard < 4:
+			guard += 1
+			var tp: Vector3 = graph.node_pos(_node[i])
+			var to := Vector3(tp.x - p.x, 0.0, tp.z - p.z)
+			var d: float = to.length()
+			if d > 0.001:
+				_yaw[i] = atan2(-to.x, -to.z)
+			if d > left:
+				p += to / d * left
+				left = 0.0
+			else:
+				p = Vector3(tp.x, p.y, tp.z)
+				left -= d
+				var nxt: int = graph.next_node(_node[i], _prev[i], _rng)
+				_prev[i] = _node[i]
+				_node[i] = nxt
+				if nxt == _prev[i]:
+					break
+		_pos[i] = p
+	_dirty = true
+
+
+## Ghi transform mọi người nộm vào MultiMesh của biến thể (mặt nhìn -Z như nhân vật, cỡ = root.scale lúc bake).
+func flush() -> void:
+	var used := PackedInt32Array()
+	used.resize(_mm.size())
+	used.fill(0)
+	for i: int in range(_wid.size()):
+		var v: int = _v[i]
+		var k: int = used[v]
+		used[v] = k + 1
+		var b: Basis = Basis(Vector3.UP, _yaw[i]).scaled(_scales[v])
+		(_mm[v] as MultiMesh).set_instance_transform(k, Transform3D(b, _pos[i]))
+	for v2: int in range(_mm.size()):
+		(_mm[v2] as MultiMesh).visible_instance_count = used[v2]
+	_dirty = false
+
+
+func _physics_process(delta: float) -> void:
+	_acc += delta
+	if _acc >= TICK_S:
+		step(_acc)
+		_acc = 0.0
+	if _dirty:
+		flush()
+
+
+func _remove_indices(idx: Array) -> void:
+	idx.sort()
+	idx.reverse()
+	for i: int in idx:
+		_remove(i)
+
+
+## Xoá phần tử i: phần tử cuối thế vào chỗ i (xoá theo chỉ số giảm dần thì các chỉ số nhỏ hơn không đổi).
+func _remove(i: int) -> void:
+	var last: int = _wid.size() - 1
+	if i != last:
+		_wid[i] = _wid[last]
+		_v[i] = _v[last]
+		_node[i] = _node[last]
+		_prev[i] = _prev[last]
+		_pos[i] = _pos[last]
+		_speed[i] = _speed[last]
+		_yaw[i] = _yaw[last]
+		_ident[i] = _ident[last]
+	_wid.resize(last)
+	_v.resize(last)
+	_node.resize(last)
+	_prev.resize(last)
+	_pos.resize(last)
+	_speed.resize(last)
+	_yaw.resize(last)
+	_ident.resize(last)
+	_dirty = true
+
+
+static func _flat(a: Vector3, b: Vector3) -> float:
+	return Vector2(a.x - b.x, a.z - b.z).length()
+```
+
+Run: `godot --headless --import --path . > /tmp/imp.log 2>&1; grep -c CrowdImpostors .godot/global_script_class_cache.cfg` — expected ≥ 2.
+
+- [ ] **Step 4: Run the tests**
+
+Run: `godot --headless --path . --script tests/test_crowd_impostors.gd > /tmp/t11.log 2>&1; grep -E "stride|baked|remove_where|SUCCESS|FAILED" /tmp/t11.log`
+Expected: the knee gap (> 0.2), the bake time (< 8000 ms; write the number in the report), then `✅ SUCCESS: CROWD IMPOSTORS`.
+Run `tests/test_ps2_people.gd` and `tests/test_character_builder.gd` again (the new clip must not change other poses).
+
+- [ ] **Step 5: Regression and commit**
+
+Run the regression command (all green), then:
+
+```bash
+git add scripts/roam/CrowdImpostors.gd scripts/CharacterBuilder.gd tests/test_crowd_impostors.gd
+git commit -m "feat(peds): far crowd tier - 24 fixed variants baked in a static stride pose and drawn as MultiMeshes, impostors glide along the walk graph at 10 Hz, closest-first take for promotion
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 12: `PedestrianSpawner` (three tiers, zone densities, night) and FreeRoam wiring
 
 **Files:**
 - Create: `scripts/roam/PedestrianSpawner.gd`
-- Modify: `scripts/FreeRoam.gd` (`var pedestrians`, `_build_pedestrians()` called at the end of `_ready()` after `_apply_spawn()`)
+- Modify: `scripts/FreeRoam.gd`:
+  - add `var pedestrians: PedestrianSpawner` and `var crowd_enabled: bool = true`;
+  - call `_build_pedestrians()` at the end of `_ready()`, after `set_time_of_day("morning")`, only when `crowd_enabled`.
+- Modify: `tests/test_free_roam.gd` (builds FreeRoam with `crowd_enabled = false`)
 - Modify: `tests/test_pedestrians.gd` (part C)
-- Create: `tests/preview_peds.gd`; renders `docs/preview/vice_roam_peds_1.png`, `vice_roam_peds_2.png`
+- Create: `tests/preview_peds.gd`, which renders `docs/preview/vice_roam_peds_1.png`, `_2.png` and `_3.png`
 
 **Interfaces:**
-- Consumes: Tasks 9-10; `FreeRoam.free_spot_at(p, base_y) -> Variant`, `FreeRoam.mounted`, `FreeRoam.hotspots`, `FreeRoam.spawn_xf`, `ThirdPersonController.slow_t`, `ThirdPersonController.cam_ray`, `PlayerBike.current_speed_ms`, `PlayerBike.spring_arm`.
-- Produces: `PedestrianSpawner.setup(md: MapData, player_node: Node3D, opts: Dictionary = {})` with opts `bike`, `roam`, `avoid` (Array[Vector3]), `count` (24), `spawn_min` (40), `spawn_max` (80), `initial_min` (12), `despawn` (110); `pedestrians() -> Array`; `request_line(ped, kind)`; signal `pedestrian_hit(ped, kind)`; counters `spawned`, `recycled`; `FreeRoam.pedestrians: PedestrianSpawner`.
+- Consumes:
+  - Tasks 9-11;
+  - FreeRoam: `free_spot_at(p, base_y) -> Variant`, `find_free_spot(centre, base_y, max_r)`, `mounted`, `hotspots`, `spawn_xf`, `tod_preset`, `set_time_of_day(preset)`;
+  - `ThirdPersonController.slow_t` and `cam_ray`; `PlayerBike.current_speed_ms` and `spring_arm`.
+- Produces:
+  - `PedestrianSpawner.setup(md: MapData, player_node: Node3D, opts: Dictionary = {})` with opts `bike`, `roam`, `avoid` (Array[Vector3]) and `seed`.
+  - Constants:
+    - tiers: `PED_CAP` 80, `NEAR_CAP` 40, `NEAR_R` 35, `PROMOTE_R` 90, `DEMOTE_R` 95, `CULL_R` 225, `IMP_CAP` 200;
+    - day targets: `PED_TARGET` [60, 45, 25] and `IMP_TARGET` [150, 120, 60], indexed by zone;
+    - `NIGHT_FACTOR` 0.3.
+  - Queries: `pedestrians() -> Array`, `targets() -> Vector2i` (current pedestrian and impostor targets around the player), `targets_at(c: Vector3)`, `zone_at(c: Vector3) -> int`.
+  - Members: `graph: PedWalkGraph`, `impostors: CrowdImpostors`.
+  - `request_line(ped, kind)` and signal `pedestrian_hit(ped, kind)`.
+  - Counters `spawned`, `recycled`, `promoted`, `demoted`. Test logs `promotions` (`{wid, identity, from, to}`) and `demotions` (`{wid, identity, pos}`), each keeping the last 64.
+  - `FreeRoam.pedestrians` and `FreeRoam.crowd_enabled`.
+
+Behaviour (spec Part 3 amendment). Each check runs every 0.25 s around the player, or around the bike when mounted:
+1. Demote. Pedestrians beyond 95 m become impostors with the same `wid` and identity. Stuck pedestrians are released.
+2. Cull. Impostors beyond 225 m are removed.
+3. Promote. While pedestrians are below the zone target, impostors within 90 m become pedestrians, closest first. A promoted pedestrian reuses a pooled `Pedestrian` of the same variant when there is one. When there is no room, impostors that wandered inside 90 m are removed if they are out of the camera view.
+4. Trim. When pedestrians exceed the target by more than 4 (the player changed zone), the farthest ones that are out of view, or farther than 50 m, are demoted.
+5. Refill pedestrians on the 40-85 m ring, out of view first.
+6. Refill impostors on the 150-220 m ring, or trim the farthest when over the target.
+7. Assign tiers. The 40 closest pedestrians within 35 m are near (physics); all others are mid (`lod_far`).
+
+Build limits and special cases:
+- At most 2 pedestrian builds or promotions happen per check, because each build costs about 15 ms.
+- A jump of more than 120 m between checks (a teleport) refills everything at once: pedestrians at 12-85 m and impostors at 95-220 m.
+- Switching to or from night trims the crowd to the new targets at once, farthest first. The whole scene relights at the same moment, so the cut is not noticeable.
 
 - [ ] **Step 1: Write the failing test (part C)**
 
-In `tests/test_pedestrians.gd` set `const PART_C: bool = true`, and in the part B `"bike"` branch keep the `if not PART_C` exit (it now falls through). Add at the end of the `"bike"` branch: `if PART_C: b_phase = ""; _part_c_start()`. Add:
+In `tests/test_pedestrians.gd` set `const PART_C: bool = true`. At the end of the part B `"mid"` branch (after the `if not PART_C:` block) add:
 
 ```gdscript
+				if PART_C:
+					b_phase = ""
+					_part_c_start()
+```
+
+Then add:
+
+```gdscript
+const MIN_NEAR: Array[int] = [40, 30, 15]   # spec Amendment: người đi đường trong 80 m – campus / dân cư / đường
+const ROAD_SPOT := Vector3(2058.0, 0.0, -71.0)   # giữa đường Nguyễn Xiển (hành lang)
+
 var roam: Node3D
 var c_phase: String = ""
 var c_t0: int = 0
 var c_frames: int = 0
 var phys_with: float = 0.0
 var phys_without: float = 0.0
+var snap: Dictionary = {}           # wid -> identity của mọi người nộm trước khi tiến lại gần
+var day_t: Vector2i
 
 
 func _part_c_start() -> void:
-	ped.queue_free()
-	world_b.queue_free()
-	stub_player.queue_free()
-	stub_bike.queue_free()
+	for n: Node in [ped, jogger, world_b, stub_player, stub_bike]:
+		n.queue_free()
 	for pair: Array in [["StageManager", "res://scripts/StageManager.gd"], ["GameFX", "res://scripts/GameFX.gd"]]:
 		if not root.has_node(pair[0]):
 			var s: Script = load(pair[1])
-			var n: Node = s.new()
-			n.name = pair[0]
-			root.add_child(n)
+			var n2: Node = s.new()
+			n2.name = pair[0]
+			root.add_child(n2)
 	roam = (load("res://scenes/FreeRoam.tscn") as PackedScene).instantiate()
 	root.add_child(roam)
 	c_phase = "settle"
@@ -4009,14 +4660,61 @@ func _part_c_start() -> void:
 	physics_frame.connect(_on_physics_c)
 
 
-func _active_near(center: Vector3, r: float) -> int:
-	var sp: Node = roam.get("pedestrians")
-	var n: int = 0
-	for p: Variant in sp.call("pedestrians"):
-		var pn: Node3D = p
-		if Vector2(pn.global_position.x - center.x, pn.global_position.z - center.z).length() <= r:
-			n += 1
-	return n
+func _sp() -> PedestrianSpawner:
+	return roam.get("pedestrians") as PedestrianSpawner
+
+
+func _player() -> Node3D:
+	return roam.get("player") as Node3D
+
+
+func _flat(a: Vector3, b: Vector3) -> float:
+	return Vector2(a.x - b.x, a.z - b.z).length()
+
+
+func _teleport(p: Vector3) -> void:
+	var spot: Variant = roam.call("find_free_spot", Vector3(p.x, 0.0, p.z), 0.0, 8)
+	var at: Vector3 = spot if spot is Vector3 else Vector3(p.x, 0.5, p.z)
+	_player().call("teleport", at + Vector3(0.0, 0.05, 0.0), 0.0)
+
+
+func _same_identity(a: Dictionary, b: Dictionary) -> bool:
+	for k: String in ["v", "preset", "seed", "female", "profile", "wseed", "wid"]:
+		if str(a.get(k, "-")) != str(b.get(k, "-")):
+			return false
+	return true
+
+
+## Mật độ theo khu, trần các tầng, tầng gần trong 35 m, không ai rơi, người nộm trong vòng 225 m.
+func _density_ok(label: String) -> bool:
+	var sp: PedestrianSpawner = _sp()
+	var c: Vector3 = _player().global_position
+	var zone: int = sp.zone_at(c)
+	var peds: Array = sp.pedestrians()
+	var n80: int = 0
+	var near: int = 0
+	for p: Pedestrian in peds:
+		var d: float = _flat(p.global_position, c)
+		if d <= 80.0:
+			n80 += 1
+		if not p.lod_far:
+			near += 1
+			if not _check(d <= PedestrianSpawner.NEAR_R + 4.0, "%s: a near-tier pedestrian is %.1f m away (near tier <= 35 m)" % [label, d]):
+				return false
+		if not _check(p.global_position.y > -1.0, "%s: a pedestrian fell through the world" % label):
+			return false
+	var imp: int = sp.impostors.count()
+	print("  %s: zone %d, %d pedestrians within 80 m (%d total, %d near), %d impostors" % [label, zone, n80, peds.size(), near, imp])
+	if not _check(n80 >= MIN_NEAR[zone], "%s: at least %d pedestrians within 80 m in zone %d (got %d)" % [label, MIN_NEAR[zone], zone, n80]):
+		return false
+	if not _check(peds.size() <= PedestrianSpawner.PED_CAP and near <= PedestrianSpawner.NEAR_CAP and imp <= PedestrianSpawner.IMP_CAP, "%s: tier caps (pedestrians %d / 80, near %d / 40, impostors %d / 200)" % [label, peds.size(), near, imp]):
+		return false
+	if not _check(imp >= int(float(sp.targets().y) * 0.6), "%s: impostors %d below 60 %% of the target %d" % [label, imp, sp.targets().y]):
+		return false
+	for q: Vector3 in sp.impostors.positions():
+		if not _check(_flat(q, c) <= PedestrianSpawner.CULL_R + 5.0, "%s: an impostor %.0f m away (cull at 225 m)" % [label, _flat(q, c)]):
+			return false
+	return true
 
 
 func _on_physics_c() -> void:
@@ -4024,27 +4722,39 @@ func _on_physics_c() -> void:
 		return
 	c_frames += 1
 	var t: int = c_frames - c_t0
-	var player: Node3D = roam.get("player")
 	match c_phase:
 		"settle":
 			if t == 150:
-				var sp: Node = roam.get("pedestrians")
-				if not _check(sp != null, "FreeRoam must expose a pedestrians spawner"):
+				if not _check(_sp() != null, "FreeRoam must expose a pedestrians spawner"):
 					return
-				var n: int = _active_near(player.global_position, 80.0)
-				print("  pedestrians within 80 m of the spawn: %d" % n)
-				if not _check(n >= 18 and n <= 30, "18..30 pedestrians within 80 m (got %d)" % n):
+				if not _check(_sp().zone_at(_player().global_position) == PedWalkGraph.ZONE_RESIDENTIAL, "the BE6 spawn is in the residential zone"):
+					return
+				if not _density_ok("BE6 spawn"):
 					return
 				for h: Variant in roam.get("hotspots"):
 					var hn: Node3D = h
-					for p: Variant in sp.call("pedestrians"):
-						var pn: Node3D = p
-						var d: float = Vector2(pn.global_position.x - hn.global_position.x, pn.global_position.z - hn.global_position.z).length()
-						if not _check(d >= 2.5, "pedestrian %.1f m from a hotspot (keep 3 m)" % d):
+					for p: Pedestrian in _sp().pedestrians():
+						if not _check(_flat(p.global_position, hn.global_position) >= 2.5, "pedestrian %.1f m from a hotspot (keep 3 m)" % _flat(p.global_position, hn.global_position)):
 							return
-				for p2: Variant in sp.call("pedestrians"):
-					if not _check((p2 as Node3D).global_position.y > -1.0, "a pedestrian fell through the world"):
-						return
+				_teleport(ROAD_SPOT)
+				c_phase = "road"
+				c_t0 = c_frames
+		"road":
+			if t == 45:
+				if not _check(_sp().zone_at(_player().global_position) == PedWalkGraph.ZONE_ROAD, "test setup: Nguyễn Xiển is in the road zone"):
+					return
+				if not _density_ok("Nguyễn Xiển"):
+					return
+				var cc: Vector2 = FPTUCampusBuilder.ring_courtyard_rect().get_center()
+				_teleport(FPTUCampusBuilder.real_plot_transform() * Vector3(cc.x, 0.0, cc.y))
+				c_phase = "campus"
+				c_t0 = c_frames
+		"campus":
+			if t == 45:
+				if not _check(_sp().zone_at(_player().global_position) == PedWalkGraph.ZONE_CAMPUS, "test setup: the courtyard is in the campus zone"):
+					return
+				if not _density_ok("campus courtyard"):
+					return
 				phys_with = 0.0
 				c_phase = "perf_with"
 				c_t0 = c_frames
@@ -4052,10 +4762,7 @@ func _on_physics_c() -> void:
 			phys_with += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)
 			if t == 60:
 				phys_with /= 60.0
-				var sp2: Node = roam.get("pedestrians")
-				for p3: Variant in sp2.call("pedestrians"):
-					(p3 as Node).process_mode = Node.PROCESS_MODE_DISABLED
-				sp2.process_mode = Node.PROCESS_MODE_DISABLED
+				_sp().process_mode = Node.PROCESS_MODE_DISABLED
 				phys_without = 0.0
 				c_phase = "perf_without"
 				c_t0 = c_frames
@@ -4064,39 +4771,93 @@ func _on_physics_c() -> void:
 			if t == 60:
 				phys_without /= 60.0
 				var cost_ms: float = (phys_with - phys_without) * 1000.0
-				print("  pedestrian physics cost %.2f ms per physics frame" % cost_ms)
-				if not _check(cost_ms < 3.0, "24 pedestrians must cost < 3 ms per physics frame (got %.2f)" % cost_ms):
+				print("  crowd physics cost %.2f ms per physics frame" % cost_ms)
+				if not _check(cost_ms < 5.0, "the crowd (40 near + 40 mid + impostors) must cost < 5 ms per physics frame (got %.2f)" % cost_ms):
 					return
-				var sp3: Node = roam.get("pedestrians")
-				sp3.process_mode = Node.PROCESS_MODE_INHERIT
-				for p4: Variant in sp3.call("pedestrians"):
-					(p4 as Node).process_mode = Node.PROCESS_MODE_INHERIT
-				# đi xa 400 m dọc tuyến đường -> người cũ bị thay, người mới quanh chỗ mới
-				var md: MapData = MapData.load_default()
-				var route: PackedVector2Array = md.route_points(20.0)
-				var far: Vector2 = route[mini(route.size() - 1, 25)]
-				player.call("teleport", Vector3(far.x, 0.5, far.y), 0.0)
-				c_phase = "moved"
+				_sp().process_mode = Node.PROCESS_MODE_INHERIT
+				# danh tính: chụp mọi người nộm, tiến 45 m về phía người nộm gần nhất (dưới ngưỡng dịch chuyển 120 m)
+				var sp: PedestrianSpawner = _sp()
+				var c: Vector3 = _player().global_position
+				snap.clear()
+				var best: Vector3 = Vector3.INF
+				for i: int in range(sp.impostors.count()):
+					var st: Dictionary = sp.impostors.state_at(i)
+					snap[int(st["wid"])] = st["identity"]
+					var q: Vector3 = st["pos"]
+					if best == Vector3.INF or _flat(q, c) < _flat(best, c):
+						best = q
+				var u: Vector3 = Vector3(best.x - c.x, 0.0, best.z - c.z).normalized()
+				sp.promotions.clear()
+				sp.demotions.clear()
+				roam.set_meta("dir_u", u)
+				_teleport(c + u * 45.0)
+				c_phase = "promote"
 				c_t0 = c_frames
-		"moved":
-			if t == 240:
-				var sp4: Node = roam.get("pedestrians")
-				var rec: int = int(sp4.get("recycled"))
-				var near: int = _active_near(player.global_position, 80.0)
-				print("  after moving 400 m: recycled %d, near %d" % [rec, near])
-				if not _check(rec > 0 and near >= 10, "moving away must recycle pedestrians and refill near the player (recycled %d, near %d)" % [rec, near]):
+		"promote":
+			if t == 120:
+				var sp2: PedestrianSpawner = _sp()
+				var ok: int = 0
+				for e: Dictionary in sp2.promotions:
+					var wid: int = int(e["wid"])
+					if not snap.has(wid):
+						continue
+					if not _check(_same_identity(e["identity"], snap[wid]), "a promoted walker keeps its identity (wid %d)" % wid):
+						return
+					var found: Pedestrian = null
+					for p: Pedestrian in sp2.pedestrians():
+						if int(p.identity.get("wid", -1)) == wid:
+							found = p
+					if not _check(found != null and _same_identity(found.identity, snap[wid]), "the pedestrian of promoted wid %d has the impostor's identity" % wid):
+						return
+					var jump: float = (e["from"] as Vector3).distance_to(e["to"] as Vector3)
+					if not _check(jump < 6.5, "promotion moved walker %d by %.1f m (keep < 6.5)" % [wid, jump]):
+						return
+					ok += 1
+				print("  promotions checked: %d (log %d)" % [ok, sp2.promotions.size()])
+				if not _check(ok >= 1, "walking 45 m toward the impostors must promote at least one of them"):
 					return
-				# xe tông người: người ngã, xe chậm lại còn <= 0.8 tốc độ
+				var u2: Vector3 = roam.get_meta("dir_u")
+				_teleport(_player().global_position - u2 * 110.0)
+				c_phase = "demote"
+				c_t0 = c_frames
+		"demote":
+			if t == 60:
+				var sp3: PedestrianSpawner = _sp()
+				var okd: int = 0
+				for e2: Dictionary in sp3.demotions:
+					var w2: int = int(e2["wid"])
+					var idx: int = sp3.impostors.wids().find(w2)
+					if idx < 0:
+						continue   # đã ra ngoài 225 m
+					if not _check(_same_identity(sp3.impostors.state_at(idx)["identity"], e2["identity"]), "a demoted walker keeps its identity as an impostor (wid %d)" % w2):
+						return
+					okd += 1
+				print("  demotions checked: %d (log %d)" % [okd, sp3.demotions.size()])
+				if not _check(okd >= 1, "walking 110 m away must demote at least one pedestrian into an impostor"):
+					return
+				day_t = sp3.targets()
+				roam.call("set_time_of_day", "night")
+				c_phase = "night"
+				c_t0 = c_frames
+		"night":
+			if t == 30:
+				var sp4: PedestrianSpawner = _sp()
+				var nt: Vector2i = sp4.targets()
+				print("  night: targets %s (day %s), pedestrians %d, impostors %d" % [nt, day_t, sp4.pedestrians().size(), sp4.impostors.count()])
+				if not _check(nt.x == maxi(1, roundi(float(day_t.x) * 0.3)) and nt.y == maxi(1, roundi(float(day_t.y) * 0.3)), "night targets are 30 %% of the day targets"):
+					return
+				if not _check(sp4.pedestrians().size() <= nt.x and sp4.impostors.count() <= nt.y, "switching to night trims the crowd at once"):
+					return
+				roam.call("set_time_of_day", "morning")
 				roam.call("mount_bike")
 				c_phase = "bike_hit"
 				c_t0 = c_frames
 		"bike_hit":
 			var bike: Node3D = roam.get("bike")
-			var sp5: Node = roam.get("pedestrians")
 			if t == 30:
-				var pl: Array = sp5.call("pedestrians")
-				var victim: Pedestrian = pl[0]
+				var victim: Pedestrian = _sp().pedestrians()[0]
 				victim.process_mode = Node.PROCESS_MODE_INHERIT
+				victim.lod_far = false
 				victim.global_position = bike.global_position - bike.global_basis.z * 0.9 + Vector3(0.0, 0.05, 0.0)
 				bike.set("current_speed_ms", 6.0)
 				roam.set_meta("victim", victim)
@@ -4111,8 +4872,8 @@ func _on_physics_c() -> void:
 				quit(0)
 ```
 
-Run: `godot --headless --path . --script tests/test_pedestrians.gd > /tmp/t11.log 2>&1; grep -E "SUCCESS|FAILED" /tmp/t11.log`
-Expected: `❌ FAILED: FreeRoam must expose a pedestrians spawner`.
+Run: `godot --headless --path . --script tests/test_pedestrians.gd > /tmp/t12.log 2>&1; grep -E "SUCCESS|FAILED|Identifier" /tmp/t12.log`
+Expected: `Identifier "PedestrianSpawner" not declared in the current scope.`
 
 - [ ] **Step 2: Implement the spawner**
 
@@ -4120,51 +4881,82 @@ Create `scripts/roam/PedestrianSpawner.gd`:
 
 ```gdscript
 # File: res://scripts/roam/PedestrianSpawner.gd
-# Người đi đường quanh người chơi FreeRoam: giữ `count` người trên PedWalkGraph trong vòng spawn_min..spawn_max m
-# (lần đầu từ initial_min), ưu tiên ngoài tầm camera, kiểm chỗ đứng bằng FreeRoam.free_spot_at; người xa hơn `despawn`
-# hoặc kẹt bị thay (tối đa 2 người mới mỗi 0.25 s để không giật). LOD: xa > 45 m di chuyển rẻ, > 90 m ẩn.
-# Một bong bóng thoại dùng chung (mỗi 4 s tối đa một câu). Hậu quả va chạm: nước rút -> người chơi chậm 0.2 s,
-# xe tông -> xe mất 25 % tốc độ. Không dùng autoload ở đây.
+# Đám đông FreeRoam ba tầng quanh người chơi (hoặc xe khi đang cưỡi), spec vice-people-and-movement Phần 3 +
+# "Amendment 2026-10-22":
+#   gần (<= 35 m, tối đa 40): Pedestrian đủ vật lý + phản ứng va chạm;
+#   giữa (35-90 m): Pedestrian không vật lý (lod_far), hoạt ảnh theo LOD khoảng cách sẵn có của RigAnimator;
+#   xa (90-225 m, tối đa 200): người nộm CrowdImpostors (MultiMesh theo biến thể).
+# Mục tiêu ban ngày theo khu quanh người chơi (PedWalkGraph.zone_at): campus 60 / dân cư 45 / đường 25 người đi đường
+# trong 90 m và 150 / 120 / 60 người nộm; ban đêm (FreeRoam.tod_preset == "night") còn 30 %, cắt ngay khi đổi giờ.
+# Người đi đường ra ngoài 95 m thành người nộm, người nộm vào trong 90 m thành người đi đường, cùng wid + danh tính
+# (preset, seed, female, profile, wseed). Mỗi lần kiểm (0.25 s) dựng / đổi tầng tối đa 2 người (mỗi lần dựng ~15 ms), bù
+# người ngoài tầm camera trước; người bị bỏ vào pool theo biến thể để dùng lại. Dịch chuyển > 120 m thì lấp đầy lại ngay.
+# Một bong bóng thoại dùng chung (mỗi 4 s tối đa một câu); nước rút tông người -> người chơi chậm 0.2 s, xe tông -> xe
+# mất 25 % tốc độ. Không dùng autoload ở đây.
 class_name PedestrianSpawner
 extends Node3D
 
 signal pedestrian_hit(ped: Pedestrian, kind: String)
 
-const DEFAULT_COUNT: int = 24
-const LOD_FAR: float = 45.0
-const HIDE_FAR: float = 90.0
+const PED_CAP: int = 80
+const NEAR_CAP: int = 40
+const NEAR_R: float = 35.0
+const PROMOTE_R: float = 90.0
+const DEMOTE_R: float = 95.0
+const CULL_R: float = 225.0
+const IMP_CAP: int = 200
+const RING_MIN: float = 40.0
+const RING_MAX: float = 85.0
+const INITIAL_MIN: float = 12.0
+const IMP_SPAWN_MIN: float = 150.0
+## Mục tiêu ban ngày theo khu quanh người chơi (chỉ số = PedWalkGraph.ZONE_*): người đi đường trong PROMOTE_R / người nộm.
+const PED_TARGET: Array[int] = [60, 45, 25]
+const IMP_TARGET: Array[int] = [150, 120, 60]
+## Kiểu đi của người mới theo khu nơi họ xuất hiện: xác suất [walk, jog, stroll].
+const PROFILE_MIX: Array = [[0.9, 0.0, 0.1], [0.7, 0.15, 0.15], [0.85, 0.1, 0.05]]
+const NIGHT_FACTOR: float = 0.3
+const CHECK_EVERY: float = 0.25
+const BUILDS_PER_CHECK: int = 2
+const IMP_SPAWNS_PER_CHECK: int = 12
+const TRIM_SLACK: int = 4
+const TRIM_VIEW_R: float = 50.0
+const VIEW_SPAWN_R: float = 70.0
+const TELEPORT_M: float = 120.0
+const POOL_MAX: int = 24
 const HOTSPOT_CLEAR: float = 3.0
 const SPAWN_CLEAR: float = 8.0
 const LINE_GAP_S: float = 4.0
 const LINE_SHOW_S: float = 2.0
-const CHECK_EVERY: float = 0.25
-const SPAWNS_PER_CHECK: int = 2
 const PLAYER_SLOW_S: float = 0.2
 const BIKE_SPEED_KEEP: float = 0.75
-const CAMPUS_NEAR_M: float = 60.0
+const LOG_MAX: int = 64
 
 var graph: PedWalkGraph
+var impostors: CrowdImpostors
 var md: MapData
 var player: Node3D
 var bike: Node3D
 var roam: Node
-var count: int = DEFAULT_COUNT
-var spawn_min: float = 40.0
-var spawn_max: float = 80.0
-var initial_min: float = 12.0
-var despawn: float = 110.0
+var night: bool = false
 var spawned: int = 0
 var recycled: int = 0
+var promoted: int = 0
+var demoted: int = 0
+var promotions: Array = []         # test: {wid, identity, from, to}
+var demotions: Array = []          # test: {wid, identity, pos}
 var _peds: Array = []
+var _pool: Dictionary = {}         # v -> Array[Pedestrian] đã tách khỏi cây
+var _pool_n: int = 0
+var _by_zone: Array = [[], [], []] # khu -> biến thể của khu (CrowdImpostors.variants())
 var _avoid: Array = []
 var _rng := RandomNumberGenerator.new()
+var _next_wid: int = 1
 var _check_t: float = 0.0
+var _last_center: Vector3 = Vector3.INF
 var _line_t: float = -99.0
 var _bubble: Label3D
 var _bubble_ped: Pedestrian
 var _bubble_left: float = 0.0
-var _campus_poly := PackedVector2Array()
-var _filled_once: bool = false
 
 
 func setup(map_data: MapData, player_node: Node3D, opts: Dictionary = {}) -> void:
@@ -4172,24 +4964,21 @@ func setup(map_data: MapData, player_node: Node3D, opts: Dictionary = {}) -> voi
 	player = player_node
 	bike = opts.get("bike", null)
 	roam = opts.get("roam", null)
-	count = int(opts.get("count", DEFAULT_COUNT))
-	spawn_min = float(opts.get("spawn_min", 40.0))
-	spawn_max = float(opts.get("spawn_max", 80.0))
-	initial_min = float(opts.get("initial_min", 12.0))
-	despawn = float(opts.get("despawn", 110.0))
 	_avoid = opts.get("avoid", [])
 	_rng.seed = int(opts.get("seed", 2026))
 	graph = PedWalkGraph.build(md)
 	if graph.node_count() == 0:
 		push_warning("PedestrianSpawner: đồ thị lối đi bộ rỗng, tắt người đi đường")
 		set_physics_process(false)
+		set_process(false)
 		return
 	graph.block_near(_avoid, HOTSPOT_CLEAR)
-	var xf: Transform3D = FPTUCampusBuilder.real_plot_transform()
-	var pr: Rect2 = FPTUCampusBuilder.plot_rect().grow(CAMPUS_NEAR_M)
-	for c: Vector2 in [pr.position, Vector2(pr.end.x, pr.position.y), pr.end, Vector2(pr.position.x, pr.end.y)]:
-		var w: Vector3 = xf * Vector3(c.x, 0.0, c.y)
-		_campus_poly.append(Vector2(w.x, w.z))
+	for vt: Dictionary in CrowdImpostors.variants():
+		(_by_zone[int(vt["zone"])] as Array).append(vt)
+	impostors = CrowdImpostors.new()
+	impostors.name = "Impostors"
+	add_child(impostors)
+	impostors.setup(graph, {"cap": IMP_CAP, "seed": int(opts.get("seed", 2026)) + 1})
 	_bubble = Label3D.new()
 	_bubble.name = "SpeechBubble"
 	_bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -4201,12 +4990,31 @@ func setup(map_data: MapData, player_node: Node3D, opts: Dictionary = {}) -> voi
 	_bubble.no_depth_test = true
 	_bubble.visible = false
 	add_child(_bubble)
-	_fill(initial_min, count)
-	_filled_once = true
+	night = _is_night()
+	_refill_all(_center())
 
 
 func pedestrians() -> Array:
 	return _peds
+
+
+## Khu quanh điểm c (khu của nút đồ thị gần nhất trong 80 m; không có thì "đường").
+func zone_at(c: Vector3) -> int:
+	if graph == null:
+		return PedWalkGraph.ZONE_ROAD
+	var n: int = graph.nearest(c, 80.0)
+	return graph.zone_at(n) if n >= 0 else PedWalkGraph.ZONE_ROAD
+
+
+## Mục tiêu (người đi đường trong PROMOTE_R, người nộm) quanh c theo khu và ngày / đêm.
+func targets_at(c: Vector3) -> Vector2i:
+	var z: int = zone_at(c)
+	var f: float = NIGHT_FACTOR if night else 1.0
+	return Vector2i(maxi(1, roundi(float(PED_TARGET[z]) * f)), maxi(1, roundi(float(IMP_TARGET[z]) * f)))
+
+
+func targets() -> Vector2i:
+	return targets_at(_center())
 
 
 ## Câu càu nhàu của người đi đường (giới hạn: mỗi LINE_GAP_S giây một câu cho cả đám).
@@ -4228,62 +5036,283 @@ func _physics_process(delta: float) -> void:
 		return
 	_check_t = CHECK_EVERY
 	var center: Vector3 = _center()
-	for i: int in range(_peds.size() - 1, -1, -1):
-		var p: Pedestrian = _peds[i]
-		if not is_instance_valid(p):
-			_peds.remove_at(i)
+	if _flat(center, _last_center) > TELEPORT_M:
+		_reset_around(center)
+		return
+	_last_center = center
+	if _is_night() != night:
+		night = not night
+		_trim_now(center)
+	var t: Vector2i = targets_at(center)
+	var want_p: int = mini(t.x, PED_CAP)
+	# 1. người đi đường: kẹt / rơi -> bỏ; ra ngoài DEMOTE_R -> người nộm (cùng danh tính)
+	for pv: Variant in _peds.duplicate():
+		if not is_instance_valid(pv):
+			_peds.erase(pv)
 			continue
-		var d: float = Vector2(p.global_position.x - center.x, p.global_position.z - center.z).length()
-		if d > despawn or p.stuck_out:
-			_peds.remove_at(i)
-			p.queue_free()
+		var p: Pedestrian = pv
+		if p.stuck_out:
 			recycled += 1
-			continue
-		p.lod_far = d > LOD_FAR
-		p.visible = d < HIDE_FAR
-	_fill(spawn_min, SPAWNS_PER_CHECK)
+			_release(p)
+		elif _flat(p.global_position, center) > DEMOTE_R:
+			_demote(p, center)
+	# 2. người nộm ra ngoài CULL_R -> bỏ
+	recycled += impostors.remove_where(func(q: Vector3) -> bool: return _flat(q, center) > CULL_R)
+	# 3. người nộm vào trong PROMOTE_R -> người đi đường (gần trước) khi còn chỗ; hết chỗ thì bỏ những người nộm đã lọt
+	#    vào trong mà ngoài tầm camera (người nộm mới xuất hiện ở vòng ngoài)
+	var builds: int = 0
+	var free: int = want_p - _peds.size()
+	if free > 0:
+		for st: Dictionary in impostors.take_within(center, PROMOTE_R, mini(free, BUILDS_PER_CHECK)):
+			_promote(st)
+			builds += 1
+	else:
+		recycled += impostors.remove_where(func(q: Vector3) -> bool: return _flat(q, center) < PROMOTE_R and not _in_view(q, CULL_R))
+	# 4. quá mục tiêu (đổi khu): người xa nhất ngoài tầm camera / xa hơn TRIM_VIEW_R thành người nộm
+	if _peds.size() > want_p + TRIM_SLACK:
+		_trim_farthest(center, mini(BUILDS_PER_CHECK, _peds.size() - want_p - TRIM_SLACK))
+	# 5. bù người đi đường ở vòng RING_MIN..RING_MAX, ngoài tầm camera trước
+	var tries: int = 0
+	while _peds.size() < want_p and builds < BUILDS_PER_CHECK and tries < BUILDS_PER_CHECK * 6:
+		tries += 1
+		if _spawn_new(center, RING_MIN, RING_MAX, tries <= BUILDS_PER_CHECK * 4):
+			builds += 1
+	# 6. người nộm: bớt người xa nhất khi quá mục tiêu, bù ở vòng ngoài
+	if impostors.count() > t.y + TRIM_SLACK * 3:
+		recycled += impostors.remove_farthest(center, impostors.count() - t.y)
+	var made: int = 0
+	tries = 0
+	while impostors.count() < t.y and made < IMP_SPAWNS_PER_CHECK and tries < IMP_SPAWNS_PER_CHECK * 3:
+		tries += 1
+		if _spawn_impostor(center, IMP_SPAWN_MIN, CULL_R - 5.0):
+			made += 1
+	_assign_tiers(center)
 
 
 func _process(delta: float) -> void:
 	if _bubble == null or not _bubble.visible:
 		return
 	_bubble_left -= delta
-	if _bubble_left <= 0.0 or not is_instance_valid(_bubble_ped):
+	if _bubble_left <= 0.0 or not is_instance_valid(_bubble_ped) or not _bubble_ped.is_inside_tree():
 		_bubble.visible = false
 		return
 	var top: Node3D = CharacterBuilder.head_top(_bubble_ped.model)
 	_bubble.global_position = (top.global_position if top else _bubble_ped.global_position + Vector3(0.0, 1.9, 0.0)) + Vector3(0.0, 0.35, 0.0)
 
 
+## Người trong pool đã tách khỏi cây: giải phóng khi spawner rời cây (đổi cảnh) để không rò Node.
+func _exit_tree() -> void:
+	for list: Variant in _pool.values():
+		for p: Variant in list:
+			if is_instance_valid(p):
+				(p as Node).queue_free()
+	_pool.clear()
+	_pool_n = 0
+
+
+# ---------------------------------------------------------------------------
+# LẤP ĐẦY / CẮT BỚT
+# ---------------------------------------------------------------------------
+func _refill_all(center: Vector3) -> void:
+	_last_center = center
+	var t: Vector2i = targets_at(center)
+	var want_p: int = mini(t.x, PED_CAP)
+	var tries: int = 0
+	while _peds.size() < want_p and tries < want_p * 6:
+		tries += 1
+		_spawn_new(center, INITIAL_MIN, RING_MAX, false)
+	tries = 0
+	while impostors.count() < t.y and tries < t.y * 4:
+		tries += 1
+		_spawn_impostor(center, DEMOTE_R, CULL_R - 5.0)
+	_assign_tiers(center)
+
+
+## Dịch chuyển (về từ màn chơi, test): bỏ hết rồi lấp đầy quanh chỗ mới.
+func _reset_around(center: Vector3) -> void:
+	for pv: Variant in _peds.duplicate():
+		if is_instance_valid(pv):
+			_release(pv)
+	_peds.clear()
+	impostors.remove_where(func(_q: Vector3) -> bool: return true)
+	night = _is_night()
+	_refill_all(center)
+
+
+## Đổi ngày / đêm: cắt ngay về mục tiêu mới, người xa nhất trước (đèn cả cảnh đổi cùng lúc nên không lộ).
+func _trim_now(center: Vector3) -> void:
+	var t: Vector2i = targets_at(center)
+	var order: Array = _sorted_by_distance(center, true)
+	for i: int in range(maxi(0, order.size() - t.x)):
+		recycled += 1
+		_release(order[i])
+	if impostors.count() > t.y:
+		recycled += impostors.remove_farthest(center, impostors.count() - t.y)
+
+
+func _trim_farthest(center: Vector3, n: int) -> void:
+	var cut: int = 0
+	for p: Pedestrian in _sorted_by_distance(center, true):
+		if cut >= n:
+			return
+		if _flat(p.global_position, center) > TRIM_VIEW_R or not _in_view(p.global_position, CULL_R):
+			_demote(p, center)
+			cut += 1
+
+
+## 40 người gần nhất trong 35 m có vật lý; còn lại là tầng giữa. Về tầng gần thì đặt lại lên mặt sàn.
+func _assign_tiers(center: Vector3) -> void:
+	var order: Array = _sorted_by_distance(center, false)
+	for i: int in range(order.size()):
+		var p: Pedestrian = order[i]
+		var far: bool = i >= NEAR_CAP or _flat(p.global_position, center) > NEAR_R
+		if p.lod_far and not far:
+			p.snap_to_floor()
+		p.lod_far = far
+
+
+func _sorted_by_distance(center: Vector3, farthest_first: bool) -> Array:
+	var pairs: Array = []
+	for p: Pedestrian in _peds:
+		pairs.append([_flat(p.global_position, center), p])
+	if farthest_first:
+		pairs.sort_custom(func(x: Array, y: Array) -> bool: return float(x[0]) > float(y[0]))
+	else:
+		pairs.sort_custom(func(x: Array, y: Array) -> bool: return float(x[0]) < float(y[0]))
+	return pairs.map(func(x: Array) -> Pedestrian: return x[1])
+
+
+# ---------------------------------------------------------------------------
+# NGƯỜI ĐI ĐƯỜNG / NGƯỜI NỘM
+# ---------------------------------------------------------------------------
+func _spawn_new(center: Vector3, r_min: float, r_max: float, avoid_view: bool) -> bool:
+	var node: int = graph.random_point_ring(center, r_min, r_max, _rng)
+	if node < 0:
+		return false
+	var p: Vector3 = graph.node_pos(node)
+	if not _clear_of_avoid(p) or (avoid_view and _in_view(p, VIEW_SPAWN_R)):
+		return false
+	var spot: Variant = _free_spot(p)
+	if not (spot is Vector3):
+		return false
+	_spawn_ped(node, node, spot, _new_identity(graph.zone_at(node)))
+	return true
+
+
+func _spawn_impostor(center: Vector3, r_min: float, r_max: float) -> bool:
+	var node: int = graph.random_point_ring(center, r_min, r_max, _rng)
+	if node < 0 or not _clear_of_avoid(graph.node_pos(node)):
+		return false
+	var ident: Dictionary = _new_identity(graph.zone_at(node))
+	var sp: float = Pedestrian.speed_for(String(ident["profile"]), int(ident["wseed"]))
+	return impostors.add({"wid": int(ident["wid"]), "identity": ident, "node": node, "prev": node, "pos": graph.node_pos(node), "speed": sp})
+
+
+## Danh tính mới: một biến thể của khu (8 biến thể mỗi khu), kiểu đi theo PROFILE_MIX, wseed và wid riêng.
+func _new_identity(zone: int) -> Dictionary:
+	var list: Array = _by_zone[zone]
+	var ident: Dictionary = (list[_rng.randi_range(0, list.size() - 1)] as Dictionary).duplicate()
+	var mix: Array = PROFILE_MIX[zone]
+	var r: float = _rng.randf()
+	var profile: String = "walk" if r < float(mix[0]) else ("jog" if r < float(mix[0]) + float(mix[1]) else "stroll")
+	if String(ident["preset"]) == "lecturer" and profile == "jog":
+		profile = "walk"
+	ident["profile"] = profile
+	ident["wseed"] = _rng.randi() % 1000000
+	ident["wid"] = _next_wid
+	_next_wid += 1
+	return ident
+
+
+func _spawn_ped(node: int, prev: int, at: Vector3, ident: Dictionary) -> Pedestrian:
+	var v: int = int(ident.get("v", -1))
+	var p: Pedestrian = null
+	var pool: Array = _pool.get(v, [])
+	if not pool.is_empty():
+		p = pool.pop_back()
+		_pool_n -= 1
+	else:
+		p = Pedestrian.new()
+		p.name = "Ped_%d" % spawned
+	p.setup(graph, node, ident)
+	p.prev_node = prev
+	p.player = player
+	p.bike = bike
+	p.mounted_fn = _mounted
+	p.crowd = _peds
+	p.spawner = self
+	if not p.hit.is_connected(_on_hit):
+		p.hit.connect(_on_hit)
+	add_child(p)
+	p.global_position = at + Vector3(0.0, 0.05, 0.0)
+	_peds.append(p)
+	spawned += 1
+	if player and player.get("cam_ray"):
+		(player.get("cam_ray") as RayCast3D).add_exception(p)
+	if bike and bike.get("spring_arm"):
+		(bike.get("spring_arm") as SpringArm3D).add_excluded_object(p.get_rid())
+	return p
+
+
+## Người nộm -> người đi đường tại chỗ người nộm đứng (hoặc nút nó đang tới); không có chỗ cho thân thật thì bỏ.
+func _promote(st: Dictionary) -> void:
+	var at: Variant = _free_spot(st["pos"])
+	if not (at is Vector3):
+		at = _free_spot(graph.node_pos(int(st["node"])))
+	if not (at is Vector3):
+		recycled += 1
+		return
+	var p: Pedestrian = _spawn_ped(int(st["node"]), int(st["prev"]), at, st["identity"])
+	promoted += 1
+	_log(promotions, {"wid": int(st["wid"]), "identity": p.identity, "from": st["pos"], "to": p.global_position})
+
+
+func _demote(p: Pedestrian, center: Vector3) -> void:
+	if _flat(p.global_position, center) < CULL_R:
+		var st: Dictionary = {"wid": int(p.identity.get("wid", -1)), "identity": p.identity, "node": p.target_node, "prev": p.prev_node, "pos": p.global_position, "speed": p.walk_speed}
+		if impostors.add(st):
+			demoted += 1
+			_log(demotions, {"wid": int(st["wid"]), "identity": p.identity, "pos": st["pos"]})
+	_release(p)
+
+
+## Bỏ một người đi đường khỏi đám: vào pool của biến thể (tách khỏi cây) nếu còn chỗ, không thì giải phóng.
+func _release(p: Pedestrian) -> void:
+	_peds.erase(p)
+	if _bubble_ped == p and _bubble:
+		_bubble.visible = false
+	var v: int = int(p.identity.get("v", -1))
+	if v >= 0 and _pool_n < POOL_MAX and not p.stuck_out:
+		remove_child(p)
+		if not _pool.has(v):
+			_pool[v] = []
+		(_pool[v] as Array).append(p)
+		_pool_n += 1
+	else:
+		p.queue_free()
+
+
+# ---------------------------------------------------------------------------
+# PHỤ TRỢ
+# ---------------------------------------------------------------------------
 func _center() -> Vector3:
-	var mounted: bool = roam != null and bool(roam.get("mounted"))
-	if mounted and bike:
+	if _mounted() and bike:
 		return bike.global_position
 	return player.global_position if player else Vector3.ZERO
 
 
-func _fill(r_min: float, max_new: int) -> void:
-	var center: Vector3 = _center()
-	var cam: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
-	var made: int = 0
-	var attempts: int = 0
-	while _peds.size() < count and made < max_new and attempts < max_new * 6:
-		attempts += 1
-		var node: int = graph.random_point_near(center, r_min, spawn_max, _rng)
-		if node < 0:
-			break
-		var p: Vector3 = graph.node_pos(node)
-		if not _clear_of_avoid(p):
-			continue
-		if _filled_once and cam and attempts <= max_new * 4 and cam.is_position_in_frustum(p + Vector3(0.0, 1.0, 0.0)) and cam.global_position.distance_to(p) < 70.0:
-			continue
-		var spot: Variant = p
-		if roam and roam.has_method("free_spot_at"):
-			spot = roam.call("free_spot_at", p, 0.0)
-		if not (spot is Vector3):
-			continue
-		_spawn(node, spot)
-		made += 1
+func _mounted() -> bool:
+	return roam != null and bool(roam.get("mounted"))
+
+
+func _is_night() -> bool:
+	return roam != null and String(roam.get("tod_preset")) == "night"
+
+
+func _free_spot(p: Vector3) -> Variant:
+	if roam and roam.has_method("free_spot_at"):
+		return roam.call("free_spot_at", Vector3(p.x, 0.0, p.z), 0.0)
+	return Vector3(p.x, 0.0, p.z)
 
 
 func _clear_of_avoid(p: Vector3) -> bool:
@@ -4296,33 +5325,21 @@ func _clear_of_avoid(p: Vector3) -> bool:
 	return true
 
 
-func _spawn(node: int, at: Vector3) -> void:
-	var p := Pedestrian.new()
-	p.name = "Ped_%d" % spawned
-	p.setup(graph, node, {"preset": _pick_preset(at)}, 9000 + spawned * 13)
-	p.player = player
-	p.bike = bike
-	p.mounted_fn = func() -> bool: return roam != null and bool(roam.get("mounted"))
-	p.crowd = _peds
-	p.spawner = self
-	p.hit.connect(_on_hit)
-	add_child(p)
-	p.global_position = at + Vector3(0.0, 0.05, 0.0)
-	_peds.append(p)
-	spawned += 1
-	if player and player.get("cam_ray"):
-		(player.get("cam_ray") as RayCast3D).add_exception(p)
-	if bike and bike.get("spring_arm"):
-		(bike.get("spring_arm") as SpringArm3D).add_excluded_object(p.get_rid())
+func _in_view(p: Vector3, max_d: float) -> bool:
+	var cam: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+	if cam == null:
+		return false
+	return cam.global_position.distance_to(p) < max_d and cam.is_position_in_frustum(p + Vector3(0.0, 1.0, 0.0))
 
 
-func _pick_preset(at: Vector3) -> String:
-	var r: float = _rng.randf()
-	if Geometry2D.is_point_in_polygon(Vector2(at.x, at.z), _campus_poly):
-		return "student" if r < 0.9 else "lecturer"
-	if r < 0.6:
-		return "casual"
-	return "student" if r < 0.9 else "lecturer"
+static func _flat(a: Vector3, b: Vector3) -> float:
+	return Vector2(a.x - b.x, a.z - b.z).length()
+
+
+func _log(arr: Array, e: Dictionary) -> void:
+	arr.append(e)
+	if arr.size() > LOG_MAX:
+		arr.pop_front()
 
 
 func _on_hit(ped: Pedestrian, kind: String) -> void:
@@ -4333,10 +5350,20 @@ func _on_hit(ped: Pedestrian, kind: String) -> void:
 	pedestrian_hit.emit(ped, kind)
 ```
 
-In `scripts/FreeRoam.gd` add `var pedestrians: PedestrianSpawner` next to `var bike: PlayerBike`, call `_build_pedestrians()` at the end of `_ready()` right after `_apply_spawn()` (before the `for k in GameFXScript.TOD_PRESETS` loop is fine), and add:
+Wire it into `scripts/FreeRoam.gd`:
+- Add `var pedestrians: PedestrianSpawner` next to `var bike: PlayerBike`.
+- Add the flag `var crowd_enabled: bool = true`, with the comment `## false = không dựng người đi đường / xe chạy (test_free_roam đặt trước add_child để các pha kiểm tra cố định)`.
+- At the end of `_ready()`, right after `set_time_of_day("morning")`, add:
 
 ```gdscript
-## Người đi đường (spec vice-people-and-movement, Phần 3): tránh cột sáng hotspot và điểm spawn.
+	if crowd_enabled:
+		_build_pedestrians()
+```
+
+and add the function:
+
+```gdscript
+## Đám đông ba tầng (spec vice-people-and-movement, Phần 3 + Amendment): tránh cột sáng hotspot và điểm spawn.
 func _build_pedestrians() -> void:
 	pedestrians = PedestrianSpawner.new()
 	pedestrians.name = "Pedestrians"
@@ -4347,13 +5374,28 @@ func _build_pedestrians() -> void:
 	pedestrians.setup(md, player, {"bike": bike, "roam": self, "avoid": avoid})
 ```
 
+In `tests/test_free_roam.gd` `_initialize()`, right after `roam = packed.instantiate()`, add:
+
+```gdscript
+	roam.set("crowd_enabled", false)   # các pha kiểm tra cố định: không người đi đường / xe chạy chen vào
+```
+
 Run: `godot --headless --import --path . > /tmp/imp.log 2>&1; grep -c PedestrianSpawner .godot/global_script_class_cache.cfg` — expected ≥ 2.
 
 - [ ] **Step 3: Run the tests**
 
-Run: `godot --headless --path . --script tests/test_pedestrians.gd > /tmp/t11.log 2>&1; grep -E "within 80|physics cost|after moving|bike hit|SUCCESS|FAILED" /tmp/t11.log`
-Expected: counts within bounds, cost < 3 ms, then `✅ SUCCESS: PEDESTRIANS (parts A + B + C)`.
-Run: `godot --headless --path . --script tests/test_free_roam.gd > /tmp/fr.log 2>&1; grep -E "SUCCESS|FAILED|build" /tmp/fr.log` — expected SUCCESS and the build still < 15 s (pedestrian setup adds the graph build, < 1.5 s).
+Run: `godot --headless --path . --script tests/test_pedestrians.gd > /tmp/t12.log 2>&1; grep -E "zone|physics cost|promotions|demotions|night|bike hit|SUCCESS|FAILED" /tmp/t12.log`
+Expected:
+- the three density lines meet the thresholds (BE6 ≥ 30, Nguyễn Xiển ≥ 15, courtyard ≥ 40);
+- the crowd costs < 5 ms;
+- at least one promotion and one demotion are checked;
+- the night targets are 30 %;
+- then `✅ SUCCESS: PEDESTRIANS (parts A + B + C)`.
+
+If the physics cost is 5 ms or more, stop and report the number; the controller decides on the fallback (near pedestrians farther than 15 m from the player run `move_and_slide` every second physics frame with twice the delta).
+
+Run: `godot --headless --path . --script tests/test_free_roam.gd > /tmp/fr.log 2>&1; grep -E "SUCCESS|FAILED|build" /tmp/fr.log` — expected SUCCESS (built without the crowd).
+Run: `godot --headless --path . --script tests/smoke_all_stages.gd > /tmp/smoke.log 2>&1; grep -c "SCRIPT ERROR\|^ERROR:" /tmp/smoke.log` — expected 0 (FreeRoam with the crowd).
 
 - [ ] **Step 4: Preview**
 
@@ -4361,7 +5403,8 @@ Create `tests/preview_peds.gd`:
 
 ```gdscript
 # File: res://tests/preview_peds.gd
-# Ảnh người đi đường FreeRoam (cần cửa sổ render): vice_roam_peds_1 (trước sảnh BE6), vice_roam_peds_2 (cổng campus).
+# Ảnh đám đông + xe chạy FreeRoam (cần cửa sổ render): vice_roam_peds_1 (trước sảnh BE6, khu dân cư), vice_roam_peds_2
+# (cổng chính campus), vice_roam_peds_3 (lề đường Nguyễn Xiển). fps của từng ảnh là cổng hiệu năng của spec.
 #   godot --path . --script tests/preview_peds.gd      (PREVIEW_DIR=..., VICE_STYLE=vice|classic, PREVIEW_NOVSYNC=1)
 extends SceneTree
 
@@ -4397,58 +5440,1204 @@ func _save(name: String) -> void:
 
 func _process(_d: float) -> bool:
 	frames += 1
+	var player: ThirdPersonController = roam.get("player") as ThirdPersonController
 	if frames == 240:
 		_save("vice_roam_peds_1")
 		var gate: Vector3 = FPTUCampusBuilder.real_plot_transform() * (FPTUCampusBuilder.main_gate_local() + Vector3(0.0, 0.5, -14.0))
-		(roam.get("player") as ThirdPersonController).teleport(gate, PI)
+		player.teleport(gate, PI)
 	if frames == 480:
 		_save("vice_roam_peds_2")
+		player.teleport(Vector3(2051.0, 0.5, -69.0), 0.0)   # lề tây Nguyễn Xiển, nhìn dọc đường về phía bắc
+	if frames == 720:
+		_save("vice_roam_peds_3")
 		print("PREVIEW PEDS DONE")
 		quit(0)
 	return false
 ```
 
 Run: `VICE_STYLE=vice PREVIEW_NOVSYNC=1 PREVIEW_DIR="$(pwd)/docs/preview" godot --path . --script tests/preview_peds.gd > /tmp/pp2.log 2>&1; grep -E "saved|DONE" /tmp/pp2.log`
-Expected: two images with fps ≥ 45. Open them: PS2 pedestrians walk on verges and footways (never in the carriageway, water or inside buildings), students near the campus, residents around BE6.
+Expected: three images with fps ≥ 45. Open them and check:
+- PS2 pedestrians walk on verges and footways, never in the carriageway, in water or inside buildings;
+- students crowd the campus gate and residents fill the BE6 plaza;
+- small far figures fill the distance, and none of them hovers or faces sideways.
 
 - [ ] **Step 5: Regression and commit**
 
 Run the regression command (all green), then:
 
 ```bash
-git add scripts/roam/PedestrianSpawner.gd scripts/FreeRoam.gd tests/test_pedestrians.gd tests/preview_peds.gd docs/preview/vice_roam_peds_*.png
-git commit -m "feat(peds): pedestrian spawner around the player (spawn ring, recycling, LOD, shared speech bubble, sprint/bike hit consequences) wired into FreeRoam
+git add scripts/roam/PedestrianSpawner.gd scripts/FreeRoam.gd tests/test_pedestrians.gd tests/test_free_roam.gd tests/preview_peds.gd docs/preview/vice_roam_peds_*.png
+git commit -m "feat(peds): three-tier FreeRoam crowd - zone densities (campus/residential/road), near physics tier, mid tier without physics, MultiMesh far tier with identity-keeping promotion and demotion, pool, night scaling, shared speech bubble, sprint/bike hit consequences
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 12: Docs, final regression and fps table
+### Task 13: `RoamTraffic` (ambient vehicles) and `PropBuilder.build_car`
 
 **Files:**
-- Modify: `README.md` (Vietnamese, player-facing), `PLAN.md` (new section, English), `docs/superpowers/plans/2026-10-22-vice-city-art-direction.md` (D3 and VC-6 notes), `docs/superpowers/specs/2026-10-22-vice-people-and-movement-design.md` (status line + implementation notes)
+- Create: `scripts/roam/RoamTraffic.gd`
+- Modify: `scripts/PropBuilder.gd` (new `build_car()` and one header line)
+- Modify: `scripts/FreeRoam.gd` (`var traffic: RoamTraffic`; `_build_traffic()` after `_build_pedestrians()` inside the `crowd_enabled` block)
+- Create: `tests/test_roam_traffic.gd`, `tests/support/stub_roam.gd`
+- Re-render: `docs/preview/vice_roam_peds_*.png` (now with traffic)
+
+**Interfaces:**
+- Consumes:
+  - `MapData.roads()`, `MapBuilder.CLASS_ALIAS`, `MapBuilder.ROAD_Y`, `PedWalkGraph._offset()` (right of travel for a positive offset);
+  - `FPTUCampusBuilder.real_plot_transform()`, `plot_rect()`, `BIKE_PAINTS`;
+  - `PropBuilder.build_scooter()`, `build_bus()`, `CharacterBuilder.build_baked_rider()` (PS2 rider in vice);
+  - the `PlayerBike` crash handling for group `traffic_obstacle`;
+  - the FreeRoam members of Task 12, and `PedestrianSpawner.pedestrians`.
+- Produces:
+  - `PropBuilder.build_car(parent: Node3D, paint_color: Color, baked: bool = true) -> Node3D`: a hatchback of about 3.9 × 1.7 × 1.5 m that faces -Z.
+  - `RoamTraffic.setup(md: MapData, player_node: Node3D, opts := {})` with opts:
+    - `bike`, `roam`, `peds_fn` (Callable -> Array of pedestrians);
+    - `kinds` (Array of `RoamTraffic.Kind`; default 20 MOTO + 3 CAR + 2 BUS);
+    - `plot` (PackedVector2Array; default the campus plot grown 3 m; empty = no exclusion) and `seed`.
+  - `enum Kind { MOTO, CAR, BUS }`, inner class `RoamTraffic.Vehicle` with `active`, `kind`, `lane`, `s`, `pos: Vector2`, `dir: Vector2`, `speed`, `cruise`, `half_len`, `half_w`, `conn` (Bezier while turning), `blocked_by` and `body: AnimatableBody3D`.
+  - Members: `vehicles: Array`, the lane arrays (`lane_pts`, `lane_cum`, `lane_len`, `lane_speed`, `lane_kinds` with bit `1 << Kind`, `lane_road`, `lane_exits`), `recycled: int`, `night: bool`.
+  - `bodies() -> Array`, `active_count() -> int`, `lane_count() -> int`, `static func _campus_plot() -> PackedVector2Array`.
+  - Constants `SPAWN_MIN` 40, `SPAWN_MAX` 150, `DESPAWN` 200, `STOP_GAP` 3, `NIGHT_FACTOR` 0.3.
+  - `FreeRoam.traffic`.
+
+Behaviour (spec Part 3 amendment):
+- **Lanes.** Lanes come from MapData carriageways. Roads with `lanes > 0` count; service roads, bridges and anything inside the campus plot are left out. A two-way road gives two lanes, each offset `width / 4` to the right of its travel direction. A one-way road gives one lane on its centreline in the OSM point order.
+- **Turning at a lane end.** The vehicle turns onto any lane passing within 9 m of the end whose entry point still has at least 8 m of lane ahead. It follows a quadratic Bezier at 60 % of its cruise speed. When there is no such lane, it U-turns onto the other lane of the same road. When there is no U-turn either, the vehicle is recycled.
+- **Speeds and vehicle kinds.**
+  - Speed by road class: motorway 13, primary 11, secondary 10, tertiary 9 and everything else 6.5 m/s.
+  - Motorbikes drive at 0.85-1.15 of that speed, cars at 0.9-1.05 and buses at 0.8.
+  - Cars need a road at least 6 m wide. Buses need a primary, secondary, tertiary or motorway road at least 7 m wide.
+- **Looking ahead.**
+  - Every third physics frame each vehicle checks the strip ahead of it, `6 + 1.6 × speed` m long and as wide as both bodies plus 0.5 m.
+  - It brakes for the nearest other vehicle, pedestrian, the player or the player's bike, and stops 3 m behind it.
+  - A vehicle held by another vehicle for 5 s ignores vehicles for 2 s. This breaks junction deadlocks; it still respects people.
+- **Spawning and recycling.**
+  - Vehicles appear 40-150 m from the player, out of the camera view first; the first fill uses 20-150 m.
+  - Vehicles beyond 200 m are parked (hidden, physics off) and later reused elsewhere. A vehicle body is never rebuilt.
+- **Night.** Night keeps 30 %, parking the farthest vehicles first.
+- **Bodies.** The bodies are `AnimatableBody3D` boxes in the group `traffic_obstacle`; buses are also in `slipstream_vehicle`. The player's bike therefore bumps them with the existing crash handling.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/support/stub_roam.gd`:
+
+```gdscript
+# File: res://tests/support/stub_roam.gd
+# FreeRoam giả cho test xe chạy: chỉ có cờ mounted và tod_preset.
+extends Node
+
+var mounted: bool = false
+var tod_preset: String = "morning"
+```
+
+Create `tests/test_roam_traffic.gd`:
+
+```gdscript
+# File: res://tests/test_roam_traffic.gd
+# Test headless xe chạy FreeRoam (RoamTraffic, plan Task 13).
+#   A: MapData tự dựng ở z ~ 5000 (xa campus thật): hình vuông 160 m bốn đường chính hai chiều 10,5 m + một nhánh cụt
+#      6 m. Làn bên phải, nối làn ở góc, quay đầu ở ngõ cụt, xe buýt chỉ trên đường cho xe buýt, dừng 2,4-6,5 m sau
+#      người chơi rồi đi tiếp, xe ra ngoài 200 m bị đưa đi, xe mới xuất hiện cách 40-150 m, đêm còn 30 %, build_car.
+#   B: FreeRoam thật: >= 15 xe trong 150 m quanh điểm spawn, mọi xe trên lòng đường, không làn / xe nào trong lô campus,
+#      chi phí vật lý < 1,5 ms, xe máy người chơi tông xe -> xử lý va chạm sẵn có (mất tốc), đêm còn <= 8 xe.
+# Chạy:  godot --headless --path . --script tests/test_roam_traffic.gd
+extends SceneTree
+
+const W: float = 10.5
+const CENTER := Vector3(0.0, 0.0, 5000.0)
+
+var done: bool = false
+var frames: int = 0
+var traffic: RoamTraffic
+var stub_player: CharacterBody3D
+var stub_roam: Node
+var phase: String = ""
+var t0: int = 0
+var seen: Dictionary = {}
+var watch: RoamTraffic.Vehicle
+var roads: Array = []
+var roam: Node3D
+var b_phase: String = ""
+var b_t0: int = 0
+var b_frames: int = 0
+var crashes: int = 0
+var phys_with: float = 0.0
+var phys_without: float = 0.0
+
+
+func _initialize() -> void:
+	CharacterBuilder.ps2 = true      # mặc định của game là vice; test --script không có GameFX
+	CharacterBuilder.toon = false
+	CharacterBuilder.head_scale_default = 1.0
+	if not _car_model_ok():
+		return
+	var md := MapData.new()
+	roads = _synthetic_roads()
+	md.data = {"roads": roads}
+	stub_player = CharacterBody3D.new()
+	stub_player.set_script(load("res://tests/support/stub_mover.gd"))
+	stub_player.collision_layer = 0
+	root.add_child(stub_player)
+	stub_player.global_position = CENTER
+	stub_roam = Node.new()
+	stub_roam.set_script(load("res://tests/support/stub_roam.gd"))
+	root.add_child(stub_roam)
+	traffic = RoamTraffic.new()
+	root.add_child(traffic)
+	var kinds: Array = []
+	for k: int in range(10):
+		kinds.append(RoamTraffic.Kind.MOTO if k < 6 else (RoamTraffic.Kind.CAR if k < 8 else RoamTraffic.Kind.BUS))
+	traffic.setup(md, stub_player, {"roam": stub_roam, "kinds": kinds, "plot": PackedVector2Array(), "seed": 9})
+	if not _lanes_ok():
+		return
+	phase = "run"
+	t0 = 0
+
+
+func _synthetic_roads() -> Array:
+	var sq: Array = [[Vector2(-80.0, 5080.0), Vector2(80.0, 5080.0)], [Vector2(80.0, 5080.0), Vector2(80.0, 4920.0)],
+		[Vector2(80.0, 4920.0), Vector2(-80.0, 4920.0)], [Vector2(-80.0, 4920.0), Vector2(-80.0, 5080.0)]]
+	var out: Array = []
+	for i: int in range(sq.size()):
+		var a: Vector2 = sq[i][0]
+		var b: Vector2 = sq[i][1]
+		out.append({"id": i + 1, "name": "Vuông %d" % (i + 1), "class": "primary", "width": W, "lanes": 2, "oneway": false, "roundabout": false, "bridge": false, "region": "corridor", "points": [[a.x, a.y], [b.x, b.y]]})
+	out.append({"id": 9, "name": "Nhánh cụt", "class": "residential", "width": 6.0, "lanes": 2, "oneway": false, "roundabout": false, "bridge": false, "region": "corridor", "points": [[0.0, 5080.0], [0.0, 5160.0]]})
+	return out
+
+
+func _car_model_ok() -> bool:
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var mi: MeshInstance3D = PropBuilder.build_car(holder, Color("#7FD8D2"), true) as MeshInstance3D
+	var bb: AABB = mi.mesh.get_aabb() if mi and mi.mesh else AABB()
+	print("  build_car: %s" % bb.size)
+	var ok: bool = _check(mi != null and bb.size.x > 1.6 and bb.size.x < 2.1 and bb.size.y > 1.4 and bb.size.y < 1.7 and bb.size.z > 3.8 and bb.size.z < 4.1, "PropBuilder.build_car bakes a ~1.7 x 1.5 x 3.9 m car (got %s)" % bb.size)
+	holder.queue_free()
+	return ok
+
+
+func _lanes_ok() -> bool:
+	if not _check(traffic.lane_count() == 10, "8 square lanes + 2 stub lanes (got %d)" % traffic.lane_count()):
+		return false
+	var dead_end: int = -1
+	for l: int in range(traffic.lane_count()):
+		var pts: PackedVector2Array = traffic.lane_pts[l]
+		if not _check((traffic.lane_exits[l] as Array).size() >= 1, "lane %d has no exit" % l):
+			return false
+		if pts[pts.size() - 1].y > 5150.0:
+			dead_end = l
+		var on_stub: bool = absf(pts[0].x) < 3.0 and absf(pts[pts.size() - 1].x) < 3.0
+		var bus_ok: bool = (traffic.lane_kinds[l] & (1 << RoamTraffic.Kind.BUS)) != 0
+		if not _check(bus_ok != on_stub, "buses use the 10.5 m primary square but not the 6 m residential stub (lane %d)" % l):
+			return false
+	if not _check(dead_end >= 0, "test setup: the stub's southbound lane ends at z ~ 5160"):
+		return false
+	var dx: Array = traffic.lane_exits[dead_end]
+	var back: int = int((dx[0] as Array)[0])
+	return _check(dx.size() == 1 and traffic.lane_road[back] == traffic.lane_road[dead_end] and float((dx[0] as Array)[1]) == 0.0, "a dead end turns back onto the start of the same road's other lane")
+
+
+## Mỗi xe vừa xuất hiện phải cách người chơi 40-150 m (lần lấp đầy đầu lúc setup được phép từ 20 m).
+func _check_new_spawns() -> void:
+	var c := Vector2(stub_player.global_position.x, stub_player.global_position.z)
+	for v: RoamTraffic.Vehicle in traffic.vehicles:
+		if not v.active:
+			seen.erase(v)
+			continue
+		if seen.has(v):
+			continue
+		seen[v] = true
+		if frames > 1:
+			var d: float = v.pos.distance_to(c)
+			_check(d >= RoamTraffic.SPAWN_MIN - 1.0 and d <= RoamTraffic.SPAWN_MAX + 1.0, "a vehicle appeared %.1f m from the player (40-150)" % d)
+
+
+func _lane_keeping_ok() -> bool:
+	for v: RoamTraffic.Vehicle in traffic.vehicles:
+		if not v.active or v.conn.size() == 3:
+			continue
+		var best_d: float = INF
+		var best_rel := Vector2.ZERO
+		var best_w: float = 0.0
+		var near_end: bool = false
+		for r: Dictionary in roads:
+			var pts: PackedVector2Array = MapData.poly(r["points"])
+			if v.pos.distance_to(pts[0]) < 10.0 or v.pos.distance_to(pts[pts.size() - 1]) < 10.0:
+				near_end = true
+			for i: int in range(pts.size() - 1):
+				var q: Vector2 = Geometry2D.get_closest_point_to_segment(v.pos, pts[i], pts[i + 1])
+				if q.distance_to(v.pos) < best_d:
+					best_d = q.distance_to(v.pos)
+					best_rel = v.pos - q
+					best_w = float(r["width"])
+		if near_end:
+			continue
+		if not _check(v.dir.cross(best_rel) > 0.0 and absf(best_rel.length() - best_w * 0.25) < 0.3, "a vehicle keeps to the right-hand lane (offset %.2f m, side %.2f, road %.1f m)" % [best_rel.length(), v.dir.cross(best_rel), best_w]):
+			return false
+	return true
+
+
+func _pick_watch() -> RoamTraffic.Vehicle:
+	for v: RoamTraffic.Vehicle in traffic.vehicles:
+		if not v.active or v.conn.size() == 3 or v.speed < 2.0 or traffic.lane_len[v.lane] - v.s < 40.0:
+			continue
+		var clear: bool = true
+		for o: RoamTraffic.Vehicle in traffic.vehicles:
+			if o == v or not o.active:
+				continue
+			var rel: Vector2 = o.pos - v.pos
+			if rel.dot(v.dir) > 0.0 and rel.dot(v.dir) < 35.0 and absf(rel.cross(v.dir)) < 3.0:
+				clear = false
+		if clear:
+			return v
+	return null
+
+
+func _process(_d: float) -> bool:
+	if done or phase == "":
+		return done
+	frames += 1
+	var t: int = frames - t0
+	_check_new_spawns()
+	match phase:
+		"run":
+			if t % 30 == 0 and not _lane_keeping_ok():
+				return true
+			if t == 240:
+				watch = _pick_watch()
+				if not _check(watch != null, "test setup: a moving vehicle with 40 m of free lane ahead"):
+					return true
+				stub_player.global_position = Vector3(watch.pos.x + watch.dir.x * 24.0, 0.0, watch.pos.y + watch.dir.y * 24.0)
+				phase = "stop"
+				t0 = frames
+		"stop":
+			if t == 240:
+				var rel := Vector2(stub_player.global_position.x, stub_player.global_position.z) - watch.pos
+				var gap: float = rel.dot(watch.dir) - watch.half_len - 0.4
+				print("  stopped behind the player: speed %.2f, gap %.2f m, blocked by '%s'" % [watch.speed, gap, watch.blocked_by])
+				if not _check(watch.speed < 0.1 and gap >= 2.4 and gap <= 6.5 and watch.blocked_by == "player", "a vehicle stops 2.4-6.5 m behind a player standing in its lane (speed %.2f, gap %.2f, '%s')" % [watch.speed, gap, watch.blocked_by]):
+					return true
+				stub_player.global_position = CENTER
+				phase = "go"
+				t0 = frames
+		"go":
+			if t == 180:
+				if not _check(watch.speed > 1.0, "the vehicle drives on once the lane is clear (speed %.2f)" % watch.speed):
+					return true
+				stub_player.global_position = CENTER + Vector3(0.0, 0.0, 600.0)
+				phase = "away"
+				t0 = frames
+		"away":
+			if t == 120:
+				print("  player 600 m away: %d active, recycled %d" % [traffic.active_count(), traffic.recycled])
+				if not _check(traffic.active_count() == 0 and traffic.recycled >= 10, "vehicles beyond 200 m are parked and none appear without lanes in range (active %d, recycled %d)" % [traffic.active_count(), traffic.recycled]):
+					return true
+				stub_player.global_position = CENTER
+				phase = "back"
+				t0 = frames
+		"back":
+			if t == 240:
+				print("  back at the square: %d active" % traffic.active_count())
+				if not _check(traffic.active_count() == 10, "vehicles refill around the player (active %d / 10)" % traffic.active_count()):
+					return true
+				stub_roam.set("tod_preset", "night")
+				phase = "night"
+				t0 = frames
+		"night":
+			if t == 90:
+				print("  night: %d active" % traffic.active_count())
+				if not _check(traffic.active_count() >= 1 and traffic.active_count() <= 3, "night keeps 30 %% of the vehicles (active %d / 3)" % traffic.active_count()):
+					return true
+				phase = ""
+				traffic.queue_free()
+				stub_player.queue_free()
+				stub_roam.queue_free()
+				_part_b_start()
+	return done
+
+
+func _part_b_start() -> void:
+	for pair: Array in [["StageManager", "res://scripts/StageManager.gd"], ["GameFX", "res://scripts/GameFX.gd"]]:
+		if not root.has_node(pair[0]):
+			var s: Script = load(pair[1])
+			var n: Node = s.new()
+			n.name = pair[0]
+			root.add_child(n)
+	roam = (load("res://scenes/FreeRoam.tscn") as PackedScene).instantiate()
+	root.add_child(roam)
+	b_phase = "settle"
+	b_t0 = 0
+	physics_frame.connect(_on_physics_b)
+
+
+func _on_carriageway(md: MapData, p: Vector2) -> bool:
+	for r: Dictionary in md.roads():
+		if int(r.get("lanes", 2)) <= 0 or bool(r.get("bridge", false)):
+			continue
+		var pts: PackedVector2Array = MapData.poly(r.get("points", []))
+		var hw: float = float(r.get("width", 6.0)) * 0.5 + 0.3
+		for i: int in range(pts.size() - 1):
+			if Geometry2D.get_closest_point_to_segment(p, pts[i], pts[i + 1]).distance_to(p) <= hw:
+				return true
+	return false
+
+
+func _on_physics_b() -> void:
+	if done:
+		return
+	b_frames += 1
+	var t: int = b_frames - b_t0
+	var tr: RoamTraffic = roam.get("traffic") as RoamTraffic
+	match b_phase:
+		"settle":
+			if t == 150:
+				if not _check(tr != null, "FreeRoam must expose a traffic node"):
+					return
+				var player: Node3D = roam.get("player")
+				var c := Vector2(player.global_position.x, player.global_position.z)
+				var plot: PackedVector2Array = RoamTraffic._campus_plot()
+				var md: MapData = MapData.load_default()
+				var n150: int = 0
+				for v: RoamTraffic.Vehicle in tr.vehicles:
+					if not v.active:
+						continue
+					if v.pos.distance_to(c) <= 150.0:
+						n150 += 1
+					if not _check(not Geometry2D.is_point_in_polygon(v.pos, plot), "a vehicle drives inside the campus plot at %s" % v.pos):
+						return
+					if not _check(v.pos.distance_to(c) > 2.0, "a vehicle sits on the player"):
+						return
+					if v.conn.size() != 3 and not _check(_on_carriageway(md, v.pos), "vehicle at %s is off the carriageway" % v.pos):
+						return
+				for l: int in range(tr.lane_count()):
+					for p: Vector2 in (tr.lane_pts[l] as PackedVector2Array):
+						if not _check(not Geometry2D.is_point_in_polygon(p, plot), "lane %d enters the campus plot at %s" % [l, p]):
+							return
+				print("  FreeRoam traffic: %d active, %d within 150 m, %d lanes" % [tr.active_count(), n150, tr.lane_count()])
+				if not _check(n150 >= 15, "at least 15 vehicles within 150 m of the BE6 spawn (got %d)" % n150):
+					return
+				phys_with = 0.0
+				b_phase = "perf_with"
+				b_t0 = b_frames
+		"perf_with":
+			phys_with += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)
+			if t == 60:
+				phys_with /= 60.0
+				tr.process_mode = Node.PROCESS_MODE_DISABLED
+				phys_without = 0.0
+				b_phase = "perf_without"
+				b_t0 = b_frames
+		"perf_without":
+			phys_without += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)
+			if t == 60:
+				phys_without /= 60.0
+				var cost_ms: float = (phys_with - phys_without) * 1000.0
+				print("  traffic physics cost %.2f ms per physics frame" % cost_ms)
+				if not _check(cost_ms < 1.5, "25 vehicles must cost < 1.5 ms per physics frame (got %.2f)" % cost_ms):
+					return
+				tr.process_mode = Node.PROCESS_MODE_INHERIT
+				roam.call("mount_bike")
+				b_phase = "bump_setup"
+				b_t0 = b_frames
+		"bump_setup":
+			if t == 20:
+				tr.set_physics_process(false)   # xe đứng yên làm vật cản
+				var target_v: RoamTraffic.Vehicle = null
+				for v2: RoamTraffic.Vehicle in tr.vehicles:
+					if v2.active and v2.conn.size() != 3 and (target_v == null or v2.kind != RoamTraffic.Kind.MOTO):
+						target_v = v2
+				if not _check(target_v != null, "test setup: an active vehicle to bump"):
+					return
+				var bike: CharacterBody3D = roam.get("bike")
+				var back: Vector2 = target_v.pos - target_v.dir * (target_v.half_len + 2.6)
+				bike.global_position = Vector3(back.x, 0.3, back.y)
+				bike.rotation = Vector3(0.0, atan2(-target_v.dir.x, -target_v.dir.y), 0.0)
+				bike.velocity = Vector3.ZERO
+				bike.set("current_speed_ms", 8.0)
+				crashes = 0
+				bike.connect("crash_occurred", func() -> void: crashes += 1)
+				b_phase = "bump"
+				b_t0 = b_frames
+		"bump":
+			var bk: Node3D = roam.get("bike")
+			var bs: float = float(bk.get("current_speed_ms"))
+			if crashes > 0 or t == 60:
+				print("  bike bump: crashes %d, bike speed %.2f" % [crashes, bs])
+				if not _check(crashes >= 1 and bs < 4.0, "the player's bike hitting a traffic vehicle uses the existing crash handling (crashes %d, speed %.2f)" % [crashes, bs]):
+					return
+				tr.set_physics_process(true)
+				roam.call("set_time_of_day", "night")
+				b_phase = "night"
+				b_t0 = b_frames
+		"night":
+			if t == 90:
+				var n: int = tr.active_count()
+				print("  night traffic: %d active" % n)
+				if not _check(n >= 1 and n <= roundi(25.0 * RoamTraffic.NIGHT_FACTOR), "night keeps 30 %% of the vehicles (active %d)" % n):
+					return
+				print("✅ SUCCESS: ROAM TRAFFIC (parts A + B)")
+				done = true
+				quit(0)
+
+
+func _check(ok: bool, msg: String) -> bool:
+	if not ok and not done:
+		done = true
+		print("❌ FAILED: ", msg)
+		quit(2)
+	return ok
+```
+
+Run: `godot --headless --path . --script tests/test_roam_traffic.gd > /tmp/t13.log 2>&1; grep -E "SUCCESS|FAILED|Identifier|Invalid call" /tmp/t13.log`
+Expected: a failure naming `PropBuilder.build_car` or `RoamTraffic` (neither exists yet).
+
+- [ ] **Step 2: `PropBuilder.build_car`**
+
+In `scripts/PropBuilder.gd` add the header line `#   build_car(parent, paint, baked)                   ô tô con hatchback (xe chạy FreeRoam), mặt trước -Z` under the `build_bus` line, and add after `build_bus()`:
+
+```gdscript
+# ===========================================================================
+# Ô TÔ CON (xe chạy FreeRoam)
+# ===========================================================================
+## Ô tô con kiểu hatchback ~3,9 x 1,7 x 1,5 m, mặt trước hướng -Z như xe máy / xe buýt; baked = 1 MeshInstance3D.
+static func build_car(parent: Node3D, paint_color: Color, baked: bool = true) -> Node3D:
+	var root := Node3D.new()
+	root.name = "CarModel"
+	var pm: Material = paint(paint_color)
+	var dark: Material = black_plastic()
+	var glass: Material = glass_dark()
+	# thân dưới, nắp capô, khoang kính, mui
+	CharacterBuilder._box(root, Vector3(0.0, 0.62, 0.0), Vector3(1.7, 0.62, 3.9), pm)
+	CharacterBuilder._box(root, Vector3(0.0, 0.98, -1.25), Vector3(1.62, 0.12, 1.3), pm)
+	CharacterBuilder._box(root, Vector3(0.0, 1.22, 0.25), Vector3(1.56, 0.6, 2.1), glass)
+	CharacterBuilder._box(root, Vector3(0.0, 1.55, 0.3), Vector3(1.5, 0.08, 1.8), pm)
+	for sx: float in [-1.0, 1.0]:
+		CharacterBuilder._box(root, Vector3(sx * 0.79, 1.22, -0.78), Vector3(0.06, 0.58, 0.08), pm)      # trụ A
+		CharacterBuilder._box(root, Vector3(sx * 0.79, 1.22, 1.27), Vector3(0.06, 0.58, 0.12), pm)       # trụ C
+		CharacterBuilder._box(root, Vector3(sx * 0.86, 0.42, 0.0), Vector3(0.04, 0.16, 3.0), dark)       # ốp sườn
+		CharacterBuilder._box(root, Vector3(sx * 0.62, 0.78, -1.96), Vector3(0.34, 0.14, 0.04), lens(Color("#FFF4C8"), 1.4))
+		CharacterBuilder._box(root, Vector3(sx * 0.66, 0.85, 1.96), Vector3(0.28, 0.16, 0.04), lens(Color("#E53935"), 1.0))
+		CharacterBuilder._box(root, Vector3(sx * 0.95, 1.1, -0.72), Vector3(0.14, 0.1, 0.2), dark)       # gương
+	CharacterBuilder._box(root, Vector3(0.0, 0.42, -1.97), Vector3(1.72, 0.22, 0.08), dark)             # cản trước
+	CharacterBuilder._box(root, Vector3(0.0, 0.42, 1.97), Vector3(1.72, 0.22, 0.08), dark)              # cản sau
+	for z: float in [-1.25, 1.25]:
+		for sx: float in [-1.0, 1.0]:
+			build_wheel(root, Vector3(sx * 0.78, 0.32, z), 0.32, 0.2, 5, Color("#B0B6BC"))
+	if baked:
+		return bake_into(parent, root, "CarModel", Vector3.ZERO)
+	parent.add_child(root)
+	return root
+```
+
+- [ ] **Step 3: Implement `RoamTraffic`**
+
+Create `scripts/roam/RoamTraffic.gd`:
+
+```gdscript
+# File: res://scripts/roam/RoamTraffic.gd
+# Xe chạy trong FreeRoam (spec vice-people-and-movement, "Amendment 2026-10-22"): mặc định 25 xe ban ngày (đêm 30 %) –
+# xe máy có người lái bake (người PS2 ở Vice City), vài ô tô và xe buýt – chạy theo làn bên phải lòng đường MapData
+# (lanes > 0; bỏ đường nội bộ "service", cầu và lô campus), xuất hiện cách người chơi 40-150 m (ngoài tầm camera trước),
+# ra ngoài 200 m thì cất đi rồi dùng lại thân xe ở chỗ khác (không dựng lại). Hết làn thì rẽ sang một làn đi ngang trong
+# 9 m (đường cong Bezier bậc hai, 60 % tốc độ), không có thì quay đầu sang làn kia của chính đường đó, không có nữa thì cất
+# xe. Nhìn trước: giảm tốc và dừng cách STOP_GAP sau xe khác, người đi đường, người chơi hoặc xe người chơi. Thân
+# AnimatableBody3D nhóm "traffic_obstacle" (xe buýt thêm "slipstream_vehicle"): PlayerBike tông vào thì dùng xử lý va
+# chạm sẵn có. Không dùng autoload ở đây.
+class_name RoamTraffic
+extends Node3D
+
+enum Kind { MOTO, CAR, BUS }
+
+const KIND_COUNT: Array[int] = [20, 3, 2]          # mặc định: 20 xe máy, 3 ô tô, 2 xe buýt
+const KIND_SIZE: Array = [Vector3(0.7, 1.4, 1.9), Vector3(1.7, 1.5, 3.9), Vector3(2.5, 3.0, 7.5)]
+const NIGHT_FACTOR: float = 0.3
+const SPAWN_MIN: float = 40.0
+const SPAWN_MAX: float = 150.0
+const INITIAL_MIN: float = 20.0
+const DESPAWN: float = 200.0
+const LANE_STEP: float = 6.0
+const MIN_LANE_LEN: float = 15.0
+const EXIT_R: float = 9.0
+const EXIT_MIN_LEFT: float = 8.0
+const PLOT_GROW: float = 3.0
+const SEG_CELL: float = 16.0
+const SPAWN_CELL: float = 32.0
+const SPAWN_STEP: float = 10.0
+const SPAWN_END_CLEAR: float = 8.0
+const SPAWN_GAP: float = 14.0
+const SPAWNS_PER_CHECK: int = 3
+const CHECK_EVERY: float = 0.5
+const LOOK_EVERY: int = 3
+const LOOK_BASE: float = 6.0
+const LOOK_PER_MS: float = 1.6
+const LAT_PAD: float = 0.5
+const STOP_GAP: float = 3.0
+const ACCEL: float = 2.5
+const BRAKE: float = 7.0
+const TURN_FACTOR: float = 0.6
+const STUCK_S: float = 5.0
+const GHOST_S: float = 2.0
+const VIEW_R: float = 160.0
+const SPEED_BY_CLASS: Dictionary = {"motorway": 13.0, "primary": 11.0, "secondary": 10.0, "tertiary": 9.0}
+const SPEED_DEFAULT: float = 6.5
+const BUS_CLASSES: Array[String] = ["motorway", "primary", "secondary", "tertiary"]
+const CAR_PAINTS: Array[Color] = [Color("#F4A6C0"), Color("#7FD8D2"), Color("#FFF1B5"), Color("#AFCBFF"), Color("#F2F4F5"), Color("#3A3F44"), Color("#E57373")]
+const HELMETS: Array[Color] = [Color("#E74C3C"), Color("#F1C40F"), Color("#FFFFFF"), Color("#0984E3"), Color("#2C3E50")]
+
+
+class Vehicle:
+	var body: AnimatableBody3D
+	var kind: int = 0
+	var lane: int = -1
+	var s: float = 0.0
+	var speed: float = 0.0
+	var cruise: float = 8.0
+	var limit: float = 99.0
+	var half_len: float = 1.0
+	var half_w: float = 0.4
+	var conn: PackedVector2Array = PackedVector2Array()   # Bezier bậc hai [p0, điểm điều khiển, p2] khi đang rẽ
+	var conn_t: float = 0.0
+	var conn_len: float = 1.0
+	var next_lane: int = -1
+	var next_s: float = 0.0
+	var active: bool = false
+	var pos: Vector2 = Vector2.ZERO
+	var dir: Vector2 = Vector2(0.0, -1.0)
+	var blocked_by: String = ""      # "car" | "ped" | "player" | ""
+	var stuck_t: float = 0.0
+	var ghost_t: float = 0.0
+
+
+var md: MapData
+var player: Node3D
+var bike: Node3D
+var roam: Node
+var peds_fn: Callable
+var vehicles: Array = []                 # Array[Vehicle]
+var lane_pts: Array = []                 # Array[PackedVector2Array]
+var lane_cum: Array = []                 # Array[PackedFloat32Array] (độ dài cộng dồn tại mỗi đỉnh)
+var lane_len := PackedFloat32Array()
+var lane_speed := PackedFloat32Array()
+var lane_kinds := PackedByteArray()      # bit 1 << Kind
+var lane_road := PackedInt32Array()
+var lane_exits: Array = []               # Array của Array[[lane, s]]
+var recycled: int = 0
+var night: bool = false
+var _spawn_hash: Dictionary = {}         # Vector2i -> Array[[lane, s]]
+var _rng := RandomNumberGenerator.new()
+var _check_t: float = 0.0
+var _frame: int = 0
+var _rot: int = 0
+
+
+func setup(map_data: MapData, player_node: Node3D, opts: Dictionary = {}) -> void:
+	md = map_data
+	player = player_node
+	bike = opts.get("bike", null)
+	roam = opts.get("roam", null)
+	peds_fn = opts.get("peds_fn", Callable())
+	_rng.seed = int(opts.get("seed", 77))
+	_build_lanes(opts.get("plot", _campus_plot()))
+	if lane_pts.is_empty():
+		push_warning("RoamTraffic: không có làn xe nào, tắt xe chạy")
+		set_physics_process(false)
+		return
+	var kinds: Array = opts.get("kinds", [])
+	if kinds.is_empty():
+		for k: int in range(KIND_COUNT.size()):
+			for i: int in range(KIND_COUNT[k]):
+				kinds.append(k)
+	for kind: Variant in kinds:
+		vehicles.append(_make_vehicle(int(kind)))
+	night = _is_night()
+	_fill_initial()
+
+
+func bodies() -> Array:
+	return vehicles.map(func(v: Vehicle) -> AnimatableBody3D: return v.body)
+
+
+func active_count() -> int:
+	return vehicles.filter(func(v: Vehicle) -> bool: return v.active).size()
+
+
+func lane_count() -> int:
+	return lane_pts.size()
+
+
+static func _campus_plot() -> PackedVector2Array:
+	var xf: Transform3D = FPTUCampusBuilder.real_plot_transform()
+	var pr: Rect2 = FPTUCampusBuilder.plot_rect().grow(PLOT_GROW)
+	var out := PackedVector2Array()
+	for c: Vector2 in [pr.position, Vector2(pr.end.x, pr.position.y), pr.end, Vector2(pr.position.x, pr.end.y)]:
+		var w: Vector3 = xf * Vector3(c.x, 0.0, c.y)
+		out.append(Vector2(w.x, w.z))
+	return out
+
+
+# ===========================================================================
+# XE
+# ===========================================================================
+func _make_vehicle(kind: int) -> Vehicle:
+	var c := Vehicle.new()
+	c.kind = kind
+	var size: Vector3 = KIND_SIZE[kind]
+	c.half_len = size.z * 0.5
+	c.half_w = size.x * 0.5
+	var b := AnimatableBody3D.new()
+	b.name = "Vehicle_%d" % vehicles.size()
+	b.add_to_group("traffic_obstacle")
+	if kind == Kind.BUS:
+		b.add_to_group("slipstream_vehicle")
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	cs.shape = box
+	cs.position = Vector3(0.0, size.y * 0.5, 0.0)
+	b.add_child(cs)
+	match kind:
+		Kind.MOTO:
+			var paint: Color = FPTUCampusBuilder.BIKE_PAINTS[_rng.randi() % FPTUCampusBuilder.BIKE_PAINTS.size()]
+			PropBuilder.build_scooter(b, Vector3.ZERO, 0.0, paint, {"baked": true, "name": "Scooter"})
+			var ro: Dictionary = {"seed": _rng.randi(), "helmet_color": HELMETS[_rng.randi() % HELMETS.size()]}
+			if _rng.randf() < 0.3:
+				ro["backpack"] = true
+			CharacterBuilder.build_baked_rider(b, Vector3(0.0, 0.32, 0.12), ro)
+		Kind.CAR:
+			PropBuilder.build_car(b, CAR_PAINTS[_rng.randi() % CAR_PAINTS.size()], true)
+		Kind.BUS:
+			PropBuilder.build_bus(b, _rng.randf() < 0.5, true)
+	add_child(b)
+	c.body = b
+	_park(c)
+	return c
+
+
+## Cất xe: ẩn, tắt xử lý (thân bị gỡ khỏi không gian vật lý), đặt xa dưới đất.
+func _park(c: Vehicle) -> void:
+	c.active = false
+	c.speed = 0.0
+	c.body.visible = false
+	c.body.process_mode = Node.PROCESS_MODE_DISABLED
+	c.body.position = Vector3(0.0, -200.0, 0.0)
+
+
+func _activate(c: Vehicle, l: int, s: float) -> void:
+	c.lane = l
+	c.s = s
+	c.conn = PackedVector2Array()
+	var f: float = _rng.randf_range(0.85, 1.15) if c.kind == Kind.MOTO else (_rng.randf_range(0.9, 1.05) if c.kind == Kind.CAR else 0.8)
+	c.cruise = lane_speed[l] * f
+	c.speed = c.cruise * 0.6
+	c.limit = 99.0
+	c.stuck_t = 0.0
+	c.ghost_t = 0.0
+	c.blocked_by = ""
+	c.active = true
+	c.body.process_mode = Node.PROCESS_MODE_INHERIT
+	c.body.visible = true
+	_place(c, 1.0)
+
+
+func _fill_initial() -> void:
+	var c3: Vector3 = _center()
+	var c2 := Vector2(c3.x, c3.z)
+	var target: int = roundi(float(vehicles.size()) * (NIGHT_FACTOR if night else 1.0))
+	var active: int = 0
+	for c: Vehicle in vehicles:
+		if active >= target:
+			break
+		var spot: Array = _random_spot(c2, INITIAL_MIN, SPAWN_MAX, c.kind, false)
+		if spot.is_empty():
+			continue
+		_activate(c, int(spot[0]), float(spot[1]))
+		active += 1
+
+
+## Mỗi CHECK_EVERY: cất xe ra ngoài DESPAWN, đêm thì cất xe xa nhất cho còn 30 %, thiếu thì đưa xe đang cất ra (tối đa
+## SPAWNS_PER_CHECK, xoay vòng điểm bắt đầu để mọi loại xe đều được dùng).
+func _maintain() -> void:
+	var c3: Vector3 = _center()
+	var c2 := Vector2(c3.x, c3.z)
+	night = _is_night()
+	var target: int = roundi(float(vehicles.size()) * (NIGHT_FACTOR if night else 1.0))
+	var live: Array = []
+	for c: Vehicle in vehicles:
+		if not c.active:
+			continue
+		if c.pos.distance_to(c2) > DESPAWN:
+			_park(c)
+			recycled += 1
+		else:
+			live.append(c)
+	if live.size() > target:
+		live.sort_custom(func(a: Vehicle, b: Vehicle) -> bool: return a.pos.distance_to(c2) > b.pos.distance_to(c2))
+		for i: int in range(live.size() - target):
+			_park(live[i])
+			recycled += 1
+		return
+	var n: int = vehicles.size()
+	var active: int = live.size()
+	var made: int = 0
+	for k: int in range(n):
+		if active >= target or made >= SPAWNS_PER_CHECK:
+			break
+		var c: Vehicle = vehicles[(_rot + k) % n]
+		if c.active:
+			continue
+		var spot: Array = _random_spot(c2, SPAWN_MIN, SPAWN_MAX, c.kind, true)
+		if spot.is_empty():
+			continue
+		_activate(c, int(spot[0]), float(spot[1]))
+		active += 1
+		made += 1
+	_rot = (_rot + 7) % maxi(1, n)
+
+
+func _physics_process(delta: float) -> void:
+	_frame += 1
+	_check_t -= delta
+	if _check_t <= 0.0:
+		_check_t = CHECK_EVERY
+		_maintain()
+	var obs: Array = []
+	var gathered: bool = false
+	for i: int in range(vehicles.size()):
+		var c: Vehicle = vehicles[i]
+		if not c.active:
+			continue
+		if (_frame + i) % LOOK_EVERY == 0:
+			if not gathered:
+				obs = _obstacles()
+				gathered = true
+			c.limit = _look_ahead(c, obs)
+		var target: float = minf(c.cruise * (TURN_FACTOR if c.conn.size() == 3 else 1.0), c.limit)
+		c.speed = move_toward(c.speed, target, (ACCEL if target > c.speed else BRAKE) * delta)
+		if c.speed < 0.2 and c.blocked_by == "car":
+			c.stuck_t += delta
+			if c.stuck_t > STUCK_S:
+				c.ghost_t = GHOST_S       # kẹt ở ngã tư với xe khác: bỏ qua xe khác 2 s (vẫn dừng trước người)
+				c.stuck_t = 0.0
+		else:
+			c.stuck_t = 0.0
+		c.ghost_t = maxf(0.0, c.ghost_t - delta)
+		_advance(c, c.speed * delta)
+		if c.active:
+			_place(c, delta)
+
+
+## Vật cản cho nhìn trước: [vị trí, nửa dài, nửa rộng, loại, xe].
+func _obstacles() -> Array:
+	var out: Array = []
+	for c: Vehicle in vehicles:
+		if c.active:
+			out.append([c.pos, c.half_len, c.half_w, "car", c])
+	if peds_fn.is_valid():
+		for p: Variant in peds_fn.call():
+			if is_instance_valid(p) and (p as Node3D).is_inside_tree():
+				var pn: Node3D = p
+				out.append([Vector2(pn.global_position.x, pn.global_position.z), 0.3, 0.3, "ped", null])
+	var mounted: bool = roam != null and bool(roam.get("mounted"))
+	var who: Node3D = bike if mounted else player
+	if who != null and who.is_inside_tree():
+		out.append([Vector2(who.global_position.x, who.global_position.z), 1.0 if mounted else 0.4, 0.45 if mounted else 0.4, "player", null])
+	return out
+
+
+## Tốc độ cho phép theo khoảng hở tới vật cản gần nhất trong dải phía trước (dừng hẳn khi khe <= STOP_GAP).
+func _look_ahead(c: Vehicle, obs: Array) -> float:
+	var look: float = LOOK_BASE + c.speed * LOOK_PER_MS
+	var best: float = INF
+	c.blocked_by = ""
+	for o: Array in obs:
+		if o[4] == c or (c.ghost_t > 0.0 and String(o[3]) == "car"):
+			continue
+		var rel: Vector2 = (o[0] as Vector2) - c.pos
+		var fwd: float = rel.dot(c.dir)
+		if fwd <= 0.0:
+			continue
+		var gap: float = fwd - c.half_len - float(o[1])
+		if gap > look:
+			continue
+		if absf(rel.cross(c.dir)) > c.half_w + float(o[2]) + LAT_PAD:
+			continue
+		if gap < best:
+			best = gap
+			c.blocked_by = String(o[3])
+	if best == INF:
+		return 99.0
+	if best <= STOP_GAP:
+		return 0.0
+	return sqrt(BRAKE * (best - STOP_GAP))
+
+
+func _advance(c: Vehicle, dist: float) -> void:
+	if c.conn.size() == 3:
+		c.conn_t += dist / c.conn_len
+		if c.conn_t < 1.0:
+			return
+		dist = (c.conn_t - 1.0) * c.conn_len
+		c.lane = c.next_lane
+		c.s = c.next_s
+		c.conn = PackedVector2Array()
+	c.s += dist
+	if c.s < lane_len[c.lane]:
+		return
+	var ex: Array = _pick_exit(c)
+	if ex.is_empty():
+		_park(c)
+		recycled += 1
+		return
+	var over: float = c.s - lane_len[c.lane]
+	var p0: Vector2 = _lane_point(c.lane, lane_len[c.lane])
+	var d0: Vector2 = _lane_dir(c.lane, lane_len[c.lane])
+	var p2: Vector2 = _lane_point(int(ex[0]), float(ex[1]))
+	var d2: Vector2 = _lane_dir(int(ex[0]), float(ex[1]))
+	var chord: float = p0.distance_to(p2)
+	var ctrl: Vector2 = p0 + d0 * chord * 0.5
+	var den: float = d0.cross(d2)
+	if absf(den) > 0.2:
+		var a: float = (p2 - p0).cross(d2) / den   # giao của tia ra (p0, d0) và tia vào (p2, -d2)
+		if a > 0.0 and a < chord * 1.5:
+			ctrl = p0 + d0 * a
+	c.conn = PackedVector2Array([p0, ctrl, p2])
+	c.conn_len = maxf(0.5, (chord + p0.distance_to(ctrl) + ctrl.distance_to(p2)) * 0.5)
+	c.conn_t = over / c.conn_len
+	c.next_lane = int(ex[0])
+	c.next_s = float(ex[1])
+
+
+func _pick_exit(c: Vehicle) -> Array:
+	var opts: Array = []
+	for ex: Array in lane_exits[c.lane]:
+		if lane_kinds[int(ex[0])] & (1 << c.kind):
+			opts.append(ex)
+	if opts.is_empty():
+		return []
+	return opts[_rng.randi_range(0, opts.size() - 1)]
+
+
+func _place(c: Vehicle, delta: float) -> void:
+	if c.conn.size() == 3:
+		var t: float = clampf(c.conn_t, 0.0, 1.0)
+		var u: float = 1.0 - t
+		c.pos = c.conn[0] * u * u + c.conn[1] * 2.0 * u * t + c.conn[2] * t * t
+		var dv: Vector2 = (c.conn[1] - c.conn[0]) * 2.0 * u + (c.conn[2] - c.conn[1]) * 2.0 * t
+		if dv.length_squared() > 0.0001:
+			c.dir = dv.normalized()
+	else:
+		c.pos = _lane_point(c.lane, c.s)
+		c.dir = _lane_dir(c.lane, c.s)
+	var yaw: float = lerp_angle(c.body.rotation.y, atan2(-c.dir.x, -c.dir.y), minf(1.0, delta * 10.0))
+	c.body.global_transform = Transform3D(Basis(Vector3.UP, yaw), Vector3(c.pos.x, MapBuilder.ROAD_Y, c.pos.y))
+
+
+# ===========================================================================
+# LÀN XE
+# ===========================================================================
+func _build_lanes(plot: PackedVector2Array) -> void:
+	var road_i: int = 0
+	for r: Dictionary in md.roads():
+		road_i += 1
+		var cls: String = String(r.get("class", ""))
+		if int(r.get("lanes", 2)) <= 0 or bool(r.get("bridge", false)) or cls == "service":
+			continue
+		var pts: PackedVector2Array = MapData.poly(r.get("points", []))
+		if pts.size() < 2:
+			continue
+		cls = String(MapBuilder.CLASS_ALIAS.get(cls, cls))
+		var w: float = float(r.get("width", 6.0))
+		var sp: float = float(SPEED_BY_CLASS.get(cls, SPEED_DEFAULT))
+		var kinds: int = 1 << Kind.MOTO
+		if w >= 6.0:
+			kinds |= 1 << Kind.CAR
+		if w >= 7.0 and BUS_CLASSES.has(cls):
+			kinds |= 1 << Kind.BUS
+		if bool(r.get("oneway", false)):
+			_add_lane(pts, plot, sp, kinds, road_i)
+		else:
+			_add_lane(PedWalkGraph._offset(pts, w * 0.25), plot, sp, kinds, road_i)
+			var rev: PackedVector2Array = pts.duplicate()
+			rev.reverse()
+			_add_lane(PedWalkGraph._offset(rev, w * 0.25), plot, sp, kinds, road_i)
+	_link_lanes()
+	_index_spawn_points()
+
+
+## Lấy mẫu làn mỗi LANE_STEP m, cắt làn ở chỗ đi vào lô campus (mỗi đoạn ngoài lô thành một làn riêng).
+func _add_lane(pts: PackedVector2Array, plot: PackedVector2Array, speed: float, kinds: int, road: int) -> void:
+	var piece := PackedVector2Array()
+	for i: int in range(pts.size() - 1):
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[i + 1]
+		var n: int = maxi(1, ceili(a.distance_to(b) / LANE_STEP))
+		for k: int in range(0 if i == 0 else 1, n + 1):
+			var p: Vector2 = a.lerp(b, float(k) / float(n))
+			if plot.size() >= 3 and Geometry2D.is_point_in_polygon(p, plot):
+				_commit_lane(piece, speed, kinds, road)
+				piece = PackedVector2Array()
+				continue
+			piece.append(p)
+	_commit_lane(piece, speed, kinds, road)
+
+
+func _commit_lane(piece: PackedVector2Array, speed: float, kinds: int, road: int) -> void:
+	if piece.size() < 2:
+		return
+	var cum := PackedFloat32Array([0.0])
+	for i: int in range(1, piece.size()):
+		cum.append(cum[i - 1] + piece[i - 1].distance_to(piece[i]))
+	if cum[cum.size() - 1] < MIN_LANE_LEN:
+		return
+	lane_pts.append(piece)
+	lane_cum.append(cum)
+	lane_len.append(cum[cum.size() - 1])
+	lane_speed.append(speed)
+	lane_kinds.append(kinds)
+	lane_road.append(road)
+
+
+## Lối ra ở cuối mỗi làn: làn khác (khác đường) đi ngang trong EXIT_R, điểm vào còn >= EXIT_MIN_LEFT m, không ngược chiều
+## gắt; không có thì quay đầu sang đầu làn kia của chính đường đó (ngõ cụt, mép lô campus).
+func _link_lanes() -> void:
+	var seg_hash: Dictionary = {}
+	for l: int in range(lane_pts.size()):
+		var pts: PackedVector2Array = lane_pts[l]
+		for i: int in range(pts.size() - 1):
+			var bb := Rect2(pts[i], Vector2.ZERO).expand(pts[i + 1])
+			for cx: int in range(floori(bb.position.x / SEG_CELL), floori(bb.end.x / SEG_CELL) + 1):
+				for cz: int in range(floori(bb.position.y / SEG_CELL), floori(bb.end.y / SEG_CELL) + 1):
+					var key := Vector2i(cx, cz)
+					if not seg_hash.has(key):
+						seg_hash[key] = []
+					(seg_hash[key] as Array).append(Vector2i(l, i))
+	var reach: int = ceili(EXIT_R / SEG_CELL)
+	for l: int in range(lane_pts.size()):
+		var pts: PackedVector2Array = lane_pts[l]
+		var e: Vector2 = pts[pts.size() - 1]
+		var de: Vector2 = (e - pts[pts.size() - 2]).normalized()
+		var best: Dictionary = {}     # làn -> [s, khoảng cách]
+		var uturn: Array = []
+		var c0 := Vector2i(floori(e.x / SEG_CELL), floori(e.y / SEG_CELL))
+		for dx: int in range(-reach, reach + 1):
+			for dz: int in range(-reach, reach + 1):
+				for li: Vector2i in seg_hash.get(Vector2i(c0.x + dx, c0.y + dz), []):
+					var m: int = li.x
+					if m == l:
+						continue
+					var mp: PackedVector2Array = lane_pts[m]
+					var a: Vector2 = mp[li.y]
+					var b: Vector2 = mp[li.y + 1]
+					var q: Vector2 = Geometry2D.get_closest_point_to_segment(e, a, b)
+					var d: float = q.distance_to(e)
+					if d > EXIT_R:
+						continue
+					if lane_road[m] == lane_road[l]:
+						if li.y == 0 and uturn.is_empty():
+							uturn = [m, 0.0]
+						continue
+					var s: float = float((lane_cum[m] as PackedFloat32Array)[li.y]) + a.distance_to(q)
+					if lane_len[m] - s < EXIT_MIN_LEFT or de.dot((b - a).normalized()) < -0.3:
+						continue
+					if not best.has(m) or d < float((best[m] as Array)[1]):
+						best[m] = [s, d]
+		var ex: Array = []
+		for m: int in best.keys():
+			ex.append([m, float((best[m] as Array)[0])])
+		if ex.is_empty() and not uturn.is_empty():
+			ex.append(uturn)
+		lane_exits.append(ex)
+
+
+func _index_spawn_points() -> void:
+	for l: int in range(lane_pts.size()):
+		var s: float = 0.0
+		while s < lane_len[l] - SPAWN_END_CLEAR:
+			var p: Vector2 = _lane_point(l, s)
+			var key := Vector2i(floori(p.x / SPAWN_CELL), floori(p.y / SPAWN_CELL))
+			if not _spawn_hash.has(key):
+				_spawn_hash[key] = []
+			(_spawn_hash[key] as Array).append([l, s])
+			s += SPAWN_STEP
+
+
+func _seg_at(l: int, s: float) -> int:
+	var cum: PackedFloat32Array = lane_cum[l]
+	return clampi(cum.bsearch(s, true) - 1, 0, cum.size() - 2)
+
+
+func _lane_point(l: int, s: float) -> Vector2:
+	var pts: PackedVector2Array = lane_pts[l]
+	var cum: PackedFloat32Array = lane_cum[l]
+	var i: int = _seg_at(l, s)
+	var seg: float = maxf(cum[i + 1] - cum[i], 0.001)
+	return pts[i].lerp(pts[i + 1], clampf((s - cum[i]) / seg, 0.0, 1.0))
+
+
+func _lane_dir(l: int, s: float) -> Vector2:
+	var pts: PackedVector2Array = lane_pts[l]
+	var i: int = _seg_at(l, s)
+	return (pts[i + 1] - pts[i]).normalized()
+
+
+## Chỗ xuất hiện ngẫu nhiên [làn, s] cách c2 từ r_min tới r_max (rải đều theo diện tích qua ô băm điểm mẫu), làn cho
+## phép loại xe, cách xe đang chạy SPAWN_GAP; avoid_view: 12 lần thử đầu bỏ chỗ trong tầm camera.
+func _random_spot(c2: Vector2, r_min: float, r_max: float, kind: int, avoid_view: bool) -> Array:
+	for k: int in range(16):
+		var ang: float = _rng.randf() * TAU
+		var r: float = sqrt(_rng.randf_range(r_min * r_min, r_max * r_max))
+		var q: Vector2 = c2 + Vector2(cos(ang), sin(ang)) * r
+		var cell: Array = _spawn_hash.get(Vector2i(floori(q.x / SPAWN_CELL), floori(q.y / SPAWN_CELL)), [])
+		if cell.is_empty():
+			continue
+		var cand: Array = cell[_rng.randi_range(0, cell.size() - 1)]
+		var l: int = int(cand[0])
+		if not (lane_kinds[l] & (1 << kind)):
+			continue
+		var p: Vector2 = _lane_point(l, float(cand[1]))
+		var d: float = p.distance_to(c2)
+		if d < r_min or d > r_max or not _clear_of_vehicles(p, SPAWN_GAP):
+			continue
+		if avoid_view and k < 12 and _in_view(Vector3(p.x, 1.0, p.y)):
+			continue
+		return [l, float(cand[1])]
+	return []
+
+
+func _clear_of_vehicles(p: Vector2, r: float) -> bool:
+	for c: Vehicle in vehicles:
+		if c.active and c.pos.distance_to(p) < r:
+			return false
+	return true
+
+
+func _in_view(p: Vector3) -> bool:
+	var cam: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+	return cam != null and cam.global_position.distance_to(p) < VIEW_R and cam.is_position_in_frustum(p)
+
+
+func _center() -> Vector3:
+	var mounted: bool = roam != null and bool(roam.get("mounted"))
+	if mounted and bike:
+		return bike.global_position
+	return player.global_position if player else Vector3.ZERO
+
+
+func _is_night() -> bool:
+	return roam != null and String(roam.get("tod_preset")) == "night"
+```
+
+Wire it into `scripts/FreeRoam.gd`:
+- Add `var traffic: RoamTraffic` next to `var pedestrians: PedestrianSpawner`.
+- Extend the block at the end of `_ready()` to:
+
+```gdscript
+	if crowd_enabled:
+		_build_pedestrians()
+		_build_traffic()
+```
+
+and add the function:
+
+```gdscript
+## Xe chạy (spec vice-people-and-movement, Amendment 2026-10-22): làn bên phải, dừng trước người / xe; camera đi xuyên xe.
+func _build_traffic() -> void:
+	traffic = RoamTraffic.new()
+	traffic.name = "Traffic"
+	add_child(traffic)
+	var opts: Dictionary = {"bike": bike, "roam": self}
+	if pedestrians:
+		opts["peds_fn"] = pedestrians.pedestrians
+	traffic.setup(md, player, opts)
+	for b: Variant in traffic.bodies():
+		var body: CollisionObject3D = b
+		if player and player.cam_ray:
+			player.cam_ray.add_exception(body)
+		if bike and bike.spring_arm:
+			bike.spring_arm.add_excluded_object(body.get_rid())
+```
+
+Run: `godot --headless --import --path . > /tmp/imp.log 2>&1; grep -c RoamTraffic .godot/global_script_class_cache.cfg` — expected ≥ 2.
+
+- [ ] **Step 4: Run the tests**
+
+Run: `godot --headless --path . --script tests/test_roam_traffic.gd > /tmp/t13.log 2>&1; grep -E "build_car|stopped|600 m|back at|night|FreeRoam traffic|physics cost|bike bump|SUCCESS|FAILED" /tmp/t13.log`
+Expected: every diagnostic in range, then `✅ SUCCESS: ROAM TRAFFIC (parts A + B)`.
+Run `tests/test_pedestrians.gd` again (part C now runs with traffic on the roads) and `tests/test_free_roam.gd` (crowd and traffic off) — both SUCCESS.
+
+- [ ] **Step 5: Preview**
+
+Re-run the Task 12 preview command. The three `vice_roam_peds_*.png` images now show traffic: PS2 riders on scooters, a few pastel cars and buses keeping to the right-hand lane. Check that fps stays ≥ 45 at all three spots, and write the numbers in the report.
+
+- [ ] **Step 6: Regression and commit**
+
+Run the regression command (all green), then:
+
+```bash
+git add scripts/roam/RoamTraffic.gd scripts/PropBuilder.gd scripts/FreeRoam.gd tests/test_roam_traffic.gd tests/support/stub_roam.gd docs/preview/vice_roam_peds_*.png
+git commit -m "feat(traffic): ambient FreeRoam traffic - motorbikes with PS2 riders, cars and buses on right-hand lanes of the real roads, Bezier turns and dead-end U-turns, look-ahead stops for vehicles/pedestrians/player, recycling beyond 200 m, night 30 %; PropBuilder.build_car
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 14: Docs, final regression and fps table
+
+**Files:**
+- Modify:
+  - `README.md` (Vietnamese, player-facing);
+  - `PLAN.md` (new section, English);
+  - `docs/superpowers/plans/2026-10-22-vice-city-art-direction.md` (D3 and VC-6 notes);
+  - `docs/superpowers/specs/2026-10-22-vice-people-and-movement-design.md` (status line and implementation notes).
 
 **Interfaces:**
 - Consumes: everything above. Produces: docs only.
 
 - [ ] **Step 1: README**
 
-In `README.md`, in the controls section add the on-foot keys `Shift` (chạy nước rút, có thể lực), `Ctrl` (đi bộ), `Space` (nhảy; trên xe vẫn là drift); add one paragraph under the Vice City / open-world part: "Ở phong cách Vice City, mọi nhân vật là người kiểu PS2: tỉ lệ người thật, đầu ít mặt với gương mặt vẽ tay bằng code (8 biểu cảm), quần áo giữ nguyên. Ngoài thế giới mở có người đi đường đi trên lề và vỉa hè: va nhẹ thì họ lảo đảo càu nhàu, chạy nước rút hay đi xe tông thì họ ngã rồi đứng dậy bỏ chạy. Rơi từ cao không mất máu: dưới 2,5 m nhún gối, 2,5-6 m lăn, cao hơn thì nằm một lúc rồi đứng dậy."
+In `README.md`, in the controls section, add the on-foot keys: `Shift` (chạy nước rút, có thể lực), `Ctrl` (đi bộ), `Space` (nhảy; trên xe vẫn là drift). Under the Vice City / open-world part add one paragraph:
+
+"Ở phong cách Vice City, mọi nhân vật là người kiểu PS2: tỉ lệ người thật, đầu ít mặt với gương mặt vẽ tay bằng code (8 biểu cảm), quần áo giữ nguyên. Thế giới mở đông người hơn: sinh viên kín sân trường, cư dân dạo phố Vinhomes (có người chạy bộ, người tản bộ), người đi bộ trên lề các tuyến đường, nhìn xa vẫn thấy dòng người; xe máy, ô tô và xe buýt chạy đúng làn bên phải và dừng lại khi có người chắn đường. Ban đêm vắng hơn. Va nhẹ thì người đi đường lảo đảo càu nhàu, chạy nước rút hay đi xe tông thì họ ngã rồi đứng dậy bỏ chạy. Rơi từ cao không mất máu: dưới 2,5 m nhún gối, 2,5-6 m lăn, cao hơn thì nằm một lúc rồi đứng dậy."
 
 - [ ] **Step 2: PLAN.md, vice plan, spec**
 
-Add to `PLAN.md` a section "XIV. VICE PEOPLE AND GTA-STYLE MOVEMENT" (English): what was built (PS2Head, ps2 mode, rigged poses/bake, locomotion layer, controller states, walk graph, pedestrians, spawner), the controls, the landing thresholds, and the commit hashes of Tasks 1-11 (`git log --oneline`). In the vice plan's owner-decision table change D3 to "Superseded by docs/superpowers/specs/2026-10-22-vice-people-and-movement-design.md: PS2 people at realistic scale" and add under Task VC-6 "Outfit items dropped by the owner (clothes unchanged); vehicle paint stays". In the spec change the status line to "Implemented (commits ...)" and add a short "Implementation notes" list: `random_point_near` returns a node id (-1 when none); pedestrians are freed and respawned instead of pooled (at most 2 new per 0.25 s); verge lines run behind the kerb (MapBuilder draws kerbs, not sidewalks, along carriageways); a sprint jump covers about 4-4.5 m; vice-path tests live in `tests/test_ps2_people.gd`.
+Add to `PLAN.md` a section "XIV. VICE PEOPLE AND GTA-STYLE MOVEMENT" (English). It covers:
+- what was built: PS2Head, ps2 mode, rigged poses/bake, locomotion layer, controller states, the walk graph with zones, pedestrians with walk profiles, crowd impostors, the three-tier spawner and the traffic;
+- the controls and the landing thresholds;
+- the crowd numbers (tiers, zone targets, night factor);
+- the commit hashes of Tasks 1-13 (`git log --oneline`).
+
+In the vice plan:
+- In the owner-decision table, change D3 to "Superseded by docs/superpowers/specs/2026-10-22-vice-people-and-movement-design.md: PS2 people at realistic scale".
+- Under Task VC-6, add "Outfit items dropped by the owner (clothes unchanged); vehicle paint stays".
+
+In the spec, change the status line to "Implemented (commits ...)" and add a short "Implementation notes" list:
+- `PedWalkGraph.random_point_ring` replaces `random_point_near`: area-uniform tries through the spatial hash, so it stays cheap for the 150-220 m impostor ring. It returns a node id, or -1.
+- Walker identity is `{v, preset, seed, female, profile, wseed, wid}`, drawn from 24 fixed crowd variants (8 per zone). Impostor and pedestrian share it, so promotion and demotion never change a walker.
+- Pedestrians are pooled per variant: at most 24 detached; at most 2 builds or promotions per 0.25 s; a teleport of more than 120 m refills at once; switching day/night trims at once.
+- Verge lines run behind the kerb, because MapBuilder draws kerbs, not sidewalks, along carriageways.
+- `RoamTraffic` lanes are right-hand offsets of the OSM centrelines (two-way roads) or the centreline (one-way roads). Exits link lane ends to lanes passing within 9 m; a lane with no exit U-turns.
+- `FreeRoam.crowd_enabled = false` keeps `tests/test_free_roam.gd` deterministic.
+- A sprint jump covers about 4-4.5 m.
+- The vice-path tests live in `tests/test_ps2_people.gd`; crowds and traffic are in `tests/test_pedestrians.gd`, `tests/test_crowd_impostors.gd` and `tests/test_roam_traffic.gd`.
 
 - [ ] **Step 3: Final regression and fps table**
 
-Run the regression command; every line must be green. Then on main after the merge run the windowed previews once more with `PREVIEW_NOVSYNC=1` (`tests/preview_stages.gd` PREVIEW_ONLY=menu,s1,s2,s3,s4,s5,s6,ex; `tests/preview_peds.gd`) and collect the `fps=` numbers into a table in the PLAN.md section (gate: menu ≥ 60, stages ≥ 45, FreeRoam with pedestrians ≥ 45 at BE6 and the campus gate).
+Run the regression command; every line must be green. Then, on main after the merge, run the windowed previews once more with `PREVIEW_NOVSYNC=1`:
+- `tests/preview_stages.gd` with `PREVIEW_ONLY=menu,s1,s2,s3,s4,s5,s6,ex`;
+- `tests/preview_peds.gd`.
+
+Collect the `fps=` numbers into a table in the PLAN.md section. The gates are menu ≥ 60, stages ≥ 45, and FreeRoam with full daytime density ≥ 45 at the BE6 spawn, the campus main gate and on Nguyễn Xiển.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add README.md PLAN.md docs/superpowers/plans/2026-10-22-vice-city-art-direction.md docs/superpowers/specs/2026-10-22-vice-people-and-movement-design.md
-git commit -m "docs: vice people and GTA-style movement - README controls, PLAN section with fps table, spec status, vice plan D3/VC-6 notes
+git commit -m "docs: vice people, GTA-style movement, crowds and traffic - README controls and world notes, PLAN section with fps table, spec status and implementation notes, vice plan D3/VC-6 notes
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
