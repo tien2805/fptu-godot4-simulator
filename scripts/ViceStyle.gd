@@ -54,7 +54,8 @@ const VICE_TAGS: Array[StringName] = [&"vice_done", &"vice_orig", &"vice_soft_em
 ## cap = glow_hdr_luminance_cap; windows = năng lượng đèn cửa sổ; neon / soft_emitters = lớp đêm; trails = độ mạnh vệt
 ## sáng (Task VC-7). day / sunset = đúng look-dev. Chỉnh khi xem ảnh các màn thật (tests/preview_stages.gd):
 ##   - dawn: ngưỡng glow 1.5 (1.05 làm mặt tường hướng nắng sớm của HUTECH loé trắng), nắng 1.45, ambient 0.95;
-##   - day: ngưỡng glow 1.9 (1.75 của look-dev làm vạch vàng giữa đường / vạch sơn sáng nắng có quầng);
+##   - day: ngưỡng glow 2.4 (1.75 của look-dev làm vạch vàng giữa đường / vạch sơn sáng nắng có quầng; 1.9 và 2.1 vẫn
+##     còn quầng mờ quanh vạch giữa đường FreeRoam dưới nắng; 2.4 hết quầng, toàn cảnh gần như không đổi);
 ##   - night: ambient 0.28, ngưỡng 1.5 + cap 2.5 (đèn trần Màn 6 ở ngưỡng 1.1 / cap 12 thành quầng sáng lớn; ambient 0.2
 ##     làm đường FreeRoam đen kịt, xe + người lái gần như mất hẳn; vạch sơn là soft emitter sáng nhẹ ban đêm; đèn đường
 ##     + neon thật ở Task VC-3);
@@ -73,7 +74,7 @@ const LOOKS: Dictionary = {
 	"day": {"top": Color("#2f9ff2"), "horizon": Color("#c8eef4"), "ground_h": Color("#e8f3e8"), "ground_b": Color("#6a7a70"),
 		"sun": Color("#fff2d8"), "energy": 1.45, "elev": 55.0, "azim": 150.0,
 		"fog_on": true, "fog": Color("#d6f0f4"), "fog_begin": 140.0, "fog_end": 1800.0, "fog_max": 1.0, "sky_fog": 0.25, "scatter": 0.1,
-		"exposure": 1.18, "glow": 0.45, "bloom": 0.03, "thr": 1.9, "sat": 1.22, "contrast": 0.96, "sky_energy": 1.0,
+		"exposure": 1.18, "glow": 0.45, "bloom": 0.03, "thr": 2.4, "sat": 1.22, "contrast": 0.96, "sky_energy": 1.0,
 		"amb": 1.15, "amb_col": Color("#c6e4ee"), "shadow": Color("#2b5c74"), "high": Color("#fff1dc"), "lift": 0.03,
 		"cap": 12.0, "shadow_opacity": 0.72, "windows": 0.0, "neon": false, "soft_emitters": false, "trails": 0.0},
 	"sunset": {"top": Color("#2c1d5e"), "horizon": Color("#ff7f8f"), "ground_h": Color("#ffb08a"), "ground_b": Color("#3a2747"),

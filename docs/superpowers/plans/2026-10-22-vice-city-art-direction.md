@@ -43,13 +43,14 @@ Existing stage presets keep their names; `ViceStyle` maps them to vice looks:
 | `GameFX` preset (used by) | Vice look | Notes |
 |---|---|---|
 | `dawn` (Main menu, Stage 1 07:05) | `dawn` = new pink/peach sunrise derived from `sunset` with the sun in the east (azimuth +85), fog begin 120 / end 1800 | Stage 1 rides into the sunrise |
-| `morning` (Stage 2) | `day` | |
-| `noon`, `midday_open` (Stage 4, Stage 5) | `day` with exposure +0.04, glow threshold 1.85 | midday glare without painted lines blooming |
-| `morning_indoor`, `exam` (Stage 3, Extra) | `indoor` = warm fluorescent: ambient `#ffe9d6` 1.35, no fog, glow 0.4 / threshold 1.3, LUT shadows `#3a3a6e`, highlights `#fff0dc` | interiors stay readable |
-| `night` (Stage 6) | `night` | neon + window lights on |
+| `morning` (Stage 2) | `day` | glow threshold 2.4 (1.75, 1.9 and 2.1 left a halo round sunlit painted lines) |
+| `noon` (Stage 4) | `day` with exposure +0.04, glow threshold 2.4, bloom 0 | midday glare without the sunlit mat ring blooming |
+| `midday_open` (Stage 5) | `day` with ambient 0.55, exposure 0.95, contrast 1.45, glow 0.3, bloom 0, threshold 2.1, sun 70° / 175° | the canteen is mostly under the roof; the plain day look washed it out (mean luminance ~200) |
+| `morning_indoor`, `exam` (Stage 3, Extra) | `indoor` = warm fluorescent: ambient `#ffe9d6` 0.75, exposure 0.85, no fog, glow 0.2 / threshold 1.9 / cap 1.6, LUT shadows `#3a3a6e`, highlights `#fff0dc` with highlight weight 0.04 (default 0.22) | interiors stay readable; clipped pixels < 4 % and the FAP projector code stays legible |
+| `night` (Stage 6) | `night` = ambient 0.28, glow threshold 1.5 / cap 2.5 | neon + window lights on; lane markings are soft emitters at night |
 | FreeRoam `T` cycle | `dawn` -> `day` -> `sunset` -> `night` | open world |
 
-Values for `sunset`, `day`, `night` are the final ones in `tests/preview_vice_lookdev.gd` `VICE` (day: sun energy 1.45, exposure 1.18, glow threshold 1.75; night: windows 0.12, glow 0.9 / threshold 1.1; sunset: fog 150 / 2200). Night ambient goes down to 0.2 (look-dev 0.3 still read too light).
+Values for `sunset`, `day`, `night` are the final ones in `tests/preview_vice_lookdev.gd` `VICE` (day: sun energy 1.45, exposure 1.18, glow threshold 1.75; night: windows 0.12, glow 0.9 / threshold 1.1; sunset: fog 150 / 2200). VC-1 tuning after the stage previews changed some of them: day threshold 2.4; night ambient 0.28 (0.2 made the FreeRoam road and rider unreadable before VC-3 lamps exist), threshold 1.5 and cap 2.5 (Stage 6 ceiling lights bloomed at 1.1 / 12). `ViceStyle.LOOKS` and `PRESET_TWEAKS` are the source of truth.
 
 ---
 
