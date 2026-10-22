@@ -820,7 +820,9 @@ func mount_bike() -> void:
 	var yaw: float = bike.rotation.y if bike_parked else player.facing_yaw()
 	bike.process_mode = Node.PROCESS_MODE_INHERIT
 	bike.visible = true
-	bike.global_position = pos + Vector3(0.0, 0.25, 0.0)
+	# đặt xe đúng độ cao nghỉ (gốc dưới sàn BIKE_FLOOR_OFFSET; xe đỗ đã nằm sẵn ở đó): thả từ cao 0,25 m thì floor snap của xe
+	# có chỗ lún qua sàn ConcavePolygon xuống WaterFloor, rồi không xuống xe được
+	bike.global_position = pos if bike_parked else pos - Vector3(0.0, BIKE_FLOOR_OFFSET, 0.0)
 	bike.rotation = Vector3(0.0, yaw, 0.0)
 	bike.velocity = Vector3.ZERO
 	bike.current_speed_ms = 0.0
@@ -936,7 +938,7 @@ func rescue_from_water() -> void:
 		target = find_free_spot(spawn_xf.origin, spawn_xf.origin.y, SPAWN_SEARCH_M, excl)
 	var pos: Vector3 = target if target is Vector3 else spawn_xf.origin
 	if mounted:
-		bike.global_position = pos + Vector3(0.0, 0.25, 0.0)
+		bike.global_position = pos - Vector3(0.0, BIKE_FLOOR_OFFSET, 0.0)   # độ cao nghỉ, như mount_bike
 		bike.velocity = Vector3.ZERO
 		bike.current_speed_ms = 0.0
 		bike.fallback_respawn = pos + Vector3(0.0, 0.8, 0.0)
