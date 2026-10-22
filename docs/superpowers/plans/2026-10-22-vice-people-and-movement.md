@@ -2923,6 +2923,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
+> **Re-plan pending (2026-10-22):** the owner asked for dense crowds and ambient traffic (spec Part 3, "Amendment 2026-10-22"). Tasks 9-12 below cover the original 24-pedestrian ring only; before Task 9 starts the controller re-plans Tasks 9-12 (three NPC tiers with MultiMesh crowd impostors, zone densities, night scaling, `RoamTraffic`). Do not execute Tasks 9-12 from this text until that re-plan replaces this note.
+
 ### Task 9: `PedWalkGraph`
 
 **Files:**

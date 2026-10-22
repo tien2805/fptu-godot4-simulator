@@ -137,6 +137,23 @@ All "Global Constraints" of the Vice City plan apply: pure GDScript, no plugins,
 - FreeRoam creates the spawner after the world is built and passes the player and MapData.
 - Contact detection lives in `Pedestrian`: each physics frame it tests the distance to the player body (on foot) or the bike (when mounted) against the sum of both radii plus 0.05 m, and reads their horizontal speed (`ThirdPersonController.horizontal_speed`, the bike's speed). The pedestrian applies the reaction from the table, tells the spawner through `pedestrian_hit`, and the spawner slows the player or the bike. A 1.0 s cooldown per pedestrian stops repeated hits.
 
+### Amendment 2026-10-22: dense crowds and ambient traffic
+
+The owner asked for many more NPCs ("nhiều npc trong trường, đường và khu dân cư", FreeRoam feels empty). This amendment replaces the single 24-pedestrian ring above; everything else in Part 3 stays.
+
+- **Density targets (daytime; night presets scale every target to 30 %):**
+  - campus (the plot, the courtyard and the Đường D1 frontage): at least 40 pedestrians within 80 m of the player, 90 % students;
+  - Vinhomes residential streets and plazas: at least 30 residents within 80 m (casual walkers, joggers at 2.5 m/s, slow strollers at 0.8 m/s);
+  - corridor roads: at least 15 pedestrians on the verges within 80 m, plus ambient traffic (below).
+- **Three tiers by distance to the player (or the bike when mounted):**
+  - near, up to 35 m: full `Pedestrian` (physics, contact reactions), at most 40;
+  - mid, 35 to 90 m: `Pedestrian` without physics (cheap ground snap) and animation on the existing RigAnimator distance LOD, at most 40;
+  - far, 90 to 220 m: crowd impostors, at most 200. Each impostor is a baked, posed PS2 person (`CharacterBuilder.bake`) drawn through one MultiMesh per baked variant (8 variants per zone), gliding along walk-graph edges with transforms updated at 10 Hz. An impostor that comes within 90 m is promoted to a `Pedestrian` built with the same preset and seed (and the reverse when it leaves), so a walker never changes identity.
+- **Ambient traffic (new unit `RoamTraffic`, FreeRoam only):** 20 to 30 motorbikes plus a few cars and buses moving kinematically along MapData carriageways (lanes > 0, not footways) within 150 m of the player, keeping to the right-hand lane, slowing and stopping behind a blocked vehicle, pedestrian or the player, recycled beyond 200 m. Riders are PS2 baked riders in vice (Task 4) and today's riders in classic. Vehicles have simple box colliders so the player's bike can bump into them; the existing `PlayerBike` crash handling applies. No traffic inside the campus plot.
+- **Performance gate:** FreeRoam with full daytime density at least 45 fps at the BE6 spawn, the campus main gate and on Nguyễn Xiển (RTX 4050, 1280x720, quality 2, V-Sync off).
+- **Testing:** `tests/test_pedestrians.gd` part C checks the density targets in each zone, the tier caps, promotion/demotion keeping preset and seed, and the 30 % night scaling; a new `tests/test_roam_traffic.gd` checks lane keeping, stopping behind an obstacle, recycling and the 150 m / 200 m radii.
+- The plan's Tasks 9 to 12 are re-planned in detail for this amendment before Task 9 starts.
+
 ## Error handling and edge cases
 
 - Missing Quaternius model: fall back to the code-made body with the PS2 head and log a warning.
