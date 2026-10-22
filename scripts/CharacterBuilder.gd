@@ -2024,6 +2024,12 @@ class Animator extends Node:
 				var jerk: float = maxf(0.0, sin(ct * 0.8 + 1.3)) ** 24.0
 				p["head"] = Vector3(-0.3 - 0.4 * nod + 0.5 * jerk, 0.0, 0.08 * sin(ct * 0.5))
 				p["torso"] = Vector3(-0.1 - 0.12 * nod, 0.0, 0.0)
+			"stride":   # bước đi đứng hình cho người nộm đám đông xa (CrowdImpostors): tư thế đi ở pha sải chân rộng nhất
+				var keep: float = _phase
+				_phase = PI * 0.5
+				p = _loco_pose(1.0)
+				_phase = keep
+				p.erase("breathe")
 			"phone_stand":   # đứng xem điện thoại (người đi đường dừng chân): tay, đầu, thân như "phone"; chân để nguyên
 				p["shoulder_l"] = Vector3(0.95, 0.0, 0.18)
 				p["shoulder_r"] = Vector3(0.95, 0.0, -0.18)
