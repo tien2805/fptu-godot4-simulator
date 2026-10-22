@@ -406,7 +406,7 @@ static func _cells_of(a: Vector2, b: Vector2, grow: float) -> Array:
 
 
 func _build_regions() -> void:
-	var common: Dictionary = {"skip_building_ids": SKIP_BUILDING_IDS, "skip_area_ids": SKIP_AREA_IDS}
+	var common: Dictionary = {"skip_building_ids": SKIP_BUILDING_IDS, "skip_area_ids": SKIP_AREA_IDS, "palms": GameFXScript._art_style() == "vice", "palm_colliders": true}
 	MapBuilder.build_region(world, md, "vinhomes", common)
 	var cor: Dictionary = common.duplicate()
 	cor["lod"] = 1
@@ -486,7 +486,7 @@ func _cull_mesh_inside(mi: MeshInstance3D, plot: PackedVector2Array) -> void:
 
 
 func _build_campus() -> void:
-	FPTUCampusBuilder.build_authentic_campus(world, campus_xf.origin, FPTUCampusBuilder.REAL_ROT_Y_DEG, {"colliders": true, "grass": true, "walk_colliders": true})
+	FPTUCampusBuilder.build_authentic_campus(world, campus_xf.origin, FPTUCampusBuilder.REAL_ROT_Y_DEG, {"colliders": true, "grass": true, "walk_colliders": true, "palms": GameFXScript._art_style() == "vice", "d1_palms": false})
 	var frame := Node3D.new()
 	frame.name = "CampusFrame"
 	frame.transform = campus_xf

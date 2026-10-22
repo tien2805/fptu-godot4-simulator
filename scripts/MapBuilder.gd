@@ -8,8 +8,23 @@
 #   Roads_<class> (+StaticBody3D), Kerbs (+body), RoadLines, Footways (+body), BridgeParts (+body),
 #   Buildings/<B<id> | name> (OSM buildings: MeshInstance3D, meta building_id, +StaticBody3D/ConcavePolygonShape3D,
 #   Label3D), Buildings/MSChunk_<gx>_<gz> (Microsoft footprints merged per MSFT_CHUNK_M cell, see below),
-#   Trees/Trees_<variant> (MultiMeshInstance3D) (+TreeColliders), POIs (Label3D + POISigns/POIPlates).
+#   Trees/Trees_<variant> (MultiMeshInstance3D) (+TreeColliders), POIs (Label3D + POISigns/POIPlates),
+#   PalmField (opts.palms only: PropBuilder.build_palm_field, Trunks + Crowns MultiMeshInstance3D, +PalmColliders).
 #   Every direct child of the region root carries meta "region" too.
+#
+# PALMS (opts.palms, Vice City plan VC-2; callers pass it only when the art style is vice, so classic scenes keep their
+#   exact node content): palm_points() walks every carriageway of the region (lanes > 0, not service, not a bridge) and
+#   drops a palm on both sides every palm_spacing m (14) at width / 2 + palm_verge (PALM_VERGE_M = 2.6 m behind the
+#   kerb), skipping a
+#   point closer than PALM_OWN_ROAD_CLEAR to the edge of its own carriageway (inside of bends) or PALM_ROAD_CLEAR to any
+#   other carriageway, within PALM_JUNCTION_CLEAR of a junction node (the junction disc centres), on (or PALM_FOOT_CLEAR
+#   from) a footway / steps / path ribbon, inside (or PALM_BUILDING_CLEAR from) any building footprint (OSM or raw
+#   Microsoft outline), in (or PALM_WATER_CLEAR from) water, within PALM_TREE_CLEAR of one of the region's own park /
+#   forest trees (build_region only; palm_points() alone does not know them), outside region_shape() (the corridor stays on the route
+#   buffer), inside the FPT campus plot or the BE6 plaza ring (BE6 footprint grown PALM_BE6_RING_M), within
+#   PALM_HOTSPOT_CLEAR of the BE6 spawn / the FreeRoam Stage 1 hotspot or PALM_GATE_CLEAR of a campus gate (main, west,
+#   back = the Stage 2 hotspot), or within the extra opts.palm_keepout discs. More than MAX_PALMS_PER_REGION -> the
+#   spacing grows until they fit. One PalmField per region, visual-only unless opts.palm_colliders.
 #
 # FACADE UV CONTRACT (walls, see Task 2 tile table): every facade material has uv1_scale = (1, 1, 1); the repeats
 #   are baked into the mesh UVs. u = u0 + distance along the edge / TILE_W[style], growing to the right as seen from
@@ -107,6 +122,20 @@ const TANK_LEG_H: float = 0.3
 const TANK_CLEAR: float = 0.4           # tank footprint margin to the roof edge (parapet 0.3 m thick)
 const TANK_SEGMENTS: int = 8
 const TANK_MAX_TRIS: int = 30           # _emit_roof_tank budget (7 drum facets + two 8-gon caps + two leg plates)
+# Palms (header "PALMS")
+const PALM_SPACING_M: float = 14.0
+const PALM_VERGE_M: float = 2.6           # palm line = carriageway half width + 2.6 m
+const PALM_OWN_ROAD_CLEAR: float = 2.0    # min gap to the edge of the palm's own carriageway (inside of a bend)
+const PALM_ROAD_CLEAR: float = 3.0        # min gap to the edge of any other carriageway
+const PALM_FOOT_CLEAR: float = 0.6        # min gap to the edge of a drawn footway ribbon
+const PALM_BUILDING_CLEAR: float = 1.0
+const PALM_WATER_CLEAR: float = 1.5
+const PALM_JUNCTION_CLEAR: float = 12.0
+const PALM_TREE_CLEAR: float = 3.5        # min distance to a park / forest tree of the same region (no palm in a canopy)
+const PALM_HOTSPOT_CLEAR: float = 8.0
+const PALM_GATE_CLEAR: float = 9.0
+const PALM_BE6_RING_M: float = 25.0
+const MAX_PALMS_PER_REGION: int = 1500
 
 static var _mats: Dictionary = {}
 static var _style_mats: Dictionary = {}
@@ -127,6 +156,11 @@ static var _osm_md: MapData = null
 static var _osm_polys: Array = []            # PackedVector2Array outer ring of every OSM building (all regions)
 static var _osm_boxes: Array = []            # Rect2 per _osm_polys entry
 static var _osm_hash: Dictionary = {}        # Vector2i cell -> Array[int] into _osm_polys
+static var _cway_ids: Array = []             # road id per _carriageways entry (palms: own carriageway vs others)
+static var _palm_md: MapData = null
+static var _palm_bld: Array = []             # [PackedVector2Array outline, Rect2 bbox] of every building (OSM + raw msft)
+static var _palm_bld_hash: Dictionary = {}   # Vector2i cell -> Array[int] into _palm_bld
+static var _palm_water: Array = []           # [PackedVector2Array polygon, Rect2 bbox] of every water body
 
 
 ## A SurfaceTool plus its vertex count (SurfaceTool cannot be asked whether it is empty).
@@ -146,7 +180,11 @@ class Batch:
 ## Builds one region ("campus" | "corridor" | "vinhomes") under `parent` and returns its root Node3D.
 ## opts: colliders (true), roads (true), buildings (true), water (true), areas (true), trees (true), labels (true),
 ##       skip_building_ids ([]: OSM or msft ids), skip_area_ids ([]: area ids drawn by someone else, e.g. the FPT plot that
-##       FPTUCampusBuilder covers with its own grass), lod (0 full | 1 no labels/trees | 2 boxes only), y (0.0 ground offset).
+##       FPTUCampusBuilder covers with its own grass), lod (0 full | 1 no labels/trees | 2 boxes only), y (0.0 ground offset),
+##       palms (false: one PalmField along the carriageways, header "PALMS"; pass it only for the vice art style),
+##       palm_spacing (14.0 m), palm_verge (2.6 m behind the carriageway edge; Stage 1 moves its palms behind the
+##       RoadManager route-tree row), palm_colliders (false: one CylinderShape3D per trunk), palm_keepout ([]: extra
+##       [Vector2 centre, float radius] discs kept free of palms).
 static func build_region(parent: Node3D, md: MapData, region: String, opts: Dictionary = {}) -> Node3D:
 	var t0: int = Time.get_ticks_msec()
 	var o: Dictionary = _defaults(opts)
@@ -170,6 +208,8 @@ static func build_region(parent: Node3D, md: MapData, region: String, opts: Dict
 		_build_buildings(root, md, region, m, o)
 	if bool(o["labels"]) and int(o["lod"]) == 0:
 		_build_pois(root, md, region, m)
+	if bool(o["palms"]):
+		_build_palms(root, md, region, o)
 	for c: Node in root.get_children():
 		c.set_meta("region", region)
 	root.set_meta("build_ms", Time.get_ticks_msec() - t0)
@@ -440,7 +480,8 @@ static func materials() -> Dictionary:
 # ===========================================================================
 
 static func _defaults(opts: Dictionary) -> Dictionary:
-	var o: Dictionary = {"colliders": true, "roads": true, "buildings": true, "water": true, "areas": true, "trees": true, "labels": true, "skip_building_ids": [], "skip_area_ids": [], "lod": 0, "y": 0.0}
+	var o: Dictionary = {"colliders": true, "roads": true, "buildings": true, "water": true, "areas": true, "trees": true, "labels": true, "skip_building_ids": [], "skip_area_ids": [], "lod": 0, "y": 0.0,
+		"palms": false, "palm_spacing": PALM_SPACING_M, "palm_verge": PALM_VERGE_M, "palm_colliders": false, "palm_keepout": []}
 	for k: Variant in opts.keys():
 		o[k] = opts[k]
 	return o
@@ -537,6 +578,7 @@ static func _build_areas(root: Node3D, md: MapData, region: String, water_polys:
 		tree_pts = keep
 	if tree_pts.size() > 0:
 		_build_trees(root, tree_pts, o)
+	o["_tree_pts"] = tree_pts   # palms keep clear of these canopies (build_region's private copy of the opts)
 
 
 static func _emit_area_lines(lines: Batch, kind: String, poly: PackedVector2Array, y: float) -> void:
@@ -1321,6 +1363,224 @@ static func _sample_tree_points(poly: PackedVector2Array, pieces: Array, count: 
 
 
 # ===========================================================================
+# PALMS (header "PALMS")
+# ===========================================================================
+
+static func _build_palms(root: Node3D, md: MapData, region: String, o: Dictionary) -> void:
+	var pts: PackedVector3Array = palm_points(md, region, o)
+	if pts.is_empty():
+		return
+	PropBuilder.build_palm_field(root, pts, {"seed": absi(region.hash()) % 100000 + 17, "colliders": bool(o["palm_colliders"])})
+
+
+## Palm bases (y = 0) of a region by the rules of the header "PALMS"; opts as build_region (palm_spacing, palm_keepout).
+static func palm_points(md: MapData, region: String, opts: Dictionary = {}) -> PackedVector3Array:
+	var o: Dictionary = _defaults(opts)
+	_prepare_road_index(md)
+	_prepare_palm_index(md)
+	var ctx: Dictionary = _palm_context(md, region, o)
+	var spacing: float = maxf(4.0, float(o["palm_spacing"]))
+	var pts: PackedVector3Array = _palm_candidates(md, region, spacing, ctx)
+	var rounds: int = 0
+	while pts.size() > MAX_PALMS_PER_REGION and rounds < 4:
+		spacing *= float(pts.size()) / float(MAX_PALMS_PER_REGION) * 1.02
+		pts = _palm_candidates(md, region, spacing, ctx)
+		rounds += 1
+	if pts.size() > MAX_PALMS_PER_REGION:
+		pts.resize(MAX_PALMS_PER_REGION)
+	return pts
+
+
+## Keep-out discs ([Vector2, radius]), no-go polygons ([poly, Rect2]: campus plot, BE6 plaza ring) and the region ground.
+static func _palm_context(md: MapData, region: String, o: Dictionary) -> Dictionary:
+	var keep: Array = []
+	var sp_v: Variant = md.landmark("spawn")
+	if sp_v is Dictionary:
+		var sp: Transform3D = md.spawn_transform()
+		keep.append([Vector2(sp.origin.x, sp.origin.z), PALM_HOTSPOT_CLEAR])
+		# FreeRoam._build_hotspots(): the Stage 1 hotspot stands 7 m ahead of and 3 m right of the spawn
+		var plaza: Vector3 = sp.origin + (-sp.basis.z) * 7.0 + sp.basis.x * 3.0
+		keep.append([Vector2(plaza.x, plaza.z), PALM_HOTSPOT_CLEAR])
+	var gate_xz: Vector2 = FPTUCampusBuilder.REAL_MAIN_GATE_XZ
+	var g: Variant = md.landmark("campus_main_gate")
+	if g is Array and (g as Array).size() >= 2:
+		gate_xz = Vector2(float(g[0]), float(g[1]))
+	var xf: Transform3D = FPTUCampusBuilder.real_plot_transform_from(gate_xz)
+	for l: Vector3 in [FPTUCampusBuilder.main_gate_local(), FPTUCampusBuilder.west_gate_local(), FPTUCampusBuilder.back_gate_local()]:
+		var w: Vector3 = xf * l
+		keep.append([Vector2(w.x, w.z), PALM_GATE_CLEAR])
+	var wg: Variant = md.landmark("campus_west_gate")
+	if wg is Array and (wg as Array).size() >= 2:
+		keep.append([Vector2(float(wg[0]), float(wg[1])), PALM_GATE_CLEAR])
+	for k: Variant in o["palm_keepout"]:
+		if k is Array and (k as Array).size() >= 2 and k[0] is Vector2:
+			var kc: Vector2 = k[0]
+			keep.append([kc, float(k[1])])
+	var no_go: Array = []
+	var plot_v: Variant = md.landmark("campus_plot")
+	if plot_v is Array:
+		var plot: PackedVector2Array = _open(MapData.poly(plot_v))
+		if plot.size() >= 3:
+			no_go.append([plot, _bbox(plot)])
+	var be6_v: Variant = md.landmark("be6_outer")
+	if be6_v is Array:
+		var be6: PackedVector2Array = _open(MapData.poly(be6_v))
+		if be6.size() >= 3:
+			var rings: Array = Geometry2D.offset_polygon(be6, PALM_BE6_RING_M, Geometry2D.JOIN_ROUND)
+			for ring: PackedVector2Array in rings:
+				if not _is_hole_of_any(ring, rings):
+					no_go.append([ring, _bbox(ring)])
+	var shape: Array = []
+	for p: PackedVector2Array in region_shape(md, region):
+		shape.append([p, _bbox(p)])
+	var trees: Dictionary = {}   # cell -> Array[Vector2]: the region's own park / forest trees (_build_areas)
+	for t: Vector2 in (o.get("_tree_pts", PackedVector2Array()) as PackedVector2Array):
+		var cell: Vector2i = _cell(t)
+		if not trees.has(cell):
+			trees[cell] = []
+		(trees[cell] as Array).append(t)
+	return {"keep": keep, "no_go": no_go, "shape": shape, "verge": maxf(0.5, float(o["palm_verge"])), "trees": trees}
+
+
+## Both sides of every eligible carriageway of the region, every `spacing` m along the polyline (header "PALMS"); a
+## candidate closer than spacing / 2 to an accepted palm (the facing rows of two carriageways across a median) is dropped.
+static func _palm_candidates(md: MapData, region: String, spacing: float, ctx: Dictionary) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var taken: Dictionary = {}
+	var min_gap: float = spacing * 0.5
+	for r: Dictionary in md.roads(region):
+		if int(r.get("lanes", 0)) <= 0 or bool(r.get("bridge", false)):
+			continue
+		var cls: String = str(r.get("class", "residential"))
+		cls = str(CLASS_ALIAS.get(cls, cls))
+		if cls == "service":
+			continue
+		var pts: PackedVector2Array = MapData.poly(r.get("points", []))
+		if pts.size() < 2:
+			continue
+		var half: float = float(r.get("width", 6.0)) * 0.5 + float(ctx["verge"])
+		var own: int = int(r.get("id", 0))
+		var s_next: float = spacing * 0.5
+		var acc: float = 0.0
+		for i: int in range(pts.size() - 1):
+			var a: Vector2 = pts[i]
+			var seg: Vector2 = pts[i + 1] - a
+			var len: float = seg.length()
+			if len < 0.01:
+				continue
+			var d: Vector2 = seg / len
+			var nrm := Vector2(-d.y, d.x)
+			while s_next <= acc + len:
+				var q: Vector2 = a + d * (s_next - acc)
+				for sgn: float in [-1.0, 1.0]:
+					var c: Vector2 = q + nrm * (half * sgn)
+					if _palm_taken(c, taken, min_gap) or not _palm_ok(c, own, ctx):
+						continue
+					var cell: Vector2i = _cell(c)
+					if not taken.has(cell):
+						taken[cell] = []
+					(taken[cell] as Array).append(c)
+					out.append(Vector3(c.x, 0.0, c.y))
+				s_next += spacing
+			acc += len
+	return out
+
+
+static func _palm_taken(c: Vector2, taken: Dictionary, min_gap: float) -> bool:
+	var cell: Vector2i = _cell(c)
+	for dx: int in [-1, 0, 1]:
+		for dy: int in [-1, 0, 1]:
+			for q: Vector2 in taken.get(Vector2i(cell.x + dx, cell.y + dy), []):
+				if c.distance_to(q) < min_gap:
+					return true
+	return false
+
+
+static func _palm_ok(c: Vector2, own: int, ctx: Dictionary) -> bool:
+	var on_ground: bool = false
+	for s: Array in ctx["shape"]:
+		if (s[1] as Rect2).has_point(c) and Geometry2D.is_point_in_polygon(c, s[0]):
+			on_ground = true
+			break
+	if not on_ground:
+		return false
+	for sv: Vector2i in _segments_near(c):
+		var cw: Array = _carriageways[sv.x]
+		var pts: PackedVector2Array = cw[0]
+		var gap: float = _dist_point_segment(c, pts[sv.y], pts[sv.y + 1]) - float(cw[1]) * 0.5
+		if gap < (PALM_OWN_ROAD_CLEAR if int(_cway_ids[sv.x]) == own else PALM_ROAD_CLEAR):
+			return false
+	for k: Array in ctx["keep"]:
+		if c.distance_to(k[0]) < float(k[1]):
+			return false
+	for p: Array in ctx["no_go"]:
+		if (p[1] as Rect2).has_point(c) and Geometry2D.is_point_in_polygon(c, p[0]):
+			return false
+	var cell: Vector2i = _cell(c)
+	for dx: int in [-1, 0, 1]:
+		for dy: int in [-1, 0, 1]:
+			var key := Vector2i(cell.x + dx, cell.y + dy)
+			for di: int in _disc_hash.get(key, []):
+				if c.distance_to(_discs[di][0]) < PALM_JUNCTION_CLEAR:
+					return false
+			for sv: Vector2i in _foot_hash.get(key, []):
+				var fw: Array = _footways[sv.x]
+				var fp: PackedVector2Array = fw[0]
+				if _dist_point_segment(c, fp[sv.y], fp[sv.y + 1]) < float(fw[1]) * 0.5 + PALM_FOOT_CLEAR:
+					return false
+			for t: Vector2 in (ctx["trees"] as Dictionary).get(key, []):
+				if c.distance_to(t) < PALM_TREE_CLEAR:
+					return false
+	for bi: int in _palm_bld_hash.get(cell, []):
+		var b: Array = _palm_bld[bi]
+		if (b[1] as Rect2).has_point(c) and Geometry2D.is_point_in_polygon(c, b[0]):
+			return false
+	for w: Array in _palm_water:
+		if (w[1] as Rect2).has_point(c) and Geometry2D.is_point_in_polygon(c, w[0]):
+			return false
+	return true
+
+
+## Every building outline (OSM and the raw Microsoft footprints) and water polygon of the map grown by its palm clearance
+## (Geometry2D.offset_polygon), so a palm test is one point-in-polygon each. Cached per MapData.
+static func _prepare_palm_index(md: MapData) -> void:
+	if _palm_md == md:
+		return
+	_palm_md = md
+	_palm_bld = []
+	_palm_bld_hash = {}
+	_palm_water = []
+	for b: Dictionary in md.buildings():
+		var outline: PackedVector2Array = _open(MapData.poly(b.get("outer", [])))
+		if outline.size() < 3:
+			continue
+		for grown: PackedVector2Array in _grown_outers(outline, PALM_BUILDING_CLEAR):
+			var bb: Rect2 = _bbox(grown)
+			var i: int = _palm_bld.size()
+			_palm_bld.append([grown, bb])
+			for cell: Vector2i in _cells_of_box(bb, 0.0):
+				if not _palm_bld_hash.has(cell):
+					_palm_bld_hash[cell] = []
+				(_palm_bld_hash[cell] as Array).append(i)
+	for w: PackedVector2Array in _water_polygons(md):
+		var wp: PackedVector2Array = _open(w)
+		if wp.size() < 3:
+			continue
+		for grown: PackedVector2Array in _grown_outers(wp, PALM_WATER_CLEAR):
+			_palm_water.append([grown, _bbox(grown)])
+
+
+## Outer rings of `poly` grown by `dist` (holes dropped).
+static func _grown_outers(poly: PackedVector2Array, dist: float) -> Array:
+	var rings: Array = Geometry2D.offset_polygon(poly, dist, Geometry2D.JOIN_MITER)
+	var out: Array = []
+	for r: PackedVector2Array in rings:
+		if r.size() >= 3 and not _is_hole_of_any(r, rings):
+			out.append(r)
+	return out
+
+
+# ===========================================================================
 # ROAD GEOMETRY
 # ===========================================================================
 
@@ -1809,6 +2069,7 @@ static func _prepare_road_index(md: MapData) -> void:
 	_hash_md = md
 	_seg_hash = {}
 	_carriageways = []
+	_cway_ids = []
 	_discs = []
 	_disc_hash = {}
 	_max_disc_r = 0.0
@@ -1836,6 +2097,7 @@ static func _prepare_road_index(md: MapData) -> void:
 			continue
 		var ci: int = _carriageways.size()
 		_carriageways.append([pts, float(r.get("width", 6.0))])
+		_cway_ids.append(int(r.get("id", 0)))
 		_max_road_w = maxf(_max_road_w, float(r.get("width", 6.0)))
 		for si: int in range(pts.size() - 1):
 			for cell: Vector2i in _cells_of_box(_seg_box(pts[si], pts[si + 1]), 0.0):

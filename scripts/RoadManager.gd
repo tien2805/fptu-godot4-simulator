@@ -588,7 +588,7 @@ func _build_world() -> void:
 		return
 	var t0: int = Time.get_ticks_msec()
 	_build_road_grid()
-	var corridor_map: Node3D = MapBuilder.build_region(scenery_root, md, "corridor", {"labels": false, "lod": 1})
+	var corridor_map: Node3D = MapBuilder.build_region(scenery_root, md, "corridor", {"labels": false, "lod": 1, "palms": GameFX.art_style == "vice", "palm_verge": 7.5})
 	var vin_map: Node3D = MapBuilder.build_region(scenery_root, md, "vinhomes", {"lod": 2, "trees": false, "labels": false})
 	var campus_map: Node3D = MapBuilder.build_region(scenery_root, md, "campus", {"skip_building_ids": CAMPUS_SKIP_BUILDINGS, "labels": false, "areas": false})
 	_build_campus_areas(campus_map)
@@ -603,7 +603,7 @@ func _build_world() -> void:
 	_detail_start_buildings()
 	# Campus FPTU v8 trên lô đất thật + HUTECH đối diện (cùng hệ cục bộ -> cùng góc quay)
 	var xf: Transform3D = FPTUCampusBuilder.real_plot_transform()
-	FPTUCampusBuilder.build_authentic_campus(scenery_root, xf.origin, FPTUCampusBuilder.REAL_ROT_Y_DEG, {"colliders": false})
+	FPTUCampusBuilder.build_authentic_campus(scenery_root, xf.origin, FPTUCampusBuilder.REAL_ROT_Y_DEG, {"colliders": false, "palms": GameFX.art_style == "vice", "d1_palms": false})
 	# draw_d1 = false: MapBuilder already draws the real Đường D1; HUTECH's own far-D1 strip would double the asphalt
 	var hutech: Node3D = FPTUCampusBuilder.build_hutech(scenery_root, xf * FPTUCampusBuilder.hutech_origin_local(), FPTUCampusBuilder.make_materials(), false, false)
 	if hutech:

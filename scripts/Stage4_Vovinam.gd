@@ -253,7 +253,7 @@ func _build_arena_extras() -> void:
 	world.name = "CampusWorld"
 	world.position = -arena_c
 	$Arena.add_child(world)
-	FPTUCampusBuilder.build_authentic_campus(world, Vector3.ZERO, 0.0, {"grass": true})
+	FPTUCampusBuilder.build_authentic_campus(world, Vector3.ZERO, 0.0, {"grass": true, "palms": GameFX.art_style == "vice"})
 	FPTUCampusBuilder.build_hutech(world, FPTUCampusBuilder.hutech_origin_local(), cm)
 	FPTUCampusBuilder.build_d1_road_piece(world, -13.0, -80.0, 300.0, cm, 0.0)
 	# Nắng từ phía sau lưng người xem để thảm võ không bị bóng cánh nhà che

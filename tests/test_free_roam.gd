@@ -120,8 +120,41 @@ func _after_ready() -> bool:
 	var snap: float = maxf(player.floor_snap_length, bike.floor_snap_length)
 	if not _check(wf != null and -wf.global_position.y > snap + 0.02, "water floor sits deeper than the floor snap reach (water floor y %.2f, snap %.2f)" % [wf.global_position.y if wf else 0.0, snap]):
 		return false
+	if not _check_palms():
+		return false
 	pf0 = Engine.get_physics_frames()
 	return true
+
+
+## Cọ Vice City (plan VC-2): phong cách vice -> mỗi vùng MapBuilder (vinhomes, corridor, campus) một PalmField có va chạm
+## (một StaticBody3D, một CylinderShape3D mỗi cây), không cây nào cách spawn BE6 / một hotspot < 8 m; cổ điển -> không có.
+func _check_palms() -> bool:
+	var fx: Node = root.get_node_or_null("GameFX")
+	var vice: bool = fx == null or String(fx.get("art_style")) == "vice"
+	var fields: Array = roam.find_children("PalmField", "Node3D", true, false)
+	if not vice:
+		return _check(fields.is_empty(), "classic FreeRoam builds no PalmField (got %d)" % fields.size())
+	if not _check(fields.size() == 3, "vice FreeRoam: one PalmField per region (got %d)" % fields.size()):
+		return false
+	var keep: Array[Vector3] = [spawn.origin]
+	for h: Area3D in roam.get("hotspots"):
+		keep.append(h.global_position)
+	var total: int = 0
+	var close: int = 0
+	for f: Node3D in fields:
+		var n: int = int(f.get_meta("palm_count", 0))
+		total += n
+		var bodies: Array = f.find_children("*", "StaticBody3D", false, false)
+		if not _check(bodies.size() == 1 and (bodies[0] as Node).get_child_count() == n, "PalmField %s: one StaticBody3D with %d trunk shapes" % [f.get_path(), n]):
+			return false
+		var xf: Transform3D = (f.get_parent() as Node3D).global_transform
+		for p: Vector3 in (f.get_meta("palm_points", PackedVector3Array()) as PackedVector3Array):
+			var w: Vector3 = xf * p
+			for k: Vector3 in keep:
+				if Vector2(w.x - k.x, w.z - k.z).length() < 8.0:
+					close += 1
+	print("  vice palms: %d in %d PalmFields, %d within 8 m of the spawn / a hotspot" % [total, fields.size(), close])
+	return _check(total > 600 and close == 0, "vice FreeRoam palms: > 600 and none within 8 m of the spawn / hotspots (%d, %d close)" % [total, close])
 
 
 func _check(ok: bool, msg: String) -> bool:

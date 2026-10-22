@@ -236,7 +236,8 @@ func _build_world() -> void:
 		"colliders": true,
 		"parking_gaps": gaps,
 		"skip_barrier_at": GATE_U,
-		"grass": true
+		"grass": true,
+		"palms": GameFX.art_style == "vice"
 	})
 	FPTUCampusBuilder.build_d1_road_piece(campus_root, FPTUCampusBuilder.ROAD_CENTER_V, -80.0, 300.0, campus_mats, 0.0)
 	FPTUCampusBuilder.build_hutech(campus_root, FPTUCampusBuilder.hutech_origin_local(), campus_mats, true)

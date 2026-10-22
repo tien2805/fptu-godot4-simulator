@@ -44,6 +44,11 @@
 #   "no_grass_rects": Array[Rect2(u, v, w, h)] – vùng không rải cỏ (sân hiên căn tin...)
 #   "open_front_modules" / "open_back_modules": Array[int] – module tầng trệt để TRỐNG làm sảnh/căn tin
 #       (không khối mặt tiền, có cột tròn, sàn gạch, đèn trần, vách kính phía ngoài)
+#   "palms": bool            – phong cách Vice City (plan VC-2; nơi gọi tự đọc art_style, builder này không đọc): cau vua
+#                              sân trước thành cọ v2 (PropBuilder.build_palm) + hai hàng cọ Đường D1 (PalmField MultiMesh,
+#                              chỉ để nhìn). Mặc định false: cảnh cổ điển giữ nguyên từng node.
+#   "d1_palms": bool         – (cần "palms") hai hàng cọ D1, mặc định true; thế giới thật (FreeRoam, Màn 1) đặt false vì
+#                              MapBuilder đã dựng Đường D1 thật (và cọ dọc nó) ở chỗ khác hệ toạ độ mô hình
 # Tiện ích dùng chung: build_d1_road_piece (đoạn D1 thẳng), build_hutech (HUTECH đối diện, colliders tuỳ chọn),
 # build_motorbike / build_motorbike_multimesh (xe máy chi tiết), stair_profile (tuyến cầu thang cho runner).
 class_name FPTUCampusBuilder
@@ -532,7 +537,13 @@ static func build_tropical_tree(parent: Node3D, pos: Vector3, m: Dictionary, sca
 	t.rotation_degrees.y = rng.randf_range(0.0, 360.0)
 	return t
 
+## Cau vua. Trong build_authentic_campus với opts.palms (phong cách vice) giao cho cây cọ v2 của PropBuilder (cao hơn
+## 1,5 m cho khớp dải 8,5..13 m của rừng cọ), collider giữ nguyên như bản cổ điển.
 static func build_royal_palm(parent: Node3D, pos: Vector3, m: Dictionary, height: float = 8.0) -> Node3D:
+	if bool(_opt("palms", false)):
+		var palm: Node3D = PropBuilder.build_palm(parent, pos, height + 1.5, int(pos.x * 7.0 + pos.z * 13.0))
+		_col_cyl(palm, Vector3(0.0, height * 0.5, 0.0), 0.3, height)
+		return palm
 	var p := Node3D.new()
 	p.position = pos
 	parent.add_child(p)
@@ -1122,8 +1133,23 @@ static func build_authentic_campus(parent: Node3D, gate_origin: Vector3, rot_y_d
 	_build_perimeter_trees(root, m)
 	if bool(_opt("grass", true)):
 		_build_grass(root, m)
+	if bool(_opt("palms", false)) and bool(_opt("d1_palms", true)):
+		_build_d1_palms(root)
 	_opts = {}
 	return root
+
+## Phong cách vice (opts.palms): hai hàng cọ dọc Đường D1 – vỉa hè phía campus (v = -3.2) và dải vỉa hè giữa hai chiều phía
+## xa (v = ROAD_CENTER_V - 9) – mỗi 13 m, chừa 9 m quanh cổng chính và cổng tây (look-dev _add_palms_d1). Một PalmField
+## MultiMesh, chỉ để nhìn (không collider: bot Màn 2 không vướng).
+static func _build_d1_palms(root: Node3D) -> void:
+	var pts := PackedVector3Array()
+	var u: float = -60.0
+	while u < 200.0:
+		if absf(u - MAIN_GATE_U) > 9.0 and absf(u - WEST_GATE_U) > 9.0:
+			for v: float in [-3.2, ROAD_CENTER_V - 9.0]:
+				pts.append(Vector3(u, 0.0, v))
+		u += 13.0
+	PropBuilder.build_palm_field(root, pts, {"seed": 3000})
 
 static func _build_ground_and_boundary(root: Node3D, m: Dictionary) -> void:
 	_box(root, Vector3(PLOT_U * 0.5, -0.06, PLOT_V * 0.5), Vector3(PLOT_U + 10.0, 0.12, PLOT_V + 10.0), m["grass"])
