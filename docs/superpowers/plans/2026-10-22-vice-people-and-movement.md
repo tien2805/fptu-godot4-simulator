@@ -1407,7 +1407,8 @@ static func _rig_pose(root: Node3D, clip: String, t: float, params: Dictionary) 
 
 
 ## Áp tư thế {khớp: Euler hệ nhân vật} lên xương Quaternius, trộn với tư thế hiện tại theo w (1 = đè hẳn):
-## local = (Pg⁻¹·R·Pg)·rest_local (cùng phép với RigAnimator._apply_bones); "hips_y" dời xương Body (đơn vị mô hình).
+## local = (Pg⁻¹·R·Pg)·rest_local; "hips_y" dời xương Body (đơn vị mô hình). Nơi DUY NHẤT chứa phép này:
+## pose() tĩnh và RigAnimator._apply_bones() đều gọi hàm này.
 static func _apply_bone_pose(sk: Skeleton3D, cpose: Dictionary, w: float) -> void:
 	for k: String in cpose.keys():
 		if not BONE_OF.has(k):
@@ -1430,6 +1431,13 @@ static func _apply_bone_pose(sk: Skeleton3D, cpose: Dictionary, w: float) -> voi
 			var rest_pos: Vector3 = sk.get_bone_rest(body).origin
 			var p: Vector3 = sk.get_bone_pose_position(body)
 			sk.set_bone_pose_position(body, p.lerp(rest_pos + Vector3(0.0, float(cpose["hips_y"]), 0.0), w))
+```
+
+Then replace the whole body of `RigAnimator._apply_bones(cpose, w)` with one line, so the bone math lives in one place (keep the RigAnimator caches `_bone`, `_rest_local`, `_parent_rest`: other RigAnimator code and Task 6 use them):
+
+```gdscript
+	func _apply_bones(cpose: Dictionary, w: float) -> void:
+		CharacterBuilder._apply_bone_pose(skeleton, cpose, w)
 ```
 
 Replace the rigged guard at the top of `bake()` (the `push_warning(...)` + `return ArrayMesh.new()` block) with `return _bake_rigged(root)` and add:
