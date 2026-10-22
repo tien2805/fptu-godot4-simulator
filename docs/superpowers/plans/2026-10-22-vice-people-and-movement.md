@@ -923,7 +923,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: `PS2Head.build/cell_offset/CELLS` (Task 2).
 - Produces:
   - `CharacterBuilder.ps2: bool` (static; GameFX sets it to `art_style == "vice"`).
-  - In ps2 mode `build(opts)` returns a rigged body (meta `rigged` = true, `ps2_head` = true) unless `opts.rigged == false`; the rig contains every key of the code body: `hips, torso, neck, head, head_top, shoulder_l/r, elbow_l/r, hand_l/r, thigh_l/r, knee_l/r, foot_l/r, chest, face_mesh, torso_mesh`. The limb/torso/neck keys are attach pivots (Node3D at the joint, axes = character axes in the rest pose, following the bone); rotating them does not move bones.
+  - In ps2 mode `build(opts)` returns a rigged body (meta `rigged` = true, `ps2_head` = true) unless `opts.rigged == false`; the rig contains every key of the code body: `hips, torso, neck, head, head_top, shoulder_l/r, elbow_l/r, hand_l/r, thigh_l/r, knee_l/r, foot_l/r, chest, face_mesh, torso_mesh`. The limb/torso/neck keys are attach pivots (Node3D at the joint following the bone; as built in Task 3 their -Y points down the bone toward the next joint, -Z toward the character's front and +X toward its right, matching the code body's pivot convention); rotating them does not move bones.
   - `CharacterBuilder.set_expression(root, expr)` supports the PS2 cells (`talk`, `pain` too); `Animator`/`RigAnimator` get `face_cells: bool`, `face_cell_open: Vector3`, `face_cell_closed: Vector3`.
   - Constant `CharacterBuilder.PS2_HEAD_SCALE_RIG: float = 1.06` (world head height ≈ 0.235 × 1.06 × 0.935 ≈ 0.233 m at height 1.0).
 
