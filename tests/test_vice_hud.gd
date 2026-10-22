@@ -157,6 +157,13 @@ func _theme_checks() -> bool:
 	var vf: FontVariation = G.vice_font()
 	if not _check(absf(vf.variation_transform.x.y - 0.22) < 0.001 and absf(vf.variation_embolden - 0.6) < 0.001, "vice_font(): slant 0.22, embolden 0.6"):
 		return false
+	# chữ nghiêng giả lập làm mất emoji màu (biến đổi glyph): vice_font() có font emoji hệ thống KHÔNG nghiêng làm fallback
+	var has_emoji_fb: bool = false
+	for fb: Font in vf.fallbacks:
+		if fb is SystemFont and (fb as SystemFont).font_names.has("Segoe UI Emoji"):
+			has_emoji_fb = true
+	if not _check(has_emoji_fb, "vice_font() keeps colour emoji upright through a SystemFont emoji fallback"):
+		return false
 	if not _check(_near(G.ui_accent(), Color("#FF5FB0")), "vice: ui_accent() is pink"):
 		return false
 	var bar: ProgressBar = G.make_bar(50.0, Color("#2ECC71"), 12)

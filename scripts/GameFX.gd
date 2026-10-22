@@ -1017,6 +1017,11 @@ static func vice_font(embolden: float = 0.6, slant: float = 0.22) -> FontVariati
 	fv.base_font = ThemeDB.fallback_font
 	fv.variation_embolden = embolden
 	fv.variation_transform = Transform2D(Vector2(1.0, slant), Vector2(0.0, 1.0), Vector2.ZERO)
+	# biến đổi nghiêng làm emoji màu (tìm qua font hệ thống, kế thừa biến đổi) thành khối tối / biến mất: thêm font emoji
+	# hệ thống không nghiêng làm fallback riêng nên "🎉", "❌", "➡" trong tiêu đề vẫn hiện đúng màu
+	var emoji := SystemFont.new()
+	emoji.font_names = PackedStringArray(["Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Symbol"])
+	fv.fallbacks = [emoji]
 	if cache is Dictionary:
 		(cache as Dictionary)[key] = fv
 	return fv

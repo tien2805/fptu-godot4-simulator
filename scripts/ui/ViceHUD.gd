@@ -124,9 +124,11 @@ func _hud_label(text: String, font_size: int, col: Color, outline: Color, outlin
 	l.add_theme_color_override("font_color", col)
 	l.add_theme_color_override("font_outline_color", outline)
 	l.add_theme_constant_override("outline_size", outline_size)
-	l.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.55))
-	l.add_theme_constant_override("shadow_offset_x", 3)
-	l.add_theme_constant_override("shadow_offset_y", 3)
+	# bóng đổ 2 px cho chữ nhỏ (< 20 px): dấu chồng tiếng Việt (Ể, Ẩ, Ỗ) không bị bóng che ở cỡ 15 px
+	var shadow: int = 3 if font_size >= 20 else 2
+	l.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.55 if font_size >= 20 else 0.45))
+	l.add_theme_constant_override("shadow_offset_x", shadow)
+	l.add_theme_constant_override("shadow_offset_y", shadow)
 	l.horizontal_alignment = align as HorizontalAlignment
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
@@ -178,7 +180,7 @@ func _build() -> void:
 	stars.size_flags_horizontal = Control.SIZE_SHRINK_END if right else Control.SIZE_SHRINK_BEGIN
 	stars.visible = false
 	col.add_child(stars)
-	stars_label = _hud_label("", 15, Color("#ffb3e6"), Color("#1b0f33"), 5, _italic(0.3, 0.15), align)
+	stars_label = _hud_label("", 15, Color("#ffb3e6"), Color("#1b0f33"), 4, _italic(0.3, 0.15), align)
 	stars_label.name = "StarsLabel"
 	stars_label.visible = false
 	col.add_child(stars_label)
