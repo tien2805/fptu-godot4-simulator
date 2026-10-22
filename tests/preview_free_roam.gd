@@ -9,10 +9,13 @@
 #   roam_05_campus_gate_from_d1 – đứng trên D1 nhìn về cổng chính FPTU
 #   roam_06_campus_air       – flycam trên campus
 #   roam_07_nguyen_van_tang  – chạy xe máy trên Nguyễn Văn Tăng (tuyến 3 350 m), dãy nhà ống Microsoft hai bên đường
+#   roam_09_night_nguyen_van_tang – góc roam_07 lúc 23:00 (preset "night" như phím [T]): vạch sơn đường phải đọc được
+#                              (đèn đường + neon của Task VC-3 chưa có)
 # In FPS ở mỗi ảnh: trung bình MEASURE frame ngay trước khi chụp (sau dịch chuyển, SDFGI dựng lại cascade và shader
 # biên dịch trong vài frame đầu, nên SETTLE - MEASURE frame đầu không tính) + bộ đếm Engine lúc chụp.
 # Biến môi trường chỉ dùng cho ảnh preview (không ghi settings.cfg): VICE_STYLE=vice|classic ép phong cách đồ hoạ,
-# PREVIEW_DIR=<thư mục tuyệt đối> thay cho user://preview, PREVIEW_NOVSYNC=1 tắt V-Sync để đo FPS thật.
+# PREVIEW_DIR=<thư mục tuyệt đối> thay cho user://preview, PREVIEW_NOVSYNC=1 tắt V-Sync để đo FPS thật,
+# PREVIEW_ONLY=<tên ảnh,...> chỉ chụp các ảnh đó.
 extends SceneTree
 
 const SETTLE: int = 96
@@ -124,7 +127,12 @@ func _setup() -> void:
 		{"name": "roam_05_campus_gate_from_d1", "kind": "walk", "pos": d1_stand, "look": gate_w},
 		{"name": "roam_06_campus_air", "kind": "air", "pos": ring_c + Vector3(-150.0, 175.0, 150.0), "look": ring_c},
 		{"name": "roam_07_nguyen_van_tang", "kind": "ride", "pos": nvt_pos, "look": nvt_pos + nvt_dir * 20.0},
+		{"name": "roam_09_night_nguyen_van_tang", "kind": "ride", "pos": nvt_pos, "look": nvt_pos + nvt_dir * 20.0, "tod": "night"},
 	]
+	# PREVIEW_ONLY=roam_07_nguyen_van_tang,roam_09_night_nguyen_van_tang: chỉ chụp các ảnh này
+	var only: PackedStringArray = OS.get_environment("PREVIEW_ONLY").replace(" ", "").split(",", false)
+	if not only.is_empty():
+		shots = shots.filter(func(s: Dictionary) -> bool: return String(s["name"]) in only)
 	free_cam = Camera3D.new()
 	free_cam.name = "PreviewCam"
 	free_cam.far = 6000.0
@@ -176,6 +184,8 @@ static func _yaw_towards(from: Vector3, to: Vector3) -> float:
 
 func _begin_shot(s: Dictionary) -> void:
 	var kind: String = String(s["kind"])
+	# giờ trong ngày của ảnh (mặc định buổi sáng như lúc FreeRoam mở); set_time_of_day bỏ qua nếu không đổi
+	roam.call("set_time_of_day", String(s.get("tod", "morning")))
 	if kind == "air":
 		free_cam.look_at_from_position(s["pos"], s["look"], Vector3.UP)
 		free_cam.make_current()

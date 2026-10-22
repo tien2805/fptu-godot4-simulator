@@ -56,6 +56,8 @@ func _ready() -> void:
 	_build_world()
 	_build_ui()
 	GameFX.upgrade_scene_visuals(self, "dawn")
+	# đổi phong cách (bảng cài đặt) -> chú thích nút mức đồ hoạ theo phong cách mới (tự ngắt khi menu bị giải phóng)
+	GameFX.art_style_changed.connect(_on_art_style_changed)
 	GameFX.music_play("menu", 0.2)
 	_apply_shot(0.0)
 	fade_rect.color = Color(0.0, 0.0, 0.0, 1.0)
@@ -361,10 +363,10 @@ func _build_settings_panel() -> PanelContainer:
 	qrow.alignment = BoxContainer.ALIGNMENT_CENTER
 	qrow.add_theme_constant_override("separation", 10)
 	v.add_child(qrow)
-	var names: Array = ["🟢 THẤP\nkhông GI, bóng cơ bản", "🟡 TRUNG BÌNH\nSSAO + phản xạ, không SDFGI", "🔴 CAO (mặc định)\nSDFGI + SSIL + sương thể tích"]
 	quality_buttons.clear()
 	for q: int in range(3):
-		var b := _menu_button(String(names[q]), Color("#2ECC71"))
+		var b := _menu_button(_quality_text(q), Color("#2ECC71"))
+		b.name = "QualityButton%d" % q
 		b.custom_minimum_size = Vector2(225, 64)
 		b.alignment = HORIZONTAL_ALIGNMENT_CENTER
 		b.add_theme_font_size_override("font_size", 14)
@@ -397,9 +399,18 @@ func _build_settings_panel() -> PanelContainer:
 	_refresh_quality_buttons()
 	return panel
 
+## Chữ trên nút mức đồ hoạ q theo phong cách hiện tại (GameFX.quality_caption): "🟢 THẤP\nbóng cơ bản"...
+func _quality_text(q: int) -> String:
+	var cap: PackedStringArray = GameFX.quality_caption(q)
+	return "%s %s%s\n%s" % [["🟢", "🟡", "🔴"][q], cap[0], " (mặc định)" if q == 2 else "", cap[1]]
+
+func _on_art_style_changed(_style: String) -> void:
+	_refresh_quality_buttons()
+
 func _refresh_quality_buttons() -> void:
 	for q: int in range(quality_buttons.size()):
 		var b: Button = quality_buttons[q]
+		b.text = _quality_text(q)
 		var active: bool = q == GameFX.visual_quality
 		b.add_theme_color_override("font_color", GameFX.FPT_YELLOW if active else Color("#F4F5F6"))
 		b.add_theme_stylebox_override("normal", GameFX.make_panel_style(GameFX.FPT_YELLOW if active else Color(0.18, 0.8, 0.44, 0.45), Color(0.12, 0.1, 0.03, 0.96) if active else Color(0.05, 0.07, 0.12, 0.86), 10))
@@ -438,7 +449,7 @@ func _set_quality(q: int) -> void:
 	_refresh_quality_buttons()
 	GameFX.upgrade_scene_visuals(self, "dawn")
 	GameFX.play_sfx("pop", -4.0)
-	GameFX.popup("Đã áp dụng mức đồ hoạ: %s" % ["THẤP", "TRUNG BÌNH", "CAO"][clampi(q, 0, 2)], GameFX.FPT_GREEN, 22, 1.0)
+	GameFX.popup("Đã áp dụng mức đồ hoạ: %s" % " · ".join(GameFX.quality_caption(q)), GameFX.FPT_GREEN, 22, 1.0)
 
 func _on_start_pressed() -> void:
 	GameFX.play_sfx("success", -2.0)

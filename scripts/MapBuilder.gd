@@ -422,6 +422,7 @@ static func materials() -> Dictionary:
 	var overlay: StandardMaterial3D = _tex_mat("city_road_overlay.png", Color(1, 1, 1, 0), false, 1.0, 0.85)
 	overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	overlay.alpha_scissor_threshold = 0.35
+	overlay.set_meta("night_line", true)   # ViceStyle: lane paint glows softly at night only (no emission here / in classic)
 	m["overlay"] = overlay
 	m["barrier"] = _plain(Color(0.74, 0.74, 0.72), 0.88)
 	m["pole"] = _plain(Color(0.35, 0.37, 0.4), 0.45)
@@ -2287,5 +2288,6 @@ static func _mat_for_style(style: String) -> StandardMaterial3D:
 	var m: StandardMaterial3D = _tex_mat("city_%s_facade.png" % s, fallback[s], false, 1.0, 0.45 if s in ["tower", "mall"] else 0.8, "city_%s_facade_n.png" % s if s in NORMAL_MAPPED_STYLES else "", 0.7)
 	m.uv1_scale = Vector3.ONE
 	m.metallic = 0.05
+	m.set_meta("facade_style", s)   # ViceStyle: night window lights find facade materials by this tag, not by the cache
 	_style_mats[style] = m
 	return m

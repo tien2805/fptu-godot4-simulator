@@ -51,6 +51,15 @@ const SETTINGS_PATH: String = "user://settings.cfg"
 const ART_STYLES: Array[String] = ["vice", "classic"]
 const ART_STYLE_NAMES: Dictionary = {"vice": "Vice City", "classic": "Cổ điển"}
 const ART_STYLE_HINT: String = "Áp dụng ngay cho màn đang mở · Cổ điển áp dụng đầy đủ khi vào lại màn"
+## Nút mức đồ hoạ (menu chính, menu tạm dừng): tên + mô tả theo phong cách. Vice City không dùng SDFGI / SSIL / SSAO /
+## SSR / sương thể tích, mức chỉ đổi bóng nắng (2 / 4 lớp, tầm xa) và khử răng cưa (MSAA) nên không quảng cáo chúng.
+const QUALITY_NAMES: Array[String] = ["THẤP", "TRUNG BÌNH", "CAO"]
+const QUALITY_DESC: Dictionary = {
+	"vice": ["bóng cơ bản", "bóng 4 lớp", "bóng xa + khử răng cưa"],
+	"classic": ["không GI, bóng cơ bản", "SSAO + phản xạ, không SDFGI", "SDFGI + SSIL + sương thể tích"],
+}
+## Phát sau set_art_style() (kể cả khi chọn lại phong cách đang dùng): menu làm mới chú thích nút mức đồ hoạ.
+signal art_style_changed(style: String)
 var visual_quality: int = 2
 var fullscreen: bool = false
 ## Phong cách đồ hoạ (video/art_style). Đổi qua set_art_style() để áp lại cảnh hiện tại.
@@ -230,9 +239,10 @@ func sync_style_settings(root: Node) -> void:
 	if trails:
 		trails.set_pressed_no_signal(trails_enabled)
 
-## Đổi phong cách đồ hoạ: lưu cài đặt (persist), đặt kiểu nhân vật dựng sau này (CharacterBuilder.toon, tỉ lệ đầu) rồi
-## áp lại preset ánh sáng của cảnh hiện tại (meta "visual_preset") mà không nạp lại cảnh. Sang "classic": trả
-## Environment gốc + lớp đêm cũ và quên cache vật liệu đã chuyển kiểu, nạp lại màn là đủ cổ điển.
+## Đổi phong cách đồ hoạ: lưu cài đặt (persist), đặt kiểu nhân vật dựng sau này (CharacterBuilder.toon, tỉ lệ đầu), quên
+## cache vật liệu dùng chung (cả hai chiều: cache còn giữ vật liệu của phong cách cũ) rồi áp lại preset ánh sáng của cảnh
+## hiện tại (meta "visual_preset") mà không nạp lại cảnh. Sang "classic": trả Environment gốc + lớp đêm cũ, đường cổ điển
+## của upgrade_scene_visuals() trả vật liệu đã chuyển kiểu về gốc (ViceStyle.unstylize_materials).
 func set_art_style(style: String, persist: bool = true) -> void:
 	var s: String = style if style in ART_STYLES else "vice"
 	var changed: bool = s != art_style
@@ -240,15 +250,22 @@ func set_art_style(style: String, persist: bool = true) -> void:
 	_apply_art_style_statics()
 	if persist:
 		save_settings()
-	if changed and s == "classic":
+	if changed:
 		ViceStyle.forget_cached_materials()
 	var tree: SceneTree = get_tree()
 	var cs: Node = tree.current_scene if tree else null
-	if cs == null or not cs.has_meta("visual_preset"):
-		return
-	if s == "classic":
-		ViceStyle.restore_classic(cs)
-	upgrade_scene_visuals(cs, String(cs.get_meta("visual_preset")))
+	if cs and cs.has_meta("visual_preset"):
+		if s == "classic":
+			ViceStyle.restore_classic(cs)
+		upgrade_scene_visuals(cs, String(cs.get_meta("visual_preset")))
+	art_style_changed.emit(s)
+
+## Chú thích nút mức đồ hoạ q theo phong cách (mặc định phong cách hiện tại): [tên, mô tả].
+func quality_caption(q: int, style: String = "") -> PackedStringArray:
+	var st: String = style if style in ART_STYLES else art_style
+	var qi: int = clampi(q, 0, QUALITY_NAMES.size() - 1)
+	var desc: Array = QUALITY_DESC.get(st, QUALITY_DESC["vice"])
+	return PackedStringArray([QUALITY_NAMES[qi], String(desc[qi])])
 
 ## Vệt sáng: hiện chỉ lưu cờ (hiệu ứng ở Task VC-7); ở phong cách vice áp lại cảnh để meta "vice_trails" đúng ngay.
 func set_trails(on: bool, persist: bool = true) -> void:
@@ -815,6 +832,9 @@ static func upgrade_scene_visuals(root: Node, preset: String = "outdoor") -> voi
 	if _art_style() == "vice":
 		ViceStyle.apply(root, preset, _quality(), _trails())
 		return
+	# vật liệu đã chuyển kiểu vice trong phiên này (sub-resource .tscn dùng lại khi nạp lại cùng cảnh, vật liệu đang hiển
+	# thị khi đổi phong cách lúc chạy) -> trả về gốc; phiên chỉ chơi cổ điển thì không làm gì
+	ViceStyle.unstylize_materials(root)
 	var key: String = String(TOD_ALIASES.get(preset, preset))
 	if not TOD_PRESETS.has(key):
 		key = "morning"

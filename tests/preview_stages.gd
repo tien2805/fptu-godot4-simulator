@@ -1,7 +1,7 @@
 # File: res://tests/preview_stages.gd
 # Chụp ảnh kiểm tra đồ họa MENU + 7 MÀN (1, 2, 3, 4, 5, 6, EXTRA) (cần cửa sổ render, KHÔNG dùng --headless):
 #   godot --path . --script tests/preview_stages.gd          (PREVIEW_HUD=1 để giữ HUD như khi chơi,
-#                                                             PREVIEW_ONLY=s1 để chỉ chụp một màn)
+#                                                             PREVIEW_ONLY=s1 hoặc s2,s3,ex để chỉ chụp các màn đó)
 # Biến môi trường chỉ dùng cho ảnh preview (không ghi settings.cfg): VICE_STYLE=vice|classic ép phong cách đồ hoạ,
 # PREVIEW_DIR=<thư mục tuyệt đối> thay cho user://preview, PREVIEW_NOVSYNC=1 tắt V-Sync để đo FPS thật.
 # Mỗi màn: nạp scene thật, chờ vài chục frame cho SDFGI hội tụ, chụp từ camera của chính màn đó
@@ -40,7 +40,7 @@ var scene_idx: int = -1
 var current: Node = null
 var out_dir: String
 var step: int = 0
-var only: String = ""
+var only: PackedStringArray = []      # PREVIEW_ONLY=s2,s3,ex: chỉ chụp các màn này
 var next_save: int = 0                # Màn 1: frame lưu góc chụp hiện tại (mỗi góc giữ "frames" hoặc SHOT_FRAMES)
 var _ticks: Array[int] = []
 
@@ -57,7 +57,7 @@ func _initialize() -> void:
 	var dir_env: String = OS.get_environment("PREVIEW_DIR")
 	out_dir = dir_env if dir_env != "" else ProjectSettings.globalize_path("user://preview")
 	DirAccess.make_dir_recursive_absolute(out_dir)
-	only = OS.get_environment("PREVIEW_ONLY")
+	only = OS.get_environment("PREVIEW_ONLY").replace(" ", "").split(",", false)
 	cam = Camera3D.new()
 	cam.name = "PreviewCam"
 	cam.far = 6000.0
@@ -138,7 +138,7 @@ func _process(_d: float) -> bool:
 		_ticks.pop_front()
 	if current == null:
 		scene_idx += 1
-		while scene_idx < SCENES.size() and only != "" and SCENES[scene_idx]["key"] != only:
+		while scene_idx < SCENES.size() and not only.is_empty() and not (String(SCENES[scene_idx]["key"]) in only):
 			scene_idx += 1
 		if scene_idx >= SCENES.size():
 			print("PREVIEW DONE")

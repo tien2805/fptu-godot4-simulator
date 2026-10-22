@@ -1,7 +1,8 @@
 # File: res://tests/test_main_menu.gd
 # Test headless MENU CHÍNH: scene nạp được, đủ 5 nút, mở/đóng Hướng dẫn (có khối "Nguồn dữ liệu bản đồ" OSM +
 # Microsoft, cả bảng nằm gọn trong viewport), đổi mức đồ hoạ (lưu user://settings.cfg), bảng cài đặt có hàng
-# "Phong cách đồ hoạ" (Vice City / Cổ điển, đổi qua UI áp lại nền menu) + "Vệt sáng (trails)", thẻ tạm dừng mở
+# "Phong cách đồ hoạ" (Vice City / Cổ điển, đổi qua UI áp lại nền menu; chú thích nút mức đồ hoạ ở menu chính và menu
+# tạm dừng đổi theo phong cách, vice không quảng cáo SDFGI / SSAO) + "Vệt sáng (trails)", thẻ tạm dừng mở
 # cài đặt vẫn gọn trong viewport,
 # mở Campaign Hub, rồi "Bắt đầu ngày mới" phải reset hành trình và chuyển sang Màn 1 (scene Main).
 # Chạy:  godot --headless --path . --script tests/test_main_menu.gd
@@ -117,6 +118,22 @@ func _process(_d: float) -> bool:
 				if CharacterBuilder.toon != (st == "classic") or not is_equal_approx(CharacterBuilder.head_scale_default, 1.3 if st == "classic" else 1.15):
 					_fail("%s: CharacterBuilder.toon / head_scale_default sai" % st)
 					return true
+				# Nút mức đồ hoạ (menu chính + menu tạm dừng) đổi chú thích theo phong cách: vice không quảng cáo SDFGI / SSAO
+				var pause_btns: Array = sm.get("pause_quality_buttons")
+				for q: int in range(3):
+					var cap: PackedStringArray = fx.call("quality_caption", q)
+					var mb: Button = sp.find_child("QualityButton%d" % q, true, false) as Button
+					if mb == null or pause_btns.size() != 3:
+						_fail("thiếu nút mức đồ hoạ ở menu chính / menu tạm dừng")
+						return true
+					var pb: Button = pause_btns[q]
+					if not mb.text.contains(cap[0]) or not mb.text.contains(cap[1]) or not pb.text.contains(cap[1]):
+						_fail("%s: chú thích nút mức %d chưa đổi theo phong cách (%s | %s, cần %s)" % [st, q, mb.text.replace("\n", " / "), pb.text.replace("\n", " / "), " · ".join(cap)])
+						return true
+					if st == "vice" and (mb.text.contains("SDFGI") or mb.text.contains("SSAO") or pb.text.contains("SDFGI") or pb.text.contains("SSAO")):
+						_fail("vice: nút mức đồ hoạ còn quảng cáo tính năng cổ điển: %s" % mb.text)
+						return true
+				print("  %s: quality buttons %s" % [st, " | ".join(PackedStringArray([(sp.find_child("QualityButton0", true, false) as Button).text.replace("\n", " · "), (sp.find_child("QualityButton2", true, false) as Button).text.replace("\n", " · ")]))])
 			var orig_trails: bool = bool(fx.get("trails_enabled"))
 			trails.button_pressed = not orig_trails
 			if bool(fx.get("trails_enabled")) == orig_trails:

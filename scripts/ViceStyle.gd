@@ -16,9 +16,16 @@
 #   - DirectionalLight3D đầu tiên: hướng / màu / cường độ nắng theo look (+ tinh chỉnh theo preset), bóng 2/4 split.
 #   - stylize_materials(root): bỏ viền toon (next_pass outline), tắt normal map, diffuse Lambert, vật liệu không bóng
 #     thành lì (roughness >= 0.9, tắt specular). Vật liệu đã xử lý gắn meta "vice_done" nên cache dùng chung giữa các cảnh
-#     (CharacterBuilder / FPTUCampusBuilder / MapBuilder) chỉ xử lý một lần; áp lại không cộng dồn.
+#     (CharacterBuilder / FPTUCampusBuilder / MapBuilder) chỉ xử lý một lần; áp lại không cộng dồn. Giá trị gốc lưu ở meta
+#     "vice_orig" để unstylize_materials() trả lại khi cảnh (hoặc vật liệu sub-resource .tscn mà ResourceLoader dùng lại
+#     khi nạp lại cùng cảnh) chạy ở phong cách cổ điển.
 #   - set_night_layers(root, look): soft emitter (emission_energy_multiplier trong (0, 0.5], meta "vice_soft_emitter")
-#     chỉ sáng ban đêm, node nhóm "vice_neon" chỉ hiện khi look có neon, đèn cửa sổ (vật liệu mặt tiền MapBuilder).
+#     chỉ sáng ban đêm, vạch sơn đường (meta "night_line" do MapBuilder / FPTUCampusBuilder gắn) sáng nhẹ ban đêm, node
+#     nhóm "vice_neon" chỉ hiện khi look có neon, đèn cửa sổ (vật liệu mặt tiền MapBuilder, meta "facade_style").
+#   - node sinh ra SAU apply (xe cộ, NPC, khay cơm, xe máy FreeRoam, đạo cụ dựng muộn): lần áp đầu cho một root nối tín
+#     hiệu SceneTree.node_added (một lần, meta "vice_watch" trên root, gỡ khi root rời cây); mỗi GeometryInstance3D mới
+#     dưới root có meta "vice_look" được chuyển kiểu + nhận trạng thái soft emitter / đêm hiện tại (gom lại, xử lý deferred
+#     cuối frame để vật liệu gán sau add_child cũng được tính). Root cổ điển đang theo dõi thì trả node mới về cổ điển.
 #   - meta trên root: "visual_preset" (= preset truyền vào, set_art_style() của autoload dùng để áp lại), "vice_look",
 #     "vice_trails" (cờ cho hiệu ứng vệt sáng của Task VC-7).
 class_name ViceStyle
@@ -32,16 +39,30 @@ const NEON_GROUP: StringName = &"vice_neon"
 const WINDOW_STYLES: Array[String] = ["tower", "beverly", "mall", "shophouse"]
 const WINDOW_TEX_MAX_W: int = 256          # ảnh đèn cửa sổ dựng ở nửa độ phân giải mặt tiền (đủ cho ban đêm, nhanh)
 const OUTLINE_SHADER_FILE: String = "outline.gdshader"
+## Meta do các builder gắn lúc tạo vật liệu (không phải thẻ vice_*: unstylize_materials() không gỡ):
+##   "night_line"  = vạch sơn đường (MapBuilder overlay làn, FPTUCampusBuilder line / yellow_line): ở vice thành soft
+##                   emitter phát chính màu / ảnh của nó với NIGHT_LINE_ENERGY, chỉ bật ban đêm (ban ngày không loé);
+##   "facade_style" = kiểu mặt tiền MapBuilder (tower / beverly / mall / shophouse / industrial) cho đèn cửa sổ ban đêm.
+const NIGHT_LINE_META: StringName = &"night_line"
+const FACADE_META: StringName = &"facade_style"
+const NIGHT_LINE_ENERGY: float = 0.45
+const VICE_TAGS: Array[StringName] = [&"vice_done", &"vice_orig", &"vice_soft_emitter", &"vice_window"]
 
 ## Bảng look theo giờ. top/horizon/ground_* = ProceduralSky; sun/energy/elev/azim = DirectionalLight3D;
 ## fog_* = sương DEPTH (fog_max = độ đặc ở fog_end, fog_on = false trong nhà); glow/bloom/thr = glow;
-## exposure/sat/contrast = tonemap + adjustments; amb/amb_col = ambient màu; shadow/high/lift = LUT tách tông;
+## exposure/sat/contrast = tonemap + adjustments; amb/amb_col = ambient màu; shadow/high/lift (+ high_w/shadow_w) = LUT tách tông;
 ## cap = glow_hdr_luminance_cap; windows = năng lượng đèn cửa sổ; neon / soft_emitters = lớp đêm; trails = độ mạnh vệt
 ## sáng (Task VC-7). day / sunset = đúng look-dev. Chỉnh khi xem ảnh các màn thật (tests/preview_stages.gd):
 ##   - dawn: ngưỡng glow 1.5 (1.05 làm mặt tường hướng nắng sớm của HUTECH loé trắng), nắng 1.45, ambient 0.95;
-##   - night: ambient 0.2, ngưỡng 1.5 + cap 2.5 (đèn trần Màn 6 ở ngưỡng 1.1 / cap 12 thành quầng sáng lớn);
-##   - indoor: ambient #ffe9d6 0.9, ngưỡng 1.6, cap 2.5 (1.35 + ngưỡng 1.3 cộng đèn trần OmniLight của phòng làm cả
-##     phòng học / phòng thi loá trắng, không đọc được màn chiếu FAP).
+##   - day: ngưỡng glow 1.9 (1.75 của look-dev làm vạch vàng giữa đường / vạch sơn sáng nắng có quầng);
+##   - night: ambient 0.28, ngưỡng 1.5 + cap 2.5 (đèn trần Màn 6 ở ngưỡng 1.1 / cap 12 thành quầng sáng lớn; ambient 0.2
+##     làm đường FreeRoam đen kịt, xe + người lái gần như mất hẳn; vạch sơn là soft emitter sáng nhẹ ban đêm; đèn đường
+##     + neon thật ở Task VC-3);
+##   - indoor: ambient #ffe9d6 0.75, exposure 0.85, glow 0.2, ngưỡng 1.9, cap 1.6, LUT đẩy vùng sáng high_w 0.04 thay
+##     cho 0.22 (1.35 + ngưỡng 1.3, rồi 0.9 + ngưỡng 1.6 / cap 2.5 cộng đèn trần OmniLight của phòng vẫn làm phòng học /
+##     phòng thi loá trắng: màn hình trắng, màn chiếu, đèn tuýp có quầng, ~9-10 % điểm ảnh cháy trắng; phần lớn do LUT
+##     đẩy mọi điểm ảnh gần trắng lên 255, hạ high_w còn ~3 %, màn chiếu FAP đọc rõ).
+## high_w (mặc định 0.22) / shadow_w (mặc định 0.32) = độ mạnh tách tông vùng sáng / vùng tối của LUT.
 const LOOKS: Dictionary = {
 	"dawn": {"top": Color("#5b6bc0"), "horizon": Color("#ffa59c"), "ground_h": Color("#ffc6a2"), "ground_b": Color("#463452"),
 		"sun": Color("#ffc489"), "energy": 1.45, "elev": 14.0, "azim": 85.0,
@@ -52,7 +73,7 @@ const LOOKS: Dictionary = {
 	"day": {"top": Color("#2f9ff2"), "horizon": Color("#c8eef4"), "ground_h": Color("#e8f3e8"), "ground_b": Color("#6a7a70"),
 		"sun": Color("#fff2d8"), "energy": 1.45, "elev": 55.0, "azim": 150.0,
 		"fog_on": true, "fog": Color("#d6f0f4"), "fog_begin": 140.0, "fog_end": 1800.0, "fog_max": 1.0, "sky_fog": 0.25, "scatter": 0.1,
-		"exposure": 1.18, "glow": 0.45, "bloom": 0.03, "thr": 1.75, "sat": 1.22, "contrast": 0.96, "sky_energy": 1.0,
+		"exposure": 1.18, "glow": 0.45, "bloom": 0.03, "thr": 1.9, "sat": 1.22, "contrast": 0.96, "sky_energy": 1.0,
 		"amb": 1.15, "amb_col": Color("#c6e4ee"), "shadow": Color("#2b5c74"), "high": Color("#fff1dc"), "lift": 0.03,
 		"cap": 12.0, "shadow_opacity": 0.72, "windows": 0.0, "neon": false, "soft_emitters": false, "trails": 0.0},
 	"sunset": {"top": Color("#2c1d5e"), "horizon": Color("#ff7f8f"), "ground_h": Color("#ffb08a"), "ground_b": Color("#3a2747"),
@@ -65,14 +86,14 @@ const LOOKS: Dictionary = {
 		"sun": Color("#8ea6ff"), "energy": 0.3, "elev": 38.0, "azim": 200.0,
 		"fog_on": true, "fog": Color("#2b1a55"), "fog_begin": 40.0, "fog_end": 700.0, "fog_max": 0.9, "sky_fog": 0.5, "scatter": 0.1,
 		"exposure": 1.0, "glow": 0.6, "bloom": 0.0, "thr": 1.5, "sat": 1.15, "contrast": 1.02, "sky_energy": 0.7,
-		"amb": 0.2, "amb_col": Color("#4a3a8f"), "shadow": Color("#140a3a"), "high": Color("#ff9ad6"), "lift": 0.02,
+		"amb": 0.28, "amb_col": Color("#4a3a8f"), "shadow": Color("#140a3a"), "high": Color("#ff9ad6"), "lift": 0.02,
 		"cap": 2.5, "shadow_opacity": 0.5, "windows": 0.12, "neon": true, "soft_emitters": true, "trails": 0.55},
 	"indoor": {"top": Color("#4aa6ee"), "horizon": Color("#d2eef4"), "ground_h": Color("#e6eee6"), "ground_b": Color("#6a7a70"),
 		"sun": Color("#fff4e2"), "energy": 1.4, "elev": 30.0, "azim": 125.0,
 		"fog_on": false, "fog": Color("#f2ece4"), "fog_begin": 200.0, "fog_end": 2000.0, "fog_max": 0.0, "sky_fog": 0.0, "scatter": 0.0,
-		"exposure": 0.95, "glow": 0.4, "bloom": 0.0, "thr": 1.6, "sat": 1.12, "contrast": 1.04, "sky_energy": 1.0,
-		"amb": 0.9, "amb_col": Color("#ffe9d6"), "shadow": Color("#3a3a6e"), "high": Color("#fff0dc"), "lift": 0.03,
-		"cap": 2.5, "shadow_opacity": 0.65, "windows": 0.0, "neon": false, "soft_emitters": false, "trails": 0.0},
+		"exposure": 0.85, "glow": 0.2, "bloom": 0.0, "thr": 1.9, "sat": 1.12, "contrast": 1.04, "sky_energy": 1.0,
+		"amb": 0.75, "amb_col": Color("#ffe9d6"), "shadow": Color("#3a3a6e"), "high": Color("#fff0dc"), "lift": 0.03,
+		"high_w": 0.04, "cap": 1.6, "shadow_opacity": 0.65, "windows": 0.0, "neon": false, "soft_emitters": false, "trails": 0.0},
 }
 
 ## Preset ánh sáng của các màn (TOD_PRESETS + alias cũ của autoload hiệu ứng) -> look vice. Preset lạ -> "day".
@@ -81,11 +102,16 @@ const PRESET_LOOK: Dictionary = {
 	"night": "night", "outdoor": "day", "indoor": "indoor", "day": "day", "sunset": "sunset",
 }
 ## Tinh chỉnh theo preset trên nền look: exposure_add cộng vào exposure, các khoá khác ghi đè.
-## Giữa trưa (Màn 4, Màn 5): sáng hơn 0.04, ngưỡng glow 1.85 để vạch sơn không loé. Trong nhà giữ hướng nắng mà từng màn
-## đã thiết kế cho cửa sổ (morning_indoor 24°/120°, exam 30°/125°, căn tin hở 70°/175°).
+## Giữa trưa (Màn 4 sân võ): sáng hơn 0.04, ngưỡng glow 2.4 + không bloom (vòng vàng của thảm sáng nắng ~2.2: ngưỡng
+## 1.85 / 2.1 cộng bloom 0.03 vẫn để quầng trắng xanh quanh vòng). Căn tin hở (Màn 5):
+## phần lớn khung hình nằm dưới mái, chỉ có ambient chiếu: 1.15 + exposure 1.22 làm sàn gạch trắng / trần bê tông bạc màu
+## (trung bình độ sáng ~200, độ lệch ~34; ảnh look-dev ban ngày ~150-160 / ~58-64). Ambient 0.8 + exposure 1.18 vẫn ~185;
+## bản chọn: ambient 0.55, exposure 0.95 (exposure_add -0.23), contrast 1.45, glow 0.3 không bloom, ngưỡng 2.1
+## -> trung bình ~152-168, độ lệch ~51-73 trên 3 góc preview. Trong nhà giữ hướng nắng mà từng màn đã thiết kế cho cửa sổ
+## (morning_indoor 24°/120°, exam 30°/125°, căn tin hở 70°/175°).
 const PRESET_TWEAKS: Dictionary = {
-	"noon": {"exposure_add": 0.04, "thr": 1.85},
-	"midday_open": {"exposure_add": 0.04, "thr": 1.85, "elev": 70.0, "azim": 175.0},
+	"noon": {"exposure_add": 0.04, "thr": 2.4, "bloom": 0.0},
+	"midday_open": {"exposure_add": -0.23, "thr": 2.1, "amb": 0.55, "contrast": 1.45, "glow": 0.3, "bloom": 0.0, "elev": 70.0, "azim": 175.0},
 	"morning_indoor": {"elev": 24.0, "azim": 120.0, "energy": 1.55},
 	"exam": {"elev": 30.0, "azim": 125.0},
 }
@@ -96,6 +122,12 @@ const SHADOW_DIST_INDOOR: float = 90.0
 
 static var _lut_cache: Dictionary = {}
 static var _window_tex: Dictionary = {}
+## Theo dõi node mới: instance id -> root có meta "vice_watch"; node chờ xử lý cuối frame; đã từng chuyển kiểu vật liệu
+## nào chưa (phiên chỉ chơi cổ điển thì unstylize_materials() không duyệt cây, không theo dõi gì).
+static var _watched: Dictionary = {}
+static var _pending: Array = []
+static var _flush_queued: bool = false
+static var _ever_stylized: bool = false
 
 
 # ===========================================================================
@@ -145,6 +177,7 @@ static func apply(root: Node, preset: String, quality: int, trails_enabled: bool
 	root.set_meta("visual_preset", preset)
 	root.set_meta("vice_look", look)
 	root.set_meta("vice_trails", trails_enabled and float(p["trails"]) > 0.0)
+	_watch(root)
 	root.set_meta("vice_apply_ms", float(Time.get_ticks_usec() - t0) / 1000.0)
 
 
@@ -158,6 +191,8 @@ static func lut(look: String) -> ImageTexture3D:
 	var sh: Color = p["shadow"]
 	var hi: Color = p["high"]
 	var lift: float = float(p["lift"])
+	var shadow_w: float = float(p.get("shadow_w", 0.32))
+	var high_w: float = float(p.get("high_w", 0.22))
 	var inv: float = 1.0 / float(n - 1)
 	var slices: Array[Image] = []
 	for bz: int in range(n):
@@ -170,8 +205,8 @@ static func lut(look: String) -> ImageTexture3D:
 				var g: float = gy * inv
 				var b: float = bz * inv
 				var lum: float = 0.299 * r + 0.587 * g + 0.114 * b
-				var ws: float = pow(1.0 - lum, 2.0) * 0.32
-				var wh: float = pow(lum, 2.0) * 0.22
+				var ws: float = pow(1.0 - lum, 2.0) * shadow_w
+				var wh: float = pow(lum, 2.0) * high_w
 				var o_r: float = (r + (sh.r - 0.5) * ws + (hi.r - 0.5) * wh) * (1.0 - lift) + lift
 				var o_g: float = (g + (sh.g - 0.5) * ws + (hi.g - 0.5) * wh) * (1.0 - lift) + lift
 				var o_b: float = (b + (sh.b - 0.5) * ws + (hi.b - 0.5) * wh) * (1.0 - lift) + lift
@@ -213,23 +248,34 @@ static func set_night_layers(root: Node, look: String) -> void:
 	_night_layers(mats, neon, look)
 
 
+## Look lạ = cổ điển: soft emitter về trạng thái emission gốc (meta "vice_orig"; không có thì bật như đồ hoạ cũ),
+## vạch sơn tắt phát sáng như gốc, không neon, không đèn cửa sổ.
 static func _night_layers(mats: Array, neon: Array, look: String) -> void:
+	var known: bool = LOOKS.has(look)
 	var p: Dictionary = LOOKS.get(look, {})
 	var soft_on: bool = bool(p.get("soft_emitters", true))
 	var neon_on: bool = bool(p.get("neon", false))
+	var windows: float = float(p.get("windows", 0.0))
 	for m: Material in mats:
-		if m is BaseMaterial3D and m.has_meta("vice_soft_emitter"):
-			(m as BaseMaterial3D).emission_enabled = soft_on
+		if not (m is BaseMaterial3D):
+			continue
+		var s := m as BaseMaterial3D
+		if s.has_meta(FACADE_META):
+			_window_light(s, windows)
+		elif s.has_meta("vice_soft_emitter"):
+			if known:
+				s.emission_enabled = soft_on
+			else:
+				s.emission_enabled = bool((s.get_meta("vice_orig", {}) as Dictionary).get("emission_enabled", true))
 	for n: Node in neon:
 		if n is Node3D:
 			(n as Node3D).visible = neon_on
 		elif n is CanvasItem:
 			(n as CanvasItem).visible = neon_on
-	_set_window_lights(float(p.get("windows", 0.0)))
 
 
-## Trả cảnh về đường render cổ điển: Environment gốc, độ đậm bóng nắng gốc, lớp đêm như đồ hoạ cũ. Vật liệu đã chuyển
-## kiểu lì giữ nguyên tới khi nạp lại màn (xem forget_cached_materials()).
+## Trả cảnh về đường render cổ điển: Environment gốc, độ đậm bóng nắng gốc, lớp đêm như đồ hoạ cũ. Vật liệu lì do
+## unstylize_materials() trả lại (đường cổ điển của autoload hiệu ứng gọi nó).
 static func restore_classic(root: Node) -> void:
 	if root == null:
 		return
@@ -248,24 +294,51 @@ static func restore_classic(root: Node) -> void:
 		root.remove_meta("vice_trails")
 
 
-## Quên các cache vật liệu dùng chung (nhân vật / đồ vật, campus, bản đồ) để lần dựng cảnh sau tạo vật liệu mới theo
-## phong cách hiện tại. Autoload hiệu ứng gọi khi đổi sang "classic": vật liệu đang hiển thị giữ nguyên, nạp lại màn là đủ cổ điển.
+## Trả mọi vật liệu đã chuyển kiểu vice (meta "vice_done") dưới root về giá trị gốc (meta "vice_orig": next_pass viền
+## toon, normal map, diffuse / specular, roughness, emission) và gỡ các thẻ vice_*. Đường cổ điển của autoload hiệu ứng
+## gọi mỗi lần áp: vật liệu sub-resource của .tscn được ResourceLoader dùng lại khi nạp lại cùng cảnh, vật liệu đang hiển
+## thị khi đổi phong cách lúc chạy. Cũng gỡ meta "vice_look" / "vice_trails" của root và (nếu phiên này từng chuyển kiểu)
+## theo dõi node mới của root để trả chúng về cổ điển. Trả về số vật liệu vừa trả lại.
+static func unstylize_materials(root: Node) -> int:
+	if root == null:
+		return 0
+	for k: String in ["vice_look", "vice_trails"]:
+		if root.has_meta(k):
+			root.remove_meta(k)
+	if not _ever_stylized:
+		return 0
+	_watch(root)
+	var mats: Array = []
+	var neon: Array = []
+	_collect(root, mats, {}, neon)
+	var restored: int = 0
+	for m: Material in mats:
+		if _unstylize(m):
+			restored += 1
+	return restored
+
+
+## Quên các cache vật liệu dùng chung (nhân vật / đồ vật, campus, bản đồ) để lần dựng sau tạo vật liệu mới theo phong
+## cách hiện tại. Autoload hiệu ứng gọi mỗi lần đổi phong cách (cả hai chiều). Gán container MỚI thay vì clear(): script
+## khác còn giữ tham chiếu tới dictionary cũ (FPTUCampusBuilder.make_materials() trả chính cache, MainMenu.campus_mats,
+## Stage2_Parking.campus_mats) và vẫn dựng tiếp bằng vật liệu cũ của cảnh đang mở.
 static func forget_cached_materials() -> void:
-	_set_window_lights(0.0)
-	CharacterBuilder._mat_cache.clear()
-	FPTUCampusBuilder._materials_cache.clear()
-	MapBuilder._mats.clear()
-	MapBuilder._style_mats.clear()
-	MapBuilder._tree_meshes.clear()
-	_window_tex.clear()
+	CharacterBuilder._mat_cache = {}
+	FPTUCampusBuilder._materials_cache = {}
+	MapBuilder._mats = {}
+	MapBuilder._style_mats = {}
+	MapBuilder._tree_meshes = []
+	_window_tex = {}
 
 
 ## Ảnh phát sáng đèn cửa sổ của một kiểu mặt tiền MapBuilder: pixel kính (xanh lam) -> vàng ấm, còn lại đen.
-## Chỉ đọc vật liệu đã có trong cache MapBuilder (không tạo vật liệu / nạp ảnh cho cảnh không dùng bản đồ). Cache.
-static func window_emission_texture(style: String) -> Texture2D:
+## Đọc ảnh albedo của `mat` (vật liệu mặt tiền, meta "facade_style"), không có thì của vật liệu kiểu đó trong cache
+## MapBuilder (không tạo vật liệu / nạp ảnh cho cảnh không dùng bản đồ). Cache theo kiểu.
+static func window_emission_texture(style: String, mat: BaseMaterial3D = null) -> Texture2D:
 	if _window_tex.has(style):
 		return _window_tex[style]
-	var mat: StandardMaterial3D = MapBuilder._style_mats.get(style) as StandardMaterial3D
+	if mat == null:
+		mat = MapBuilder._style_mats.get(style) as BaseMaterial3D
 	if mat == null or mat.albedo_texture == null:
 		return null
 	var tex: Texture2D = null
@@ -395,6 +468,13 @@ static func _apply_sun(sun: DirectionalLight3D, p: Dictionary, outdoor: bool, q:
 
 ## Mọi vật liệu (duy nhất) trên GeometryInstance3D dưới `node` + mọi node thuộc nhóm "vice_neon".
 static func _collect(node: Node, mats: Array, seen: Dictionary, neon: Array) -> void:
+	_collect_node(node, mats, seen, neon)
+	for c: Node in node.get_children():
+		_collect(c, mats, seen, neon)
+
+
+## Như _collect nhưng chỉ chính `node` (node mới vào cây: con của nó tự phát node_added riêng).
+static func _collect_node(node: Node, mats: Array, seen: Dictionary, neon: Array) -> void:
 	if node.is_in_group(NEON_GROUP):
 		neon.append(node)
 	if node is GeometryInstance3D:
@@ -417,8 +497,6 @@ static func _collect(node: Node, mats: Array, seen: Dictionary, neon: Array) -> 
 			var cm: Variant = gi.get("material")   # CSGBox3D / CSGCylinder3D / ... (vạch đỗ xe, thảm võ)
 			if cm is Material:
 				_add_mat(cm, mats, seen)
-	for c: Node in node.get_children():
-		_collect(c, mats, seen, neon)
 
 
 static func _add_mat(m: Material, mats: Array, seen: Dictionary) -> void:
@@ -436,14 +514,28 @@ static func _is_outline(m: Material) -> bool:
 
 
 ## Một vật liệu: true nếu vừa đổi. ShaderMaterial (mặt tiền shader, nước...) chỉ được bỏ viền outline ở next_pass.
+## Giá trị gốc lưu ở meta "vice_orig" cho _unstylize().
 static func _stylize(m: Material) -> bool:
 	if m.has_meta("vice_done"):
 		return false
 	m.set_meta("vice_done", true)
+	_ever_stylized = true
 	if m is BaseMaterial3D:
 		var s := m as BaseMaterial3D
+		s.set_meta("vice_orig", {"next_pass": s.next_pass, "normal_enabled": s.normal_enabled, "diffuse_mode": s.diffuse_mode,
+			"specular_mode": s.specular_mode, "roughness": s.roughness, "emission_enabled": s.emission_enabled,
+			"emission": s.emission, "emission_texture": s.emission_texture, "emission_energy_multiplier": s.emission_energy_multiplier,
+			"emission_operator": s.emission_operator})
 		var energy: float = s.emission_energy_multiplier
-		if s.emission_enabled and energy > 0.0 and energy <= SOFT_EMITTER_MAX and not s.has_meta("vice_window"):
+		if s.has_meta(NIGHT_LINE_META) and not s.has_meta(FACADE_META):
+			# vạch sơn: phát chính màu / ảnh của nó, nhẹ (không loé), _night_layers chỉ bật ban đêm
+			var col: Color = s.albedo_color
+			s.emission = Color(col.r, col.g, col.b)
+			s.emission_texture = s.albedo_texture
+			s.emission_operator = BaseMaterial3D.EMISSION_OP_ADD
+			s.emission_energy_multiplier = NIGHT_LINE_ENERGY
+			s.set_meta("vice_soft_emitter", true)
+		elif s.emission_enabled and energy > 0.0 and energy <= SOFT_EMITTER_MAX and not s.has_meta(FACADE_META):
 			s.set_meta("vice_soft_emitter", true)
 		if _is_outline(s.next_pass):
 			s.next_pass = null                              # bỏ viền toon
@@ -458,27 +550,126 @@ static func _stylize(m: Material) -> bool:
 			s.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 		return true
 	if m is ShaderMaterial and _is_outline((m as ShaderMaterial).next_pass):
+		m.set_meta("vice_orig", {"next_pass": (m as ShaderMaterial).next_pass})
 		(m as ShaderMaterial).next_pass = null
 		return true
 	return false
 
 
-## Đèn cửa sổ trên vật liệu mặt tiền đã có trong cache MapBuilder (dùng chung mọi toà nhà cùng kiểu).
-## Chỉ cộng ảnh cửa sổ (emission màu đen + ảnh), không làm cả mặt tường sáng lên.
-static func _set_window_lights(energy: float) -> void:
-	for st: String in WINDOW_STYLES:
-		var mat: StandardMaterial3D = MapBuilder._style_mats.get(st) as StandardMaterial3D
-		if mat == null:
+## Ngược của _stylize: trả giá trị gốc từ meta "vice_orig", gỡ các thẻ vice_*. true nếu vật liệu đã từng chuyển kiểu.
+static func _unstylize(m: Material) -> bool:
+	if not m.has_meta("vice_done"):
+		return false
+	var o: Dictionary = m.get_meta("vice_orig", {})
+	if m is BaseMaterial3D and not o.is_empty():
+		var s := m as BaseMaterial3D
+		s.next_pass = o["next_pass"]
+		s.normal_enabled = bool(o["normal_enabled"])
+		s.diffuse_mode = o["diffuse_mode"]
+		s.specular_mode = o["specular_mode"]
+		s.roughness = float(o["roughness"])
+		s.emission = o["emission"]
+		s.emission_texture = o["emission_texture"]
+		s.emission_energy_multiplier = float(o["emission_energy_multiplier"])
+		s.emission_operator = o["emission_operator"]
+		s.emission_enabled = bool(o["emission_enabled"])
+	elif m is ShaderMaterial and o.has("next_pass"):
+		(m as ShaderMaterial).next_pass = o["next_pass"]
+	for tag: StringName in VICE_TAGS:
+		if m.has_meta(tag):
+			m.remove_meta(tag)
+	return true
+
+
+## Đèn cửa sổ trên một vật liệu mặt tiền MapBuilder (dùng chung mọi toà nhà cùng kiểu; kiểu không có đèn hoặc ban ngày
+## -> tắt emission). Chỉ cộng ảnh cửa sổ (emission màu đen + ảnh), không làm cả mặt tường sáng lên.
+static func _window_light(mat: BaseMaterial3D, energy: float) -> void:
+	var st: String = String(mat.get_meta(FACADE_META, ""))
+	var t: Texture2D = window_emission_texture(st, mat) if energy > 0.0 and st in WINDOW_STYLES else null
+	if t == null:
+		mat.emission_enabled = false
+		return
+	mat.set_meta("vice_window", true)
+	mat.emission_enabled = true
+	mat.emission = Color.BLACK
+	mat.emission_operator = BaseMaterial3D.EMISSION_OP_ADD
+	mat.emission_texture = t
+	mat.emission_energy_multiplier = energy
+
+
+# ---------------------------------------------------------------------------
+# Node sinh ra sau apply: SceneTree.node_added -> gom -> xử lý deferred cuối frame
+# ---------------------------------------------------------------------------
+## Nối node_added (một kết nối cho cả cây, dùng chung mọi root) và nhớ root; gỡ khi root rời cây.
+static func _watch(root: Node) -> void:
+	if root.has_meta("vice_watch") or not root.is_inside_tree():
+		return
+	root.set_meta("vice_watch", true)
+	_watched[root.get_instance_id()] = root
+	var cb := Callable(ViceStyle, "_on_node_added")
+	var tree: SceneTree = root.get_tree()
+	if not tree.node_added.is_connected(cb):
+		tree.node_added.connect(cb)
+	root.tree_exiting.connect(Callable(ViceStyle, "_unwatch").bind(root), CONNECT_ONE_SHOT)
+
+
+static func _unwatch(root: Node) -> void:
+	_watched.erase(root.get_instance_id())
+	if root.has_meta("vice_watch"):
+		root.remove_meta("vice_watch")
+	if not _watched.is_empty():
+		return
+	var cb := Callable(ViceStyle, "_on_node_added")
+	var tree: SceneTree = root.get_tree()
+	if tree and tree.node_added.is_connected(cb):
+		tree.node_added.disconnect(cb)
+
+
+## true khi cây đang có kết nối node_added của ViceStyle (test dùng).
+static func is_watching(tree: SceneTree) -> bool:
+	return tree != null and tree.node_added.is_connected(Callable(ViceStyle, "_on_node_added"))
+
+
+static func _on_node_added(node: Node) -> void:
+	if not (node is GeometryInstance3D or node.is_in_group(NEON_GROUP)):
+		return
+	_pending.append(node)
+	if not _flush_queued:
+		_flush_queued = true
+		Callable(ViceStyle, "_flush_pending").call_deferred()
+
+
+## Root đang theo dõi gần nhất chứa node (null = node không thuộc cảnh nào đã áp phong cách).
+static func _watched_root_of(node: Node) -> Node:
+	var p: Node = node
+	while p:
+		if p.has_meta("vice_watch"):
+			return p
+		p = p.get_parent()
+	return null
+
+
+static func _flush_pending() -> void:
+	_flush_queued = false
+	var nodes: Array = _pending
+	_pending = []
+	for v: Variant in nodes:
+		if not is_instance_valid(v):
 			continue
-		mat.set_meta("vice_window", true)
-		if mat.has_meta("vice_soft_emitter"):
-			mat.remove_meta("vice_soft_emitter")
-		var t: Texture2D = window_emission_texture(st) if energy > 0.0 else null
-		if t == null:
-			mat.emission_enabled = false
+		var n: Node = v
+		if not n.is_inside_tree():
 			continue
-		mat.emission_enabled = true
-		mat.emission = Color.BLACK
-		mat.emission_operator = BaseMaterial3D.EMISSION_OP_ADD
-		mat.emission_texture = t
-		mat.emission_energy_multiplier = energy
+		var r: Node = _watched_root_of(n)
+		if r == null:
+			continue
+		var mats: Array = []
+		var neon: Array = []
+		_collect_node(n, mats, {}, neon)
+		if r.has_meta("vice_look"):
+			for m: Material in mats:
+				_stylize(m)
+			_night_layers(mats, neon, String(r.get_meta("vice_look")))
+		else:
+			for m: Material in mats:
+				_unstylize(m)
+			_night_layers([], neon, "")
