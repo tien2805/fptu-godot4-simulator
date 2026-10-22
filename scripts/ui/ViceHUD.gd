@@ -80,6 +80,7 @@ var _area_seen: Dictionary = {}
 var _area_t: float = 0.0
 var _track_pos: Vector2 = Vector2.ZERO
 var _tracking: bool = false
+var _area_pending: bool = false
 
 static var _area_indexes: Dictionary = {}
 
@@ -281,11 +282,12 @@ func hide_vehicle() -> void:
 	vehicle_label.modulate.a = 0.0
 
 
-## Quên các tên khu vực đã hiện (sau khi dịch chuyển / quay về từ một màn): lần track() tới hiện lại tên ngay.
+## Quên các tên khu vực đã hiện (sau khi dịch chuyển / quay về từ một màn): lần track() kế tiếp (đã có vị trí mới)
+## tính và hiện tên ngay, không đợi nhịp AREA_CHECK_S và không dùng vị trí cũ trước khi dịch chuyển.
 func reset_area() -> void:
 	_area_seen.clear()
 	current_area = ""
-	_area_t = 0.0
+	_area_pending = true
 
 
 ## Tên dài (vd. "Cầu cạn Đường vành đai 3 Thành phố Hồ Chí Minh") thu cỡ chữ cho vừa AREA_MAX_W px.
@@ -319,6 +321,10 @@ func track(pos: Vector2, yaw: float) -> void:
 	if radar:
 		radar.center = pos
 		radar.yaw = yaw
+	if _area_pending:
+		_area_pending = false
+		_area_t = AREA_CHECK_S
+		update_area_now()
 
 
 func update_area_now() -> void:

@@ -377,6 +377,12 @@ func _area_checks() -> bool:
 	hud.update_area_now()
 	if not _check(hud.current_area == "The Beverly" and hud.radar.center.is_equal_approx(Vector2(sp.origin.x, sp.origin.z)), "track() moves the radar and resolves the area (got '%s')" % hud.current_area):
 		return false
+	# sau dịch chuyển: reset_area() rồi track() ở chỗ mới -> tên khu vực mới ngay ở lần track() đó (không đợi nhịp 0,5 s,
+	# không dùng vị trí cũ trước khi dịch chuyển)
+	hud.reset_area()
+	hud.track(Vector2.ZERO, 0.0)
+	if not _check(hud.current_area == "Đại học FPT", "reset_area() + track() at the new spot resolves the new area at once (got '%s')" % hud.current_area):
+		return false
 	print("  area names OK (%d distinct on a %d m grid)" % [seen.size(), int(step)])
 	return true
 
