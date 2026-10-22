@@ -56,6 +56,7 @@ const FLAIL_AFTER: float = 0.5
 const FLAIL_VY: float = -6.0
 const FLOOR_SNAP: float = 0.4
 const SPRINT_FOV_ADD: float = 6.0
+const FOV_EASE: float = 5.0              # 1/s, như FOV camera xe (PlayerBike)
 const STEP_HEIGHT: float = 0.35
 const CAM_DISTANCE: float = 3.2
 const CAM_HEIGHT: float = 1.6
@@ -108,6 +109,7 @@ var _splat_phase: int = 0
 var _shake_t: float = 0.0
 var _shake_amp: float = 0.0
 var _fov_base: float = 70.0
+var _bob_phase: float = 0.0
 
 var model: Node3D
 var cam_pivot: Node3D
@@ -209,6 +211,10 @@ func facing_dir() -> Vector3:
 	return Vector3(-sin(a), 0.0, -cos(a))
 
 
+## Dịch tới chỗ đứng pos: xoá mọi trạng thái di chuyển đang dở (đang nhảy / rơi / lăn / ngã, clip của chúng, nước rút, phím
+## nhảy đang chờ, trượt chân, chậm vì va người, rung camera) – vd. lên xe giữa cú ngã rồi xuống xe thì không chạy bộ trong tư
+## thế nằm. Coi như vừa đứng trên sàn (coyote đầy): khe vài cm tới sàn ở khung đầu không tính là một cú rơi.
+## Thể lực giữ nguyên.
 func teleport(pos: Vector3, yaw_rad: float) -> void:
 	global_position = pos
 	velocity = Vector3.ZERO
@@ -219,9 +225,23 @@ func teleport(pos: Vector3, yaw_rad: float) -> void:
 	_last_floor_y = pos.y
 	_air_clip = ""
 	_state_t = 0.0
+	_air_t = 0.0
+	_splat_phase = 0
+	_skid_t = 0.0
+	_jump_buffer_t = 0.0
+	jump_override = false
+	_coyote_t = COYOTE
+	is_sprinting = false
+	slow_t = 0.0
+	_lean = 0.0
+	_shake_t = 0.0
 	set_facing(yaw_rad)
 	if model:
+		CharacterBuilder.stop_clip(model)
 		CharacterBuilder.set_speed(model, 0.0)
+		CharacterBuilder.set_param(model, "run", 0.0)
+		CharacterBuilder.set_param(model, "sprint", 0.0)
+		CharacterBuilder.set_param(model, "lean", 0.0)
 
 
 func _read_input() -> Vector2:
@@ -488,9 +508,10 @@ func _try_step_up(move: Vector3, delta: float) -> void:
 # ---------------------------------------------------------------------------
 # CAMERA
 # ---------------------------------------------------------------------------
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if _built:
 		_update_camera(false)
+		_camera_fx(delta)
 
 
 func _update_camera(snap: bool) -> void:
@@ -510,15 +531,22 @@ func _update_camera(snap: bool) -> void:
 		camera.position = Vector3(0.0, 0.0, dist)
 	else:
 		camera.position.z = lerpf(camera.position.z, dist, 0.35 if dist < camera.position.z else 0.12)
+
+
+## Hiệu ứng camera theo thời gian thật, chỉ chạy từ _process (một lần mỗi khung hình, không phụ thuộc fps): FOV rộng thêm khi
+## nước rút (tiến dần theo 1 - e^(-FOV_EASE·dt), cùng nhịp FOV xe PlayerBike), nhún theo bước chạy (pha cộng dồn theo tốc độ
+## nên đổi tốc độ không giật), rung khi tiếp đất mạnh.
+func _camera_fx(delta: float) -> void:
 	var sprinting: bool = is_sprinting and horizontal_speed > JOG_SPEED + 0.5
-	camera.fov = lerpf(camera.fov, _fov_base + (SPRINT_FOV_ADD if sprinting else 0.0), 0.08)
+	camera.fov = lerpf(camera.fov, _fov_base + (SPRINT_FOV_ADD if sprinting else 0.0), 1.0 - exp(-FOV_EASE * delta))
 	var bob: float = 0.0
+	_bob_phase = fmod(_bob_phase + delta * TAU * horizontal_speed / 2.6, TAU)
 	if move_state == "GROUND" and horizontal_speed > JOG_SPEED - 0.5:
-		bob = sin(float(Time.get_ticks_msec()) * 0.001 * TAU * horizontal_speed / 2.6) * 0.03 * clampf(horizontal_speed / SPRINT_SPEED, 0.0, 1.0)
+		bob = sin(_bob_phase) * 0.03 * clampf(horizontal_speed / SPRINT_SPEED, 0.0, 1.0)
 	var sx: float = 0.0
 	var sy: float = 0.0
 	if _shake_t > 0.0:
-		_shake_t -= get_process_delta_time()
+		_shake_t -= delta
 		var k: float = _shake_amp * clampf(_shake_t / 0.35, 0.0, 1.0) * 0.12
 		sx = randf_range(-k, k)
 		sy = randf_range(-k, k)

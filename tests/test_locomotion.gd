@@ -1,9 +1,12 @@
 # File: res://tests/test_locomotion.gd
-# Test headless di chuyển kiểu GTA của ThirdPersonController: đi bộ 1.7 / chạy 4.2 m/s, thể lực nước rút ~6 s rồi hồi,
-# nhảy tại chỗ cao ~0.9 m, nhảy khi nước rút xa >= 3.2 m, rơi 2 / 4 / 8 m -> nhún / lăn / ngã (khoá điều khiển rồi đứng
-# dậy), đi qua bó vỉa 0.15 m không bao giờ vào trạng thái rơi.
+# Test headless di chuyển kiểu GTA của ThirdPersonController: đi bộ 1.7 / chạy 4.2 m/s, slow_t chậm một nửa đúng thời
+# hạn, thể lực nước rút ~6 s rồi hồi, FOV rộng khi nước rút, nhảy tại chỗ cao ~0.9 m, nhảy khi nước rút xa >= 3.2 m, rơi
+# 2 / 4 / 8 m -> nhún / lăn / ngã (khoá điều khiển rồi đứng dậy), tín hiệu landed khớp nhật ký với độ cao rơi đúng, đi
+# qua hết bó vỉa 0.15 m không bao giờ vào trạng thái rơi, teleport giữa cú nhảy xoá clip / nước rút / phím nhảy đang chờ.
 # Chạy:  godot --headless --path . --script tests/test_locomotion.gd
 extends SceneTree
+
+const KERB_LAST_FAR_X: float = -33.7   # mép xa của bó vỉa cuối (tâm -34.0, rộng 0.6)
 
 var world: Node3D
 var p: ThirdPersonController
@@ -14,6 +17,8 @@ var mark := Vector3.ZERO
 var peak: float = 0.0
 var done: bool = false
 var air_frames: int = 0
+var sig_log: Array[String] = []   # kiểu tiếp đất theo tín hiệu landed (xoá cùng lúc với p.landings)
+var sig_drops: Array[float] = []
 
 
 func _initialize() -> void:
@@ -27,11 +32,33 @@ func _initialize() -> void:
 	p = ThirdPersonController.new()
 	p.capture_on_click = false
 	# trong _initialize cây chưa chạy (teleport() đặt global_position, báo lỗi ngoài cây): đặt vị trí + yaw trước khi vào cây
-	p.position = Vector3(-150.0, 0.05, 0.0)
+	p.position = Vector3(-150.0, 0.0, 0.0)   # đứng đúng mặt sàn: không có cú "rơi" 5 cm lúc xuất hiện
 	p.yaw = -PI * 0.5   # nhìn về +X (_build xoay thân theo yaw)
 	world.add_child(p)
+	p.landed.connect(_on_landed)
 	physics_frame.connect(_on_physics)
 	print("--- TEST LOCOMOTION (GTA-style movement) ---")
+
+
+func _on_landed(kind: String, drop: float) -> void:
+	sig_log.append(kind)
+	sig_drops.append(drop)
+
+
+func _clear_landings() -> void:
+	p.landings.clear()
+	sig_log.clear()
+	sig_drops.clear()
+
+
+## Một cú rơi h m: đúng kiểu tiếp đất, tín hiệu landed phát đúng một lần cùng kiểu, độ cao rơi ~h.
+func _check_drop(h: float, want: String) -> bool:
+	print("  %d m drop -> %s (landed signal %s, drop %.2f m)" % [int(h), p.landings[0], sig_log, sig_drops[0] if sig_drops.size() > 0 else -1.0])
+	if not _check(p.landings[0] == want, "a %d m drop must give %s (got %s)" % [int(h), want, p.landings[0]]):
+		return false
+	if not _check(sig_log == p.landings, "landed must fire once per landing with the same kind (signal %s, log %s)" % [sig_log, p.landings]):
+		return false
+	return _check(absf(sig_drops[0] - h) < 0.25, "landed must report the drop height (%.2f m for a %d m drop)" % [sig_drops[0], int(h)])
 
 
 ## Máy pha chạy theo nhịp vật lý (SceneTree.physics_frame phát mỗi bước vật lý).
@@ -78,9 +105,24 @@ func _physics_process_test() -> void:
 				print("  jog speed %.2f m/s" % p.horizontal_speed)
 				if not _check(absf(p.horizontal_speed - 4.2) < 0.15, "jog speed must be 4.2 m/s (got %.2f)" % p.horizontal_speed):
 					return
+				p.slow_t = 1.5   # như PedestrianSpawner khi va người đi đường
+				_goto("slow")
+		"slow":
+			if t == 60:
+				print("  slow_t: %.2f m/s with %.2f s left" % [p.horizontal_speed, p.slow_t])
+				if not _check(p.slow_t > 0.0 and absf(p.horizontal_speed - 2.1) < 0.15, "slow_t must halve the jog speed while it lasts (got %.2f m/s, %.2f s left)" % [p.horizontal_speed, p.slow_t]):
+					return
+			if t == 150:
+				print("  slow_t over: %.2f m/s" % p.horizontal_speed)
+				if not _check(p.slow_t == 0.0 and absf(p.horizontal_speed - 4.2) < 0.15, "jog speed must come back when slow_t runs out (got %.2f m/s, slow_t %.2f)" % [p.horizontal_speed, p.slow_t]):
+					return
 				p.sprint_override = true
 				_goto("sprint")
 		"sprint":
+			if t == 120:
+				print("  sprint camera fov %.1f" % p.camera.fov)
+				if not _check(p.camera.fov > 75.0, "sprinting must widen the camera FOV towards 76 (got %.1f)" % p.camera.fov):
+					return
 			if not p.is_sprinting and t > 30:
 				var secs: float = float(t) / 60.0
 				print("  sprint lasted %.2f s" % secs)
@@ -94,6 +136,8 @@ func _physics_process_test() -> void:
 				var s: float = p.stamina * 6.0
 				print("  stamina after 4 s rest: %.2f s" % s)
 				if not _check(absf(s - 2.4) < 0.25, "stamina must refill 0.8 s per s after a 1 s delay (got %.2f s)" % s):
+					return
+				if not _check(p.camera.fov < 70.5, "the FOV must ease back to 70 after the sprint (got %.1f)" % p.camera.fov):
 					return
 				p.teleport(Vector3(-150.0, 0.05, -60.0), -PI * 0.5)
 				_goto("jump_settle")
@@ -125,30 +169,30 @@ func _physics_process_test() -> void:
 				print("  running jump distance %.2f m" % dist)
 				if not _check(dist >= 3.2, "a sprint jump must cover at least 3.2 m (got %.2f)" % dist):
 					return
+				print("  landings so far %s, landed signal %s" % [p.landings, sig_log])
+				if not _check(p.landings.size() == 2 and sig_log == p.landings, "two jumps -> two landings, each with one landed signal (log %s, signal %s)" % [p.landings, sig_log]):
+					return
 				p.sprint_override = false
-				p.landings.clear()
+				_clear_landings()
 				p.teleport(Vector3(78.5, 2.05, 0.0), -PI * 0.5)   # bục 2 m (x 78..82): đi ra mép +X
 				_goto("drop2")
 		"drop2", "drop4", "drop8":
 			if t == 10:
 				p.input_override = Vector2(0.0, -1.0)
 			if p.landings.size() > 0 and phase == "drop2":
-				print("  2 m drop -> %s" % p.landings[0])
-				if not _check(p.landings[0] == "LAND_SOFT", "a 2 m drop must give LAND_SOFT (got %s)" % p.landings[0]):
+				if not _check_drop(2.0, "LAND_SOFT"):
 					return
-				p.landings.clear()
+				_clear_landings()
 				p.teleport(Vector3(98.5, 4.05, 0.0), -PI * 0.5)
 				_goto("drop4")
 			elif p.landings.size() > 0 and phase == "drop4":
-				print("  4 m drop -> %s" % p.landings[0])
-				if not _check(p.landings[0] == "LAND_ROLL", "a 4 m drop must give LAND_ROLL (got %s)" % p.landings[0]):
+				if not _check_drop(4.0, "LAND_ROLL"):
 					return
-				p.landings.clear()
+				_clear_landings()
 				p.teleport(Vector3(138.5, 8.05, 0.0), -PI * 0.5)
 				_goto("drop8")
 			elif p.landings.size() > 0 and phase == "drop8":
-				print("  8 m drop -> %s" % p.landings[0])
-				if not _check(p.landings[0] == "SPLAT", "an 8 m drop must give SPLAT (got %s)" % p.landings[0]):
+				if not _check_drop(8.0, "SPLAT"):
 					return
 				mark = p.global_position
 				_goto("splat")
@@ -162,7 +206,7 @@ func _physics_process_test() -> void:
 				if not _check(p.move_state == "GROUND", "after splat + getup the player is back on the ground state (got %s)" % p.move_state):
 					return
 				p.input_override = Vector2.ZERO
-				p.landings.clear()   # nhật ký còn "SPLAT" của cú rơi 8 m
+				_clear_landings()   # nhật ký còn "SPLAT" của cú rơi 8 m
 				p.teleport(Vector3(-43.0, 0.05, 30.0), -PI * 0.5)
 				air_frames = 0
 				_goto("kerbs")
@@ -171,11 +215,43 @@ func _physics_process_test() -> void:
 				p.input_override = Vector2(0.0, -1.0)
 			if p.move_state in ["AIR", "JUMP"]:
 				air_frames += 1
-			if t == 150:
-				print("  kerb crossing: %d air frames, landings %s" % [air_frames, p.landings])
-				if not _check(air_frames == 0 and p.landings.is_empty(), "stepping over 0.15 m kerbs must never enter the air state"):
+			if t == 170:
+				# qua hết: cả capsule (bán kính 0.4) đã qua mép xa của bó vỉa cuối
+				print("  kerb crossing: %d air frames, landings %s, x %.2f (past the last kerb at x > %.2f)" % [air_frames, p.landings, p.global_position.x, KERB_LAST_FAR_X + 0.4])
+				if not _check(air_frames == 0 and p.landings.is_empty() and sig_log.is_empty(), "stepping over 0.15 m kerbs must never enter the air state"):
 					return
-				print("✅ SUCCESS: GTA-STYLE MOVEMENT - SPEEDS, STAMINA, JUMPS, LANDINGS, SPLAT LOCK, KERBS")
+				if not _check(p.global_position.x > KERB_LAST_FAR_X + 0.4, "the player must get past all six kerbs (x %.2f)" % p.global_position.x):
+					return
+				_goto("teleport")
+		"teleport":
+			if t == 1:
+				p.stamina = 1.0
+				p.sprint_override = true
+			if t == 60:
+				if not _check(p.is_sprinting, "sprinting before the teleport"):
+					return
+				p.teleport(Vector3(-150.0, 0.05, 60.0), -PI * 0.5)
+				if not _check(not p.is_sprinting, "teleport must reset is_sprinting"):
+					return
+			if t == 100:
+				p.jump_override = true
+			if t == 120:
+				var an: Node = CharacterBuilder.get_animator(p.model)
+				var clip_before: String = String(an.get("clip"))
+				if not _check(p.move_state in ["JUMP", "AIR"] and clip_before != "", "mid-air with an air clip before the teleport (state %s, clip '%s')" % [p.move_state, clip_before]):
+					return
+				p.jump_override = true   # phím nhảy đang chờ cũng không được sống sót qua teleport
+				p.teleport(Vector3(-150.0, 0.05, 80.0), -PI * 0.5)
+				var clip_after: String = String(an.get("clip"))
+				print("  mid-air teleport: clip '%s' -> '%s', state %s, jump pending %s" % [clip_before, clip_after, p.move_state, p.jump_override])
+				if not _check(p.move_state == "GROUND" and clip_after == "" and not p.jump_override, "teleport must stop the movement clip and drop a pending jump (clip '%s', jump %s)" % [clip_after, p.jump_override]):
+					return
+				p.sprint_override = false
+				p.input_override = Vector2.ZERO
+			if t == 160:
+				if not _check(p.move_state == "GROUND" and p.landings.is_empty(), "no jump or landing after the teleport (state %s, landings %s)" % [p.move_state, p.landings]):
+					return
+				print("✅ SUCCESS: GTA-STYLE MOVEMENT - SPEEDS, SLOW_T, STAMINA, SPRINT FOV, JUMPS, LANDINGS + SIGNAL, SPLAT LOCK, KERBS, TELEPORT RESET")
 				done = true
 				quit(0)
 

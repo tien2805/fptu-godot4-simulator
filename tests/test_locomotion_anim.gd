@@ -1,15 +1,18 @@
 # File: res://tests/test_locomotion_anim.gd
 # Test headless lớp chuyển động của RigAnimator: nước rút tăng biên độ vung tay, nghiêng người không cộng dồn,
-# "getup" phát ngược clip Death rồi về clip nền, mỗi clip mới làm xương (rigged) / pivot (thân tự dựng) rời tư thế trước
-# clip, đứng yên lâu có động tác vặt (fidget) nhưng không "nhìn quanh" khi đang nhìn ai đó, Idle_Neutral phát tốc độ 1,
+# "getup" phát ngược clip Death rồi về clip nền, mỗi clip mới làm xương (rigged) / pivot (thân tự dựng) rời tư thế Idle
+# (đo ở cuối cửa sổ của clip, khi clip trước đã tắt), đứng yên lâu có động tác vặt (fidget) nhưng không "nhìn quanh" khi đang nhìn ai đó, Idle_Neutral phát tốc độ 1,
 # lớp cộng thêm (nước rút / nghiêng) mờ dần khi clip gói bắt đầu, animation có track xoay Hips thì không bị lăn hông đè.
 # Chạy:  godot --headless --path . --script tests/test_locomotion_anim.gd
 extends SceneTree
 
 const NEW_CLIPS: Array[String] = ["jump_takeoff", "jump_air", "fall_flail", "land_soft", "skid", "stumble", "knockdown", "getup", "roll"]
 const CLIPS_AT: int = 640   # khung bắt đầu chạy lần lượt các clip mới (sau phần getup)
-const CLIP_MIN_DEV: float = 0.15   # rad: clip phải xoay ít nhất một xương / pivot hơn mức này so với tư thế trước clip (Idle tự lắc ~0.03)
-const IDLE_END: int = CLIPS_AT + 9 * 20 + 780   # hết 13 s đứng yên sau các clip (kiểm fidget)
+const CLIP_MIN_DEV: float = 0.15   # rad: clip phải xoay ít nhất một xương / pivot hơn mức này so với Idle (Idle tự lắc ~0.03)
+const CLIP_SLOT: int = 35          # frame mỗi clip: CLIP_SETTLE frame về Idle + 20 frame clip
+const CLIP_SETTLE: int = 15        # 0.25 s: clip gói trước đã hoà xong về Idle (blend 0.18 s), clip tự dựng tắt ngay
+const CLIPS_END: int = CLIPS_AT + 9 * CLIP_SLOT
+const IDLE_END: int = CLIPS_END + 780   # hết 13 s đứng yên sau các clip (kiểm fidget)
 
 var getup_end: int = 0
 var world: Node3D
@@ -24,8 +27,8 @@ var arm_min: float = 99.0
 var arm_max: float = -99.0
 var lean_x30: float = 0.0
 var clip_i: int = 0
-var snap_rig: Dictionary = {}    # khớp -> Quaternion ngay trước clip đang chạy
-var snap_code: Dictionary = {}   # pivot -> Quaternion ngay trước clip đang chạy
+var ref_rig: Dictionary = {}    # khớp -> Quaternion ở tư thế Idle, trước clip mới đầu tiên
+var ref_code: Dictionary = {}   # pivot -> Quaternion ở tư thế Idle, trước clip mới đầu tiên
 var dev_rig: float = 0.0
 var dev_code: float = 0.0
 
@@ -111,26 +114,31 @@ func _process(_d: float) -> bool:
 		var an: Node = CharacterBuilder.get_animator(rig)
 		if not _check(String(an.get("clip")) == "", "after getup the animator returns to its base clip (clip = '%s')" % an.get("clip")):
 			return true
-	# mọi clip mới chạy 20 frame trên cả hai thân: trong 20 frame đó xương / pivot phải rời tư thế ngay trước clip
-	if frames > CLIPS_AT and frames <= CLIPS_AT + NEW_CLIPS.size() * 20:
-		dev_rig = maxf(dev_rig, _dev(snap_rig, _rig_pose()))
-		dev_code = maxf(dev_code, _dev(snap_code, _code_pose()))
-		if (frames - CLIPS_AT) % 20 == 0:
-			var pc: String = NEW_CLIPS[(frames - CLIPS_AT) / 20 - 1]
-			print("  clip %s: rig %.2f rad, code %.2f rad" % [pc, dev_rig, dev_code])
-			if not _check(dev_rig > CLIP_MIN_DEV, "clip %s must move a bone of the rigged body (max %.3f rad)" % [pc, dev_rig]):
-				return true
-			if pc != "roll" and not _check(dev_code > CLIP_MIN_DEV, "clip %s must move a pivot of the code body (max %.3f rad)" % [pc, dev_code]):
-				return true
-	if frames >= CLIPS_AT and frames < CLIPS_AT + NEW_CLIPS.size() * 20 and (frames - CLIPS_AT) % 20 == 0:
-		var c: String = NEW_CLIPS[(frames - CLIPS_AT) / 20]
-		snap_rig = _rig_pose()
-		snap_code = _code_pose()
-		dev_rig = 0.0
-		dev_code = 0.0
-		CharacterBuilder.play(rig, c)
-		CharacterBuilder.play(code, c)   # roll: thân tự dựng không có nhánh _clip_pose, chỉ cần không lỗi
-	if frames == CLIPS_AT + NEW_CLIPS.size() * 20:
+	# mỗi clip mới một ô CLIP_SLOT frame trên cả hai thân: dừng clip trước, chờ CLIP_SETTLE frame về Idle, chụp tư thế Idle
+	# tham chiếu, phát clip; trong phần còn lại của ô xương / pivot phải lệch khỏi tham chiếu – clip không làm gì thì chỉ còn Idle
+	if frames >= CLIPS_AT and frames < CLIPS_END:
+		var j: int = (frames - CLIPS_AT) % CLIP_SLOT
+		var c: String = NEW_CLIPS[(frames - CLIPS_AT) / CLIP_SLOT]
+		if j == 0:
+			CharacterBuilder.stop_clip(rig)
+			CharacterBuilder.stop_clip(code)
+		elif j == CLIP_SETTLE:
+			ref_rig = _rig_pose()
+			ref_code = _code_pose()
+			dev_rig = 0.0
+			dev_code = 0.0
+			CharacterBuilder.play(rig, c)
+			CharacterBuilder.play(code, c)   # roll: thân tự dựng không có nhánh _clip_pose, chỉ cần không lỗi
+		elif j > CLIP_SETTLE:
+			dev_rig = maxf(dev_rig, _dev(ref_rig, _rig_pose()))
+			dev_code = maxf(dev_code, _dev(ref_code, _code_pose()))
+			if j == CLIP_SLOT - 1:
+				print("  clip %s: off Idle by rig %.2f rad, code %.2f rad" % [c, dev_rig, dev_code])
+				if not _check(dev_rig > CLIP_MIN_DEV, "clip %s must move a bone of the rigged body off Idle (max %.3f rad)" % [c, dev_rig]):
+					return true
+				if c != "roll" and not _check(dev_code > CLIP_MIN_DEV, "clip %s must move a pivot of the code body off Idle (max %.3f rad)" % [c, dev_code]):
+					return true
+	if frames == CLIPS_END:
 		CharacterBuilder.stop_clip(rig)
 		CharacterBuilder.stop_clip(code)
 		CharacterBuilder.set_speed(rig, 0.0)
