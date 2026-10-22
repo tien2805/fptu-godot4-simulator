@@ -23,6 +23,8 @@
 #     ghi công OSM + Microsoft) chỉ vẽ ở lần mở đầu, khi hotspot đổi màu và khi đổi kích thước – KHÔNG vẽ lại khi mở
 #     lại hay theo nhịp HUD (đếm static_draws); lớp động vẽ lại theo nhịp HUD; đo chi phí một lần vẽ lại lớp động
 #     (queue_redraw + 1 frame, và thời gian trong _draw).
+# Di chuyển kiểu GTA (plan vice-people Task 8): nhảy ở spawn -> về lại trạng thái GROUND trong 1,5 s, FreeRoam có thanh
+# thể lực; mỗi lượt chạy ngang ra mép mặt cầu thấp có thêm bản nước rút + nhảy 1,2 m trước mép (lan can vô hình vẫn chặn).
 # Mọi kiểm tra dùng _check() + quit(2) (assert hỏng trong _initialize làm treo --script), có watchdog.
 # Chạy:  godot --headless --path . --script tests/test_free_roam.gd
 extends SceneTree
@@ -65,6 +67,8 @@ var canal_mid := Vector2.ZERO
 var deck_walks: Array = []       # [Vector3 start, Vector3 hướng ngang, float nửa bề rộng, Vector2 tim, String nhãn]
 var deck_i: int = 0
 var deck_min_y: float = 0.0
+var jump_y0: float = 0.0
+var deck_jumped: bool = false
 var deck_dry_spot := Vector3.ZERO   # giữa mặt đường qua cống
 var deck_wet_spot := Vector3.ZERO   # dưới kênh, cạnh đường qua cống
 var rescues0: int = 0
@@ -317,6 +321,18 @@ func _process(_delta: float) -> bool:
 					return true
 				if not _check(moved.normalized().dot(-spawn.basis.z) > 0.8, "W moves along the camera/spawn forward"):
 					return true
+				jump_y0 = player.global_position.y
+				player.set("jump_override", true)
+				mark = pf
+				phase = 100
+		100:
+			if pf >= mark + 90:
+				var st: String = String(player.get("move_state"))
+				print("  jump at the spawn: state %s, y %.2f (start %.2f)" % [st, player.global_position.y, jump_y0])
+				if not _check(st == "GROUND" and absf(player.global_position.y - jump_y0) < 0.3, "a jump at the spawn lands back on the ground state within 1.5 s"):
+					return true
+				if not _check(roam.get("stamina_bar") != null, "FreeRoam exposes a stamina bar"):
+					return true
 				roam.call("mount_bike")
 				mark = pf
 				phase = 2
@@ -493,6 +509,13 @@ func _process(_delta: float) -> bool:
 		83:
 			if pf >= mark + 60:
 				var pp: Vector3 = player.global_position
+				var bar: ProgressBar = roam.get("stamina_bar")
+				var hint_panel: Control = (roam.get("hint_label") as Control).get_parent()
+				print("  stamina bar while sprinting: visible %s, value %.0f, rect %s (hint panel %s)" % [str(bar.visible), bar.value, str(bar.get_global_rect()), str(hint_panel.get_global_rect())])
+				if not _check(bar.visible and bar.value < 100.0 and absf(bar.value - float(player.get("stamina")) * 100.0) < 2.0, "the stamina bar shows the draining stamina while sprinting (visible %s, value %.0f)" % [str(bar.visible), bar.value]):
+					return true
+				if not _check(not bar.get_global_rect().intersects(hint_panel.get_global_rect()), "the stamina bar sits above the bottom hint panel, not over it"):
+					return true
 				_release_input()
 				var past: float = -(_xz(pp) - canal_mid).dot(canal_n)
 				print("  sprinted 60 frames at the canal from 1.2 m: player at %s (%.2f m past the edge line)" % [str(pp), past])
@@ -510,6 +533,13 @@ func _process(_delta: float) -> bool:
 			_start_deck_walk(pf)
 			phase = 85
 		85:
+			var dw: Array = deck_walks[deck_i]
+			if dw.size() > 5 and bool(dw[5]) and not deck_jumped:
+				var dir3: Vector3 = dw[1]
+				var lat: float = (_xz(player.global_position) - (dw[3] as Vector2)).dot(Vector2(dir3.x, dir3.z))
+				if lat > float(dw[2]) - 1.2:
+					player.set("jump_override", true)
+					deck_jumped = true
 			deck_min_y = minf(deck_min_y, player.global_position.y)
 			if pf >= mark + DECK_WALK_FRAMES and player.get("input_override") != null:
 				_release_input()
@@ -751,6 +781,9 @@ func _phase_map_hud_refreshes() -> bool:
 	if not _check(dyn >= 4, "the dynamic map layer redraws at the HUD rate (%d redraws in %d physics frames)" % [dyn, MAP_HUD_FRAMES]):
 		return false
 	var dl: Control = mo.get("dynamic_layer")
+	# Giữ nhịp HUD của FreeRoam (0,2 s) đứng yên tới lần đo ở frame sau: headless chạy ~145 fps nên đôi khi một nhịp
+	# HUD rơi đúng vào khoảng đo và vẽ lớp động thêm lần nữa (test chập chờn). Như vậy chỉ lần vẽ cưỡng bức được đếm.
+	roam.set("_hud_timer", 1.0e9)
 	map_d1 = int(mo.get("dynamic_draws"))
 	map_t0 = Time.get_ticks_usec()
 	dl.queue_redraw()
@@ -763,6 +796,7 @@ func _phase_map_forced_redraw() -> bool:
 	var frame_us: int = Time.get_ticks_usec() - map_t0
 	var mo: Control = roam.get("map_overlay")
 	var draw_us: int = int(mo.get("dynamic_draw_usec"))
+	roam.set("_hud_timer", 0.0)   # nhịp HUD chạy lại từ frame vật lý kế tiếp
 	print("  map dynamic redraw: %.3f ms in _draw, %.2f ms for queue_redraw + one frame; static layer: %d triangles built once in %.1f ms at load, last draw %.2f ms, %d draws" % [draw_us / 1000.0, frame_us / 1000.0, int(mo.get("triangles")), int(mo.get("setup_usec")) / 1000.0, int(mo.get("static_draw_usec")) / 1000.0, int(mo.get("static_draws"))])
 	if not _check(int(mo.get("dynamic_draws")) == map_d1 + 1, "a forced dynamic redraw draws the dynamic layer once within one frame (%d -> %d)" % [map_d1, int(mo.get("dynamic_draws"))]):
 		return false
@@ -964,6 +998,12 @@ func _setup_deck_walks() -> bool:
 				if not _check(_in_water(wet), "test setup: canal point %s next to the culvert road" % str(wet)):
 					return false
 				deck_wet_spot = Vector3(wet.x, -0.25, wet.y)
+	var n_plain: int = deck_walks.size()
+	for i: int in range(n_plain):
+		var jw: Array = (deck_walks[i] as Array).duplicate()
+		jw[4] = String(jw[4]) + " + jump"
+		jw.append(true)   # index 5: jump 1.2 m before the edge
+		deck_walks.append(jw)
 	print("  %d sideways walks off low decks over water" % deck_walks.size())
 	return true
 
@@ -983,6 +1023,7 @@ func _start_deck_walk(pf: int) -> void:
 	player.set("input_override", Vector2(0.0, -1.0))
 	player.set("sprint_override", true)
 	deck_min_y = (w[0] as Vector3).y
+	deck_jumped = false
 	mark = pf
 
 
@@ -995,6 +1036,9 @@ func _finish_deck_walk() -> bool:
 	var lateral: float = (_xz(p) - (w[3] as Vector2)).dot(Vector2(dir.x, dir.z))
 	print("  deck %s: min y %.2f, end %s, %.2f m sideways (half width %.1f)" % [String(w[4]), deck_min_y, str(p.snappedf(0.01)), lateral, hw])
 	if not _check(deck_min_y > -0.15 and p.y > -0.15, "deck %s: running sideways off a low deck never drops the player into the canal (min y %.2f)" % [String(w[4]), deck_min_y]):
+		return false
+	# cú nhảy không được đưa người chơi lên đứng trên đỉnh lan can vô hình (từ đó bước ra ngoài là rơi xuống kênh)
+	if not _check(p.y < (w[0] as Vector3).y + 0.3, "deck %s: the player ends standing on the deck, not on top of the invisible guard (y %.2f, deck %.2f)" % [String(w[4]), p.y, (w[0] as Vector3).y - 0.05]):
 		return false
 	return _check(lateral > hw - 0.65 and lateral < hw, "deck %s: the player ran up to the invisible edge guard at the ribbon edge (%.2f m sideways, half width %.1f)" % [String(w[4]), lateral, hw])
 

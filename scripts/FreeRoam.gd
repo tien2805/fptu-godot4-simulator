@@ -19,7 +19,9 @@
 #     ban đêm), đầu sân bóng phía làn bãi xe ngoài hàng rào (Màn 4), căn tin (Màn 5), mặt sân trong của module chứa
 #     phòng 311 (Extra). [E] trong hotspot -> StageManager.start_stage_from_roam() (roam_spawn = return_spawn: 3,5 m từ
 #     hotspot về phía tâm sân trong / về spawn BE6, đã kiểm chỗ trống).
-#   - HUD (anchors): gợi ý đáy giữa, giờ trong ngày trên trái, FPS + khoảng cách tới cổng FPTU trên phải.
+#   - HUD (anchors): gợi ý đáy giữa (kèm phím di chuyển kiểu GTA: nước rút / đi bộ / nhảy), thanh thể lực nước rút ngay
+#     trên dòng gợi ý (chỉ hiện khi đang đi bộ và đang nước rút / chưa hồi đầy), giờ trong ngày trên trái, FPS + khoảng
+#     cách tới cổng FPTU trên phải. Tường bờ kênh / lan can vô hình cao 1,6 m: cú nhảy (~0,95 m) không vượt qua được.
 #     [T] đổi preset giờ (GameFX.TOD_PRESETS ngoài trời + đêm; luôn áp lên Environment gốc của cảnh), [M] bản đồ
 #     (RoamMap: lớp tĩnh = 1 mesh 2D dựng sẵn, chỉ vẽ khi mở lần đầu / đổi kích thước / đổi màu hotspot; lớp động =
 #     người chơi + xe đang đỗ, vẽ lại theo nhịp HUD), [Z]/[C] xoay camera, [ESC] tạm dừng (StageManager).
@@ -41,10 +43,10 @@ const GROUND_SIZE: float = 12000.0
 const GROUND_TILE: float = 500.0          # ô chia mặt đất (tam giác sàn va chạm không dài hàng km)
 const GROUND_MESH_Y: float = -0.05
 const GROUND_COLLIDER_Y: float = 0.0
-const BANK_WALL_H: float = 1.0           # tường bờ kênh vô hình: từ dưới mặt nước lên 1 m trên mặt đất
-const BANK_GAP_DECK_MAX: float = 1.05    # tường bờ chỉ khoét dưới đoạn ribbon có mặt thấp hơn đỉnh tường (+5 cm)
+const BANK_WALL_H: float = 1.6           # tường bờ kênh vô hình: từ dưới mặt nước lên 1,6 m trên mặt đất
+const BANK_GAP_DECK_MAX: float = 1.65    # tường bờ chỉ khoét dưới đoạn ribbon có mặt thấp hơn đỉnh tường (+5 cm)
 const DECK_GUARD_MAX_H: float = 1.5      # đoạn ribbon trên mặt nước thấp hơn ROAD_Y + 1,5 m: lan can vô hình 2 mép
-const DECK_GUARD_ABOVE: float = 1.0      # lan can vô hình cao tới mặt đường + 1 m
+const DECK_GUARD_ABOVE: float = 1.6      # lan can vô hình cao tới mặt đường + 1,6 m (cú nhảy ~0,95 m không qua được)
 const WALL_BOTTOM_BELOW_WATER: float = 0.3
 const ROAD_HASH_CELL: float = 64.0
 const WET_MARGIN: float = 0.15           # chân (người / xe) thấp hơn WATER_Y + 0,15 = đang ở dưới kênh
@@ -64,7 +66,7 @@ const HINT_FLASH_S: float = 2.5
 const HUD_REFRESH: float = 0.2
 const MAP_TOP: float = 66.0              # bản đồ [M] bắt đầu dưới bảng giờ / FPS (cao ~56 px)
 const MAP_BOTTOM: float = 30.0
-const HINT_DEFAULT: String = "[WASD] đi · [Shift] chạy · [Z]/[C] xoay camera · [F] xe máy · [T] giờ trong ngày · [M] bản đồ · [ESC] tạm dừng"
+const HINT_DEFAULT: String = "[WASD] đi · [Shift] chạy nước rút · [Ctrl] đi bộ · [Space] nhảy · [Z]/[C] xoay camera · [F] xe máy · [T] giờ trong ngày · [M] bản đồ · [ESC] tạm dừng"
 const HINT_RIDING: String = "[F] xuống xe · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [H] còi"
 const HINT_NO_DISMOUNT: String = "Không có chỗ trống cạnh xe để xuống (nước / tường / vật cản) – chạy ra chỗ rộng rồi bấm [F]"
 const HINT_RESCUED: String = "Rơi xuống kênh! Đã đưa bạn về chỗ khô gần nhất"
@@ -97,6 +99,8 @@ var hint_holder: Control
 var tod_label: Label
 var stats_label: Label
 var map_overlay: RoamMap
+## Thanh thể lực nước rút (ThirdPersonController.stamina): hiện khi đang đi bộ và đang nước rút / chưa hồi đầy.
+var stamina_bar: ProgressBar
 ## HUD kiểu thập niên 80 (Task VC-4): chỉ hiện ở phong cách vice; giờ = huy hiệu giờ trong ngày, ví Cóc Vàng, radar
 ## (blip hotspot theo màu màn, xe đang đỗ khi đi bộ, tuyến BE6 -> FPTU màu hồng), tên khu vực, "Xe máy" khi lên xe.
 var vice_hud: ViceHUD
@@ -1058,6 +1062,18 @@ func _build_hud() -> void:
 	hud.add_child(map_overlay)
 	_sync_map_hotspots()
 	_build_vice_hud()
+	# Thanh thể lực nước rút (Shift): hiện khi đang nước rút hoặc chưa hồi đầy; nằm ngay trên bảng gợi ý đáy (bảng 2 dòng
+	# cao 63 px + lề 24 -> đỉnh bảng ở 87 px từ đáy; thanh cách 2 px, vẫn dưới tên khu vực của ViceHUD ở 104 px)
+	stamina_bar = GameFXScript.make_bar(100.0, Color("#3FF2FF"), 10)
+	stamina_bar.name = "StaminaBar"
+	stamina_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	stamina_bar.offset_left = -110.0
+	stamina_bar.offset_right = 110.0
+	stamina_bar.offset_top = -99.0
+	stamina_bar.offset_bottom = -89.0
+	stamina_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stamina_bar.visible = false
+	hud.add_child(stamina_bar)
 
 
 ## ViceHUD (nút con của cảnh, lớp vẽ 0 dưới HUD): tên khu vực nằm trên dòng gợi ý 2 dòng ở đáy (đáy 104 px).
@@ -1131,6 +1147,10 @@ func _physics_process(delta: float) -> void:
 		return
 	_watch_water(delta)
 	_update_hotspot()
+	if stamina_bar:
+		var on_foot: bool = not mounted and player.visible
+		stamina_bar.value = player.stamina * 100.0
+		stamina_bar.visible = on_foot and (player.stamina < 0.999 or player.is_sprinting) and not (map_overlay and map_overlay.visible)
 	if _hint_flash_t > 0.0:
 		_hint_flash_t -= delta
 	_hud_timer -= delta
