@@ -1773,6 +1773,7 @@ var clip_i: int = 0
 
 
 func _initialize() -> void:
+	Engine.max_fps = 60   # bộ hoạt ảnh chạy theo thời gian thật; headless vẽ ~145 khung/s nên đếm khung phải khoá 60
 	world = Node3D.new()
 	root.add_child(world)
 	rig = CharacterBuilder.build({"preset": "player", "seed": 2805, "rigged": true})
