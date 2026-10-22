@@ -18,6 +18,7 @@ var done: bool = false
 var blink_seen: Dictionary = {}
 var wrist_probe: Node3D
 var static_c: Node3D
+var static_out: Node3D
 var phase_task4: bool = false
 
 
@@ -111,6 +112,11 @@ func _task4_start() -> void:
 	static_c.position = Vector3(0.0, 0.0, 4.0)
 	world.add_child(static_c)
 	CharacterBuilder.pose(static_c, "sit", 0.0)
+	# pose() NGOÀI cây rồi mới add_child (dựng cảnh trước khi gắn vào cây): xương phải giữ tư thế khi vào cây
+	static_out = CharacterBuilder.build({"preset": "student", "seed": 78, "animate": false})
+	static_out.position = Vector3(1.5, 0.0, 4.0)
+	CharacterBuilder.pose(static_out, "sit", 0.0)
+	world.add_child(static_out)
 
 
 func _task4_check_sit() -> void:
@@ -118,6 +124,23 @@ func _task4_check_sit() -> void:
 	print("  static sit: hips y %.2f" % hy)
 	if not _check(hy < 0.62, "pose(sit) on a rigged body must lower the hips (y %.2f)" % hy):
 		return
+	var hy_out: float = CharacterBuilder.get_pivot(static_out, "hips").global_position.y
+	print("  static sit posed outside the tree: hips y %.2f" % hy_out)
+	if not _check(hy_out < 0.62, "pose(sit) before add_child must survive entering the tree (hips y %.2f)" % hy_out):
+		return
+	# xương bàn chân Quaternius (Foot.L/R) là đích IK con của Root: khi clip gập chân, bàn chân phải đi theo ống chân
+	# (khoảng gối -> bàn chân giữ như tư thế nghỉ) thay vì đứng yên trên sàn làm giày bị kéo dài
+	for c: Node3D in [static_c, static_out]:
+		var sk: Skeleton3D = c.get_meta("skeleton") as Skeleton3D
+		for s: String in ["L", "R"]:
+			var kb: int = sk.find_bone("LowerLeg." + s)
+			var fb: int = sk.find_bone("Foot." + s)
+			var d_rest: float = sk.get_bone_global_rest(kb).origin.distance_to(sk.get_bone_global_rest(fb).origin)
+			var d_now: float = sk.get_bone_global_pose(kb).origin.distance_to(sk.get_bone_global_pose(fb).origin)
+			if c == static_c and s == "L":
+				print("  sit: knee -> foot %.3f (rest %.3f)" % [d_now, d_rest])
+			if not _check(absf(d_now - d_rest) < 0.01, "pose(sit): Foot.%s must follow the shin (knee -> foot %.3f, rest %.3f)" % [s, d_now, d_rest]):
+				return
 	CharacterBuilder.pose(static_c, "", 0.0)
 
 
