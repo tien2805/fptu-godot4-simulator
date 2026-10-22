@@ -2,7 +2,9 @@
 # Test headless người PS2 (spec vice-people-and-movement, Phần 1): cổ điển không đổi (dấu vân tay ghi từ main),
 # ở chế độ ps2 mọi preset là thân rigged + đầu PS2, đủ pivot của thân tự dựng, vật liệu mặt một ô atlas, cao đầu thật,
 # đổi ô biểu cảm, chớp mắt bằng ô "closed", đồ gắn vào pivot cẳng tay nằm ở cổ tay, tư thế tĩnh + bake người ngồi xe
-# (Task 4), thời gian dựng.
+# (Task 4), thời gian dựng. Thêm (Task 4, review Task 3): vật liệu vice không viền, thân tự dựng vice không khối cầu khớp,
+# pivot bàn chân chung BoneAttachment3D với gối, trục pivot elbow_r, set_opacity giữ mặt PS2, bàn chân theo ống chân khi
+# ngồi, tư thế đặt ngoài cây, nhân vật rời cây rồi vào lại vẫn chạy clip tự dựng.
 # Chạy:  godot --headless --path . --script tests/test_ps2_people.gd
 extends SceneTree
 
@@ -19,7 +21,9 @@ var blink_seen: Dictionary = {}
 var wrist_probe: Node3D
 var static_c: Node3D
 var static_out: Node3D
+var readd_c: Node3D
 var phase_task4: bool = false
+const JOINT_PIVOTS: Array[String] = ["shoulder_l", "shoulder_r", "elbow_l", "elbow_r", "hand_l", "hand_r", "thigh_l", "thigh_r", "knee_l", "knee_r"]
 
 
 func _initialize() -> void:
@@ -32,6 +36,9 @@ func _initialize() -> void:
 		return
 	CharacterBuilder.ps2 = true
 	CharacterBuilder.toon = false
+	# đổi phong cách như trong game (đổi art_style -> ViceStyle.forget_cached_materials()): bỏ vật liệu toon có viền mà các
+	# thân cổ điển ở trên đã để lại trong cache
+	CharacterBuilder._mat_cache = {}
 	for i: int in range(PRESETS.size()):
 		var c: Node3D = CharacterBuilder.build({"preset": PRESETS[i], "seed": i * 31 + 1})
 		c.position = Vector3(float(i) * 1.2, 0.0, 0.0)
@@ -50,6 +57,26 @@ func _initialize() -> void:
 		var n_mi: int = CharacterBuilder._mesh_instances(c).size()
 		if not _check(n_mi >= 6 and n_mi <= 40, "%s: %d mesh instances (expected 6..40)" % [PRESETS[i], n_mi]):
 			return
+		var outlined: String = _outlined_material(c)
+		if not _check(outlined == "", "%s: vice materials must carry no outline next_pass (found on %s)" % [PRESETS[i], outlined]):
+			return
+		for s: String in ["l", "r"]:
+			var foot_att: Node = CharacterBuilder.get_pivot(c, "foot_" + s).get_parent()
+			if not _check(foot_att == CharacterBuilder.get_pivot(c, "knee_" + s).get_parent(), "%s: foot_%s pivot must hang under the knee_%s BoneAttachment3D (same LowerLeg bone)" % [PRESETS[i], s, s]):
+				return
+	# thân tự dựng ở vice (rigged: false; trong game chỉ khi thiếu mô hình): không khối cầu khớp, không viền
+	var cb: Node3D = CharacterBuilder.build({"preset": "student", "seed": 9, "rigged": false})
+	var spheres: int = 0
+	for k: String in JOINT_PIVOTS:
+		for ch: Node in CharacterBuilder.get_pivot(cb, k).get_children():
+			if ch is MeshInstance3D and (ch as MeshInstance3D).mesh is SphereMesh:
+				spheres += 1
+	var cb_outlined: String = _outlined_material(cb)
+	cb.free()
+	if not _check(spheres == 0, "a vice rigged:false body must have no joint spheres (found %d)" % spheres):
+		return
+	if not _check(cb_outlined == "", "a vice rigged:false body must carry no outline next_pass (found on %s)" % cb_outlined):
+		return
 	print("--- TEST PS2 PEOPLE: %d presets in ps2 mode ---" % PRESETS.size())
 
 
@@ -81,12 +108,34 @@ func _process(_d: float) -> bool:
 		print("  forearm attach -> wrist gap %.3f m" % gap)
 		if not _check(gap < 0.08, "an attachment 0.22 m down the elbow_r pivot must sit at the wrist (gap %.3f m)" % gap):
 			return true
+		# trục của pivot elbow_r (không chỉ gốc): -Y dọc cẳng tay (khuỷu -> cổ tay), -Z về phía trước nhân vật (lệch < 30°)
+		var eb: Basis = CharacterBuilder.get_pivot(chars[0], "elbow_r").global_basis
+		var elbow: Vector3 = sk.global_transform * sk.get_bone_global_pose(sk.find_bone("LowerArm.R")).origin
+		var a_down: float = rad_to_deg((-eb.y).angle_to(wrist - elbow))
+		var a_front: float = rad_to_deg((-eb.z).angle_to(-chars[0].global_basis.z))
+		print("  elbow_r pivot: -Y vs forearm %.1f deg, -Z vs character front %.1f deg" % [a_down, a_front])
+		if not _check(a_down < 10.0, "elbow_r pivot -Y must run along the forearm (off by %.1f deg)" % a_down):
+			return true
+		if not _check(a_front < 30.0, "elbow_r pivot -Z must point toward the character's front within 30 deg (off by %.1f deg)" % a_front):
+			return true
 		for e: String in ["happy", "pain", "talk"]:
 			CharacterBuilder.set_expression(chars[0], e)
 			var fm: StandardMaterial3D = CharacterBuilder.get_pivot(chars[0], "face_mesh").material_override as StandardMaterial3D
 			if not _check(fm.uv1_offset.is_equal_approx(PS2Head.cell_offset(e)), "set_expression(%s) must move the face to its cell" % e):
 				return true
 		CharacterBuilder.set_expression(chars[0], "open")
+		# set_opacity nhân bản vật liệu: mặt PS2 giữ meta ps2_face, set_expression vẫn đổi ô, Animator chớp mắt trên vật liệu mới
+		CharacterBuilder.set_opacity(chars[1], 0.5)
+		var fo: StandardMaterial3D = CharacterBuilder.get_pivot(chars[1], "face_mesh").material_override as StandardMaterial3D
+		if not _check(fo != null and bool(fo.get_meta("ps2_face", false)), "set_opacity must keep the ps2_face meta on the PS2 face material"):
+			return true
+		CharacterBuilder.set_expression(chars[1], "surprised")
+		if not _check(fo.uv1_offset.is_equal_approx(PS2Head.cell_offset("surprised")), "set_expression after set_opacity must still move the face cell"):
+			return true
+		if not _check(CharacterBuilder.get_animator(chars[1]).face_mat == fo, "after set_opacity the animator must blink on the visible face material"):
+			return true
+		CharacterBuilder.set_expression(chars[1], "open")
+		CharacterBuilder.set_opacity(chars[1], 1.0)
 	if frames >= 10 and frames < 420:
 		var closed: Vector3 = PS2Head.cell_offset("closed")
 		for i: int in range(chars.size()):
@@ -102,6 +151,8 @@ func _process(_d: float) -> bool:
 		_task4_check_sit()
 	if phase_task4 and frames == 428:
 		_task4_check_rest_and_bake()
+	if phase_task4 and frames == 445:
+		_task4_check_readd()
 	return false
 
 
@@ -117,6 +168,11 @@ func _task4_start() -> void:
 	static_out.position = Vector3(1.5, 0.0, 4.0)
 	CharacterBuilder.pose(static_out, "sit", 0.0)
 	world.add_child(static_out)
+	# nhân vật có RigAnimator rời cây rồi vào lại (_ready không chạy lại): clip tự dựng kế tiếp vẫn phải chạy
+	readd_c = chars[2]
+	world.remove_child(readd_c)
+	world.add_child(readd_c)
+	CharacterBuilder.play(readd_c, "sit")
 
 
 func _task4_check_sit() -> void:
@@ -167,6 +223,13 @@ func _task4_check_rest_and_bake() -> void:
 		return
 	if not _check(ab.size.y < 1.45, "baked rider must be seated (height %.2f m)" % ab.size.y):
 		return
+
+
+func _task4_check_readd() -> void:
+	var hy: float = CharacterBuilder.get_pivot(readd_c, "hips").global_position.y
+	print("  animated body removed and re-added, playing sit: hips y %.2f" % hy)
+	if not _check(hy < 0.62, "a rigged character removed from the tree and added back must still play code clips (hips y %.2f)" % hy):
+		return
 	# build time after warm-up
 	var t0: int = Time.get_ticks_usec()
 	for i: int in range(20):
@@ -211,6 +274,18 @@ func _classic_unchanged() -> bool:
 		if fp != String(CLASSIC_FP[key]):
 			ok = false
 	return _check(ok, "classic characters changed (copy the fingerprints printed above from an UNMODIFIED main into CLASSIC_FP)")
+
+
+## Tên MeshInstance3D (đang hiện) đầu tiên có vật liệu mang next_pass (viền toon cổ điển); "" nếu không có.
+func _outlined_material(c: Node3D) -> String:
+	for mi: MeshInstance3D in CharacterBuilder._mesh_instances(c):
+		if mi.mesh == null or not mi.visible:
+			continue
+		for si: int in range(mi.mesh.get_surface_count()):
+			var m: Material = mi.get_active_material(si)
+			if m and m.next_pass != null:
+				return String(mi.name)
+	return ""
 
 
 func _check(ok: bool, msg: String) -> bool:
