@@ -104,6 +104,14 @@ var roam_return_layer: CanvasLayer
 ## Kỷ lục lưu trên đĩa: stage_id -> {"score": int, "rank": String, "wins": int, "plays": int}
 var best_stats: Dictionary = {}
 
+# ----- Ví Cóc Vàng (CV) – bản tối thiểu của spec free-roam mục 1.1 -----
+## Số Cóc Vàng đang có (lưu đĩa: mục [roam] khoá "wallet" của progress.cfg). Chỉ đổi qua earn() / spend().
+var wallet: int = 0
+## Phát mỗi lần ví đổi: tổng mới + chênh lệch (dương khi nhận, âm khi tiêu).
+signal wallet_changed(total: int, delta: int)
+## Thắng một màn được trả theo rank (thua: 0). Nguồn kiếm duy nhất ở bản này.
+const RANK_COINS: Dictionary = {"S": 50, "A": 30, "B": 20, "C": 10}
+
 # ----- Trạng thái xuyên màn -----
 ## Vật phẩm mang theo giữa các màn (mua ở 7-Eleven, nhặt ở bãi xe...)
 var inventory: Dictionary = {"monster": 0, "coffee": 0, "banh_bao": 0}
@@ -217,10 +225,12 @@ func _hide_roam_return() -> void:
 	if roam_return_layer:
 		roam_return_layer.visible = false
 
-func load_progress() -> void:
+## `path` khác PROGRESS_PATH: test headless dùng file tạm. File không có / hỏng -> kỷ lục rỗng, ví 0.
+func load_progress(path: String = PROGRESS_PATH) -> void:
 	best_stats.clear()
+	wallet = 0
 	var cfg := ConfigFile.new()
-	if cfg.load(PROGRESS_PATH) != OK:
+	if cfg.load(path) != OK:
 		return
 	for sid: int in stage_scenes.keys():
 		var sec: String = "stage_%d" % sid
@@ -229,10 +239,11 @@ func load_progress() -> void:
 				"score": int(cfg.get_value(sec, "score", 0)), "rank": String(cfg.get_value(sec, "rank", "")),
 				"wins": int(cfg.get_value(sec, "wins", 0)), "plays": int(cfg.get_value(sec, "plays", 0))
 			}
+	wallet = maxi(0, int(cfg.get_value("roam", "wallet", 0)))
 
-func save_progress() -> void:
-	if DisplayServer.get_name() == "headless":
-		return # bot test headless không được ghi đè kỷ lục thật của người chơi
+func save_progress(path: String = PROGRESS_PATH) -> void:
+	if DisplayServer.get_name() == "headless" and path == PROGRESS_PATH:
+		return # bot test headless không được ghi đè kỷ lục thật của người chơi (test ví ghi file tạm qua `path`)
 	var cfg := ConfigFile.new()
 	for sid: int in best_stats.keys():
 		var b: Dictionary = best_stats[sid]
@@ -241,7 +252,27 @@ func save_progress() -> void:
 		cfg.set_value(sec, "rank", String(b.get("rank", "")))
 		cfg.set_value(sec, "wins", int(b.get("wins", 0)))
 		cfg.set_value(sec, "plays", int(b.get("plays", 0)))
-	cfg.save(PROGRESS_PATH)
+	cfg.set_value("roam", "wallet", wallet)
+	cfg.save(path)
+
+## Nhận `amount` Cóc Vàng (<= 0: bỏ qua). `reason` chỉ để ghi log / mở rộng sau. Lưu đĩa ngay.
+func earn(amount: int, reason: String = "") -> void:
+	if amount <= 0:
+		return
+	wallet += amount
+	if reason != "":
+		print_verbose("wallet +%d (%s) -> %d" % [amount, reason, wallet])
+	wallet_changed.emit(wallet, amount)
+	save_progress()
+
+## Tiêu `amount` Cóc Vàng; không đủ tiền (hoặc amount <= 0) thì từ chối, ví không đổi. Lưu đĩa khi tiêu được.
+func spend(amount: int) -> bool:
+	if amount <= 0 or amount > wallet:
+		return false
+	wallet -= amount
+	wallet_changed.emit(wallet, -amount)
+	save_progress()
+	return true
 
 func get_best_text(stage_id: int) -> String:
 	if not best_stats.has(stage_id):
@@ -637,21 +668,41 @@ func consume_item(item_id: String) -> bool:
 		return true
 	return false
 
-## Màn chơi gọi khi kết thúc: result = {"result": "win"|"fail", "score": int, "rank": "S|A|B|C", "detail": String}
+## Màn chơi gọi khi kết thúc: result = {"result": "win"|"fail", "score": int, "rank": "S|A|B|C", "detail": String,
+## "caught": bool (tuỳ chọn: thua vì bị bắt -> thẻ "BỊ BẮT")}. Thắng được trả Cóc Vàng theo rank (RANK_COINS); số xu
+## ghi lại vào result["coins"] (thua: 0).
 func report_stage_result(stage_id: int, result: Dictionary) -> void:
+	var won: bool = result.get("result", "") == "win"
+	var coins: int = int(RANK_COINS.get(String(result.get("rank", "C")), RANK_COINS["C"])) if won else 0
+	result["coins"] = coins
 	run_stats[stage_id] = result
 	var b: Dictionary = best_stats.get(stage_id, {"score": 0, "rank": "", "wins": 0, "plays": 0})
 	b["plays"] = int(b.get("plays", 0)) + 1
-	if result.get("result", "") == "win":
+	if won:
 		b["wins"] = int(b.get("wins", 0)) + 1
 		if int(result.get("score", 0)) >= int(b.get("score", 0)):
 			b["score"] = int(result.get("score", 0))
 			b["rank"] = String(result.get("rank", "B"))
 	best_stats[stage_id] = b
-	save_progress()
+	if coins > 0:
+		earn(coins, "stage_%d_rank_%s" % [stage_id, String(result.get("rank", "C"))])   # earn() lưu cả kỷ lục
+	else:
+		save_progress()
 	_refresh_rank_labels()
 	if return_to_roam:
 		_show_roam_return()
+
+## Tiêu đề lớn của thẻ kết quả (phong cách vice): thắng "QUA MÔN!", thua vì bị bắt "BỊ BẮT", thua "TRƯỢT MÔN".
+static func result_banner_title(result: Dictionary) -> String:
+	if result.get("result", "") == "win":
+		return "QUA MÔN!"
+	if bool(result.get("caught", false)):
+		return "BỊ BẮT"
+	return "TRƯỢT MÔN"
+
+## Dòng thưởng dưới tiêu đề thẻ kết quả: "+30 Cóc Vàng".
+static func coins_text(coins: int) -> String:
+	return "+%d Cóc Vàng" % coins
 
 func get_stage_rank_text(stage_id: int) -> String:
 	var best: String = ""
