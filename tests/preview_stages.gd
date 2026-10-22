@@ -4,6 +4,10 @@
 #                                                             PREVIEW_ONLY=s1 hoặc s2,s3,ex để chỉ chụp các màn đó)
 # Biến môi trường chỉ dùng cho ảnh preview (không ghi settings.cfg): VICE_STYLE=vice|classic ép phong cách đồ hoạ,
 # PREVIEW_DIR=<thư mục tuyệt đối> thay cho user://preview, PREVIEW_NOVSYNC=1 tắt V-Sync để đo FPS thật.
+# PREVIEW_HUD=1 (Task VC-4): ví Cóc Vàng mẫu 1 250 CV (chỉ trong bộ nhớ), radar / tên khu vực của Màn 1 theo camera chụp
+# (HUDManager.radar_target), Màn 3 hiện 2 sao "GIẢNG VIÊN ĐỂ Ý" (ảnh chụp ở pha FAP, trước khi thanh để ý tăng).
+# PREVIEW_RESULT=1: sau các góc của mỗi màn gọi hàm kết thúc của chính màn đó và chụp thêm <màn>_09_result (thẻ kết
+# quả; vice = khối "QUA MÔN!" / "TRƯỢT MÔN" / "BỊ BẮT" + "+N Cóc Vàng").
 # Mỗi màn: nạp scene thật, chờ vài chục frame cho SDFGI hội tụ, chụp từ camera của chính màn đó
 # rồi chụp thêm 1 góc phụ (nhìn ra cửa sổ / toàn cảnh). PNG lưu vào user://preview/. FPS in ra = trung bình
 # FPS_WINDOW frame ngay trước khi chụp.
@@ -29,6 +33,17 @@ const SCENES: Array = [
 	{"key": "s6", "path": "res://scenes/Stage6_CapstoneBoss.tscn", "extra": [{"pos": Vector3(-4.5, 1.8, 3.5), "look": Vector3(7.0, 1.4, -2.0), "fov": 72.0}]},
 	{"key": "ex", "path": "res://scenes/StageExtra_EOSExam.tscn", "extra": [{"pos": Vector3(0.0, 3.0, 0.0), "look": Vector3(0.0, 0.0, 0.01), "fov": 90.0}]}
 ]
+## PREVIEW_RESULT=1: hàm kết thúc gọi cho ảnh thẻ kết quả (đường dẫn "HUD:" = gọi trên node HUD) + tham số.
+const RESULT_CALLS: Dictionary = {
+	"s1": ["HUD:_on_destination_reached", []],
+	"s2": ["_complete_stage", []],
+	"s3": ["_fail_stage", ["GIẢNG VIÊN ĐỂ Ý QUÁ MỨC: 'Em thu dọn ra ngoài giùm cô!' – BỊ MỜI RA KHỎI LỚP.", true]],
+	"s4": ["_fail_stage", ["HẾT 30 GIÂY FINISHER! Thầy: 'Đòn 21 là phải dứt khoát!' – Ngã 2 lần, thiếu chút nữa thôi!"]],
+	"s5": ["_complete_stage", []],
+	"s6": ["_win", []],
+	"ex": ["_complete_stage", []],
+}
+const RESULT_FRAMES: int = 200        # Màn 6 hiện thẻ sau tween 1,2 s (slow-motion) + thẻ mờ dần
 const SHOT_FRAMES: int = 75
 const FIRST_SHOT_FRAME: int = 90      # chụp camera của màn sau 90 frame (shader + bóng ổn định)
 const EXTRA_FRAMES: int = 60          # mỗi góc phụ giữ 60 frame: FPS đo trên FPS_WINDOW frame cuối
@@ -43,6 +58,25 @@ var step: int = 0
 var only: PackedStringArray = []      # PREVIEW_ONLY=s2,s3,ex: chỉ chụp các màn này
 var next_save: int = 0                # Màn 1: frame lưu góc chụp hiện tại (mỗi góc giữ "frames" hoặc SHOT_FRAMES)
 var _ticks: Array[int] = []
+var result_at: int = -1               # PREVIEW_RESULT=1: frame chụp thẻ kết quả của màn hiện tại (-1 = chưa gọi)
+## PREVIEW_RESULT=1 báo kết quả màn thật (ghi user://progress.cfg ở chế độ có cửa sổ): sao lưu file trước, trả lại khi xong.
+const PROGRESS_FILE: String = "user://progress.cfg"
+var _progress_backup: Variant = null  # PackedByteArray, hoặc false khi chưa có file
+
+func _backup_progress() -> void:
+	_progress_backup = FileAccess.get_file_as_bytes(PROGRESS_FILE) if FileAccess.file_exists(PROGRESS_FILE) else false
+
+func _restore_progress() -> void:
+	if _progress_backup == null:
+		return
+	if _progress_backup is PackedByteArray:
+		var f := FileAccess.open(PROGRESS_FILE, FileAccess.WRITE)
+		if f:
+			f.store_buffer(_progress_backup)
+			f.close()
+	elif FileAccess.file_exists(PROGRESS_FILE):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(PROGRESS_FILE))
+	print("  user://progress.cfg restored after PREVIEW_RESULT")
 
 func _initialize() -> void:
 	for pair: Array in [["StageManager", "res://scripts/StageManager.gd"], ["GameFX", "res://scripts/GameFX.gd"]]:
@@ -63,6 +97,8 @@ func _initialize() -> void:
 	cam.far = 6000.0
 	root.add_child(cam)
 	cam.current = false
+	if OS.get_environment("PREVIEW_RESULT") == "1":
+		_backup_progress()
 	print("PREVIEW OUT DIR: ", out_dir)
 
 ## VICE_STYLE=vice|classic: ép phong cách cho lần chạy preview (không lưu settings.cfg). Autoload GameFX chỉ _ready
@@ -107,6 +143,10 @@ func _set_route_cam(shot: Dictionary) -> bool:
 	cam.fov = float(shot["fov"])
 	cam.look_at_from_position(pos, look, Vector3.UP)
 	cam.current = true
+	# radar + tên khu vực của ViceHUD theo camera chụp (xe vẫn đứng ở vạch xuất phát)
+	var hud: Node = current.get_node_or_null("HUD")
+	if hud and "radar_target" in hud:
+		hud.set("radar_target", cam)
 	if bool(shot.get("rain", false)):
 		_start_rain(rs)
 	return true
@@ -126,6 +166,20 @@ func _shot_frames(shot: Dictionary) -> int:
 	return int(shot.get("frames", SHOT_FRAMES))
 
 func _finish_scene() -> void:
+	var key: String = SCENES[scene_idx]["key"]
+	if OS.get_environment("PREVIEW_RESULT") == "1" and RESULT_CALLS.has(key) and result_at < 0:
+		# thẻ kết quả: gọi hàm kết thúc của màn, chụp sau RESULT_FRAMES frame (camera của màn)
+		cam.current = false
+		var spec: Array = RESULT_CALLS[key]
+		var path: String = String(spec[0])
+		var target: Node = current
+		if path.contains(":"):
+			target = current.get_node(path.get_slice(":", 0))
+			path = path.get_slice(":", 1)
+		target.callv(path, spec[1])
+		result_at = frames + RESULT_FRAMES
+		return
+	result_at = -1
 	cam.current = false
 	Engine.time_scale = 1.0
 	current.queue_free()
@@ -141,19 +195,32 @@ func _process(_d: float) -> bool:
 		while scene_idx < SCENES.size() and not only.is_empty() and not (String(SCENES[scene_idx]["key"]) in only):
 			scene_idx += 1
 		if scene_idx >= SCENES.size():
+			_restore_progress()
 			print("PREVIEW DONE")
 			quit(0)
 			return true
+		var preview_hud: bool = OS.get_environment("PREVIEW_HUD") == "1"
+		if preview_hud:
+			root.get_node("StageManager").set("wallet", 1250)   # ví mẫu cho ảnh (không lưu đĩa)
 		var packed: PackedScene = load(SCENES[scene_idx]["path"])
 		current = packed.instantiate()
 		root.add_child(current)
 		var hud: Node = current.get_node_or_null("HUD")
-		if hud and OS.get_environment("PREVIEW_HUD") != "1":
+		if hud and not preview_hud:
 			hud.visible = false
+		var vh: Variant = current.get("vice_hud") if preview_hud else null
+		if vh is ViceHUD and String(SCENES[scene_idx]["key"]) == "s3":
+			(vh as ViceHUD).set_stars(2, "GIẢNG VIÊN ĐỂ Ý")
 		frames = 0
 		step = 0
+		result_at = -1
 		return false
 	var key: String = SCENES[scene_idx]["key"]
+	if result_at >= 0:
+		if frames == result_at:
+			_save("%s_09_result" % key)
+			_finish_scene()
+		return false
 	var extras: Array = SCENES[scene_idx]["extra"]
 	if SCENES[scene_idx].has("shots"):
 		# Góc chụp theo tuyến đường (Màn 1): đặt camera, chờ SHOT_FRAMES frame rồi lưu

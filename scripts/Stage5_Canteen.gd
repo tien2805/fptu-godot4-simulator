@@ -880,12 +880,12 @@ func _build_shop_ui() -> void:
 	var basket_panel := BasketDrop.new()
 	basket_panel.stage = self
 	basket_panel.custom_minimum_size = Vector2(300, 320)
-	basket_panel.add_theme_stylebox_override("panel", GameFX.make_panel_style(Color("#F37021"), Color(0.1, 0.07, 0.03, 0.98), 8))
+	basket_panel.add_theme_stylebox_override("panel", GameFX.make_panel_style(GameFX.UI_DEFAULT, Color(0.1, 0.07, 0.03, 0.98), 8))
 	hb.add_child(basket_panel)
 	var bvb := VBoxContainer.new()
 	bvb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	basket_panel.add_child(bvb)
-	bvb.add_child(GameFX.make_label("🛒 GIỎ HÀNG (thả vào đây)", 16, Color("#F37021")))
+	bvb.add_child(GameFX.make_label("🛒 GIỎ HÀNG (thả vào đây)", 16, GameFX.ui_accent()))
 	basket_list = VBoxContainer.new()
 	basket_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	bvb.add_child(basket_list)

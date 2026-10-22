@@ -85,6 +85,14 @@ var chain_bar: ProgressBar
 var chain_break_timer: float = 0.0
 var _last_chain_seen: int = 0
 var drift_hint_label: Label
+## Phong cách vice (Task VC-4): radar góc dưới trái (tuyến thật BE6 -> FPTU màu hồng, cổng FPT = ô cam), tên khu vực
+## dọc tuyến (trên bảng tốc độ), ví Cóc Vàng góc trên phải dưới thanh giờ; bảng thưởng / phạt nhích lên trên radar.
+var vice_hud: ViceHUD
+## Radar + tên khu vực theo node này thay cho xe (null = theo player_bike). Ảnh preview đặt camera chụp vào đây.
+var radar_target: Node3D
+var stats_holder: MarginContainer
+const STATS_MARGIN: int = 24
+const STATS_MARGIN_VICE: int = 244     # 28 (lề radar) + 200 (radar) + 16
 
 # Audio Players
 var checkpoint_player: AudioStreamPlayer
@@ -105,6 +113,7 @@ func _ready() -> void:
 		stage_select_btn.pressed.connect(_on_stage_select_pressed)
 	_setup_hud_audio()
 	_setup_overlays()
+	_setup_vice_hud()
 	GameFX.disable_button_focus(self)
 
 	if player_bike:
@@ -163,7 +172,8 @@ func _setup_overlays() -> void:
 	move_child(rain_rect, 1)
 
 	# Bảng thống kê thưởng/phạt ở góc trái dưới (anchors chuẩn)
-	var panel: PanelContainer = GameFX.anchored_panel(self, Control.PRESET_BOTTOM_LEFT, Vector2(300, 0), 24, Color("#2ECC71"))
+	var panel: PanelContainer = GameFX.anchored_panel(self, Control.PRESET_BOTTOM_LEFT, Vector2(300, 0), STATS_MARGIN, Color("#2ECC71"))
+	stats_holder = panel.get_parent() as MarginContainer
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 4)
 	panel.add_child(vb)
@@ -177,6 +187,59 @@ func _setup_overlays() -> void:
 	vb.add_child(dist_label)
 	dist_bar = GameFX.make_bar(0.0, Color("#74B9FF"), 8)
 	vb.add_child(dist_bar)
+
+## ViceHUD của Màn 1 (con của HUD, lớp vẽ 0): không có đồng hồ riêng (thanh giờ 07:05 -> 07:30 giữ nguyên), cột ví
+## dưới thanh trên cùng và băng thông báo, tên khu vực trên bảng tốc độ. Ở vice các panel .tscn (giờ, khu vực, tốc độ, thông báo) đổi
+## kiểu qua helper GameFX.
+func _setup_vice_hud() -> void:
+	var md: MapData = road_manager.get("md") as MapData if road_manager else null
+	if md == null:
+		md = MapData.load_default()
+	vice_hud = ViceHUD.new()
+	vice_hud.name = "ViceHUD"
+	vice_hud.md = md
+	vice_hud.show_clock = false
+	# dưới cả thanh trên cùng (16..82) lẫn băng thông báo (96..148, nở rộng theo chữ có thể tới mép phải)
+	vice_hud.top_margin = Vector2(28.0, 160.0)
+	vice_hud.area_margin = Vector2(34.0, 192.0)
+	add_child(vice_hud)
+	if md:
+		vice_hud.radar.route = md.route_points(40.0)
+		var g: Variant = md.landmark("campus_main_gate")
+		if g is Array and (g as Array).size() >= 2:
+			vice_hud.radar.blips = [{"pos": Vector2(float(g[0]), float(g[1])), "color": GameFX.FPT_ORANGE, "shape": "square"}]
+	if GameFX.is_vice_ui():
+		_restyle_vice_panels()
+	GameFX.art_style_changed.connect(_apply_hud_style)
+	_apply_hud_style()
+
+func _apply_hud_style(_style: String = "") -> void:
+	if stats_holder:
+		stats_holder.add_theme_constant_override("margin_bottom", STATS_MARGIN_VICE if ViceHUD.style_active() else STATS_MARGIN)
+
+## Panel khai báo trong HUD.tscn -> kiểu vice qua helper GameFX (classic giữ StyleBoxFlat của .tscn).
+func _restyle_vice_panels() -> void:
+	var clock_panel: PanelContainer = clock_label.get_parent() as PanelContainer
+	var zone_panel: PanelContainer = zone_label.get_parent() as PanelContainer
+	var speed_panel: PanelContainer = get_node_or_null("BottomRight/SpeedContainer") as PanelContainer
+	if clock_panel:
+		clock_panel.add_theme_stylebox_override("panel", GameFX.make_panel_style())
+	if zone_panel:
+		zone_panel.add_theme_stylebox_override("panel", GameFX.make_panel_style(Color(0.2, 0.55, 0.9, 0.8)))
+	if speed_panel:
+		speed_panel.add_theme_stylebox_override("panel", GameFX.make_panel_style())
+	notice_banner.add_theme_stylebox_override("panel", GameFX.make_panel_style(Color(0.9, 0.2, 0.2, 0.9), Color(0.12, 0.04, 0.04, 0.95)))
+	for pair: Array in [[clock_label, 28], [zone_label, 20], [speed_label, 36], [slipstream_status, 12], [notice_label, 17]]:
+		GameFX.style_label(pair[0] as Label, int(pair[1]))
+	GameFX.style_bar(slipstream_bar, GameFX.VICE_CYAN)
+
+func _update_vice_radar() -> void:
+	var target: Node3D = radar_target if is_instance_valid(radar_target) else player_bike
+	if vice_hud == null or not vice_hud.visible or target == null:
+		return
+	var p: Vector3 = target.global_position
+	var cam: Camera3D = get_viewport().get_camera_3d()
+	vice_hud.track(Vector2(p.x, p.z), cam.global_rotation.y if cam else target.global_rotation.y)
 
 func _update_distance() -> void:
 	if not dist_label or not road_manager:
@@ -227,6 +290,7 @@ func _setup_hud_audio() -> void:
 func _process(delta: float) -> void:
 	_update_chain_panel(delta)
 	_update_distance()
+	_update_vice_radar()
 	if player_bike:
 		GameFX.music_tension(clampf(absf(float(player_bike.get("current_speed_ms"))) * 3.6 / 75.0 * 0.55 + float(player_bike.get("near_miss_chain")) * 0.12, 0.2, 1.0))
 	# Overlay luôn cập nhật (kể cả khi kết thúc để mờ dần)

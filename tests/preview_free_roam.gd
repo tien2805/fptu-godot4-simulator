@@ -16,6 +16,8 @@
 # Biến môi trường chỉ dùng cho ảnh preview (không ghi settings.cfg): VICE_STYLE=vice|classic ép phong cách đồ hoạ,
 # PREVIEW_DIR=<thư mục tuyệt đối> thay cho user://preview, PREVIEW_NOVSYNC=1 tắt V-Sync để đo FPS thật,
 # PREVIEW_ONLY=<tên ảnh,...> chỉ chụp các ảnh đó.
+# PREVIEW_HUD (Task VC-4): mặc định / "1" giữ HUD như khi chơi (phong cách vice: ViceHUD radar + giờ + ví mẫu 1 250 CV chỉ
+# trong bộ nhớ + tên khu vực + "Xe máy" khi lên xe); "0" ẩn toàn bộ HUD để chụp cảnh trần.
 extends SceneTree
 
 const SETTLE: int = 96
@@ -74,6 +76,16 @@ func _setup() -> void:
 	md = roam.get("md")
 	player.set("capture_on_click", false)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	var vh: Variant = roam.get("vice_hud")
+	if OS.get_environment("PREVIEW_HUD") == "0":
+		(roam.get("hud") as CanvasLayer).visible = false
+		if vh is ViceHUD:
+			(vh as ViceHUD).suppressed = true
+	else:
+		# ví mẫu cho ảnh, chỉ trong bộ nhớ (StageManager._ready đã nạp progress.cfg ở frame đầu nên đặt ở đây)
+		root.get_node("StageManager").set("wallet", 1250)
+		if vh is ViceHUD:
+			(vh as ViceHUD).set_money(1250, false)
 	var campus_xf: Transform3D = roam.get("campus_xf")
 
 	# 2. kênh đào Hoa giấy: điểm bờ gần BE6 nhất, lùi 7 m, nhìn ra giữa kênh
@@ -184,6 +196,10 @@ static func _yaw_towards(from: Vector3, to: Vector3) -> float:
 
 func _begin_shot(s: Dictionary) -> void:
 	var kind: String = String(s["kind"])
+	# mỗi ảnh là một lần dịch chuyển: tên khu vực của ViceHUD hiện lại (như khi quay về từ một màn)
+	var vh: Variant = roam.get("vice_hud")
+	if vh is ViceHUD:
+		(vh as ViceHUD).reset_area()
 	# giờ trong ngày của ảnh (mặc định buổi sáng như lúc FreeRoam mở); set_time_of_day bỏ qua nếu không đổi
 	roam.call("set_time_of_day", String(s.get("tod", "morning")))
 	if kind == "air":
