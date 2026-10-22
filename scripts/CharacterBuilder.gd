@@ -88,7 +88,7 @@ const PACK_CLIP: Dictionary = {"wave": "Wave", "punch": "Punch_Right", "kick": "
 	"interact": "Interact", "lie": "Death", "chop": "Sword_Slash"}
 static var _scene_cache: Dictionary = {}
 static var _smooth_cache: Dictionary = {}
-static var _skin_cache: Dictionary = {}   # mesh skinned bằng CPU theo (mesh, tư thế), xem _skin_cpu
+static var _skin_cache: Dictionary = {}   # [id mesh, transform skin các xương] -> mesh skinned bằng CPU, xem _skin_cpu
 static var rigged_default: bool = false   # true → build() mặc định dùng thân Quaternius (bật sau khi duyệt)
 
 static func _outline_mat(width: float) -> ShaderMaterial:
@@ -708,15 +708,16 @@ static func _rig_pose(root: Node3D, clip: String, t: float, params: Dictionary) 
 	if sk == null:
 		return
 	sk.reset_bone_poses()
-	if clip != "":
-		var an := Animator.new()
-		an.rig = {}
-		for k: String in params.keys():
-			an.params[k] = params[k]
-		var cpose: Dictionary = an._clip_pose(clip, t)
-		an.free()
-		_apply_bone_pose(sk, cpose, 1.0)
-	_mark_bone_poses_dirty(sk)   # tư thế đặt ngoài cây phải còn khi bake() và khi vào cây
+	if clip == "":
+		_mark_bone_poses_dirty(sk)   # tư thế nghỉ đặt ngoài cây cũng phải còn khi bake() và khi vào cây
+		return
+	var an := Animator.new()
+	an.rig = {}
+	for k: String in params.keys():
+		an.params[k] = params[k]
+	var cpose: Dictionary = an._clip_pose(clip, t)
+	an.free()
+	_apply_bone_pose(sk, cpose, 1.0)   # tự đánh dấu xương khi ngoài cây
 
 
 ## Godot 4.7: ngoài cây, set_bone_pose_*() không đánh dấu tư thế toàn cục của xương cần tính lại, nên get_bone_global_pose()
@@ -729,7 +730,7 @@ static func _mark_bone_poses_dirty(sk: Skeleton3D) -> void:
 
 ## Áp tư thế {khớp: Euler hệ nhân vật} lên xương Quaternius, trộn với tư thế hiện tại theo w (1 = đè hẳn):
 ## local = (Pg⁻¹·R·Pg)·rest_local; "hips_y" dời xương Body (đơn vị mô hình). Nơi DUY NHẤT chứa phép này:
-## pose() tĩnh và RigAnimator._apply_bones() đều gọi hàm này.
+## pose() tĩnh và RigAnimator._apply_bones() đều gọi hàm này. Gọi được cả khi skeleton ngoài cây (tự đánh dấu xương).
 static func _apply_bone_pose(sk: Skeleton3D, cpose: Dictionary, w: float) -> void:
 	for k: String in cpose.keys():
 		if not BONE_OF.has(k):
@@ -777,6 +778,7 @@ static func _apply_bone_pose(sk: Skeleton3D, cpose: Dictionary, w: float) -> voi
 		var local: Transform3D = (_bone_global_now(sk, pf).affine_inverse() * foot) if pf >= 0 else foot
 		sk.set_bone_pose_position(fb, sk.get_bone_pose_position(fb).lerp(local.origin, w))
 		sk.set_bone_pose_rotation(fb, sk.get_bone_pose_rotation(fb).slerp(local.basis.get_rotation_quaternion(), w))
+	_mark_bone_poses_dirty(sk)
 
 
 ## Tư thế toàn cục hiện tại của xương b tính từ các tư thế cục bộ (đúng cả ngoài cây và ngay sau khi vừa đặt tư thế, nơi
@@ -917,52 +919,46 @@ static func set_opacity(root: Node3D, alpha: float) -> void:
 ## Gộp toàn bộ mesh của nhân vật (ở tư thế hiện tại) thành 1 ArrayMesh nhiều surface – dùng cho MultiMesh đám đông.
 ## Thân rigged: xem _bake_rigged (trong hay ngoài cây đều được). Mesh ở hệ gốc nhân vật, chưa nhân root.scale.
 static func bake(root: Node3D) -> ArrayMesh:
-	var by_mat: Dictionary = {}
 	if root.get_meta("rigged", false):
 		return _bake_rigged(root)
 	var inv: Transform3D = root.global_transform.affine_inverse() if root.is_inside_tree() else Transform3D.IDENTITY
+	var parts: Array = []
 	for mi: MeshInstance3D in _mesh_instances(root):
 		if mi.mesh == null:
 			continue
-		var xf: Transform3D = (inv * mi.global_transform) if root.is_inside_tree() else _local_xform(mi, root)
-		for si: int in range(mi.mesh.get_surface_count()):
-			var mat: Material = mi.material_override if mi.material_override else mi.mesh.surface_get_material(si)
-			if not by_mat.has(mat):
-				var st := SurfaceTool.new()
-				st.begin(Mesh.PRIMITIVE_TRIANGLES)
-				by_mat[mat] = st
-			(by_mat[mat] as SurfaceTool).append_from(mi.mesh, si, xf)
-	var out := ArrayMesh.new()
-	for mat: Material in by_mat.keys():
-		var st: SurfaceTool = by_mat[mat]
-		st.index()
-		st.commit(out)
-		out.surface_set_material(out.get_surface_count() - 1, mat)
-	return out
+		parts.append([mi, mi.mesh, (inv * mi.global_transform) if root.is_inside_tree() else _local_xform(mi, root)])
+	return _merge_by_material(parts)
 
 ## Gộp thân rigged ở tư thế hiện tại (trong hay ngoài cây): phần skinned skin bằng CPU (_skin_cpu), phần gắn xương
 ## (đầu, đồ gắn) theo tư thế xương. Bỏ mesh ẩn (đầu gốc của mô hình).
 static func _bake_rigged(root: Node3D) -> ArrayMesh:
 	var sk: Skeleton3D = root.get_meta("skeleton", null) as Skeleton3D
-	var out := ArrayMesh.new()
 	if sk == null:
-		return out
+		return ArrayMesh.new()
 	_mark_bone_poses_dirty(sk)
-	var by_mat: Dictionary = {}
+	var parts: Array = []
 	for mi: MeshInstance3D in _mesh_instances(root):
 		if mi.mesh == null or not mi.visible:
 			continue
-		var src: Mesh = mi.mesh
-		if mi.skin != null:
-			src = _skin_cpu(mi, sk)
-		var xf: Transform3D = _rig_xform(mi, root, sk)
+		parts.append([mi, _skin_cpu(mi, sk) if mi.skin != null else mi.mesh, _local_xform(mi, root, sk)])
+	return _merge_by_material(parts)
+
+## Gộp các phần [MeshInstance3D, mesh nguồn, transform trong hệ gốc] thành 1 ArrayMesh, một surface mỗi vật liệu (dùng chung
+## cho bake() thân tự dựng / đồ vật và _bake_rigged). Mesh nguồn có cùng các surface như mi.mesh (bản skin CPU của nó hoặc
+## chính nó); vật liệu = get_active_material(si): material_override trước, rồi vật liệu đè của surface, rồi vật liệu của mesh.
+static func _merge_by_material(parts: Array) -> ArrayMesh:
+	var by_mat: Dictionary = {}
+	for part: Array in parts:
+		var mi: MeshInstance3D = part[0]
+		var src: Mesh = part[1]
 		for si: int in range(src.get_surface_count()):
-			var mat: Material = mi.material_override if mi.material_override else mi.get_active_material(si)
+			var mat: Material = mi.get_active_material(si)
 			if not by_mat.has(mat):
 				var st := SurfaceTool.new()
 				st.begin(Mesh.PRIMITIVE_TRIANGLES)
 				by_mat[mat] = st
-			(by_mat[mat] as SurfaceTool).append_from(src, si, xf)
+			(by_mat[mat] as SurfaceTool).append_from(src, si, part[2])
+	var out := ArrayMesh.new()
 	for mat: Material in by_mat.keys():
 		var st: SurfaceTool = by_mat[mat]
 		st.index()
@@ -974,8 +970,8 @@ static func _bake_rigged(root: Node3D) -> ArrayMesh:
 ## Mesh skinned của mi ở tư thế xương hiện tại, skin bằng CPU: đỉnh = Σ w·(tư_thế_toàn_cục_xương · bind_pose)·đỉnh, trong hệ
 ## của mi (như renderer), bỏ xương / trọng số. Không dùng MeshInstance3D.bake_mesh_from_current_skeleton_pose(): hàm đó đọc
 ## xương từ RenderingServer – rỗng khi chạy headless (lỗi "skin registered with a valid skeleton"), và chỉ được ghi ở lần cập
-## nhật skeleton trễ cuối frame, nên tư thế vừa đặt chưa có. Cache theo (mesh, tư thế các xương của skin): mọi người ngồi xe
-## cùng mô hình chỉ skin một lần (~8 nghìn đỉnh, vài ms).
+## nhật skeleton trễ cuối frame, nên tư thế vừa đặt chưa có. Cache theo GIÁ TRỊ (mesh, transform skin của mọi xương; so khớp
+## đúng từng số, không qua băm 32 bit): mọi người ngồi xe cùng mô hình chỉ skin một lần (~8 nghìn đỉnh, vài ms).
 static func _skin_cpu(mi: MeshInstance3D, sk: Skeleton3D) -> ArrayMesh:
 	var skin: Skin = mi.skin
 	var src: Mesh = mi.mesh
@@ -984,11 +980,12 @@ static func _skin_cpu(mi: MeshInstance3D, sk: Skeleton3D) -> ArrayMesh:
 		var bn: StringName = skin.get_bind_name(i)
 		var b: int = sk.find_bone(String(bn)) if bn != &"" else skin.get_bind_bone(i)
 		xfs.append(sk.get_bone_global_pose(b) * skin.get_bind_pose(i) if b >= 0 else Transform3D.IDENTITY)
-	var key: String = "%d_%d" % [src.get_instance_id(), hash(xfs)]
+	var key: Array = [src.get_instance_id(), xfs]
 	if _skin_cache.has(key):
 		return _skin_cache[key]
 	var out := ArrayMesh.new()
 	for si: int in range(src.get_surface_count()):
+		var prim: Mesh.PrimitiveType = (src as ArrayMesh).surface_get_primitive_type(si) if src is ArrayMesh else Mesh.PRIMITIVE_TRIANGLES
 		var arr: Array = src.surface_get_arrays(si)
 		if arr[Mesh.ARRAY_BONES] != null and arr[Mesh.ARRAY_WEIGHTS] != null:
 			var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
@@ -1031,31 +1028,22 @@ static func _skin_cpu(mi: MeshInstance3D, sk: Skeleton3D) -> ArrayMesh:
 				arr[Mesh.ARRAY_TANGENT] = tans
 			arr[Mesh.ARRAY_BONES] = null
 			arr[Mesh.ARRAY_WEIGHTS] = null
-		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		out.add_surface_from_arrays(prim, arr)
 	if _skin_cache.size() >= 64:
 		_skin_cache.clear()
 	_skin_cache[key] = out
 	return out
 
-## Transform của n trong hệ root cho thân rigged (trong hay ngoài cây): BoneAttachment3D thay bằng tư thế xương hiện tại.
-static func _rig_xform(n: Node3D, root: Node3D, sk: Skeleton3D) -> Transform3D:
-	var xf: Transform3D = n.transform
-	if n is BoneAttachment3D:
-		xf = sk.get_bone_global_pose(sk.find_bone((n as BoneAttachment3D).bone_name))
-	var p: Node = n.get_parent()
+## Transform của n trong hệ root (trong hay ngoài cây), đi ngược từ n lên tới root. sk (thân rigged): mỗi BoneAttachment3D trên
+## đường đi (kể cả n) lấy tư thế xương hiện tại thay cho transform của node – ngoài cây transform đó không được cập nhật.
+static func _local_xform(n: Node3D, root: Node3D, sk: Skeleton3D = null) -> Transform3D:
+	var xf: Transform3D = Transform3D.IDENTITY
+	var p: Node = n
 	while p and p != root and p is Node3D:
-		if p is BoneAttachment3D:
-			xf = sk.get_bone_global_pose(sk.find_bone((p as BoneAttachment3D).bone_name)) * xf
-		else:
-			xf = (p as Node3D).transform * xf
-		p = p.get_parent()
-	return xf
-
-static func _local_xform(n: Node3D, root: Node3D) -> Transform3D:
-	var xf: Transform3D = n.transform
-	var p: Node = n.get_parent()
-	while p and p != root and p is Node3D:
-		xf = (p as Node3D).transform * xf
+		var t: Transform3D = (p as Node3D).transform
+		if sk and p is BoneAttachment3D:
+			t = sk.get_bone_global_pose(sk.find_bone((p as BoneAttachment3D).bone_name))
+		xf = t * xf
 		p = p.get_parent()
 	return xf
 

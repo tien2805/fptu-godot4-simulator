@@ -173,6 +173,16 @@ func _task4_start() -> void:
 	world.remove_child(readd_c)
 	world.add_child(readd_c)
 	CharacterBuilder.play(readd_c, "sit")
+	# _apply_bone_pose gọi thẳng trên thân NGOÀI cây (không qua pose()): tư thế toàn cục của xương phải theo ngay
+	var loose: Node3D = CharacterBuilder.build({"preset": "student", "seed": 79, "animate": false})
+	var lsk: Skeleton3D = loose.get_meta("skeleton") as Skeleton3D
+	var kb: int = lsk.find_bone("LowerLeg.L")
+	var knee0: Vector3 = lsk.get_bone_global_pose(kb).origin
+	CharacterBuilder._apply_bone_pose(lsk, {"thigh_l": Vector3(1.4, 0.0, 0.0)}, 1.0)
+	var moved: float = lsk.get_bone_global_pose(kb).origin.distance_to(knee0)
+	loose.free()
+	print("  out-of-tree _apply_bone_pose: knee moved %.2f" % moved)
+	_check(moved > 0.2, "_apply_bone_pose on a body outside the tree must update its global bone poses (knee moved %.3f)" % moved)
 
 
 func _task4_check_sit() -> void:
@@ -221,7 +231,42 @@ func _task4_check_rest_and_bake() -> void:
 		return
 	if not _check(has_face, "baked rider must keep the PS2 face material"):
 		return
-	if not _check(ab.size.y < 1.45, "baked rider must be seated (height %.2f m)" % ab.size.y):
+	# Đơn vị hệ gốc nhân vật (chưa nhân root.scale) không phụ thuộc chiều cao ngẫu nhiên: ngồi 1.357 (nam) / 1.334 (nữ) trên
+	# 10 seed, đứng 1.779 / 1.787. Dải 1.1..1.45 nằm hẳn dưới chiều cao đứng và trên một tư thế sụp (hông hạ hai lần ~1.12).
+	if not _check(ab.size.y > 1.1 and ab.size.y < 1.45, "baked rider must be seated (height %.2f, expected 1.1..1.45 root units)" % ab.size.y):
+		return
+	# Mốc: dựng lại đúng người đó (cùng opts với build_baked_rider), tư thế ride, so với AABB đã bake
+	var r: Node3D = CharacterBuilder.build({"preset": "rider", "seed": 5, "animate": false, "rigged": true})
+	CharacterBuilder.pose(r, "ride", 0.0, {"ride_shoulder": 1.15, "ride_elbow": 0.3, "ride_lean": 0.42, "lean": 0.0})
+	if not _check(CharacterBuilder.bake(r).get_aabb().is_equal_approx(ab), "rebuilding the seed-5 rider must bake the same mesh as build_baked_rider"):
+		r.free()
+		return
+	var rsk: Skeleton3D = r.get_meta("skeleton") as Skeleton3D
+	var to_root: Transform3D = CharacterBuilder._local_xform(rsk, r)
+	var foot_y: float = INF
+	for s: String in ["L", "R"]:
+		foot_y = minf(foot_y, (to_root * rsk.get_bone_global_pose(rsk.find_bone("Foot." + s)).origin).y)
+	var top_y: float = CharacterBuilder._local_xform(CharacterBuilder.head_top(r), r, rsk).origin.y
+	var d_bottom: float = ab.position.y - foot_y
+	var d_top: float = ab.end.y - top_y
+	print("  baked rider landmarks: bottom - lowest Foot bone %.3f, top - head_top %.3f" % [d_bottom, d_top])
+	# đế giày nằm dưới gốc xương Foot (2.4 cm ở tư thế nghỉ, thêm ~2 cm do bàn chân chúc khi ngồi xe: đo 4.1..4.4 cm);
+	# giới hạn 8 cm = gấp đôi số đo, còn giày không theo xương (vd phần skinned ở tư thế nghỉ) lệch ~16 cm
+	if not _check(d_bottom > -0.08 and d_bottom < 0.01, "baked rider bottom must sit just under the lowest Foot bone (%.3f, expected -0.08..0.01)" % d_bottom):
+		r.free()
+		return
+	# head_top ở 0.27 trên pivot đầu (đỉnh đầu 0.235), vòm mũ bảo hiểm cao ~0.258 -> đỉnh mesh dưới head_top ~1.3 cm x 1.06
+	# (đo 1.7 cm); 5 cm vẫn bắt được đầu thiếu / lệch chỗ (lệch >= 20 cm)
+	if not _check(absf(d_top) < 0.05, "baked rider top must sit near head_top (%.3f, expected within 0.05)" % d_top):
+		r.free()
+		return
+	# Bake lần nữa cùng người, clip "": phải đứng (đế giày ở y 0, cao 1.70..1.86 = 1.78 +- 4 %). Cũng chứng minh khoá cache skin
+	# gồm tư thế: cache bỏ qua tư thế sẽ trả phần thân ngồi (đáy 0.12, cao ~1.66)
+	CharacterBuilder.pose(r, "", 0.0)
+	var st: AABB = CharacterBuilder.bake(r).get_aabb()
+	r.free()
+	print("  same rider baked at clip \"\": height %.3f, bottom %.3f" % [st.size.y, st.position.y])
+	if not _check(st.size.y > 1.70 and st.size.y < 1.86 and absf(st.position.y) < 0.03, "the same rider baked at clip \"\" must stand (height %.3f, bottom %.3f)" % [st.size.y, st.position.y]):
 		return
 
 
