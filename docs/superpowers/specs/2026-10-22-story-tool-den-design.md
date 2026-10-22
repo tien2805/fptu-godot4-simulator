@@ -20,7 +20,7 @@ Replaces: `docs/superpowers/specs/2026-10-21-story-mode-design.md` (the Monday-t
 | S-D11 | Six endings, decided by four story choices, seven evidence pieces and one secret condition (section 6). |
 | S-D12 | The IT ally is Anh Duy "Deploy", a man who graduated 2-3 years ago, big-bellied, who talks in hard-to-follow jargon; his lines carry a "Dịch:" (translation) subtitle. A female ally, Linh, is added. |
 | S-D13 | Delivery in five phases A-E (section 10), each with its own spec, plan and reviews. Phase A starts after the vice-people branch (PS2 people, GTA-style movement, dense crowds and traffic) is merged. |
-| S-D14 | Every fight, chase, gunfight, hide-and-seek escape or boss phase ends with a 10-15 s slow-motion action cinematic with background music (owner: "cuối mỗi đoạn đánh nhau hay gì đó thì đều phải có cinematic kèm nhạc nền"; 2026-10-23: "cinematic slow-mo cho mỗi đoạn đánh đấm, tầm 10s-15s, nhân vật bay nhảy đánh đấm để tôi ghép nhạc"), not only the end of each mission. Fixed length per segment plus a beat sheet for music sync (section 8.1, segment slots and lengths in 8.3). |
+| S-D14 | Every fight, chase, gunfight, hide-and-seek escape or boss phase ends with a 20-25 s slow-motion action cinematic with background music (owner: "cuối mỗi đoạn đánh nhau hay gì đó thì đều phải có cinematic kèm nhạc nền"; 2026-10-23: "cinematic slow-mo cho mỗi đoạn đánh đấm, tầm 10s-15s, nhân vật bay nhảy đánh đấm để tôi ghép nhạc", then "cine khoảng 20-25s"), not only the end of each mission. Fixed length per segment plus a beat sheet for music sync (section 8.1, segment slots and lengths in 8.3). |
 
 ## 2. Premise and tone
 
@@ -104,14 +104,14 @@ Evaluation order:
 ### 8.1 In-engine cutscenes
 - Data-driven scripts (one per cutscene): shots (camera position, target, FOV, move time), actor cues (walk to, play clip, expression cell, look at), subtitle lines with speaker name (Anh Duy's lines carry a second "Dịch:" line), SFX cues, the music slot, letterbox bars, fade in and fade out, skippable (hold Esc). Actors are the real game models, so they always match the player's chosen protagonist and outfit.
 - Length 15-40 s; branch lines by protagonist sex and by flags.
-- Segment cinematics (S-D14, owner amendment 2026-10-23: "cinematic slow-mo cho mỗi đoạn đánh đấm, tầm 10s-15s, nhân vật bay nhảy đánh đấm để tôi ghép nhạc").
-  - Every fight, chase, gunfight, hide-and-seek escape and boss phase ends with a **10-15 s slow-motion action cinematic** with its own music slot. The length of each one is fixed and listed in 8.3, so the owner can cut the music to the exact length.
+- Segment cinematics (S-D14, owner amendment 2026-10-23: "cinematic slow-mo cho mỗi đoạn đánh đấm, tầm 10s-15s, nhân vật bay nhảy đánh đấm để tôi ghép nhạc", then "cine khoảng 20-25s").
+  - Every fight, chase, gunfight, hide-and-seek escape and boss phase ends with a **20-25 s slow-motion action cinematic** with its own music slot. The length of each one is fixed and listed in 8.3, so the owner can cut the music to the exact length.
   - **Slow motion with speed ramps:**
     - the wind-up plays at normal speed;
     - the cinematic clock drops to 0.25-0.4× on every impact;
     - impacts get freeze frames of 0.1-0.2 s, plus dust, sparks and debris;
     - the clock snaps back to 1× between moves.
-    - The last 2-3 s run at normal speed for the story beat: the enemy's comic reaction and the next clue.
+    - The last 3-4 s run at normal speed for the story beat: the enemy's comic reaction and the next clue.
   - **Choreography is airborne and acrobatic.** The protagonist and the enemies:
     - jump, flip, wall-kick, slide and spin;
     - throw flying kicks and the Vovinam scissor-kick takedown;
@@ -140,35 +140,35 @@ Evaluation order:
 | `end_a` / `ai_true_end` | true ending | triumphant, warm |
 | `end_b` .. `end_f` | other endings | bittersweet / dark comic / sequel tease / meme credits / scholarship |
 
-Segment slots (S-D14): one per action segment, 20 in all. Each entry gives the mood, then the fixed slow-motion cinematic length (10-15 s; brawls, bosses and finishers get the longest):
+Segment slots (S-D14): one per action segment, 20 in all. Each entry gives the mood, then the fixed slow-motion cinematic length (20-25 s; brawls, bosses and finishers get the longest):
 - Day 0:
-  - `seg_d0_race`: arrival at the gate, upbeat; 10 s (bike jump over the gate barrier).
-  - `seg_d0_exam`: cheater caught, smug groove; 10 s (diving catch of the flying phone).
+  - `seg_d0_race`: arrival at the gate, upbeat; 20 s (bike jump over the gate barrier).
+  - `seg_d0_exam`: cheater caught, smug groove; 20 s (diving catch of the flying phone).
 - Day 1:
-  - `seg_d1_chase`: courier cornered, funky; 12 s.
-  - `seg_d1_brawl`: three couriers down, punchy; 15 s.
+  - `seg_d1_chase`: courier cornered, funky; 22 s.
+  - `seg_d1_brawl`: three couriers down, punchy; 25 s.
 - Day 2:
-  - `seg_d2_chase`: last biker kicked off, driving rock; 12 s.
-  - `seg_d2_boss`: Sói Xám floored, heavy riff; 15 s.
+  - `seg_d2_chase`: last biker kicked off, driving rock; 22 s.
+  - `seg_d2_boss`: Sói Xám floored, heavy riff; 25 s.
 - Day 3:
-  - `seg_d3_gunfight`: yard cleared, cool; 12 s.
-  - `seg_d3_crates`: crates destroyed, explosive; 10 s.
-  - `seg_d3_boss`: forklift toppled, lounge irony; 15 s.
+  - `seg_d3_gunfight`: yard cleared, cool; 22 s.
+  - `seg_d3_crates`: crates destroyed, explosive; 20 s.
+  - `seg_d3_boss`: forklift toppled, lounge irony; 25 s.
 - Day 4:
-  - `seg_d4_brawl`: canteen clones down, chaotic; 15 s.
-  - `seg_d4_escape`: out of the locked building, breathless then silly; 12 s.
+  - `seg_d4_brawl`: canteen clones down, chaotic; 25 s.
+  - `seg_d4_escape`: out of the locked building, breathless then silly; 22 s.
 - Day 5:
-  - `seg_d5_gunfight`: guards down, tense electronic; 12 s.
-  - `seg_d5_hack`: tool wiped, glitchy; 10 s.
-  - `seg_d5_boss`: katana broken, dramatic; 15 s.
+  - `seg_d5_gunfight`: guards down, tense electronic; 22 s.
+  - `seg_d5_hack`: tool wiped, glitchy; 20 s.
+  - `seg_d5_boss`: katana broken, dramatic; 25 s.
 - Day 6:
-  - `seg_d6_infiltrate`: ledger stolen, sneaky; 10 s.
-  - `seg_d6_chase`: speedboat stopped, splashy; 12 s.
+  - `seg_d6_infiltrate`: ledger stolen, sneaky; 20 s.
+  - `seg_d6_chase`: speedboat stopped, splashy; 22 s.
 - Day 7:
-  - `seg_d7_floors`: penthouse floor reached, relentless; 12 s.
-  - `seg_d7_phase1`: lights go out, ominous; 12 s.
-  - `seg_d7_phase2`: light returns, heroic; 15 s.
-  - `seg_d7_finisher`: Đòn chân kẹp cổ số 21, slow-motion triumph; 15 s, flows into the ending.
+  - `seg_d7_floors`: penthouse floor reached, relentless; 22 s.
+  - `seg_d7_phase1`: lights go out, ominous; 22 s.
+  - `seg_d7_phase2`: light returns, heroic; 25 s.
+  - `seg_d7_finisher`: Đòn chân kẹp cổ số 21, slow-motion triumph; 25 s, flows into the ending.
 - Owner files (S-D10) go to a local folder `user://music/<slot>.ogg` or `.mp3` (and `user://sfx/<cue>.ogg`); the folder is git-ignored and never exported. Without a file the synthesized default cue for that slot plays.
 
 ## 9. Systems (detailed in each phase's spec)
