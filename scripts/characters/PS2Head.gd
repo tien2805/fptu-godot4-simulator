@@ -486,7 +486,9 @@ static func _build_cap(fit: Node3D, color: Color, w: float) -> void:
 	visor.position = Vector3(0.0, HAT_BOTTOM + 0.004, HAT_Z)
 	fit.add_child(visor)
 	var h: float = 0.018   # phù hiệu: 1.8 cm trên đáy chóp, mặt chóp ở đó nghiêng ra sau ~23°
-	CharacterBuilder._box(fit, Vector3(0.0, top + h, HAT_Z - b * sqrt(1.0 - pow(h / CAP_CROWN_H, 2.0)) - 0.002), Vector3(0.026, 0.022, 0.006), CharacterBuilder._mat("cap_badge", Color("#D4AF37"), 0.3, 0.9), Vector3(0.4, 0.0, 0.0))
+	# kim loại 0.3: metal 0.9 phản chiếu bầu trời nên phù hiệu ngả xanh. Khoá riêng: _mat đệm theo khoá, "cap_badge" là của
+	# mũ cổ điển (metal 0.9), dùng chung thì kết quả phụ thuộc thứ tự dựng
+	CharacterBuilder._box(fit, Vector3(0.0, top + h, HAT_Z - b * sqrt(1.0 - pow(h / CAP_CROWN_H, 2.0)) - 0.002), Vector3(0.026, 0.022, 0.006), CharacterBuilder._mat("cap_badge_ps2", Color("#D4AF37"), 0.3, 0.3), Vector3(0.4, 0.0, 0.0))
 
 
 ## Mũ đầu bếp: vành trụ elip (ngang nhân w) từ HAT_BOTTOM cao CHEF_BAND.y, miệng loe CHEF_FLARE, trên là bánh phồng dẹt rộng hơn

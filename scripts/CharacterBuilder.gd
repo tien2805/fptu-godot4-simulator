@@ -705,6 +705,8 @@ static func _rig_torso_extras_ps2(model: Node3D, sk: Skeleton3D, rig: Dictionary
 			_strap(chest, side[0], side[1], 0.03, 0.012, bp, Vector3.UP)
 			_strap(chest, side[1], side[2], 0.03, 0.012, bp, Vector3(0.0, 1.0, -1.0))
 			_strap(chest, side[2], side[3], 0.03, 0.012, bp, front)
+	if outfit.get("apron", false) and not rig.has("torso"):
+		push_warning("CharacterBuilder: thân %s không có pivot \"torso\", bỏ tạp dề" % rel)
 	if outfit.get("apron", false) and rig.has("torso"):
 		var am: Material = outfit["apron_mat"]
 		var tf: Node3D = _fit_node((rig["torso"] as Node3D).get_parent() as Node3D, sk, c_xf, "Torso", "TorsoFit")
@@ -745,10 +747,12 @@ static func _strap(parent: Node3D, p0: Vector3, p1: Vector3, w: float, t: float,
 ## rồi chỗ đặt từng món đồ: cực trị (_env) của các đỉnh trong hộp quanh chỗ đó, nên đồ nằm ngoài mặt thân (+ khe vài mm).
 ## Độ cao tính từ gốc xương (Neck / Chest / Hips) nên khớp cả thân nam lẫn nữ.
 static var _body_fit_cache: Dictionary = {}
+static var _env_misses: Array[String] = []   # hộp mẫu rỗng (_env dùng giá trị dự phòng) của lần _body_fit đang chạy
 
 static func _body_fit(rel: String, model: Node3D, sk: Skeleton3D) -> Dictionary:
 	if _body_fit_cache.has(rel):
 		return _body_fit_cache[rel]
+	_env_misses.clear()
 	var c_xf: Transform3D = Transform3D(Basis(Vector3.UP, MODEL_YAW), Vector3.ZERO) * _local_xform(sk, model)
 	var pts := PackedVector3Array()
 	for mi: MeshInstance3D in _mesh_instances(sk):
@@ -863,17 +867,23 @@ static func _body_fit(rel: String, model: Node3D, sk: Skeleton3D) -> Dictionary:
 	for sx: float in [-1.0, 1.0]:
 		tails.append([Vector3(cen.x + sx * 0.02, ybelt - 0.02, zk), Vector3(cen.x + sx * 0.035, ybelt - 0.2, minf(ztail - 0.008, zk))])
 	f["belt_tails"] = tails
+	if not _env_misses.is_empty():
+		push_warning("CharacterBuilder: thân %s: %d hộp mẫu không có đỉnh nào, đồ ở đó đặt theo giá trị dự phòng: %s" % [rel, _env_misses.size(), ", ".join(_env_misses)])
 	_body_fit_cache[rel] = f
 	return f
 
 ## Cực trị toạ độ axis (2 = z, 1 = y) của các điểm pts trong hộp [lo, hi]: sgn -1 lấy nhỏ nhất (mặt trước thân, phía -Z), +1 lớn
-## nhất (mặt sau, đỉnh vai). Hộp không có điểm nào -> fallback.
+## nhất (mặt sau, đỉnh vai). Hộp không có điểm nào -> fallback, ghi hộp vào _env_misses (món đồ có thể lơ lửng hoặc chìm vào
+## thân; _body_fit cảnh báo gộp một lần mỗi mô hình).
 static func _env(pts: PackedVector3Array, lo: Vector3, hi: Vector3, axis: int, sgn: float, fallback: float) -> float:
 	var best: float = -INF
 	for p: Vector3 in pts:
 		if p.x >= lo.x and p.x <= hi.x and p.y >= lo.y and p.y <= hi.y and p.z >= lo.z and p.z <= hi.z:
 			best = maxf(best, p[axis] * sgn)
-	return best * sgn if best > -INF else fallback
+	if best == -INF:
+		_env_misses.append("%s..%s" % [lo, hi])   # _body_fit cảnh báo gộp một lần mỗi mô hình
+		return fallback
+	return best * sgn
 
 ## Mặt trước thân (z nhỏ nhất của nửa trước z < zc) trong ô (x +- hx, y +- hy).
 static func _front(pts: PackedVector3Array, x: float, y: float, hx: float, hy: float, zc: float, fallback: float) -> float:
