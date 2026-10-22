@@ -2024,6 +2024,13 @@ class Animator extends Node:
 				var jerk: float = maxf(0.0, sin(ct * 0.8 + 1.3)) ** 24.0
 				p["head"] = Vector3(-0.3 - 0.4 * nod + 0.5 * jerk, 0.0, 0.08 * sin(ct * 0.5))
 				p["torso"] = Vector3(-0.1 - 0.12 * nod, 0.0, 0.0)
+			"phone_stand":   # đứng xem điện thoại (người đi đường dừng chân): tay, đầu, thân như "phone"; chân để nguyên
+				p["shoulder_l"] = Vector3(0.95, 0.0, 0.18)
+				p["shoulder_r"] = Vector3(0.95, 0.0, -0.18)
+				p["elbow_l"] = Vector3(1.25, -0.35, 0.0)
+				p["elbow_r"] = Vector3(1.25, 0.35, 0.0)
+				p["head"] = Vector3(-0.55, 0.0, 0.0)
+				p["torso"] = Vector3(-0.12, 0.0, 0.0)
 			"cheer", "cheer_once":
 				var b: float = absf(sin(ct * 6.0))
 				p["shoulder_l"] = Vector3(2.75 - 0.25 * b, 0.0, 0.35)

@@ -10,11 +10,22 @@
 # Chạy:  godot --headless --path . --script tests/test_pedestrians.gd
 extends SceneTree
 
-const PART_B: bool = false   # Task 10 bật
+const PART_B: bool = true   # Task 10 bật
 const PART_C: bool = false   # Task 12 bật
 
 var done: bool = false
 var frames: int = 0
+var world_b: Node3D
+var ped: Pedestrian
+var jogger: Pedestrian
+var stub_player: CharacterBody3D
+var stub_bike: CharacterBody3D
+var mounted: bool = false
+var b_started: bool = false
+var b_phase: String = ""
+var b_t0: int = 0
+var b_hits: Array[String] = []
+var jog_start: Vector3
 
 
 func _initialize() -> void:
@@ -24,6 +35,155 @@ func _initialize() -> void:
 		print("✅ SUCCESS: PEDESTRIANS (part A: walk graph)")
 		done = true
 		quit(0)
+	if PART_B:
+		physics_frame.connect(_on_physics_b)   # phần B đếm khung vật lý (60 Hz), bắt đầu khi gốc đã vào cây
+
+
+func _part_b_start() -> void:
+	var rig: Node3D = CharacterBuilder.build({"preset": "student", "seed": 4, "rigged": true, "animate": false})
+	var sk: Skeleton3D = rig.get_meta("skeleton", null) as Skeleton3D
+	var thigh: int = sk.find_bone("UpperLeg.L")
+	var arm: int = sk.find_bone("UpperArm.L")
+	CharacterBuilder.pose(rig, "phone_stand")
+	var leg_deg: float = rad_to_deg(sk.get_bone_pose_rotation(thigh).angle_to(sk.get_bone_rest(thigh).basis.get_rotation_quaternion()))
+	var arm_deg: float = rad_to_deg(sk.get_bone_pose_rotation(arm).angle_to(sk.get_bone_rest(arm).basis.get_rotation_quaternion()))
+	rig.free()
+	if not _check(leg_deg < 1.0 and arm_deg > 20.0, "phone_stand keeps the legs standing and raises the arms (thigh %.1f°, arm %.1f°)" % [leg_deg, arm_deg]):
+		return
+	for prof: String in Pedestrian.PROFILES.keys():
+		var lim: Array = Pedestrian.PROFILES[prof]
+		for s: int in range(20):
+			var v: float = Pedestrian.speed_for(prof, s)
+			if not _check(v >= float(lim[0]) and v <= float(lim[1]) and v == Pedestrian.speed_for(prof, s), "speed_for(%s, %d) = %.2f must be deterministic and inside %s" % [prof, s, v, str(lim)]):
+				return
+	world_b = Node3D.new()
+	world_b.position = Vector3(0.0, 0.0, 5000.0)   # xa thế giới thật của phần A (không dựng gì ở đây)
+	root.add_child(world_b)
+	var sb := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(200.0, 1.0, 200.0)
+	cs.shape = bs
+	sb.add_child(cs)
+	sb.position = Vector3(0.0, -0.5, 0.0)
+	world_b.add_child(sb)
+	# hai đường thẳng 60 m dọc trục X cách nhau 12 m (toạ độ bản đồ = thế giới của world_b): nút 0..10 và 11..21
+	var line := PackedVector2Array()
+	var line2 := PackedVector2Array()
+	for i: int in range(11):
+		line.append(Vector2(-30.0 + float(i) * 6.0, 5000.0))
+		line2.append(Vector2(-30.0 + float(i) * 6.0, 5012.0))
+	var g: PedWalkGraph = PedWalkGraph.from_lines([line, line2])
+	stub_player = _stub("StubPlayer", Vector3(40.0, 0.0, 5000.0), 0.4)
+	stub_bike = _stub("StubBike", Vector3(-40.0, 0.0, 5000.0), 0.6)
+	ped = _ped(g, 5, {"preset": "student", "seed": 11}, Vector3(0.0, 0.05, 5000.0))
+	ped.hit.connect(func(_p: Pedestrian, kind: String) -> void: b_hits.append(kind))
+	jogger = _ped(g, 16, {"preset": "casual", "seed": 12, "profile": "jog", "wseed": 3}, Vector3(0.0, 0.05, 5012.0))
+	jog_start = jogger.global_position
+	b_phase = "walk"
+	b_t0 = 0
+
+
+func _ped(g: PedWalkGraph, node: int, ident: Dictionary, at: Vector3) -> Pedestrian:
+	var p := Pedestrian.new()
+	p.setup(g, node, ident)
+	p.player = stub_player
+	p.bike = stub_bike
+	p.mounted_fn = func() -> bool: return mounted
+	root.add_child(p)
+	p.global_position = at
+	return p
+
+
+func _stub(name: String, at: Vector3, r: float) -> CharacterBody3D:
+	var s := CharacterBody3D.new()
+	s.name = name
+	s.set_script(load("res://tests/support/stub_mover.gd"))
+	var cs := CollisionShape3D.new()
+	var cap := CapsuleShape3D.new()
+	cap.radius = r
+	cap.height = 1.7
+	cs.shape = cap
+	cs.position = Vector3(0.0, 0.85, 0.0)
+	s.add_child(cs)
+	s.collision_layer = 0   # chỉ đo khoảng cách, không đẩy người đi đường
+	root.add_child(s)
+	s.global_position = at
+	return s
+
+
+func _on_physics_b() -> void:
+	if done:
+		return
+	if not b_started:
+		b_started = true
+		_part_b_start()
+		return
+	if b_phase == "":
+		return
+	frames += 1
+	var t: int = frames - b_t0
+	match b_phase:
+		"walk":
+			if t == 90:   # 1.5 s
+				var moved: float = Vector2(ped.global_position.x, ped.global_position.z - 5000.0).length()
+				var jogged: float = jogger.global_position.distance_to(jog_start)
+				print("  pedestrian walked %.2f m in 1.5 s (state %d), jogger %.2f m" % [moved, ped.state, jogged])
+				if not _check(moved > 1.2 and ped.state == Pedestrian.State.WALK, "a pedestrian must walk along the graph (moved %.2f m)" % moved):
+					return
+				if not _check(jogged > 2.9 and jogger.state == Pedestrian.State.WALK, "a jogger must cover > 2.9 m in 1.5 s (got %.2f m)" % jogged):
+					return
+				stub_player.set("speed_value", 3.0)
+				stub_player.global_position = ped.global_position + Vector3(0.65, 0.0, 0.0)
+				b_phase = "bump"
+				b_t0 = frames
+		"bump":
+			if t == 3:
+				print("  bump -> state %d, hits %s" % [ped.state, b_hits])
+				if not _check(ped.state == Pedestrian.State.STUMBLE and b_hits.size() == 1 and b_hits[0] == "bump", "a walking bump (3 m/s) must give STUMBLE and one 'bump' hit"):
+					return
+				stub_player.global_position = Vector3(40.0, 0.0, 5000.0)
+			if t == 80:   # 1.33 s: hết hồi 1 s và lảo đảo 0.8 s
+				stub_player.set("speed_value", 7.0)
+				stub_player.global_position = ped.global_position + Vector3(0.65, 0.0, 0.0)
+				b_phase = "sprint"
+				b_t0 = frames
+		"sprint":
+			if t == 3:
+				if not _check(ped.state == Pedestrian.State.KNOCKDOWN and b_hits.back() == "sprint", "a sprint hit (7 m/s) must give KNOCKDOWN"):
+					return
+				stub_player.global_position = Vector3(40.0, 0.0, 5000.0)
+			if t == 180:   # 3 s (ngã 1.2 s + đứng dậy 0.9 s)
+				print("  after knockdown: state %d" % ped.state)
+				if not _check(ped.state == Pedestrian.State.FLEE or ped.state == Pedestrian.State.WALK, "a knocked-down pedestrian walks again within 3 s (state %d)" % ped.state):
+					return
+				mounted = true
+				stub_bike.set("speed_value", 6.0)
+				stub_bike.global_position = ped.global_position + Vector3(-0.8, 0.0, 0.0)
+				b_phase = "bike"
+				b_t0 = frames
+		"bike":
+			if t == 3:
+				print("  bike hit -> state %d, hits %s" % [ped.state, b_hits])
+				if not _check(ped.state == Pedestrian.State.KNOCKDOWN and b_hits.back() == "bike", "a bike hit above 3 m/s must give KNOCKDOWN with kind 'bike'"):
+					return
+				mounted = false
+				stub_bike.global_position = Vector3(-40.0, 0.0, 5000.0)
+				jogger.set_far(true)
+				stub_player.set("speed_value", 7.0)
+				stub_player.global_position = jogger.global_position + Vector3(0.65, 0.0, 0.0)
+				b_phase = "mid"
+				b_t0 = frames
+		"mid":
+			if t == 3:
+				print("  mid-tier contact -> jogger hits %s, state %d" % [jogger.hits, jogger.state])
+				if not _check(jogger.hits.is_empty() and jogger.state == Pedestrian.State.WALK, "a mid-tier pedestrian (lod_far) makes no contact checks"):
+					return
+				stub_player.global_position = Vector3(40.0, 0.0, 5000.0)
+				if not PART_C:
+					print("✅ SUCCESS: PEDESTRIANS (parts A + B)")
+					done = true
+					quit(0)
 
 
 func _part_a() -> bool:
