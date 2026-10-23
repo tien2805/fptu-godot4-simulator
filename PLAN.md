@@ -299,7 +299,23 @@ Measured (Task 7): sprint lasts 6.13 s, standing apex 0.97 m, running jump 4.75 
 * Headless physics cost per frame: crowd about 0.95 ms, traffic about 0.30 ms for 23 vehicles.
 * Static rigged poses and code clips start from a neutral standing base (feet level, symmetric toe-out) instead of the Quaternius 3/4 rest stance (9a7bdf3).
 
-**fps table:** pending (measured on main after merge).
+**fps table** (main after the merge, f66b1af; windowed, `PREVIEW_NOVSYNC=1`, `VICE_STYLE=vice`; laptop on BATTERY, 92 %, so the numbers are low against the AC gates; re-measure on AC power):
+
+| Spot | fps | Gate | Pre-task battery baseline |
+| :--- | ---: | ---: | ---: |
+| FreeRoam BE6 lobby (crowd + traffic, full day density) | 69 | ≥ 45 | - |
+| FreeRoam campus main gate | 61 | ≥ 45 | - |
+| FreeRoam Nguyễn Xiển verge | 131 | ≥ 45 | - |
+| menu_01 / menu_02 | 41 / 45 | ≥ 60 | 44-48 |
+| s1_01 / s1_02 / s1_03 / s1_04 | 195 / 52 / 43 / 49 | ≥ 45 | s1_03 44-45 |
+| s2_01 / s2_02 / s2_03 | 194 / 199 / 118 | ≥ 45 | - |
+| s3_01 / s3_02 | 49 / 63 | ≥ 45 | - |
+| s4_01 / s4_02 | 144 / 129 | ≥ 45 | - |
+| s5_01 / s5_02 / s5_03 | 102 / 87 / 54 | ≥ 45 | - |
+| s6_01 / s6_02 | 56 / 59 | ≥ 45 | - |
+| ex_01 / ex_02 | 123 / 100 | ≥ 45 | - |
+
+The three FreeRoam crowd spots pass. Menu and s1_03 sit at the same battery level as before this work (no regression); their AC numbers are still to be measured.
 
 **Commits** (`git log --oneline 362d6f0..HEAD` at the time of writing; not pushed)
 
