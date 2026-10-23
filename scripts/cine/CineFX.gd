@@ -9,7 +9,7 @@
 # Playback is FORWARD-ONLY: crate_break hides the intact crates and expired flashes / particles are freed, so seeking back
 # before an event does not undo it (debris and stars themselves are pure functions of s).
 # Positions passed to burst() are in this node's local space (CinePlayer parents CineFX under the stage).
-# Also builds the A1 set-dressing props (crate stack, scooter, banana, phone) from plain meshes; no imported art, no
+# Also builds the A1 set-dressing props (crate stack, scooter, banana, phone, helmet) from plain meshes; no imported art, no
 # GPUParticles, no AI images. Textures are generated in code (radial_texture).
 class_name CineFX
 extends Node3D
@@ -24,6 +24,8 @@ const COL_ASPHALT: Color = Color("#2E2E33")
 const COL_WOOD_CHUNK: Color = Color("#8A6A43")
 const COL_CRATE: Color = Color("#9A7448")
 const COL_CRATE_EDGE: Color = Color("#6E5232")
+## Prop kinds build_prop knows (timeline props and held props).
+const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", "helmet"]
 
 var _serial: int = 0
 var _parts: Array[Dictionary] = []     # {node: CPUParticles3D, s0, life}
@@ -456,6 +458,8 @@ static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 			_build_banana(root)
 		"phone":
 			_build_phone(root)
+		"helmet":
+			_build_helmet(root, opts)
 		_:
 			push_warning("CineFX.build_prop: unknown kind '%s'" % kind)
 	return root
@@ -577,6 +581,36 @@ static func _build_banana(root: Node3D) -> void:
 		# lie flat, pointing outwards
 		mi.basis = Basis.looking_at(out, Vector3.UP) * Basis(Vector3.RIGHT, PI * 0.5)
 		root.add_child(mi)
+
+
+## A courier's half-shell helmet (as CharacterBuilder's, about 0.25 m across), dome up, visor toward -Z; origin at the rim
+## centre. opts "color".
+static func _build_helmet(root: Node3D, opts: Dictionary) -> void:
+	var col: Color = opts.get("color", Color("#F1C40F"))
+	var shell: StandardMaterial3D = _mat(col, 0.25)
+	var dome := MeshInstance3D.new()
+	dome.name = "Dome"
+	var sm := SphereMesh.new()
+	sm.radius = 0.126
+	sm.height = 0.126
+	sm.is_hemisphere = true
+	dome.mesh = sm
+	dome.material_override = shell
+	dome.scale = Vector3(1.0, 1.05, 1.02)
+	root.add_child(dome)
+	var rim := MeshInstance3D.new()
+	rim.name = "Rim"
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.128
+	cm.bottom_radius = 0.128
+	cm.height = 0.03
+	rim.mesh = cm
+	rim.material_override = shell
+	rim.position = Vector3(0.0, -0.01, 0.0)
+	root.add_child(rim)
+	_box(root, "Visor", Vector3(0.21, 0.012, 0.08), Vector3(0.0, -0.005, -0.15), _mat(Color("#111318"), 0.2))
+	for sx: float in [-1.0, 1.0]:
+		_box(root, "Strap", Vector3(0.01, 0.12, 0.006), Vector3(sx * 0.09, -0.07, -0.02), _mat(Color("#222222"), 0.8))
 
 
 static func _build_phone(root: Node3D) -> void:

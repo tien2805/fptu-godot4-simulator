@@ -7,6 +7,8 @@
 #            (camera at center + (sin a·r, 0, cos a·r), y = height; constant angular speed)
 #   low_hero actor, side_deg, dist, fov      (0.25 m above ground in front-side of the actor, looking up at its chest)
 #   track    actor, offset, look (offset from the actor or from look_actor), fov
+# Every rig also takes "hand" (handheld feel, 0 = locked off, 1 = a tight handheld operator; see handheld()) and "whip"
+# (false = no whip / punch-in on the hits inside the shot).
 class_name CineShots
 extends RefCounted
 
@@ -71,3 +73,17 @@ static func whip(r: float, shot_r0: float, shot_r1: float, rows: Array[Dictionar
 			out["shake"] = Vector3(sin(r * 97.0), sin(r * 131.0 + 1.3), 0.0) * amp
 		side = -side
 	return out
+
+
+## Handheld camera noise at story time s: {"pos": m (camera frame), "rot": deg (pitch, yaw, roll)}. Sums of incommensurate
+## sines of s, so it is deterministic and seekable, crawls in slow motion and holds still in a freeze; amp 1 ~ 1.5 cm / 0.6°.
+static func handheld(s: float, amp: float) -> Dictionary:
+	if amp <= 0.0:
+		return {"pos": Vector3.ZERO, "rot": Vector3.ZERO}
+	var pos := Vector3(sin(s * 1.7 + 0.3) * 0.6 + sin(s * 4.3 + 1.1) * 0.4,
+		sin(s * 2.3 + 2.0) * 0.6 + sin(s * 5.1 + 0.7) * 0.4,
+		sin(s * 1.3 + 0.9) * 0.5) * (0.015 * amp)
+	var rot := Vector3(sin(s * 2.1 + 0.5) * 0.6 + sin(s * 5.7 + 2.2) * 0.4,
+		sin(s * 1.9 + 1.4) * 0.6 + sin(s * 4.9 + 0.2) * 0.4,
+		sin(s * 1.1 + 2.6) * 0.5) * (0.6 * amp)
+	return {"pos": pos, "rot": rot}

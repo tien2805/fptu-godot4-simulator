@@ -1630,11 +1630,15 @@ static func _build_helmet(head: Node3D, color: Color, width: float) -> void:
 	var hm: Material = _mat("helmet_" + color.to_html(false), color, 0.25, 0.1)
 	var hc := Vector3(0.0, 0.12, 0.0)
 	# mũ bảo hiểm nửa đầu: vòm từ ngang trán lên, vành + kính che trước, quai cằm
-	_hemisphere(head, hc + Vector3(0.0, 0.02, 0.0), HEAD_R * 1.2, hm, Vector3(-0.05, 0.0, 0.0), Vector3(0.98 * width, 1.05, 1.02))
-	_cyl(head, hc + Vector3(0.0, 0.01, 0.0), HEAD_R * 1.2, HEAD_R * 1.2, 0.03, hm, Vector3.ZERO, Vector3(0.98 * width, 1.0, 1.02))
-	_box(head, hc + Vector3(0.0, 0.015, -(HEAD_R * 1.18)), Vector3(0.21, 0.012, 0.08), _mat("helmet_visor", Color("#111318"), 0.2, 0.3))
+	var parts: Array[MeshInstance3D] = []
+	parts.append(_hemisphere(head, hc + Vector3(0.0, 0.02, 0.0), HEAD_R * 1.2, hm, Vector3(-0.05, 0.0, 0.0), Vector3(0.98 * width, 1.05, 1.02)))
+	parts.append(_cyl(head, hc + Vector3(0.0, 0.01, 0.0), HEAD_R * 1.2, HEAD_R * 1.2, 0.03, hm, Vector3.ZERO, Vector3(0.98 * width, 1.0, 1.02)))
+	parts.append(_box(head, hc + Vector3(0.0, 0.015, -(HEAD_R * 1.18)), Vector3(0.21, 0.012, 0.08), _mat("helmet_visor", Color("#111318"), 0.2, 0.3)))
 	for sx: float in [-1.0, 1.0]:
-		_box(head, hc + Vector3(sx * 0.09 * width, -0.05, -0.02), Vector3(0.01, 0.12, 0.006), _mat("helmet_strap", Color("#222222"), 0.8), Vector3(0.0, 0.0, sx * 0.25))
+		parts.append(_box(head, hc + Vector3(sx * 0.09 * width, -0.05, -0.02), Vector3(0.01, 0.12, 0.006), _mat("helmet_strap", Color("#222222"), 0.8), Vector3(0.0, 0.0, sx * 0.25)))
+	# cinematics hide the helmet when it is knocked or yanked off (CineActor part "helmet")
+	for mi: MeshInstance3D in parts:
+		mi.set_meta("helmet_part", true)
 
 # ===========================================================================
 # MESH / VẬT LIỆU

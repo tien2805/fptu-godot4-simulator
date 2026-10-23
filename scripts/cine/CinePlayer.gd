@@ -3,8 +3,9 @@
 # props, a Camera3D, the overlay, the FX node (under the stage: CineFX works in its own local space = stage space) and the
 # audio players; music (owner file or synthesized cue built on a worker thread) starts on the first frame; every frame:
 # r (REAL, from Time.get_ticks_usec or step(dt), never Engine.time_scale, never clamped) -> s = clock.story_at(r) -> actors,
-# story-time events (SFX, FX, prop glow), FX speed, camera (shot at real progress + whip), overlay (letterbox, fades,
-# subtitle at r, skip bar, debug), music gain. Ends at r = length (exact) or after a hold-Esc skip; emits finished(skipped).
+# story-time events (SFX, FX, prop glow), prop visibility (opts show_at / hide_at, a pure function of s), FX speed, camera
+# (shot at real progress + whip / punch-in of ramps and timeline punches + handheld noise in story time when the shot has
+# "hand"), overlay (letterbox, fades, subtitle at r, skip bar, debug), music gain. Ends at r = length (exact) or after a hold-Esc skip; emits finished(skipped).
 # PROCESS_MODE_ALWAYS: runs while the host pauses the tree.
 # Threading (plan review B1): the cue worker only writes into a holder box ([null]) through a lambda built in a static
 # function (no reference to this node); _poll_music reads the box; _exit_tree / PREDELETE wait for the task, so freeing the
@@ -43,6 +44,7 @@ var _sfx_i: int = 0
 var _events: Array[Dictionary] = []
 var _ev_i: int = 0
 var _rows: Array[Dictionary] = []
+var _cam_rows: Array[Dictionary] = []    # ramp rows + timeline punches (camera whip / FOV punch)
 var _beats := PackedFloat32Array()
 var _shot_r := PackedFloat32Array()      # real start of each shot
 var _task: int = -1
@@ -112,6 +114,10 @@ func setup(tl: CineTimeline, xf: Transform3D = Transform3D.IDENTITY, opts: Dicti
 	_rows = tl.clock.beat_rows()
 	for row: Dictionary in _rows:
 		_beats.append(float(row["r_hit"]))
+	_cam_rows = _rows.duplicate()
+	for pu: Dictionary in tl.punches:
+		_cam_rows.append({"r_hit": tl.clock.real_at(tl.story_time(pu["at"])), "preset": String(pu["preset"]), "freeze": 0.0})
+	_cam_rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["r_hit"]) < float(b["r_hit"]))
 	for sh: Dictionary in tl.shots:
 		_shot_r.append(tl.clock.real_at(float(sh["s"])))
 	_build_events()
@@ -149,6 +155,11 @@ func _dispatch_cues() -> void:
 				a.look(float(c["s"]), float(c["s1"]), actors.get(String(tg)) if tg is String else tg)
 			"show":
 				a.show_at(float(c["s"]), bool(c["on"]))
+			"hold":
+				var hn: Node3D = CineFX.build_prop(String(c["kind"]), o)
+				a.hold(float(c["s"]), float(c["s1"]), hn, String(o.get("bone", "Wrist.R")), o)
+			"part":
+				a.part_show(float(c["s"]), String(c["part"]), bool(c["on"]))
 
 
 func _build_events() -> void:
@@ -276,6 +287,7 @@ func _update(rr: float) -> void:
 	var speed: float = timeline.clock.speed_at(rr)
 	for a: CineActor in actors.values():
 		a.evaluate(s)
+	_update_props(s)
 	if not _seeking:
 		_fire_events(s)
 	fx.update(s, speed)
@@ -286,6 +298,17 @@ func _update(rr: float) -> void:
 		if _skipping >= 0.0:
 			g *= clampf(1.0 - _skipping / SKIP_FADE, 0.0, 1.0)   # a skip fades the music with the picture
 		music.volume_db = linear_to_db(maxf(g, 0.0001))
+
+
+## Props with "show_at" / "hide_at" (story s) are visible only in between (seekable, unlike the forward-only events).
+func _update_props(ss: float) -> void:
+	for pr: Dictionary in timeline.props:
+		var po: Dictionary = pr["opts"]
+		if not po.has("show_at") and not po.has("hide_at"):
+			continue
+		var pn: Node3D = prop_nodes.get(String(pr["id"]))
+		if pn:
+			pn.visible = ss >= timeline.story_time(po.get("show_at", 0.0)) and ss < timeline.story_time(po.get("hide_at", INF))
 
 
 func _fire_events(ss: float) -> void:
@@ -354,7 +377,8 @@ func _update_camera(rr: float) -> void:
 	var r1: float = _shot_r[i + 1] if i + 1 < shots.size() else timeline.length
 	var u: float = clampf((rr - r0) / maxf(r1 - r0, 0.001), 0.0, 1.0)
 	var c: Dictionary = CineShots.eval(shot, u, {"actors": actors})
-	var w: Dictionary = CineShots.whip(rr, r0, r1, _rows, bool((shot["params"] as Dictionary).get("whip", true)))
+	var w: Dictionary = CineShots.whip(rr, r0, r1, _cam_rows, bool((shot["params"] as Dictionary).get("whip", true)))
+	var hh: Dictionary = CineShots.handheld(s, float((shot["params"] as Dictionary).get("hand", 0.0)))
 	var pos_w: Vector3 = stage_xf * ((c["pos"] as Vector3) + (w["shake"] as Vector3))
 	var look_w: Vector3 = stage_xf * (c["look"] as Vector3)
 	var d: Vector3 = look_w - pos_w
@@ -362,7 +386,8 @@ func _update_camera(rr: float) -> void:
 		var up: Vector3 = Vector3.UP if absf(d.normalized().dot(Vector3.UP)) < 0.999 else Vector3.FORWARD
 		var b: Basis = Basis.looking_at(d, up)
 		b = Basis(Vector3.UP, deg_to_rad(float(w["yaw"]))) * b
-		camera.global_transform = Transform3D(b, pos_w)
+		b = b * Basis.from_euler((hh["rot"] as Vector3) * (PI / 180.0))
+		camera.global_transform = Transform3D(b, pos_w + b * (hh["pos"] as Vector3))
 	camera.fov = float(c["fov"]) + float(w["fov"])
 
 

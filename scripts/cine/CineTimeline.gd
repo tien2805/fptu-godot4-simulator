@@ -10,6 +10,7 @@ const TIMELINE_DIR: String = "res://scripts/cine/timelines/"
 const RIGS: Array[String] = ["static", "dolly", "orbit", "low_hero", "track", "crane"]
 const FX_KINDS: Array[String] = ["sparks", "dust", "flash", "debris", "crate", "stars"]
 const TRANSLATED_SPEAKERS: Array[String] = ["Anh Duy"]
+const PARTS: Array[String] = ["helmet"]
 
 var slot: String = ""
 var length: float = 25.0
@@ -28,6 +29,7 @@ var subs: Array[Dictionary] = []       # {"r", "dur", "speaker", "text", "tr"}
 var sfx: Array[Dictionary] = []        # {"at", "cue", "db"}
 var fx: Array[Dictionary] = []         # {"at", "kind", "where", "params"}
 var props: Array[Dictionary] = []      # {"id", "kind", "pos", "yaw", "opts"}
+var punches: Array[Dictionary] = []    # {"at", "preset"}: camera punch-in / whip on a non-ramp hit
 var _last_yaw: Dictionary = {}         # actor -> last keyed yaw (keeps yaw continuous)
 
 
@@ -110,6 +112,22 @@ func show(actor_id: String, s: float, on: bool) -> void:
 	cues.append({"type": "show", "actor": actor_id, "s": s, "on": on})
 
 
+## The actor holds a prop (CineFX kind) in the hand during story [s0, s1). opts: "bone" (default Wrist.R), "mid" (second bone:
+## two-handed), "offset" (m) / "rot" (deg) in the actor's frame, plus the prop's own build options (e.g. "color").
+func hold(actor_id: String, s0: float, s1: float, kind: String, opts: Dictionary = {}) -> void:
+	cues.append({"type": "hold", "actor": actor_id, "s": s0, "s1": s1, "kind": kind, "opts": opts})
+
+
+## Hide (on = false) or show a body part of the actor from story time s on (CineActor.part_show: "helmet").
+func part(actor_id: String, s: float, part_name: String, on: bool) -> void:
+	cues.append({"type": "part", "actor": actor_id, "s": s, "part": part_name, "on": on})
+
+
+## Camera punch-in (FOV) and whip-pan on a hit without a slow-motion ramp; preset sets the strength (CineShots.WHIP_DEG keys).
+func punch(at: Variant, preset: String = "medium") -> void:
+	punches.append({"at": at, "preset": preset})
+
+
 func shot(id: String, s: float, rig: String, what: String, params: Dictionary = {}) -> void:
 	shots.append({"id": id, "s": s, "rig": rig, "what": what, "params": params})
 
@@ -185,6 +203,13 @@ func validate() -> PackedStringArray:
 			var tg: Variant = c["target"]
 			if tg is String and not actors.has(String(tg)):
 				err.append("%s: look target %s unknown" % [aid, String(tg)])
+		if c["type"] == "hold":
+			if not CineFX.PROP_KINDS.has(String(c["kind"])):
+				err.append("%s: hold of unknown prop kind %s" % [aid, String(c["kind"])])
+			if float(c["s1"]) <= s or float(c["s1"]) > story_end + 1e-6:
+				err.append("%s: hold window %.3f-%.3f is empty or past the story end" % [aid, s, float(c["s1"])])
+		if c["type"] == "part" and String(c["part"]) not in PARTS:
+			err.append("%s: unknown part %s" % [aid, String(c["part"])])
 	for p: Dictionary in clock.ramps:
 		if float(p["freeze"]) > 0.0 and not struck.has(String(p["name"])):
 			err.append("%s has no strike cue" % String(p["name"]))
@@ -211,6 +236,15 @@ func validate() -> PackedStringArray:
 		if prop_ids.has(pr["id"]):
 			err.append("duplicate prop id %s" % String(pr["id"]))
 		prop_ids[pr["id"]] = true
+	for pu: Dictionary in punches:
+		var sp: float = story_time(pu["at"])
+		if sp < 0.0 or sp > story_end + 1e-6:
+			err.append("punch at %s is outside the story" % str(pu["at"]))
+		if not CineShots.WHIP_DEG.has(String(pu["preset"])):
+			err.append("punch at %s: unknown preset %s" % [str(pu["at"]), String(pu["preset"])])
+	for pr2: Dictionary in props:
+		if not CineFX.PROP_KINDS.has(String(pr2["kind"])):
+			err.append("prop %s: unknown kind %s" % [String(pr2["id"]), String(pr2["kind"])])
 	for e: Dictionary in sfx + fx:
 		var st: float = story_time(e["at"])
 		if st < 0.0 or st > story_end + 1e-6:

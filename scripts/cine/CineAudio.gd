@@ -14,7 +14,7 @@ const SFX_DIR: String = "user://sfx/"
 const SR: int = 22050
 const FADE_OUT: float = 0.5
 const SFX_CUES: Array[String] = ["impact_light", "impact_medium", "impact_heavy", "whoosh_down", "freeze_tick", "crate_smash",
-	"body_fall", "slide_whistle", "groan", "phone_buzz", "engine_roar"]
+	"body_fall", "slide_whistle", "groan", "phone_buzz", "engine_roar", "neck_crack", "helmet_clonk"]
 const MOODS: Dictionary = {
 	"punchy": {"bpm": 118.0, "root": 55.0, "minor": true},
 	"heavy": {"bpm": 96.0, "root": 49.0, "minor": true},
@@ -230,6 +230,16 @@ static func _synth_sfx(cue: String) -> AudioStreamWAV:
 			return _to_wav(b)
 		"engine_roar":
 			return _to_wav(_engine(1.6))
+		"neck_crack":   # two dry knuckle-crack clicks
+			var c1: PackedFloat32Array = _mix([_noise(0.03, 0.7, 120.0, 8, 0.1), _tone(0.03, 1900.0, 1500.0, 0.25, 110.0)])
+			var pause := PackedFloat32Array()
+			pause.resize(int(0.07 * SR))
+			var c2: PackedFloat32Array = _mix([_noise(0.03, 0.55, 120.0, 9, 0.1), _tone(0.03, 1700.0, 1300.0, 0.2, 110.0)])
+			c1.append_array(pause)
+			c1.append_array(c2)
+			return _to_wav(c1)
+		"helmet_clonk": # hollow plastic shell knock
+			return _to_wav(_mix([_tone(0.22, 520.0, 430.0, 0.55, 18.0), _tone(0.22, 1180.0, 1010.0, 0.2, 24.0), _noise(0.05, 0.45, 60.0, 10, 0.3)]))
 	return _to_wav(_tone(0.08, 800.0, 800.0, 0.4, 20.0))
 
 

@@ -9,7 +9,9 @@
 #     parabolic "arc"; the active move's extras (arc, spin, yaw) are added over its air window; code poses may pitch / drop
 #     the whole body about the pivot ("body_pitch" / "body_y": lying, getting up);
 #   • override: timeline poses (abs / add); look: head + neck turn toward a node or a point, in the spin node's frame;
-#     expr: face expression (PS2 atlas cell, or the classic face texture through CharacterBuilder.set_expression); show_at.
+#     expr: face expression (PS2 atlas cell, or the classic face texture through CharacterBuilder.set_expression); show_at;
+#   • hold: a prop in the hand for a story-time window (a BoneAttachment3D on the hand bone carries it; two-handed holds are
+#     centred between both hands), part_show: hide / show a body part ("helmet") from a story time on.
 # Order independence: root / spin transforms are pure functions of s (xf_at). A look at another CineActor aims at that
 # actor's head_point_at(s) – its root and spin transform at s times its neutral head point – never at its bones from its last
 # evaluate, so actors can be evaluated in any order and seeking backwards (replays) gives the same frame. (Clip-driven head
@@ -36,6 +38,9 @@ var keys: Array[Dictionary] = []
 var exprs: Array[Dictionary] = []
 var looks: Array[Dictionary] = []
 var shows: Array[Dictionary] = []
+var holds: Array[Dictionary] = []      # {s0, s1, node, att, bone, mid, offset, rot}
+var parts: Array[Dictionary] = []      # {s, part, v}
+var _part_nodes: Dictionary = {}       # part -> Array of MeshInstance3D
 var last_s: float = 0.0
 var _base_pose: Dictionary = {}
 var _home: Dictionary = {}             # placement when there are no keys: {pos, yaw}
@@ -157,6 +162,32 @@ func look(s0: float, s1: float, target: Variant) -> void:
 func show_at(s: float, on: bool) -> void:
 	shows.append({"s": s, "v": on})
 	shows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["s"]) < float(b["s"]))
+
+
+## Hold `node` during story [s0, s1): a BoneAttachment3D on `bone` carries it (hidden outside the window). opts: "mid" (a second
+## bone: two-handed, the prop is centred between both), "offset" (m, actor frame, from the hand / the centre), "rot" (deg, actor
+## frame). The prop's transform relative to the attachment is set on every evaluate from the bones at s (seekable).
+func hold(s0: float, s1: float, node: Node3D, bone: String = "Wrist.R", opts: Dictionary = {}) -> void:
+	var att := BoneAttachment3D.new()
+	att.name = "Hold%d" % holds.size()
+	att.bone_name = bone
+	sk.add_child(att)
+	att.add_child(node)
+	att.visible = false
+	holds.append({"s0": s0, "s1": s1, "node": node, "att": att, "bone": bone, "mid": String(opts.get("mid", "")),
+		"offset": opts.get("offset", Vector3.ZERO), "rot": opts.get("rot", Vector3.ZERO)})
+
+
+## Show (on) or hide a body part from story time s on: "helmet" (meshes tagged helmet_part by CharacterBuilder).
+func part_show(s: float, part: String, on: bool) -> void:
+	parts.append({"s": s, "part": part, "v": on})
+	parts.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["s"]) < float(b["s"]))
+	if not _part_nodes.has(part):
+		var found: Array = []
+		for n: Node in body.find_children("*", "MeshInstance3D", true, false):
+			if n.has_meta(part + "_part"):
+				found.append(n)
+		_part_nodes[part] = found
 
 
 ## The move cue playing at s ({} before the first one).
@@ -300,6 +331,8 @@ func evaluate(s: float) -> void:
 	_eval_pose(s)
 	_eval_look(s)
 	_eval_expr(s)
+	_eval_parts(s)
+	_eval_holds(s)
 
 
 func _eval_transform(s: float) -> void:
@@ -469,6 +502,36 @@ func _eval_look(s: float) -> void:
 		var yaw: float = clampf(atan2(-dl.x, -dl.z), -LOOK_YAW_MAX, LOOK_YAW_MAX)   # characters face -Z; + = to the left
 		var pitch: float = clampf(atan2(dl.y, Vector2(dl.x, dl.z).length()), -LOOK_PITCH_MAX, LOOK_PITCH_MAX)
 		_add_pose({"neck": Vector3(-pitch * 0.4, yaw * 0.4, 0.0), "head": Vector3(-pitch * 0.6, yaw * 0.6, 0.0)}, w)
+
+
+func _eval_parts(s: float) -> void:
+	for part: String in _part_nodes.keys():
+		var on: bool = true
+		for x: Dictionary in parts:
+			if String(x["part"]) == part and float(x["s"]) <= s:
+				on = bool(x["v"])
+		for mi: Node3D in _part_nodes[part]:
+			mi.visible = on
+
+
+## Held props: visible inside their window; placed at the hand (or between both hands) with the spin node's orientation.
+func _eval_holds(s: float) -> void:
+	for h: Dictionary in holds:
+		var att: BoneAttachment3D = h["att"]
+		var on: bool = s >= float(h["s0"]) and s < float(h["s1"])
+		att.visible = on
+		if not on:
+			continue
+		var b: int = sk.find_bone(String(h["bone"]))
+		if b < 0:
+			continue
+		var hand: Transform3D = sk.global_transform * CharacterBuilder._bone_global_now(sk, b)
+		var p: Vector3 = hand.origin
+		if String(h["mid"]) != "":
+			p = (p + bone_world(String(h["mid"]))) * 0.5
+		var bs: Basis = spin.global_transform.basis.orthonormalized()
+		var want := Transform3D(bs * Basis.from_euler((h["rot"] as Vector3) * (PI / 180.0)), p + bs * (h["offset"] as Vector3))
+		(h["node"] as Node3D).transform = hand.affine_inverse() * want
 
 
 ## PS2 faces switch the atlas cell on the actor's own face material; classic faces (no "ps2_face" meta) swap the face

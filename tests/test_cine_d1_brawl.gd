@@ -1,9 +1,10 @@
 # File: res://tests/test_cine_d1_brawl.gd
-# Headless test of seg_d1_brawl (re-timed to the owner's track "I've Gotta Be Me", ~112 bpm): valid, exactly 25.000 s, every
-# impact on its music onset within 0.5 ms (ramps placed by real time), the long finisher slow-mo ending at real 22.000 with a
-# 3.000 s tail, the crate crash and the SFX accents on their onsets, the shot cuts, the committed beat sheet in sync (CRLF
-# normalised); plays 1500 steps of 1/60 with actors inside the 14 x 10 m box; contacts within 0.6 m (ramps and the 7.72
-# cross), lying bodies on the floor and no hips skating (<= 0.08 m per frame) through lie / get-up crossfades on every tier (cap 0 Mixamo when present, 1 UAL, 2 native, 3 code); a clear stage at the campus west gate; F9 plays
+# Headless test of seg_d1_brawl (Nobody restage on the owner's track "I've Gotta Be Me", ~112 bpm): valid, exactly 25.000 s,
+# slow motion only on 4 impacts + the finisher, each on its music onset within 0.5 ms (ramps placed by real time), the long
+# finisher slow-mo ending at real 22.000 with a 3.000 s tail, the crate crash and the SFX accents on their onsets, the shot
+# cuts, the held helmet and the punch-ins, the committed beat sheet in sync (CRLF normalised); plays 1500 steps of 1/60 with
+# actors inside the 14 x 10 m box; contacts within 0.6 m (ramps and the normal-speed shove / gut punch / jab / throw grab),
+# lying bodies on the floor and no hips skating (<= 0.08 m per frame) through lie / get-up crossfades on every tier (cap 0 Mixamo when present, 1 UAL, 2 native, 3 code); a clear stage at the campus west gate; F9 plays
 # it inside FreeRoam and a hold-Esc skip restores the world.
 # Run:  godot --headless --path . --script tests/test_cine_d1_brawl.gd
 # CINE_NO_MIXAMO=1 sets CineRetarget.disabled = ["mixamo"] before any check (covers the fallback tiers with files present).
@@ -11,20 +12,24 @@
 extends SceneTree
 
 ## Real impact times (the track's strong onsets).
-const IMPACTS: Dictionary = {"H1": 2.76, "A1": 6.15, "H2": 7.17, "H3": 8.48, "A2": 9.30, "H4": 10.14, "H5": 11.76, "H6": 12.71}
-## Real start of every shot (cuts on onsets; S11 / S12 / S14 / S15 on the 112 bpm grid through the sustained note and tail).
-const SHOTS: Dictionary = {"S1": 0.0, "S2": 1.45, "S3": 2.76, "S4": 5.89, "S5": 7.17, "S6": 7.72, "S7": 9.02, "S8": 9.83,
-	"S9": 10.73, "S10": 12.13, "S11": 15.92, "S12": 19.14, "S13": 21.99, "S14": 22.53, "S15": 23.60}
+const IMPACTS: Dictionary = {"H1": 2.76, "H2": 8.48, "H3": 9.83, "H4": 11.76, "H5": 12.71}
+## Real start of every shot (cuts on onsets; S15 / S16 / S18 / S19 on the 112 bpm grid through the sustained note and tail).
+const SHOTS: Dictionary = {"S1": 0.0, "S2": 1.45, "S3": 2.76, "S4": 3.02, "S5": 5.89, "S6": 6.15, "S7": 7.17, "S8": 7.72,
+	"S9": 8.48, "S10": 9.02, "S11": 9.83, "S12": 10.73, "S13": 11.76, "S14": 12.13, "S15": 15.92, "S16": 19.14, "S17": 21.99,
+	"S18": 22.53, "S19": 23.60}
 ## Non-ramp SFX accents on the remaining onsets (real s); 21.99 is the crash into the crate stack.
-const ACCENTS: Array[float] = [3.02, 5.89, 7.72, 9.02, 12.13, 21.99]
+const ACCENTS: Array[float] = [1.45, 3.02, 5.89, 7.17, 7.72, 9.02, 9.30, 10.14, 10.73, 12.13, 21.99]
+## Camera punch-ins on normal-speed hits (real s).
+const PUNCHES: Array[float] = [1.45, 7.72, 9.30, 10.73]
 const CRASH_R: float = 21.99
 ## Lying checks: [actor, real time] -> hips on the floor (code-tier lying height, plan Task 2 concern).
 const LYING: Array = [["c2", 16.0], ["c3", 17.0], ["c1", 24.6]]
 const GROUPS: Dictionary = {"hands": ["Wrist.L", "Wrist.R"], "feet": ["Foot.L", "Foot.R"], "knees": ["LowerLeg.L", "LowerLeg.R"],
-	"torso": ["Hips", "Chest"]}
+	"torso": ["Hips", "Chest"], "upper": ["Head", "Chest", "UpperArm.L", "UpperArm.R"]}
 const HALF: Vector2 = Vector2(7.0, 5.0)
 ## Non-ramp hits checked like the ramps: [name, real time, attacker points, target points].
-const EXTRA_CONTACTS: Array = [["X", 7.72, "hero:hands", "c2:Chest"]]
+const EXTRA_CONTACTS: Array = [["SH", 1.45, "c1:hands", "hero:Chest"], ["GUT", 7.72, "hero:hands", "c2:torso"],
+	["JAB", 9.30, "c3:hands", "hero:torso"], ["THR", 10.73, "hero:hands", "c3:torso"]]
 ## Lie / get-up transitions: the hips may move at most this much per 1/60 frame relative to the actor root (no skating).
 const HIPS_STEP_MAX: float = 0.08
 
@@ -86,6 +91,29 @@ func _lying(pl: CinePlayer, label: String) -> void:
 		_check(hy < 0.45 and lo > -0.08, "%s: %s lies on the floor at r %.1f (hips %.2f, lowest %.2f)" % [label, String(e[0]), float(e[1]), hy, lo])
 
 
+## The helmet: off Mũ Xanh's head after the throw, in the protagonist's right hand on the swing, hidden before and after.
+func _helmet(pl: CinePlayer) -> void:
+	var h: CineActor = pl.actors["hero"]
+	var c3: CineActor = pl.actors["c3"]
+	var att: BoneAttachment3D = (h.holds[0] as Dictionary)["att"] if not h.holds.is_empty() else null
+	_check(att != null and att.bone_name == "Wrist.R", "held helmet on a BoneAttachment3D on Wrist.R")
+	if att == null:
+		return
+	pl.seek(5.0)
+	var c3_hel: bool = (c3._part_nodes.get("helmet", []) as Array).any(func(n: Node3D) -> bool: return n.visible)
+	_check(not att.visible and c3_hel, "before the throw: Mũ Xanh wears his helmet, the hand is empty")
+	pl.seek(float(IMPACTS["H4"]))
+	var node: Node3D = (h.holds[0] as Dictionary)["node"]
+	var want: Vector3 = h.bone_world("Wrist.R")
+	var c3_off: bool = not (c3._part_nodes.get("helmet", []) as Array).any(func(n: Node3D) -> bool: return n.visible)
+	var hx: Transform3D = h.sk.global_transform * CharacterBuilder._bone_global_now(h.sk, h.sk.find_bone("Wrist.R"))
+	var got: Vector3 = (hx * node.transform).origin
+	print("  helmet in hand at H4: %.3f m from the wrist, Mũ Xanh bare-headed %s" % [got.distance_to(want), c3_off])
+	_check(att.visible and c3_off and got.distance_to(want) < 0.2, "on the swing the helmet is in his hand and off Mũ Xanh's head")
+	pl.seek(24.0)
+	_check(not att.visible, "the helmet is dropped after the swing")
+
+
 ## Story start of every move cue next to a lie / get_up (strikes resolved like the validator): [actor, s, "prev->move"].
 func _lie_transitions() -> Array:
 	var by_actor: Dictionary = {}
@@ -105,7 +133,7 @@ func _lie_transitions() -> Array:
 		arr.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
 		for i: int in arr.size():
 			var prev: String = arr[i - 1][1] if i > 0 else ""
-			if String(arr[i][1]) in ["lie", "get_up"] or prev in ["lie", "get_up"]:
+			if String(arr[i][1]) in ["lie", "lie_flat", "get_up"] or prev in ["lie", "lie_flat", "get_up"]:
 				out.append([id, float(arr[i][0]), "%s->%s" % [prev, String(arr[i][1])]])
 	return out
 
@@ -147,11 +175,11 @@ func _initialize() -> void:
 	var freezes: int = 0
 	for row: Dictionary in tl.clock.ramps:
 		freezes += 1 if float(row["freeze"]) > 0.0 else 0
-	_check(tl.clock.ramps.size() == 8 and freezes == 6, "6 impacts + 2 accents (%d ramps, %d freezes)" % [tl.clock.ramps.size(), freezes])
+	_check(tl.clock.ramps.size() == 5 and freezes == 5, "slow motion on 4 impacts + the finisher only (%d ramps, %d freezes)" % [tl.clock.ramps.size(), freezes])
 	for nm: String in IMPACTS.keys():
 		var rh: float = float(tl.clock.ramp(nm).get("r_hit", -1.0))
 		_check(absf(rh - float(IMPACTS[nm])) < 0.0005, "%s real impact %.4f on the onset %.3f" % [nm, rh, float(IMPACTS[nm])])
-	var fin: Dictionary = tl.clock.ramp("H6")
+	var fin: Dictionary = tl.clock.ramp("H5")
 	_check(String(fin.get("preset", "")) == "finisher" and absf(float(fin.get("r1", 0.0)) - 22.0) < 0.0005, "finisher slow-mo ends at real 22.000")
 	var tail: float = 25.0 - float(tl.clock.ramps[tl.clock.ramps.size() - 1]["r1"])
 	_check(absf(tail - 3.0) < 0.0005, "normal-speed tail %.4f s = 3.000" % tail)
@@ -171,6 +199,16 @@ func _initialize() -> void:
 			crash = true
 	_check(crash, "the crate stack breaks at real %.2f" % CRASH_R)
 	_check(tl.clock.speed_at(CRASH_R) > 0.0, "no freeze on the crash (tail rule)")
+	for rp: float in PUNCHES:
+		var hitp: bool = false
+		for pu: Dictionary in tl.punches:
+			hitp = hitp or absf(tl.clock.real_at(tl.story_time(pu["at"])) - rp) < 0.0005
+		_check(hitp, "camera punch-in on the onset %.2f" % rp)
+	var held: bool = false
+	for c: Dictionary in tl.cues:
+		if String(c["type"]) == "hold" and String(c["actor"]) == "hero" and String(c["kind"]) == "helmet":
+			held = tl.clock.real_at(float(c["s"])) < float(IMPACTS["H4"]) and tl.clock.real_at(float(c["s1"])) > float(IMPACTS["H4"])
+	_check(held, "the protagonist holds the helmet through its swing (H4)")
 	for pr: Dictionary in tl.props:
 		var pp: Vector3 = pr["pos"]
 		_check(absf(pp.x) <= HALF.x and absf(pp.z) <= HALF.y, "prop %s inside the 14 x 10 box" % String(pr["id"]))
@@ -210,6 +248,7 @@ func _process(_d: float) -> bool:
 			_contacts(p, "ual")
 			_lying(p, "ual")
 			_skate(p, "ual")
+			_helmet(p)
 			p.queue_free()
 			var caps: Array[int] = [2, 3]
 			if CineRetarget.available("mixamo"):
@@ -272,7 +311,7 @@ func _fail_end(msg: String) -> bool:
 
 func _end() -> bool:
 	if fails.is_empty():
-		print("✅ SUCCESS: CINE seg_d1_brawl (25.000 s on the track's onsets, beat sheet, tiers, contacts, FreeRoam)")
+		print("✅ SUCCESS: CINE seg_d1_brawl (Nobody restage: 25.000 s on the track's onsets, beat sheet, tiers, contacts, helmet, FreeRoam)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())

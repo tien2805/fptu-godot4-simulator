@@ -121,7 +121,137 @@ const MOVES: Dictionary = {
 		{"t": "native", "a": "Wave"}, {"t": "code", "a": "victory"}]},
 	"scissor_takedown": {"dur": 1.1, "hit_u": 0.6, "air": [0.1, 0.65], "src": [
 		{"t": "code", "a": "scissor", "arc": 0.8, "spin": Vector3(0.0, 0.0, -80.0)}]},
+	# --- grounded brawling (Nobody restage): grabs, shoves, headbutts, throws, tackles. Code poses on every tier (no pack or
+	# Mixamo clip covers them), so blocking and contacts are the same whichever tier plays the punches around them.
+	"idle": {"dur": 2.5, "loop": true, "src": [
+		{"t": "ual1", "a": "Idle"}, {"t": "native", "a": "Idle"}, {"t": "code", "a": "relaxed"}]},
+	"shove": {"dur": 0.6, "hit_u": 0.45, "src": [{"t": "code", "a": "shove", "hit": 0.45}]},
+	"grab": {"dur": 1.0, "loop": true, "src": [{"t": "code", "a": "grab"}]},
+	"headbutt": {"dur": 0.6, "hit_u": 0.5, "src": [{"t": "code", "a": "headbutt", "hit": 0.5}]},
+	"yank": {"dur": 0.5, "hit_u": 0.45, "src": [{"t": "code", "a": "yank", "hit": 0.45}]},
+	"hip_throw": {"dur": 1.0, "hit_u": 0.25, "src": [{"t": "code", "a": "hip_throw", "hit": 0.25}]},
+	"thrown": {"dur": 0.7, "hit_u": 0.1, "src": [{"t": "code", "a": "thrown", "hit": 0.1}]},
+	"tackle": {"dur": 0.45, "hit_u": 0.6, "src": [{"t": "code", "a": "tackle", "hit": 0.6}]},
+	"drive": {"dur": 0.5, "loop": true, "src": [{"t": "code", "a": "drive"}]},
+	"doubled": {"dur": 0.6, "loop": true, "src": [{"t": "code", "a": "doubled"}]},
+	"stunned": {"dur": 1.2, "loop": true, "src": [{"t": "code", "a": "stunned"}]},
+	"winded": {"dur": 1.0, "loop": true, "src": [{"t": "code", "a": "winded"}]},
+	"head_shake": {"dur": 0.6, "src": [{"t": "code", "a": "head_shake"}]},
+	"neck_crack": {"dur": 0.8, "hit_u": 0.45, "src": [{"t": "code", "a": "neck_crack", "hit": 0.45}]},
+	"lie_flat": {"dur": 1.0, "loop": true, "src": [{"t": "code", "a": "lie_back"}]},   # after "thrown" (same pose family)
+	"pickup": {"dur": 0.5, "hit_u": 0.5, "src": [{"t": "code", "a": "pickup", "hit": 0.5}]},
 }
+
+## Fighting stance (code "stance" at u 0) as keyframe joints, shared by the brawling poses below.
+const GUARD: Dictionary = {"thigh_l": Vector3(0.25, 0.0, 0.08), "knee_l": Vector3(-0.45, 0.0, 0.0),
+	"thigh_r": Vector3(-0.1, 0.0, -0.08), "knee_r": Vector3(-0.35, 0.0, 0.0), "torso": Vector3(0.12, 0.35, 0.0),
+	"head": Vector3(-0.08, -0.3, 0.0), "shoulder_l": Vector3(1.0, 0.0, -0.35), "elbow_l": Vector3(1.9, 0.0, 0.0),
+	"shoulder_r": Vector3(0.8, 0.0, 0.4), "elbow_r": Vector3(2.1, 0.0, 0.0)}
+## Both hands on the other man's collar / chest, feet staggered (grab, and the start of headbutt / hip_throw).
+const GRAB: Dictionary = {"thigh_l": Vector3(0.4, 0.0, 0.08), "knee_l": Vector3(-0.6, 0.0, 0.0),
+	"thigh_r": Vector3(-0.2, 0.0, -0.08), "knee_r": Vector3(-0.3, 0.0, 0.0), "torso": Vector3(-0.3, 0.0, 0.0),
+	"head": Vector3(0.2, 0.0, 0.0), "shoulder_l": Vector3(1.3, 0.0, 0.2), "elbow_l": Vector3(0.9, 0.0, 0.0),
+	"shoulder_r": Vector3(1.3, 0.0, -0.2), "elbow_r": Vector3(0.9, 0.0, 0.0), "body_y": -0.06}
+## Brawling poses as keyframes [pose-u, joints] (smoothstep between neighbours, see _kpose).
+const SHOVE_KEYS: Array = [
+	[0.0, GUARD],
+	[0.25, {"thigh_l": Vector3(0.3, 0.0, 0.08), "knee_l": Vector3(-0.5, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.08),
+		"knee_r": Vector3(-0.35, 0.0, 0.0), "torso": Vector3(0.05, 0.0, 0.0), "head": Vector3(0.0, 0.0, 0.0),
+		"shoulder_l": Vector3(0.9, 0.0, 0.2), "elbow_l": Vector3(2.2, 0.0, 0.0), "shoulder_r": Vector3(0.9, 0.0, -0.2),
+		"elbow_r": Vector3(2.2, 0.0, 0.0)}],
+	[0.45, {"thigh_l": Vector3(0.65, 0.0, 0.08), "knee_l": Vector3(-0.75, 0.0, 0.0), "thigh_r": Vector3(-0.35, 0.0, -0.08),
+		"knee_r": Vector3(-0.15, 0.0, 0.0), "torso": Vector3(-0.42, 0.0, 0.0), "head": Vector3(0.3, 0.0, 0.0),
+		"shoulder_l": Vector3(1.85, 0.0, 0.12), "elbow_l": Vector3(0.15, 0.0, 0.0), "shoulder_r": Vector3(1.85, 0.0, -0.12),
+		"elbow_r": Vector3(0.15, 0.0, 0.0), "body_y": -0.08}],
+	[0.7, {"thigh_l": Vector3(0.6, 0.0, 0.08), "knee_l": Vector3(-0.7, 0.0, 0.0), "thigh_r": Vector3(-0.3, 0.0, -0.08),
+		"knee_r": Vector3(-0.2, 0.0, 0.0), "torso": Vector3(-0.35, 0.0, 0.0), "head": Vector3(0.25, 0.0, 0.0),
+		"shoulder_l": Vector3(1.7, 0.0, 0.05), "elbow_l": Vector3(0.4, 0.0, 0.0), "shoulder_r": Vector3(1.7, 0.0, -0.05),
+		"elbow_r": Vector3(0.4, 0.0, 0.0), "body_y": -0.07}],
+	[1.0, GUARD],
+]
+const HEADBUTT_KEYS: Array = [
+	[0.0, GRAB],
+	[0.35, {"thigh_l": Vector3(0.35, 0.0, 0.08), "knee_l": Vector3(-0.55, 0.0, 0.0), "thigh_r": Vector3(-0.15, 0.0, -0.08),
+		"knee_r": Vector3(-0.3, 0.0, 0.0), "torso": Vector3(0.15, 0.0, 0.0), "head": Vector3(0.35, 0.0, 0.0),
+		"shoulder_l": Vector3(1.2, 0.0, 0.2), "elbow_l": Vector3(1.25, 0.0, 0.0), "shoulder_r": Vector3(1.2, 0.0, -0.2),
+		"elbow_r": Vector3(1.25, 0.0, 0.0), "body_y": -0.05}],
+	[0.5, {"thigh_l": Vector3(0.6, 0.0, 0.08), "knee_l": Vector3(-0.7, 0.0, 0.0), "thigh_r": Vector3(-0.3, 0.0, -0.08),
+		"knee_r": Vector3(-0.2, 0.0, 0.0), "torso": Vector3(-0.55, 0.0, 0.0), "head": Vector3(-0.45, 0.0, 0.0),
+		"shoulder_l": Vector3(1.05, 0.0, 0.2), "elbow_l": Vector3(1.4, 0.0, 0.0), "shoulder_r": Vector3(1.05, 0.0, -0.2),
+		"elbow_r": Vector3(1.4, 0.0, 0.0), "body_y": -0.08}],
+	[1.0, {"thigh_l": Vector3(0.3, 0.0, 0.08), "knee_l": Vector3(-0.5, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.08),
+		"knee_r": Vector3(-0.3, 0.0, 0.0), "torso": Vector3(-0.15, 0.0, 0.0), "head": Vector3(0.0, 0.0, 0.0),
+		"shoulder_l": Vector3(0.9, 0.0, -0.3), "elbow_l": Vector3(1.6, 0.0, 0.0), "shoulder_r": Vector3(0.9, 0.0, 0.3),
+		"elbow_r": Vector3(1.6, 0.0, 0.0), "body_y": -0.03}],
+]
+## Right hand up to the other man's head (pull his helmet off), then down to the side, cocked for a swing.
+const YANK_KEYS: Array = [
+	[0.0, GUARD],
+	[0.45, {"thigh_l": Vector3(0.45, 0.0, 0.08), "knee_l": Vector3(-0.6, 0.0, 0.0), "thigh_r": Vector3(-0.2, 0.0, -0.08),
+		"knee_r": Vector3(-0.25, 0.0, 0.0), "torso": Vector3(-0.2, 0.0, 0.0), "head": Vector3(0.15, 0.0, 0.0),
+		"shoulder_l": Vector3(1.0, 0.0, -0.35), "elbow_l": Vector3(1.9, 0.0, 0.0), "shoulder_r": Vector3(1.75, 0.0, -0.15),
+		"elbow_r": Vector3(0.1, 0.0, 0.0), "body_y": -0.05}],
+	[1.0, {"thigh_l": Vector3(0.3, 0.0, 0.08), "knee_l": Vector3(-0.5, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.08),
+		"knee_r": Vector3(-0.35, 0.0, 0.0), "torso": Vector3(-0.05, 0.45, 0.0), "head": Vector3(0.08, -0.4, 0.0),
+		"shoulder_l": Vector3(1.0, 0.0, -0.35), "elbow_l": Vector3(1.9, 0.0, 0.0), "shoulder_r": Vector3(0.6, 0.0, 0.45),
+		"elbow_r": Vector3(1.3, 0.0, 0.0), "body_y": -0.03}],
+]
+## Grab, turn in and drop the hips under him (impact = the grab), then haul him over the hip.
+const HIP_THROW_KEYS: Array = [
+	[0.0, GRAB],
+	[0.25, {"thigh_l": Vector3(0.55, 0.0, 0.08), "knee_l": Vector3(-0.85, 0.0, 0.0), "thigh_r": Vector3(0.35, 0.0, -0.08),
+		"knee_r": Vector3(-0.7, 0.0, 0.0), "torso": Vector3(-0.35, 0.5, 0.0), "head": Vector3(0.1, -0.2, 0.0),
+		"shoulder_l": Vector3(1.3, 0.0, 0.2), "elbow_l": Vector3(0.8, 0.0, 0.0), "shoulder_r": Vector3(1.3, 0.0, -0.2),
+		"elbow_r": Vector3(0.8, 0.0, 0.0), "body_y": -0.14}],
+	[0.6, {"thigh_l": Vector3(0.6, 0.0, 0.08), "knee_l": Vector3(-0.9, 0.0, 0.0), "thigh_r": Vector3(0.2, 0.0, -0.08),
+		"knee_r": Vector3(-0.6, 0.0, 0.0), "torso": Vector3(-0.95, 0.9, 0.0), "head": Vector3(-0.3, -0.3, 0.0),
+		"shoulder_l": Vector3(0.8, 0.0, 0.6), "elbow_l": Vector3(0.9, 0.0, 0.0), "shoulder_r": Vector3(0.5, 0.0, -0.7),
+		"elbow_r": Vector3(0.6, 0.0, 0.0), "body_y": -0.16}],
+	[1.0, {"thigh_l": Vector3(0.4, 0.0, 0.08), "knee_l": Vector3(-0.65, 0.0, 0.0), "thigh_r": Vector3(0.0, 0.0, -0.08),
+		"knee_r": Vector3(-0.35, 0.0, 0.0), "torso": Vector3(-0.4, 0.3, 0.0), "head": Vector3(0.1, -0.1, 0.0),
+		"shoulder_l": Vector3(0.5, 0.0, -0.3), "elbow_l": Vector3(0.8, 0.0, 0.0), "shoulder_r": Vector3(0.5, 0.0, 0.3),
+		"elbow_r": Vector3(0.8, 0.0, 0.0), "body_y": -0.08}],
+]
+## Low crouch, then a spear tackle: shoulder into his midriff, arms wrapping (impact), into the drive.
+const TACKLE_LUNGE: Dictionary = {"thigh_l": Vector3(1.0, 0.0, 0.08), "knee_l": Vector3(-1.2, 0.0, 0.0),
+	"thigh_r": Vector3(-0.7, 0.0, -0.08), "knee_r": Vector3(-0.25, 0.0, 0.0), "torso": Vector3(-0.95, 0.0, 0.0),
+	"head": Vector3(0.6, 0.0, 0.0), "shoulder_l": Vector3(1.35, 0.0, 0.25), "elbow_l": Vector3(1.1, 0.0, 0.0),
+	"shoulder_r": Vector3(1.35, 0.0, -0.25), "elbow_r": Vector3(1.1, 0.0, 0.0), "body_y": -0.25}
+const TACKLE_KEYS: Array = [
+	[0.0, {"thigh_l": Vector3(0.7, 0.0, 0.08), "knee_l": Vector3(-1.1, 0.0, 0.0), "thigh_r": Vector3(0.6, 0.0, -0.08),
+		"knee_r": Vector3(-1.0, 0.0, 0.0), "torso": Vector3(-0.5, 0.0, 0.0), "head": Vector3(0.3, 0.0, 0.0),
+		"shoulder_l": Vector3(0.9, 0.0, -0.2), "elbow_l": Vector3(1.4, 0.0, 0.0), "shoulder_r": Vector3(0.9, 0.0, 0.2),
+		"elbow_r": Vector3(1.4, 0.0, 0.0), "body_y": -0.17}],
+	[0.6, TACKLE_LUNGE],
+	[1.0, TACKLE_LUNGE],
+]
+## Squat and snatch something off the ground with the right hand (impact = the hand on it), back up holding it cocked.
+const PICKUP_KEYS: Array = [
+	[0.0, GUARD],
+	[0.5, {"thigh_l": Vector3(1.4, 0.0, 0.1), "knee_l": Vector3(-2.0, 0.0, 0.0), "thigh_r": Vector3(1.2, 0.0, -0.1),
+		"knee_r": Vector3(-1.9, 0.0, 0.0), "torso": Vector3(-1.1, 0.0, 0.0), "head": Vector3(0.4, 0.0, 0.0),
+		"shoulder_l": Vector3(0.6, 0.0, -0.3), "elbow_l": Vector3(0.9, 0.0, 0.0), "shoulder_r": Vector3(0.9, 0.0, 0.1),
+		"elbow_r": Vector3(0.1, 0.0, 0.0), "body_y": -0.45}],
+	[1.0, {"thigh_l": Vector3(0.3, 0.0, 0.08), "knee_l": Vector3(-0.5, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.08),
+		"knee_r": Vector3(-0.35, 0.0, 0.0), "torso": Vector3(-0.05, 0.45, 0.0), "head": Vector3(0.08, -0.4, 0.0),
+		"shoulder_l": Vector3(1.0, 0.0, -0.35), "elbow_l": Vector3(1.9, 0.0, 0.0), "shoulder_r": Vector3(0.6, 0.0, 0.45),
+		"elbow_r": Vector3(1.3, 0.0, 0.0), "body_y": -0.03}],
+]
+## Head tilt right - crack - tilt left - crack, right hand at the jaw (impact = the first crack).
+const NECK_CRACK_KEYS: Array = [
+	[0.0, {"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0), "shoulder_r": Vector3(0.1, 0.0, 0.12),
+		"elbow_r": Vector3(0.25, 0.0, 0.0), "head": Vector3(0.0, 0.0, 0.0), "torso": Vector3(-0.03, 0.0, 0.0)}],
+	[0.3, {"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0), "shoulder_r": Vector3(1.5, 0.0, -0.5),
+		"elbow_r": Vector3(2.3, 0.0, 0.0), "head": Vector3(-0.05, 0.0, 0.42), "torso": Vector3(-0.03, 0.0, 0.0)}],
+	[0.45, {"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0), "shoulder_r": Vector3(1.5, 0.0, -0.5),
+		"elbow_r": Vector3(2.3, 0.0, 0.0), "head": Vector3(-0.05, 0.0, 0.6), "torso": Vector3(-0.03, 0.0, 0.0)}],
+	[0.68, {"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0), "shoulder_r": Vector3(1.5, 0.0, -0.5),
+		"elbow_r": Vector3(2.3, 0.0, 0.0), "head": Vector3(-0.05, 0.0, -0.42), "torso": Vector3(-0.03, 0.0, 0.0)}],
+	[0.78, {"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0), "shoulder_r": Vector3(1.3, 0.0, -0.45),
+		"elbow_r": Vector3(2.2, 0.0, 0.0), "head": Vector3(-0.05, 0.0, -0.6), "torso": Vector3(-0.03, 0.0, 0.0)}],
+	[1.0, {"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0), "shoulder_r": Vector3(0.1, 0.0, 0.12),
+		"elbow_r": Vector3(0.25, 0.0, 0.0), "head": Vector3(0.05, 0.0, 0.0), "torso": Vector3(-0.03, 0.0, 0.0)}],
+]
 
 
 static func has_move(move_name: String) -> bool:
@@ -231,6 +361,28 @@ static func add_u(res: Dictionary, u: float) -> float:
 	if hu <= 0.0 or hu >= 1.0:
 		return clampf(u, 0.0, 1.0)
 	return clip_time({"from": 0.0, "hit": ADD_HIT, "to": 1.0, "hit_u": hu}, u, 1.0, false)
+
+
+## Keyframed code pose: keys = [[pose-u, {joint: Vector3 | float}], ...] ascending from 0, smoothstep between neighbours; a
+## joint missing from a key counts as zero there.
+static func _kpose(keys: Array, u: float) -> Dictionary:
+	var x: float = clampf(u, 0.0, 1.0)
+	var i: int = 1
+	while i < keys.size() - 1 and x > float(keys[i][0]):
+		i += 1
+	var a: Array = keys[i - 1]
+	var b: Array = keys[i]
+	var t: float = _sm((x - float(a[0])) / maxf(float(b[0]) - float(a[0]), 0.0001))
+	var da: Dictionary = a[1]
+	var db: Dictionary = b[1]
+	var out: Dictionary = {}
+	for k: String in da.keys() + db.keys():
+		if out.has(k):
+			continue
+		var va: Variant = da.get(k, Vector3.ZERO if db.get(k) is Vector3 else 0.0)
+		var vb: Variant = db.get(k, Vector3.ZERO if da.get(k) is Vector3 else 0.0)
+		out[k] = (va as Vector3).lerp(vb, t) if va is Vector3 else lerpf(float(va), float(vb), t)
+	return out
 
 
 static func _sm(u: float) -> float:
@@ -368,4 +520,79 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 				"head": Vector3(-0.15 * sin(clampf(u, 0.0, 1.0) * PI), 0.0, 0.0),
 				"shoulder_l": Vector3(g[6], 0.0, -float(g[7])), "elbow_l": Vector3(g[8], 0.0, 0.0),
 				"shoulder_r": Vector3(g[6], 0.0, g[7]), "elbow_r": Vector3(g[8], 0.0, 0.0)}
+		"relaxed":    # standing at ease, arms down, slow breathing (loop phase u)
+			var bb: float = sin(u * TAU) * 0.02
+			return {"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0), "shoulder_r": Vector3(0.1, 0.0, 0.12),
+				"elbow_r": Vector3(0.25, 0.0, 0.0), "torso": Vector3(-0.03 - bb, 0.0, 0.0), "head": Vector3(bb, 0.0, 0.0)}
+		"shove":
+			return _kpose(SHOVE_KEYS, u)
+		"grab":       # holding on, a little tug back and forth (loop phase u)
+			var g2: Dictionary = GRAB.duplicate()
+			g2["torso"] = (GRAB["torso"] as Vector3) + Vector3(0.0, 0.08 * sin(u * TAU), 0.0)
+			return g2
+		"headbutt":
+			return _kpose(HEADBUTT_KEYS, u)
+		"yank":
+			return _kpose(YANK_KEYS, u)
+		"hip_throw":
+			return _kpose(HIP_THROW_KEYS, u)
+		"thrown":     # thrown over the hip: limbs fly out, the body rolls onto its back (with the keys' forward flip)
+			var kt: float = _sm(u)
+			var lb: Dictionary = code_pose("lie_back", 0.0)
+			var spread: float = sin(clampf(u, 0.0, 1.0) * PI)
+			var o2: Dictionary = {}
+			for j2: String in lb.keys():
+				if j2 == "body_pitch" or j2 == "body_y":
+					continue
+				o2[j2] = (lb[j2] as Vector3) * kt
+			o2["shoulder_l"] = (o2["shoulder_l"] as Vector3) + Vector3(1.2, 0.0, -0.6) * spread
+			o2["shoulder_r"] = (o2["shoulder_r"] as Vector3) + Vector3(1.2, 0.0, 0.6) * spread
+			o2["thigh_l"] = (o2["thigh_l"] as Vector3) + Vector3(0.6, 0.0, 0.25) * spread
+			o2["thigh_r"] = (o2["thigh_r"] as Vector3) + Vector3(0.2, 0.0, -0.25) * spread
+			o2["knee_l"] = (o2["knee_l"] as Vector3) + Vector3(-0.8, 0.0, 0.0) * spread
+			o2["body_pitch"] = PI * 0.5 * kt
+			o2["body_y"] = _lay_drop(PI * 0.5 * kt)
+			return o2
+		"tackle":
+			return _kpose(TACKLE_KEYS, u)
+		"drive":      # driving him back with the shoulder: legs churn under the bent body (loop phase u)
+			var ph: float = u * TAU
+			var dr: Dictionary = TACKLE_LUNGE.duplicate()
+			dr["thigh_l"] = Vector3(0.25 + 0.55 * sin(ph), 0.0, 0.08)
+			dr["knee_l"] = Vector3(-0.85 - 0.45 * maxf(cos(ph), 0.0), 0.0, 0.0)
+			dr["thigh_r"] = Vector3(0.25 - 0.55 * sin(ph), 0.0, -0.08)
+			dr["knee_r"] = Vector3(-0.85 - 0.45 * maxf(-cos(ph), 0.0), 0.0, 0.0)
+			dr["body_y"] = -0.2 + 0.03 * absf(sin(ph))
+			return dr
+		"doubled":    # folded over the tackler's shoulder, arms flapping, feet back-pedalling (loop phase u)
+			var ph2: float = u * TAU
+			return {"torso": Vector3(-1.05, 0.0, 0.0), "head": Vector3(-0.25, 0.0, 0.0),
+				"shoulder_l": Vector3(0.9 + 0.3 * sin(ph2), 0.0, -0.3), "elbow_l": Vector3(0.5, 0.0, 0.0),
+				"shoulder_r": Vector3(0.9 - 0.3 * sin(ph2), 0.0, 0.3), "elbow_r": Vector3(0.5, 0.0, 0.0),
+				"thigh_l": Vector3(0.1 + 0.35 * sin(ph2), 0.0, 0.08), "knee_l": Vector3(-0.5 - 0.3 * maxf(cos(ph2), 0.0), 0.0, 0.0),
+				"thigh_r": Vector3(0.1 - 0.35 * sin(ph2), 0.0, -0.08), "knee_r": Vector3(-0.5 - 0.3 * maxf(-cos(ph2), 0.0), 0.0, 0.0),
+				"body_y": -0.08}
+		"stunned":    # seeing stars: swaying on soft knees, arms hanging (loop phase u)
+			var ph3: float = u * TAU
+			return {"torso": Vector3(-0.1, 0.0, 0.12 * sin(ph3)), "head": Vector3(-0.15, 0.0, -0.25 * sin(ph3 + 0.6)),
+				"shoulder_l": Vector3(0.3, 0.0, -0.3), "elbow_l": Vector3(0.4, 0.0, 0.0),
+				"shoulder_r": Vector3(0.3, 0.0, 0.3), "elbow_r": Vector3(0.4, 0.0, 0.0),
+				"thigh_l": Vector3(0.15, 0.0, 0.08), "knee_l": Vector3(-0.3, 0.0, 0.0),
+				"thigh_r": Vector3(0.15, 0.0, -0.08), "knee_r": Vector3(-0.3, 0.0, 0.0), "body_y": -0.02}
+		"winded":     # hands on the knees, heaving (loop phase u)
+			var hv: float = sin(u * TAU) * 0.05
+			return {"torso": Vector3(-0.8 - hv, 0.0, 0.0), "head": Vector3(0.6 + hv, 0.0, 0.0),
+				"shoulder_l": Vector3(0.75, 0.0, -0.1), "elbow_l": Vector3(0.15, 0.0, 0.0),
+				"shoulder_r": Vector3(0.75, 0.0, 0.1), "elbow_r": Vector3(0.15, 0.0, 0.0),
+				"thigh_l": Vector3(0.5, 0.0, 0.1), "knee_l": Vector3(-0.75, 0.0, 0.0),
+				"thigh_r": Vector3(0.5, 0.0, -0.1), "knee_r": Vector3(-0.75, 0.0, 0.0), "body_y": -0.1}
+		"head_shake": # shaking the stars off
+			var k7: float = sin(clampf(u, 0.0, 1.0) * PI)
+			return {"head": Vector3(-0.1 * k7, 0.45 * sin(u * TAU * 2.5) * k7, 0.0), "torso": Vector3(-0.12 * k7, 0.0, 0.0),
+				"shoulder_l": Vector3(0.15, 0.0, -0.15), "elbow_l": Vector3(0.3, 0.0, 0.0),
+				"shoulder_r": Vector3(0.15, 0.0, 0.15), "elbow_r": Vector3(0.3, 0.0, 0.0)}
+		"neck_crack":
+			return _kpose(NECK_CRACK_KEYS, u)
+		"pickup":
+			return _kpose(PICKUP_KEYS, u)
 	return {}
