@@ -11,7 +11,7 @@ Replaces: `docs/superpowers/specs/2026-10-21-story-mode-design.md` (the Monday-t
 | S-D2 | Premise: a student is framed by an exam-cheat-tool ring and has 7 days to clear their name by taking the ring apart up to its boss, Lùm Văn Lọ. |
 | S-D3 | The player picks the protagonist: male or female, name, face variant, hair style and colour, skin tone (the PS2 people of `docs/superpowers/specs/2026-10-22-vice-people-and-movement-design.md`). |
 | S-D4 | Structure: GTA-style missions started from markers on the real FreeRoam map; free roaming with crowds and traffic between missions. |
-| S-D5 | Action: gunfights only inside the gang's lairs (container yard, server basement, penthouse, boats); on the FPTU campus only chases, stealth and unarmed Vovinam fights. Two sword duels (bosses). Vehicle combat on the bike, one boat chase. Hit enemies collapse or are knocked out; no blood, no gore. |
+| S-D5 | Action: gunfights only inside the gang's lairs (container yard, server basement, penthouse, boats); on the FPTU campus only chases, stealth and unarmed Vovinam fights. Two sword duels (bosses). Vehicle combat on the bike, one boat chase. Hit enemies collapse or are knocked out; no blood, no gore. **Amended 2026-10-23 (owner, Phase W):** in free roam the player's weapon wheel works everywhere, campus included ("Kiểu GTA, mọi thứ ở mọi nơi"), still without blood or deaths; story missions keep their own staging (lair gunfights, campus Vovinam). See docs/superpowers/specs/2026-10-23-phase-w-weapons-wanted-design.md. |
 | S-D6 | Tone: GTA Vice City-style action comedy with heavier horror-comedy: a masked cult ("Hội Lọ Thần"), a stalker across several days, one full hide-and-seek horror level, 3 a.m. phone calls, 1-2 jump scares per mission, 30-60 s tension scenes that end in a comic release. A "Giảm hù dọa" (reduce scares) setting cuts jump scares and flashing lights. |
 | S-D7 | Famous memes are woven through every mission, recreated with the game's own characters as situations and catchphrases. Never a real person's face, voice or name; no copyrighted characters, artwork or songs. |
 | S-D8 | Meme and horror sound effects are synthesized in code (like the code-drawn textures); owner-supplied sound files can replace any of them. |
@@ -29,7 +29,7 @@ On the morning of the end-of-semester (EOS) exam the protagonist races from towe
 Tone rules:
 - Comedy first, but every mission has one horror sequence: 30-60 s of build-up (darkness, flicker, heartbeat, whispers, distorted music), a scare, then a dumb line plus a meme sound.
 - Villains are ridiculous when they talk and frightening when they appear (masks, silhouettes, red light).
-- The FPTU campus is a real place: no guns there. Lairs are fictional places on the real map.
+- The FPTU campus is a real place: story missions stage no gunfights there (free-roam weapons are the player's own mayhem, comic and gore-free, per the Phase W amendment of S-D5). Lairs are fictional places on the real map.
 - No gore; knockouts, collapses, comic stars.
 
 ## 3. Cast
