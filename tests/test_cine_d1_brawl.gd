@@ -5,11 +5,15 @@
 # cuts, the held helmet and the punch-ins, the committed beat sheet in sync (CRLF normalised); plays 1500 steps of 1/60 with
 # actors inside the 14 x 10 m box; contacts within 0.6 m (ramps and the normal-speed shove / gut punch / jab / throw grab),
 # lying bodies on the floor and no hips skating (<= 0.08 m per frame) through lie / get-up crossfades on every tier (cap 0 Mixamo when present, 1 UAL, 2 native, 3 code); a clear stage at the campus west gate; F9 plays
-# it inside FreeRoam and a hold-Esc skip restores the world.
+# it inside FreeRoam and a hold-Esc skip restores the world. Bodies never sink into each other or the props (bone capsules,
+# tests/support/cine_bodies.gd, every 1/60 s on every tier): <= 0.03 m, or within 0.08 story s of a hit <= 0.06 m for a
+# striking limb and <= 0.04 m torso / head into torso / head; feet never more than 3 cm under the floor.
 # Run:  godot --headless --path . --script tests/test_cine_d1_brawl.gd
 # CINE_NO_MIXAMO=1 sets CineRetarget.disabled = ["mixamo"] before any check (covers the fallback tiers with files present).
 # Every player built here passes {"music": false} (plan review B1): the test never depends on user://music.
 extends SceneTree
+
+const Bodies = preload("res://tests/support/cine_bodies.gd")
 
 ## Real impact times (the track's strong onsets).
 const IMPACTS: Dictionary = {"H1": 2.76, "H2": 8.48, "H3": 9.83, "H4": 11.76, "H5": 12.71}
@@ -32,6 +36,15 @@ const EXTRA_CONTACTS: Array = [["SH", 1.45, "c1:hands", "hero:Chest"], ["GUT", 7
 	["JAB", 9.30, "c3:hands", "hero:torso"], ["THR", 10.73, "hero:hands", "c3:torso"]]
 ## Lie / get-up transitions: the hips may move at most this much per 1/60 frame relative to the actor root (no skating).
 const HIPS_STEP_MAX: float = 0.08
+## Body penetration limits (m): normal frames, and within PEN_WINDOW story s of a hit (limb / torso-head pairs).
+const PEN_MAX: float = 0.03
+const PEN_HIT_LIMB: float = 0.06
+const PEN_HIT_CORE: float = 0.04
+const PEN_WINDOW: float = 0.08
+const FOOT_FLOOR: float = -0.03
+## The kerb strip measured on the west-gate stage floor (stage frame, centre / half extents): 10 cm high along x -1.0.
+const KERB_C: Vector3 = Vector3(-1.0, 0.05, 3.825)
+const KERB_H: Vector3 = Vector3(0.05, 0.05, 1.175)
 
 var fails: Array[String] = []
 var phase: int = -1
@@ -112,6 +125,60 @@ func _helmet(pl: CinePlayer) -> void:
 	_check(att.visible and c3_off and got.distance_to(want) < 0.2, "on the swing the helmet is in his hand and off Mũ Xanh's head")
 	pl.seek(24.0)
 	_check(not att.visible, "the helmet is dropped after the swing")
+
+
+## Every 1/60 s over the whole 25 s: deepest penetration between every two actors and between each actor and the scooter,
+## the crate stack (until it breaks on 21.99) and the kerb; feet under the floor. Prints the worst per kind.
+func _penetration(pl: CinePlayer, label: String) -> void:
+	var hits: Array[float] = []
+	for rw: Dictionary in tl.clock.ramps:
+		hits.append(float(rw["s"]))
+	for ex: Array in EXTRA_CONTACTS:
+		hits.append(tl.clock.story_at(float(ex[1])))
+	hits.append(tl.clock.story_at(CRASH_R))
+	var s_crash: float = tl.clock.story_at(CRASH_R)
+	var boxes: Dictionary = {"scooter": Bodies.prop_boxes(pl.prop_nodes["scooter"]), "crates": Bodies.prop_boxes(pl.prop_nodes["crates"]),
+		"kerb": [["kerb", Transform3D(Basis.IDENTITY, KERB_C), KERB_H]]}
+	var ids: Array = pl.actors.keys()
+	var worst: Dictionary = {"d": -1.0, "over": -1.0, "what": "-"}
+	var fail: String = ""
+	var f: int = 0
+	while f <= int(round(tl.length * 60.0)):
+		var r: float = f / 60.0
+		pl.seek(r)
+		var near: bool = hits.any(func(h: float) -> bool: return absf(pl.s - h) <= PEN_WINDOW)
+		var caps: Dictionary = {}
+		for id: String in ids:
+			caps[id] = Bodies.capsules(pl.actors[id])
+		for i: int in ids.size():
+			var a: CineActor = pl.actors[ids[i]]
+			for j: int in range(i + 1, ids.size()):
+				if a.position.distance_to((pl.actors[ids[j]] as CineActor).position) > 2.6:
+					continue
+				var res: Dictionary = Bodies.actor_pair(caps[ids[i]], caps[ids[j]])
+				var core: bool = Bodies.is_core(res["pa"]) and Bodies.is_core(res["pb"])
+				var lim: float = (PEN_HIT_CORE if core else PEN_HIT_LIMB) if near else PEN_MAX
+				var what: String = "%s %s / %s %s at r %.2f%s" % [ids[i], res["pa"], ids[j], res["pb"], r, " (hit)" if near else ""]
+				if float(res["d"]) > float(worst["d"]):
+					worst = {"d": res["d"], "what": what}
+				if float(res["d"]) > lim and fail == "":
+					fail = "%.3f m > %.2f: %s" % [res["d"], lim, what]
+			for pk: String in boxes.keys():
+				if pk == "crates" and pl.s > s_crash + 0.001:
+					continue
+				var rb: Dictionary = Bodies.actor_boxes(caps[ids[i]], boxes[pk])
+				var limb: float = PEN_HIT_LIMB if near else PEN_MAX
+				if float(rb["d"]) > limb and fail == "":
+					fail = "%.3f m > %.2f: %s %s in the %s (%s) at r %.2f" % [rb["d"], limb, ids[i], rb["part"], pk, rb["box"], r]
+				if float(rb["d"]) > float(worst["d"]):
+					worst = {"d": rb["d"], "what": "%s %s in the %s at r %.2f" % [ids[i], rb["part"], pk, r]}
+			for fb: String in ["Foot.L", "Foot.R"]:
+				var fy: float = a.bone_world(fb).y
+				if fy < FOOT_FLOOR and fail == "":
+					fail = "%s %s %.3f m under the floor at r %.2f" % [ids[i], fb, -fy, r]
+		f += 1
+	print("  bodies %-6s worst penetration %.3f m (%s)" % [label, maxf(float(worst["d"]), 0.0), worst["what"]])
+	_check(fail == "", "%s: bodies never sink in (%s)" % [label, fail])
 
 
 ## Story start of every move cue next to a lie / get_up (strikes resolved like the validator): [actor, s, "prev->move"].
@@ -248,6 +315,7 @@ func _process(_d: float) -> bool:
 			_contacts(p, "ual")
 			_lying(p, "ual")
 			_skate(p, "ual")
+			_penetration(p, "ual")
 			_helmet(p)
 			p.queue_free()
 			var caps: Array[int] = [2, 3]
@@ -264,6 +332,7 @@ func _process(_d: float) -> bool:
 				_contacts(pc, label)
 				_lying(pc, label)
 				_skate(pc, label)
+				_penetration(pc, label)
 				pc.queue_free()
 			CineMoves.max_tier = 0
 			var ps: PackedScene = load("res://scenes/FreeRoam.tscn")

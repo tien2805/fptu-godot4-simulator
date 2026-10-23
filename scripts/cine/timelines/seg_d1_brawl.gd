@@ -22,38 +22,53 @@ const CRASH_R: float = 21.99                   # the track's hit at the end of t
 # the scooter parked on the roadway edge, its headlight on the fight; SC + k·L is k metres in front of its centre
 const SCOOTER := Vector3(-3.3, 0.0, -1.6)
 const SCOOTER_YAW: float = 160.0
+# Spacing (m, root to root) of each exchange, set so bodies touch but never sink in on any tier (bone-capsule check in
+# tests/test_cine_d1_brawl.gd): strikes land at full reach of the longest-reaching tier, the others fall short a little.
+const D_SHOVE: float = 0.8                    # Mũ Vàng's shove
+const D_HOOK: float = 0.97                     # the sucker punch
+const K_SLAM: float = 3.32                     # he lands / gets up / slams from SC + K_SLAM·L
+const D_C2: float = 0.95                       # gut punch and arm's-length grab on Mũ Đỏ's collar
+const D_C3: float = 1.0                        # Mũ Xanh's jab
+const D_C1: float = 1.0                       # the helmet swing
+const D_C1B: float = 1.25                       # Mũ Vàng staggers back to this after the helmet
+const D_DRIVE: float = 0.86                     # tackle: his shoulder in Mũ Vàng's midriff, head beside his hip
+const LAT_DRIVE: float = 0.25                  # ... offset to his left so the head passes beside the body
 # opening: the protagonist walks up to Mũ Vàng, is shoved back and punched flat (falls toward -X onto the road)
 const H0 := Vector3(-4.85, 0.0, 1.05)
 const P_STOP := Vector3(-2.82, 0.0, 0.76)
 const P_HIT := Vector3(-3.12, 0.0, 0.78)
-const P_SLAM := Vector3(-4.189, 0.0, 0.844)    # SC + 2.6 L: he lands, gets up and slams Mũ Đỏ from here
-const P_C3 := Vector3(-3.85, 0.0, 1.25)          # against Mũ Xanh (and Mũ Vàng)
-const P_TACKLE := Vector3(-3.85, 0.0, 1.25)      # = P_C3, 0.62 m behind Mũ Vàng (0.6 m through the drive)
-const P_REL := Vector3(-0.607, 0.0, -0.589)    # throws Mũ Vàng off
-const P_STUMBLE := Vector3(-0.34, 0.0, -0.73)
-
+const P_C3 := Vector3(-3.35, 0.0, 1.6)         # against Mũ Xanh (and Mũ Vàng)
 const C1_0 := Vector3(-1.85, 0.0, 0.6)
-const C1_SHOVE := Vector3(-2.2, 0.0, 0.73)
-const C1_HOOK := Vector3(-2.46, 0.0, 0.74)
-const P_C1Y := Vector3(-3.341, 0.0, 0.897)     # where the helmet hits him and the tackle starts
-const C1_REL := Vector3(-0.08, 0.0, -0.876)
-const C1_CRASH := Vector3(0.581, 0.25, -1.327)
-const C1_REST := Vector3(0.746, 0.0, -1.44)
-
+const C1_REL := Vector3(-0.08, 0.0, -0.876)    # where he is thrown off into the crates
 const C2_0 := Vector3(-1.3, 0.0, -0.5)
-const C2_STAND := Vector3(-3.984, 0.0, 0.28)   # SC + 2.0 L
-const C2_LIE := Vector3(-3.933, 0.0, 0.139)    # SC + 1.85 L: head just short of the scooter's front wheel
-
 const C3_0 := Vector3(-1.45, 0.0, 1.95)
-const P_C3B := Vector3(-3.261, 0.0, 1.442)
-const C3_DOWN := Vector3(-4.5, 0.0, 2.4)
-
+const C3_DOWN := Vector3(-3.95, 0.0, 2.9)
+const DIR_C3 := Vector3(0.9503, 0.0, 0.3101)   # from P_C3 toward Mũ Xanh
+const DIR_C1 := Vector3(0.8217, 0.0, -0.5699)  # from P_C3 toward Mũ Vàng
 const CRATES := Vector3(1.2, 0.0, -1.75)
 const BANANA := Vector3(-3.13, 0.0, 0.39)
-const PHONE := Vector3(0.05, 0.0, -0.25)
-const HELMET_A := Vector3(-3.625, 0.02, 1.64)   # Mũ Xanh's helmet where it lands after the throw
-const HELMET_B := Vector3(-3.5, 0.02, 1.55)    # dropped after the swing
+const PHONE := Vector3(-0.55, 0.0, -0.1)
+const HELMET_A := Vector3(-3.4, 0.02, 2.02)    # Mũ Xanh's helmet where it lands after the throw
+const HELMET_B := Vector3(-3.1, 0.02, 1.95)    # dropped after the swing
 const C3_HELMET := Color("#3498DB")
+
+# positions derived from the spacing above (filled in _layout())
+var C1_SHOVE: Vector3
+var C1_HOOK: Vector3
+var C1_BACK: Vector3
+var P_SLAM: Vector3
+var P_SLAM_BACK: Vector3
+var C2_STAND: Vector3
+var C2_LIE: Vector3
+var P_C3B: Vector3
+var P_C1Y: Vector3
+var P_C1B: Vector3
+var DIR_DRIVE: Vector3
+var P_TACKLE: Vector3
+var P_REL: Vector3
+var P_STUMBLE: Vector3
+var C1_CRASH: Vector3
+var C1_REST: Vector3
 
 # story times derived from the real-time placement (filled in build())
 var h1: float          # sucker punch (2.76)
@@ -105,6 +120,7 @@ func build() -> void:
 	sp = _sr(11.25)
 	sc = _sr(CRASH_R)
 	ss = _sr(23.43)
+	_layout()
 	_props()
 	_hero()
 	_c1()
@@ -113,6 +129,26 @@ func build() -> void:
 	_shots()
 	_fx_sfx()
 	_subs()
+
+
+func _layout() -> void:
+	C1_SHOVE = P_STOP + Vector3(D_SHOVE, 0.0, 0.0)
+	C1_HOOK = P_HIT + Vector3(D_HOOK, 0.0, 0.0)
+	C1_BACK = C1_HOOK + Vector3(0.35, 0.0, 0.0)
+	P_SLAM = _sc(K_SLAM)
+	P_SLAM_BACK = P_SLAM + Vector3(0.94, 0.0, 0.342) * 0.6   # sideways, out of the line Mũ Đỏ falls along
+	C2_STAND = _sc(K_SLAM - D_C2)
+	C2_LIE = _sc(K_SLAM - D_C2 + 0.15)
+	P_C3B = P_C3 + DIR_C3 * D_C3
+	P_C1Y = P_C3 + DIR_C1 * D_C1
+	P_C1B = P_C3 + DIR_C1 * D_C1B
+	DIR_DRIVE = (C1_REL - P_C1B).normalized()
+	var lat: Vector3 = Vector3(DIR_DRIVE.z, 0.0, -DIR_DRIVE.x) * LAT_DRIVE   # to his left as he faces DIR_DRIVE
+	P_TACKLE = P_C1B - DIR_DRIVE * D_DRIVE + lat
+	P_REL = C1_REL - DIR_DRIVE * (D_DRIVE + 0.12) + lat   # eases off as he heaves him away
+	P_STUMBLE = P_REL - DIR_DRIVE * 0.12   # rocks back on his heels after the throw-off
+	C1_CRASH = CRATES - DIR_DRIVE * 1.1 + Vector3(0.0, 0.25, 0.0)
+	C1_REST = CRATES - DIR_DRIVE * 0.95
 
 
 func _cast() -> void:
@@ -164,7 +200,8 @@ func _hero() -> void:
 	strike("hero", "H1", "launched_back", {"dur": 1.3, "arc": 0.0})   # the keys carry the short flight
 	expr("hero", h1, "pain")
 	key("hero", h1, P_HIT, y0)
-	key("hero", h1 + 0.7, P_SLAM, y0, {"mode": "linear", "arc": 0.35})
+	key("hero", h1 + 0.12, P_HIT + Vector3(-0.2, 0.0, 0.0), y0, {"mode": "linear"})   # snapped back off the fist at once
+	key("hero", h1 + 0.7, P_SLAM, y0, {"mode": "linear", "arc": 0.3})
 	move("hero", h1 - 0.065 + 1.3, "lie")
 	expr("hero", h1 + 0.8, "done")
 	# gets up (groan on 5.89), shakes the stars off, turns to Mũ Đỏ cracking his neck (7.17), a deadpan beat
@@ -178,11 +215,12 @@ func _hero() -> void:
 	strike("hero", _sr(7.17), "neck_crack", {"dur": 0.6})
 	expr("hero", _sr(6.9), "open")
 	# 7.72: gut punch, grab, 8.48: slams Mũ Đỏ back into the scooter, steps back off his legs
-	strike("hero", xg, "hook", {"dur": 0.5})
+	strike("hero", xg, "uppercut", {"dur": 0.6})   # a short uppercut to the body
 	expr("hero", xg - 0.1, "angry")
 	move("hero", xg + 0.22, "grab", {"fade": 0.12})
 	strike("hero", "H2", "shove")
 	key("hero", h2 + 0.05, P_SLAM, y_c2)
+	key("hero", h2 + 0.06, P_SLAM_BACK, y_c2, {"mode": "out"})   # sidesteps Mũ Đỏ's legs as he goes down
 	var y_c3: float = face(P_C3, P_C3B)
 	move("hero", h2 + 0.25, "fight_idle", {"fade": 0.2})
 	# Mũ Xanh from behind: turns into a stomach punch (9.30), headbutts his helmet (9.83), "ow" (10.14), hip throw (10.73)
@@ -190,6 +228,9 @@ func _hero() -> void:
 	strike("hero", _sr(9.30), "hit_stomach")
 	expr("hero", _sr(9.30), "pain")
 	strike("hero", "H3", "headbutt")
+	key("hero", h3 - 0.28, P_C3, y_c3)
+	key("hero", h3, P_C3 + DIR_C3 * 0.25, y_c3, {"mode": "in"})     # steps into the headbutt
+	key("hero", xt - 0.25, P_C3 + DIR_C3 * 0.05, y_c3)
 	expr("hero", h3 - 0.15, "angry")
 	strike("hero", _sr(10.14), "hit_head")
 	expr("hero", _sr(10.14), "pain")
@@ -206,14 +247,13 @@ func _hero() -> void:
 	strike("hero", "H4", "cross", {"dur": 0.5})   # a right straight, helmet first
 	# 12.13 drops low; 12.71 spear tackle, then drives him across the kerb in slow motion; lets go before the crates
 	strike("hero", "H5", "tackle")
-	key("hero", h5 - 0.27, P_C3, y_c1)
-	key("hero", h5, P_TACKLE, y_c1, {"mode": "in"})
-	move("hero", h5 + 0.15, "drive", {"fade": 0.1})
 	var y_dr: float = face(P_TACKLE, P_REL)
+	key("hero", h5 - 0.27, P_C3, y_c1)
+	key("hero", h5, P_TACKLE, y_dr, {"mode": "in"})
+	move("hero", h5 + 0.15, "drive", {"fade": 0.1})
 	key("hero", h5 + 0.35, P_TACKLE.lerp(P_REL, 0.07), y_dr)
 	key("hero", sc - 0.3, P_REL, y_dr, {"mode": "linear"})
-	strike("hero", sc - 0.25, "shove")
-	move("hero", sc + 0.1, "winded", {"fade": 0.25})
+	move("hero", sc - 0.2, "winded", {"fade": 0.3})   # heaves him off the shoulder and folds, hands on knees
 	key("hero", sc + 0.15, P_STUMBLE, y_dr, {"mode": "out"})
 	expr("hero", sc - 0.3, "angry")
 	expr("hero", sc + 0.1, "pain")
@@ -240,32 +280,36 @@ func _c1() -> void:
 	expr("c1", 1.4, "angry")
 	key("c1", 2.05, C1_SHOVE, y_c1)
 	key("c1", h1 - 0.1, C1_HOOK, y_c1, {"mode": "out"})
-	strike("c1", "H1", "hook")
+	strike("c1", "H1", "cross")
+	key("c1", h1 + 0.04, C1_HOOK, y_c1)
+	key("c1", h1 + 0.4, C1_BACK, y_c1, {"mode": "out"})   # steps back to watch him fall
 	move("c1", h1 + 0.45, "taunt", {"fade": 0.2})
 	expr("c1", h1 + 0.3, "happy")
 	move("c1", _sr(5.6), "fight_idle", {"fade": 0.2})
 	# runs in at the protagonist after the throw, eats the helmet (11.76), sees stars
-	var y_run: float = face(C1_HOOK, P_C1Y)
+	var y_run: float = face(C1_BACK, P_C1Y)
 	var y_hit: float = face(P_C1Y, P_C3)
 	var s_run: float = _sr(10.95)
 	var s_arr: float = _sr(11.3)
-	key("c1", s_run - 0.15, C1_HOOK, y_run)
+	key("c1", s_run - 0.15, C1_BACK, y_run)
 	move("c1", s_run - 0.15, "sprint", {"fade": 0.15})
 	key("c1", s_arr, P_C1Y, y_hit, {"mode": "linear"})
-	move("c1", s_arr, "fight_idle", {"fade": 0.15})
+	move("c1", s_arr, "idle", {"fade": 0.15})   # squares up, hands low, chin out
 	expr("c1", s_arr, "angry")
 	strike("c1", "H4", "hit_head")
+	key("c1", h4, P_C1Y, y_hit)
+	key("c1", h4 + 0.35, P_C1B, y_hit, {"mode": "out"})   # staggers back off the helmet
 	expr("c1", h4, "pain")
 	move("c1", h4 + 0.2, "stunned", {"fade": 0.15})
 	# 12.71 tackled: folded over the protagonist's shoulder, driven back across the kerb, thrown off into the crates on 21.99
-	strike("c1", "H5", "hit_stomach")
-	move("c1", h5 + 0.12, "doubled", {"fade": 0.12})
-	key("c1", h5, P_C1Y, y_hit)
-	key("c1", h5 + 0.35, P_C1Y.lerp(C1_REL, 0.07), y_hit)
-	key("c1", sc - 0.3, C1_REL, y_hit, {"mode": "linear"})
+	move("c1", h5 - 0.04, "doubled", {"fade": 0.08})   # folds straight over the shoulder (no clip arms in his midriff)
+	var y_back: float = face(P_C1B, P_C1B - DIR_DRIVE)
+	key("c1", h5, P_C1B, y_back)
+	key("c1", h5 + 0.35, P_C1B.lerp(C1_REL, 0.07), y_back)
+	key("c1", sc - 0.3, C1_REL, y_back, {"mode": "linear"})
 	strike("c1", sc - 0.25, "launched_back", {"arc": 0.0})
-	key("c1", sc, C1_CRASH, y_hit, {"mode": "linear", "arc": 0.3})
-	key("c1", sc + 0.35, C1_REST, y_hit, {"mode": "out"})
+	key("c1", sc, C1_CRASH, y_back, {"mode": "linear", "arc": 0.3})
+	key("c1", sc + 0.35, C1_REST, y_back, {"mode": "out"})
 	move("c1", sc - 0.25 - 0.08 + 1.6, "lie")
 	expr("c1", sc + 0.4, "done")
 
@@ -289,7 +333,7 @@ func _c2() -> void:
 	move("c2", xg - 0.12, "fight_idle", {"fade": 0.1})
 	strike("c2", xg, "hit_stomach")
 	expr("c2", xg, "pain")
-	move("c2", xg + 0.3, "doubled", {"fade": 0.15})
+	move("c2", xg + 0.3, "stunned", {"fade": 0.15})   # held at arm's length by the collar
 	strike("c2", "H2", "launched_back", {"arc": 0.0})
 	key("c2", h2, C2_STAND, y_face)
 	key("c2", h2 + 0.45, C2_LIE, y_face, {"mode": "out"})
@@ -300,6 +344,7 @@ func _c2() -> void:
 	var s_walk: float = _sr(22.83)
 	move("c2", s_up, "get_up", {"dur": s_walk - s_up})
 	var y_away: float = face(C2_LIE, BANANA)
+	key("c2", s_walk - 0.3, C2_LIE, y_face)   # no turning on the ground: he turns as he gets to his feet
 	key("c2", s_walk, C2_LIE, y_away)
 	move("c2", s_walk, "walk")
 	strike("c2", ss, "slip_fall")
@@ -335,7 +380,7 @@ func _c3() -> void:
 	key("c3", xt, P_C3B, y_face)
 	# over the hip: a forward flip (keys) while the code pose rolls onto the back, landing face up, head toward the thrower
 	var y_land: float = face(P_C3B, C3_DOWN)
-	key("c3", xt + 0.45, C3_DOWN, y_land, {"mode": "linear", "arc": 0.9, "spin": Vector3(-360.0, 0.0, 0.0)})
+	key("c3", xt + 0.45, C3_DOWN, y_land, {"mode": "linear", "arc": 1.1, "spin": Vector3(-360.0, 0.0, 0.0)})
 	move("c3", xt - 0.07 + 0.7, "lie_flat", {"fade": 0.15})   # stays on the code lying pose the throw ends on
 	expr("c3", xt + 0.5, "done")
 
@@ -353,37 +398,37 @@ func _shots() -> void:
 	shot("S4", _sr(3.02), "static", "low wide reverse: he topples back onto the road in slow motion (3.02)",
 		{"pos": Vector3(-2.0, 0.6, 2.8), "look": Vector3(-3.6, 0.8, 0.8), "fov": 52.0, "hand": 0.4})
 	shot("S5", _sr(5.89), "static", "low and tight, handheld: he drags himself up, groaning (5.89)",
-		{"pos": Vector3(-3.2, 0.5, 1.9), "look": Vector3(-4.2, 0.65, 0.8), "fov": 44.0, "hand": 1.0})
+		{"pos": Vector3(-3.44, 0.5, 2.6), "look": Vector3(-4.44, 0.65, 1.52), "fov": 44.0, "hand": 1.0})
 	shot("S6", _sr(6.15), "static", "from behind him: the couriers laugh (6.15)",
-		{"pos": Vector3(-5.0, 1.5, 1.4), "look": Vector3(-1.7, 1.2, 0.4), "fov": 42.0, "hand": 0.8})
+		{"pos": Vector3(-5.8, 1.5, 2.2), "look": Vector3(-1.9, 1.2, 0.5), "fov": 42.0, "hand": 0.8})
 	shot("S7", _sr(7.17), "static", "close-up: he cracks his neck, deadpan (7.17)",
-		{"pos": Vector3(-3.74, 1.45, -0.38), "look": Vector3(-4.19, 1.35, 0.84), "fov": 38.0, "hand": 0.6})
+		{"pos": Vector3(-3.99, 1.45, 0.3), "look": Vector3(-4.44, 1.35, 1.52), "fov": 38.0, "hand": 0.6})
 	shot("S8", xg, "static", "side-on, handheld: gut punch, grab (7.72)",
-		{"pos": Vector3(-2.59, 1.3, 1.11), "look": Vector3(-4.09, 1.1, 0.56), "fov": 44.0, "hand": 1.0})
+		{"pos": Vector3(-2.77, 1.3, 1.62), "look": Vector3(-4.27, 1.1, 1.07), "fov": 44.0, "hand": 1.0})
 	shot("S9", h2, "static", "slow motion, low wide: Mũ Đỏ slammed back into the scooter (8.48)",
-		{"pos": Vector3(-2.2, 0.55, 0.9), "look": Vector3(-3.9, 0.7, -0.2), "fov": 50.0, "hand": 0.4})
+		{"pos": Vector3(-2.4, 0.55, 1.4), "look": Vector3(-4.1, 0.7, 0.75), "fov": 50.0, "hand": 0.4})
 	shot("S10", _sr(9.02), "static", "handheld two-shot: Mũ Xanh from behind, a jab to the stomach (9.30)",
-		{"pos": Vector3(-4.17, 1.4, 3.25), "look": Vector3(-3.55, 1.15, 1.35), "fov": 42.0, "hand": 1.0})
+		{"pos": Vector3(-3.5, 1.4, 3.65), "look": Vector3(-2.88, 1.15, 1.75), "fov": 42.0, "hand": 1.0})
 	shot("S11", h3, "static", "slow motion, tight profile: the headbutt clonks on Mũ Xanh's helmet (9.83); \"ow\" (10.14)",
-		{"pos": Vector3(-3.95, 1.35, 2.6), "look": Vector3(-3.55, 1.3, 1.35), "fov": 34.0, "hand": 0.3})
+		{"pos": Vector3(-3.2, 1.35, 3.0), "look": Vector3(-2.8, 1.3, 1.78), "fov": 34.0, "hand": 0.3})
 	shot("S12", xt, "static", "handheld wide: hip throw onto the asphalt, the helmet pops off; he snatches it up (10.73)",
-		{"pos": Vector3(-2.15, 1.6, 3.25), "look": Vector3(-3.95, 0.9, 1.55), "fov": 50.0, "hand": 1.0})
+		{"pos": Vector3(-1.7, 1.6, 3.6), "look": Vector3(-3.3, 0.9, 2.1), "fov": 50.0, "hand": 1.0})
 	shot("S13", h4, "static", "slow motion over his shoulder: the helmet into Mũ Vàng's face (11.76)",
-		{"pos": Vector3(-4.75, 1.4, 0.7), "look": Vector3(-3.34, 1.35, 0.9), "fov": 36.0, "hand": 0.3})
+		{"pos": Vector3(-4.29, 1.4, 1.83), "look": Vector3(-2.53, 1.35, 1.03), "fov": 36.0, "hand": 0.3})
 	shot("S14", _sr(12.13), "orbit", "low slow orbit: he drops low (12.13), the spear tackle (12.71), the drive begins",
 		{"center_actor": "c1", "center_y": 0.9, "radius": 3.2, "deg_from": 10.0, "deg_to": 60.0, "height": 0.8, "fov": 46.0, "hand": 0.4})
 	shot("S15", _sr(15.92), "track", "low side tracking: Mũ Vàng driven back across the kerb, legs churning",
 		{"actor": "c1", "offset": Vector3(0.9, 0.45, 2.6), "look": Vector3(0.0, 1.0, 0.0), "fov": 50.0, "hand": 0.4})
 	shot("S16", _sr(19.14), "dolly", "push in as they near the crate stack",
-		{"from": Vector3(-1.2, 1.2, 1.2), "to": Vector3(-0.4, 1.0, 0.5), "look_from": Vector3(0.0, 0.9, -1.0),
-		"look_to": Vector3(0.9, 0.8, -1.4), "fov": 54.0, "hand": 0.4})
+		{"from": Vector3(-1.6, 1.2, 1.0), "to": Vector3(-0.9, 1.0, 0.4), "look_from": Vector3(-0.6, 0.9, -0.6),
+		"look_to": Vector3(0.5, 0.8, -1.2), "fov": 54.0, "hand": 0.4})
 	shot("S17", sc, "static", "crate close-up: he throws him off into the stack, it explodes on the 21.99 hit",
-		{"pos": Vector3(0.3, 0.85, 0.6), "look": Vector3(0.9, 0.6, -1.45), "fov": 44.0, "hand": 0.8})
+		{"pos": Vector3(0.0, 0.85, 0.75), "look": Vector3(0.7, 0.6, -1.3), "fov": 46.0, "hand": 0.8})
 	shot("S18", _sr(22.53), "dolly", "tail wide: Mũ Vàng in the debris, the protagonist winded, Mũ Đỏ slips on the banana peel",
 		{"from": Vector3(-2.6, 1.9, 2.4), "to": Vector3(-2.0, 1.7, 1.9), "look_from": Vector3(-2.3, 0.6, -0.4),
 		"look_to": Vector3(-2.2, 0.5, -0.3), "fov": 52.0, "hand": 0.5})
 	shot("S19", _sr(23.60), "static", "medium: the dropped phone lights up with the next clue at his feet, engines roar in the distance",
-		{"pos": Vector3(0.4, 1.15, 1.4), "look": Vector3(-0.05, 0.7, -0.5), "fov": 48.0, "hand": 0.6})
+		{"pos": Vector3(-0.5, 1.15, 1.5), "look": Vector3(-0.8, 0.7, -0.35), "fov": 48.0, "hand": 0.6})
 	# punch-ins / whips on the biggest hits without a ramp
 	punch(1.45, "light")
 	punch(xg, "medium")

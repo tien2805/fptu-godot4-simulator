@@ -161,24 +161,27 @@ const SHOVE_KEYS: Array = [
 		"elbow_r": Vector3(2.2, 0.0, 0.0)}],
 	[0.45, {"thigh_l": Vector3(0.65, 0.0, 0.08), "knee_l": Vector3(-0.75, 0.0, 0.0), "thigh_r": Vector3(-0.35, 0.0, -0.08),
 		"knee_r": Vector3(-0.15, 0.0, 0.0), "torso": Vector3(-0.42, 0.0, 0.0), "head": Vector3(0.3, 0.0, 0.0),
-		"shoulder_l": Vector3(1.85, 0.0, 0.12), "elbow_l": Vector3(0.15, 0.0, 0.0), "shoulder_r": Vector3(1.85, 0.0, -0.12),
+		"shoulder_l": Vector3(1.65, 0.0, 0.12), "elbow_l": Vector3(0.15, 0.0, 0.0), "shoulder_r": Vector3(1.65, 0.0, -0.12),
 		"elbow_r": Vector3(0.15, 0.0, 0.0), "body_y": -0.08}],
 	[0.7, {"thigh_l": Vector3(0.6, 0.0, 0.08), "knee_l": Vector3(-0.7, 0.0, 0.0), "thigh_r": Vector3(-0.3, 0.0, -0.08),
 		"knee_r": Vector3(-0.2, 0.0, 0.0), "torso": Vector3(-0.35, 0.0, 0.0), "head": Vector3(0.25, 0.0, 0.0),
-		"shoulder_l": Vector3(1.7, 0.0, 0.05), "elbow_l": Vector3(0.4, 0.0, 0.0), "shoulder_r": Vector3(1.7, 0.0, -0.05),
+		"shoulder_l": Vector3(1.55, 0.0, 0.05), "elbow_l": Vector3(0.4, 0.0, 0.0), "shoulder_r": Vector3(1.55, 0.0, -0.05),
 		"elbow_r": Vector3(0.4, 0.0, 0.0), "body_y": -0.07}],
 	[1.0, GUARD],
 ]
 const HEADBUTT_KEYS: Array = [
-	[0.0, GRAB],
+	[0.0, {"thigh_l": Vector3(0.3, 0.0, 0.08), "knee_l": Vector3(-0.5, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.08),
+		"knee_r": Vector3(-0.3, 0.0, 0.0), "torso": Vector3(-0.1, 0.0, 0.0), "head": Vector3(0.0, 0.0, 0.0),
+		"shoulder_l": Vector3(0.5, 0.0, -0.25), "elbow_l": Vector3(0.9, 0.0, 0.0), "shoulder_r": Vector3(0.5, 0.0, 0.25),
+		"elbow_r": Vector3(0.9, 0.0, 0.0), "body_y": -0.03}],
 	[0.35, {"thigh_l": Vector3(0.35, 0.0, 0.08), "knee_l": Vector3(-0.55, 0.0, 0.0), "thigh_r": Vector3(-0.15, 0.0, -0.08),
 		"knee_r": Vector3(-0.3, 0.0, 0.0), "torso": Vector3(0.15, 0.0, 0.0), "head": Vector3(0.35, 0.0, 0.0),
-		"shoulder_l": Vector3(1.2, 0.0, 0.2), "elbow_l": Vector3(1.25, 0.0, 0.0), "shoulder_r": Vector3(1.2, 0.0, -0.2),
-		"elbow_r": Vector3(1.25, 0.0, 0.0), "body_y": -0.05}],
+		"shoulder_l": Vector3(0.45, 0.0, -0.25), "elbow_l": Vector3(0.9, 0.0, 0.0), "shoulder_r": Vector3(0.45, 0.0, 0.25),
+		"elbow_r": Vector3(0.9, 0.0, 0.0), "body_y": -0.05}],
 	[0.5, {"thigh_l": Vector3(0.6, 0.0, 0.08), "knee_l": Vector3(-0.7, 0.0, 0.0), "thigh_r": Vector3(-0.3, 0.0, -0.08),
-		"knee_r": Vector3(-0.2, 0.0, 0.0), "torso": Vector3(-0.55, 0.0, 0.0), "head": Vector3(-0.45, 0.0, 0.0),
-		"shoulder_l": Vector3(1.05, 0.0, 0.2), "elbow_l": Vector3(1.4, 0.0, 0.0), "shoulder_r": Vector3(1.05, 0.0, -0.2),
-		"elbow_r": Vector3(1.4, 0.0, 0.0), "body_y": -0.08}],
+		"knee_r": Vector3(-0.2, 0.0, 0.0), "torso": Vector3(-0.3, 0.0, 0.0), "head": Vector3(-0.15, 0.0, 0.0),
+		"shoulder_l": Vector3(0.45, 0.0, -0.25), "elbow_l": Vector3(0.9, 0.0, 0.0), "shoulder_r": Vector3(0.45, 0.0, 0.25),
+		"elbow_r": Vector3(0.9, 0.0, 0.0), "body_y": -0.08}],
 	[1.0, {"thigh_l": Vector3(0.3, 0.0, 0.08), "knee_l": Vector3(-0.5, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.08),
 		"knee_r": Vector3(-0.3, 0.0, 0.0), "torso": Vector3(-0.15, 0.0, 0.0), "head": Vector3(0.0, 0.0, 0.0),
 		"shoulder_l": Vector3(0.9, 0.0, -0.3), "elbow_l": Vector3(1.6, 0.0, 0.0), "shoulder_r": Vector3(0.9, 0.0, 0.3),
@@ -199,14 +202,14 @@ const YANK_KEYS: Array = [
 ## Grab, turn in and drop the hips under him (impact = the grab), then haul him over the hip.
 const HIP_THROW_KEYS: Array = [
 	[0.0, GRAB],
-	[0.25, {"thigh_l": Vector3(0.55, 0.0, 0.08), "knee_l": Vector3(-0.85, 0.0, 0.0), "thigh_r": Vector3(0.35, 0.0, -0.08),
-		"knee_r": Vector3(-0.7, 0.0, 0.0), "torso": Vector3(-0.35, 0.5, 0.0), "head": Vector3(0.1, -0.2, 0.0),
+	[0.25, {"thigh_l": Vector3(0.35, 0.0, 0.08), "knee_l": Vector3(-0.75, 0.0, 0.0), "thigh_r": Vector3(0.1, 0.0, -0.08),
+		"knee_r": Vector3(-0.6, 0.0, 0.0), "torso": Vector3(-0.35, 0.5, 0.0), "head": Vector3(0.1, -0.2, 0.0),
 		"shoulder_l": Vector3(1.3, 0.0, 0.2), "elbow_l": Vector3(0.8, 0.0, 0.0), "shoulder_r": Vector3(1.3, 0.0, -0.2),
-		"elbow_r": Vector3(0.8, 0.0, 0.0), "body_y": -0.14}],
-	[0.6, {"thigh_l": Vector3(0.6, 0.0, 0.08), "knee_l": Vector3(-0.9, 0.0, 0.0), "thigh_r": Vector3(0.2, 0.0, -0.08),
-		"knee_r": Vector3(-0.6, 0.0, 0.0), "torso": Vector3(-0.95, 0.9, 0.0), "head": Vector3(-0.3, -0.3, 0.0),
+		"elbow_r": Vector3(0.8, 0.0, 0.0), "body_y": -0.08}],
+	[0.6, {"thigh_l": Vector3(0.4, 0.0, 0.08), "knee_l": Vector3(-0.8, 0.0, 0.0), "thigh_r": Vector3(0.05, 0.0, -0.08),
+		"knee_r": Vector3(-0.5, 0.0, 0.0), "torso": Vector3(-0.95, 0.9, 0.0), "head": Vector3(-0.3, -0.3, 0.0),
 		"shoulder_l": Vector3(0.8, 0.0, 0.6), "elbow_l": Vector3(0.9, 0.0, 0.0), "shoulder_r": Vector3(0.5, 0.0, -0.7),
-		"elbow_r": Vector3(0.6, 0.0, 0.0), "body_y": -0.16}],
+		"elbow_r": Vector3(0.6, 0.0, 0.0), "body_y": -0.09}],
 	[1.0, {"thigh_l": Vector3(0.4, 0.0, 0.08), "knee_l": Vector3(-0.65, 0.0, 0.0), "thigh_r": Vector3(0.0, 0.0, -0.08),
 		"knee_r": Vector3(-0.35, 0.0, 0.0), "torso": Vector3(-0.4, 0.3, 0.0), "head": Vector3(0.1, -0.1, 0.0),
 		"shoulder_l": Vector3(0.5, 0.0, -0.3), "elbow_l": Vector3(0.8, 0.0, 0.0), "shoulder_r": Vector3(0.5, 0.0, 0.3),
@@ -215,13 +218,13 @@ const HIP_THROW_KEYS: Array = [
 ## Low crouch, then a spear tackle: shoulder into his midriff, arms wrapping (impact), into the drive.
 const TACKLE_LUNGE: Dictionary = {"thigh_l": Vector3(1.0, 0.0, 0.08), "knee_l": Vector3(-1.2, 0.0, 0.0),
 	"thigh_r": Vector3(-0.7, 0.0, -0.08), "knee_r": Vector3(-0.25, 0.0, 0.0), "torso": Vector3(-0.95, 0.0, 0.0),
-	"head": Vector3(0.6, 0.0, 0.0), "shoulder_l": Vector3(1.35, 0.0, 0.25), "elbow_l": Vector3(1.1, 0.0, 0.0),
-	"shoulder_r": Vector3(1.35, 0.0, -0.25), "elbow_r": Vector3(1.1, 0.0, 0.0), "body_y": -0.25}
+	"head": Vector3(0.6, 0.0, 0.0), "shoulder_l": Vector3(1.2, 0.0, -0.45), "elbow_l": Vector3(1.3, 0.0, 0.0),
+	"shoulder_r": Vector3(1.2, 0.0, 0.45), "elbow_r": Vector3(1.3, 0.0, 0.0), "body_y": -0.25}
 const TACKLE_KEYS: Array = [
 	[0.0, {"thigh_l": Vector3(0.7, 0.0, 0.08), "knee_l": Vector3(-1.1, 0.0, 0.0), "thigh_r": Vector3(0.6, 0.0, -0.08),
 		"knee_r": Vector3(-1.0, 0.0, 0.0), "torso": Vector3(-0.5, 0.0, 0.0), "head": Vector3(0.3, 0.0, 0.0),
 		"shoulder_l": Vector3(0.9, 0.0, -0.2), "elbow_l": Vector3(1.4, 0.0, 0.0), "shoulder_r": Vector3(0.9, 0.0, 0.2),
-		"elbow_r": Vector3(1.4, 0.0, 0.0), "body_y": -0.17}],
+		"elbow_r": Vector3(1.4, 0.0, 0.0), "body_y": -0.14}],
 	[0.6, TACKLE_LUNGE],
 	[1.0, TACKLE_LUNGE],
 ]
@@ -231,7 +234,7 @@ const PICKUP_KEYS: Array = [
 	[0.5, {"thigh_l": Vector3(1.4, 0.0, 0.1), "knee_l": Vector3(-2.0, 0.0, 0.0), "thigh_r": Vector3(1.2, 0.0, -0.1),
 		"knee_r": Vector3(-1.9, 0.0, 0.0), "torso": Vector3(-1.1, 0.0, 0.0), "head": Vector3(0.4, 0.0, 0.0),
 		"shoulder_l": Vector3(0.6, 0.0, -0.3), "elbow_l": Vector3(0.9, 0.0, 0.0), "shoulder_r": Vector3(0.9, 0.0, 0.1),
-		"elbow_r": Vector3(0.1, 0.0, 0.0), "body_y": -0.45}],
+		"elbow_r": Vector3(0.1, 0.0, 0.0), "body_y": -0.41}],
 	[1.0, {"thigh_l": Vector3(0.3, 0.0, 0.08), "knee_l": Vector3(-0.5, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.08),
 		"knee_r": Vector3(-0.35, 0.0, 0.0), "torso": Vector3(-0.05, 0.45, 0.0), "head": Vector3(0.08, -0.4, 0.0),
 		"shoulder_l": Vector3(1.0, 0.0, -0.35), "elbow_l": Vector3(1.9, 0.0, 0.0), "shoulder_r": Vector3(0.6, 0.0, 0.45),
@@ -400,8 +403,9 @@ static func _lay_drop(p: float) -> float:
 ## the shin f + p + knee; ankle height = pivot - 0.45 (cos(thigh) + cos(shin)) (Task 7, checked numerically per frame).
 const GETUP_KEYS: Array = [
 	[0.0, PI * 0.5, LIE_PIVOT_Y, 0.35, -0.6, 0.05, -0.1, 0.3, 1.0, 0.4],
-	[0.4, 0.3, 0.22, 1.7, -1.0, 1.6, -0.95, -0.5, 0.35, 0.2],
-	[0.7, -0.3, 0.58, 1.7, -1.7, 1.7, -1.7, 0.9, 0.2, 0.6],
+	[0.4, 0.3, 0.27, 1.7, -1.0, 1.7, -1.0, -0.5, 0.35, 0.2],
+	[0.7, -0.3, 0.63, 1.7, -1.7, 1.7, -1.7, 0.9, 0.2, 0.6],
+	[0.85, -0.12, 0.84, 0.8, -0.9, 0.8, -0.9, 0.4, 0.1, 0.3],
 	[1.0, 0.0, PIVOT_Y, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
 ]
 
@@ -562,13 +566,13 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 			dr["knee_l"] = Vector3(-0.85 - 0.45 * maxf(cos(ph), 0.0), 0.0, 0.0)
 			dr["thigh_r"] = Vector3(0.25 - 0.55 * sin(ph), 0.0, -0.08)
 			dr["knee_r"] = Vector3(-0.85 - 0.45 * maxf(-cos(ph), 0.0), 0.0, 0.0)
-			dr["body_y"] = -0.2 + 0.03 * absf(sin(ph))
+			dr["body_y"] = -0.16 + 0.03 * absf(sin(ph))
 			return dr
-		"doubled":    # folded over the tackler's shoulder, arms flapping, feet back-pedalling (loop phase u)
+		"doubled":    # folded over the tackler's shoulder, arms flung out sideways (clear of him), feet back-pedalling
 			var ph2: float = u * TAU
-			return {"torso": Vector3(-1.05, 0.0, 0.0), "head": Vector3(-0.25, 0.0, 0.0),
-				"shoulder_l": Vector3(0.9 + 0.3 * sin(ph2), 0.0, -0.3), "elbow_l": Vector3(0.5, 0.0, 0.0),
-				"shoulder_r": Vector3(0.9 - 0.3 * sin(ph2), 0.0, 0.3), "elbow_r": Vector3(0.5, 0.0, 0.0),
+			return {"torso": Vector3(-0.75, 0.0, 0.0), "head": Vector3(0.1, 0.0, 0.0),
+				"shoulder_l": Vector3(0.35 + 0.15 * sin(ph2), 0.0, -1.55), "elbow_l": Vector3(0.4, 0.0, 0.0),
+				"shoulder_r": Vector3(0.35 - 0.15 * sin(ph2), 0.0, 1.55), "elbow_r": Vector3(0.4, 0.0, 0.0),
 				"thigh_l": Vector3(0.1 + 0.35 * sin(ph2), 0.0, 0.08), "knee_l": Vector3(-0.5 - 0.3 * maxf(cos(ph2), 0.0), 0.0, 0.0),
 				"thigh_r": Vector3(0.1 - 0.35 * sin(ph2), 0.0, -0.08), "knee_r": Vector3(-0.5 - 0.3 * maxf(-cos(ph2), 0.0), 0.0, 0.0),
 				"body_y": -0.08}
