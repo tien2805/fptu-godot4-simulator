@@ -167,6 +167,10 @@ func _cast() -> void:
 ## tests/test_cine_d1_brawl.gd ("upper" = head, chest or upper arms).
 func _hits() -> void:
 	hit("H1", 2.4, "heavy", "Mũ Vàng's sucker punch: the protagonist goes down flat", {"r": 2.76, "att": "c1:hands", "tgt": "hero:Head"})
+	# owner: the neck-crack close-up ("Gét gô.") in slow motion "cho ngầu" - an accent ramp (no freeze, no contact) on 7.17,
+	# slow from 6.67 to 7.41 so the 7.72 gut punch stays at normal speed
+	hit("N1", 5.9, "accent", "slow-motion close-up: he cracks his neck, deadpan \"Gét gô.\"", {"r": 7.17, "ri": 0.2, "hp": 0.3,
+		"hq": 0.12, "ro": 0.12})
 	hit("H2", 6.5, "medium", "Mũ Đỏ slammed back into the scooter", {"r": 8.48, "hq": 0.3, "att": "hero:hands", "tgt": "c2:torso"})
 	hit("H3", 7.4, "light", "headbutt into Mũ Xanh's helmet: clonk (it hurts him more)", {"r": 9.83, "att": "hero:Head", "tgt": "c3:Head"})
 	hit("H4", 8.9, "medium", "Mũ Xanh's own helmet swung into Mũ Vàng's face", {"r": 11.76, "hq": 0.2, "ro": 0.15,
@@ -212,7 +216,7 @@ func _hero() -> void:
 	var y_c2: float = face(P_SLAM, C2_STAND)
 	key("hero", s_up + 1.5, P_SLAM, y0)
 	key("hero", _sr(7.4), P_SLAM, y_c2)
-	strike("hero", _sr(7.17), "neck_crack", {"dur": 0.6})
+	strike("hero", "N1", "neck_crack", {"dur": 0.5})   # plays through the slow-motion accent
 	expr("hero", _sr(6.9), "open")
 	# 7.72: gut punch, grab, 8.48: slams Mũ Đỏ back into the scooter, steps back off his legs
 	strike("hero", xg, "uppercut", {"dur": 0.6})   # a short uppercut to the body

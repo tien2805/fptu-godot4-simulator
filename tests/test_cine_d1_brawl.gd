@@ -16,7 +16,7 @@ extends SceneTree
 const Bodies = preload("res://tests/support/cine_bodies.gd")
 
 ## Real impact times (the track's strong onsets).
-const IMPACTS: Dictionary = {"H1": 2.76, "H2": 8.48, "H3": 9.83, "H4": 11.76, "H5": 12.71}
+const IMPACTS: Dictionary = {"H1": 2.76, "N1": 7.17, "H2": 8.48, "H3": 9.83, "H4": 11.76, "H5": 12.71}
 ## Real start of every shot (cuts on onsets; S15 / S16 / S18 / S19 on the 112 bpm grid through the sustained note and tail).
 const SHOTS: Dictionary = {"S1": 0.0, "S2": 1.45, "S3": 2.76, "S4": 3.02, "S5": 5.89, "S6": 6.15, "S7": 7.17, "S8": 7.72,
 	"S9": 8.48, "S10": 9.02, "S11": 9.83, "S12": 10.73, "S13": 11.76, "S14": 12.13, "S15": 15.92, "S16": 19.14, "S17": 21.99,
@@ -242,7 +242,11 @@ func _initialize() -> void:
 	var freezes: int = 0
 	for row: Dictionary in tl.clock.ramps:
 		freezes += 1 if float(row["freeze"]) > 0.0 else 0
-	_check(tl.clock.ramps.size() == 5 and freezes == 5, "slow motion on 4 impacts + the finisher only (%d ramps, %d freezes)" % [tl.clock.ramps.size(), freezes])
+	_check(tl.clock.ramps.size() == 6 and freezes == 5,
+		"slow motion on 4 impacts + the finisher (freezes) + the neck-crack close-up accent (%d ramps, %d freezes)" % [tl.clock.ramps.size(), freezes])
+	var n1: Dictionary = tl.clock.ramp("N1")
+	_check(float(n1.get("r1", 99.0)) < 7.72 - 0.25 and float(n1.get("r0", 0.0)) > 4.2,
+		"neck-crack slow motion %.3f-%.3f ends before the 7.72 gut punch" % [float(n1.get("r0", 0.0)), float(n1.get("r1", 0.0))])
 	for nm: String in IMPACTS.keys():
 		var rh: float = float(tl.clock.ramp(nm).get("r_hit", -1.0))
 		_check(absf(rh - float(IMPACTS[nm])) < 0.0005, "%s real impact %.4f on the onset %.3f" % [nm, rh, float(IMPACTS[nm])])
