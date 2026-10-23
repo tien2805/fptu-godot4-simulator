@@ -27,6 +27,7 @@
 #     người chơi + xe đang đỗ, vẽ lại theo nhịp HUD), [Z]/[C] xoay camera, [ESC] tạm dừng (StageManager).
 #   - Đám đông ba tầng (PedestrianSpawner "Pedestrians", spec vice-people Phần 3): dựng cuối _ready khi crowd_enabled,
 #     tránh cột sáng hotspot và điểm spawn.
+#   - Cinematic (spec A1): cine_stage() / play_cinematic(); [F9] (bản debug) phát lần lượt các timeline.
 # Autoload chỉ dùng qua get_node_or_null("/root/GameFX" | "/root/StageManager") (test headless chạy được không cần
 # autoload); hàm tĩnh / enum lấy qua preload script.
 extends Node3D
@@ -126,6 +127,19 @@ var _has_dry: bool = false
 var _wet_t: float = 0.0
 var rescues: int = 0
 
+signal cinematic_finished(slot: String, skipped: bool)
+
+const CINE_FLOOR_UP: float = 2.0         # tia tìm sàn sân khấu bắt đầu 2 m trên mặt đất của landmark (không dính mái)
+const CINE_FLOOR_MAX: float = 0.5        # sàn lệch quá 0,5 m so với mặt đất landmark = mái / bục: loại
+const CINE_CLUTTER_H: float = 0.15       # mesh nhìn thấy nhô > 0,15 m trên sàn trong hộp sân khấu = vật cản hình ảnh
+const CINE_CLUTTER_TOP: float = 2.5      # ... và bắt đầu thấp hơn 2,5 m trên sàn (tán cây cao không tính)
+const CINE_BIG_MESH: float = 30.0        # mesh gộp rộng hơn 30 m: xét từng đỉnh thay cho AABB
+var cine_player: CinePlayer = null
+## Chỗ diễn vừa tìm được (báo cáo / test): landmark, tâm dò, vòng, yaw, sàn, mặt đất landmark.
+var cine_stage_info: Dictionary = {}
+var _cine_saved: Dictionary = {}
+var _cine_slot_i: int = -1
+
 
 func _ready() -> void:
 	var t0: int = Time.get_ticks_msec()
@@ -174,6 +188,8 @@ func _exit_tree() -> void:
 	var sm: Node = get_node_or_null("/root/StageManager")
 	if sm:
 		sm.set("hub_key_blocked", false)
+	if cine_player != null and is_inside_tree():
+		get_tree().paused = false   # rời cảnh giữa cinematic: không để cảnh sau bị dừng
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
@@ -1222,6 +1238,300 @@ static func _thousands(n: int) -> String:
 	return out
 
 
+# ===========================================================================
+# CINEMATIC (spec A1)
+# ===========================================================================
+## Clear, flat stage frame for a cinematic near a landmark (spec A1-D19, plan review M4). stage: {"landmark", "near" (m),
+## "size" (Vector2 m: x across, y along the stage's Z), "yaw_deg" (road-aligned yaw; the stage's -Z runs along the road),
+## "offset" (Vector2 m in that yaw frame: x right, y back; pushes the search centre, e.g. to the road side of a gate),
+## "fallback" (second landmark)}. Landmark ground = the lowest upward floor under the landmark. Rings every 2 m out to
+## `near`, first with yaw_deg only, then with 45° steps; floor = 5 downward rays from 2 m above the landmark ground, all
+## within 0.5 m of it (no shed roofs) and agreeing within 0.15 m; no visible mesh pokes more than 0.15 m above the floor
+## inside the box (gate barrier arm, poles, bollards: cine_clutter); the box (size.x × 1.8 × size.y) 0.25 m above the
+## floor touches nothing except the player, the bike, pedestrians and traffic. Returns Transform3D (origin on the floor)
+## or null; cine_stage_info says which spot won.
+func cine_stage(stage: Dictionary) -> Variant:
+	cine_stage_info = {}
+	if not is_inside_tree() or md == null:
+		return null
+	var size: Vector2 = stage.get("size", Vector2(14.0, 10.0))
+	var near: float = float(stage.get("near", 30.0))
+	var yaw0: float = deg_to_rad(float(stage.get("yaw_deg", 0.0)))
+	var off: Vector2 = stage.get("offset", Vector2.ZERO)
+	var box := BoxShape3D.new()
+	box.size = Vector3(size.x, 1.8, size.y)
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var excl: Array[RID] = _cine_exclusions()
+	var names: Array[String] = [String(stage.get("landmark", ""))]
+	if stage.has("fallback"):
+		names.append(String(stage["fallback"]))
+	for lk: String in names:
+		var lm: Variant = md.landmark(lk)
+		if not (lm is Array and (lm as Array).size() >= 2):
+			continue
+		var lc := Vector2(float(lm[0]), float(lm[1]))
+		var ground_y: float = _cine_ground_y(space, lc)
+		var ov: Vector3 = Basis(Vector3.UP, yaw0) * Vector3(off.x, 0.0, off.y)
+		var c: Vector2 = lc + Vector2(ov.x, ov.z)
+		var items: Array = _cine_clutter_items(Vector3(c.x, ground_y, c.y), near + size.length() * 0.5 + 1.0)
+		for pass_i: int in 2:
+			var yaws: Array[float] = [yaw0]
+			if pass_i == 1:
+				yaws = [yaw0 + PI * 0.25, yaw0 + PI * 0.5, yaw0 + PI * 0.75]
+			var ring: float = 0.0
+			while ring <= near:
+				var steps: int = 1 if ring == 0.0 else int(ceil(TAU * ring / 2.0))
+				for i: int in steps:
+					var a: float = TAU * float(i) / float(steps)
+					var pt: Vector2 = c + Vector2(cos(a), sin(a)) * ring
+					for yaw: float in yaws:
+						var xf: Variant = _cine_try(space, box, excl, pt, yaw, size, ground_y, items)
+						if xf != null:
+							cine_stage_info = {"landmark": lk, "centre": c, "ring": ring, "yaw_deg": snappedf(rad_to_deg(yaw), 0.01),
+								"floor_y": snappedf((xf as Transform3D).origin.y, 0.001), "ground_y": ground_y,
+								"pos": Vector2(snappedf(pt.x, 0.01), snappedf(pt.y, 0.01)), "road_aligned": pass_i == 0}
+							return xf
+				ring += 2.0
+	return null
+
+
+## Lowest upward-facing floor under the landmark (walk-floor level, below gate roofs and fences; WaterFloor ignored).
+func _cine_ground_y(space: PhysicsDirectSpaceState3D, lc: Vector2) -> float:
+	var excl: Array[RID] = _cine_exclusions()
+	if water_floor:
+		excl.append(water_floor.get_rid())
+	var top: float = 60.0
+	var best: float = GROUND_COLLIDER_Y
+	for i: int in 16:
+		var q := PhysicsRayQueryParameters3D.create(Vector3(lc.x, top, lc.y), Vector3(lc.x, MapBuilder.WATER_Y - 1.0, lc.y))
+		q.exclude = excl
+		var hit: Dictionary = space.intersect_ray(q)
+		if hit.is_empty():
+			break
+		var hy: float = (hit["position"] as Vector3).y
+		if (hit["normal"] as Vector3).y > 0.7:
+			best = hy
+		top = hy - 0.02
+	return best
+
+
+func _cine_try(space: PhysicsDirectSpaceState3D, box: BoxShape3D, excl: Array[RID], pt: Vector2, yaw: float, size: Vector2,
+		ground_y: float, items: Array) -> Variant:
+	var basis := Basis(Vector3.UP, yaw)
+	var ray_excl: Array[RID] = excl.duplicate()
+	if water_floor:
+		ray_excl.append(water_floor.get_rid())
+	var ys: Array[float] = []
+	for o: Vector2 in [Vector2.ZERO, Vector2(-0.5, -0.5), Vector2(0.5, -0.5), Vector2(-0.5, 0.5), Vector2(0.5, 0.5)]:
+		var off: Vector3 = basis * Vector3(o.x * size.x, 0.0, o.y * size.y)
+		var q := PhysicsRayQueryParameters3D.create(Vector3(pt.x, ground_y + CINE_FLOOR_UP, pt.y) + off, Vector3(pt.x, ground_y - 1.0, pt.y) + off)
+		q.exclude = ray_excl
+		var hit: Dictionary = space.intersect_ray(q)
+		if hit.is_empty() or (hit["normal"] as Vector3).y < 0.7:
+			return null
+		var y: float = (hit["position"] as Vector3).y
+		if absf(y - ground_y) > CINE_FLOOR_MAX:
+			return null
+		ys.append(y)
+	if ys.max() - ys.min() > 0.15:
+		return null
+	var xf := Transform3D(basis, Vector3(pt.x, ys[0], pt.y))
+	if not _cine_clutter_in(items, xf, size).is_empty():
+		return null
+	var sq := PhysicsShapeQueryParameters3D.new()
+	sq.shape = box
+	sq.transform = Transform3D(basis, Vector3(pt.x, ys[0] + 0.25 + 0.9, pt.y))
+	sq.exclude = excl
+	if not space.intersect_shape(sq, 1).is_empty():
+		return null
+	return xf
+
+
+func _cine_exclusions() -> Array[RID]:
+	var out: Array[RID] = []
+	if player:
+		out.append(player.get_rid())
+	if bike:
+		out.append(bike.get_rid())
+	if pedestrians:
+		for p: Node in pedestrians.pedestrians():
+			if p is CollisionObject3D:
+				out.append((p as CollisionObject3D).get_rid())
+	if traffic:
+		for b: Node in traffic.bodies():
+			if b is CollisionObject3D:
+				out.append((b as CollisionObject3D).get_rid())
+	return out
+
+
+## Visual clutter (names) inside the stage box xf / size: visible meshes poking more than CINE_CLUTTER_H above the floor.
+func cine_clutter(xf: Transform3D, size: Vector2) -> Array:
+	return _cine_clutter_in(_cine_clutter_items(xf.origin, size.length() * 0.5 + 1.0), xf, size)
+
+
+## Clutter sources within `radius` (XZ) of centre, in the height band a stage floor near centre.y can see: small visible
+## meshes and multimesh instances as global AABBs, merged meshes wider than CINE_BIG_MESH as their global vertices (their
+## AABB spans whole regions). The nodes hidden during a cinematic (player, bike, crowd, traffic) are skipped.
+func _cine_clutter_items(centre: Vector3, radius: float) -> Array:
+	var y_lo: float = centre.y - CINE_FLOOR_MAX + CINE_CLUTTER_H
+	var region := AABB(Vector3(centre.x - radius, y_lo, centre.z - radius), Vector3(radius * 2.0, CINE_CLUTTER_TOP + 2.0 * CINE_FLOOR_MAX, radius * 2.0))
+	var out: Array = []
+	var skip: Array = [player, bike, pedestrians, traffic, cine_player, hud]
+	var stack: Array[Node] = [self]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if skip.has(n):
+			continue
+		for ch: Node in n.get_children():
+			stack.append(ch)
+		if not (n is MeshInstance3D or n is MultiMeshInstance3D):
+			continue
+		var g: GeometryInstance3D = n
+		if not g.is_visible_in_tree():
+			continue
+		var gt: Transform3D = g.global_transform
+		var ab: AABB = gt * g.get_aabb()
+		if not ab.intersects(region):
+			continue
+		if n is MultiMeshInstance3D:
+			var mm: MultiMesh = (n as MultiMeshInstance3D).multimesh
+			if mm == null or mm.mesh == null:
+				continue
+			var cnt: int = mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count
+			for i: int in cnt:
+				var iab: AABB = gt * mm.get_instance_transform(i) * mm.mesh.get_aabb()
+				if iab.intersects(region):
+					out.append({"name": "%s#%d" % [g.name, i], "aabb": iab})
+			continue
+		if ab.size.x <= CINE_BIG_MESH and ab.size.z <= CINE_BIG_MESH:
+			out.append({"name": String(g.name), "aabb": ab})
+			continue
+		var mesh: Mesh = (n as MeshInstance3D).mesh
+		if mesh == null:
+			continue
+		var inv: Transform3D = gt.affine_inverse()
+		var lr: AABB = inv * region
+		var pts := PackedVector3Array()
+		for si: int in mesh.get_surface_count():
+			var arr: Array = mesh.surface_get_arrays(si)
+			if arr.is_empty() or not (arr[Mesh.ARRAY_VERTEX] is PackedVector3Array):
+				continue
+			for v: Vector3 in arr[Mesh.ARRAY_VERTEX]:
+				if lr.has_point(v):
+					var w: Vector3 = gt * v
+					if region.has_point(w):
+						pts.append(w)
+		if not pts.is_empty():
+			out.append({"name": String(g.name), "pts": pts})
+	return out
+
+
+func _cine_clutter_in(items: Array, xf: Transform3D, size: Vector2) -> Array:
+	var inv: Transform3D = xf.affine_inverse()
+	var hx: float = size.x * 0.5
+	var hz: float = size.y * 0.5
+	var y0: float = xf.origin.y + CINE_CLUTTER_H + 0.01   # 1 cm float slack: kerbs sit exactly 0.15 m above the ground
+	var y1: float = xf.origin.y + CINE_CLUTTER_TOP
+	var out: Array = []
+	for it: Dictionary in items:
+		if it.has("aabb"):
+			var ab: AABB = it["aabb"]
+			if ab.end.y <= y0 or ab.position.y >= y1:
+				continue
+			var lo := Vector2(INF, INF)
+			var hi := Vector2(-INF, -INF)
+			for cn: Vector3 in [ab.position, Vector3(ab.end.x, 0.0, ab.position.z), Vector3(ab.position.x, 0.0, ab.end.z), ab.end]:
+				var l: Vector3 = inv * Vector3(cn.x, xf.origin.y, cn.z)
+				lo = Vector2(minf(lo.x, l.x), minf(lo.y, l.z))
+				hi = Vector2(maxf(hi.x, l.x), maxf(hi.y, l.z))
+			if hi.x > -hx and lo.x < hx and hi.y > -hz and lo.y < hz:
+				out.append(it["name"])
+		else:
+			for w: Vector3 in (it["pts"] as PackedVector3Array):
+				if w.y <= y0 or w.y >= y1:
+					continue
+				var l2: Vector3 = inv * w
+				if absf(l2.x) < hx and absf(l2.z) < hz:
+					out.append(it["name"])
+					break
+	return out
+
+
+## Play a cinematic at its stage: pauses the game (game clock frozen), hides the roam player / bike / HUD / map / crowd /
+## traffic, stops the roam music, switches the time of day, and restores everything (camera, music) on finished. opts go
+## to CinePlayer.setup (manual, debug, music).
+func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
+	if tl == null or cine_player != null:
+		return null
+	var xf: Variant = cine_stage(tl.stage) if not tl.stage.is_empty() else Transform3D(Basis.IDENTITY, roam_position())
+	if xf == null:
+		flash_hint("Không tìm được chỗ trống để diễn cinematic %s" % tl.slot)
+		return null
+	var p := CinePlayer.new()
+	p.name = "CinePlayer"
+	add_child(p)
+	if not p.setup(tl, xf, opts).is_empty():
+		p.queue_free()
+		return null
+	_cine_saved = {"tod": tod_preset, "vis": {}, "proc": {}, "cam": get_viewport().get_camera_3d()}
+	for n: Node in [player, bike, hint_holder, tod_holder, stats_holder, vice_hud, stamina_bar, map_overlay, pedestrians, traffic]:
+		if n and "visible" in n:
+			_cine_saved["vis"][n] = n.visible
+			n.visible = false
+	for n2: Node in [pedestrians, traffic]:
+		if n2:
+			_cine_saved["proc"][n2] = n2.process_mode
+			n2.process_mode = Node.PROCESS_MODE_DISABLED
+	set_time_of_day(String(tl.stage.get("tod", tod_preset)))
+	var fx: Node = get_node_or_null("/root/GameFX")
+	if fx and fx.has_method("music_stop"):
+		fx.call("music_stop", true)
+	get_tree().paused = true
+	cine_player = p
+	p.finished.connect(_on_cine_finished.bind(tl.slot), CONNECT_ONE_SHOT)
+	p.start()
+	return p
+
+
+func _on_cine_finished(skipped: bool, slot: String) -> void:
+	for n: Node in (_cine_saved.get("vis", {}) as Dictionary).keys():
+		if is_instance_valid(n):
+			n.visible = _cine_saved["vis"][n]
+	for n2: Node in (_cine_saved.get("proc", {}) as Dictionary).keys():
+		if is_instance_valid(n2):
+			n2.process_mode = _cine_saved["proc"][n2]
+	set_time_of_day(String(_cine_saved.get("tod", tod_preset)))
+	get_tree().paused = false
+	var cam: Variant = _cine_saved.get("cam")
+	if cam is Camera3D and is_instance_valid(cam) and (cam as Camera3D).is_inside_tree():
+		(cam as Camera3D).make_current()   # camera trước cinematic (camera xe khi đang cưỡi)
+	elif player and player.camera:
+		player.camera.make_current()
+	var fx: Node = get_node_or_null("/root/GameFX")
+	if fx and fx.has_method("music_play"):
+		# dừng hẳn rồi phát lại: music_play cùng kiểu nhạc lúc nhạc còn đang fade-out sẽ bị bỏ qua và nhạc tắt luôn
+		fx.call("music_stop", false)
+		if mounted:
+			fx.call("music_play", "ride", 0.3)
+		else:
+			fx.call("music_play", "menu", 0.15)
+	if cine_player:
+		cine_player.queue_free()
+	cine_player = null
+	_cine_saved = {}
+	cinematic_finished.emit(slot, skipped)
+
+
+## [F9] (debug builds): play the next timeline in scripts/cine/timelines/.
+func _play_next_cinematic() -> CinePlayer:
+	var all: PackedStringArray = CineTimeline.slots()
+	if all.is_empty():
+		flash_hint("Chưa có cinematic nào (scripts/cine/timelines/)")
+		return null
+	_cine_slot_i = (_cine_slot_i + 1) % all.size()
+	return play_cinematic(CineTimeline.load_slot(all[_cine_slot_i]))
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey):
 		return
@@ -1242,6 +1552,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_M:
 			toggle_map()
 			get_viewport().set_input_as_handled()
+		KEY_F9:
+			if OS.is_debug_build() and cine_player == null:
+				_play_next_cinematic()
+				get_viewport().set_input_as_handled()
 
 
 # ===========================================================================
