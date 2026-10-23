@@ -9,10 +9,13 @@ Tạo trong assets/textures/ (phẳng, để khớp include_filter "assets/textu
   char_denim.png / char_denim_n.png         – jeans chéo twill
   char_hair_n.png                           – normal map sợi tóc
   char_skin_n.png                           – lỗ chân lông rất nhẹ
+  char_ps2_face_<tone><sex><0-2>.png        – atlas mặt PS2 512x256 (4 x 2 ô biểu cảm) cho PS2Head (phong cách Vice City)
+  char_ps2_hair.png                         – sợi tóc xám 128x128 cho vỏ tóc PS2Head
 Kèm file .import "keep" để Godot đóng gói nguyên bản (dự án nạp ảnh bằng GameFX.load_image_any).
-Chạy:  python generate_character_textures.py
+Chạy:  python generate_character_textures.py            (tất cả)
+       python generate_character_textures.py --ps2-only (chỉ mặt + tóc PS2, giữ nguyên các PNG nhân vật cũ)
 """
-import os, math, random
+import os, math, random, sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
@@ -293,17 +296,199 @@ def make_skin_normal():
     save(normal_from_height(pores, 0.35), "char_skin_n.png")
 
 
-if __name__ == "__main__":
-    print("Generating character textures ->", OUT_DIR)
+# ---------------------------------------------------------------- MẶT PS2 (đầu low-poly kiểu PS2, phong cách Vice City)
+# Atlas 512x256 = 4 x 2 ô 128x128 theo PS2_CELLS (khớp PS2Head.CELLS). Mỗi ô chiếu phẳng mặt trước:
+#   u = 0.5 + x / PS2_FACE_SPAN, v = 1 - y / PS2_HEAD_H (x, y theo mét trong hệ đầu: gốc ở cằm, -Z phía trước).
+# Viền 3 px mỗi ô là da trơn: mặt sau đầu (PS2Head lấy cột mép ô) và lọc texture giữa các ô không lộ đường nối.
+PS2_CELLS = ["open", "closed", "happy", "angry", "surprised", "done", "talk", "pain"]
+PS2_HEAD_H = 0.235
+PS2_FACE_SPAN = 0.2
+PS2_CELL = 128
+PS2_SS = 4  # vẽ ở 4x rồi thu nhỏ LANCZOS cho nét kiểu vẽ tay
+
+
+def _ps2_px(x, y):
+    n = PS2_CELL * PS2_SS
+    return ((0.5 + x / PS2_FACE_SPAN) * n, (1.0 - y / PS2_HEAD_H) * n)
+
+
+def _ps2_cell(tone_key, sex, variant, expr):
+    n = PS2_CELL * PS2_SS
+    S = PS2_SS
+    base = np.array(TONES[tone_key], dtype=np.float32)
+    yy, xx = np.mgrid[0:n, 0:n].astype(np.float32)
+    u = xx / n - 0.5
+    v = yy / n
+    shade = 1.0 - 0.10 * np.clip((v - 0.62) / 0.38, 0, 1)            # hàm hơi tối
+    shade *= 1.0 - 0.16 * np.clip((np.abs(u) - 0.18) / 0.32, 0, 1)   # hai bên má tối (ánh sáng nướng sẵn kiểu PS2)
+    shade *= 1.0 + 0.05 * np.clip((0.40 - v) / 0.40, 0, 1)           # trán sáng
+    arr = base[None, None, :] * shade[:, :, None]
+    arr += ((noise(n, n, 3, 0.6, 11 + variant) - 0.5) * 8.0)[:, :, None]
+    im = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB")
+    d = ImageDraw.Draw(im, "RGBA")
+    skin = tuple(int(c) for c in base)
+    dark = tuple(int(c * 0.55) for c in base)
+    line = (40, 26, 20, 255)
+
+    def P(x, y):
+        return _ps2_px(x, y)
+
+    def ell(cx, cy, rx, ry, **kw):
+        x0, y0 = P(cx - rx, cy + ry)
+        x1, y1 = P(cx + rx, cy - ry)
+        d.ellipse([x0, y0, x1, y1], **kw)
+
+    # tai (gần mép ô, x = +-0.086)
+    for sx in (-1, 1):
+        ell(sx * 0.086, 0.125, 0.009, 0.024, fill=dark + (70,))
+        d.line([P(sx * 0.086, 0.14), P(sx * 0.083, 0.11)], fill=dark + (120,), width=S * 2)
+    # mũi: bóng hai bên, lỗ mũi, điểm sáng đầu mũi
+    for sx in (-1, 1):
+        d.line([P(sx * 0.010, 0.128), P(sx * 0.013, 0.096)], fill=dark + (60,), width=S * 3)
+        ell(sx * 0.0085, 0.089, 0.0035, 0.0022, fill=dark + (170,))
+    ell(0.0, 0.097, 0.006, 0.004, fill=(255, 255, 255, 40))
+    # râu lún phún (nam, biến thể 1) / ria mép + rãnh má (nam, biến thể 2)
+    if sex == "m" and variant == 1:
+        rng = random.Random(77 + ord(tone_key))
+        for _ in range(900):
+            x = rng.uniform(-0.05, 0.05)
+            y = rng.uniform(0.008, 0.075)
+            if abs(x) < 0.02 and 0.066 < y < 0.075:
+                continue
+            if (x / 0.055) ** 2 + ((y - 0.035) / 0.045) ** 2 > 1.0:
+                continue
+            # chấm tròn ~2.4 px siêu mẫu: chấm 1 px biến mất sau khi thu nhỏ LANCZOS 4x nên râu không nhìn thấy
+            px, py = P(x, y)
+            d.ellipse([px - 1.2, py - 1.2, px + 1.2, py + 1.2], fill=(40, 30, 26, 60))
+    if sex == "m" and variant == 2:
+        d.line([P(-0.017, 0.071), P(0.0, 0.074), P(0.017, 0.071)], fill=(46, 32, 24, 200), width=S * 3)
+        d.line([P(-0.024, 0.098), P(-0.021, 0.064)], fill=dark + (55,), width=S * 2)
+        d.line([P(0.024, 0.098), P(0.021, 0.064)], fill=dark + (55,), width=S * 2)
+    # lông mày theo biểu cảm
+    brow_w = S * (4 if sex == "m" else 2) + (S * 2 if (sex == "m" and variant == 1) else 0)
+    for sx in (-1, 1):
+        inner, outer = (sx * 0.013, 0.145), (sx * 0.047, 0.147)
+        if expr == "angry":
+            inner, outer = (sx * 0.013, 0.137), (sx * 0.047, 0.152)
+        elif expr == "surprised":
+            inner, outer = (sx * 0.013, 0.156), (sx * 0.047, 0.157)
+        elif expr == "pain":
+            inner, outer = (sx * 0.013, 0.153), (sx * 0.047, 0.142)
+        elif expr == "done":
+            inner, outer = (sx * 0.013, 0.141), (sx * 0.047, 0.142)
+        mid = ((inner[0] + outer[0]) / 2, max(inner[1], outer[1]) + 0.003)
+        d.line([P(*inner), P(*mid), P(*outer)], fill=(44, 30, 22, 235), width=brow_w, joint="curve")
+    # mắt
+    ey = 0.125
+    for sx in (-1, 1):
+        ex = sx * 0.032
+        if expr == "closed":
+            d.arc([*P(ex - 0.012, ey + 0.004), *P(ex + 0.012, ey - 0.006)], 10, 170, fill=line, width=S * 2)
+            continue
+        if expr == "happy":
+            d.arc([*P(ex - 0.012, ey + 0.002), *P(ex + 0.012, ey - 0.010)], 190, 350, fill=line, width=S * 2)
+            continue
+        if expr == "pain":
+            # nhăn mắt kiểu "> <": đỉnh chữ V hướng về phía mũi, hai đầu mở ra phía thái dương
+            d.line([P(ex + 0.012 * sx, ey + 0.004), P(ex - 0.010 * sx, ey), P(ex + 0.012 * sx, ey - 0.004)], fill=line, width=S * 2)
+            continue
+        rx, ry = 0.0125, 0.0055
+        if expr == "surprised":
+            ry = 0.0085
+        if expr == "angry":
+            ry = 0.0042
+        ell(ex, ey, rx, ry, fill=(246, 242, 238, 255))
+        ir = 0.0048 if expr != "surprised" else 0.0036
+        ell(ex, ey - 0.0005, ir, ir, fill=(78, 50, 30, 255))
+        ell(ex, ey - 0.0005, ir * 0.45, ir * 0.45, fill=(14, 10, 8, 255))
+        ell(ex - 0.0018, ey + 0.0018, 0.0012, 0.0012, fill=(255, 255, 255, 220))
+        d.arc([*P(ex - rx - 0.001, ey + ry + 0.001), *P(ex + rx + 0.001, ey - ry - 0.001)], 190, 350, fill=line, width=S * (3 if sex == "f" else 2))
+        if expr == "done":
+            x0, y0 = P(ex - rx - 0.001, ey + ry + 0.002)
+            x1, y1 = P(ex + rx + 0.001, ey)
+            d.rectangle([x0, y0, x1, y1], fill=skin + (255,))
+            d.line([P(ex - rx, ey), P(ex + rx, ey)], fill=line, width=S * 2)
+        if sex == "f" and variant == 2:
+            d.line([P(ex + sx * rx, ey + 0.001), P(ex + sx * (rx + 0.006), ey + 0.005)], fill=line, width=S * 2)
+    # miệng
+    my = 0.058
+    lip = tuple(int(c) for c in (base * np.array([0.78, 0.55, 0.55])))
+    if sex == "f":
+        lip = (176, 70, 84) if variant != 1 else (196, 42, 60)
+    mw = 0.016 if sex == "m" else 0.0145
+    if expr == "happy":
+        d.chord([*P(-mw - 0.002, my + 0.006), *P(mw + 0.002, my - 0.010)], 0, 180, fill=(110, 40, 46, 255))
+        d.chord([*P(-mw + 0.001, my + 0.005), *P(mw - 0.001, my - 0.002)], 0, 180, fill=(248, 246, 240, 255))
+    elif expr == "angry":
+        d.arc([*P(-mw, my + 0.002), *P(mw, my - 0.012)], 200, 340, fill=lip + (255,), width=S * 3)
+    elif expr == "surprised":
+        ell(0.0, my - 0.002, 0.0065, 0.008, fill=(80, 30, 34, 255))
+    elif expr == "talk":
+        ell(0.0, my - 0.001, mw * 0.8, 0.0055, fill=(80, 30, 34, 255))
+        x0, y0 = P(-mw * 0.7, my + 0.004)
+        x1, y1 = P(mw * 0.7, my + 0.0015)
+        d.rectangle([x0, y0, x1, y1], fill=(246, 244, 236, 255))
+    elif expr == "pain":
+        x0, y0 = P(-mw, my + 0.004)
+        x1, y1 = P(mw, my - 0.005)
+        d.rectangle([x0, y0, x1, y1], fill=(246, 244, 236, 255))
+        d.rectangle([x0, y0, x1, y1], outline=(100, 40, 44, 255), width=S * 2)
+        d.line([P(-mw, my - 0.0005), P(mw, my - 0.0005)], fill=(150, 120, 110, 255), width=S)
+    else:  # open, closed, done
+        d.line([P(-mw, my), P(0.0, my - 0.0015), P(mw, my)], fill=lip + (255,), width=S * 3)
+        ell(0.0, my - 0.0045, mw * 0.6, 0.0022, fill=lip + (120,))
+    if expr == "done":
+        d.polygon([P(0.07, 0.17), P(0.074, 0.155), P(0.066, 0.155)], fill=(130, 190, 240, 230))
+    # viền da trơn
+    m = 3 * S
+    d.rectangle([0, 0, n - 1, m], fill=skin + (255,))
+    d.rectangle([0, n - 1 - m, n - 1, n - 1], fill=skin + (255,))
+    d.rectangle([0, 0, m, n - 1], fill=skin + (255,))
+    d.rectangle([n - 1 - m, 0, n - 1, n - 1], fill=skin + (255,))
+    return im.resize((PS2_CELL, PS2_CELL), Image.Resampling.LANCZOS)
+
+
+def make_ps2_face_atlas(tone_key, sex, variant):
+    atlas = Image.new("RGB", (PS2_CELL * 4, PS2_CELL * 2))
+    for i, expr in enumerate(PS2_CELLS):
+        atlas.paste(_ps2_cell(tone_key, sex, variant, expr), ((i % 4) * PS2_CELL, (i // 4) * PS2_CELL))
+    save(atlas, "char_ps2_face_%s%s%d.png" % (tone_key, sex, variant))
+
+
+def make_ps2_hair():
+    """Sợi tóc xám (nhân albedo_color tóc), dọc theo trục V – lặp được."""
+    W = H = 128
+    rng = np.random.default_rng(91)
+    cols = rng.random(W).astype(np.float32)
+    strands = np.tile(cols[None, :], (H, 1))
+    strands = np.asarray(Image.fromarray((strands * 255).astype(np.uint8), "L").filter(ImageFilter.GaussianBlur(0.6)), dtype=np.float32) / 255.0
+    n = noise(W, H, 3, 0.55, 93)
+    n = 0.5 * (n + n[::-1])  # đối xứng theo V: hàng cuối nối liền hàng đầu nên lặp theo V không lộ vệt
+    val = 0.72 + 0.22 * strands + 0.12 * (n - 0.5)
+    save(Image.fromarray(np.clip(val * 255, 0, 255).astype(np.uint8), "L").convert("RGB"), "char_ps2_hair.png")
+
+
+def make_ps2_all():
     for t in TONES:
         for s in ("m", "f"):
-            for ex in EXPRESSIONS:
-                make_face(t, s, ex)
-    make_cloth_folds()
-    make_logo_patch()
-    make_shirt_fpt()
-    make_cloth_normal()
-    make_denim()
-    make_hair_normal()
-    make_skin_normal()
+            for v in range(3):
+                make_ps2_face_atlas(t, s, v)
+    make_ps2_hair()
+
+
+if __name__ == "__main__":
+    print("Generating character textures ->", OUT_DIR)
+    if "--ps2-only" not in sys.argv:
+        for t in TONES:
+            for s in ("m", "f"):
+                for ex in EXPRESSIONS:
+                    make_face(t, s, ex)
+        make_cloth_folds()
+        make_logo_patch()
+        make_shirt_fpt()
+        make_cloth_normal()
+        make_denim()
+        make_hair_normal()
+        make_skin_normal()
+    make_ps2_all()
     print("DONE")

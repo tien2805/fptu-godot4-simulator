@@ -1,6 +1,6 @@
 # Vice People and GTA-style Movement: Design
 
-Date: 2026-10-22. Status: design approved by the owner in chat; this spec awaits the owner's review.
+Date: 2026-10-22. Status: Implemented (commits befb729..9a7bdf3 on branch `vice-people`, base 362d6f0, plus a docs follow-up; see PLAN.md section XIV).
 
 ## Goal
 
@@ -27,7 +27,7 @@ Make the people and their movement feel like GTA Vice City, without copying its 
 
 1980s outfits, a wanted or police system, health, combat or punching, changes to NPC traffic, pedestrians inside stages, downloaded animation libraries.
 
-This spec supersedes two items of `docs/superpowers/plans/2026-10-22-vice-city-art-direction.md`: decision D3 (vice head scale 1.15) becomes realistic head size with the PS2 head, and the outfit part of Task VC-6 (pastel outfits, Hawaiian shirts, white blazer) is dropped. The vehicle paint part of VC-6 stays.
+This spec supersedes two items of `docs/superpowers/plans/2026-10-22-vice-city-art-direction.md`: decision D3 (vice head scale 1.15) becomes realistic head size with the PS2 head, and the outfit part of Task VC-6 (pastel outfits, Hawaiian shirts, white blazer) is dropped. The owner dropped the vehicle paint part of VC-6 as well on 2026-10-23.
 
 ## Current state (2026-10-22, main 46bdac7)
 
@@ -137,6 +137,23 @@ All "Global Constraints" of the Vice City plan apply: pure GDScript, no plugins,
 - FreeRoam creates the spawner after the world is built and passes the player and MapData.
 - Contact detection lives in `Pedestrian`: each physics frame it tests the distance to the player body (on foot) or the bike (when mounted) against the sum of both radii plus 0.05 m, and reads their horizontal speed (`ThirdPersonController.horizontal_speed`, the bike's speed). The pedestrian applies the reaction from the table, tells the spawner through `pedestrian_hit`, and the spawner slows the player or the bike. A 1.0 s cooldown per pedestrian stops repeated hits.
 
+### Amendment 2026-10-22: dense crowds and ambient traffic
+
+The owner asked for many more NPCs ("nhiều npc trong trường, đường và khu dân cư", FreeRoam feels empty). This amendment replaces the single 24-pedestrian ring above; everything else in Part 3 stays.
+
+- **Density targets (daytime; night presets scale every target to 30 %):**
+  - campus (the plot, the courtyard and the Đường D1 frontage): at least 40 pedestrians within 80 m of the player, 90 % students;
+  - Vinhomes residential streets and plazas: at least 30 residents within 80 m (casual walkers, joggers at 2.5 m/s, slow strollers at 0.8 m/s);
+  - corridor roads: at least 15 pedestrians on the verges within 80 m, plus ambient traffic (below).
+- **Three tiers by distance to the player (or the bike when mounted):**
+  - near, up to 35 m: full `Pedestrian` (physics, contact reactions), at most 40;
+  - mid, 35 to 90 m: `Pedestrian` without physics (cheap ground snap) and animation on the existing RigAnimator distance LOD, at most 40;
+  - far, 90 to 220 m: crowd impostors, at most 200. Each impostor is a baked, posed PS2 person (`CharacterBuilder.bake`) drawn through one MultiMesh per baked variant (8 variants per zone), gliding along walk-graph edges with transforms updated at 10 Hz. An impostor that comes within 90 m is promoted to a `Pedestrian` built with the same preset and seed (and the reverse when it leaves), so a walker never changes identity.
+- **Ambient traffic (new unit `RoamTraffic`, FreeRoam only):** 20 to 30 motorbikes plus a few cars and buses moving kinematically along MapData carriageways (lanes > 0, not footways) within 150 m of the player, keeping to the right-hand lane, slowing and stopping behind a blocked vehicle, pedestrian or the player, recycled beyond 200 m. Riders are PS2 baked riders in vice (Task 4) and today's riders in classic. Vehicles have simple box colliders so the player's bike can bump into them; the existing `PlayerBike` crash handling applies. No traffic inside the campus plot.
+- **Performance gate:** FreeRoam with full daytime density at least 45 fps at the BE6 spawn, the campus main gate and on Nguyễn Xiển (RTX 4050, 1280x720, quality 2, V-Sync off).
+- **Testing:** `tests/test_pedestrians.gd` part C checks the density targets in each zone, the tier caps, promotion/demotion keeping preset and seed, and the 30 % night scaling; a new `tests/test_roam_traffic.gd` checks lane keeping, stopping behind an obstacle, recycling and the 150 m / 200 m radii.
+- The plan's Tasks 9 to 12 are re-planned in detail for this amendment before Task 9 starts.
+
 ## Error handling and edge cases
 
 - Missing Quaternius model: fall back to the code-made body with the PS2 head and log a warning.
@@ -163,3 +180,63 @@ RTX 4050, 1280×720, quality 2, V-Sync off: FreeRoam with 24 pedestrians at leas
 1. Part 1 (CharacterBuilder vice path, PS2Head, textures, rigged pose and bake).
 2. Part 2 (ThirdPersonController states, RigAnimator locomotion layer). It follows Part 1 because both edit `CharacterBuilder.gd`, where `RigAnimator` lives.
 3. Part 3 (walk graph, pedestrians, spawner) after Part 2, which supplies the reaction clips, and after the VC-2 and VC-4 branches are merged, because all three edit `FreeRoam.gd`.
+
+## Implementation notes
+
+As built, from the implementer reports of Tasks 9-13 and their fix rounds. Where these notes and the sections above differ, these notes describe the code.
+
+- **Walk graph.**
+  - Size:
+    - about 19.3k nodes, built in about 277 ms;
+    - zones campus / residential / road, about 270 / 10.8k / 8.3k nodes;
+    - built once per MapData and copied for each FreeRoam entry, about 6 ms from the cache.
+  - `PedWalkGraph.random_point_ring` replaces `random_point_near`. It makes area-uniform tries through the spatial hash, so it stays cheap for the 150-220 m impostor ring, and returns a node id or -1.
+  - Degree-0 nodes: `random_point_ring` skips them, and a pedestrian standing on one flags `stuck_out` and is recycled.
+  - Water and building checks go through 64 m hashes; the building hash is MapBuilder's OSM index. Known: a few nodes lie inside the HUTECH building that FPTUCampusBuilder builds, because it is not in the OSM index. The spawner's spot check stops promotions there.
+  - Verge lines run behind the kerb, because MapBuilder draws kerbs, not sidewalks, along carriageways. `VERGE_OFFSET` is 0.35 m, centred in the 0.7 m gap (`MSFT_ROAD_CLEAR`) MapBuilder keeps between the kerb and the clipped Microsoft footprints. One-way roads get only the right-hand verge, because their left side is a median.
+  - Closed polylines join their seam.
+  - The BE6 plaza is a ring 6 m outside the tower. Campus paths avoid the fenced pitch and the parking posts, and reach the courtyard through the lobby and the back gap.
+  - Bridges: the campus main gate (7.5 m), the west gate (10.7 m) and the BE6 ring are each linked to the nearest street node within 12 m. The back gate stays unlinked, because no street lies within about 111 m.
+  - The graph is still about 387 components, so walkers wander within their own patch rather than on long routes.
+- **Identity.** Walker identity is `{v, preset, seed, female, profile, wseed, wid}`, drawn from 24 fixed crowd variants (8 per zone). Impostor and pedestrian share it, so promotion and demotion never change a walker. Impostor bakes are cached statically per art style; the 24 variants bake in about 176 ms.
+- **Spawner.**
+  - Pool: pedestrians are pooled, at most 24 detached. When the pool is full the oldest is evicted (FIFO), because variants are zone-bound and a pool keyed by variant would go stale after a zone change.
+  - Builds and promotions are limited to 2 per 0.25 s and at most one per physics frame.
+  - In-view promotion is capped by how far the crowd is over target:
+    - fewer than 8 over: in-view impostors are promoted within 90 m;
+    - 8 to 15 over: only within 60 m;
+    - 16 or more over: none.
+    - Impostors that are not promoted keep walking. Extra pedestrians are released only out of view.
+  - Spot checks use a pedestrian-sized capsule (r 0.28) through `FreeRoam.free_spot_at`'s optional probe argument. `_promote` tries the impostor's position, then the nearer and the farther edge node. With no free spot, the impostor is dropped.
+  - A teleport of more than 120 m refills at once, and switching day/night trims at once. Switching to night also trims impostors within 90 m, which would otherwise be promoted in view straight back over the night target.
+  - Mid tier: no physics, `collision_layer` 0, no shadows, a floor snap every 30 physics frames. The total cap is 80 with near ≤ 40, so the mid tier takes the rest; the spec's separate mid cap of 40 is not enforced.
+  - Near pedestrians step up kerbs and slabs like the player.
+  - Idle pedestrians use a new standing `phone_stand` pose; the old `phone` clip is seated.
+  - Bike contact is measured to the bike capsule's axis.
+  - Measured (headless):
+    - densities within 80 m: BE6 45, Nguyễn Xiển 22, campus courtyard 59;
+    - crowd physics cost about 0.95 ms per frame, timed with the phase-change frame dropped.
+- **Impostors, known issues.**
+  - They step at 10 Hz (no interpolation).
+- **Neutral standing base (9a7bdf3).** The Quaternius rest pose (= Idle frame 0) is a 3/4 stance with the right foot about 0.35 m forward. Static rigged poses and code clips now start from a neutral base computed once per model: thighs swung so the ankles sit under the hips, feet flat with a symmetric 12° toe-out, Body/Hips kept at rest. `_apply_bone_pose` / `_char_rot_local` (shared with RigAnimator) use it, so baked riders, typing students and code-clip poses (also on classic rigged bodies) stand level; standing foot gap 0.35 → 0.02 m. Known: a clip that keys knees or `hips_y` but not the thighs on an animated body (the vice Vovinam win cheer) pitches the foot about 10° for 0.6 s.
+- **Traffic.**
+  - `RoamTraffic` lanes are right-hand offsets of the OSM centrelines (two-way roads) or the centreline (one-way roads).
+  - Exits link lane ends to lanes passing within 9 m. A turn starts `TURN_R - (q - e)·dir` before the lane end, so right turns at junctions never run backwards. A lane with no exit U-turns onto the other lane of its road. Failing that, it falls back to the best rejected candidate (Task 13 fix round); 4 one-way lane ends at the map edge (5 for buses) still have no exit, so vehicles there are parked at the lane end, possibly in view.
+  - Vehicles detect obstacles by position: other vehicles, near and mid-tier pedestrians, the player, and the player's parked bike. Obstacle extent follows the obstacle's heading (Task 13 fix round).
+  - Queues (Task 13 fix round):
+    - ordinary queues just wait;
+    - only junction deadlocks, where a chain of waiting vehicles loops back on itself, ghost through other vehicles, for 2 s;
+    - vehicles stuck for 5 s behind a pedestrian, the player or the parked bike park once they are out of view (in view they keep waiting).
+  - Spawn spots are checked against obstacles (people, the player, the bike), not only other vehicles (Task 13 fix round).
+  - PlayerBike's near-miss whoosh and the bus slipstream boost now also work against FreeRoam traffic (intended).
+  - Measured: about 0.29 ms per physics frame for 23 vehicles.
+  - Known issues:
+    - The isolated roads 12A and 12D make vehicles U-turn back and forth.
+    - Buses have no bus-class lane near BE6, so 23 of 25 vehicles are active there.
+- **Movement.** Measured in Task 7: sprint lasts 6.13 s, standing jump apex 0.97 m, and a sprint jump covers about 4.75 m. Bank walls and low-deck guards were raised to 1.6 m so a jump cannot clear them.
+- **Tests.**
+  - `FreeRoam.crowd_enabled = false` keeps `tests/test_free_roam.gd` deterministic.
+  - Headless tests count physics frames, because headless renders about 145 fps.
+  - Physics cost is timed directly (`physics_frame` to a last-priority node), because `Performance.TIME_PHYSICS_PROCESS` is a once-per-second maximum. The timing window drops the phase-change frame.
+  - The vice-path tests live in `tests/test_ps2_people.gd`; crowds and traffic are in `tests/test_pedestrians.gd`, `tests/test_crowd_impostors.gd` and `tests/test_roam_traffic.gd`.
+- **Previews and fps.** No preview renders were made after Task 5, at the owner's request. The fps gates are measured on main after the merge (PLAN.md section XIV).

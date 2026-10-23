@@ -246,6 +246,90 @@ Implementation plan: `docs/superpowers/plans/2026-10-22-real-map-world.md` (Task
 * **Stage 5 table / column fix** (`d19e849`): the v8 front-module width put a canteen column 0.34 m from a table, wedging the bot (and players) so the stage could not be won; tables are now placed from their design spots with a clearance search against the real column colliders (`table_spots`), bot 3/3 wins rank S. Same commit: Stage 1 builds HUTECH with `draw_d1 = false` (MapBuilder draws the real Đường D1).
 * **Tests added:** `tests/test_mapdata.gd`, `tests/test_city_textures.py` + `.gd`, `tests/test_mapbuilder.gd` (geometry, BE6 height, colliders, UV contract, msft chunks, budgets), `tests/test_campus_real.gd` (plot hull < 12 m per corner, gate < 2 m, courtyard size), `tests/test_free_roam.gd` (build < 15 s, spawn/walk/bike, reachable hotspots, retry overlay, canal dismount, bank walls, low decks, rescue, water-floor depth, pause menu, map layers), `tests/test_stage1_race.gd` (track 5 300..5 600 m, finish < 300 s), FreeRoam in `smoke_all_stages.gd` and `test_hud_bounds.gd`; previews `tests/preview_map.gd`, `tests/preview_free_roam.gd` (`docs/preview/map_0*.png`, `roam_0*.png`, `s1_0*.png`).
 
+## 🚶 XIV. VICE PEOPLE AND GTA-STYLE MOVEMENT (22-23/10/2026)
+
+Spec: `docs/superpowers/specs/2026-10-22-vice-people-and-movement-design.md` (with the 2026-10-22 dense-crowd and traffic amendment). Implementation plan: `docs/superpowers/plans/2026-10-22-vice-people-and-movement.md` (14 tasks, branch `vice-people`, base `362d6f0`). It supersedes decision D3 of the Vice City plan. The owner dropped the outfit and vehicle-paint parts of VC-6, and VC-3, VC-5, VC-7, VC-8 and VC-9, on 2026-10-23. Clothes are unchanged; only the people models matter.
+
+**What was built**
+* **PS2 people (vice only).** `scripts/characters/PS2Head.gd` is a faceted head of about 330 triangles, about 0.23 m tall for a 1.74 m body. Its face is front-projected from code-drawn atlases (`char_ps2_face_*.png`: 4 skin tones × 2 sexes × 3 variants, 8 expression cells). It has low-poly hair shells with a strand texture, 80s glasses, and hats and helmets fitted over the hair. `CharacterBuilder.ps2` (set by `GameFX.set_art_style`) builds every preset as a Quaternius rigged body with the PS2 head. Body width varies from 0.92 to 1.12. There are no joint spheres and no outline. Expressions and blinking switch face cells through `uv1_offset`. Classic is unchanged.
+* **Rigged poses and bakes.** `pose()` works on rigged bodies and `bake()` merges a posed rigged body. So PS2 scooter riders, seated exam students and crowd impostors are single meshes. New static poses: `phone_stand` (standing phone; the old `phone` clip is seated) and `stride` (the walk cycle frozen at PI/2, used by impostors).
+* **Locomotion layer** (`RigAnimator`). Speed blend Idle / Walk / Run, a sprint overlay (faster stride, 12° forward lean, arm swing × 1.6), hip and chest lean, and idle fidgets every 6-12 s. New clips: `jump_takeoff`, `jump_air`, `fall_flail`, `land_soft`, `skid`, `stumble`, `knockdown`, `getup` and `roll`. Code-made bodies get simple versions of the same clips.
+* **Controller states** (`ThirdPersonController`). `GROUND`, `JUMP`, `AIR`, `LAND_SOFT`, `LAND_ROLL` and `SPLAT`, with stamina, inertia, a skid above 6 m/s, turn lean, a sprint FOV of +6°, camera bob and shake, and a `landed` signal. FreeRoam adds a stamina bar. Invisible bank walls and deck guards are now 1.6 m, so a jump cannot clear them.
+* **Walk graph** (`scripts/roam/PedWalkGraph.gd`). Built from the real map, with about 19.3k nodes, in about 277 ms. A per-MapData cache rebuilds it in about 6 ms. Zones: campus / residential / road.
+* **Pedestrians** (`scripts/roam/Pedestrian.gd`). Walk profiles walk 1.1-1.6 m/s, jog 2.4-2.8 m/s and stroll 0.7-0.9 m/s. Each has a stable identity. They wander the graph with step-ups and react to bumps, sprint hits and bike hits with a stumble or a knockdown, then get up and flee. They say mild fictional lines in one shared bubble.
+* **Crowd impostors** (`scripts/roam/CrowdImpostors.gd`). 24 fixed variants, 8 per zone, baked in the stride pose in about 176 ms and drawn as one MultiMesh each. They glide along the graph at 10 Hz.
+* **Three-tier spawner** (`scripts/roam/PedestrianSpawner.gd`). It runs the near tier (physics), the mid tier (no physics) and the far tier (impostors). Promotion and demotion keep identity. It also handles a FIFO pool, night scaling and the hit consequences. `FreeRoam.crowd_enabled = false` turns crowds and traffic off for deterministic tests.
+* **Traffic** (`scripts/roam/RoamTraffic.gd`, `PropBuilder.build_car`). Motorbikes with PS2 riders, cars and buses drive on right-hand lanes of the real roads. They use Bezier turns at junctions and U-turns at dead ends, look ahead and stop for vehicles, pedestrians, the player and the parked bike, and are recycled beyond 200 m. There is no traffic inside the campus plot.
+
+**Controls (FreeRoam, on foot; both art styles)**
+
+| Key | Action |
+| :--- | :--- |
+| `WASD` | jog, 4.2 m/s (default) |
+| `Shift` | sprint, 7.5 m/s. 6 s of stamina, drains 1/s above 5 m/s, refills 0.8/s after 1 s without sprinting. At zero it drops to jog until stamina is back above 25 %. |
+| `Ctrl` | walk, 1.7 m/s |
+| `Space` | jump: 0.12 s buffer, 0.1 s coyote time, apex 0.9 m, air control 30 %. On the bike `Space` is still drift. |
+
+Landing by drop height (no damage; there is no health system):
+
+| Drop | State | Effect |
+| :--- | :--- | :--- |
+| < 2.5 m | `LAND_SOFT` | 0.15 s knee bend, keeps momentum |
+| 2.5-6 m | `LAND_ROLL` | 0.8 s roll, keeps 70 % of the speed |
+| > 6 m | `SPLAT` | 1.5 s flat, then a 0.9 s get-up, camera shake |
+
+Measured (Task 7): sprint lasts 6.13 s, standing apex 0.97 m, running jump 4.75 m.
+
+**Crowd numbers**
+
+| Tier | Distance | Cap |
+| :--- | :--- | :--- |
+| near: `Pedestrian` with physics and contact reactions | up to 35 m | 40 |
+| mid: `Pedestrian` without physics or shadows, `collision_layer` 0, floor snap every 30 physics frames | 35-90 m | rest of the total 80 (no separate mid cap) |
+| far: impostors (promoted inside 90 m, demoted beyond 95 m, spawned 150-220 m out, culled beyond 225 m) | 90-225 m | 200 |
+
+| Zone | Pedestrian target (day) | Impostor target (day) | Measured within 80 m (test gate) |
+| :--- | :--- | :--- | :--- |
+| campus | 60 | 150 | 59 at the courtyard (≥ 40) |
+| residential | 45 | 120 | 45 at the BE6 spawn (≥ 30) |
+| road | 25 | 60 | 22 on Nguyễn Xiển (≥ 15) |
+
+* Night scales every target to 30 % (`NIGHT_FACTOR` 0.3; campus 18 / 45).
+* Traffic: 20 motorbikes, 3 cars and 2 buses, placed 40-150 m from the player and recycled beyond 200 m. At night, 30 % of them.
+* Headless physics cost per frame: crowd about 0.95 ms, traffic about 0.30 ms for 23 vehicles.
+* Static rigged poses and code clips start from a neutral standing base (feet level, symmetric toe-out) instead of the Quaternius 3/4 rest stance (9a7bdf3).
+
+**fps table:** pending (measured on main after merge).
+
+**Commits** (`git log --oneline 362d6f0..HEAD` at the time of writing; not pushed)
+
+| Task | Commits |
+| :--- | :--- |
+| 1 PS2 face atlases + hair texture | `befb729`, `4438982` (fix) |
+| 2 PS2Head | `aeee4eb`, `db49e8b` (fix) |
+| Spec amendment (dense crowds, traffic) | `17427f7` |
+| 3 vice builds rigged bodies with the PS2 head | `294fbe5` |
+| 4 rigged poses and bakes | `0995058` (plan note), `c29e1e8`, `8551dcf` (Task 3 follow-ups), `e24327f` (fix) |
+| Part 3 re-plan | `9ebc2f2`, `986e009` |
+| 5 look pass + previews | `3426652`, `f640aaa` |
+| Plan review folded into Tasks 9-14 | `a1b0f71` |
+| 6 locomotion layer + clips | `7d18c44` (plan note), `9d85234` (Task 5 follow-ups), `54c6f18` |
+| 7 movement state machine | `b74432f` (Task 6 follow-ups), `f0a7cb6`, `89d004f` (fix), `70f1d76` (fix) |
+| 8 stamina bar, bank walls, jump checks | `74270a3` |
+| 9 walk graph | `60e0c2d` (Task 8 follow-ups), `b3a9645` |
+| 10 Pedestrian | `8a7deb7`, `8a91ae6` (Tasks 9+10 fix round) |
+| 11 crowd impostors | `066c033` |
+| 12 three-tier spawner | `1b0bd6d`, `54d912b` (fix round) |
+| 13 traffic | `25c1d86`, `a959ce4` (fix round: queues, lanes without an exit, spawn spots against obstacles, heading-aware obstacle extent) |
+| 14 docs | `9b46700`, plus a docs follow-up after the final review |
+| Rest-pose fix (neutral standing base) | `9a7bdf3` |
+
+**Tests:**
+* `tests/test_ps2_textures.gd`, `tests/test_ps2_head.gd` and `tests/test_ps2_people.gd` cover the vice path.
+* `tests/test_locomotion.gd` and `tests/test_locomotion_anim.gd` cover the movement.
+* `tests/test_pedestrians.gd` (parts A graph, B pedestrian, C spawner), `tests/test_crowd_impostors.gd` and `tests/test_roam_traffic.gd` cover crowds and traffic.
+* No preview renders were made after Task 5, at the owner's request; he play-tests himself.
+
 ## 🧪 VII. KIỂM THỬ HEADLESS (tests/)
 
 | Lệnh | Kiểm tra |
@@ -275,7 +359,8 @@ Implementation plan: `docs/superpowers/plans/2026-10-22-real-map-world.md` (Task
 | `godot --path . --script tests/preview_m1_ui.gd` (cần cửa sổ) | Chụp bảng chuỗi near-miss, menu tạm dừng + cài đặt, thẻ chuyển cảnh, cửa hàng bằng phím |
 | `godot --path . --script tests/preview_characters.gd` (cần cửa sổ) | Studio nhân vật: 12 preset, cận mặt, 12 clip, nhìn sau, đám đông bake 60 người |
 | `godot --path . --script tests/preview_props.gd` (cần cửa sổ) | Studio đồ vật: xe tay ga, xe buýt, nộm, cây + đèn, bàn ghế dù, khay |
-| `PEOPLE_ONLY=s1,s5 godot --path . --script tests/preview_people.gd` (cần cửa sổ) | Người & đồ vật trong từng màn từ camera gameplay + góc cận |
+| `PEOPLE_ONLY=s1,s5 godot --path . --script tests/preview_stage_people.gd` (cần cửa sổ) | Người & đồ vật trong từng màn từ camera gameplay + góc cận |
+| `PREVIEW_DIR=<thư mục> godot --path . --script tests/preview_people.gd` (cần cửa sổ) | Người PS2 (Vice City): hàng 13 preset, 8 biểu cảm cận mặt, cận mũ (bảo vệ / công an / đầu bếp / người đi xe), clip, so với cổ điển → `vice_people_*.png` |
 
 **Đồ hoạ ("nặng cũng được"):** `project.godot` bật MSAA 2x + FXAA + debanding, lọc dị hướng, shadow map 8192 bóng mềm chất lượng cao, SSAO/SSIL/SSR chất lượng cao, SDFGI hội tụ nhanh, sương thể tích độ phân giải cao. Mỗi màn gọi `GameFX.upgrade_scene_visuals(self, "outdoor"/"indoor")` ở cuối `_ready`: nhân bản Environment rồi bật SDFGI (6/4 cascade), SSIL, SSR, glow softlight, tonemap ACES, chỉnh màu nhẹ, sương + sương thể tích (outdoor), bán cầu dưới sky trung tính; nắng dùng PSSM 4 split, bóng mềm. Headless không kiểm được visual → tự render bằng 2 script preview ở trên và xem ảnh.
 

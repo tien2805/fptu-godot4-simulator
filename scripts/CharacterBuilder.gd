@@ -45,9 +45,27 @@ static var _mesh_cache: Dictionary = {}
 ## Phong cách hoạt hình: toon diffuse/specular + viền đen (next_pass) cho mọi vật liệu nhân vật & đồ vật.
 ## Autoload hiệu ứng đặt toon = (art_style == "classic") lúc khởi động, trước khi cảnh nào dựng nhân vật.
 static var toon: bool = true
-## Tỉ lệ đầu tự dựng trên thân có xương khi opts không có head_scale: 1.3 (cổ điển, đầu to hoạt hình), autoload hiệu ứng đặt 1.15
-## cho phong cách Vice City (plan vice-city D3).
+## Tỉ lệ đầu tự dựng trên thân có xương khi opts không có head_scale: 1.3 (cổ điển, đầu to hoạt hình), autoload hiệu ứng đặt 1.0
+## cho phong cách Vice City (ở đó thân rigged dùng đầu PS2 với PS2_HEAD_SCALE_RIG, xem ps2).
 static var head_scale_default: float = 1.3
+## Phong cách Vice City (autoload hiệu ứng đặt = art_style == "vice", xem _apply_art_style_statics): mọi preset dựng trên thân Quaternius
+## với đầu PS2 (PS2Head), tỉ lệ người thật; cổ điển (false) giữ nguyên nhân vật hiện tại.
+static var ps2: bool = false
+const PS2_HEAD_SCALE_RIG: float = 1.06
+## Pivot gắn đồ của thân rigged: khóa thân tự dựng -> [xương, độ dời từ khớp]. Độ dời tính theo TRỤC RIÊNG của pivot (đơn vị
+## hệ gốc nhân vật), không theo trục gốc nhân vật: pivot tay / chân có -Y chạy dọc chi (xuống phía khớp con), -Z về phía trước,
+## +X sang phải nhân vật (lệch ít nhất khỏi trục nhân vật); thân / cổ giữ trục gốc nhân vật. Vd bàn chân: ANKLE_DOWN_SHIN
+## xuống dọc ống chân từ gối, dù ống chân nghiêng. Xem _rig_attach_pivots.
+const ATTACH_BONES: Dictionary = {
+	"torso": ["Torso", Vector3.ZERO], "neck": ["Neck", Vector3.ZERO],
+	"shoulder_l": ["UpperArm.L", Vector3.ZERO], "shoulder_r": ["UpperArm.R", Vector3.ZERO],
+	"elbow_l": ["LowerArm.L", Vector3.ZERO], "elbow_r": ["LowerArm.R", Vector3.ZERO],
+	"thigh_l": ["UpperLeg.L", Vector3.ZERO], "thigh_r": ["UpperLeg.R", Vector3.ZERO],
+	"knee_l": ["LowerLeg.L", Vector3.ZERO], "knee_r": ["LowerLeg.R", Vector3.ZERO],
+	"foot_l": ["LowerLeg.L", Vector3(0.0, -ANKLE_DOWN_SHIN, 0.0)], "foot_r": ["LowerLeg.R", Vector3(0.0, -ANKLE_DOWN_SHIN, 0.0)],
+}
+## Cổ chân của thân rigged: cách gối 0.42 dọc ống chân (ngay trên đích IK Foot.L/R); pivot foot_* và trục quay bàn chân ở đây.
+const ANKLE_DOWN_SHIN: float = 0.42
 static var _outline_cache: Dictionary = {}
 const EXPRESSIONS: Array[String] = ["open", "closed", "happy", "angry", "surprised", "done"]
 
@@ -67,9 +85,16 @@ const BONE_OF: Dictionary = {"hips": "Hips", "torso": "Torso", "head": "Head", "
 	"hand_l": "Wrist.L", "hand_r": "Wrist.R", "thigh_l": "UpperLeg.L", "thigh_r": "UpperLeg.R", "knee_l": "LowerLeg.L", "knee_r": "LowerLeg.R"}
 ## clip của ta → animation có sẵn trong gói (các clip khác dựng bằng xoay xương từ bảng clip của Animator)
 const PACK_CLIP: Dictionary = {"wave": "Wave", "punch": "Punch_Right", "kick": "Kick_Right", "flinch": "HitRecieve", "roll": "Roll",
-	"interact": "Interact", "lie": "Death", "chop": "Sword_Slash"}
+	"interact": "Interact", "lie": "Death", "chop": "Sword_Slash", "stumble": "HitRecieve", "knockdown": "Death"}
+## Clip gói giữ khung cuối tới khi có clip khác (không tự hết giờ).
+const HOLD_CLIPS: Array[String] = ["lie", "knockdown"]
+## Tốc độ phát ngược Death cho "getup" (Death ~1.3 s -> đứng dậy ~0.9 s).
+const GETUP_SPEED: float = 1.4
+## Tốc độ hoà clip tự dựng (1/s); mặc định 5.
+const FAST_BLEND: Dictionary = {"jump_takeoff": 14.0, "jump_air": 10.0, "fall_flail": 8.0, "land_soft": 14.0, "skid": 10.0, "stumble": 10.0}
 static var _scene_cache: Dictionary = {}
 static var _smooth_cache: Dictionary = {}
+static var _skin_cache: Dictionary = {}   # [id mesh, transform skin các xương] -> mesh skinned bằng CPU, xem _skin_cpu
 static var rigged_default: bool = false   # true → build() mặc định dùng thân Quaternius (bật sau khi duyệt)
 
 static func _outline_mat(width: float) -> ShaderMaterial:
@@ -96,7 +121,7 @@ static func _style_mat(m: StandardMaterial3D, outline_width: float = 0.012) -> S
 # API TĨNH
 # ===========================================================================
 static func build(opts: Dictionary = {}) -> Node3D:
-	if bool(opts.get("rigged", rigged_default)):
+	if bool(opts.get("rigged", rigged_default or ps2)):
 		var r: Node3D = _build_rigged(opts)
 		if r:
 			return r
@@ -183,9 +208,13 @@ static func build(opts: Dictionary = {}) -> Node3D:
 	# --- Cổ, đầu
 	var neck := _pivot(torso, "Neck", Vector3(0.0, TORSO_H - 0.01, 0.0))
 	_cyl(neck, Vector3(0.0, 0.04, 0.005), 0.042 * width, 0.05 * width, 0.09, skin)
-	var head: Node3D = _build_head(neck, Vector3(0.0, 0.065, 0.0), skin_idx, female, width, hair_style, hair_idx, outfit, rng, rig)
-	var face_mat: StandardMaterial3D = _face_mat(skin_idx, female)
+	var head: Node3D
+	if ps2:
+		head = PS2Head.build(neck, Vector3(0.0, 0.065, 0.0), _ps2_head_opts(skin_idx, female, hair_style, hair_idx, width, outfit, rng), rig)
+	else:
+		head = _build_head(neck, Vector3(0.0, 0.065, 0.0), skin_idx, female, width, hair_style, hair_idx, outfit, rng, rig)
 	var head_mi: MeshInstance3D = rig["face_mesh"]
+	var face_mat: StandardMaterial3D = head_mi.material_override as StandardMaterial3D if ps2 else _face_mat(skin_idx, female)
 
 	# --- Tay
 	for side: Array in [["L", -1.0], ["R", 1.0]]:
@@ -246,7 +275,7 @@ static func build(opts: Dictionary = {}) -> Node3D:
 				_box(foot, Vector3(0.0, 0.0, -0.05), Vector3(0.09, 0.01, 0.025), outfit["sole_mat"])
 
 	# --- Tỉ lệ cách điệu (hoạt hình): đầu to, tay chân ngắn, bàn tay to; hông hạ theo chân ngắn
-	var stylized: bool = bool(opts.get("stylized", true))
+	var stylized: bool = bool(opts.get("stylized", not ps2))
 	var leg_scale: float = 1.0
 	if stylized:
 		head.scale = Vector3(1.26, 1.26, 1.26)
@@ -259,21 +288,25 @@ static func build(opts: Dictionary = {}) -> Node3D:
 			(rig[key] as Node3D).scale = Vector3(leg_scale, leg_scale, leg_scale)
 		hips.position.y = HIP_Y * leg_scale
 		torso_mi.scale = Vector3(1.05, 1.0, 1.05)
-	# --- Khối cầu lấp khớp (vai, khuỷu, cổ tay, háng, gối, cổ chân) để không lộ đoạn rời
-	var arm_r2: float = (0.042 if female else 0.047) * width
-	var leg_r2: float = (0.072 if female else 0.07) * width
-	for sfx: String in ["l", "r"]:
-		_sphere(rig["shoulder_" + sfx], Vector3.ZERO, arm_r2 * 1.15, outfit["shirt_plain"])
-		_sphere(rig["elbow_" + sfx], Vector3.ZERO, arm_r2 * 0.92, outfit["shirt_plain"] if float(outfit.get("sleeve", 0.14)) > UPPER_ARM_LEN else skin)
-		_sphere(rig["hand_" + sfx], Vector3.ZERO, arm_r2 * 0.8, skin)
-		_sphere(rig["thigh_" + sfx], Vector3.ZERO, leg_r2 * 1.0, outfit["trousers"])
-		_sphere(rig["knee_" + sfx], Vector3.ZERO, leg_r2 * 0.84, skin if bool(outfit.get("shorts", false)) else outfit["trousers"])
+	# --- Khối cầu lấp khớp (vai, khuỷu, cổ tay, háng, gối) để không lộ đoạn rời. Chỉ cổ điển: spec vice không khối cầu khớp
+	# (ảnh cận cảnh Task 4: các khúc chồng nhau nên không hở khớp nào; gối gập mạnh chỉ lộ nếp nối đùi / ống chân)
+	if not ps2:
+		var arm_r2: float = (0.042 if female else 0.047) * width
+		var leg_r2: float = (0.072 if female else 0.07) * width
+		for sfx: String in ["l", "r"]:
+			_sphere(rig["shoulder_" + sfx], Vector3.ZERO, arm_r2 * 1.15, outfit["shirt_plain"])
+			_sphere(rig["elbow_" + sfx], Vector3.ZERO, arm_r2 * 0.92, outfit["shirt_plain"] if float(outfit.get("sleeve", 0.14)) > UPPER_ARM_LEN else skin)
+			_sphere(rig["hand_" + sfx], Vector3.ZERO, arm_r2 * 0.8, skin)
+			_sphere(rig["thigh_" + sfx], Vector3.ZERO, leg_r2 * 1.0, outfit["trousers"])
+			_sphere(rig["knee_" + sfx], Vector3.ZERO, leg_r2 * 0.84, skin if bool(outfit.get("shorts", false)) else outfit["trousers"])
 	root.set_meta("rig", rig)
 	root.set_meta("preset", preset)
 	root.set_meta("female", female)
 	root.set_meta("height", height)
 	root.set_meta("hip_base", HIP_Y * leg_scale)
 	root.set_meta("skin_idx", skin_idx)
+	if ps2:
+		root.set_meta("ps2_head", true)
 	# --- Animator
 	if bool(opts.get("animate", true)):
 		var an := Animator.new()
@@ -281,16 +314,19 @@ static func build(opts: Dictionary = {}) -> Node3D:
 		an.rig = rig
 		an.blink_enabled = bool(opts.get("blink", true))
 		if an.blink_enabled:
-			var open_tex: Texture2D = face_mat.albedo_texture
-			var closed_tex: Texture2D = _tex("char_face_%s%s_closed.png" % [SKIN_KEYS[skin_idx], "f" if female else "m"])
-			if open_tex and closed_tex:
-				var own: StandardMaterial3D = face_mat.duplicate()
-				head_mi.material_override = own
-				an.face_mat = own
-				an.face_open = open_tex
-				an.face_closed = closed_tex
+			if ps2:
+				an.blink_enabled = _setup_face_cells(an, face_mat)
 			else:
-				an.blink_enabled = false
+				var open_tex: Texture2D = face_mat.albedo_texture
+				var closed_tex: Texture2D = _tex("char_face_%s%s_closed.png" % [SKIN_KEYS[skin_idx], "f" if female else "m"])
+				if open_tex and closed_tex:
+					var own: StandardMaterial3D = face_mat.duplicate()
+					head_mi.material_override = own
+					an.face_mat = own
+					an.face_open = open_tex
+					an.face_closed = closed_tex
+				else:
+					an.blink_enabled = false
 		an.rng_phase = rng.randf() * TAU
 		an.hip_base = HIP_Y * leg_scale
 		root.add_child(an)
@@ -331,6 +367,29 @@ static func _build_head(parent: Node3D, pos: Vector3, skin_idx: int, female: boo
 	var head_top := _pivot(head, "HeadTop", Vector3(0.0, 0.27, 0.0))
 	rig["head_top"] = head_top
 	return head
+
+## Tham số PS2Head.build() chung cho thân tự dựng và thân rigged (rút rng.randi() đúng một lần cho hạt giống của đầu).
+static func _ps2_head_opts(skin_idx: int, female: bool, hair_style: String, hair_idx: int, width: float, outfit: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
+	return {"skin": skin_idx, "female": female, "hair_style": hair_style, "hair_color": hair_idx, "width": width, "seed": rng.randi(), "outfit": outfit}
+
+## Chớp mắt / biểu cảm đầu PS2 bằng ô atlas: gán vật liệu mặt riêng cho an (Animator hoặc RigAnimator, cùng các trường face_*).
+## Trả false nếu vật liệu không có atlas (meta "ps2_face"), khi đó người gọi tắt chớp mắt.
+static func _setup_face_cells(an: Node, face_mat: StandardMaterial3D) -> bool:
+	if face_mat == null or not bool(face_mat.get_meta("ps2_face", false)):
+		return false
+	an.face_mat = face_mat
+	an.face_cells = true
+	an.face_cell_open = PS2Head.cell_offset("open")
+	an.face_cell_closed = PS2Head.cell_offset("closed")
+	return true
+
+## Mặt mở / nhắm cho Animator và RigAnimator (một chỗ cho cả hai lớp): đầu PS2 đổi ô atlas, đầu cổ điển đổi texture.
+static func _show_face(an: Node, closed: bool) -> void:
+	var fm: StandardMaterial3D = an.face_mat
+	if an.face_cells:
+		fm.uv1_offset = an.face_cell_closed if closed else an.face_cell_open
+	else:
+		fm.albedo_texture = an.face_closed if closed else an.face_open
 
 ## Làm mượt pháp tuyến mesh glTF low-poly (đỉnh tách theo mặt): gộp đỉnh trùng vị trí, trung bình pháp tuyến trong ngưỡng góc.
 ## Không làm thì vỏ viền (inverted hull) nứt thành mảnh và toon shading bị khía. Giữ nguyên xương/trọng số/UV/chỉ số.
@@ -382,7 +441,8 @@ static func _body_scene(rel: String) -> PackedScene:
 	return ps
 
 ## Thân Quaternius + đầu tự dựng. opts thêm: body ("casual|hoodie|suit|worker|formal"), head_scale (mặc định head_scale_default: 1.3 – đầu to kiểu
-## hoạt hình, 1.15 ở phong cách Vice City), rigged=true. Trả về null nếu không có mô hình (build() sẽ quay về thân tự dựng).
+## hoạt hình; chế độ ps2: đầu PS2 với PS2_HEAD_SCALE_RIG), body_width (chỉ ps2, mặc định ngẫu nhiên 0.92..1.12), rigged=true.
+## Trả về null nếu không có mô hình (build() sẽ quay về thân tự dựng).
 static func _build_rigged(opts: Dictionary) -> Node3D:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(opts.get("seed", randi()))
@@ -420,6 +480,11 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 	model.name = "Model"
 	model.rotation.y = MODEL_YAW
 	root.add_child(model)
+	var hs: float = float(opts.get("head_scale", PS2_HEAD_SCALE_RIG if ps2 else head_scale_default))
+	var wk: float = 1.0
+	if ps2:
+		wk = float(opts.get("body_width", rng.randf_range(0.92, 1.12)))
+		model.scale = Vector3(wk, 1.0, wk)
 	var sk: Skeleton3D = model.find_child("Skeleton3D", true, false) as Skeleton3D
 	var ap: AnimationPlayer = model.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if sk == null or ap == null:
@@ -436,12 +501,14 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 		var is_legs: bool = n.ends_with("_Legs")
 		var is_feet: bool = n.ends_with("_Feet")
 		mi.mesh = _smooth_mesh(mi.mesh)
-		# mặt vải lớn nhất (nhiều tam giác nhất, không phải da) = áo/quần chính
+		# mặt vải lớn nhất (nhiều tam giác nhất, không phải da) = áo/quần chính. Vice: áo gi-lê phản quang của thân Worker
+		# ("Worker_Vest" cam, sọc "Worker_Yellow") không phải trang phục hiện tại của bảo vệ / công an / đầu bếp: không tính là áo
+		# chính và tô màu cổ áo của trang phục (gi-lê cùng tông đồng phục, xem nhánh dưới)
 		var main_si: int = -1
 		var main_tris: int = -1
 		for si: int in mi.mesh.get_surface_count():
 			var src0: Material = mi.get_active_material(si)
-			if src0 and src0.resource_name.begins_with("Skin"):
+			if src0 and (src0.resource_name.begins_with("Skin") or (ps2 and src0.resource_name.begins_with("Worker_"))):
 				continue
 			var arr: Array = mi.mesh.surface_get_arrays(si)
 			var tris: int = arr[Mesh.ARRAY_INDEX].size() if arr[Mesh.ARRAY_INDEX] != null else arr[Mesh.ARRAY_VERTEX].size()
@@ -462,23 +529,41 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 				m = outfit["trousers"]
 			elif src_name == "Tie" and outfit.has("tie_mat"):
 				m = outfit["tie_mat"]
+			elif ps2 and src_name.begins_with("Worker_"):
+				m = outfit["collar_mat"]
 			elif si == main_si:
 				m = outfit["shirt_plain"]
 			else:
 				m = _rig_extra_mat(src, outfit, cloth_i)
 				cloth_i += 1
 			mi.set_surface_override_material(si, m)
+		if not is_legs and not is_feet and main_si >= 0 and not rig.has("torso_mesh"):
+			rig["torso_mesh"] = mi
 	# --- đầu tự dựng gắn xương Head
 	var hb: int = sk.find_bone("Head")
 	var att := BoneAttachment3D.new()
 	att.name = "HeadBone"
 	sk.add_child(att)
 	att.bone_name = "Head"
-	var hs: float = float(opts.get("head_scale", head_scale_default))
-	var head_pivot: Node3D = _build_head(att, Vector3(0.0, 0.0, 0.0), skin_idx, female, width, hair_style, hair_idx, outfit, rng, rig)
-	head_pivot.rotation.y = PI   # đầu tự dựng nhìn về -Z của pivot; xương Head nhìn về +Z của mô hình (đã quay PI)
+	var head_pivot: Node3D
+	if ps2:
+		# xương Head nghỉ cúi ~4° (đầu gốc skinned bù bằng bind pose): nút bù tư thế nghỉ để đầu PS2 nhìn thẳng như đầu gốc
+		# rồi đi theo độ xoay của xương so với tư thế nghỉ (cùng cách với _rig_attach_pivots)
+		var upright := Node3D.new()
+		upright.name = "HeadUpright"
+		if hb >= 0:
+			upright.basis = sk.get_bone_global_rest(hb).basis.orthonormalized().inverse()
+		att.add_child(upright)
+		head_pivot = PS2Head.build(upright, Vector3.ZERO, _ps2_head_opts(skin_idx, female, hair_style, hair_idx, width, outfit, rng), rig)
+	else:
+		head_pivot = _build_head(att, Vector3(0.0, 0.0, 0.0), skin_idx, female, width, hair_style, hair_idx, outfit, rng, rig)
+	head_pivot.rotation.y = PI   # đầu nhìn về -Z của pivot; xương Head nhìn về +Z của mô hình (đã quay PI)
 	head_pivot.position = Vector3(0.0, -0.045 + (hs - 1.0) * 0.1, 0.0)
-	head_pivot.scale = Vector3(hs, hs, hs)
+	head_pivot.scale = Vector3(hs / wk, hs, hs / wk)   # bù bề ngang thân (wk) để mặt không méo
+	if ps2 and female:
+		# cổ của thân nữ (da) dừng 1-2 cm dưới cằm PS2 ở phía trước (cổ áo thân nam che chỗ này): trụ cổ bằng da nối từ trong cổ
+		# thân lên trong hàm; bán kính 0.035 nằm trong mặt cổ thân (đo ở tư thế nghỉ: trước 0.040, sau 0.036 tính từ trục cằm)
+		_cyl(head_pivot.get_parent(), head_pivot.position + Vector3(0.0, -0.012, 0.0), 0.035, 0.035, 0.08, skin).name = "NeckFill"
 	# --- các pivot gắn đồ (tay, ngực) qua BoneAttachment3D
 	for key: String in ["hand_l", "hand_r", "chest", "hips"]:
 		var a := BoneAttachment3D.new()
@@ -486,7 +571,11 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 		sk.add_child(a)
 		a.bone_name = BONE_OF[key]
 		rig[key] = a
-	_rig_torso_extras(rig["chest"], rig["hips"], outfit, width)
+	if ps2:
+		_rig_attach_pivots(root, sk, rig, String(table[body_key]))   # chỉ ps2: thân rigged cổ điển (người chơi FreeRoam) giữ nguyên cây node
+		_rig_torso_extras_ps2(model, sk, rig, outfit, String(table[body_key]))
+	else:
+		_rig_torso_extras(rig["chest"], rig["hips"], outfit, width)
 	root.set_meta("rig", rig)
 	root.set_meta("rigged", true)
 	root.set_meta("preset", preset)
@@ -494,6 +583,12 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 	root.set_meta("height", height)
 	root.set_meta("skin_idx", skin_idx)
 	root.set_meta("skeleton", sk)
+	var base_key: String = String(table[body_key])
+	if not _base_cache.has(base_key):
+		_base_cache[base_key] = _neutral_base(sk)
+	sk.set_meta("base", _base_cache[base_key])   # tư thế đứng trung tính làm gốc cho pose() tĩnh và _apply_bone_pose
+	if ps2:
+		root.set_meta("ps2_head", true)
 	# --- Animator
 	if bool(opts.get("animate", true)):
 		var an := RigAnimator.new()
@@ -504,16 +599,19 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 		an.head_pivot = head_pivot
 		an.blink_enabled = bool(opts.get("blink", true))
 		if an.blink_enabled:
-			var face_mat: StandardMaterial3D = _face_mat(skin_idx, female)
-			var closed_tex: Texture2D = _tex("char_face_%s%s_closed.png" % [SKIN_KEYS[skin_idx], "f" if female else "m"])
-			if face_mat.albedo_texture and closed_tex:
-				var own: StandardMaterial3D = face_mat.duplicate()
-				(rig["face_mesh"] as MeshInstance3D).material_override = own
-				an.face_mat = own
-				an.face_open = face_mat.albedo_texture
-				an.face_closed = closed_tex
+			if ps2:
+				an.blink_enabled = _setup_face_cells(an, (rig["face_mesh"] as MeshInstance3D).material_override as StandardMaterial3D)
 			else:
-				an.blink_enabled = false
+				var face_mat: StandardMaterial3D = _face_mat(skin_idx, female)
+				var closed_tex: Texture2D = _tex("char_face_%s%s_closed.png" % [SKIN_KEYS[skin_idx], "f" if female else "m"])
+				if face_mat.albedo_texture and closed_tex:
+					var own: StandardMaterial3D = face_mat.duplicate()
+					(rig["face_mesh"] as MeshInstance3D).material_override = own
+					an.face_mat = own
+					an.face_open = face_mat.albedo_texture
+					an.face_closed = closed_tex
+				else:
+					an.blink_enabled = false
 		an.rng_phase = rng.randf() * TAU
 		root.add_child(an)
 		var clip: String = String(opts.get("clip", ""))
@@ -559,11 +657,303 @@ static func _rig_torso_extras(chest: Node3D, hips: Node3D, outfit: Dictionary, w
 		_box(chest, Vector3(-0.07 * width, 0.05, front * (cz + 0.01)), Vector3(0.05, 0.022, 0.006), _mat("badge", Color("#D4AF37"), 0.3, 0.9))
 	if outfit.get("apron", false):
 		_box(hips, Vector3(0.0, 0.1, front * (cz + 0.03)), Vector3(0.30 * width, 0.62, 0.012), outfit["apron_mat"])
+	if outfit.get("vovinam_belt", false):
+		var vb: Material = outfit["vbelt_mat"]
+		_box(hips, Vector3(0.0, 0.12, 0.0), Vector3(0.34 * width, 0.06, 0.25 * width), vb)
+		_box(hips, Vector3(-0.03, 0.02, front * (cz + 0.012)), Vector3(0.03, 0.2, 0.012), vb, Vector3(0.0, 0.0, 0.1))
+		_box(hips, Vector3(0.03, 0.02, front * (cz + 0.012)), Vector3(0.03, 0.2, 0.012), vb, Vector3(0.0, 0.0, -0.1))
 	if outfit.get("backpack", false):
 		var bp: Material = outfit["backpack_mat"]
 		_box(chest, Vector3(0.0, -0.08, -front * (cz + 0.08)), Vector3(0.25 * width, 0.33, 0.12), bp)
 		_box(chest, Vector3(0.0, 0.03, -front * (cz + 0.145)), Vector3(0.22 * width, 0.10, 0.03), bp)
 		_box(chest, Vector3(0.0, -0.19, -front * (cz + 0.145)), Vector3(0.18 * width, 0.14, 0.03), outfit["backpack_pocket_mat"])
+
+## Vice (ps2): logo polo FPT, dây thẻ chữ V từ cổ xuống thẻ, bảng tên, ba lô áp lưng + quai qua vai, tạp dề, đai Vovinam ôm eo,
+## đặt theo dáng thân đo được (_body_fit) trong các nút "khớp" có trục nhân vật ở tư thế nghỉ (_fit_node: xương Hips nghỉ của
+## Quaternius xoay ~27° quanh Y, Chest cúi ~8°, nên hộp gắn thẳng vào xương bị lệch / lơ lửng). Nút nằm trong mô hình nên đồ co
+## giãn theo bề ngang wk cùng thân. Kích thước đồ như thân tự dựng; cổ điển giữ _rig_torso_extras.
+static func _rig_torso_extras_ps2(model: Node3D, sk: Skeleton3D, rig: Dictionary, outfit: Dictionary, rel: String) -> void:
+	var f: Dictionary = _body_fit(rel, model, sk)
+	var c_xf: Transform3D = f["c_xf"]
+	var chest: Node3D = _fit_node(rig["chest"], sk, c_xf, "Chest", "ChestFit")
+	var front := Vector3(0.0, 0.0, -1.0)
+	if outfit.get("fpt_polo", false):
+		var logo: Texture2D = _tex("char_fpt_logo.png")
+		if logo:
+			var qm := QuadMesh.new()
+			qm.size = Vector2(0.07, 0.035)
+			var lm := StandardMaterial3D.new()
+			lm.albedo_texture = logo
+			lm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+			lm.alpha_scissor_threshold = 0.5
+			lm.roughness = 0.9
+			var mi := MeshInstance3D.new()
+			mi.mesh = qm
+			mi.material_override = lm
+			var n: Vector3 = f["logo_n"]   # pháp tuyến mặt ngực (hướng -Z), mặt quad (+Z cục bộ) quay theo
+			var up: Vector3 = Vector3(0.0, -n.z, n.y)
+			mi.basis = Basis(up.cross(n), up, n)
+			mi.position = f["logo"]
+			chest.add_child(mi)
+	if outfit.get("lanyard", false):
+		var ly: Material = _mat("lanyard", Color("#1F4FA3"), 0.9)
+		for side: Array in f["lanyard"]:   # mỗi bên: cổ -> giữa ngực -> đỉnh chữ V trên thẻ
+			_strap(chest, side[0], side[1], 0.012, 0.003, ly, front)
+			_strap(chest, side[1], side[2], 0.012, 0.003, ly, front)
+		var card := _box(chest, f["card"], Vector3(0.062, 0.088, 0.004), _mat("id_card", Color("#F7F7F7"), 0.5))
+		_box(card, Vector3(0.0, 0.03, -0.003), Vector3(0.062, 0.02, 0.002), _mat("id_stripe", FPT_ORANGE, 0.5))
+		_box(card, Vector3(0.0, -0.012, -0.003), Vector3(0.036, 0.034, 0.002), _mat("id_photo", Color("#B9C2CC"), 0.6))
+	if outfit.get("badge", false):
+		_box(chest, f["badge"], Vector3(0.05, 0.022, 0.006), _mat("badge", Color("#D4AF37"), 0.3, 0.9))
+	if outfit.get("backpack", false):
+		var bp: Material = outfit["backpack_mat"]
+		var pc: Vector3 = f["pack"]   # tâm khối ba lô: mặt trước áp vào chỗ lưng nhô nhất trong vùng ba lô
+		_box(chest, pc, Vector3(0.25, 0.33, 0.12), bp)
+		_box(chest, pc + Vector3(0.0, 0.115, 0.075), Vector3(0.22, 0.10, 0.03), bp)
+		_box(chest, pc + Vector3(0.0, -0.075, 0.075), Vector3(0.18, 0.14, 0.03), outfit["backpack_pocket_mat"])
+		for side: Array in f["pack_straps"]:   # mỗi bên: mép trên ba lô -> đỉnh vai -> mép trước vai -> trước ngực
+			_strap(chest, side[0], side[1], 0.03, 0.012, bp, Vector3.UP)
+			_strap(chest, side[1], side[2], 0.03, 0.012, bp, Vector3(0.0, 1.0, -1.0))
+			_strap(chest, side[2], side[3], 0.03, 0.012, bp, front)
+	if outfit.get("apron", false) and not rig.has("torso"):
+		push_warning("CharacterBuilder: thân %s không có pivot \"torso\", bỏ tạp dề" % rel)
+	if outfit.get("apron", false) and rig.has("torso"):
+		var am: Material = outfit["apron_mat"]
+		var tf: Node3D = _fit_node((rig["torso"] as Node3D).get_parent() as Node3D, sk, c_xf, "Torso", "TorsoFit")
+		var ap: Vector3 = f["apron"]
+		_box(tf, ap, Vector3(0.30, f["apron_h"], 0.012), am)
+		for side: Array in f["apron_straps"]:   # góc trên yếm -> hai bên cổ
+			_strap(tf, side[0], side[1], 0.016, 0.006, am, front)
+	if outfit.get("vovinam_belt", false):
+		var vb: Material = outfit["vbelt_mat"]
+		var hf: Node3D = _fit_node(rig["hips"], sk, c_xf, "Hips", "HipsFit")
+		var bc: Vector3 = f["belt_c"]
+		var ab: Vector2 = f["belt_ab"]   # bán trục ngang / sâu của vòng đai (ôm mọi đỉnh của eo)
+		_cyl(hf, bc, 0.1, 0.1, 0.05, vb, Vector3.ZERO, Vector3(ab.x / 0.1, 1.0, ab.y / 0.1))
+		_box(hf, f["belt_knot"], Vector3(0.07, 0.05, 0.02), vb)
+		for side: Array in f["belt_tails"]:
+			_strap(hf, side[0], side[1], 0.03, 0.012, vb, front)
+
+## Nút con của BoneAttachment3D att có trục = trục nhân vật ở tư thế nghỉ và gốc tại gốc hệ C (hệ nhân vật chưa nhân bề ngang wk;
+## c_xf: skeleton -> C): con của nút đặt thẳng bằng toạ độ hệ C, rồi đi theo xương bone.
+static func _fit_node(att: Node3D, sk: Skeleton3D, c_xf: Transform3D, bone: String, node_name: String) -> Node3D:
+	var n := Node3D.new()
+	n.name = node_name
+	n.transform = (c_xf * sk.get_bone_global_rest(sk.find_bone(bone))).affine_inverse()
+	att.add_child(n)
+	return n
+
+## Dải phẳng rộng w, dày t (quai, dây) nối p0 -> p1 trong parent; mặt rộng quay về phía out (vd -Z: áp lên ngực).
+static func _strap(parent: Node3D, p0: Vector3, p1: Vector3, w: float, t: float, mat: Material, out: Vector3) -> MeshInstance3D:
+	var d: Vector3 = p1 - p0
+	var y: Vector3 = d.normalized()
+	var x: Vector3 = y.cross(out).normalized()
+	var mi := _box(parent, (p0 + p1) * 0.5, Vector3(w, d.length(), t), mat)
+	mi.basis = Basis(x, y, x.cross(y))
+	return mi
+
+## Dáng thân Quaternius cho _rig_torso_extras_ps2, đo MỘT lần mỗi tệp mô hình (cache): đỉnh của các mesh skinned đang hiện (trừ
+## giày) skin ở tư thế NGHỈ (bind pose glTF khác tư thế nghỉ) trong hệ C (mặt trước -Z, phải +X, đơn vị gốc trước root.scale),
+## rồi chỗ đặt từng món đồ: cực trị (_env) của các đỉnh trong hộp quanh chỗ đó, nên đồ nằm ngoài mặt thân (+ khe vài mm).
+## Độ cao tính từ gốc xương (Neck / Chest / Hips) nên khớp cả thân nam lẫn nữ.
+static var _body_fit_cache: Dictionary = {}
+static var _env_misses: Array[String] = []   # hộp mẫu rỗng (_env dùng giá trị dự phòng) của lần _body_fit đang chạy
+
+static func _body_fit(rel: String, model: Node3D, sk: Skeleton3D) -> Dictionary:
+	if _body_fit_cache.has(rel):
+		return _body_fit_cache[rel]
+	_env_misses.clear()
+	var c_xf: Transform3D = Transform3D(Basis(Vector3.UP, MODEL_YAW), Vector3.ZERO) * _local_xform(sk, model)
+	var pts := PackedVector3Array()
+	for mi: MeshInstance3D in _mesh_instances(sk):
+		if not mi.visible or mi.skin == null or mi.mesh == null or String(mi.name).ends_with("_Feet"):
+			continue
+		var skin: Skin = mi.skin
+		var xfs: Array[Transform3D] = []
+		var arm: Array[bool] = []   # tay buông hai bên (cánh tay, cổ tay, ngón) không thuộc dáng thân: bỏ
+		for i: int in range(skin.get_bind_count()):
+			var bn: StringName = skin.get_bind_name(i)
+			var b: int = sk.find_bone(String(bn)) if bn != &"" else skin.get_bind_bone(i)
+			xfs.append(c_xf * sk.get_bone_global_rest(b) * skin.get_bind_pose(i) if b >= 0 else c_xf)
+			var nm: String = sk.get_bone_name(b) if b >= 0 else ""
+			arm.append(nm.contains("Arm") or nm.contains("Wrist") or nm.contains("Thumb") or nm.contains("Index") or nm.contains("Middle") or nm.contains("Ring") or nm.contains("Pinky"))
+		for si: int in range(mi.mesh.get_surface_count()):
+			var arr: Array = mi.mesh.surface_get_arrays(si)
+			if arr[Mesh.ARRAY_BONES] == null or arr[Mesh.ARRAY_WEIGHTS] == null:
+				continue
+			var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var bones: PackedInt32Array = arr[Mesh.ARRAY_BONES]
+			var weights: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+			var per: int = bones.size() / maxi(verts.size(), 1)
+			for i: int in range(verts.size()):
+				var p := Vector3.ZERO
+				var w_arm: float = 0.0
+				for k: int in range(per):
+					var wt: float = weights[i * per + k]
+					if wt > 0.0:
+						p += (xfs[bones[i * per + k]] * verts[i]) * wt
+						if arm[bones[i * per + k]]:
+							w_arm += wt
+				if w_arm < 0.5:
+					pts.append(p)
+	var oc: Vector3 = (c_xf * sk.get_bone_global_rest(sk.find_bone("Chest"))).origin
+	var on: Vector3 = (c_xf * sk.get_bone_global_rest(sk.find_bone("Neck"))).origin
+	var oh: Vector3 = (c_xf * sk.get_bone_global_rest(sk.find_bone("Hips"))).origin
+	var zc: float = oc.z   # mặt phẳng giữa thân (trước: z < zc)
+	var mx: float = oc.x   # đường giữa thân ở ngực (xương thân nữ lệch +1.4 cm)
+	var f: Dictionary = {"c_xf": c_xf}
+	# logo ngực trái (-X), nghiêng theo dốc ngực
+	var ly: float = oc.y + 0.035
+	var zl: float = _front(pts, mx - 0.062, ly, 0.022, 0.02, zc, zc - 0.12)
+	var dz: float = _front(pts, mx - 0.062, ly + 0.03, 0.022, 0.015, zc, zl) - _front(pts, mx - 0.062, ly - 0.03, 0.022, 0.015, zc, zl)
+	f["logo"] = Vector3(mx - 0.062, ly, zl - 0.003)
+	f["logo_n"] = Vector3(0.0, dz / 0.06, -1.0).normalized()
+	# bảng tên ngực trái như thân tự dựng (ngoài dây thẻ)
+	var yb: float = oc.y + 0.05
+	f["badge"] = Vector3(mx - 0.075, yb, _front(pts, mx - 0.075, yb, 0.025, 0.02, zc, zc - 0.12) - 0.006)
+	# dây thẻ: hai bên cổ (x 0.05, ngang cổ áo) -> giữa ngực -> đỉnh chữ V ngay trên mép thẻ (đối xứng: lấy bên nhô hơn); thẻ
+	# treo thẳng trước ngực
+	var yc: float = oc.y - 0.10
+	var zcard: float = _front(pts, mx, yc, 0.035, 0.045, zc, zc - 0.12)
+	f["card"] = Vector3(mx, yc, zcard - 0.006)
+	var y0: float = on.y - 0.035
+	var y2: float = yc + 0.048
+	var lz: Array = []
+	for q: Vector2 in [Vector2(0.05, y0), Vector2(0.03, (y0 + y2) * 0.5), Vector2(0.007, y2)]:
+		lz.append(minf(_front(pts, mx - q.x, q.y, 0.015, 0.015, zc, zcard), _front(pts, mx + q.x, q.y, 0.015, 0.015, zc, zcard)) - 0.005)
+	lz[2] = minf(lz[2], zcard - 0.006)   # đỉnh chữ V chạm mép trên thẻ
+	# dây nằm TRÊN logo polo: điểm giữa ngực trước mặt logo, và đoạn giữa ngực -> cổ ở độ cao mép trên logo cũng vậy (thân nam
+	# có hõm cổ sâu 2-3 cm: đoạn thẳng tới cổ đo được lùi sau logo, logo che dây) -> kéo điểm cổ ra vừa đủ
+	var zlogo: float = (f["logo"] as Vector3).z - 0.003
+	lz[1] = minf(lz[1], zlogo)
+	var tl: float = (ly + 0.0175 - (y0 + y2) * 0.5) / (y0 - (y0 + y2) * 0.5)   # mép trên logo trên đoạn giữa ngực -> cổ
+	if tl > 0.0:
+		lz[0] = minf(lz[0], lz[1] + (zlogo - lz[1]) / tl)
+	var lan: Array = []
+	for sx: float in [-1.0, 1.0]:
+		lan.append([Vector3(mx + sx * 0.05, y0, lz[0]), Vector3(mx + sx * 0.03, (y0 + y2) * 0.5, lz[1]), Vector3(mx + sx * 0.007, y2, lz[2])])
+	f["lanyard"] = lan
+	# ba lô: đỉnh ngang bả vai, cao 0.33; mặt trước áp chỗ lưng nhô nhất trong vùng |x| < 0.12. Quai (3 đoạn): mép trên ba lô ->
+	# đỉnh vai (x 0.105: vai thân Quaternius dốc lên sát cổ tới ngang cằm) -> mép trước vai -> trước ngực ngang nách
+	var top: float = oc.y + 0.085
+	var zback: float = _env(pts, Vector3(mx - 0.12, top - 0.33, zc), Vector3(mx + 0.12, top, 1.0), 2, 1.0, zc + 0.12)
+	f["pack"] = Vector3(mx, top - 0.165, zback + 0.006 + 0.06)
+	var straps: Array = []
+	for sx: float in [-1.0, 1.0]:
+		var xs: float = mx + sx * 0.105
+		var ysh: float = _env(pts, Vector3(xs - 0.015, oc.y - 0.05, zc - 0.08), Vector3(xs + 0.015, on.y + 0.08, zc + 0.08), 1, 1.0, top + 0.03)
+		var yft: float = ysh - 0.035
+		var zft: float = _front(pts, xs, yft, 0.015, 0.015, zc + 0.04, zc - 0.06)
+		var ylow: float = oc.y - 0.06
+		var zlow: float = _front(pts, xs, ylow, 0.02, 0.02, zc, zc - 0.1)
+		straps.append([Vector3(mx + sx * 0.1, top - 0.012, zback + 0.008), Vector3(xs, ysh + 0.01, zc), Vector3(xs, yft, zft - 0.008), Vector3(xs, ylow, minf(zlow, zft) - 0.008)])
+	f["pack_straps"] = straps
+	# tạp dề: từ giữa đùi tới ngực, áp chỗ thân nhô nhất từ trên háng lên (đùi để tự do: tư thế nghỉ chân phải bước tới)
+	var ap_bot: float = oh.y - 0.22
+	var ap_top: float = oc.y
+	var zap: float = _env(pts, Vector3(mx - 0.15, oh.y + 0.08, -1.0), Vector3(mx + 0.15, ap_top, zc), 2, -1.0, zc - 0.15) - 0.012
+	f["apron"] = Vector3(mx, (ap_bot + ap_top) * 0.5, zap)
+	f["apron_h"] = ap_top - ap_bot
+	var zn: float = minf(_front(pts, mx - 0.052, y0, 0.018, 0.02, zc, zap), _front(pts, mx + 0.052, y0, 0.018, 0.02, zc, zap))
+	var ast: Array = []
+	for sx: float in [-1.0, 1.0]:
+		ast.append([Vector3(mx + sx * 0.11, ap_top - 0.006, zap - 0.004), Vector3(mx + sx * 0.052, y0 + 0.01, zn - 0.004)])
+	f["apron_straps"] = ast
+	# đai Vovinam ở eo: 0.58 chiều cao mô hình (vòng hẹp nhất đo được: nam 1.078, nữ 1.086), elip ôm mọi đỉnh của lát eo
+	var ybelt: float = MODEL_HEIGHT * 0.58
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	var ring := PackedVector2Array()
+	for p: Vector3 in pts:
+		if absf(p.y - ybelt) < 0.025 and absf(p.x - oh.x) < 0.25 and absf(p.z - oh.z) < 0.25:
+			ring.append(Vector2(p.x, p.z))
+			lo = Vector2(minf(lo.x, p.x), minf(lo.y, p.z))
+			hi = Vector2(maxf(hi.x, p.x), maxf(hi.y, p.z))
+	var cen: Vector2 = (lo + hi) * 0.5 if ring.size() > 0 else Vector2(oh.x, oh.z)
+	var half: Vector2 = (hi - lo) * 0.5 if ring.size() > 0 else Vector2(0.15, 0.11)
+	var kmax: float = 1.0
+	for q: Vector2 in ring:
+		kmax = maxf(kmax, Vector2((q.x - cen.x) / half.x, (q.y - cen.y) / half.y).length())
+	var ab: Vector2 = half * kmax + Vector2(0.006, 0.006)
+	f["belt_c"] = Vector3(cen.x, ybelt, cen.y)
+	f["belt_ab"] = ab
+	f["belt_knot"] = Vector3(cen.x, ybelt, cen.y - ab.y - 0.006)   # nút thắt 0.02 dày, trước vòng đai
+	var zk: float = cen.y - ab.y - 0.022   # hai đuôi đai buông từ mặt trước nút
+	var ztail: float = _front(pts, cen.x, ybelt - 0.125, 0.07, 0.095, zc, zk)
+	var tails: Array = []
+	for sx: float in [-1.0, 1.0]:
+		tails.append([Vector3(cen.x + sx * 0.02, ybelt - 0.02, zk), Vector3(cen.x + sx * 0.035, ybelt - 0.2, minf(ztail - 0.008, zk))])
+	f["belt_tails"] = tails
+	if not _env_misses.is_empty():
+		push_warning("CharacterBuilder: thân %s: %d hộp mẫu không có đỉnh nào, đồ ở đó đặt theo giá trị dự phòng: %s" % [rel, _env_misses.size(), ", ".join(_env_misses)])
+	_body_fit_cache[rel] = f
+	return f
+
+## Số lần nới hộp mẫu rỗng của _env (mỗi lần +25 % kích thước ngang; tối đa gấp 3).
+const ENV_GROW_STEPS: int = 8
+
+## Cực trị toạ độ axis (2 = z, 1 = y) của các điểm pts trong hộp [lo, hi]: sgn -1 lấy nhỏ nhất (mặt trước thân, phía -Z), +1 lớn
+## nhất (mặt sau, đỉnh vai). Thân nam ít đa giác có ô rộng hơn hộp mẫu 3-4 cm: hộp rỗng được nới hai chiều còn lại quanh tâm
+## (không nới trục đo, giữ giới hạn nửa trước / nửa sau), mỗi lần thêm 25 %, tới khi có đỉnh (thân hiện có cần tối đa 4 lần =
+## gấp 2). Nới ít nhất có thể: cực trị của hộp to hơn nhô ra hơn mặt thân tại đúng chỗ. Hết ENV_GROW_STEPS lần vẫn rỗng ->
+## fallback, ghi hộp vào _env_misses (món đồ có thể lơ lửng hoặc chìm vào thân; _body_fit cảnh báo gộp một lần mỗi mô hình).
+static func _env(pts: PackedVector3Array, lo: Vector3, hi: Vector3, axis: int, sgn: float, fallback: float) -> float:
+	var c: Vector3 = (lo + hi) * 0.5
+	var h: Vector3 = (hi - lo) * 0.5
+	for grow: int in range(ENV_GROW_STEPS + 1):
+		var a: Vector3 = lo
+		var b: Vector3 = hi
+		for i: int in range(3):
+			if i != axis:
+				a[i] = c[i] - h[i] * (1.0 + 0.25 * float(grow))
+				b[i] = c[i] + h[i] * (1.0 + 0.25 * float(grow))
+		var best: float = -INF
+		for p: Vector3 in pts:
+			if p.x >= a.x and p.x <= b.x and p.y >= a.y and p.y <= b.y and p.z >= a.z and p.z <= b.z:
+				best = maxf(best, p[axis] * sgn)
+		if best != -INF:
+			return best * sgn
+	_env_misses.append("%s..%s" % [lo, hi])   # _body_fit cảnh báo gộp một lần mỗi mô hình
+	return fallback
+
+## Mặt trước thân (z nhỏ nhất của nửa trước z < zc) trong ô (x +- hx, y +- hy).
+static func _front(pts: PackedVector3Array, x: float, y: float, hx: float, hy: float, zc: float, fallback: float) -> float:
+	return _env(pts, Vector3(x - hx, y - hy, -1.0), Vector3(x + hx, y + hy, zc), 2, -1.0, fallback)
+
+## Pivot gắn đồ cho thân rigged theo quy ước thân tự dựng: Node3D đặt tại khớp, trục trùng trục gốc nhân vật ở tư thế
+## nghỉ, rồi đi theo xương. Tay / chân: như thân tự dựng, -Y của pivot chạy DỌC CHI (tư thế nghỉ Quaternius lệch: tay buông
+## chéo ~28°, cẳng tay phải gập ra trước 23°, đùi phải bước tới 24°, ống chân trái 18°), nên trục gốc được xoay ít nhất để -Y
+## trùng trục +Y của xương (hướng về khớp con) và độ dời trong ATTACH_BONES đo dọc chi; thân / cổ giữ trục gốc nhân vật.
+## Chỉ để gắn đồ (đồng hồ, tai nghe...): xoay pivot này KHÔNG xoay xương. Một BoneAttachment3D mỗi xương: pivot foot_* nằm
+## dưới attachment của knee_* (cùng xương LowerLeg). body: tệp mô hình (vd "men/Casual_2") cho cảnh báo thiếu xương.
+static func _rig_attach_pivots(root: Node3D, sk: Skeleton3D, rig: Dictionary, body: String) -> void:
+	var to_root: Transform3D = _local_xform(sk, root)
+	var att_of: Dictionary = {}   # tên xương -> BoneAttachment3D
+	for key: String in ATTACH_BONES.keys():
+		if rig.has(key):
+			continue
+		var spec: Array = ATTACH_BONES[key]
+		var bone: String = String(spec[0])
+		var b: int = sk.find_bone(bone)
+		if b < 0:
+			push_warning("CharacterBuilder: thân %s thiếu xương %s, không có pivot %s" % [body, bone, key])
+			continue
+		var att: BoneAttachment3D = att_of.get(bone, null)
+		if att == null:
+			att = BoneAttachment3D.new()
+			att.name = "Att_" + key
+			sk.add_child(att)
+			att.bone_name = bone
+			att_of[bone] = att
+		var rest: Transform3D = to_root * sk.get_bone_global_rest(b)
+		var axes := Basis.IDENTITY
+		if key != "torso" and key != "neck":
+			axes = Basis(Quaternion(Vector3.DOWN, (rest.basis * Vector3.UP).normalized()))
+		var pivot := Node3D.new()
+		pivot.name = "Pivot_" + key
+		pivot.transform = rest.affine_inverse() * Transform3D(axes, rest.origin + axes * (spec[1] as Vector3))
+		att.add_child(pivot)
+		rig[key] = pivot
 
 ## Node Animator của nhân vật (Animator hoặc RigAnimator – cùng giao diện; null nếu dựng với animate=false)
 static func get_animator(root: Node3D) -> Node:
@@ -571,8 +961,10 @@ static func get_animator(root: Node3D) -> Node:
 
 ## Đặt tư thế tĩnh ngay lập tức (không cần Animator / không cần ở trong cây) – dùng trước bake() cho đám đông,
 ## người ngồi xe NPC, người đứng xa. params: ví dụ {"ride_shoulder": 1.1, "ride_elbow": 0.3, "lean": 0.1}
+## Thân rigged: đặt tư thế xương một lần (clip "" = tư thế nghỉ); dùng với animate=false (RigAnimator sẽ đè ở frame sau).
 static func pose(root: Node3D, clip: String, t: float = 0.0, params: Dictionary = {}) -> void:
 	if root.get_meta("rigged", false):
+		_rig_pose(root, clip, t, params)
 		return
 	var an := Animator.new()
 	an.rig = root.get_meta("rig", {})
@@ -582,14 +974,187 @@ static func pose(root: Node3D, clip: String, t: float = 0.0, params: Dictionary 
 	an._apply({}, cpose, 1.0 if clip != "" else 0.0, 0.0)
 	an.free()
 
-## Người ngồi xe máy đã bake thành 1 MeshInstance3D (≈16 surface thay vì ~50 node) – cho xe NPC / menu / bãi xe.
-## Gốc đặt tại yên xe: pos = (0, cao_yên − 0.62, z_yên). Hướng -Z như xe.
+## Tư thế tĩnh cho thân rigged (không cần Animator): xương đặt theo bảng clip của Animator, đè tư thế đứng trung tính
+## (_neutral_base); clip "" = đứng trung tính.
+static func _rig_pose(root: Node3D, clip: String, t: float, params: Dictionary) -> void:
+	var sk: Skeleton3D = root.get_meta("skeleton", null) as Skeleton3D
+	if sk == null:
+		return
+	sk.reset_bone_poses()
+	var nb: Dictionary = _base_of(sk)
+	if not nb.is_empty():
+		for b: int in nb["bones"]:
+			var l: Transform3D = nb["local"][b]
+			sk.set_bone_pose_position(b, l.origin)
+			sk.set_bone_pose_rotation(b, l.basis.get_rotation_quaternion())
+	if clip == "":
+		_mark_bone_poses_dirty(sk)   # tư thế nghỉ đặt ngoài cây cũng phải còn khi bake() và khi vào cây
+		return
+	var an := Animator.new()
+	an.rig = {}
+	for k: String in params.keys():
+		an.params[k] = params[k]
+	var cpose: Dictionary = an._clip_pose(clip, t)
+	an.free()
+	_apply_bone_pose(sk, cpose, 1.0)   # tự đánh dấu xương khi ngoài cây
+
+
+## Tư thế đứng trung tính của thân rigged, thay tư thế nghỉ glTF làm GỐC cho tư thế tĩnh và cho phép xoay khớp của
+## _apply_bone_pose / _char_rot_local (RigAnimator dùng chung). Rest của gói Quaternius chính là khung đầu Idle, một thế đứng
+## "3/4": hông xoay 27°, chân phải bước trước (bàn chân ~0,36, gối ~0,26 đơn vị mô hình), bàn chân trái xoè 59°; clip tĩnh để
+## nguyên chân ("", "phone_stand", người ngồi xe bake...) vì thế lệch chân. Chỉ chỉnh hai chân: đùi xoay quanh khớp hông sao
+## cho cổ chân nằm dưới hông (z = trung bình z hai khớp hông, giữ độ dang ngang), gối giữ độ gập; bàn chân (đích IK Foot.L/R,
+## con của Root) đặt phẳng ở độ cao cũ dưới cổ chân mới, xoè đối xứng FOOT_TOE_OUT. Hông / thân trên giữ rest (RigAnimator đặt
+## "hips" trong khung Body của animation). Tính một lần mỗi thân (theo đường dẫn mô hình, _base_cache), gắn vào skeleton (meta
+## "base"): {"local", "global": Array[Transform3D] mọi xương, "bones": xương khác rest}. {} khi thiếu xương chân -> dùng rest.
+const FOOT_TOE_OUT: float = 0.21   # ~12°
+static var _base_cache: Dictionary = {}
+
+static func _neutral_base(sk: Skeleton3D) -> Dictionary:
+	var uls: Array[int] = [sk.find_bone("UpperLeg.L"), sk.find_bone("UpperLeg.R")]
+	var lls: Array[int] = [sk.find_bone("LowerLeg.L"), sk.find_bone("LowerLeg.R")]
+	var fts: Array[int] = [sk.find_bone("Foot.L"), sk.find_bone("Foot.R")]
+	if (uls + lls + fts).has(-1):
+		return {}
+	var n: int = sk.get_bone_count()
+	var loc: Array[Transform3D] = []
+	var glob: Array[Transform3D] = []
+	for b: int in range(n):
+		loc.append(sk.get_bone_rest(b))
+		glob.append(sk.get_bone_global_rest(b))
+	var zmid: float = (glob[uls[0]].origin.z + glob[uls[1]].origin.z) * 0.5
+	var bones := PackedInt32Array()
+	for i: int in range(2):
+		var u: int = uls[i]
+		var lg0: Transform3D = glob[lls[i]]
+		var hip: Vector3 = glob[u].origin
+		var ankle: Vector3 = lg0.origin + lg0.basis.y.normalized() * ANKLE_DOWN_SHIN
+		var v: Vector3 = ankle - hip
+		var tgt := Vector3(v.x, 0.0, zmid - hip.z)
+		tgt.y = -sqrt(maxf(v.length_squared() - tgt.x * tgt.x - tgt.z * tgt.z, 0.0))
+		var ug := Transform3D(Basis(Quaternion(v.normalized(), tgt.normalized())) * glob[u].basis, hip)
+		var pu: int = sk.get_bone_parent(u)
+		loc[u] = (glob[pu].affine_inverse() * ug) if pu >= 0 else ug
+		var lg: Transform3D = ug * loc[lls[i]]
+		var ankle_n: Vector3 = lg.origin + lg.basis.y.normalized() * ANKLE_DOWN_SHIN
+		# bàn chân: trục Y của xương Foot chạy gót -> mũi (nằm ngang); chân trái (+X) xoè về +X, chân phải về -X
+		var f: int = fts[i]
+		var fg: Transform3D = glob[f]
+		var ry := Basis(Vector3.UP, (FOOT_TOE_OUT if i == 0 else -FOOT_TOE_OUT) - atan2(fg.basis.y.x, fg.basis.y.z))
+		var off: Vector3 = ry * (fg.origin - ankle)
+		var fgn := Transform3D(ry * fg.basis, Vector3(ankle_n.x + off.x, fg.origin.y, ankle_n.z + off.z))
+		var pf: int = sk.get_bone_parent(f)
+		loc[f] = (glob[pf].affine_inverse() * fgn) if pf >= 0 else fgn
+		bones.append(u)
+		bones.append(f)
+	for b: int in range(n):   # toàn cục từ cục bộ mới (đi ngược lên chuỗi cha; một lần mỗi thân)
+		var xf: Transform3D = loc[b]
+		var p: int = sk.get_bone_parent(b)
+		while p >= 0:
+			xf = loc[p] * xf
+			p = sk.get_bone_parent(p)
+		glob[b] = xf
+	return {"local": loc, "global": glob, "bones": bones}
+
+
+## Gốc tư thế của skeleton (meta "base" từ _neutral_base), {} = dùng rest.
+static func _base_of(sk: Skeleton3D) -> Dictionary:
+	return sk.get_meta("base") if sk.has_meta("base") else {}
+
+
+static func _base_local(sk: Skeleton3D, nb: Dictionary, b: int) -> Transform3D:
+	return nb["local"][b] if not nb.is_empty() else sk.get_bone_rest(b)
+
+
+static func _base_global(sk: Skeleton3D, nb: Dictionary, b: int) -> Transform3D:
+	return nb["global"][b] if not nb.is_empty() else sk.get_bone_global_rest(b)
+
+
+## Godot 4.7: ngoài cây, set_bone_pose_*() không đánh dấu tư thế toàn cục của xương cần tính lại, nên get_bone_global_pose()
+## (bake) và cả lần vào cây sau đó vẫn thấy tư thế cũ; force_update_all_bone_transforms() cũng bỏ qua xương không bị đánh dấu.
+## Gán lại show_rest_only (giá trị không đổi) đánh dấu lại mọi xương. Trong cây không cần (setter tự đánh dấu).
+static func _mark_bone_poses_dirty(sk: Skeleton3D) -> void:
+	if not sk.is_inside_tree():
+		sk.show_rest_only = sk.show_rest_only
+
+
+## Áp tư thế {khớp: Euler hệ nhân vật} lên xương Quaternius, trộn với tư thế hiện tại theo w (1 = đè hẳn):
+## local = (Pg⁻¹·R·Pg)·base_local (Pg⁻¹·R·Pg ở _char_rot_local; base = tư thế đứng trung tính _neutral_base, thiếu thì rest); "hips_y" dời xương Body (đơn vị mô hình). Nơi DUY NHẤT
+## chứa phép này: pose() tĩnh và RigAnimator (_apply_bones, _hips_roll) đều gọi hàm này. Gọi được cả khi skeleton ngoài
+## cây (tự đánh dấu xương).
+static func _apply_bone_pose(sk: Skeleton3D, cpose: Dictionary, w: float) -> void:
+	var nb: Dictionary = _base_of(sk)
+	for k: String in cpose.keys():
+		if not BONE_OF.has(k):
+			continue
+		var b: int = sk.find_bone(String(BONE_OF[k]))
+		if b < 0:
+			continue
+		var local: Basis = _char_rot_local(sk, b, cpose[k]) * _base_local(sk, nb, b).basis
+		var q_cur: Quaternion = sk.get_bone_pose_rotation(b)
+		sk.set_bone_pose_rotation(b, q_cur.slerp(local.get_rotation_quaternion(), w))
+	if cpose.has("hips_y"):
+		var body: int = sk.find_bone("Body")
+		if body >= 0:
+			var rest_pos: Vector3 = _base_local(sk, nb, body).origin
+			var p: Vector3 = sk.get_bone_pose_position(body)
+			sk.set_bone_pose_position(body, p.lerp(rest_pos + Vector3(0.0, float(cpose["hips_y"]), 0.0), w))
+	# Bàn chân Quaternius (Foot.L/R) là đích IK con của Root, không phải con của ống chân: clip gập chân mà để nguyên thì bàn chân
+	# đứng yên trên sàn và giày bị kéo dài. Như thân tự dựng (bàn chân con của gối): bàn chân đi cứng theo ống chân, rồi quay
+	# "foot_l/r" (hệ nhân vật, trong hệ ống chân) quanh cổ chân (ANKLE_DOWN_SHIN dọc ống chân từ gối).
+	for s: String in ["l", "r"]:
+		if not (cpose.has("thigh_" + s) or cpose.has("knee_" + s) or cpose.has("foot_" + s) or cpose.has("hips_y")):
+			continue
+		var lb: int = sk.find_bone("LowerLeg." + s.to_upper())
+		var fb: int = sk.find_bone("Foot." + s.to_upper())
+		if lb < 0 or fb < 0:
+			continue
+		var l0: Transform3D = _base_global(sk, nb, lb)
+		var follow: Transform3D = _bone_global_now(sk, lb) * l0.affine_inverse()   # chuyển động cứng của ống chân so với gốc
+		var foot: Transform3D = follow * _base_global(sk, nb, fb)
+		if cpose.has("foot_" + s):
+			var ef: Vector3 = cpose["foot_" + s]
+			if MODEL_YAW != 0.0:
+				ef = Vector3(-ef.x, ef.y, -ef.z)
+			var q: Basis = follow.basis.orthonormalized()
+			var rf: Basis = q * Basis.from_euler(ef) * q.inverse()
+			var ankle: Vector3 = follow * (l0.origin + l0.basis.y.normalized() * ANKLE_DOWN_SHIN)
+			foot = Transform3D(rf, ankle - rf * ankle) * foot
+		var pf: int = sk.get_bone_parent(fb)
+		var local: Transform3D = (_bone_global_now(sk, pf).affine_inverse() * foot) if pf >= 0 else foot
+		sk.set_bone_pose_position(fb, sk.get_bone_pose_position(fb).lerp(local.origin, w))
+		sk.set_bone_pose_rotation(fb, sk.get_bone_pose_rotation(fb).slerp(local.basis.get_rotation_quaternion(), w))
+	_mark_bone_poses_dirty(sk)
+
+
+## Xoay e (Euler hệ nhân vật) đổi sang hệ cục bộ của xương b: Pg⁻¹·R·Pg, Pg = gốc toàn cục (_base_global) của xương cha (mô hình quay
+## MODEL_YAW nên đảo dấu x, z). Dùng chung cho _apply_bone_pose (tư thế tuyệt đối) và RigAnimator._add_rot (xoay cộng thêm).
+static func _char_rot_local(sk: Skeleton3D, b: int, e: Vector3) -> Basis:
+	if MODEL_YAW != 0.0:
+		e = Vector3(-e.x, e.y, -e.z)
+	var pb: int = sk.get_bone_parent(b)
+	var pg: Basis = _base_global(sk, _base_of(sk), pb).basis if pb >= 0 else Basis.IDENTITY
+	return pg.inverse() * Basis.from_euler(e) * pg
+
+
+## Tư thế toàn cục hiện tại của xương b tính từ các tư thế cục bộ (đúng cả ngoài cây và ngay sau khi vừa đặt tư thế, nơi
+## Skeleton3D.get_bone_global_pose() có thể còn giá trị cũ).
+static func _bone_global_now(sk: Skeleton3D, b: int) -> Transform3D:
+	var xf: Transform3D = sk.get_bone_pose(b)
+	var p: int = sk.get_bone_parent(b)
+	while p >= 0:
+		xf = sk.get_bone_pose(p) * xf
+		p = sk.get_bone_parent(p)
+	return xf
+
+## Người ngồi xe máy đã bake thành 1 MeshInstance3D – cho xe NPC / menu / bãi xe. Gốc đặt tại yên xe:
+## pos = (0, cao_yên − 0.62, z_yên). Hướng -Z như xe. Chế độ ps2: thân Quaternius + đầu PS2 (bake không cần vào cây).
 static func build_baked_rider(parent: Node3D, pos: Vector3, opts: Dictionary = {}) -> MeshInstance3D:
 	var o: Dictionary = opts.duplicate()
 	if not o.has("preset"):
 		o["preset"] = "rider"
 	o["animate"] = false
-	o["rigged"] = false
+	o["rigged"] = ps2
 	var rig: Node3D = build(o)
 	pose(rig, "ride", 0.0, {"ride_shoulder": float(o.get("ride_shoulder", 1.15)), "ride_elbow": float(o.get("ride_elbow", 0.3)), "ride_lean": float(o.get("ride_lean", 0.42)), "lean": float(o.get("lean", 0.0))})
 	var mesh: ArrayMesh = bake(rig)
@@ -634,10 +1199,21 @@ static func look_at_point(root: Node3D, global_point: Variant) -> void:
 		an.look_target = global_point
 
 ## Đổi biểu cảm mặt: "open" (bình thường), "happy", "angry", "surprised", "done" (cạn lời). Chớp mắt vẫn hoạt động.
+## Đầu PS2: thêm "talk", "pain"; đổi ô atlas (uv1_offset của vật liệu mặt riêng) thay vì đổi texture.
 static func set_expression(root: Node3D, expr: String) -> void:
 	var an: Node = get_animator(root)
 	var face: MeshInstance3D = get_pivot(root, "face_mesh") as MeshInstance3D
 	if face == null:
+		return
+	var fmat: StandardMaterial3D = face.material_override as StandardMaterial3D
+	if fmat and bool(fmat.get_meta("ps2_face", false)):
+		var off: Vector3 = PS2Head.cell_offset(expr if expr in PS2Head.CELLS else "open")
+		if an and bool(an.get("face_cells")):
+			an.face_cell_open = off
+			if an._blink_closed <= 0.0:
+				fmat.uv1_offset = off
+		else:
+			fmat.uv1_offset = off
 		return
 	var idx: int = int(root.get_meta("skin_idx", 1))
 	var female: bool = bool(root.get_meta("female", false))
@@ -697,23 +1273,47 @@ static func set_opacity(root: Node3D, alpha: float) -> void:
 	root.visible = alpha > 0.01
 
 ## Gộp toàn bộ mesh của nhân vật (ở tư thế hiện tại) thành 1 ArrayMesh nhiều surface – dùng cho MultiMesh đám đông.
+## Thân rigged: xem _bake_rigged (trong hay ngoài cây đều được). Mesh ở hệ gốc nhân vật, chưa nhân root.scale.
 static func bake(root: Node3D) -> ArrayMesh:
-	var by_mat: Dictionary = {}
 	if root.get_meta("rigged", false):
-		push_warning("CharacterBuilder.bake: thân rigged không bake được, dựng với rigged=false cho đám đông")
-		return ArrayMesh.new()
+		return _bake_rigged(root)
 	var inv: Transform3D = root.global_transform.affine_inverse() if root.is_inside_tree() else Transform3D.IDENTITY
+	var parts: Array = []
 	for mi: MeshInstance3D in _mesh_instances(root):
 		if mi.mesh == null:
 			continue
-		var xf: Transform3D = (inv * mi.global_transform) if root.is_inside_tree() else _local_xform(mi, root)
-		for si: int in range(mi.mesh.get_surface_count()):
-			var mat: Material = mi.material_override if mi.material_override else mi.mesh.surface_get_material(si)
+		parts.append([mi, mi.mesh, (inv * mi.global_transform) if root.is_inside_tree() else _local_xform(mi, root)])
+	return _merge_by_material(parts)
+
+## Gộp thân rigged ở tư thế hiện tại (trong hay ngoài cây): phần skinned skin bằng CPU (_skin_cpu), phần gắn xương
+## (đầu, đồ gắn) theo tư thế xương. Bỏ mesh ẩn (đầu gốc của mô hình).
+static func _bake_rigged(root: Node3D) -> ArrayMesh:
+	var sk: Skeleton3D = root.get_meta("skeleton", null) as Skeleton3D
+	if sk == null:
+		return ArrayMesh.new()
+	_mark_bone_poses_dirty(sk)
+	var parts: Array = []
+	for mi: MeshInstance3D in _mesh_instances(root):
+		if mi.mesh == null or not mi.visible:
+			continue
+		parts.append([mi, _skin_cpu(mi, sk) if mi.skin != null else mi.mesh, _local_xform(mi, root, sk)])
+	return _merge_by_material(parts)
+
+## Gộp các phần [MeshInstance3D, mesh nguồn, transform trong hệ gốc] thành 1 ArrayMesh, một surface mỗi vật liệu (dùng chung
+## cho bake() thân tự dựng / đồ vật và _bake_rigged). Mesh nguồn có cùng các surface như mi.mesh (bản skin CPU của nó hoặc
+## chính nó); vật liệu = get_active_material(si): material_override trước, rồi vật liệu đè của surface, rồi vật liệu của mesh.
+static func _merge_by_material(parts: Array) -> ArrayMesh:
+	var by_mat: Dictionary = {}
+	for part: Array in parts:
+		var mi: MeshInstance3D = part[0]
+		var src: Mesh = part[1]
+		for si: int in range(src.get_surface_count()):
+			var mat: Material = mi.get_active_material(si)
 			if not by_mat.has(mat):
 				var st := SurfaceTool.new()
 				st.begin(Mesh.PRIMITIVE_TRIANGLES)
 				by_mat[mat] = st
-			(by_mat[mat] as SurfaceTool).append_from(mi.mesh, si, xf)
+			(by_mat[mat] as SurfaceTool).append_from(src, si, part[2])
 	var out := ArrayMesh.new()
 	for mat: Material in by_mat.keys():
 		var st: SurfaceTool = by_mat[mat]
@@ -722,11 +1322,84 @@ static func bake(root: Node3D) -> ArrayMesh:
 		out.surface_set_material(out.get_surface_count() - 1, mat)
 	return out
 
-static func _local_xform(n: Node3D, root: Node3D) -> Transform3D:
-	var xf: Transform3D = n.transform
-	var p: Node = n.get_parent()
+
+## Mesh skinned của mi ở tư thế xương hiện tại, skin bằng CPU: đỉnh = Σ w·(tư_thế_toàn_cục_xương · bind_pose)·đỉnh, trong hệ
+## của mi (như renderer), bỏ xương / trọng số. Không dùng MeshInstance3D.bake_mesh_from_current_skeleton_pose(): hàm đó đọc
+## xương từ RenderingServer – rỗng khi chạy headless (lỗi "skin registered with a valid skeleton"), và chỉ được ghi ở lần cập
+## nhật skeleton trễ cuối frame, nên tư thế vừa đặt chưa có. Cache theo GIÁ TRỊ (mesh, transform skin của mọi xương; so khớp
+## đúng từng số, không qua băm 32 bit): mọi người ngồi xe cùng mô hình chỉ skin một lần (~8 nghìn đỉnh, vài ms).
+static func _skin_cpu(mi: MeshInstance3D, sk: Skeleton3D) -> ArrayMesh:
+	var skin: Skin = mi.skin
+	var src: Mesh = mi.mesh
+	var xfs: Array[Transform3D] = []
+	for i: int in range(skin.get_bind_count()):
+		var bn: StringName = skin.get_bind_name(i)
+		var b: int = sk.find_bone(String(bn)) if bn != &"" else skin.get_bind_bone(i)
+		xfs.append(sk.get_bone_global_pose(b) * skin.get_bind_pose(i) if b >= 0 else Transform3D.IDENTITY)
+	var key: Array = [src.get_instance_id(), xfs]
+	if _skin_cache.has(key):
+		return _skin_cache[key]
+	var out := ArrayMesh.new()
+	for si: int in range(src.get_surface_count()):
+		var prim: Mesh.PrimitiveType = (src as ArrayMesh).surface_get_primitive_type(si) if src is ArrayMesh else Mesh.PRIMITIVE_TRIANGLES
+		var arr: Array = src.surface_get_arrays(si)
+		if arr[Mesh.ARRAY_BONES] != null and arr[Mesh.ARRAY_WEIGHTS] != null:
+			var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var bones: PackedInt32Array = arr[Mesh.ARRAY_BONES]
+			var weights: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+			var norms: PackedVector3Array = arr[Mesh.ARRAY_NORMAL] if arr[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+			var tans: PackedFloat32Array = arr[Mesh.ARRAY_TANGENT] if arr[Mesh.ARRAY_TANGENT] != null else PackedFloat32Array()
+			var nv: int = verts.size()
+			var per: int = bones.size() / maxi(nv, 1)   # 4 hoặc 8 xương mỗi đỉnh
+			var has_n: bool = norms.size() == nv
+			var has_t: bool = tans.size() == nv * 4
+			for i: int in range(nv):
+				var v: Vector3 = verts[i]
+				var p := Vector3.ZERO
+				var n := Vector3.ZERO
+				var tg := Vector3.ZERO
+				var tv := Vector3(tans[i * 4], tans[i * 4 + 1], tans[i * 4 + 2]) if has_t else Vector3.ZERO
+				for k: int in range(per):
+					var wt: float = weights[i * per + k]
+					if wt <= 0.0:
+						continue
+					var t: Transform3D = xfs[bones[i * per + k]]
+					p += (t * v) * wt
+					if has_n:
+						n += (t.basis * norms[i]) * wt
+					if has_t:
+						tg += (t.basis * tv) * wt
+				verts[i] = p
+				if has_n:
+					norms[i] = n.normalized()
+				if has_t:
+					tg = tg.normalized()
+					tans[i * 4] = tg.x
+					tans[i * 4 + 1] = tg.y
+					tans[i * 4 + 2] = tg.z
+			arr[Mesh.ARRAY_VERTEX] = verts
+			if has_n:
+				arr[Mesh.ARRAY_NORMAL] = norms
+			if has_t:
+				arr[Mesh.ARRAY_TANGENT] = tans
+			arr[Mesh.ARRAY_BONES] = null
+			arr[Mesh.ARRAY_WEIGHTS] = null
+		out.add_surface_from_arrays(prim, arr)
+	if _skin_cache.size() >= 64:
+		_skin_cache.clear()
+	_skin_cache[key] = out
+	return out
+
+## Transform của n trong hệ root (trong hay ngoài cây), đi ngược từ n lên tới root. sk (thân rigged): mỗi BoneAttachment3D trên
+## đường đi (kể cả n) lấy tư thế xương hiện tại thay cho transform của node – ngoài cây transform đó không được cập nhật.
+static func _local_xform(n: Node3D, root: Node3D, sk: Skeleton3D = null) -> Transform3D:
+	var xf: Transform3D = Transform3D.IDENTITY
+	var p: Node = n
 	while p and p != root and p is Node3D:
-		xf = (p as Node3D).transform * xf
+		var t: Transform3D = (p as Node3D).transform
+		if sk and p is BoneAttachment3D:
+			t = sk.get_bone_global_pose(sk.find_bone((p as BoneAttachment3D).bone_name))
+		xf = t * xf
 		p = p.get_parent()
 	return xf
 
@@ -762,6 +1435,7 @@ static func _outfit_for(preset: String, female: bool, rng: RandomNumberGenerator
 		"student", "student_m", "student_f", "player", "rider":
 			o["shirt"] = _shirt_fpt_mat()
 			o["shirt_plain"] = _cloth_mat("fpt_orange", FPT_ORANGE)
+			o["fpt_polo"] = true   # áo polo FPT (logo ngực trái); vice: logo chỉ trên áo này như thân tự dựng
 			o["trousers"] = jeans if rng.randf() < 0.7 else trousers_dark
 			o["backpack"] = bool(opts.get("backpack", preset == "player" or rng.randf() < 0.55))
 			var bp_col: Color = [Color("#1F2A44"), Color("#2E3A2F"), Color("#4A2E6B"), Color("#222222"), Color("#7A1F2B")][rng.randi_range(0, 4)]
@@ -845,6 +1519,7 @@ static func _outfit_for(preset: String, female: bool, rng: RandomNumberGenerator
 				o["shoe_mat"] = _mat("sandal", Color("#5B3A1E"), 0.6)
 	if opts.has("shirt_color"):
 		var c: Color = opts["shirt_color"]
+		o["fpt_polo"] = false
 		o["shirt"] = _cloth_mat("custom_" + c.to_html(false), c)
 		o["shirt_plain"] = o["shirt"]
 		o["collar_mat"] = _cloth_mat("custom_collar_" + c.to_html(false), c.darkened(0.15))
@@ -1269,6 +1944,9 @@ class Animator extends Node:
 	var face_mat: StandardMaterial3D
 	var face_open: Texture2D
 	var face_closed: Texture2D
+	var face_cells: bool = false         # đầu PS2: chớp mắt / biểu cảm bằng ô atlas (uv1_offset) thay vì đổi texture
+	var face_cell_open: Vector3 = Vector3.ZERO
+	var face_cell_closed: Vector3 = Vector3.ZERO
 	var rng_phase: float = 0.0
 	var _t: float = 0.0
 	var _phase: float = 0.0
@@ -1279,7 +1957,8 @@ class Animator extends Node:
 	var _frame: int = 0
 	var _look_yaw: float = 0.0
 	var _look_pitch: float = 0.0
-	const ONE_SHOT: Dictionary = {"flinch": 0.9, "facepalm": 1.6, "bow": 1.4, "cheer_once": 1.6, "nod": 0.8}
+	const ONE_SHOT: Dictionary = {"flinch": 0.9, "facepalm": 1.6, "bow": 1.4, "cheer_once": 1.6, "nod": 0.8,
+		"jump_takeoff": 0.12, "land_soft": 0.18, "skid": 0.3, "stumble": 0.8, "getup": 0.9}
 
 	func _ready() -> void:
 		_t = rng_phase
@@ -1322,7 +2001,7 @@ class Animator extends Node:
 		var dt: float = delta * float(maxi(_lod_skip, 1))
 		if clip != "":
 			clip_time += dt
-			clip_weight = minf(1.0, clip_weight + dt * 5.0)
+			clip_weight = minf(1.0, clip_weight + dt * float(FAST_BLEND.get(clip, 5.0)))
 			if clip_duration > 0.0 and clip_time >= clip_duration:
 				clip = base_clip
 				clip_time = 0.0
@@ -1342,13 +2021,13 @@ class Animator extends Node:
 		if _blink_closed > 0.0:
 			_blink_closed -= dt
 			if _blink_closed <= 0.0:
-				face_mat.albedo_texture = face_open
+				CharacterBuilder._show_face(self, false)
 			return
 		_blink_t -= dt
 		if _blink_t <= 0.0:
 			_blink_t = randf_range(2.0, 5.5)
 			_blink_closed = 0.13
-			face_mat.albedo_texture = face_closed
+			CharacterBuilder._show_face(self, true)
 
 	# --- Tư thế đi/đứng (idle ↔ walk/run theo amp)
 	func _loco_pose(amp: float) -> Dictionary:
@@ -1428,6 +2107,19 @@ class Animator extends Node:
 				var jerk: float = maxf(0.0, sin(ct * 0.8 + 1.3)) ** 24.0
 				p["head"] = Vector3(-0.3 - 0.4 * nod + 0.5 * jerk, 0.0, 0.08 * sin(ct * 0.5))
 				p["torso"] = Vector3(-0.1 - 0.12 * nod, 0.0, 0.0)
+			"stride":   # bước đi đứng hình cho người nộm đám đông xa (CrowdImpostors): tư thế đi ở pha sải chân rộng nhất
+				var keep: float = _phase
+				_phase = PI * 0.5
+				p = _loco_pose(1.0)
+				_phase = keep
+				p.erase("breathe")
+			"phone_stand":   # đứng xem điện thoại (người đi đường dừng chân): tay, đầu, thân như "phone"; chân để nguyên
+				p["shoulder_l"] = Vector3(0.95, 0.0, 0.18)
+				p["shoulder_r"] = Vector3(0.95, 0.0, -0.18)
+				p["elbow_l"] = Vector3(1.25, -0.35, 0.0)
+				p["elbow_r"] = Vector3(1.25, 0.35, 0.0)
+				p["head"] = Vector3(-0.55, 0.0, 0.0)
+				p["torso"] = Vector3(-0.12, 0.0, 0.0)
 			"cheer", "cheer_once":
 				var b: float = absf(sin(ct * 6.0))
 				p["shoulder_l"] = Vector3(2.75 - 0.25 * b, 0.0, 0.35)
@@ -1518,7 +2210,7 @@ class Animator extends Node:
 				p["thigh_l"] = Vector3(0.0, 0.0, 0.12)
 				p["thigh_r"] = Vector3(0.0, 0.0, -0.12)
 				p["torso"] = Vector3(0.05, 0.0, 0.0)
-			"lie":
+			"lie", "knockdown":
 				p["thigh_l"] = Vector3(0.05, 0.0, 0.1)
 				p["thigh_r"] = Vector3(0.05, 0.0, -0.1)
 				p["knee_l"] = Vector3(-0.1, 0.0, 0.0)
@@ -1573,7 +2265,7 @@ class Animator extends Node:
 				p["shoulder_r"] = Vector3(1.1, 0.0, -0.3)
 				p["elbow_l"] = Vector3(1.4, 0.0, 0.0)
 				p["elbow_r"] = Vector3(1.0, 0.0, 0.0)
-			"jump":
+			"jump", "jump_air":
 				# co gối giữa không trung, tay vung ra sau
 				p["thigh_l"] = Vector3(1.3, 0.0, 0.15)
 				p["thigh_r"] = Vector3(0.95, 0.0, -0.15)
@@ -1598,6 +2290,72 @@ class Animator extends Node:
 				p["torso"] = Vector3(0.35, 0.0, 0.0)
 				p["head"] = Vector3(-0.45, 0.0, 0.0)
 				p["hips_y"] = -0.12
+			"jump_takeoff":
+				p["thigh_l"] = Vector3(0.55, 0.0, 0.08)
+				p["thigh_r"] = Vector3(0.55, 0.0, -0.08)
+				p["knee_l"] = Vector3(-1.05, 0.0, 0.0)
+				p["knee_r"] = Vector3(-1.05, 0.0, 0.0)
+				p["foot_l"] = Vector3(0.45, 0.0, 0.0)
+				p["foot_r"] = Vector3(0.45, 0.0, 0.0)
+				p["hips_y"] = -0.14
+				p["torso"] = Vector3(-0.32, 0.0, 0.0)
+				p["shoulder_l"] = Vector3(-0.65, 0.0, 0.18)
+				p["shoulder_r"] = Vector3(-0.65, 0.0, -0.18)
+				p["elbow_l"] = Vector3(0.35, 0.0, 0.0)
+				p["elbow_r"] = Vector3(0.35, 0.0, 0.0)
+			"fall_flail":
+				var f: float = sin(ct * 11.0)
+				var g: float = sin(ct * 9.0 + 1.3)
+				p["shoulder_l"] = Vector3(2.3 + 0.45 * f, 0.0, 0.55)
+				p["shoulder_r"] = Vector3(2.3 - 0.45 * f, 0.0, -0.55)
+				p["elbow_l"] = Vector3(0.5 + 0.3 * g, 0.0, 0.0)
+				p["elbow_r"] = Vector3(0.5 - 0.3 * g, 0.0, 0.0)
+				p["thigh_l"] = Vector3(0.55 + 0.45 * g, 0.0, 0.12)
+				p["thigh_r"] = Vector3(0.55 - 0.45 * g, 0.0, -0.12)
+				p["knee_l"] = Vector3(-0.9 - 0.3 * f, 0.0, 0.0)
+				p["knee_r"] = Vector3(-0.9 + 0.3 * f, 0.0, 0.0)
+				p["torso"] = Vector3(0.12, 0.0, 0.0)
+				p["head"] = Vector3(0.25, 0.0, 0.0)
+			"land_soft":
+				var k: float = sin(clampf(ct / 0.18, 0.0, 1.0) * PI)
+				p["thigh_l"] = Vector3(0.75 * k, 0.0, 0.1)
+				p["thigh_r"] = Vector3(0.75 * k, 0.0, -0.1)
+				p["knee_l"] = Vector3(-1.25 * k, 0.0, 0.0)
+				p["knee_r"] = Vector3(-1.25 * k, 0.0, 0.0)
+				p["foot_l"] = Vector3(0.5 * k, 0.0, 0.0)
+				p["foot_r"] = Vector3(0.5 * k, 0.0, 0.0)
+				p["hips_y"] = -0.2 * k
+				p["torso"] = Vector3(-0.3 * k, 0.0, 0.0)
+				p["shoulder_l"] = Vector3(0.45 * k, 0.0, 0.3)
+				p["shoulder_r"] = Vector3(0.45 * k, 0.0, -0.3)
+			"skid":
+				p["thigh_l"] = Vector3(0.7, 0.0, 0.1)
+				p["thigh_r"] = Vector3(-0.25, 0.0, -0.1)
+				p["knee_l"] = Vector3(-0.15, 0.0, 0.0)
+				p["knee_r"] = Vector3(-0.6, 0.0, 0.0)
+				p["hips_y"] = -0.1
+				p["torso"] = Vector3(0.28, 0.0, 0.0)
+				p["shoulder_l"] = Vector3(0.9, 0.0, 0.45)
+				p["shoulder_r"] = Vector3(0.7, 0.0, -0.45)
+				p["elbow_l"] = Vector3(0.5, 0.0, 0.0)
+				p["elbow_r"] = Vector3(0.6, 0.0, 0.0)
+				p["head"] = Vector3(-0.15, 0.0, 0.0)
+			"stumble":
+				var k2: float = sin(clampf(ct / 0.8, 0.0, 1.0) * PI)
+				p["torso"] = Vector3(0.35 * k2, 0.25 * k2, 0.15 * k2)
+				p["shoulder_l"] = Vector3(1.2 * k2, 0.0, 0.8 * k2)
+				p["shoulder_r"] = Vector3(0.6 * k2, 0.0, -0.9 * k2)
+				p["thigh_r"] = Vector3(-0.35 * k2, 0.0, -0.1)
+				p["knee_r"] = Vector3(-0.3 * k2, 0.0, 0.0)
+				p["head"] = Vector3(0.2 * k2, 0.0, 0.0)
+			"getup":
+				var k3: float = 1.0 - clampf(ct / 0.9, 0.0, 1.0)
+				p["torso"] = Vector3(-0.9 * k3, 0.0, 0.0)
+				p["thigh_l"] = Vector3(1.2 * k3, 0.0, 0.1)
+				p["thigh_r"] = Vector3(1.2 * k3, 0.0, -0.1)
+				p["knee_l"] = Vector3(-1.6 * k3, 0.0, 0.0)
+				p["knee_r"] = Vector3(-1.6 * k3, 0.0, 0.0)
+				p["hips_y"] = -0.5 * k3
 		return p
 
 	func _apply(loco: Dictionary, cpose: Dictionary, w: float, dt: float) -> void:
@@ -1660,6 +2418,9 @@ class RigAnimator extends Node:
 	var face_mat: StandardMaterial3D
 	var face_open: Texture2D
 	var face_closed: Texture2D
+	var face_cells: bool = false         # đầu PS2: chớp mắt / biểu cảm bằng ô atlas (uv1_offset) thay vì đổi texture
+	var face_cell_open: Vector3 = Vector3.ZERO
+	var face_cell_closed: Vector3 = Vector3.ZERO
 	var rng_phase: float = 0.0
 	var _t: float = 0.0
 	var _phase: float = 0.0
@@ -1667,10 +2428,9 @@ class RigAnimator extends Node:
 	var _blink_closed: float = 0.0
 	var _look_yaw: float = 0.0
 	var _look_pitch: float = 0.0
-	var _src: Animator                  # nguồn tư thế clip (không nằm trong cây)
+	var _src: Animator                  # nguồn tư thế clip (không nằm trong cây; tạo khi cần, xem _clip_source)
 	var _bone: Dictionary = {}          # khớp của ta → chỉ số xương
 	var _rest_local: Dictionary = {}    # xương → Basis rest cục bộ
-	var _parent_rest: Dictionary = {}   # xương → Basis rest toàn cục của xương cha
 	var _body_bone: int = -1
 	var _body_rest_pos: Vector3
 	var _cur_anim: String = ""
@@ -1678,20 +2438,27 @@ class RigAnimator extends Node:
 	var _lod_t: float = 0.0
 	var _lod_skip: int = 1
 	var _frame: int = 0
+	const OVERLAY_EASE: float = 10.0    # 1/s: trọng số lớp cộng thêm tiến về đích (clip gói bắt đầu: mờ trong 0.1 s)
+	var _overlay_w: float = 1.0         # trọng số hiện tại của lớp cộng thêm (nước rút, lăn hông)
+	var _hips_keyed: Dictionary = {}    # tên animation → có track xoay Hips (cache, xem _hips_roll)
+	const FIDGETS: Array[String] = ["look", "shift", "neutral"]
+	var fidget_count: int = 0           # số động tác vặt khi đứng yên đã bắt đầu (cho test)
+	var _fidget: String = ""
+	var _fidget_t: float = 8.0
+	var _fidget_time: float = 0.0
+	var _fidget_yaw: float = 0.0
+	var _fidget_sway: float = 0.0
 
 	func _ready() -> void:
 		process_priority = 10   # chạy SAU AnimationPlayer để ghi đè tư thế xương
 		_t = rng_phase
 		_blink_t = randf_range(1.5, 4.5)
-		_src = Animator.new()
-		_src.rig = {}
+		_fidget_t = randf_range(6.0, 12.0)   # đám đông không fidget cùng lúc
 		for k: String in BONE_OF.keys():
 			var b: int = skeleton.find_bone(BONE_OF[k])
 			if b >= 0:
 				_bone[k] = b
 				_rest_local[b] = skeleton.get_bone_rest(b).basis
-				var pb: int = skeleton.get_bone_parent(b)
-				_parent_rest[b] = skeleton.get_bone_global_rest(pb).basis if pb >= 0 else Basis.IDENTITY
 		_body_bone = skeleton.find_bone("Body")
 		if _body_bone >= 0:
 			_body_rest_pos = skeleton.get_bone_rest(_body_bone).origin
@@ -1708,17 +2475,34 @@ class RigAnimator extends Node:
 			_src.free()
 			_src = null
 
+	## Nguồn tư thế clip tự dựng, tạo ở lần dùng đầu: _ready chỉ chạy một lần nên nhân vật rời cây (_exit_tree giải phóng
+	## nguồn) rồi vào lại vẫn có nguồn mới; nhân vật không bao giờ chạy clip tự dựng thì không tạo.
+	func _clip_source() -> Animator:
+		if _src == null:
+			_src = Animator.new()
+			_src.rig = {}
+		return _src
+
 	func play(name: String, duration: float = -1.0) -> void:
 		clip = name
 		clip_time = 0.0
 		clip_duration = duration if duration > 0.0 else float(Animator.ONE_SHOT.get(name, -1.0))
+		_fidget_stop()   # Idle_Neutral của fidget không được giữ lại sau clip
+		if name == "getup" and player.has_animation("Death"):
+			_pack_clip_playing = "Death"
+			player.play("Death", 0.05, -GETUP_SPEED, true)
+			player.speed_scale = 1.0
+			_cur_anim = "Death"
+			if duration <= 0.0:
+				clip_duration = player.get_animation("Death").length / GETUP_SPEED
+			return
 		if PACK_CLIP.has(name) and player.has_animation(PACK_CLIP[name]):
 			var a: String = PACK_CLIP[name]
 			_pack_clip_playing = a
 			player.play(a, 0.12)
 			player.speed_scale = 1.0
 			_cur_anim = a
-			if clip_duration < 0.0 and name != "lie":
+			if clip_duration < 0.0 and not (name in HOLD_CLIPS):
 				clip_duration = player.get_animation(a).length
 		else:
 			_pack_clip_playing = ""
@@ -1759,7 +2543,7 @@ class RigAnimator extends Node:
 		var dt: float = delta * float(maxi(_lod_skip, 1))
 		if clip != "":
 			clip_time += dt
-			clip_weight = minf(1.0, clip_weight + dt * 5.0)
+			clip_weight = minf(1.0, clip_weight + dt * float(FAST_BLEND.get(clip, 5.0)))
 			if clip_duration > 0.0 and clip_time >= clip_duration:
 				stop_clip()
 				if base_clip != "":
@@ -1770,46 +2554,129 @@ class RigAnimator extends Node:
 		# --- đi/chạy từ gói; khi clip gói đang chạy thì giữ nó, khi clip tự dựng thì đứng Idle làm nền
 		var amp: float = clampf(speed / 1.4, 0.0, 1.6)
 		_phase += dt * TAU * speed / 1.5
+		var sprint: float = clampf(float(params.get("sprint", 0.0)), 0.0, 1.0)
 		if _pack_clip_playing != "":
 			if clip == "lie" and not player.is_playing():
 				pass   # giữ khung cuối (Death)
 		elif amp < 0.08:
-			_play_anim("Idle")
-			player.speed_scale = 1.0
+			_fidget_update(dt)
+			if _fidget != "neutral":
+				_play_anim("Idle")
+				player.speed_scale = 1.0
 		elif amp < 1.05 and float(params.get("run", 0.0)) < 0.3:
+			_fidget_stop()
 			_play_anim("Walk")
 			player.speed_scale = clampf(speed / 1.25, 0.6, 1.6)
 		else:
+			_fidget_stop()
 			_play_anim("Run")
-			player.speed_scale = clampf(speed / 3.2, 0.7, 1.5)
+			player.speed_scale = clampf(speed / 3.2, 0.7, 1.5) * (1.0 + 0.35 * sprint)
+		# --- lớp cộng thêm (nước rút, nghiêng hông) theo phần tư thế còn do đi/đứng quyết định; clip gói hoặc clip tự
+		# dựng đã hoà đủ thì 0 (hông về rest, xem _hips_roll). Trọng số tiến dần về đích (OVERLAY_EASE): clip gói bắt đầu
+		# thì thân không bật thẳng dậy trong một khung
+		var free_w: float = (1.0 - clip_weight) if _pack_clip_playing == "" else 0.0
+		_overlay_w = move_toward(_overlay_w, free_w, OVERLAY_EASE * dt)
+		_overlay(sprint * _overlay_w, (float(params.get("lean", 0.0)) + _fidget_sway) * _overlay_w)
 		# --- clip tự dựng: xoay xương theo bảng clip của Animator
 		if clip != "" and _pack_clip_playing == "" and clip_weight > 0.001:
-			_src._t = _t
-			_src._phase = _phase
-			_src.params = params
-			var cpose: Dictionary = _src._clip_pose(clip, clip_time)
+			var src: Animator = _clip_source()
+			src._t = _t
+			src._phase = _phase
+			src.params = params
+			var cpose: Dictionary = src._clip_pose(clip, clip_time)
 			_apply_bones(cpose, clip_weight)
 		_look(dt)
 		_blink(dt)
 
-	## Áp tư thế {khớp: Euler trong hệ nhân vật} lên xương: local = (Pg⁻¹·R·Pg)·rest_local, trộn với tư thế animation theo w
+	## Áp tư thế {khớp: Euler trong hệ nhân vật} lên xương, trộn với tư thế animation theo w (phép tính ở _apply_bone_pose)
 	func _apply_bones(cpose: Dictionary, w: float) -> void:
-		for k: String in cpose.keys():
-			if not _bone.has(k):
-				continue
-			var b: int = _bone[k]
-			var e: Vector3 = cpose[k]
-			if MODEL_YAW != 0.0:
-				e = Vector3(-e.x, e.y, -e.z)  # hệ nhân vật → hệ mô hình (quay PI quanh Y): Y(π)·R·Y(π)
-			var r := Basis.from_euler(e)
-			var pg: Basis = _parent_rest[b]
-			var local: Basis = (pg.inverse() * r * pg) * _rest_local[b]
-			var q_anim: Quaternion = skeleton.get_bone_pose_rotation(b)
-			skeleton.set_bone_pose_rotation(b, q_anim.slerp(local.get_rotation_quaternion(), w))
-		if cpose.has("hips_y") and _body_bone >= 0:
-			var hy: float = float(cpose["hips_y"])
-			var p: Vector3 = skeleton.get_bone_pose_position(_body_bone)
-			skeleton.set_bone_pose_position(_body_bone, p.lerp(_body_rest_pos + Vector3(0.0, hy, 0.0), w))
+		CharacterBuilder._apply_bone_pose(skeleton, cpose, w)
+
+	## Lớp cộng thêm sau AnimationPlayer: nước rút (vung tay rộng hơn quanh tư thế nghỉ, thân đổ trước 12°), lăn hông.
+	func _overlay(sprint: float, roll: float) -> void:
+		if sprint > 0.01:
+			for k: String in ["shoulder_l", "shoulder_r", "elbow_l", "elbow_r"]:
+				if not _bone.has(k):
+					continue
+				var b: int = _bone[k]
+				var rest_q: Quaternion = (_rest_local[b] as Basis).get_rotation_quaternion()
+				var d: Quaternion = rest_q.inverse() * skeleton.get_bone_pose_rotation(b)
+				if d.w < 0.0:
+					d = -d   # cùng phép xoay, góc ngắn (< PI) để nhân góc không vòng ngược
+				var ang: float = d.get_angle()
+				if ang > 0.0001:
+					skeleton.set_bone_pose_rotation(b, rest_q * Quaternion(d.get_axis().normalized(), ang * (1.0 + 0.6 * sprint)))
+			_add_rot("torso", Vector3(-0.21 * sprint, 0.0, 0.0))
+		_hips_roll(roll)
+
+	## Xoay cộng thêm (Euler hệ nhân vật) lên tư thế hiện tại của xương khớp k. Chỉ dùng cho xương animation gói có track
+	## xoay (ghi lại mỗi khung) nên không cộng dồn; Hips thường không có track, xem _hips_roll.
+	func _add_rot(k: String, e: Vector3) -> void:
+		if not _bone.has(k):
+			return
+		var b: int = _bone[k]
+		var r: Basis = CharacterBuilder._char_rot_local(skeleton, b, e)
+		skeleton.set_bone_pose_rotation(b, (r * Basis(skeleton.get_bone_pose_rotation(b))).get_rotation_quaternion())
+
+	## Lăn hông (Euler z hệ nhân vật, dương = nghiêng trái), đặt TUYỆT ĐỐI so với rest mỗi khung qua _apply_bone_pose: trong
+	## tệp glTF chỉ Run_Left / Run_Right có kênh xoay Hips, mà kênh đó là hằng số bằng rest nên bộ nhập (remove_immutable_tracks)
+	## bỏ đi; lúc chạy Hips không có track nào ghi lại mỗi khung, cộng dồn từng khung sẽ trôi mãi. Animation đang phát mà CÓ track
+	## xoay Hips (đổi thiết lập nhập, gói khác) thì bỏ qua, không đè track đó. Hips chỉ mang thân trên (chân là con của Body), nên
+	## chân và giày đứng yên. Clip tự dựng có khoá "hips" (ride) áp sau, đè lên.
+	func _hips_roll(roll: float) -> void:
+		if _anim_keys_hips(player.current_animation):
+			return
+		CharacterBuilder._apply_bone_pose(skeleton, {"hips": Vector3(0.0, 0.0, roll)}, 1.0)
+
+	## Animation a của AnimationPlayer có track xoay xương Hips không (tra một lần mỗi tên, cache).
+	func _anim_keys_hips(a: String) -> bool:
+		if a == "":
+			return false
+		if not _hips_keyed.has(a):
+			var path := NodePath(String(player.get_node(player.root_node).get_path_to(skeleton)) + ":Hips")
+			_hips_keyed[a] = player.has_animation(a) and player.get_animation(a).find_track(path, Animation.TYPE_ROTATION_3D) >= 0
+		return _hips_keyed[a]
+
+	## Động tác vặt khi đứng yên, mỗi 6..12 s: nhìn quanh (đầu ±50°), đổi chân (lăn hông), Idle_Neutral. Đang nhìn một điểm
+	## (look_target: NPC sân khấu quay về người chơi khi thoại) thì không nhìn quanh.
+	func _fidget_update(dt: float) -> void:
+		if clip != "":
+			_fidget_stop()
+			return
+		if _fidget == "":
+			_fidget_t -= dt
+			if _fidget_t <= 0.0:
+				_fidget_t = randf_range(6.0, 12.0)
+				_fidget = FIDGETS[randi() % FIDGETS.size()]
+				if _fidget == "neutral" and not player.has_animation("Idle_Neutral"):
+					_fidget = "look"
+				if _fidget == "look" and look_target != null:
+					_fidget = "shift"
+				_fidget_time = 0.0
+				fidget_count += 1
+				if _fidget == "neutral":
+					_cur_anim = "Idle_Neutral"
+					player.play("Idle_Neutral", 0.25)
+					player.speed_scale = 1.0   # có thể bắt đầu ngay khung đầu đứng lại, khi speed_scale còn của Walk / Run
+			return
+		_fidget_time += dt
+		match _fidget:
+			"look":
+				_fidget_yaw = sin(_fidget_time / 3.0 * TAU) * 0.92   # ≈ ±50° sau bộ lọc của _look (lệch 0.92 lần ở chu kỳ 3 s)
+				if _fidget_time >= 3.0 or look_target != null:
+					_fidget_stop()
+			"shift":
+				_fidget_sway = 0.06 * sin(_fidget_time / 2.5 * PI)
+				if _fidget_time >= 2.5:
+					_fidget_stop()
+			"neutral":
+				if _fidget_time >= player.get_animation("Idle_Neutral").length:
+					_fidget_stop()
+
+	func _fidget_stop() -> void:
+		_fidget = ""
+		_fidget_yaw = 0.0
+		_fidget_sway = 0.0
 
 	func _look(dt: float) -> void:
 		var ty: float = 0.0
@@ -1825,7 +2692,8 @@ class RigAnimator extends Node:
 				if absf(ty) > 1.19:
 					ty = 0.0
 					tp = 0.0
-		_look_yaw = lerp_angle(_look_yaw, ty, minf(1.0, dt * 5.0))
+		# fidget nhìn quanh đi qua cùng bộ lọc: dừng giữa chừng (bắt đầu đi) thì đầu quay về êm, không giật
+		_look_yaw = lerp_angle(_look_yaw, clampf(ty + _fidget_yaw, -1.2, 1.2), minf(1.0, dt * 5.0))
 		_look_pitch = lerpf(_look_pitch, tp, minf(1.0, dt * 5.0))
 		if head_pivot:
 			head_pivot.rotation = Vector3(_look_pitch, PI + _look_yaw, 0.0)
@@ -1836,10 +2704,10 @@ class RigAnimator extends Node:
 		if _blink_closed > 0.0:
 			_blink_closed -= dt
 			if _blink_closed <= 0.0:
-				face_mat.albedo_texture = face_open
+				CharacterBuilder._show_face(self, false)
 			return
 		_blink_t -= dt
 		if _blink_t <= 0.0:
 			_blink_t = randf_range(2.0, 5.5)
 			_blink_closed = 0.13
-			face_mat.albedo_texture = face_closed
+			CharacterBuilder._show_face(self, true)

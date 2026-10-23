@@ -19,10 +19,14 @@
 #     ban đêm), đầu sân bóng phía làn bãi xe ngoài hàng rào (Màn 4), căn tin (Màn 5), mặt sân trong của module chứa
 #     phòng 311 (Extra). [E] trong hotspot -> StageManager.start_stage_from_roam() (roam_spawn = return_spawn: 3,5 m từ
 #     hotspot về phía tâm sân trong / về spawn BE6, đã kiểm chỗ trống).
-#   - HUD (anchors): gợi ý đáy giữa, giờ trong ngày trên trái, FPS + khoảng cách tới cổng FPTU trên phải.
+#   - HUD (anchors): gợi ý đáy giữa (kèm phím di chuyển kiểu GTA: nước rút / đi bộ / nhảy), thanh thể lực nước rút ngay
+#     trên dòng gợi ý (chỉ hiện khi đang đi bộ và đang nước rút / chưa hồi đầy), giờ trong ngày trên trái, FPS + khoảng
+#     cách tới cổng FPTU trên phải. Tường bờ kênh / lan can vô hình cao 1,6 m: cú nhảy (~0,95 m) không vượt qua được.
 #     [T] đổi preset giờ (GameFX.TOD_PRESETS ngoài trời + đêm; luôn áp lên Environment gốc của cảnh), [M] bản đồ
 #     (RoamMap: lớp tĩnh = 1 mesh 2D dựng sẵn, chỉ vẽ khi mở lần đầu / đổi kích thước / đổi màu hotspot; lớp động =
 #     người chơi + xe đang đỗ, vẽ lại theo nhịp HUD), [Z]/[C] xoay camera, [ESC] tạm dừng (StageManager).
+#   - Đám đông ba tầng (PedestrianSpawner "Pedestrians", spec vice-people Phần 3): dựng cuối _ready khi crowd_enabled,
+#     tránh cột sáng hotspot và điểm spawn.
 # Autoload chỉ dùng qua get_node_or_null("/root/GameFX" | "/root/StageManager") (test headless chạy được không cần
 # autoload); hàm tĩnh / enum lấy qua preload script.
 extends Node3D
@@ -41,10 +45,12 @@ const GROUND_SIZE: float = 12000.0
 const GROUND_TILE: float = 500.0          # ô chia mặt đất (tam giác sàn va chạm không dài hàng km)
 const GROUND_MESH_Y: float = -0.05
 const GROUND_COLLIDER_Y: float = 0.0
-const BANK_WALL_H: float = 1.0           # tường bờ kênh vô hình: từ dưới mặt nước lên 1 m trên mặt đất
-const BANK_GAP_DECK_MAX: float = 1.05    # tường bờ chỉ khoét dưới đoạn ribbon có mặt thấp hơn đỉnh tường (+5 cm)
-const DECK_GUARD_MAX_H: float = 1.5      # đoạn ribbon trên mặt nước thấp hơn ROAD_Y + 1,5 m: lan can vô hình 2 mép
-const DECK_GUARD_ABOVE: float = 1.0      # lan can vô hình cao tới mặt đường + 1 m
+const BANK_WALL_H: float = 1.6           # tường bờ kênh vô hình: từ dưới mặt nước lên 1,6 m trên mặt đất
+const BANK_GAP_DECK_MAX: float = 1.65    # tường bờ chỉ khoét dưới đoạn ribbon có mặt thấp hơn đỉnh tường (+5 cm)
+# đoạn ribbon trên mặt nước thấp hơn ROAD_Y + DECK_GUARD_MAX_H: lan can vô hình 2 mép. Suy từ BANK_GAP_DECK_MAX để
+# mọi đoạn được khoét khe tường bờ đều có lan can (không còn đoạn có khe mà hở mép).
+const DECK_GUARD_MAX_H: float = BANK_GAP_DECK_MAX - MapBuilder.ROAD_Y
+const DECK_GUARD_ABOVE: float = 1.6      # lan can vô hình cao tới mặt đường + 1,6 m (cú nhảy ~0,95 m không qua được)
 const WALL_BOTTOM_BELOW_WATER: float = 0.3
 const ROAD_HASH_CELL: float = 64.0
 const WET_MARGIN: float = 0.15           # chân (người / xe) thấp hơn WATER_Y + 0,15 = đang ở dưới kênh
@@ -64,7 +70,7 @@ const HINT_FLASH_S: float = 2.5
 const HUD_REFRESH: float = 0.2
 const MAP_TOP: float = 66.0              # bản đồ [M] bắt đầu dưới bảng giờ / FPS (cao ~56 px)
 const MAP_BOTTOM: float = 30.0
-const HINT_DEFAULT: String = "[WASD] đi · [Shift] chạy · [Z]/[C] xoay camera · [F] xe máy · [T] giờ trong ngày · [M] bản đồ · [ESC] tạm dừng"
+const HINT_DEFAULT: String = "[WASD] đi · [Shift] chạy nước rút · [Ctrl] đi bộ · [Space] nhảy · [Z]/[C] xoay camera · [F] xe máy · [T] giờ trong ngày · [M] bản đồ · [ESC] tạm dừng"
 const HINT_RIDING: String = "[F] xuống xe · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [H] còi"
 const HINT_NO_DISMOUNT: String = "Không có chỗ trống cạnh xe để xuống (nước / tường / vật cản) – chạy ra chỗ rộng rồi bấm [F]"
 const HINT_RESCUED: String = "Rơi xuống kênh! Đã đưa bạn về chỗ khô gần nhất"
@@ -77,6 +83,10 @@ const HOTSPOT_COLORS: Dictionary = {1: Color("#F37021"), 2: Color("#3498DB"), 3:
 var md: MapData
 var player: ThirdPersonController
 var bike: PlayerBike
+var pedestrians: PedestrianSpawner
+var traffic: RoamTraffic
+## false = không dựng người đi đường / xe chạy (test_free_roam đặt trước add_child để các pha kiểm tra cố định)
+var crowd_enabled: bool = true
 var mounted: bool = false
 var bike_parked: bool = false
 var campus_xf: Transform3D = Transform3D.IDENTITY
@@ -97,6 +107,8 @@ var hint_holder: Control
 var tod_label: Label
 var stats_label: Label
 var map_overlay: RoamMap
+## Thanh thể lực nước rút (ThirdPersonController.stamina): hiện khi đang đi bộ và đang nước rút / chưa hồi đầy.
+var stamina_bar: ProgressBar
 ## HUD kiểu thập niên 80 (Task VC-4): chỉ hiện ở phong cách vice; giờ = huy hiệu giờ trong ngày, ví Cóc Vàng, radar
 ## (blip hotspot theo màu màn, xe đang đỗ khi đi bộ, tuyến BE6 -> FPTU màu hồng), tên khu vực, "Xe máy" khi lên xe.
 var vice_hud: ViceHUD
@@ -145,6 +157,9 @@ func _ready() -> void:
 		if bool(tod.get("outdoor", false)) or k == "night":
 			tod_cycle.append(k)
 	set_time_of_day("morning")
+	if crowd_enabled:
+		_build_pedestrians()
+		_build_traffic()
 	player.camera.make_current()
 	var sm: Node = get_node_or_null("/root/StageManager")
 	if sm:
@@ -524,6 +539,34 @@ func _build_bike() -> void:
 	bike.global_position = Vector3(0.0, -50.0, 0.0)
 
 
+## Đám đông ba tầng (spec vice-people-and-movement, Phần 3 + Amendment): tránh cột sáng hotspot và điểm spawn.
+func _build_pedestrians() -> void:
+	pedestrians = PedestrianSpawner.new()
+	pedestrians.name = "Pedestrians"
+	add_child(pedestrians)
+	var avoid: Array = [spawn_xf.origin]
+	for h: Area3D in hotspots:
+		avoid.append(h.global_position)
+	pedestrians.setup(md, player, {"bike": bike, "roam": self, "avoid": avoid})
+
+
+## Xe chạy (spec vice-people-and-movement, Amendment 2026-10-22): làn bên phải, dừng trước người / xe; camera đi xuyên xe.
+func _build_traffic() -> void:
+	traffic = RoamTraffic.new()
+	traffic.name = "Traffic"
+	add_child(traffic)
+	var opts: Dictionary = {"bike": bike, "roam": self}
+	if pedestrians:
+		opts["peds_fn"] = pedestrians.pedestrians
+	traffic.setup(md, player, opts)
+	for b: Variant in traffic.bodies():
+		var body: CollisionObject3D = b
+		if player and player.cam_ray:
+			player.cam_ray.add_exception(body)
+		if bike and bike.spring_arm:
+			bike.spring_arm.add_excluded_object(body.get_rid())
+
+
 func _apply_spawn() -> void:
 	var default_xf: Transform3D = md.spawn_transform()
 	spawn_xf = default_xf
@@ -548,8 +591,9 @@ func _apply_spawn() -> void:
 # ===========================================================================
 ## Mặt sàn đứng được tại (p.x, p.z) quanh độ cao base_y: tia từ base_y + FLOOR_PROBE_UP xuống base_y - FLOOR_PROBE_DOWN
 ## phải chạm sàn hướng lên, cao hơn mực nước (không phải WaterFloor), và capsule người chơi (r 0,4, cao 1,7, tâm +0,85)
-## đặt trên đó không chạm vật nào. Trả về điểm sàn (Vector3) hoặc null.
-func free_spot_at(p: Vector3, base_y: float, exclude: Array[RID] = []) -> Variant:
+## đặt trên đó không chạm vật nào (probe: capsule khác, vd. cỡ người đi đường của PedestrianSpawner). Trả về điểm sàn
+## (Vector3) hoặc null.
+func free_spot_at(p: Vector3, base_y: float, exclude: Array[RID] = [], probe: CapsuleShape3D = null) -> Variant:
 	if not is_inside_tree():
 		return null
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
@@ -567,9 +611,10 @@ func free_spot_at(p: Vector3, base_y: float, exclude: Array[RID] = []) -> Varian
 	var fy: float = (hit["position"] as Vector3).y
 	if fy < MapBuilder.WATER_Y + 0.12 or hit.get("collider") == water_floor:
 		return null
+	var cap: CapsuleShape3D = probe if probe != null else _probe_capsule
 	var q := PhysicsShapeQueryParameters3D.new()
-	q.shape = _probe_capsule
-	q.transform = Transform3D(Basis.IDENTITY, Vector3(p.x, fy + SPOT_LIFT + PLAYER_HEIGHT * 0.5, p.z))
+	q.shape = cap
+	q.transform = Transform3D(Basis.IDENTITY, Vector3(p.x, fy + SPOT_LIFT + cap.height * 0.5, p.z))
 	q.exclude = excl
 	q.collide_with_areas = false
 	if not space.intersect_shape(q, 1).is_empty():
@@ -820,7 +865,9 @@ func mount_bike() -> void:
 	var yaw: float = bike.rotation.y if bike_parked else player.facing_yaw()
 	bike.process_mode = Node.PROCESS_MODE_INHERIT
 	bike.visible = true
-	bike.global_position = pos + Vector3(0.0, 0.25, 0.0)
+	# đặt xe đúng độ cao nghỉ (gốc dưới sàn BIKE_FLOOR_OFFSET; xe đỗ đã nằm sẵn ở đó): thả từ cao 0,25 m thì floor snap của xe
+	# có chỗ lún qua sàn ConcavePolygon xuống WaterFloor, rồi không xuống xe được
+	bike.global_position = pos if bike_parked else pos - Vector3(0.0, BIKE_FLOOR_OFFSET, 0.0)
 	bike.rotation = Vector3(0.0, yaw, 0.0)
 	bike.velocity = Vector3.ZERO
 	bike.current_speed_ms = 0.0
@@ -936,7 +983,7 @@ func rescue_from_water() -> void:
 		target = find_free_spot(spawn_xf.origin, spawn_xf.origin.y, SPAWN_SEARCH_M, excl)
 	var pos: Vector3 = target if target is Vector3 else spawn_xf.origin
 	if mounted:
-		bike.global_position = pos + Vector3(0.0, 0.25, 0.0)
+		bike.global_position = pos - Vector3(0.0, BIKE_FLOOR_OFFSET, 0.0)   # độ cao nghỉ, như mount_bike
 		bike.velocity = Vector3.ZERO
 		bike.current_speed_ms = 0.0
 		bike.fallback_respawn = pos + Vector3(0.0, 0.8, 0.0)
@@ -1056,6 +1103,18 @@ func _build_hud() -> void:
 	hud.add_child(map_overlay)
 	_sync_map_hotspots()
 	_build_vice_hud()
+	# Thanh thể lực nước rút (Shift): hiện khi đang nước rút hoặc chưa hồi đầy; nằm ngay trên bảng gợi ý đáy (bảng 2 dòng
+	# cao 63 px + lề 24 -> đỉnh bảng ở 87 px từ đáy; thanh cách 2 px, vẫn dưới tên khu vực của ViceHUD ở 104 px)
+	stamina_bar = GameFXScript.make_bar(100.0, Color("#3FF2FF"), 10)
+	stamina_bar.name = "StaminaBar"
+	stamina_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	stamina_bar.offset_left = -110.0
+	stamina_bar.offset_right = 110.0
+	stamina_bar.offset_top = -99.0
+	stamina_bar.offset_bottom = -89.0
+	stamina_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stamina_bar.visible = false
+	hud.add_child(stamina_bar)
 
 
 ## ViceHUD (nút con của cảnh, lớp vẽ 0 dưới HUD): tên khu vực nằm trên dòng gợi ý 2 dòng ở đáy (đáy 104 px).
@@ -1129,6 +1188,10 @@ func _physics_process(delta: float) -> void:
 		return
 	_watch_water(delta)
 	_update_hotspot()
+	if stamina_bar:
+		var on_foot: bool = not mounted and player.visible
+		stamina_bar.value = player.stamina * 100.0
+		stamina_bar.visible = on_foot and (player.stamina < 0.999 or player.is_sprinting) and not (map_overlay and map_overlay.visible)
 	if _hint_flash_t > 0.0:
 		_hint_flash_t -= delta
 	_hud_timer -= delta

@@ -32,7 +32,7 @@
 |---|---|---|
 | D1 | Vice look replaces the current look, or is a switchable style | Switchable: `art_style = "vice"` by default, `"classic"` kept in Settings |
 | D2 | UI palette | Vice palette (dark purple panels, pink `#FF5FB0` / cyan `#3FF2FF` borders, italic headings); FPT orange only on FPT-branded items |
-| D3 | Character proportions in vice | Keep the hybrid rigged bodies and code heads, no toon outline, head scale 1.15 instead of 1.3 |
+| D3 | Character proportions in vice | Superseded by docs/superpowers/specs/2026-10-22-vice-people-and-movement-design.md: PS2 people at realistic scale |
 | D4 | Temporal "trails" smear (signature PS2 effect) | On at sunset and night, off by day; Settings toggle |
 | D5 | HUD semantics | Money = "Cóc Vàng" (CV) wallet from the open-world plan; 5 stars = "Thầy Toàn để ý" (lecturer attention) |
 
@@ -99,6 +99,8 @@ Values for `sunset`, `day`, `night` are the final ones in `tests/preview_vice_lo
 
 ### Task VC-3: Night layers (neon, window lights, street lamps)
 
+**Status:** Dropped by the owner on 2026-10-23.
+
 **Files:**
 - Modify: `scripts/MapBuilder.gd` (`opts.neon: bool = false` builds the look-dev neon as one MultiMesh per colour in group `vice_neon`, roof edge `height + 0.55` and ground-floor band `3.6 m`, plus vertical corner tubes on `mall` and `shophouse`; add UV2 per building: `uv2 = (building_id % 997) / 997 + local storey index` so the window-light shader can vary lit windows per building and storey), `scripts/ViceStyle.gd` (`facade_night_material(style) -> ShaderMaterial`: a spatial shader variant of the facade material with the same albedo texture and UV1, plus an emission term `window_mask(uv1) * step(hash(uv2 + floor(uv1)), 0.35)` where `window_mask` is the look-dev glass-pixel mask baked into a second texture, so about 35 % of windows are lit and the pattern differs per building and storey), `scripts/PropBuilder.gd` (`build_lamp_field(parent, points)` MultiMesh lamp posts with emissive heads; real `OmniLight3D` only for the 8 lamps nearest the camera, re-assigned every 0.5 s by a small `LampLights` node), `scripts/FPTUCampusBuilder.gd` (FPT orange signage emission 0.35 stays a soft emitter; gate sign gets a neon frame in group `vice_neon`)
 - Create: `tests/test_night_layers.gd`
@@ -130,6 +132,8 @@ Values for `sunset`, `day`, `night` are the final ones in `tests/preview_vice_lo
 
 ### Task VC-5: Vice title screen
 
+**Status:** Dropped by the owner on 2026-10-23.
+
 **Files:** Modify `scripts/MainMenu.gd` (and `scenes/MainMenu.tscn` only if node paths change); test `tests/test_main_menu.gd`.
 
 - Background: existing campus scene with the `sunset` look (ViceStyle), palms on, camera shots retimed to slow dolly moves along Đường D1 at golden hour; a second shot over the Beverly towers if FreeRoam data is available.
@@ -138,10 +142,14 @@ Values for `sunset`, `day`, `night` are the final ones in `tests/preview_vice_lo
 
 ### Task VC-6: Vehicles and crowd palette
 
+**Status:** Outfit items and vehicle paint dropped by the owner on 2026-10-23 (clothes unchanged; only the people models matter).
+
 **Files:** Modify `scripts/PropBuilder.gd` (scooter paint palette `PASTEL_PAINTS = [#FF8FC7, #7FE3E0, #FFD27F, #B79CFF, #F4F4F4, #FF6F6F]`, clearcoat 0.7 for the 80s gloss), `scenes/TrafficCar.tscn` / its builder (boxy sedan silhouette and pastel colours), `scripts/CharacterBuilder.gd` (`casual` and crowd presets draw from a pastel outfit palette; new Pillow texture `char_shirt_hawaii.png` (floral pattern, code-drawn) for some casual NPCs; `lecturer_boss` (ThS. ToanHLM) can wear a white blazer over a pastel tee as a nod to 80s TV-detective fashion; students keep the orange FPT polo), `generate_character_textures.py` (the Hawaiian shirt texture), tests `tests/test_character_builder.gd`, `tests/test_wheel_spin.gd`.
 - [ ] Steps: implement, regenerate textures (`python generate_character_textures.py`), import, run tests, preview `tests/preview_rigged.gd` + `tests/preview_props.gd`, commit `feat(vice): pastel vehicles, Hawaiian-shirt crowd, 80s outfits`.
 
 ### Task VC-7: Trails and film post-processing
+
+**Status:** Dropped by the owner on 2026-10-23.
 
 **Files:** Create `scripts/fx/ViceTrails.gd` (`class_name ViceTrails extends CompositorEffect`), `scripts/fx/vice_trails.glsl` (compute shader source embedded as a const string in the .gd if loading .glsl files is impractical), `tests/test_vice_trails.gd`; modify `scripts/ViceStyle.gd` (attach a `Compositor` with the effect to the WorldEnvironment's camera or `WorldEnvironment.compositor` when `trails_enabled` and the look's `trails > 0`), `scripts/GameFX.gd` (vignette shader gains subtle grain `0.035` and chromatic aberration `0.0015` in vice).
 
@@ -153,10 +161,14 @@ Values for `sunset`, `day`, `night` are the final ones in `tests/preview_vice_lo
 
 ### Task VC-8: Synth-80s music and scooter radio
 
+**Status:** Dropped by the owner on 2026-10-23.
+
 **Files:** Modify `scripts/MusicDirector.gd` (styles `synth80` (gated-reverb snare, square/saw bass, arpeggiated lead, chorus pad), `newwave`, `rock80`, `lofi`), `scripts/GameFX.gd` (`music_play` accepts the new styles), `scripts/FreeRoam.gd` + `scripts/RoadManager.gd` (radio while riding: `R` cycles three fictional stations "Cóc FM 88.8" (synth80), "D1 Rock 101" (rock80), "Hoa Giấy Chill" (lofi); station name shown with `ViceHUD.show_vehicle()`-style text; DJ one-liners as subtitles every 60-90 s picked from a new `story/Lines.gd`-compatible bank `RADIO_LINES` (Vietnamese, all fictional)), `tests/test_music.gd`.
 - [ ] Steps: extend the music test (each new style plays 2 s without errors and produces non-silent frames), implement, run, commit `feat(vice): synth-80s styles and in-scooter radio`.
 
 ### Task VC-9: Gallery, docs, regression
+
+**Status:** Dropped by the owner on 2026-10-23.
 
 - [ ] `tests/preview_vice.gd`: final gallery (menu, 7 stages, FreeRoam dawn/day/sunset/night, ride at night with trails) -> `docs/preview/vice_*.png`.
 - [ ] `PLAN.md` new section "XIII. VICE CITY ART DIRECTION" (English) with commit hashes; `README.md` (Vietnamese, player-facing): one paragraph about the new look and the Settings switch; credits keep the OSM attribution.

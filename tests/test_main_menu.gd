@@ -115,8 +115,9 @@ func _process(_d: float) -> bool:
 				if vice_on != (st == "vice") or String(menu.get_meta("visual_preset", "")) != "dawn":
 					_fail("đổi sang %s không áp lại preset dawn của menu (vice_look=%s)" % [st, str(menu.get_meta("vice_look", ""))])
 					return true
-				if CharacterBuilder.toon != (st == "classic") or not is_equal_approx(CharacterBuilder.head_scale_default, 1.3 if st == "classic" else 1.15):
-					_fail("%s: CharacterBuilder.toon / head_scale_default sai" % st)
+				# vice = người PS2 (CharacterBuilder.ps2, đầu tỉ lệ thật: head_scale_default 1.0), spec vice-people-and-movement
+				if CharacterBuilder.toon != (st == "classic") or CharacterBuilder.ps2 != (st == "vice") or not is_equal_approx(CharacterBuilder.head_scale_default, 1.3 if st == "classic" else 1.0):
+					_fail("%s: CharacterBuilder.toon / ps2 / head_scale_default sai" % st)
 					return true
 				# Nút mức đồ hoạ (menu chính + menu tạm dừng) đổi chú thích theo phong cách: vice không quảng cáo SDFGI / SSAO
 				var pause_btns: Array = sm.get("pause_quality_buttons")
