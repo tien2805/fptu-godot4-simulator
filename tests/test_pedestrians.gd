@@ -47,7 +47,9 @@ func _part_b_start() -> void:
 	var thigh: int = sk.find_bone("UpperLeg.L")
 	var arm: int = sk.find_bone("UpperArm.L")
 	CharacterBuilder.pose(rig, "phone_stand")
-	var leg_deg: float = rad_to_deg(sk.get_bone_pose_rotation(thigh).angle_to(sk.get_bone_rest(thigh).basis.get_rotation_quaternion()))
+	# chân giữ tư thế đứng gốc (đứng trung tính _neutral_base, không phải rest glTF vốn bước chân phải lên trước)
+	var thigh_base: Transform3D = CharacterBuilder._base_local(sk, CharacterBuilder._base_of(sk), thigh)
+	var leg_deg: float = rad_to_deg(sk.get_bone_pose_rotation(thigh).angle_to(thigh_base.basis.get_rotation_quaternion()))
 	var arm_deg: float = rad_to_deg(sk.get_bone_pose_rotation(arm).angle_to(sk.get_bone_rest(arm).basis.get_rotation_quaternion()))
 	rig.free()
 	if not _check(leg_deg < 1.0 and arm_deg > 20.0, "phone_stand keeps the legs standing and raises the arms (thigh %.1f°, arm %.1f°)" % [leg_deg, arm_deg]):

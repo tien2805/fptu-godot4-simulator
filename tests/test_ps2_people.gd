@@ -206,7 +206,9 @@ func _task4_check_sit() -> void:
 		for s: String in ["L", "R"]:
 			var kb: int = sk.find_bone("LowerLeg." + s)
 			var fb: int = sk.find_bone("Foot." + s)
-			var d_rest: float = sk.get_bone_global_rest(kb).origin.distance_to(sk.get_bone_global_rest(fb).origin)
+			# mốc: khoảng gối -> bàn chân ở tư thế đứng gốc (_neutral_base; rest glTF khi thân không có gốc)
+			var nb: Dictionary = CharacterBuilder._base_of(sk)
+			var d_rest: float = CharacterBuilder._base_global(sk, nb, kb).origin.distance_to(CharacterBuilder._base_global(sk, nb, fb).origin)
 			var d_now: float = sk.get_bone_global_pose(kb).origin.distance_to(sk.get_bone_global_pose(fb).origin)
 			if c == static_c and s == "L":
 				print("  sit: knee -> foot %.3f (rest %.3f)" % [d_now, d_rest])
@@ -265,6 +267,14 @@ func _task4_check_rest_and_bake() -> void:
 	if not _check(absf(d_top) < 0.05, "baked rider top must sit near head_top (%.3f, expected within 0.05)" % d_top):
 		r.free()
 		return
+	# Hai gối người ngồi xe gần đối xứng: rest Quaternius là thế đứng 3/4 (chân phải bước trước) nên trước khi có tư thế gốc
+	# trung tính (_neutral_base) gối phải cao hơn gối trái 0,15 m; còn lại ~0,08 m trước / sau do hông xoay 27° (giữ nguyên)
+	var kl: Vector3 = (to_root * rsk.get_bone_global_pose(rsk.find_bone("LowerLeg.L")).origin) * r.scale.x
+	var kr: Vector3 = (to_root * rsk.get_bone_global_pose(rsk.find_bone("LowerLeg.R")).origin) * r.scale.x
+	print("  baked rider knees L-R: dy %.3f m, dz %.3f m" % [kl.y - kr.y, kl.z - kr.z])
+	if not _check(absf(kl.y - kr.y) < 0.05 and absf(kl.z - kr.z) < 0.1, "the ride pose must put the knees roughly level (L-R dy %.3f, dz %.3f m)" % [kl.y - kr.y, kl.z - kr.z]):
+		r.free()
+		return
 	# Bake lần nữa cùng người, clip "": phải đứng (đế giày ở y 0, cao 1.70..1.86 = 1.78 +- 4 %). Cũng chứng minh khoá cache skin
 	# gồm tư thế: cache bỏ qua tư thế sẽ trả phần thân ngồi (đáy 0.12, cao ~1.66)
 	CharacterBuilder.pose(r, "", 0.0)
@@ -273,6 +283,22 @@ func _task4_check_rest_and_bake() -> void:
 	print("  same rider baked at clip \"\": height %.3f, bottom %.3f" % [st.size.y, st.position.y])
 	if not _check(st.size.y > 1.70 and st.size.y < 1.86 and absf(st.position.y) < 0.03, "the same rider baked at clip \"\" must stand (height %.3f, bottom %.3f)" % [st.size.y, st.position.y]):
 		return
+	# Tư thế đứng tĩnh ("" và "phone_stand", không đụng chân) trên thân nam và nữ: hai bàn chân ngang nhau, lệch trước / sau
+	# < 0,1 m (rest Quaternius lệch ~0,35 m: chân phải bước trước)
+	for preset: String in ["student_m", "student_f"]:
+		var sc: Node3D = CharacterBuilder.build({"preset": preset, "seed": 11, "animate": false, "rigged": true})
+		var ssk: Skeleton3D = sc.get_meta("skeleton") as Skeleton3D
+		var s_root: Transform3D = CharacterBuilder._local_xform(ssk, sc)
+		for clip: String in ["", "phone_stand"]:
+			CharacterBuilder.pose(sc, clip, 0.0)
+			var fl: Vector3 = (s_root * CharacterBuilder._bone_global_now(ssk, ssk.find_bone("Foot.L")).origin) * sc.scale.x
+			var fr: Vector3 = (s_root * CharacterBuilder._bone_global_now(ssk, ssk.find_bone("Foot.R")).origin) * sc.scale.x
+			if clip == "":
+				print("  %s standing feet L-R: dz %.3f m, dy %.3f m" % [preset, fl.z - fr.z, fl.y - fr.y])
+			if not _check(absf(fl.z - fr.z) < 0.1 and absf(fl.y - fr.y) < 0.02, "%s pose('%s') must stand with the feet level (L-R dz %.3f, dy %.3f m)" % [preset, clip, fl.z - fr.z, fl.y - fr.y]):
+				sc.free()
+				return
+		sc.free()
 
 
 func _task4_check_readd() -> void:

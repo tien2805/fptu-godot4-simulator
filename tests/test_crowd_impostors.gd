@@ -45,9 +45,9 @@ func _stride_ok() -> bool:
 	var sk: Skeleton3D = rig.get_meta("skeleton", null) as Skeleton3D
 	if not _check(sk != null, "a rigged body exposes its skeleton (meta 'skeleton')"):
 		return false
-	# Tư thế nghỉ (rest) của rig Quaternius vốn lệch: chân phải đã hơi bước trước (bàn chân R trước L ~0,36, gối ~0,26 đơn vị
-	# mô hình), nên đo bằng bàn chân (Foot.L/R) và hướng tách: "stride" đưa chân TRÁI ra trước (+Z, mô hình nhìn +Z), chân
-	# phải ra sau, hai bàn chân tách xa hơn lúc nghỉ.
+	# Mốc là tư thế đứng tĩnh pose("") (gốc trung tính _neutral_base: hai bàn chân ngang nhau; rest glTF thì chân phải bước
+	# trước ~0,36 đơn vị mô hình). "stride" đưa chân TRÁI ra trước (+Z, mô hình nhìn +Z), chân phải ra sau.
+	CharacterBuilder.pose(rig, "")
 	var fl0: Vector3 = CharacterBuilder._bone_global_now(sk, sk.find_bone("Foot.L")).origin
 	var fr0: Vector3 = CharacterBuilder._bone_global_now(sk, sk.find_bone("Foot.R")).origin
 	CharacterBuilder.pose(rig, "stride")
@@ -57,7 +57,7 @@ func _stride_ok() -> bool:
 	var fr: Vector3 = CharacterBuilder._bone_global_now(sk, sk.find_bone("Foot.R")).origin
 	rig.free()
 	print("  stride: foot L-R along Z %.2f (rest %.2f), knee L-R %.2f (model units)" % [fl.z - fr.z, fl0.z - fr0.z, kl.z - kr.z])
-	return _check(fl.z - fr.z > 0.4 and fl.z - fr.z > absf(fl0.z - fr0.z) + 0.1 and kl.z - kr.z > 0.1, "the stride pose puts the left leg forward and the right leg back (foot L-R %.2f, rest %.2f, knee L-R %.2f)" % [fl.z - fr.z, fl0.z - fr0.z, kl.z - kr.z])
+	return _check(absf(fl0.z - fr0.z) < 0.1 and fl.z - fr.z > 0.5 and kl.z - kr.z > 0.2, "the stride pose puts the left leg forward and the right leg back from a level stand (foot L-R %.2f, stand %.2f, knee L-R %.2f)" % [fl.z - fr.z, fl0.z - fr0.z, kl.z - kr.z])
 
 
 func _crowd_ok() -> bool:

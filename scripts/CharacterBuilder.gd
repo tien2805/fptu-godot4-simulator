@@ -583,6 +583,10 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 	root.set_meta("height", height)
 	root.set_meta("skin_idx", skin_idx)
 	root.set_meta("skeleton", sk)
+	var base_key: String = String(table[body_key])
+	if not _base_cache.has(base_key):
+		_base_cache[base_key] = _neutral_base(sk)
+	sk.set_meta("base", _base_cache[base_key])   # tư thế đứng trung tính làm gốc cho pose() tĩnh và _apply_bone_pose
 	if ps2:
 		root.set_meta("ps2_head", true)
 	# --- Animator
@@ -970,12 +974,19 @@ static func pose(root: Node3D, clip: String, t: float = 0.0, params: Dictionary 
 	an._apply({}, cpose, 1.0 if clip != "" else 0.0, 0.0)
 	an.free()
 
-## Tư thế tĩnh cho thân rigged (không cần Animator): xương đặt theo bảng clip của Animator, đè tư thế nghỉ; clip "" = nghỉ.
+## Tư thế tĩnh cho thân rigged (không cần Animator): xương đặt theo bảng clip của Animator, đè tư thế đứng trung tính
+## (_neutral_base); clip "" = đứng trung tính.
 static func _rig_pose(root: Node3D, clip: String, t: float, params: Dictionary) -> void:
 	var sk: Skeleton3D = root.get_meta("skeleton", null) as Skeleton3D
 	if sk == null:
 		return
 	sk.reset_bone_poses()
+	var nb: Dictionary = _base_of(sk)
+	if not nb.is_empty():
+		for b: int in nb["bones"]:
+			var l: Transform3D = nb["local"][b]
+			sk.set_bone_pose_position(b, l.origin)
+			sk.set_bone_pose_rotation(b, l.basis.get_rotation_quaternion())
 	if clip == "":
 		_mark_bone_poses_dirty(sk)   # tư thế nghỉ đặt ngoài cây cũng phải còn khi bake() và khi vào cây
 		return
@@ -988,6 +999,77 @@ static func _rig_pose(root: Node3D, clip: String, t: float, params: Dictionary) 
 	_apply_bone_pose(sk, cpose, 1.0)   # tự đánh dấu xương khi ngoài cây
 
 
+## Tư thế đứng trung tính của thân rigged, thay tư thế nghỉ glTF làm GỐC cho tư thế tĩnh và cho phép xoay khớp của
+## _apply_bone_pose / _char_rot_local (RigAnimator dùng chung). Rest của gói Quaternius chính là khung đầu Idle, một thế đứng
+## "3/4": hông xoay 27°, chân phải bước trước (bàn chân ~0,36, gối ~0,26 đơn vị mô hình), bàn chân trái xoè 59°; clip tĩnh để
+## nguyên chân ("", "phone_stand", người ngồi xe bake...) vì thế lệch chân. Chỉ chỉnh hai chân: đùi xoay quanh khớp hông sao
+## cho cổ chân nằm dưới hông (z = trung bình z hai khớp hông, giữ độ dang ngang), gối giữ độ gập; bàn chân (đích IK Foot.L/R,
+## con của Root) đặt phẳng ở độ cao cũ dưới cổ chân mới, xoè đối xứng FOOT_TOE_OUT. Hông / thân trên giữ rest (RigAnimator đặt
+## "hips" trong khung Body của animation). Tính một lần mỗi thân (theo đường dẫn mô hình, _base_cache), gắn vào skeleton (meta
+## "base"): {"local", "global": Array[Transform3D] mọi xương, "bones": xương khác rest}. {} khi thiếu xương chân -> dùng rest.
+const FOOT_TOE_OUT: float = 0.21   # ~12°
+static var _base_cache: Dictionary = {}
+
+static func _neutral_base(sk: Skeleton3D) -> Dictionary:
+	var uls: Array[int] = [sk.find_bone("UpperLeg.L"), sk.find_bone("UpperLeg.R")]
+	var lls: Array[int] = [sk.find_bone("LowerLeg.L"), sk.find_bone("LowerLeg.R")]
+	var fts: Array[int] = [sk.find_bone("Foot.L"), sk.find_bone("Foot.R")]
+	if (uls + lls + fts).has(-1):
+		return {}
+	var n: int = sk.get_bone_count()
+	var loc: Array[Transform3D] = []
+	var glob: Array[Transform3D] = []
+	for b: int in range(n):
+		loc.append(sk.get_bone_rest(b))
+		glob.append(sk.get_bone_global_rest(b))
+	var zmid: float = (glob[uls[0]].origin.z + glob[uls[1]].origin.z) * 0.5
+	var bones := PackedInt32Array()
+	for i: int in range(2):
+		var u: int = uls[i]
+		var lg0: Transform3D = glob[lls[i]]
+		var hip: Vector3 = glob[u].origin
+		var ankle: Vector3 = lg0.origin + lg0.basis.y.normalized() * ANKLE_DOWN_SHIN
+		var v: Vector3 = ankle - hip
+		var tgt := Vector3(v.x, 0.0, zmid - hip.z)
+		tgt.y = -sqrt(maxf(v.length_squared() - tgt.x * tgt.x - tgt.z * tgt.z, 0.0))
+		var ug := Transform3D(Basis(Quaternion(v.normalized(), tgt.normalized())) * glob[u].basis, hip)
+		var pu: int = sk.get_bone_parent(u)
+		loc[u] = (glob[pu].affine_inverse() * ug) if pu >= 0 else ug
+		var lg: Transform3D = ug * loc[lls[i]]
+		var ankle_n: Vector3 = lg.origin + lg.basis.y.normalized() * ANKLE_DOWN_SHIN
+		# bàn chân: trục Y của xương Foot chạy gót -> mũi (nằm ngang); chân trái (+X) xoè về +X, chân phải về -X
+		var f: int = fts[i]
+		var fg: Transform3D = glob[f]
+		var ry := Basis(Vector3.UP, (FOOT_TOE_OUT if i == 0 else -FOOT_TOE_OUT) - atan2(fg.basis.y.x, fg.basis.y.z))
+		var off: Vector3 = ry * (fg.origin - ankle)
+		var fgn := Transform3D(ry * fg.basis, Vector3(ankle_n.x + off.x, fg.origin.y, ankle_n.z + off.z))
+		var pf: int = sk.get_bone_parent(f)
+		loc[f] = (glob[pf].affine_inverse() * fgn) if pf >= 0 else fgn
+		bones.append(u)
+		bones.append(f)
+	for b: int in range(n):   # toàn cục từ cục bộ mới (đi ngược lên chuỗi cha; một lần mỗi thân)
+		var xf: Transform3D = loc[b]
+		var p: int = sk.get_bone_parent(b)
+		while p >= 0:
+			xf = loc[p] * xf
+			p = sk.get_bone_parent(p)
+		glob[b] = xf
+	return {"local": loc, "global": glob, "bones": bones}
+
+
+## Gốc tư thế của skeleton (meta "base" từ _neutral_base), {} = dùng rest.
+static func _base_of(sk: Skeleton3D) -> Dictionary:
+	return sk.get_meta("base") if sk.has_meta("base") else {}
+
+
+static func _base_local(sk: Skeleton3D, nb: Dictionary, b: int) -> Transform3D:
+	return nb["local"][b] if not nb.is_empty() else sk.get_bone_rest(b)
+
+
+static func _base_global(sk: Skeleton3D, nb: Dictionary, b: int) -> Transform3D:
+	return nb["global"][b] if not nb.is_empty() else sk.get_bone_global_rest(b)
+
+
 ## Godot 4.7: ngoài cây, set_bone_pose_*() không đánh dấu tư thế toàn cục của xương cần tính lại, nên get_bone_global_pose()
 ## (bake) và cả lần vào cây sau đó vẫn thấy tư thế cũ; force_update_all_bone_transforms() cũng bỏ qua xương không bị đánh dấu.
 ## Gán lại show_rest_only (giá trị không đổi) đánh dấu lại mọi xương. Trong cây không cần (setter tự đánh dấu).
@@ -997,23 +1079,24 @@ static func _mark_bone_poses_dirty(sk: Skeleton3D) -> void:
 
 
 ## Áp tư thế {khớp: Euler hệ nhân vật} lên xương Quaternius, trộn với tư thế hiện tại theo w (1 = đè hẳn):
-## local = (Pg⁻¹·R·Pg)·rest_local (Pg⁻¹·R·Pg ở _char_rot_local); "hips_y" dời xương Body (đơn vị mô hình). Nơi DUY NHẤT
+## local = (Pg⁻¹·R·Pg)·base_local (Pg⁻¹·R·Pg ở _char_rot_local; base = tư thế đứng trung tính _neutral_base, thiếu thì rest); "hips_y" dời xương Body (đơn vị mô hình). Nơi DUY NHẤT
 ## chứa phép này: pose() tĩnh và RigAnimator (_apply_bones, _hips_roll) đều gọi hàm này. Gọi được cả khi skeleton ngoài
 ## cây (tự đánh dấu xương).
 static func _apply_bone_pose(sk: Skeleton3D, cpose: Dictionary, w: float) -> void:
+	var nb: Dictionary = _base_of(sk)
 	for k: String in cpose.keys():
 		if not BONE_OF.has(k):
 			continue
 		var b: int = sk.find_bone(String(BONE_OF[k]))
 		if b < 0:
 			continue
-		var local: Basis = _char_rot_local(sk, b, cpose[k]) * sk.get_bone_rest(b).basis
+		var local: Basis = _char_rot_local(sk, b, cpose[k]) * _base_local(sk, nb, b).basis
 		var q_cur: Quaternion = sk.get_bone_pose_rotation(b)
 		sk.set_bone_pose_rotation(b, q_cur.slerp(local.get_rotation_quaternion(), w))
 	if cpose.has("hips_y"):
 		var body: int = sk.find_bone("Body")
 		if body >= 0:
-			var rest_pos: Vector3 = sk.get_bone_rest(body).origin
+			var rest_pos: Vector3 = _base_local(sk, nb, body).origin
 			var p: Vector3 = sk.get_bone_pose_position(body)
 			sk.set_bone_pose_position(body, p.lerp(rest_pos + Vector3(0.0, float(cpose["hips_y"]), 0.0), w))
 	# Bàn chân Quaternius (Foot.L/R) là đích IK con của Root, không phải con của ống chân: clip gập chân mà để nguyên thì bàn chân
@@ -1026,9 +1109,9 @@ static func _apply_bone_pose(sk: Skeleton3D, cpose: Dictionary, w: float) -> voi
 		var fb: int = sk.find_bone("Foot." + s.to_upper())
 		if lb < 0 or fb < 0:
 			continue
-		var l0: Transform3D = sk.get_bone_global_rest(lb)
-		var follow: Transform3D = _bone_global_now(sk, lb) * l0.affine_inverse()   # chuyển động cứng của ống chân so với nghỉ
-		var foot: Transform3D = follow * sk.get_bone_global_rest(fb)
+		var l0: Transform3D = _base_global(sk, nb, lb)
+		var follow: Transform3D = _bone_global_now(sk, lb) * l0.affine_inverse()   # chuyển động cứng của ống chân so với gốc
+		var foot: Transform3D = follow * _base_global(sk, nb, fb)
 		if cpose.has("foot_" + s):
 			var ef: Vector3 = cpose["foot_" + s]
 			if MODEL_YAW != 0.0:
@@ -1044,13 +1127,13 @@ static func _apply_bone_pose(sk: Skeleton3D, cpose: Dictionary, w: float) -> voi
 	_mark_bone_poses_dirty(sk)
 
 
-## Xoay e (Euler hệ nhân vật) đổi sang hệ cục bộ của xương b: Pg⁻¹·R·Pg, Pg = rest toàn cục của xương cha (mô hình quay
+## Xoay e (Euler hệ nhân vật) đổi sang hệ cục bộ của xương b: Pg⁻¹·R·Pg, Pg = gốc toàn cục (_base_global) của xương cha (mô hình quay
 ## MODEL_YAW nên đảo dấu x, z). Dùng chung cho _apply_bone_pose (tư thế tuyệt đối) và RigAnimator._add_rot (xoay cộng thêm).
 static func _char_rot_local(sk: Skeleton3D, b: int, e: Vector3) -> Basis:
 	if MODEL_YAW != 0.0:
 		e = Vector3(-e.x, e.y, -e.z)
 	var pb: int = sk.get_bone_parent(b)
-	var pg: Basis = sk.get_bone_global_rest(pb).basis if pb >= 0 else Basis.IDENTITY
+	var pg: Basis = _base_global(sk, _base_of(sk), pb).basis if pb >= 0 else Basis.IDENTITY
 	return pg.inverse() * Basis.from_euler(e) * pg
 
 
