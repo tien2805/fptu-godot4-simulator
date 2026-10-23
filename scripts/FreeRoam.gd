@@ -1515,6 +1515,13 @@ func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 			_cine_saved["proc"][n2] = n2.process_mode
 			n2.process_mode = Node.PROCESS_MODE_DISABLED
 	set_time_of_day(String(tl.stage.get("tod", tod_preset)))
+	# stage "exposure" / "ambient": hệ số sáng riêng cho cinematic (đêm vẫn đọc rõ người), lưu giá trị gốc để trả lại
+	var we: WorldEnvironment = get_node_or_null("WorldEnvironment") as WorldEnvironment
+	if we and we.environment and (tl.stage.has("exposure") or tl.stage.has("ambient")):
+		var env: Environment = we.environment
+		_cine_saved["env"] = [env, env.tonemap_exposure, env.ambient_light_energy]
+		env.tonemap_exposure *= float(tl.stage.get("exposure", 1.0))
+		env.ambient_light_energy *= float(tl.stage.get("ambient", 1.0))
 	var fx: Node = get_node_or_null("/root/GameFX")
 	if fx and fx.has_method("music_stop"):
 		fx.call("music_stop", true)
@@ -1546,6 +1553,10 @@ func _restore_after_cine(skipped: bool, slot: String) -> void:
 	for n2: Node in (_cine_saved.get("proc", {}) as Dictionary).keys():
 		if is_instance_valid(n2):
 			n2.process_mode = _cine_saved["proc"][n2]
+	var saved_env: Array = _cine_saved.get("env", [])
+	if saved_env.size() == 3 and is_instance_valid(saved_env[0]):
+		(saved_env[0] as Environment).tonemap_exposure = float(saved_env[1])
+		(saved_env[0] as Environment).ambient_light_energy = float(saved_env[2])
 	set_time_of_day(String(_cine_saved.get("tod", tod_preset)))
 	get_tree().paused = false
 	var cam: Variant = _cine_saved.get("cam")

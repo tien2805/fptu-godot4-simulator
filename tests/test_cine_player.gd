@@ -282,6 +282,9 @@ func _part_b() -> bool:
 			"the floor-ray grid sees the sidewalk step inside a box (%d rays)" % steps.size())
 	var tod0: String = fr.get("tod_preset")
 	var cam0: Camera3D = (fr as Node3D).get_viewport().get_camera_3d()
+	var we: WorldEnvironment = (fr as Node).get_node_or_null("WorldEnvironment") as WorldEnvironment
+	var exp0: float = we.environment.tonemap_exposure if we and we.environment else 0.0
+	var amb0: float = we.environment.ambient_light_energy if we and we.environment else 0.0
 	var fx: Node = root.get_node_or_null("GameFX")
 	var md_music: Node = fx.get("music") if fx else null
 	finished_args.clear()
@@ -294,6 +297,10 @@ func _part_b() -> bool:
 	_check(not (fr.get("player") as Node3D).visible, "roam player hidden")
 	_check(not (fr.get("map_overlay") as Control).visible and not (fr.get("hint_holder") as Control).visible, "map and hint hidden")
 	_check((fr as Node3D).get_viewport().get_camera_3d() == cp.camera, "cinematic camera is current")
+	var env_saved: Array = (fr.get("_cine_saved") as Dictionary).get("env", [])
+	_check(we != null and env_saved.size() == 3 and is_equal_approx(we.environment.tonemap_exposure, float(env_saved[1]) * 1.5)
+		and is_equal_approx(we.environment.ambient_light_energy, float(env_saved[2]) * 2.0),
+		"stage exposure x1.5 / ambient x2 applied during the cinematic")
 	var sm: Node = _sm()
 	if sm:
 		_check(bool(sm.get("cinematic_active")), "StageManager.cinematic_active while the cinematic plays")
@@ -310,6 +317,9 @@ func _part_b() -> bool:
 	_check(not paused, "tree unpaused after the cinematic")
 	_check((fr.get("player") as Node3D).visible, "roam player visible again")
 	_check(fr.get("tod_preset") == tod0, "time of day restored")
+	if we and we.environment:
+		_check(is_equal_approx(we.environment.tonemap_exposure, exp0) and is_equal_approx(we.environment.ambient_light_energy, amb0),
+			"exposure / ambient back to the pre-cinematic values (%.2f / %.2f)" % [we.environment.tonemap_exposure, we.environment.ambient_light_energy])
 	_check(fr.get("cine_player") == null, "player slot cleared")
 	_check((fr as Node3D).get_viewport().get_camera_3d() == cam0, "previous camera restored")
 	if sm:

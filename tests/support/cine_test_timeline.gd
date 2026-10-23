@@ -11,7 +11,7 @@ func build() -> void:
 	mood = "punchy"
 	# road-aligned (stage -Z along the D1 frontage = campus +u, yaw 136° - 90°), centre pushed 12 m to the road side of the
 	# west gate (stage -X = campus -v): clear of the gate roof, barrier arm, bollards and lamp posts (plan review M4)
-	stage = {"landmark": "campus_west_gate", "near": 30.0, "size": Vector2(10.0, 8.0), "tod": "night", "yaw_deg": 46.0, "offset": Vector2(-12.0, 0.0)}
+	stage = {"landmark": "campus_west_gate", "near": 30.0, "size": Vector2(10.0, 8.0), "tod": "night", "yaw_deg": 46.0, "offset": Vector2(-12.0, 0.0), "exposure": 1.5, "ambient": 2.0}
 	actor("hero", {"preset": "player", "seed": 3}, "Bạn", Color("#F37021"))
 	actor("dummy", {"preset": "rider", "seed": 4, "backpack": false, "shirt_color": Color("#1E8C8C")}, "Anh Duy", Color("#9B59B6"))
 	hit("H1", 1.6, "light", "jab -> dummy")

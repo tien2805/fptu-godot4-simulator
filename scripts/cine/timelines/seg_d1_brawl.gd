@@ -86,7 +86,8 @@ func build() -> void:
 	fade_in = 0.5
 	fade_out = 0.5   # A2 sets 0 when this segment flows straight into cine_d1 (spec 8.1)
 	stage = {"landmark": "campus_west_gate", "near": 30.0, "size": Vector2(14.0, 10.0), "tod": "night", "yaw_deg": 46.0,
-		"offset": Vector2(-12.0, 0.0), "fallback": "campus_parking_center"}
+		"offset": Vector2(-12.0, 0.0), "fallback": "campus_parking_center",
+		"exposure": 1.4, "ambient": 1.8}   # owner: "hơi tối" - brighter night, faces and hits stay readable
 	_cast()
 	_hits()
 	clock.length = length
