@@ -2,8 +2,9 @@
 # Test headless xe chạy FreeRoam (RoamTraffic, plan Task 13).
 #   A: MapData tự dựng ở z ~ 5000 (xa campus thật): hình vuông 160 m bốn đường chính hai chiều 10,5 m + một nhánh cụt
 #      6 m. Làn bên phải, nối làn ở góc (rẽ không bao giờ đi lùi), quay đầu ở ngõ cụt, xe buýt chỉ trên đường cho xe
-#      buýt, dừng 2,4-6,5 m sau người chơi rồi đi tiếp, xe ra ngoài 200 m bị đưa đi, xe mới xuất hiện cách 40-150 m,
-#      đêm còn 30 %, build_car. Đếm khung vật lý (60 Hz): headless vẽ ~145 khung / giây.
+#      buýt, dừng 2,4-6,5 m sau người chơi rồi đi tiếp, hàng xe nối đuôi sau người chơi đứng giữa làn 12 s trong tầm camera
+#      không chồng lên nhau và xe đầu vẫn chờ, tắt camera thì xe đầu (chờ > 5 s) được cất, xe ra ngoài 200 m bị đưa đi, xe
+#      mới xuất hiện cách 40-150 m, đêm còn 30 %, build_car. Đếm khung vật lý (60 Hz): headless vẽ ~145 khung / giây.
 #   B: FreeRoam thật: >= 15 xe trong 150 m quanh điểm spawn, mọi xe trên lòng đường, không làn / xe nào trong lô campus,
 #      chi phí vật lý < 1,5 ms (đo trực tiếp, đám đông tạm tắt), xe máy người chơi tông xe -> xử lý va chạm sẵn có (mất
 #      tốc), đêm còn <= 8 xe.
@@ -47,6 +48,14 @@ var timing: bool = false
 var _pt0: int = 0
 var p_usec: int = 0
 var p_n: int = 0
+var cam: Camera3D
+var q_lane: int = -1
+var q_head: RoamTraffic.Vehicle
+var q_head_s: float = 0.0
+var q_recycled: int = 0
+var overlap_frames: int = 0
+var max_pairs: int = 0
+var queued_frames: int = 0
 
 
 func _initialize() -> void:
@@ -200,6 +209,70 @@ func _pick_watch() -> RoamTraffic.Vehicle:
 	return null
 
 
+## Nửa bề rộng của hình chữ nhật (hướng u, nửa dài hl, nửa rộng hw) chiếu lên trục n.
+func _ext(u: Vector2, hl: float, hw: float, n: Vector2) -> float:
+	return hl * absf(u.dot(n)) + hw * absf(u.cross(n))
+
+
+## Hai thân xe (hình chữ nhật xoay trên mặt đường) chồng lên nhau quá 5 cm (định lý trục tách).
+func _overlap(a: RoamTraffic.Vehicle, b: RoamTraffic.Vehicle) -> bool:
+	var d: Vector2 = b.pos - a.pos
+	for n: Vector2 in [a.dir, a.dir.orthogonal(), b.dir, b.dir.orthogonal()]:
+		if absf(d.dot(n)) >= _ext(a.dir, a.half_len, a.half_w, n) + _ext(b.dir, b.half_len, b.half_w, n) - 0.05:
+			return false
+	return true
+
+
+## Đếm khung có thân xe chồng nhau (mọi cặp xe đang chạy) và khung có xe đứng chờ sau xe khác trên làn hàng xe.
+func _count_overlaps() -> void:
+	var pairs: int = 0
+	var queued: bool = false
+	var vs: Array = traffic.vehicles
+	for i: int in range(vs.size()):
+		var a: RoamTraffic.Vehicle = vs[i]
+		if not a.active:
+			continue
+		if a.lane == q_lane and a.conn.size() != 3 and a.speed < 0.1 and a.blocked_by == "car":
+			queued = true
+		for j: int in range(i + 1, vs.size()):
+			var b: RoamTraffic.Vehicle = vs[j]
+			if b.active and _overlap(a, b):
+				pairs += 1
+	if pairs > 0:
+		overlap_frames += 1
+	if queued:
+		queued_frames += 1
+	max_pairs = maxi(max_pairs, pairs)
+
+
+## Hàng xe: người chơi đứng giữa một làn dài của hình vuông (s = 130); ô tô, xe máy, xe buýt chạy tới trên cùng làn từ
+## s = 112 / 100 / 88; camera nhìn vào hàng xe (xe chờ trong tầm nhìn thì chờ mãi, không bị cất).
+func _queue_setup() -> void:
+	for l: int in range(traffic.lane_count()):
+		if traffic.lane_len[l] > 150.0:
+			q_lane = l
+			break
+	for v: RoamTraffic.Vehicle in traffic.vehicles:
+		if v.active:
+			traffic._park(v)
+	var pp: Vector2 = traffic._lane_point(q_lane, 130.0)
+	stub_player.global_position = Vector3(pp.x, 0.0, pp.y)
+	for pk: Array in [[6, 112.0], [0, 100.0], [8, 88.0]]:   # ô tô (xe đầu), xe máy, xe buýt: hàng xe thành trong ~3 s
+		var v: RoamTraffic.Vehicle = traffic.vehicles[int(pk[0])]
+		traffic._activate(v, q_lane, float(pk[1]))
+		seen[v] = true            # đặt tay cách người chơi 18-42 m: không phải lần xuất hiện ngẫu nhiên
+		last_pos.erase(v)
+		last_lane.erase(v)
+	q_head = traffic.vehicles[6]
+	var mid: Vector2 = traffic._lane_point(q_lane, 110.0)
+	var side: Vector2 = traffic._lane_dir(q_lane, 110.0).orthogonal()
+	cam = Camera3D.new()
+	root.add_child(cam)
+	cam.global_position = Vector3(mid.x + side.x * 25.0, 15.0, mid.y + side.y * 25.0)
+	cam.look_at(Vector3(mid.x, 0.0, mid.y))
+	cam.make_current()
+
+
 func _on_physics_a() -> void:
 	if done:
 		return
@@ -240,6 +313,33 @@ func _on_physics_a() -> void:
 		"go":
 			if t == 180:
 				if not _check(watch.speed > 1.0, "the vehicle drives on once the lane is clear (speed %.2f)" % watch.speed):
+					return
+				_queue_setup()
+				phase = "queue"
+				t0 = frames
+		"queue":
+			_count_overlaps()
+			if t == 720:   # 12 s người chơi đứng giữa làn, hàng xe trong tầm camera
+				print("  queue 12 s in view: overlap frames %d (max %d pairs), queued frames %d, head speed %.2f blocked by '%s'" % [overlap_frames, max_pairs, queued_frames, q_head.speed, q_head.blocked_by])
+				if not _check(overlap_frames == 0, "queued vehicles never overlap (%d overlap frames, max %d pairs)" % [overlap_frames, max_pairs]):
+					return
+				# xe sau phải chờ lâu hơn STUCK_S (5 s): bản cũ tới đó thì "bỏ qua xe khác" và chồng lên xe trước
+				if not _check(queued_frames >= 360, "test setup: a follower queues behind another vehicle for > 6 s (queued frames %d)" % queued_frames):
+					return
+				if not _check(q_head.active and q_head.speed < 0.1 and q_head.blocked_by == "player", "in view, the head of the queue keeps waiting behind the player (active %s, speed %.2f, '%s')" % [str(q_head.active), q_head.speed, q_head.blocked_by]):
+					return
+				cam.queue_free()
+				q_head_s = q_head.s
+				q_recycled = traffic.recycled
+				phase = "queue_off"
+				t0 = frames
+		"queue_off":
+			_count_overlaps()
+			if t == 60:
+				# thân xe đầu có thể đã được dùng lại ở chỗ khác: chỉ cần nó không còn đứng chờ ở chỗ cũ
+				var waiting: bool = q_head.active and q_head.lane == q_lane and absf(q_head.s - q_head_s) < 0.5
+				print("  camera off: head still waiting %s, recycled +%d, overlap frames %d" % [str(waiting), traffic.recycled - q_recycled, overlap_frames])
+				if not _check(not waiting and traffic.recycled > q_recycled and overlap_frames == 0, "out of view, a vehicle waiting > 5 s on the player is parked (head still waiting %s, recycled +%d, overlap frames %d)" % [str(waiting), traffic.recycled - q_recycled, overlap_frames]):
 					return
 				stub_player.global_position = CENTER + Vector3(0.0, 0.0, 600.0)
 				phase = "away"

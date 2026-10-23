@@ -3,10 +3,13 @@
 # xe máy có người lái bake (người PS2 ở Vice City), vài ô tô và xe buýt – chạy theo làn bên phải lòng đường MapData
 # (lanes > 0; bỏ đường nội bộ "service", cầu và lô campus), xuất hiện cách người chơi 40-150 m (ngoài tầm camera trước),
 # ra ngoài 200 m thì cất đi rồi dùng lại thân xe ở chỗ khác (không dựng lại). Hết làn thì rẽ sang một làn đi ngang trong
-# 9 m (đường cong Bezier bậc hai, 60 % tốc độ), không có thì quay đầu sang làn kia của chính đường đó, không có nữa thì cất
-# xe. Nhìn trước: giảm tốc và dừng cách STOP_GAP sau xe khác, người đi đường, người chơi hoặc xe người chơi. Thân
-# AnimatableBody3D nhóm "traffic_obstacle" (xe buýt thêm "slipstream_vehicle"): PlayerBike tông vào thì dùng xử lý va
-# chạm sẵn có. Không dùng autoload ở đây.
+# 9 m (đường cong Bezier bậc hai, 60 % tốc độ), không có thì quay đầu sang làn kia của chính đường đó, không có nữa thì lấy
+# ứng viên bị loại tốt nhất (ngược chiều gắt / gần hết làn), không có nữa thì cất xe. Nhìn trước: giảm tốc và dừng cách
+# STOP_GAP sau xe khác, người đi đường, người chơi hoặc xe người chơi (kích thước vật cản theo hướng của nó). Hàng xe nối
+# đuôi chỉ chờ; chỉ vòng xe chờ nhau (kẹt ngã tư) mới bỏ qua xe khác 2 s; chờ người / xe người chơi quá STUCK_S mà ngoài
+# tầm camera thì cất xe. Chỗ xuất hiện tránh xe khác, người đi đường, người chơi và xe người chơi. Thân AnimatableBody3D
+# nhóm "traffic_obstacle" (xe buýt thêm "slipstream_vehicle"): PlayerBike tông vào thì dùng xử lý va chạm sẵn có. Không
+# dùng autoload ở đây.
 class_name RoamTraffic
 extends Node3D
 
@@ -30,6 +33,9 @@ const SPAWN_CELL: float = 32.0
 const SPAWN_STEP: float = 10.0
 const SPAWN_END_CLEAR: float = 8.0
 const SPAWN_GAP: float = 14.0
+const SPAWN_PEOPLE_GAP: float = 10.0               # chỗ xuất hiện: không người / xe người chơi trong 10 m trước mũi xe
+const FALLBACK_SHORT: float = 100.0               # phạt xếp hạng lối ra dự phòng vào làn còn < EXIT_MIN_LEFT m
+const WAIT_CHAIN: int = 8                         # số bước tối đa dò chuỗi xe chờ nhau tìm vòng kẹt
 const SPAWNS_PER_CHECK: int = 3
 const CHECK_EVERY: float = 0.5
 const LOOK_EVERY: int = 3
@@ -52,6 +58,7 @@ const HELMETS: Array[Color] = [Color("#E74C3C"), Color("#F1C40F"), Color("#FFFFF
 
 class Vehicle:
 	var body: AnimatableBody3D
+	var idx: int = 0                     # chỉ số trong vehicles
 	var kind: int = 0
 	var lane: int = -1
 	var s: float = 0.0
@@ -70,7 +77,8 @@ class Vehicle:
 	var active: bool = false
 	var pos: Vector2 = Vector2.ZERO
 	var dir: Vector2 = Vector2(0.0, -1.0)
-	var blocked_by: String = ""      # "car" | "ped" | "player" | ""
+	var blocked_by: String = ""      # "car" | "ped" | "player" | "bike" | ""
+	var blocker: int = -1            # chỉ số xe đang chặn (blocked_by "car"), -1 = không (chỉ số, không giữ tham chiếu vòng)
 	var stuck_t: float = 0.0
 	var ghost_t: float = 0.0
 
@@ -147,6 +155,7 @@ static func _campus_plot() -> PackedVector2Array:
 # ===========================================================================
 func _make_vehicle(kind: int) -> Vehicle:
 	var c := Vehicle.new()
+	c.idx = vehicles.size()
 	c.kind = kind
 	var size: Vector3 = KIND_SIZE[kind]
 	c.half_len = size.z * 0.5
@@ -184,6 +193,8 @@ func _make_vehicle(kind: int) -> Vehicle:
 func _park(c: Vehicle) -> void:
 	c.active = false
 	c.speed = 0.0
+	c.blocked_by = ""
+	c.blocker = -1
 	c.body.visible = false
 	c.body.process_mode = Node.PROCESS_MODE_DISABLED
 	c.body.position = Vector3(0.0, -200.0, 0.0)
@@ -201,6 +212,7 @@ func _activate(c: Vehicle, l: int, s: float) -> void:
 	c.stuck_t = 0.0
 	c.ghost_t = 0.0
 	c.blocked_by = ""
+	c.blocker = -1
 	c.active = true
 	c.body.process_mode = Node.PROCESS_MODE_INHERIT
 	c.body.visible = true
@@ -212,10 +224,12 @@ func _fill_initial() -> void:
 	var c2 := Vector2(c3.x, c3.z)
 	var target: int = roundi(float(vehicles.size()) * (NIGHT_FACTOR if night else 1.0))
 	var active: int = 0
+	var people: Array = []
+	_append_people(people)
 	for c: Vehicle in vehicles:
 		if active >= target:
 			break
-		var spot: Array = _random_spot(c2, INITIAL_MIN, SPAWN_MAX, c.kind, false)
+		var spot: Array = _random_spot(c2, INITIAL_MIN, SPAWN_MAX, c.kind, false, people)
 		if spot.is_empty():
 			continue
 		_activate(c, int(spot[0]), float(spot[1]))
@@ -247,13 +261,16 @@ func _maintain() -> void:
 	var n: int = vehicles.size()
 	var active: int = live.size()
 	var made: int = 0
+	var people: Array = []
+	if active < target:
+		_append_people(people)
 	for k: int in range(n):
 		if active >= target or made >= SPAWNS_PER_CHECK:
 			break
 		var c: Vehicle = vehicles[(_rot + k) % n]
 		if c.active:
 			continue
-		var spot: Array = _random_spot(c2, SPAWN_MIN, SPAWN_MAX, c.kind, true)
+		var spot: Array = _random_spot(c2, SPAWN_MIN, SPAWN_MAX, c.kind, true, people)
 		if spot.is_empty():
 			continue
 		_activate(c, int(spot[0]), float(spot[1]))
@@ -281,11 +298,16 @@ func _physics_process(delta: float) -> void:
 			c.limit = _look_ahead(c, obs)
 		var target: float = minf(c.cruise * (TURN_FACTOR if c.conn.size() == 3 else 1.0), c.limit)
 		c.speed = move_toward(c.speed, target, (ACCEL if target > c.speed else BRAKE) * delta)
-		if c.speed < 0.2 and c.blocked_by == "car":
+		if c.speed < 0.2 and _held(c):
 			c.stuck_t += delta
 			if c.stuck_t > STUCK_S:
-				c.ghost_t = GHOST_S       # kẹt ở ngã tư với xe khác: bỏ qua xe khác 2 s (vẫn dừng trước người)
-				c.stuck_t = 0.0
+				if c.blocked_by == "car":
+					c.ghost_t = GHOST_S       # vòng xe chờ nhau ở ngã tư: bỏ qua xe khác 2 s (vẫn dừng trước người)
+					c.stuck_t = 0.0
+				elif not _in_view(Vector3(c.pos.x, 1.0, c.pos.y)):
+					_park(c)                  # chờ người / xe người chơi quá lâu, ngoài tầm camera: cất xe
+					recycled += 1
+					continue
 		else:
 			c.stuck_t = 0.0
 		c.ghost_t = maxf(0.0, c.ghost_t - delta)
@@ -294,27 +316,61 @@ func _physics_process(delta: float) -> void:
 			_place(c, delta)
 
 
-## Vật cản cho nhìn trước: [vị trí, nửa dài, nửa rộng, loại, xe].
+## Vật cản cho nhìn trước: [vị trí, nửa dài, nửa rộng, loại, xe, hướng]; hướng ZERO = vật cản tròn bán kính nửa dài.
 func _obstacles() -> Array:
 	var out: Array = []
 	for c: Vehicle in vehicles:
 		if c.active:
-			out.append([c.pos, c.half_len, c.half_w, "car", c])
+			out.append([c.pos, c.half_len, c.half_w, "car", c, c.dir])
+	_append_people(out)
+	return out
+
+
+## Vật cản không phải xe: người đi đường, người chơi (đi bộ; khi đang lái là xe người chơi), xe người chơi đang đỗ.
+func _append_people(out: Array) -> void:
 	if peds_fn.is_valid():
 		for p: Variant in peds_fn.call():
 			if is_instance_valid(p) and (p as Node3D).is_inside_tree():
 				var pn: Node3D = p
-				out.append([Vector2(pn.global_position.x, pn.global_position.z), 0.3, 0.3, "ped", null])
+				out.append([Vector2(pn.global_position.x, pn.global_position.z), 0.3, 0.3, "ped", null, Vector2.ZERO])
 	var mounted: bool = roam != null and bool(roam.get("mounted"))
 	var who: Node3D = bike if mounted else player
 	if who != null and who.is_inside_tree():
-		out.append([Vector2(who.global_position.x, who.global_position.z), 1.0 if mounted else 0.4, 0.45 if mounted else 0.4, "player", null])
+		out.append([Vector2(who.global_position.x, who.global_position.z), 1.0 if mounted else 0.4, 0.45 if mounted else 0.4, "player", null, _heading(who) if mounted else Vector2.ZERO])
 	if not mounted and bike != null and bike.visible and bike.is_inside_tree():
-		out.append([Vector2(bike.global_position.x, bike.global_position.z), 1.0, 0.45, "bike", null])   # xe người chơi đang đỗ
-	return out
+		out.append([Vector2(bike.global_position.x, bike.global_position.z), 1.0, 0.45, "bike", null, _heading(bike)])   # xe người chơi đang đỗ
 
 
-## Tốc độ cho phép theo khoảng hở tới vật cản gần nhất trong dải phía trước (dừng hẳn khi khe <= STOP_GAP).
+## Hướng mặt trước (-Z) của nút trên mặt phẳng (x, z).
+static func _heading(n: Node3D) -> Vector2:
+	var z: Vector3 = n.global_transform.basis.z
+	var h := Vector2(-z.x, -z.z)
+	return h.normalized() if h.length_squared() > 0.0001 else Vector2(0.0, -1.0)
+
+
+## Xe đứng chờ có tính giờ kẹt không: chờ người / xe người chơi thì có; chờ xe khác chỉ khi chuỗi xe chờ nhau quay về chính
+## nó (kẹt vòng ở ngã tư). Hàng xe nối đuôi thường (chuỗi dừng ở một xe đang chạy / một người) không tính, nên xe sau không
+## bao giờ bỏ qua xe trước mà chồng lên nó.
+func _held(c: Vehicle) -> bool:
+	if c.blocked_by == "ped" or c.blocked_by == "player" or c.blocked_by == "bike":
+		return true
+	if c.blocked_by != "car":
+		return false
+	var b: int = c.blocker
+	for k: int in range(WAIT_CHAIN):
+		if b < 0:
+			return false
+		var o: Vehicle = vehicles[b]
+		if o == c:
+			return true
+		if not o.active or o.blocked_by != "car":
+			return false
+		b = o.blocker
+	return false
+
+
+## Tốc độ cho phép theo khoảng hở tới vật cản gần nhất trong dải phía trước (dừng hẳn khi khe <= STOP_GAP). Vật cản có
+## hướng (xe, xe người chơi) chiếm theo hình chữ nhật xoay: xe buýt đi ngang chắn bằng nửa dài 3,75 m chứ không phải nửa rộng.
 func _look_ahead(c: Vehicle, obs: Array) -> float:
 	var look: float = LOOK_BASE + c.speed * LOOK_PER_MS
 	if c.conn.size() != 3 and not c.exit.is_empty():
@@ -322,6 +378,7 @@ func _look_ahead(c: Vehicle, obs: Array) -> float:
 	var reach2: float = (look + 8.0) * (look + 8.0)
 	var best: float = INF
 	c.blocked_by = ""
+	c.blocker = -1
 	for o: Array in obs:
 		if o[4] == c or (c.ghost_t > 0.0 and String(o[3]) == "car"):
 			continue
@@ -331,14 +388,21 @@ func _look_ahead(c: Vehicle, obs: Array) -> float:
 		var fwd: float = rel.dot(c.dir)
 		if fwd <= 0.0:
 			continue
-		var gap: float = fwd - c.half_len - float(o[1])
+		var u: Vector2 = o[5]
+		var ud: float = 1.0           # |hướng vật cản · hướng xe|, vật cản tròn: 1
+		var uc: float = 0.0           # |hướng vật cản x hướng xe|, vật cản tròn: 0
+		if u != Vector2.ZERO:
+			ud = absf(u.dot(c.dir))
+			uc = absf(u.cross(c.dir))
+		var gap: float = fwd - c.half_len - (float(o[1]) * ud + float(o[2]) * uc)
 		if gap > look:
 			continue
-		if absf(rel.cross(c.dir)) > c.half_w + float(o[2]) + LAT_PAD:
+		if absf(rel.cross(c.dir)) > c.half_w + float(o[1]) * uc + float(o[2]) * ud + LAT_PAD:
 			continue
 		if gap < best:
 			best = gap
 			c.blocked_by = String(o[3])
+			c.blocker = (o[4] as Vehicle).idx if o[4] != null else -1
 	if best == INF:
 		return 99.0
 	if best <= STOP_GAP:
@@ -356,6 +420,7 @@ func _advance(c: Vehicle, dist: float) -> void:
 		c.s = c.next_s
 		c.conn = PackedVector2Array()
 		_choose_exit(c)
+	var s0: float = c.s
 	c.s += dist
 	if c.s < c.turn_at:
 		return
@@ -363,11 +428,12 @@ func _advance(c: Vehicle, dist: float) -> void:
 		_park(c)
 		recycled += 1
 		return
-	var over: float = c.s - c.turn_at
+	var ts: float = maxf(c.turn_at, s0)   # vào làn đã quá điểm bắt đầu rẽ (lối ra dự phòng vào gần cuối làn): rẽ ngay, không lùi
+	var over: float = c.s - ts
 	var nl: int = int(c.exit[0])
 	var ns: float = float(c.exit[1])
-	var p0: Vector2 = _lane_point(c.lane, c.turn_at)
-	var d0: Vector2 = _lane_dir(c.lane, c.turn_at)
+	var p0: Vector2 = _lane_point(c.lane, ts)
+	var d0: Vector2 = _lane_dir(c.lane, ts)
 	var p2: Vector2 = _lane_point(nl, ns)
 	var d2: Vector2 = _lane_dir(nl, ns)
 	var chord: float = p0.distance_to(p2)
@@ -481,7 +547,8 @@ func _commit_lane(piece: PackedVector2Array, speed: float, kinds: int, road: int
 
 
 ## Lối ra ở cuối mỗi làn: làn khác (khác đường) đi ngang trong EXIT_R, điểm vào còn >= EXIT_MIN_LEFT m, không ngược chiều
-## gắt; không có thì quay đầu sang đầu làn kia của chính đường đó (ngõ cụt, mép lô campus). Mỗi lối ra [làn, s_vào, back]:
+## gắt; không có thì quay đầu sang đầu làn kia của chính đường đó (ngõ cụt, mép lô campus); không có nữa thì lấy ứng viên bị
+## loại gần nhất (ưu tiên loại vì ngược chiều hơn loại vì gần hết làn: đường một chiều, mép bản đồ). Mỗi lối ra [làn, s_vào, back]:
 ## rẽ bắt đầu back = TURN_R - (q - e)·hướng m trước cuối làn (rẽ phải ở ngã tư: q nằm SAU cuối làn vì làn OSM dừng ở tâm
 ## giao lộ) và vào làn mới TURN_R / 2 m sau q, nên đường cong luôn đi tới.
 func _link_lanes() -> void:
@@ -503,6 +570,7 @@ func _link_lanes() -> void:
 		var de: Vector2 = (e - pts[pts.size() - 2]).normalized()
 		var best: Dictionary = {}     # làn -> [s_vào, khoảng cách, back]
 		var uturn: Array = []
+		var fallback: Array = []      # ứng viên bị loại tốt nhất [làn, s_vào, back, hạng]; hạng = khoảng cách (+ phạt gần hết làn)
 		var c0 := Vector2i(floori(e.x / SEG_CELL), floori(e.y / SEG_CELL))
 		for dx: int in range(-reach, reach + 1):
 			for dz: int in range(-reach, reach + 1):
@@ -524,7 +592,11 @@ func _link_lanes() -> void:
 						if li.y == 0 and uturn.is_empty():
 							uturn = [m, s_in, back]
 						continue
-					if lane_len[m] - s < EXIT_MIN_LEFT or de.dot((b - a).normalized()) < -0.3:
+					var short: bool = lane_len[m] - s < EXIT_MIN_LEFT
+					if short or de.dot((b - a).normalized()) < -0.3:
+						var rank: float = d + (FALLBACK_SHORT if short else 0.0)
+						if fallback.is_empty() or rank < float(fallback[3]):
+							fallback = [m, s_in, back, rank]
 						continue
 					if not best.has(m) or d < float((best[m] as Array)[1]):
 						best[m] = [s_in, d, back]
@@ -534,6 +606,8 @@ func _link_lanes() -> void:
 			ex.append([m, float(bm[0]), float(bm[2])])
 		if ex.is_empty() and not uturn.is_empty():
 			ex.append(uturn)
+		if ex.is_empty() and not fallback.is_empty():
+			ex.append([int(fallback[0]), float(fallback[1]), float(fallback[2])])   # đừng biến mất ở cuối làn
 		lane_exits.append(ex)
 
 
@@ -569,8 +643,9 @@ func _lane_dir(l: int, s: float) -> Vector2:
 
 
 ## Chỗ xuất hiện ngẫu nhiên [làn, s] cách c2 từ r_min tới r_max (rải đều theo diện tích qua ô băm điểm mẫu), làn cho
-## phép loại xe, cách xe đang chạy SPAWN_GAP; avoid_view: 12 lần thử đầu bỏ chỗ trong tầm camera.
-func _random_spot(c2: Vector2, r_min: float, r_max: float, kind: int, avoid_view: bool) -> Array:
+## phép loại xe, cách xe đang chạy SPAWN_GAP, không người (people: vật cản _append_people) trong dải xe sẽ chiếm / phanh tới
+## (_clear_of_people); avoid_view: 12 lần thử đầu bỏ chỗ trong tầm camera.
+func _random_spot(c2: Vector2, r_min: float, r_max: float, kind: int, avoid_view: bool, people: Array = []) -> Array:
 	for k: int in range(16):
 		var ang: float = _rng.randf() * TAU
 		var r: float = sqrt(_rng.randf_range(r_min * r_min, r_max * r_max))
@@ -584,7 +659,7 @@ func _random_spot(c2: Vector2, r_min: float, r_max: float, kind: int, avoid_view
 			continue
 		var p: Vector2 = _lane_point(l, float(cand[1]))
 		var d: float = p.distance_to(c2)
-		if d < r_min or d > r_max or not _clear_of_vehicles(p, SPAWN_GAP):
+		if d < r_min or d > r_max or not _clear_of_vehicles(p, SPAWN_GAP) or not _clear_of_people(people, p, _lane_dir(l, float(cand[1])), kind):
 			continue
 		if avoid_view and k < 12 and _in_view(Vector3(p.x, 1.0, p.y)):
 			continue
@@ -595,6 +670,21 @@ func _random_spot(c2: Vector2, r_min: float, r_max: float, kind: int, avoid_view
 func _clear_of_vehicles(p: Vector2, r: float) -> bool:
 	for c: Vehicle in vehicles:
 		if c.active and c.pos.distance_to(p) < r:
+			return false
+	return true
+
+
+## Không người nào (vật cản _append_people, coi như tròn bán kính nửa dài) trong dải xe loại kind sẽ chiếm khi xuất hiện ở p
+## theo hướng làn d: từ sau đuôi 1 m tới trước mũi SPAWN_PEOPLE_GAP m, rộng như dải nhìn trước (người trên vỉa hè không tính).
+func _clear_of_people(people: Array, p: Vector2, d: Vector2, kind: int) -> bool:
+	var size: Vector3 = KIND_SIZE[kind]
+	for o: Array in people:
+		var r: float = float(o[1])
+		var rel: Vector2 = (o[0] as Vector2) - p
+		var fwd: float = rel.dot(d)
+		if fwd < -size.z * 0.5 - 1.0 - r or fwd > size.z * 0.5 + SPAWN_PEOPLE_GAP + r:
+			continue
+		if absf(rel.cross(d)) < size.x * 0.5 + r + LAT_PAD:
 			return false
 	return true
 
