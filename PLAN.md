@@ -296,7 +296,8 @@ Measured (Task 7): sprint lasts 6.13 s, standing apex 0.97 m, running jump 4.75 
 
 * Night scales every target to 30 % (`NIGHT_FACTOR` 0.3; campus 18 / 45).
 * Traffic: 20 motorbikes, 3 cars and 2 buses, placed 40-150 m from the player and recycled beyond 200 m. At night, 30 % of them.
-* Headless physics cost per frame: crowd about 0.95 ms, traffic about 0.29 ms for 23 vehicles.
+* Headless physics cost per frame: crowd about 0.95 ms, traffic about 0.30 ms for 23 vehicles.
+* Static rigged poses and code clips start from a neutral standing base (feet level, symmetric toe-out) instead of the Quaternius 3/4 rest stance (9a7bdf3).
 
 **fps table:** pending (measured on main after merge).
 
@@ -319,10 +320,9 @@ Measured (Task 7): sprint lasts 6.13 s, standing apex 0.97 m, running jump 4.75 
 | 10 Pedestrian | `8a7deb7`, `8a91ae6` (Tasks 9+10 fix round) |
 | 11 crowd impostors | `066c033` |
 | 12 three-tier spawner | `1b0bd6d`, `54d912b` (fix round) |
-| 13 traffic | `25c1d86` |
-| 14 docs | this commit |
-
-The Task 13 fix round (queues, lanes without an exit, spawn spots against obstacles, heading-aware obstacle extent) and the rest-pose fix in CharacterBuilder land after this commit.
+| 13 traffic | `25c1d86`, `a959ce4` (fix round: queues, lanes without an exit, spawn spots against obstacles, heading-aware obstacle extent) |
+| 14 docs | `9b46700`, plus a docs follow-up after the final review |
+| Rest-pose fix (neutral standing base) | `9a7bdf3` |
 
 **Tests:**
 * `tests/test_ps2_textures.gd`, `tests/test_ps2_head.gd` and `tests/test_ps2_people.gd` cover the vice path.

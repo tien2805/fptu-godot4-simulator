@@ -1,6 +1,6 @@
 # Vice People and GTA-style Movement: Design
 
-Date: 2026-10-22. Status: Implemented (commits befb729..54d912b on branch `vice-people`, base 362d6f0; see PLAN.md section XIV). The Task 13 fix round and the rest-pose fix land after the docs commit.
+Date: 2026-10-22. Status: Implemented (commits befb729..9a7bdf3 on branch `vice-people`, base 362d6f0, plus a docs follow-up; see PLAN.md section XIV).
 
 ## Goal
 
@@ -218,15 +218,15 @@ As built, from the implementer reports of Tasks 9-13 and their fix rounds. Where
     - crowd physics cost about 0.95 ms per frame, timed with the phase-change frame dropped.
 - **Impostors, known issues.**
   - They step at 10 Hz (no interpolation).
-  - Static rigged poses inherit the Quaternius rest pose, with the right foot about 0.36 m forward. This affects baked riders and seated or typing students; the impostor stride overrides the legs. A fix is pending.
+- **Neutral standing base (9a7bdf3).** The Quaternius rest pose (= Idle frame 0) is a 3/4 stance with the right foot about 0.35 m forward. Static rigged poses and code clips now start from a neutral base computed once per model: thighs swung so the ankles sit under the hips, feet flat with a symmetric 12° toe-out, Body/Hips kept at rest. `_apply_bone_pose` / `_char_rot_local` (shared with RigAnimator) use it, so baked riders, typing students and code-clip poses (also on classic rigged bodies) stand level; standing foot gap 0.35 → 0.02 m. Known: a clip that keys knees or `hips_y` but not the thighs on an animated body (the vice Vovinam win cheer) pitches the foot about 10° for 0.6 s.
 - **Traffic.**
   - `RoamTraffic` lanes are right-hand offsets of the OSM centrelines (two-way roads) or the centreline (one-way roads).
-  - Exits link lane ends to lanes passing within 9 m. A turn starts `TURN_R - (q - e)·dir` before the lane end, so right turns at junctions never run backwards. A lane with no exit U-turns onto the other lane of its road. Failing that, it falls back to the best rejected candidate instead of vanishing (Task 13 fix round).
+  - Exits link lane ends to lanes passing within 9 m. A turn starts `TURN_R - (q - e)·dir` before the lane end, so right turns at junctions never run backwards. A lane with no exit U-turns onto the other lane of its road. Failing that, it falls back to the best rejected candidate (Task 13 fix round); 4 one-way lane ends at the map edge (5 for buses) still have no exit, so vehicles there are parked at the lane end, possibly in view.
   - Vehicles detect obstacles by position: other vehicles, near and mid-tier pedestrians, the player, and the player's parked bike. Obstacle extent follows the obstacle's heading (Task 13 fix round).
   - Queues (Task 13 fix round):
     - ordinary queues just wait;
     - only junction deadlocks, where a chain of waiting vehicles loops back on itself, ghost through other vehicles, for 2 s;
-    - vehicles stuck behind the player or the parked bike park once they are out of view.
+    - vehicles stuck for 5 s behind a pedestrian, the player or the parked bike park once they are out of view (in view they keep waiting).
   - Spawn spots are checked against obstacles (people, the player, the bike), not only other vehicles (Task 13 fix round).
   - PlayerBike's near-miss whoosh and the bus slipstream boost now also work against FreeRoam traffic (intended).
   - Measured: about 0.29 ms per physics frame for 23 vehicles.
