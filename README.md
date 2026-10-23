@@ -40,7 +40,7 @@ Chọn **🌏 KHÁM PHÁ CAMPUS** trong menu chính. Bạn xuất phát ngay tr�
 | :---: | :---: |
 | ![](docs/preview/roam_01_spawn_be6.png) | ![](docs/preview/roam_08_map.png) |
 
-**Điều khiển:** `WASD` đi · `Shift` chạy · `Z`/`C` xoay camera · chuột nhìn (bấm chuột để bắt, `ESC` thả) · `F` lên/xuống xe máy (khi lái: `W/S` ga/phanh, `A/D` lái, `SPACE` drift, `H` còi) · `E` vào điểm nóng để chơi màn · `T` đổi giờ (bình minh, sáng, trưa, đêm) · `M` bản đồ · `ESC` tạm dừng.
+**Điều khiển:** `WASD` chạy bộ · `Shift` chạy nước rút (có thể lực) · `Ctrl` đi bộ · `Space` nhảy (trên xe vẫn là drift) · `Z`/`C` xoay camera · chuột nhìn (bấm chuột để bắt, `ESC` thả) · `F` lên/xuống xe máy (khi lái: `W/S` ga/phanh, `A/D` lái, `SPACE` drift, `H` còi) · `E` vào điểm nóng để chơi màn · `T` đổi giờ (bình minh, sáng, trưa, đêm) · `M` bản đồ · `ESC` tạm dừng.
 
 **6 điểm nóng** (cột sáng màu, đứng vào vòng sáng rồi bấm `E`):
 
@@ -55,6 +55,8 @@ Chọn **🌏 KHÁM PHÁ CAMPUS** trong menu chính. Bạn xuất phát ngay tr�
 
 Chơi xong một màn mở từ điểm nóng, bảng kết quả có nút **🏫 VỀ CAMPUS** để quay lại thế giới mở ngay cạnh điểm nóng đó (Màn 1 đưa bạn về BE6). Bấm *Chơi lại* thì nút này vẫn hiện ở lượt sau. Xe máy đang đỗ hiện trên bản đồ, đi xa thì dòng gợi ý báo xe cách bao nhiêu mét; lỡ rơi xuống kênh thì sau 1 giây bạn được đưa lên chỗ khô gần nhất.
 
+Ở phong cách Vice City, mọi nhân vật là người kiểu PS2: tỉ lệ người thật, đầu ít mặt với gương mặt vẽ tay bằng code (8 biểu cảm), quần áo giữ nguyên. Thế giới mở đông người hơn: sinh viên kín sân trường, cư dân dạo phố Vinhomes (có người chạy bộ, người tản bộ), người đi bộ trên lề các tuyến đường, nhìn xa vẫn thấy dòng người; xe máy, ô tô và xe buýt chạy đúng làn bên phải và dừng lại khi có người chắn đường. Ban đêm vắng hơn. Va nhẹ thì người đi đường lảo đảo càu nhàu, chạy nước rút hay đi xe tông thì họ ngã rồi đứng dậy bỏ chạy. Rơi từ cao không mất máu: dưới 2,5 m nhún gối, 2,5-6 m lăn, cao hơn thì nằm một lúc rồi đứng dậy.
+
 Bản đồ thế giới mở dựng từ dữ liệu **OpenStreetMap** (© OpenStreetMap contributors, [ODbL](https://www.openstreetmap.org/copyright)) và footprint nhà ống **Microsoft Global ML Building Footprints** (© Microsoft, [CDLA-Permissive-2.0](https://cdla.dev/permissive-2-0/)); trên bản đồ `M`, nhà lấy từ OpenStreetMap tô đậm hơn nhà lấy từ dữ liệu Microsoft.
 
 ## 🕹️ Điều khiển
@@ -67,7 +69,7 @@ Bản đồ thế giới mở dựng từ dữ liệu **OpenStreetMap** (© Open
 * **Màn 5:** `WASD` đi · `E` tương tác · đứng yên giữ `SPACE` cân khay · kéo thả món vào giỏ.
 * **Màn 6:** gõ chữ trên đạn · `TAB` đổi người · `ENTER` skill / gọi điện · `←/→` chọn khối code.
 * **Extra:** `WASD` đi tuần (theo hướng camera) · `C` CCTV · `S` chụp · `E` soi / lập biên bản.
-* **Thế giới mở:** `WASD` đi · `Shift` chạy · `Z/C` xoay camera · chuột nhìn · `F` lên/xuống xe máy · `E` vào điểm nóng chơi màn · `T` đổi giờ · `M` bản đồ · `ESC` tạm dừng.
+* **Thế giới mở:** `WASD` chạy bộ · `Shift` chạy nước rút (có thể lực) · `Ctrl` đi bộ · `Space` nhảy (trên xe vẫn là drift) · `Z/C` xoay camera · chuột nhìn · `F` lên/xuống xe máy · `E` vào điểm nóng chơi màn · `T` đổi giờ · `M` bản đồ · `ESC` tạm dừng.
 
 ## 🛠️ Chạy từ mã nguồn / tự build
 
