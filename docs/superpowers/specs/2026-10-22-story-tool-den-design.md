@@ -112,12 +112,13 @@ Evaluation order:
     - impacts get freeze frames of 0.1-0.2 s, plus dust, sparks and debris;
     - the clock snaps back to 1× between moves.
     - The last 3-4 s run at normal speed for the story beat: the enemy's comic reaction and the next clue.
-  - **Choreography is airborne and acrobatic.** The protagonist and the enemies:
-    - jump, flip, wall-kick, slide and spin;
-    - throw flying kicks and the Vovinam scissor-kick takedown;
-    - land spinning punches and elbow drops;
-    - get launched through the air and crash into crates.
-  - Camera work: orbiting cameras, low-angle hero shots, a whip-pan on each hit. Gunfights get dodge-dives and rolls under fire; chases get bike jumps and kicks between bikes. The motion is built from the pack clips (Punch, Kick, Roll, Sword_Slash, HitRecieve, Death) plus new code poses (flip, flying kick, scissor kick, airborne spin, elbow drop) moved along keyframed arcs.
+  - **Choreography in the style of the film *Nobody*** (owner amendment 2026-10-23: "làm phân cảnh cinematic giống trong phim Nobody", chose "chuyển hẳn sang kiểu Nobody"; this replaces the earlier "airborne and acrobatic" rule). Style only, never a shot-for-shot copy of the film:
+    - grounded, messy close-quarters brawling: grabs, shoves, headbutts, throws and slams into the scenery (scooter, kerb, crates, shutters), scrappy punches;
+    - improvised weapons picked up mid-fight: a helmet, a delivery box, a phone, a chair or pole where the set has one;
+    - the protagonist takes hits too (head hit, gut punch, knocked down), gets up winded and keeps going: comic because clumsy yet unstoppable; still no blood or gore (bruises, dust, stars);
+    - mostly normal speed and fast; slow motion only on the few most painful or funniest beats, plus one long slow-motion stretch where the music swells; flips and flying kicks are rare accents, the Vovinam scissor-kick takedown stays as the Day 7 finisher signature;
+    - deadpan comic beats between hits (cracking the neck, a sigh, an apology to a bystander).
+  - Camera work: handheld-feel shake, tight framing and fast cuts at normal speed; wide or orbiting shots only in slow motion; a punch-in or whip-pan on the biggest hits. Gunfights get dodge-dives and rolls under fire; chases get bike jumps and kicks between bikes. The motion is built from the pack clips (Punch, Kick, Roll, Sword_Slash, HitRecieve, Death) plus new code poses (flip, flying kick, scissor kick, airborne spin, elbow drop) moved along keyframed arcs.
   - **Music sync.** The slot's music starts on the cinematic's first frame. If the file is longer than the cinematic, it fades out over the last 0.5 s. Each cinematic also gets a beat sheet: the time of every hit and freeze frame in real seconds. It is written to `docs/cinematics/<slot>.txt` and can be shown with a debug overlay, so the owner can line musical hits up with on-screen hits.
   - The last segment of a mission flows straight into that mission's end cinematic, without a gap or a second fade. Every segment cinematic can be skipped (hold Esc).
 
