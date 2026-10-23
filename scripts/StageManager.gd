@@ -304,7 +304,7 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.is_pressed() and not event.is_echo():
 		if event.physical_keycode == KEY_M:
-			if typing_mode or hub_key_blocked or _is_text_input_focused():
+			if typing_mode or hub_key_blocked or cinematic_active or _is_text_input_focused():
 				return
 			toggle_stage_select()
 		elif event.physical_keycode == KEY_TAB and (Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_SHIFT)):

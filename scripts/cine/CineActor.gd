@@ -101,12 +101,16 @@ func setup(opts: Dictionary) -> void:
 # ---------------------------------------------------------------------------
 # Script
 # ---------------------------------------------------------------------------
-## Start move_name at story time s. opts: dur (story s, default the move's), fade (crossfade from the previous move), loop.
+## Start move_name at story time s. opts: dur (story s, default the move's), fade (crossfade from the previous move), loop,
+## arc (overrides the tier's airborne height, e.g. 0 when timeline keys already carry the flight arc).
 func move(s: float, move_name: String, opts: Dictionary = {}) -> Dictionary:
 	var res: Dictionary = CineMoves.resolve(move_name, bd)
 	if res.is_empty():
 		push_warning("CineActor %s: unknown move %s" % [name, move_name])
 		return {}
+	if opts.has("arc"):
+		res = res.duplicate()
+		res["arc"] = float(opts["arc"])
 	moves.append({"s": s, "dur": float(opts.get("dur", res["dur"])), "fade": float(opts.get("fade", 0.12)),
 		"loop": bool(opts.get("loop", res["loop"])), "res": res, "move": move_name})
 	moves.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["s"]) < float(b["s"]))
@@ -336,7 +340,7 @@ func _cue_pose(c: Dictionary, s: float) -> Dictionary:
 			out["pose"] = CineRetarget.sample_native(bd, String(res["a"]), t)
 		else:
 			out["pose"] = CineRetarget.sample(bd, String(res["t"]), String(res["a"]), t, false,
-				{"xz": true, "y": String(res["root_y"]) == "strip", "ref": float(res["from"])})
+				{"xz": true, "y": String(res["root_y"]) == "strip", "ref": float(res.get("ref", res["from"]))})
 	if String(res["add"]) != "":
 		out["add"] = CineMoves.code_pose(String(res["add"]), CineMoves.add_u(res, u))
 	return out

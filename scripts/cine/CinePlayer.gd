@@ -54,6 +54,7 @@ var _seeking: bool = false
 var _hold: float = 0.0
 var _skipping: float = -1.0
 var _last_us: int = 0
+var leaving_tree: bool = false           # finished(true) emitted from _exit_tree (the host may be leaving the tree too)
 
 
 ## Build everything for tl at stage_xf. Returns the validation errors (empty = ready); an invalid timeline builds nothing.
@@ -281,7 +282,10 @@ func _update(rr: float) -> void:
 	_update_camera(rr)
 	_update_overlay(rr, speed)
 	if music.stream:
-		music.volume_db = linear_to_db(maxf(CineAudio.music_gain(rr, timeline.length, music_len), 0.0001))
+		var g: float = CineAudio.music_gain(rr, timeline.length, music_len)
+		if _skipping >= 0.0:
+			g *= clampf(1.0 - _skipping / SKIP_FADE, 0.0, 1.0)   # a skip fades the music with the picture
+		music.volume_db = linear_to_db(maxf(g, 0.0001))
 
 
 func _fire_events(ss: float) -> void:
@@ -435,7 +439,10 @@ func _exit_tree() -> void:
 	if _task >= 0:
 		_take_cue()
 	if _playing and not _done:
-		_set_flag(false)     # freed / removed mid-cinematic: Esc must open the pause menu again (plan review Minor 3)
+		# freed / removed mid-cinematic: Esc must open the pause menu again (plan review Minor 3) and an awaiting host must
+		# hear the end (Tasks 5+6 review): finished(true) with leaving_tree set
+		leaving_tree = true
+		_finish(true)
 
 
 func _notification(what: int) -> void:

@@ -4,7 +4,9 @@
 # [from, hit, to] is mapped piecewise-linearly onto the move so its impact frame lands at story time start + hit_u·dur:
 # blocking, timing and the beat sheet are the same whichever tier plays. Entry extras ("arc" metres, "spin" degrees per axis)
 # add the airborne height / rotation a tier lacks over the move's "air" window; "add" layers an additive code pose; "yaw"
-# turns the actor while that entry plays. to = -1 -> full clip; from > to -> backwards. Code entries play pose-u 0..1 and
+# turns the actor while that entry plays; "ref" is the clip time whose hips position the horizontal root strip keeps (default
+# from; 0 keeps a mid-clip hold window over the root when the clip travelled before it). to = -1 -> full clip; from > to ->
+# backwards. Code entries play pose-u 0..1 and
 # may carry "hit" (pose-u of their impact), mapped like a clip window; additive layers peak on the impact (add_u).
 # Native windows are authored in seconds of the men/* body clips; women/* body files hold the same keys stretched in time
 # (every clip 1.25x longer), so resolve() scales native windows by the rig's Death length over NATIVE_REF_LEN.
@@ -91,23 +93,28 @@ const MOVES: Dictionary = {
 	"launched_back": {"dur": 1.6, "hit_u": 0.05, "air": [0.05, 0.55], "src": [
 		{"t": "mixamo", "a": "Flying_Back_Death", "from": 0.0, "hit": 0.08, "to": 2.0},
 		{"t": "ual2", "a": "Hit_Knockback", "from": 0.0, "hit": 0.04, "to": -1.0, "arc": 0.8},
-		{"t": "native", "a": "Death", "from": 0.0, "hit": 0.05, "to": -1.0, "arc": 0.8}]},
+		{"t": "native", "a": "Death", "from": 0.0, "hit": 0.05, "to": -1.0, "arc": 0.8},
+		{"t": "code", "a": "fall_back", "arc": 0.8}]},
 	"knocked_out": {"dur": 2.0, "hit_u": 0.05, "src": [
-		{"t": "mixamo", "a": "Knocked_Out", "from": 0.6, "hit": 0.7, "to": 4.9},
+		{"t": "mixamo", "a": "Knocked_Out", "from": 0.6, "hit": 0.7, "to": 4.9, "ref": 0.0},
 		{"t": "ual1", "a": "Death01", "from": 0.0, "hit": 0.05, "to": -1.0},
 		{"t": "native", "a": "Death", "from": 0.0, "hit": 0.05, "to": -1.0}, {"t": "code", "a": "fall_back"}]},
 	"sweep_fall": {"dur": 1.4, "hit_u": 0.35, "src": [
 		{"t": "mixamo", "a": "Sweep_Fall", "from": 0.5, "hit": 1.0, "to": 2.5},
-		{"t": "native", "a": "Death", "from": 0.0, "hit": 0.2, "to": -1.0}]},
+		{"t": "ual1", "a": "Death01", "from": 0.0, "hit": 0.3, "to": 2.4, "ref": 0.0},
+		{"t": "native", "a": "Death", "from": 0.0, "hit": 0.2, "to": -1.0}, {"t": "code", "a": "fall_back"}]},
 	"slip_fall": {"dur": 1.2, "hit_u": 0.3, "src": [
 		{"t": "mixamo", "a": "Sweep_Fall", "from": 0.6, "hit": 1.0, "to": 2.5},
-		{"t": "native", "a": "Death", "from": 0.0, "hit": 0.2, "to": -1.0}]},
+		{"t": "ual1", "a": "Death01", "from": 0.0, "hit": 0.3, "to": 2.4, "ref": 0.0},
+		{"t": "native", "a": "Death", "from": 0.0, "hit": 0.2, "to": -1.0}, {"t": "code", "a": "fall_back"}]},
 	"lie": {"dur": 1.0, "loop": true, "src": [
-		{"t": "mixamo", "a": "Knocked_Out", "from": 4.9, "to": 4.93},
-		{"t": "ual1", "a": "Death01", "from": 2.38, "to": 2.40}, {"t": "native", "a": "Death", "from": 1.05, "to": 1.066},
+		# Mixamo: the last lying frame of Flying_Back_Death with the hips kept at their clip-start spot (over the root), the
+		# same frame launched_back ends on; Knocked_Out's lying frames sit 1.2 m from the root (crossfades skated)
+		{"t": "mixamo", "a": "Flying_Back_Death", "from": 1.97, "to": 2.0, "ref": 0.0},
+		{"t": "ual1", "a": "Death01", "from": 2.38, "to": 2.40, "ref": 0.0}, {"t": "native", "a": "Death", "from": 1.05, "to": 1.066},
 		{"t": "code", "a": "lie_back"}]},
 	"get_up": {"dur": 2.0, "src": [
-		{"t": "mixamo", "a": "Getting_Up", "from": 4.0, "to": 8.33},
+		{"t": "mixamo", "a": "Getting_Up", "from": 3.0, "to": 8.33},   # 3.0: still half lying (smaller pop out of lie)
 		{"t": "ual2", "a": "LayToIdle"}, {"t": "native", "a": "Death", "from": 1.066, "to": 0.0}, {"t": "code", "a": "getup"}]},
 	"victory": {"dur": 2.0, "src": [
 		{"t": "mixamo", "a": "Victory", "from": 0.5, "to": 2.5}, {"t": "ual2", "a": "Yes"},
@@ -180,6 +187,7 @@ static func resolve(move_name: String, bd: Dictionary) -> Dictionary:
 		"from": float(pick.get("from", 0.0)), "hit": float(pick.get("hit", -1.0)), "to": float(pick.get("to", -1.0)),
 		"arc": float(pick.get("arc", 0.0)), "spin": pick.get("spin", Vector3.ZERO), "add": String(pick.get("add", "")),
 		"yaw": float(pick.get("yaw", 0.0)), "hold_spin": bool(pick.get("hold_spin", false)),
+		"ref": float(pick.get("ref", pick.get("from", 0.0))),
 		"dur": float(m["dur"]), "hit_u": float(m.get("hit_u", -1.0)), "loop": bool(m.get("loop", false)),
 		"air": m.get("air", []), "root_y": String(m.get("root_y", "keep"))}
 	if r["t"] == "code":

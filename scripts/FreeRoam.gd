@@ -133,6 +133,7 @@ const CINE_FLOOR_UP: float = 2.0         # tia tìm sàn sân khấu bắt đầ
 const CINE_FLOOR_MAX: float = 0.5        # sàn lệch quá 0,5 m so với mặt đất landmark = mái / bục: loại
 const CINE_CLUTTER_H: float = 0.15       # mesh nhìn thấy nhô > 0,15 m trên sàn trong hộp sân khấu = vật cản hình ảnh
 const CINE_CLUTTER_TOP: float = 2.5      # ... và bắt đầu thấp hơn 2,5 m trên sàn (tán cây cao không tính)
+const CINE_GRID_STEP: float = 1.0       # lưới tia sàn ~1 m trong hộp sân khấu (bậc vỉa hè gộp lớn không có đỉnh nào trong hộp)
 const CINE_BIG_MESH: float = 30.0        # mesh gộp rộng hơn 30 m: xét từng đỉnh thay cho AABB
 var cine_player: CinePlayer = null
 ## Chỗ diễn vừa tìm được (báo cáo / test): landmark, tâm dò, vòng, yaw, sàn, mặt đất landmark.
@@ -1338,6 +1339,8 @@ func _cine_try(space: PhysicsDirectSpaceState3D, box: BoxShape3D, excl: Array[RI
 	var xf := Transform3D(basis, Vector3(pt.x, ys[0], pt.y))
 	if not _cine_clutter_in(items, xf, size).is_empty():
 		return null
+	if not _cine_floor_steps(space, xf, size, true).is_empty():
+		return null
 	var sq := PhysicsShapeQueryParameters3D.new()
 	sq.shape = box
 	sq.transform = Transform3D(basis, Vector3(pt.x, ys[0] + 0.25 + 0.9, pt.y))
@@ -1364,9 +1367,38 @@ func _cine_exclusions() -> Array[RID]:
 	return out
 
 
-## Visual clutter (names) inside the stage box xf / size: visible meshes poking more than CINE_CLUTTER_H above the floor.
+## Visual clutter (names) inside the stage box xf / size: visible meshes poking more than CINE_CLUTTER_H above the floor,
+## plus floor steps found by the ~1 m ray grid.
 func cine_clutter(xf: Transform3D, size: Vector2) -> Array:
-	return _cine_clutter_in(_cine_clutter_items(xf.origin, size.length() * 0.5 + 1.0), xf, size)
+	var out: Array = _cine_clutter_in(_cine_clutter_items(xf.origin, size.length() * 0.5 + 1.0), xf, size)
+	out.append_array(_cine_floor_steps(get_world_3d().direct_space_state, xf, size, false))
+	return out
+
+
+## Floor steps inside the box: a downward ray every ~CINE_GRID_STEP m from CINE_FLOOR_UP above the floor; a missing floor,
+## a steep hit or one more than CINE_CLUTTER_H (+1 cm) off the floor height is a step. Catches wide merged slabs (the
+## 0.28 m campus sidewalk) that cross the box with no vertex inside it. first_only: stop at the first step (search).
+func _cine_floor_steps(space: PhysicsDirectSpaceState3D, xf: Transform3D, size: Vector2, first_only: bool) -> Array:
+	var excl: Array[RID] = _cine_exclusions()
+	if water_floor:
+		excl.append(water_floor.get_rid())
+	var nx: int = maxi(1, ceili(size.x / CINE_GRID_STEP))
+	var nz: int = maxi(1, ceili(size.y / CINE_GRID_STEP))
+	var out: Array = []
+	for i: int in nx + 1:
+		for j: int in nz + 1:
+			var l := Vector3(size.x * (float(i) / nx - 0.5), 0.0, size.y * (float(j) / nz - 0.5))
+			var w: Vector3 = xf * l
+			var q := PhysicsRayQueryParameters3D.create(w + Vector3(0.0, CINE_FLOOR_UP, 0.0), w - Vector3(0.0, 1.0, 0.0))
+			q.exclude = excl
+			var hit: Dictionary = space.intersect_ray(q)
+			var bad: bool = hit.is_empty() or (hit["normal"] as Vector3).y < 0.7 \
+				or absf((hit["position"] as Vector3).y - xf.origin.y) > CINE_CLUTTER_H + 0.01
+			if bad:
+				out.append("floor step at (%.1f, %.1f): %s" % [l.x, l.z, "no floor" if hit.is_empty() else "y %.2f" % (hit["position"] as Vector3).y])
+				if first_only:
+					return out
+	return out
 
 
 ## Clutter sources within `radius` (XZ) of centre, in the height band a stage floor near centre.y can see: small visible
@@ -1494,6 +1526,20 @@ func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 
 
 func _on_cine_finished(skipped: bool, slot: String) -> void:
+	if cine_player and cine_player.leaving_tree:
+		# the player left the tree mid-cinematic: when FreeRoam itself is leaving (scene change) do nothing (no music_play
+		# while the next scene loads); if only the player was removed, restore the world once the removal is done
+		call_deferred("_on_cine_left_tree", skipped, slot)
+		return
+	_restore_after_cine(skipped, slot)
+
+
+func _on_cine_left_tree(skipped: bool, slot: String) -> void:
+	if is_inside_tree() and not is_queued_for_deletion():
+		_restore_after_cine(skipped, slot)
+
+
+func _restore_after_cine(skipped: bool, slot: String) -> void:
 	for n: Node in (_cine_saved.get("vis", {}) as Dictionary).keys():
 		if is_instance_valid(n):
 			n.visible = _cine_saved["vis"][n]

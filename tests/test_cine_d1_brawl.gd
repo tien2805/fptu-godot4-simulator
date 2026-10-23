@@ -2,8 +2,8 @@
 # Headless test of seg_d1_brawl (re-timed to the owner's track "I've Gotta Be Me", ~112 bpm): valid, exactly 25.000 s, every
 # impact on its music onset within 0.5 ms (ramps placed by real time), the long finisher slow-mo ending at real 22.000 with a
 # 3.000 s tail, the crate crash and the SFX accents on their onsets, the shot cuts, the committed beat sheet in sync (CRLF
-# normalised); plays 1500 steps of 1/60 with actors inside the 14 x 10 m box; contacts within 0.6 m and lying bodies on the
-# floor on every tier (cap 0 Mixamo when present, 1 UAL, 2 native, 3 code); a clear stage at the campus west gate; F9 plays
+# normalised); plays 1500 steps of 1/60 with actors inside the 14 x 10 m box; contacts within 0.6 m (ramps and the 7.72
+# cross), lying bodies on the floor and no hips skating (<= 0.08 m per frame) through lie / get-up crossfades on every tier (cap 0 Mixamo when present, 1 UAL, 2 native, 3 code); a clear stage at the campus west gate; F9 plays
 # it inside FreeRoam and a hold-Esc skip restores the world.
 # Run:  godot --headless --path . --script tests/test_cine_d1_brawl.gd
 # CINE_NO_MIXAMO=1 sets CineRetarget.disabled = ["mixamo"] before any check (covers the fallback tiers with files present).
@@ -23,6 +23,10 @@ const LYING: Array = [["c2", 16.0], ["c3", 17.0], ["c1", 24.6]]
 const GROUPS: Dictionary = {"hands": ["Wrist.L", "Wrist.R"], "feet": ["Foot.L", "Foot.R"], "knees": ["LowerLeg.L", "LowerLeg.R"],
 	"torso": ["Hips", "Chest"]}
 const HALF: Vector2 = Vector2(7.0, 5.0)
+## Non-ramp hits checked like the ramps: [name, real time, attacker points, target points].
+const EXTRA_CONTACTS: Array = [["X", 7.72, "hero:hands", "c2:Chest"]]
+## Lie / get-up transitions: the hips may move at most this much per 1/60 frame relative to the actor root (no skating).
+const HIPS_STEP_MAX: float = 0.08
 
 var fails: Array[String] = []
 var phase: int = -1
@@ -51,9 +55,13 @@ func _points(pl: CinePlayer, spec: String) -> Array[Vector3]:
 
 
 func _contacts(pl: CinePlayer, label: String) -> void:
-	for row: Dictionary in tl.clock.ramps:
-		if not row.has("att"):
-			continue
+	var rows: Array = []
+	for rw: Dictionary in tl.clock.ramps:
+		if rw.has("att"):
+			rows.append(rw)
+	for ex: Array in EXTRA_CONTACTS:
+		rows.append({"name": ex[0], "r_hit": ex[1], "att": ex[2], "tgt": ex[3]})
+	for row: Dictionary in rows:
 		pl.seek(float(row["r_hit"]))
 		var best: float = 99.0
 		for x: Vector3 in _points(pl, String(row["att"])):
@@ -76,6 +84,51 @@ func _lying(pl: CinePlayer, label: String) -> void:
 			lo = minf(lo, a.bone_world(b).y)
 		print("  lying  %-6s %s r %.1f: hips %.2f m, lowest bone %.2f m" % [label, String(e[0]), float(e[1]), hy, lo])
 		_check(hy < 0.45 and lo > -0.08, "%s: %s lies on the floor at r %.1f (hips %.2f, lowest %.2f)" % [label, String(e[0]), float(e[1]), hy, lo])
+
+
+## Story start of every move cue next to a lie / get_up (strikes resolved like the validator): [actor, s, "prev->move"].
+func _lie_transitions() -> Array:
+	var by_actor: Dictionary = {}
+	for c: Dictionary in tl.cues:
+		if c["type"] != "move" and c["type"] != "strike":
+			continue
+		var st: float = float(c["s"])
+		if c["type"] == "strike":
+			var dur: float = float((c["opts"] as Dictionary).get("dur", CineMoves.MOVES[c["move"]]["dur"]))
+			st = tl.story_time(c["at"]) - float(CineMoves.MOVES[c["move"]]["hit_u"]) * dur
+		if not by_actor.has(c["actor"]):
+			by_actor[c["actor"]] = []
+		(by_actor[c["actor"]] as Array).append([st, String(c["move"])])
+	var out: Array = []
+	for id: String in by_actor.keys():
+		var arr: Array = by_actor[id]
+		arr.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+		for i: int in arr.size():
+			var prev: String = arr[i - 1][1] if i > 0 else ""
+			if String(arr[i][1]) in ["lie", "get_up"] or prev in ["lie", "get_up"]:
+				out.append([id, float(arr[i][0]), "%s->%s" % [prev, String(arr[i][1])]])
+	return out
+
+
+## Hips motion relative to the actor root per 1/60 real frame from 0.3 s before to 0.6 s after each lie / get_up transition.
+func _skate(pl: CinePlayer, label: String) -> void:
+	var worst: float = 0.0
+	var where: String = ""
+	for t: Array in _lie_transitions():
+		var a: CineActor = pl.actors[String(t[0])]
+		var rt: float = tl.clock.real_at(float(t[1]))
+		var r: float = maxf(rt - 0.3, 0.0)
+		var prev: Variant = null
+		while r <= minf(rt + 0.6, tl.length):
+			pl.seek(r)
+			var h: Vector3 = a.to_local(a.bone_world("Hips"))
+			if prev != null and h.distance_to(prev) > worst:
+				worst = h.distance_to(prev)
+				where = "%s %s at r %.2f" % [String(t[0]), String(t[2]), r]
+			prev = h
+			r += 1.0 / 60.0
+	print("  skate  %-6s max hips step %.3f m/frame (%s)" % [label, worst, where])
+	_check(worst <= HIPS_STEP_MAX, "%s: hips step %.3f m/frame <= %.2f across lie / get_up transitions (%s)" % [label, worst, HIPS_STEP_MAX, where])
 
 
 func _initialize() -> void:
@@ -156,6 +209,7 @@ func _process(_d: float) -> bool:
 			_check(ms < 8.0, "frame update %.2f ms < 8 (4 actors)" % ms)
 			_contacts(p, "ual")
 			_lying(p, "ual")
+			_skate(p, "ual")
 			p.queue_free()
 			var caps: Array[int] = [2, 3]
 			if CineRetarget.available("mixamo"):
@@ -170,6 +224,7 @@ func _process(_d: float) -> bool:
 				pc.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false})
 				_contacts(pc, label)
 				_lying(pc, label)
+				_skate(pc, label)
 				pc.queue_free()
 			CineMoves.max_tier = 0
 			var ps: PackedScene = load("res://scenes/FreeRoam.tscn")

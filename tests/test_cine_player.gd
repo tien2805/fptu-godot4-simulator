@@ -71,9 +71,12 @@ func _initialize() -> void:
 	var sm: Node = _sm()
 	if sm:
 		_check(bool(sm.get("cinematic_active")), "cinematic_active set while playing")
+	var pm_end: Array = []
+	pm.finished.connect(func(sk: bool) -> void: pm_end.append([sk, pm.leaving_tree]))
 	world.remove_child(pm)
 	if sm:
 		_check(not bool(sm.get("cinematic_active")), "cinematic_active cleared when a playing player leaves the tree")
+	_check(pm_end == [[true, true]], "a playing player leaving the tree emits finished(true) with leaving_tree (%s)" % str(pm_end))
 	pm.free()
 	# freeing a player while its cue is still synthesizing on the worker (B1: the worker only writes a holder box and the
 	# player waits for the task before it is deleted)
@@ -269,6 +272,14 @@ func _part_b() -> bool:
 		_clutter(fr, at_gate.affine_inverse(), size * 0.5, 0.0, cg)
 		var cg2: Array = fr.call("cine_clutter", at_gate, size)
 		_check(cg.size() >= 3 and cg2.size() >= 3, "a box on the gate itself is cluttered (test %d, FreeRoam %d meshes)" % [cg.size(), cg2.size()])
+		# a 4 x 3 m box across the 0.28 m campus sidewalk edge (campus v -1..-5, 12 m along the frontage): the floor-ray grid
+		# (~1 m) sees the step by itself, whether or not a vertex of the merged slab falls inside the box (Tasks 5+6 review)
+		var at_walk := Transform3D(sx.basis, Vector3(float(lm[0]), 0.0, float(lm[1])) + sx.basis * Vector3(-3.0, 0.0, 12.0))
+		var mesh_only: Array = fr.call("_cine_clutter_in", fr.call("_cine_clutter_items", at_walk.origin, 4.0), at_walk, Vector2(4.0, 3.0))
+		var steps: Array = fr.call("_cine_floor_steps", space, at_walk, Vector2(4.0, 3.0), false)
+		print("  sidewalk box: mesh clutter %s, floor steps %d" % [str(mesh_only), steps.size()])
+		_check(not steps.is_empty() and not (fr.call("cine_clutter", at_walk, Vector2(4.0, 3.0)) as Array).is_empty(),
+			"the floor-ray grid sees the sidewalk step inside a box (%d rays)" % steps.size())
 	var tod0: String = fr.get("tod_preset")
 	var cam0: Camera3D = (fr as Node3D).get_viewport().get_camera_3d()
 	var fx: Node = root.get_node_or_null("GameFX")

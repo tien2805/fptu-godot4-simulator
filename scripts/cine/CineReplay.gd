@@ -47,6 +47,7 @@ var _music_len: float = 0.0
 var _rows: Array[Dictionary] = []
 var _pause: bool = true
 var _was_paused: bool = false
+var _rec_was: bool = true              # recorder state before the replay (it stops recording while a replay plays)
 var _playing: bool = false
 var _done: bool = false
 var _hold: float = 0.0
@@ -131,6 +132,9 @@ func start(recorder: CineReplayRecorder, opts: Dictionary = {}) -> bool:
 	_was_paused = get_tree().paused
 	if _pause:
 		get_tree().paused = true
+	# pause: false keeps the game running: stop the recorder too, so the replay never records its own playback
+	_rec_was = rec.recording
+	rec.recording = false
 	_set_flag(true)
 	r = 0.0
 	_hold = 0.0
@@ -258,6 +262,7 @@ func _release() -> void:
 		music.stop()
 	if is_instance_valid(rec):
 		rec.restore(_snap)
+		rec.recording = _rec_was
 	if is_instance_valid(_prev_cam) and _prev_cam.is_inside_tree():
 		_prev_cam.make_current()
 	elif camera:

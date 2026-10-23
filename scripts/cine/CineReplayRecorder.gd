@@ -54,8 +54,10 @@ func tracked() -> Array[Node3D]:
 	return out
 
 
+## A mark stamped from _physics_process precedes this frame's _process (which adds the frame delta to clock), so it takes
+## the time the frame will be recorded at.
 func mark(name: String = "blow") -> void:
-	marks[name] = clock
+	marks[name] = clock + (get_process_delta_time() if Engine.is_in_physics_frame() and recording else 0.0)
 
 
 func _process(delta: float) -> void:
