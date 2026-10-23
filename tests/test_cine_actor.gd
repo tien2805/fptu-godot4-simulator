@@ -57,6 +57,8 @@ func _metric(a: CineActor, eff: String) -> float:
 			return (CharacterBuilder._bone_global_now(sk, sk.find_bone("Wrist.R")).origin - h).z
 		"footR_d":
 			return (CharacterBuilder._bone_global_now(sk, sk.find_bone("Foot.R")).origin - h).length()
+		"footL_d":
+			return (CharacterBuilder._bone_global_now(sk, sk.find_bone("Foot.L")).origin - h).length()
 		"footR_z":
 			return (CharacterBuilder._bone_global_now(sk, sk.find_bone("Foot.R")).origin - h).z
 		"kneeL_y":
@@ -150,7 +152,7 @@ func _fix_round_checks() -> void:
 				mid = maxf(mid, (v2 as Vector3).length() if v2 is Vector3 else absf(float(v2)))
 			_check(mid > 0.1, "%s: additive layer %s peaks mid-move (%.2f)" % [mv, add, mid])
 	# --- impact frame: effector peak lands on s_hit (code tiers + re-measured native / Mixamo windows)
-	var peaks: Array = [[3, "flying_kick", "footR_d"], [3, "roundhouse", "footR_d"], [3, "hurricane_kick", "footR_d"],
+	var peaks: Array = [[3, "flying_kick", "footL_d"], [3, "roundhouse", "footR_d"], [3, "hurricane_kick", "footR_d"],
 		[3, "knee_strike", "kneeL_y"], [2, "jab", "wristL_z"], [2, "cross", "wristR_z"], [2, "roundhouse", "footR_z"],
 		[2, "knee_strike", "kneeL_y"], [1, "jab", "wristL_z"], [1, "cross", "wristR_z"]]
 	if CineRetarget.available("mixamo"):
@@ -255,7 +257,7 @@ func _initialize() -> void:
 	_check(CineMoves.resolve("flying_kick", a.bd)["tier"] == "code", "cap 3: flying kick uses the code pose")
 	_check(CineMoves.resolve("jab", a.bd)["tier"] == "native", "cap 3: a move without a code entry falls back to its last tier")
 	var hk: Dictionary = CineMoves.resolve("hurricane_kick", a.bd)
-	_check(hk["tier"] == "code" and (hk["spin"] as Vector3).is_equal_approx(Vector3(0.0, -360.0, 0.0)), "cap 3: hurricane kick code spin is one full turn (y -360)")
+	_check(hk["tier"] == "code" and (hk["spin"] as Vector3).is_equal_approx(Vector3(0.0, -720.0, 0.0)), "cap 3: hurricane kick code spin is two full turns (y -720: impact facing the target at one turn, ends facing forward)")
 	var lie_r: Dictionary = CineMoves.resolve("lie", a.bd)
 	_check(lie_r["tier"] == "code" and lie_r["a"] == "lie_back", "cap 3: lie uses the lie_back code pose")
 	_check(CineMoves.resolve("get_up", a.bd)["a"] == "getup", "cap 3: get_up uses the getup code pose")

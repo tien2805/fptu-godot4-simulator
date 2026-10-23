@@ -19,8 +19,9 @@ const NATIVE_REF_CLIP: String = "Death"
 const NATIVE_REF_LEN: float = 1.0666667
 ## Hip-height pivot of CineActor's spin node (= CineActor.PIVOT_Y): code poses that lay the body down drop it by this much.
 const PIVOT_Y: float = 0.95
-## Height of the pivot above the ground when lying flat (half the body's thickness at the hips).
-const LIE_PIVOT_Y: float = 0.12
+## Height of the pivot above the ground when lying flat (half the body's thickness at the hips; Task 7: hips bone ~0.14 m,
+## like the clip tiers' lying frames at 0.10-0.13 m).
+const LIE_PIVOT_Y: float = 0.08
 ## Pose-u of the code poses' impact (striking foot at full reach, measured on the evaluated actor): code entries carry it as
 ## "hit" so the move's hit_u maps onto it exactly like a clip window (clip_time with from 0, to 1).
 const FLYING_KICK_HIT: float = 0.75
@@ -55,16 +56,18 @@ const MOVES: Dictionary = {
 		{"t": "ual2", "a": "Melee_Hook", "from": 0.0, "hit": 0.25, "to": 0.47},
 		{"t": "native", "a": "Punch_Right", "from": 0.0, "hit": 0.57, "to": 0.83}]},
 	"uppercut": {"dur": 0.8, "hit_u": 0.5, "src": [
-		{"t": "mixamo", "a": "Uppercut", "from": 0.2, "hit": 0.53, "to": 0.95},
+		{"t": "mixamo", "a": "Uppercut", "from": 0.2, "hit": 0.49, "to": 0.95},
 		{"t": "ual1", "a": "Punch_Jab", "from": 0.0, "hit": 0.2, "to": 0.6, "add": "uppercut"},
 		{"t": "native", "a": "Punch_Left", "from": 0.0, "hit": 0.57, "to": 0.83, "add": "uppercut"}]},
 	"roundhouse": {"dur": 1.0, "hit_u": 0.5, "src": [
 		{"t": "mixamo", "a": "Roundhouse_Kick", "from": 0.6, "hit": 1.07, "to": 1.6},
 		{"t": "native", "a": "Kick_Right", "from": 0.1, "hit": 0.5, "to": 0.93, "add": "spin_kick_add"},
 		{"t": "code", "a": "spin_kick", "hit": SPIN_KICK_HIT}]},
+	# code tier: the smoothstep spin is half done at the impact (hit_u 0.5), so two turns put the kick on the target at
+	# exactly one turn and still end facing forward (one turn would strike while facing away)
 	"hurricane_kick": {"dur": 1.2, "hit_u": 0.5, "air": [0.05, 0.95], "src": [
 		{"t": "mixamo", "a": "Hurricane_Kick", "from": 0.1, "hit": 0.9, "to": 1.7, "arc": 0.35},
-		{"t": "code", "a": "spin_kick", "hit": SPIN_KICK_HIT, "arc": 0.7, "spin": Vector3(0.0, -360.0, 0.0)}]},
+		{"t": "code", "a": "spin_kick", "hit": SPIN_KICK_HIT, "arc": 0.7, "spin": Vector3(0.0, -720.0, 0.0)}]},
 	"front_flip": {"dur": 1.2, "hit_u": 0.45, "air": [0.15, 0.85], "src": [
 		{"t": "mixamo", "a": "Front_Flip", "from": 0.35, "hit": 0.85, "to": 1.55},
 		{"t": "code", "a": "tuck", "arc": 1.4, "spin": Vector3(-360.0, 0.0, 0.0)}]},
@@ -86,7 +89,7 @@ const MOVES: Dictionary = {
 		{"t": "ual1", "a": "Hit_Chest", "from": 0.0, "hit": 0.06, "to": -1.0},
 		{"t": "native", "a": "HitRecieve_2", "from": 0.0, "hit": 0.06, "to": -1.0}]},
 	"launched_back": {"dur": 1.6, "hit_u": 0.05, "air": [0.05, 0.55], "src": [
-		{"t": "mixamo", "a": "Flying_Back_Death", "from": 0.2, "hit": 0.3, "to": 2.0},
+		{"t": "mixamo", "a": "Flying_Back_Death", "from": 0.0, "hit": 0.08, "to": 2.0},
 		{"t": "ual2", "a": "Hit_Knockback", "from": 0.0, "hit": 0.04, "to": -1.0, "arc": 0.8},
 		{"t": "native", "a": "Death", "from": 0.0, "hit": 0.05, "to": -1.0, "arc": 0.8}]},
 	"knocked_out": {"dur": 2.0, "hit_u": 0.05, "src": [
@@ -232,6 +235,31 @@ static func _lay_drop(p: float) -> float:
 	return maxf(PIVOT_Y * cos(p), LIE_PIVOT_Y) - PIVOT_Y
 
 
+## Get-up keyframes (u 0 lying = lie_back, 0.4 sitting, 0.7 squatting, 1 standing), smoothstep between them. Leg angles
+## keep the ankles near the floor: with the body pitched back by p, a thigh flexed by f points f + p from straight down,
+## the shin f + p + knee; ankle height = pivot - 0.45 (cos(thigh) + cos(shin)) (Task 7, checked numerically per frame).
+const GETUP_KEYS: Array = [
+	[0.0, PI * 0.5, LIE_PIVOT_Y, 0.35, -0.6, 0.05, -0.1, 0.3, 1.0, 0.4],
+	[0.4, 0.3, 0.22, 1.7, -1.0, 1.6, -0.95, -0.5, 0.35, 0.2],
+	[0.7, -0.3, 0.58, 1.7, -1.7, 1.7, -1.7, 0.9, 0.2, 0.6],
+	[1.0, 0.0, PIVOT_Y, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+]
+
+
+static func _getup_keys(u: float) -> Array:
+	var x: float = clampf(u, 0.0, 1.0)
+	for i: int in range(1, GETUP_KEYS.size()):
+		var b: Array = GETUP_KEYS[i]
+		if x <= float(b[0]) or i == GETUP_KEYS.size() - 1:
+			var a: Array = GETUP_KEYS[i - 1]
+			var t: float = _sm((x - float(a[0])) / maxf(float(b[0]) - float(a[0]), 0.0001))
+			var out: Array = []
+			for k: int in range(1, a.size()):
+				out.append(lerpf(float(a[k]), float(b[k]), t))
+			return out
+	return []
+
+
 ## Code poses {CharacterBuilder joint: Euler (character frame, rad)} applied with CharacterBuilder._apply_bone_pose on the
 ## neutral standing base; u = progress 0..1 through the move (loops: phase). flying_kick, spin_kick and scissor are the
 ## prototype's (git show ec72795:scripts/cine/CineBrawl.gd) – retune the leg angles on the neutral base by eye in Task 7.
@@ -249,17 +277,17 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 			var w: float = sin(u * TAU * 2.0)
 			return {"torso": Vector3(-0.1, 0.0, 0.0), "shoulder_r": Vector3(1.4 + 0.3 * w, 0.0, 0.5), "elbow_r": Vector3(1.6, 0.0, 0.0),
 				"shoulder_l": Vector3(0.9, 0.0, -0.4), "elbow_l": Vector3(2.0, 0.0, 0.0), "head": Vector3(-0.15, 0.0, 0.1 * w)}
-		"flying_kick":
+		"flying_kick":   # LEFT foot strikes (as Mixamo Flying_Kick); mirror of the prototype pose (swap sides, negate y / z)
 			var e: float = _sm(u / 0.86)
-			return {"thigh_r": Vector3(lerpf(1.05, 1.62, e), 0.0, -0.08), "knee_r": Vector3(lerpf(-1.9, -0.02, e), 0.0, 0.0),
-				"foot_r": Vector3(lerpf(0.4, -0.25, e), 0.0, 0.0), "thigh_l": Vector3(lerpf(0.9, 0.75, e), 0.0, 0.18),
-				"knee_l": Vector3(-2.1, 0.0, 0.0), "torso": Vector3(lerpf(-0.1, 0.38, e), lerpf(0.0, 0.25, e), 0.0),
+			return {"thigh_l": Vector3(lerpf(1.05, 1.62, e), 0.0, 0.08), "knee_l": Vector3(lerpf(-1.9, -0.02, e), 0.0, 0.0),
+				"foot_l": Vector3(lerpf(0.4, -0.25, e), 0.0, 0.0), "thigh_r": Vector3(lerpf(0.9, 0.75, e), 0.0, -0.18),
+				"knee_r": Vector3(-2.1, 0.0, 0.0), "torso": Vector3(lerpf(-0.1, 0.38, e), lerpf(0.0, -0.25, e), 0.0),
 				"head": Vector3(lerpf(0.0, -0.3, e), 0.0, 0.0),
-				"shoulder_l": Vector3(lerpf(0.9, 0.35, e), 0.0, lerpf(0.0, -0.95, e)), "elbow_l": Vector3(lerpf(1.6, 0.7, e), 0.0, 0.0),
-				"shoulder_r": Vector3(lerpf(0.9, -0.55, e), 0.0, lerpf(0.0, 0.75, e)), "elbow_r": Vector3(lerpf(1.6, 0.5, e), 0.0, 0.0)}
-		"spin_kick":
+				"shoulder_r": Vector3(lerpf(0.9, 0.35, e), 0.0, lerpf(0.0, 0.95, e)), "elbow_r": Vector3(lerpf(1.6, 0.7, e), 0.0, 0.0),
+				"shoulder_l": Vector3(lerpf(0.9, -0.55, e), 0.0, lerpf(0.0, -0.75, e)), "elbow_l": Vector3(lerpf(1.6, 0.5, e), 0.0, 0.0)}
+		"spin_kick":     # foot reaches straight ahead at hip height (Task 7: thigh z -0.95 crossed it 45° to the left)
 			var e2: float = _sm(u / 0.8)
-			return {"thigh_r": Vector3(lerpf(0.9, 1.5, e2), 0.0, lerpf(-0.2, -0.95, e2)), "knee_r": Vector3(lerpf(-1.6, -0.05, e2), 0.0, 0.0),
+			return {"thigh_r": Vector3(lerpf(0.9, 1.5, e2), 0.0, lerpf(-0.2, -0.3, e2)), "knee_r": Vector3(lerpf(-1.6, -0.05, e2), 0.0, 0.0),
 				"torso": Vector3(lerpf(0.0, 0.32, e2), 0.0, lerpf(0.0, 0.42, e2)), "head": Vector3(0.0, 0.0, lerpf(0.0, -0.35, e2)),
 				"shoulder_l": Vector3(0.6, 0.0, lerpf(0.3, -0.8, e2)), "elbow_l": Vector3(1.4, 0.0, 0.0),
 				"shoulder_r": Vector3(0.3, 0.0, lerpf(-0.3, 0.9, e2)), "elbow_r": Vector3(1.0, 0.0, 0.0)}
@@ -310,7 +338,7 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 		"lie_back":   # flat on the back, arms out, slow breathing (loop phase u)
 			var br2: float = sin(u * TAU) * 0.02
 			return {"body_pitch": PI * 0.5, "body_y": _lay_drop(PI * 0.5),
-				"thigh_l": Vector3(0.12, 0.0, 0.1), "thigh_r": Vector3(0.05, 0.0, -0.12), "knee_l": Vector3(-0.3, 0.0, 0.0),
+				"thigh_l": Vector3(0.35, 0.0, 0.1), "thigh_r": Vector3(0.05, 0.0, -0.12), "knee_l": Vector3(-0.6, 0.0, 0.0),
 				"knee_r": Vector3(-0.1, 0.0, 0.0), "torso": Vector3(br2, 0.0, 0.0), "head": Vector3(0.1, 0.25, 0.0),
 				"shoulder_l": Vector3(0.3, 0.0, -1.1), "elbow_l": Vector3(0.35, 0.0, 0.0),
 				"shoulder_r": Vector3(0.15, 0.0, 0.9), "elbow_r": Vector3(0.5, 0.0, 0.0)}
@@ -324,14 +352,12 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 				out[j] = (lp[j] as Vector3) * kf if lp[j] is Vector3 else float(lp[j]) * kf
 			out["body_y"] = _lay_drop(float(out["body_pitch"]))
 			return out
-		"getup":      # from lie_back: sit up with bent knees, then rise to the neutral stance
-			var kp: float = 1.0 - _sm(u / 0.75)
-			var kb: float = sin(clampf(u / 0.9, 0.0, 1.0) * PI)
-			var pitch: float = PI * 0.5 * kp
-			return {"body_pitch": pitch, "body_y": _lay_drop(pitch),
-				"thigh_l": Vector3(1.3 * kb, 0.0, 0.1 * kb), "thigh_r": Vector3(0.9 * kb, 0.0, -0.1 * kb),
-				"knee_l": Vector3(-2.0 * kb, 0.0, 0.0), "knee_r": Vector3(-1.4 * kb, 0.0, 0.0),
-				"torso": Vector3(-0.5 * kb, 0.0, 0.0), "head": Vector3(-0.2 * kb, 0.0, 0.0),
-				"shoulder_l": Vector3(0.6 * kb, 0.0, -0.3 * kb), "elbow_l": Vector3(0.8 * kb, 0.0, 0.0),
-				"shoulder_r": Vector3(-0.4 * kb, 0.0, 0.3 * kb), "elbow_r": Vector3(0.3 * kb, 0.0, 0.0)}
+		"getup":      # from lie_back: sit up (knees up, hands back on the floor), rock forward into a squat, stand up
+			var g: Array = _getup_keys(u)   # [pitch, pivot height, thigh_l, knee_l, thigh_r, knee_r, shoulder x, shoulder z, elbow]
+			return {"body_pitch": g[0], "body_y": float(g[1]) - PIVOT_Y,
+				"thigh_l": Vector3(g[2], 0.0, 0.1), "knee_l": Vector3(g[3], 0.0, 0.0),
+				"thigh_r": Vector3(g[4], 0.0, -0.1), "knee_r": Vector3(g[5], 0.0, 0.0),
+				"head": Vector3(-0.15 * sin(clampf(u, 0.0, 1.0) * PI), 0.0, 0.0),
+				"shoulder_l": Vector3(g[6], 0.0, -float(g[7])), "elbow_l": Vector3(g[8], 0.0, 0.0),
+				"shoulder_r": Vector3(g[6], 0.0, g[7]), "elbow_r": Vector3(g[8], 0.0, 0.0)}
 	return {}

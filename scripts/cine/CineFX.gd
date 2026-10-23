@@ -442,7 +442,8 @@ static func _box(parent: Node3D, nm: String, size: Vector3, pos: Vector3, mat: M
 	return mi
 
 
-## Set-dressing props from plain meshes: crate_stack | scooter | banana | phone. Origin on the ground.
+## Set-dressing props from plain meshes: crate_stack | scooter (opts "headlight": a lit SpotLight beam) | banana | phone
+## (its screen glow also lights a small OmniLight). Origin on the ground.
 static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 	var root := Node3D.new()
 	root.name = String(opts.get("name", kind.to_pascal_case()))
@@ -538,7 +539,24 @@ static func _build_scooter(root: Node3D, opts: Dictionary) -> void:
 	_box(root, "Fork", Vector3(0.06, 0.6, 0.06), Vector3(0.0, 0.5, -0.66), metal, Vector3(-0.25, 0.0, 0.0))
 	_box(root, "Stem", Vector3(0.07, 0.32, 0.07), Vector3(0.0, 0.98, -0.6), metal, Vector3(-0.25, 0.0, 0.0))
 	_box(root, "Handlebar", Vector3(0.62, 0.05, 0.05), Vector3(0.0, 1.12, -0.56), metal)
-	_box(root, "Headlight", Vector3(0.16, 0.1, 0.06), Vector3(0.0, 1.0, -0.7), _mat(Color("#F2EEDC"), 0.3))
+	var lamp: MeshInstance3D = _box(root, "Headlight", Vector3(0.16, 0.1, 0.06), Vector3(0.0, 1.0, -0.7), _mat(Color("#F2EEDC"), 0.3))
+	if bool(opts.get("headlight", false)):
+		# parked with the headlight on: a warm key light on the fight at night (Task 7)
+		var hm: StandardMaterial3D = lamp.material_override as StandardMaterial3D
+		hm.emission_enabled = true
+		hm.emission = Color("#FFF4D6")
+		hm.emission_energy_multiplier = 3.0
+		hm.set_meta("vice_done", true)
+		var spot := SpotLight3D.new()
+		spot.name = "HeadlightBeam"
+		spot.light_color = Color("#FFF1CC")
+		spot.light_energy = float(opts.get("headlight_energy", 3.0))
+		spot.spot_range = 14.0
+		spot.spot_angle = 34.0
+		spot.shadow_enabled = true
+		spot.position = Vector3(0.0, 1.0, -0.75)
+		spot.rotation_degrees = Vector3(-9.0, 0.0, 0.0)
+		root.add_child(spot)
 	_box(root, "Rack", Vector3(0.36, 0.04, 0.4), Vector3(0.0, 0.8, 0.72), metal)
 	_box(root, "DeliveryBox", Vector3(0.45, 0.45, 0.45), Vector3(0.0, 1.05, 0.72), teal)
 
@@ -580,6 +598,16 @@ static func _build_phone(root: Node3D) -> void:
 	scr.material_override = sm
 	root.add_child(scr)
 	root.set_meta("screen_mat", sm)
+	# soft blue spill on the ground while the screen is lit (a 15 cm prop is otherwise lost at night)
+	var ol := OmniLight3D.new()
+	ol.name = "ScreenGlow"
+	ol.light_color = Color("#BFE3FF")
+	ol.light_energy = 0.9
+	ol.omni_range = 1.4
+	ol.position = Vector3(0.0, 0.12, 0.0)
+	ol.visible = false
+	root.add_child(ol)
+	root.set_meta("glow_light", ol)
 
 
 ## Light or darken a prop's screen (phone).
@@ -589,3 +617,6 @@ static func set_prop_glow(prop: Node3D, on: bool) -> void:
 		return
 	m.emission_enabled = on
 	m.emission_energy_multiplier = 2.0
+	var ol: OmniLight3D = prop.get_meta("glow_light", null)
+	if ol:
+		ol.visible = on

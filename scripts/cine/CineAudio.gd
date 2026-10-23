@@ -14,7 +14,7 @@ const SFX_DIR: String = "user://sfx/"
 const SR: int = 22050
 const FADE_OUT: float = 0.5
 const SFX_CUES: Array[String] = ["impact_light", "impact_medium", "impact_heavy", "whoosh_down", "freeze_tick", "crate_smash",
-	"body_fall", "slide_whistle", "groan", "phone_buzz"]
+	"body_fall", "slide_whistle", "groan", "phone_buzz", "engine_roar"]
 const MOODS: Dictionary = {
 	"punchy": {"bpm": 118.0, "root": 55.0, "minor": true},
 	"heavy": {"bpm": 96.0, "root": 49.0, "minor": true},
@@ -228,4 +228,27 @@ static func _synth_sfx(cue: String) -> AudioStreamWAV:
 				b.append_array(_tone(0.18, 175.0, 175.0, 0.5, 0.0))
 				b.append_array(gap)
 			return _to_wav(b)
+		"engine_roar":
+			return _to_wav(_engine(1.6))
 	return _to_wav(_tone(0.08, 800.0, 800.0, 0.4, 20.0))
+
+
+## Distant motorbike engines revving up: two detuned pulsing low voices (firing rate rising) plus filtered noise, faded in
+## and out (seg_d1_brawl tail: more couriers coming).
+static func _engine(dur: float) -> PackedFloat32Array:
+	var n: int = int(dur * SR)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var nz: PackedFloat32Array = _noise(dur, 0.12, 0.0, 7, 0.92)
+	var ph1: float = 0.0
+	var ph2: float = 0.0
+	for i: int in n:
+		var t: float = float(i) / SR
+		var u: float = t / dur
+		var f: float = lerpf(38.0, 92.0, smoothstep(0.0, 0.7, u))
+		ph1 += TAU * f / SR
+		ph2 += TAU * f * 1.51 / SR
+		var pulse: float = 0.55 + 0.45 * sin(ph1 * 0.5)
+		var env: float = smoothstep(0.0, 0.25, u) * (1.0 - smoothstep(0.75, 1.0, u))
+		out[i] = (sin(ph1) * 0.32 + sin(ph2) * 0.16 + nz[i]) * pulse * env
+	return out

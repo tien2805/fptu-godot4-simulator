@@ -1,8 +1,9 @@
 """Pick the most cinematic window of a song for a fixed-length fight cinematic (choreography is re-timed to it later).
 
 usage: python -I pickwin.py <audio> <length s>
-Score per window: loudness + hit activity, a strong hit 2-3.5 s in (first impact), a strong hit 19.5-22.5 s in
-(the last slow-mo impact before the 3-4 s tail) and steady beats. Prints the top windows and their hit times.
+Score per window: loudness + hit activity, a strong hit 2-3.5 s in (first impact), a strong hit length-5.5 to
+length-4.0 s in (19.5-21.0 s for 25 s: the last freeze impact; its ramp still needs 0.5-1.55 s of slow motion after the
+hit, then the 3-4 s normal-speed tail of spec A1-D8) and steady beats. Prints the top windows and their hit times.
 """
 import sys
 
@@ -37,7 +38,7 @@ def main():
         act = float(np.mean(env[s:e]))
         ld = float(np.mean(loud[s:e]))
         first = peak(s + int(2.0 * fps), s + int(3.5 * fps))
-        last = peak(s + int(19.5 * fps), s + int(min(22.5, length - 1.0) * fps))
+        last = peak(s + int(max(length - 5.5, 0.0) * fps), s + int(max(length - 4.0, 0.0) * fps))
         quiet_start = float(np.mean(loud[s:s + int(1.0 * fps)]))
         score = 2.0 * ld + 6.0 * act + 0.6 * first + 0.6 * last + 0.3 * quiet_start
         cands.append((score, s / fps, ld, act, first, last))
