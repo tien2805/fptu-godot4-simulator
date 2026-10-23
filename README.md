@@ -89,6 +89,11 @@ Icon game (Cóc Vàng áo cam) được tạo bằng `generate_icon.py` từ ả
 
 Kiểm thử headless (không cần cửa sổ): `tests/smoke_all_stages.gd`, `tests/test_stage*.gd`, `tests/test_main_menu.gd`, `tests/test_free_roam.gd` (thế giới mở), `tests/test_mapdata.gd` / `tests/test_mapbuilder.gd` (bản đồ thật). Chi tiết thiết kế xem [PLAN.md](PLAN.md).
 
+## Cinematic: mocap Mixamo và nhạc (tùy chọn)
+
+- **Mocap:** chạy `tools\import_mixamo.bat` (mặc định lấy file `.fbx` trong `D:\mixamo_fight`, hoặc truyền thư mục khác: `tools\import_mixamo.bat E:\thu_muc_fbx`). File được chép vào `assets\local\mixamo\`; thư mục này bị git bỏ qua và bị loại khỏi bản build. Script tự import bằng Godot rồi in báo cáo retarget (số clip, clip thiếu, clip lỗi). Không có các file này, game dùng clip CC0 của Quaternius hoặc tư thế dựng bằng code.
+- **Nhạc:** đặt file `<slot>.ogg` hoặc `<slot>.mp3` vào thư mục `music\` trong thư mục người dùng của game. Đường dẫn chính xác được in ra bởi `godot --headless --path . --script tools/cine_beats.gd` và hiện trong cảnh xem thử cinematic. Tên các slot nằm ở mục 8.3 của `docs/superpowers/specs/2026-10-22-story-tool-den-design.md`. File dài hơn cinematic sẽ nhỏ dần trong 0,5 s cuối; không có file thì game phát nhạc tổng hợp.
+
 ## 🧱 Công nghệ & tư liệu
 
 * Godot 4.7 Forward+, GDScript 100%, không plugin. Đồ hoạ: SDFGI, SSIL, SSR, sương thể tích, bóng mềm; 3 mức chất lượng.
