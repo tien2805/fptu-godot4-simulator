@@ -4,7 +4,8 @@
 # [from, hit, to] is mapped piecewise-linearly onto the move so its impact frame lands at story time start + hit_u·dur:
 # blocking, timing and the beat sheet are the same whichever tier plays. Entry extras ("arc" metres, "spin" degrees per axis)
 # add the airborne height / rotation a tier lacks over the move's "air" window; "add" layers an additive code pose; "yaw"
-# turns the actor while that entry plays. to = -1 -> full clip; from > to -> backwards.
+# turns the actor while that entry plays. to = -1 -> full clip; from > to -> backwards. Code entries play pose-u 0..1 and
+# may carry "hit" (pose-u of their impact), mapped like a clip window; additive layers peak on the impact (add_u).
 # Native windows are authored in seconds of the men/* body clips; women/* body files hold the same keys stretched in time
 # (every clip 1.25x longer), so resolve() scales native windows by the rig's Death length over NATIVE_REF_LEN.
 class_name CineMoves
@@ -20,6 +21,13 @@ const NATIVE_REF_LEN: float = 1.0666667
 const PIVOT_Y: float = 0.95
 ## Height of the pivot above the ground when lying flat (half the body's thickness at the hips).
 const LIE_PIVOT_Y: float = 0.12
+## Pose-u of the code poses' impact (striking foot at full reach, measured on the evaluated actor): code entries carry it as
+## "hit" so the move's hit_u maps onto it exactly like a clip window (clip_time with from 0, to 1).
+const FLYING_KICK_HIT: float = 0.75
+const SPIN_KICK_HIT: float = 0.7
+## Additive layers ("add") peak at pose-u ADD_HIT; add_u() maps the move's hit_u onto it, so the delta peaks on the impact
+## and is zero at both window ends (no pop).
+const ADD_HIT: float = 0.5
 
 const MOVES: Dictionary = {
 	"fight_idle": {"dur": 3.3, "loop": true, "src": [
@@ -33,42 +41,42 @@ const MOVES: Dictionary = {
 	"walk": {"dur": 1.0, "loop": true, "src": [{"t": "ual1", "a": "Walk"}, {"t": "native", "a": "Walk"}]},
 	"flying_kick": {"dur": 1.0, "hit_u": 0.55, "air": [0.15, 0.6], "src": [
 		{"t": "mixamo", "a": "Flying_Kick", "from": 0.0, "hit": 0.53, "to": 1.1},
-		{"t": "code", "a": "flying_kick", "arc": 0.9}]},
+		{"t": "code", "a": "flying_kick", "hit": FLYING_KICK_HIT, "arc": 0.9}]},
 	"jab": {"dur": 0.45, "hit_u": 0.55, "src": [
 		{"t": "mixamo", "a": "Jab_Cross", "from": 0.15, "hit": 0.40, "to": 0.55},
 		{"t": "ual1", "a": "Punch_Jab", "from": 0.0, "hit": 0.22, "to": 0.6},
-		{"t": "native", "a": "Punch_Left", "from": 0.0, "hit": 0.35, "to": 0.83}]},
+		{"t": "native", "a": "Punch_Left", "from": 0.0, "hit": 0.57, "to": 0.83}]},
 	"cross": {"dur": 0.5, "hit_u": 0.5, "src": [
 		{"t": "mixamo", "a": "Jab_Cross", "from": 0.50, "hit": 0.67, "to": 0.95},
 		{"t": "ual1", "a": "Punch_Cross", "from": 0.1, "hit": 0.3, "to": 0.7},
-		{"t": "native", "a": "Punch_Right", "from": 0.0, "hit": 0.35, "to": 0.83}]},
+		{"t": "native", "a": "Punch_Right", "from": 0.0, "hit": 0.57, "to": 0.83}]},
 	"hook": {"dur": 0.7, "hit_u": 0.55, "src": [
 		{"t": "mixamo", "a": "Hook_Punch", "from": 0.6, "hit": 1.0, "to": 1.4},
 		{"t": "ual2", "a": "Melee_Hook", "from": 0.0, "hit": 0.25, "to": 0.47},
-		{"t": "native", "a": "Punch_Right", "from": 0.0, "hit": 0.35, "to": 0.83}]},
+		{"t": "native", "a": "Punch_Right", "from": 0.0, "hit": 0.57, "to": 0.83}]},
 	"uppercut": {"dur": 0.8, "hit_u": 0.5, "src": [
 		{"t": "mixamo", "a": "Uppercut", "from": 0.2, "hit": 0.53, "to": 0.95},
-		{"t": "ual1", "a": "Punch_Cross", "from": 0.1, "hit": 0.3, "to": 0.7, "add": "uppercut"},
-		{"t": "native", "a": "Punch_Left", "from": 0.0, "hit": 0.35, "to": 0.83, "add": "uppercut"}]},
+		{"t": "ual1", "a": "Punch_Jab", "from": 0.0, "hit": 0.2, "to": 0.6, "add": "uppercut"},
+		{"t": "native", "a": "Punch_Left", "from": 0.0, "hit": 0.57, "to": 0.83, "add": "uppercut"}]},
 	"roundhouse": {"dur": 1.0, "hit_u": 0.5, "src": [
 		{"t": "mixamo", "a": "Roundhouse_Kick", "from": 0.6, "hit": 1.07, "to": 1.6},
-		{"t": "native", "a": "Kick_Right", "from": 0.1, "hit": 0.45, "to": 0.93, "add": "spin_kick"},
-		{"t": "code", "a": "spin_kick"}]},
+		{"t": "native", "a": "Kick_Right", "from": 0.1, "hit": 0.5, "to": 0.93, "add": "spin_kick_add"},
+		{"t": "code", "a": "spin_kick", "hit": SPIN_KICK_HIT}]},
 	"hurricane_kick": {"dur": 1.2, "hit_u": 0.5, "air": [0.05, 0.95], "src": [
 		{"t": "mixamo", "a": "Hurricane_Kick", "from": 0.1, "hit": 0.9, "to": 1.7, "arc": 0.35},
-		{"t": "code", "a": "spin_kick", "arc": 0.7, "spin": Vector3(0.0, -360.0, 0.0)}]},
+		{"t": "code", "a": "spin_kick", "hit": SPIN_KICK_HIT, "arc": 0.7, "spin": Vector3(0.0, -360.0, 0.0)}]},
 	"front_flip": {"dur": 1.2, "hit_u": 0.45, "air": [0.15, 0.85], "src": [
 		{"t": "mixamo", "a": "Front_Flip", "from": 0.35, "hit": 0.85, "to": 1.55},
 		{"t": "code", "a": "tuck", "arc": 1.4, "spin": Vector3(-360.0, 0.0, 0.0)}]},
 	"dodge": {"dur": 0.8, "hit_u": 0.45, "src": [
-		{"t": "mixamo", "a": "Dodging", "from": 0.0, "hit": 0.5, "to": 1.2}, {"t": "code", "a": "dodge_lean"}]},
+		{"t": "mixamo", "a": "Dodging", "from": 0.0, "hit": 0.5, "to": 1.2}, {"t": "code", "a": "dodge_lean", "hit": 0.5}]},
 	"block": {"dur": 0.8, "hit_u": 0.4, "src": [
 		{"t": "mixamo", "a": "Block", "from": 0.1, "hit": 0.45, "to": 1.2},
-		{"t": "ual2", "a": "Sword_Block", "from": 0.0, "hit": 0.2, "to": -1.0}, {"t": "code", "a": "block"}]},
+		{"t": "ual2", "a": "Sword_Block", "from": 0.0, "hit": 0.2, "to": -1.0}, {"t": "code", "a": "block", "hit": 0.3}]},
 	"knee_strike": {"dur": 0.9, "hit_u": 0.5, "air": [0.2, 0.6], "src": [
-		{"t": "mixamo", "a": "Knee_Kick", "from": 0.2, "hit": 0.6, "to": 1.0, "arc": 0.25},
-		{"t": "native", "a": "Kick_Left", "from": 0.1, "hit": 0.45, "to": 0.93, "add": "knee", "arc": 0.4},
-		{"t": "code", "a": "knee", "arc": 0.4}]},
+		{"t": "mixamo", "a": "Knee_Kick", "from": 0.45, "hit": 0.9, "to": 1.35, "arc": 0.25},
+		{"t": "native", "a": "Kick_Left", "from": 0.1, "hit": 0.33, "to": 0.93, "add": "knee_add", "arc": 0.4},
+		{"t": "code", "a": "knee", "hit": 0.5, "arc": 0.4}]},
 	"hit_head": {"dur": 0.6, "hit_u": 0.1, "src": [
 		{"t": "mixamo", "a": "Head_Hit", "from": 0.0, "hit": 0.12, "to": 1.0},
 		{"t": "ual1", "a": "Hit_Head", "from": 0.0, "hit": 0.06, "to": -1.0},
@@ -171,6 +179,9 @@ static func resolve(move_name: String, bd: Dictionary) -> Dictionary:
 		"yaw": float(pick.get("yaw", 0.0)), "hold_spin": bool(pick.get("hold_spin", false)),
 		"dur": float(m["dur"]), "hit_u": float(m.get("hit_u", -1.0)), "loop": bool(m.get("loop", false)),
 		"air": m.get("air", []), "root_y": String(m.get("root_y", "keep"))}
+	if r["t"] == "code":
+		r["from"] = 0.0
+		r["to"] = 1.0
 	if r["t"] == "native":
 		var sc: float = native_scale(bd)
 		r["from"] = float(r["from"]) * sc
@@ -201,6 +212,14 @@ static func clip_time(res: Dictionary, x: float, dur: float, loop: bool) -> floa
 			return lerpf(a, h, u / hu)
 		return lerpf(h, b, (u - hu) / (1.0 - hu))
 	return lerpf(a, b, u)
+
+
+## Pose-u of a resolved move's additive layer at move progress u: [0, hit_u] -> [0, ADD_HIT], [hit_u, 1] -> [ADD_HIT, 1].
+static func add_u(res: Dictionary, u: float) -> float:
+	var hu: float = res["hit_u"]
+	if hu <= 0.0 or hu >= 1.0:
+		return clampf(u, 0.0, 1.0)
+	return clip_time({"from": 0.0, "hit": ADD_HIT, "to": 1.0, "hit_u": hu}, u, 1.0, false)
 
 
 static func _sm(u: float) -> float:
@@ -271,10 +290,17 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 				"torso": Vector3(-0.15 * k3, 0.0, 0.0), "head": Vector3(0.2 * k3, 0.0, 0.0)}
 		"knee":
 			var k4: float = sin(clampf(u, 0.0, 1.0) * PI)
-			return {"thigh_r": Vector3(1.7 * k4, 0.0, 0.0), "knee_r": Vector3(-2.2 * k4, 0.0, 0.0),
+			return {"thigh_l": Vector3(1.7 * k4, 0.0, 0.0), "knee_l": Vector3(-2.2 * k4, 0.0, 0.0),
 				"torso": Vector3(-0.25 * k4, 0.0, 0.0), "shoulder_l": Vector3(1.3, 0.0, -0.3), "shoulder_r": Vector3(1.3, 0.0, 0.3),
 				"elbow_l": Vector3(1.5, 0.0, 0.0), "elbow_r": Vector3(1.5, 0.0, 0.0)}
-		"uppercut":   # additive on a punch clip: drive the fist upward through the impact
+		"spin_kick_add":   # additive on Kick_Right: swing the leg out and round, lean away (0 at both ends, peak at ADD_HIT)
+			var ks: float = pow(sin(clampf(u, 0.0, 1.0) * PI), 2.0)
+			return {"thigh_r": Vector3(0.15 * ks, 0.0, 0.55 * ks), "torso": Vector3(0.1 * ks, 0.0, 0.35 * ks),
+				"head": Vector3(0.0, 0.0, -0.25 * ks), "shoulder_l": Vector3(0.0, 0.0, -0.5 * ks), "shoulder_r": Vector3(0.0, 0.0, 0.4 * ks)}
+		"knee_add":        # additive on Kick_Left: lift the thigh higher and fold the shin into a knee (0 at both ends)
+			var kk: float = pow(sin(clampf(u, 0.0, 1.0) * PI), 2.0)
+			return {"thigh_l": Vector3(0.35 * kk, 0.0, 0.0), "knee_l": Vector3(-1.6 * kk, 0.0, 0.0), "torso": Vector3(-0.2 * kk, 0.0, 0.0)}
+		"uppercut":   # additive on a left punch clip: drive the fist upward through the impact
 			var k5: float = sin(clampf(u, 0.0, 1.0) * PI)
 			return {"shoulder_l": Vector3(0.9 * k5, 0.0, 0.0), "elbow_l": Vector3(0.6 * k5, 0.0, 0.0), "torso": Vector3(-0.2 * k5, 0.0, 0.15 * k5)}
 		"victory":

@@ -1,14 +1,21 @@
 # File: res://scripts/cine/CineActor.gd
 # One cinematic actor (spec A1-D21): a real game character (CharacterBuilder rigged body, animate=false) driven purely by
 # STORY time s, so any frame can be evaluated in any order:
-#   • move / strike: logical moves (CineMoves) resolved to the best tier, crossfaded; strike places the move so its impact
-#     frame lands on s_hit; code tiers and "add" layers go on top through CharacterBuilder._apply_bone_pose / _char_rot_local;
+#   • move / strike: logical moves (CineMoves) resolved to the best tier, crossfaded (each cue's FULL pose – clip + code +
+#     additive layer – is built before blending); strike places the move so its impact frame lands on s_hit; code tiers and
+#     "add" layers go on top through CharacterBuilder._apply_bone_pose / _char_rot_local, and leg layers carry the Foot.L/R
+#     IK targets with the shin (CharacterBuilder._foot_follow); a last pass seats each foot on its shin's ankle;
 #   • key: ground position + yaw (accumulated, may exceed a turn) + spin about the hip-height pivot, per-segment easing and
 #     parabolic "arc"; the active move's extras (arc, spin, yaw) are added over its air window; code poses may pitch / drop
 #     the whole body about the pivot ("body_pitch" / "body_y": lying, getting up);
-#   • override: timeline poses (abs / add); look: head + neck turn toward a node or a point; expr: face expression (PS2 atlas
-#     cell, or the classic face texture through CharacterBuilder.set_expression); show_at.
-# Without keys the actor stays where it was placed (position / yaw captured at the first evaluate).
+#   • override: timeline poses (abs / add); look: head + neck turn toward a node or a point, in the spin node's frame;
+#     expr: face expression (PS2 atlas cell, or the classic face texture through CharacterBuilder.set_expression); show_at.
+# Order independence: root / spin transforms are pure functions of s (xf_at). A look at another CineActor aims at that
+# actor's head_point_at(s) – its root and spin transform at s times its neutral head point – never at its bones from its last
+# evaluate, so actors can be evaluated in any order and seeking backwards (replays) gives the same frame. (Clip-driven head
+# motion of the target, e.g. a lean or a clip-tier fall, is not followed; code-tier lying is, through body_pitch / body_y.)
+# Without keys the actor stays where it was placed: position / yaw are captured at the first evaluate; call place() to move
+# a key-less actor afterwards (assigning position after an evaluate snaps back).
 class_name CineActor
 extends Node3D
 
@@ -34,6 +41,8 @@ var _base_pose: Dictionary = {}
 var _home: Dictionary = {}             # placement when there are no keys: {pos, yaw}
 var _face_ps2: bool = false
 var _expr_now: String = ""             # classic faces: expression last applied (texture swaps only on change)
+var _head_in_spin: Vector3 = Vector3(0.0, 1.5 - PIVOT_Y, 0.0)   # neutral Head bone point in the spin node's frame
+var _ankles: Array = []                # [LowerLeg bone, Foot bone, ankle in shin-rest frame, ankle in foot-rest frame]
 
 
 ## Build the character (CharacterBuilder.build opts; always rigged, animate=false so no animator writes the bones).
@@ -60,6 +69,27 @@ func setup(opts: Dictionary) -> void:
 		rot[b] = l.basis.get_rotation_quaternion()
 		pos[b] = l.origin
 	_base_pose = {"rot": rot, "pos": pos}
+	# neutral head point in the spin frame (look-at target of other actors, see head_point_at)
+	CineRetarget.apply(sk, bd, _base_pose)
+	var hb: int = sk.find_bone("Head")
+	if hb >= 0:
+		var rel: Transform3D = Transform3D.IDENTITY
+		var n: Node = sk
+		while n != null and n != spin:
+			if n is Node3D:
+				rel = (n as Node3D).transform * rel
+			n = n.get_parent()
+		_head_in_spin = rel * CharacterBuilder._bone_global_now(sk, hb).origin
+	# ankle reference (rest frames, as CineRetarget attaches the feet) for the foot-seating pass
+	for side: String in ["L", "R"]:
+		var lb: int = sk.find_bone("LowerLeg." + side)
+		var fb: int = sk.find_bone("Foot." + side)
+		if lb < 0 or fb < 0:
+			continue
+		var l0: Transform3D = sk.get_bone_global_rest(lb)
+		var f0: Transform3D = sk.get_bone_global_rest(fb)
+		var a0: Vector3 = l0.origin + l0.basis.y.normalized() * CharacterBuilder.ANKLE_DOWN_SHIN
+		_ankles.append([lb, fb, l0.affine_inverse() * a0, f0.affine_inverse() * a0])
 	# own face material (the PS2 face material is shared per skin tone, the classic one per skin tone and sex)
 	var face: MeshInstance3D = CharacterBuilder.get_pivot(body, "face_mesh") as MeshInstance3D
 	if face and face.material_override is StandardMaterial3D:
@@ -99,6 +129,13 @@ func key(s: float, pos: Vector3, yaw: float, spin_euler: Vector3 = Vector3.ZERO,
 	keys.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["s"]) < float(b["s"]))
 
 
+## Place a key-less actor (parent-local position, yaw rad): the base its evaluations start from from now on.
+func place(pos: Vector3, yaw: float) -> void:
+	position = pos
+	rotation.y = yaw
+	_home = {"pos": pos, "yaw": yaw}
+
+
 func override(s0: float, s1: float, pose: Callable, fade_in: float = 0.08, fade_out: float = 0.12, mode: String = "abs") -> void:
 	overrides.append({"s0": s0, "s1": s1, "pose": pose, "fi": fade_in, "fo": fade_out, "mode": mode})
 
@@ -128,6 +165,124 @@ func active_move(s: float) -> Dictionary:
 
 
 # ---------------------------------------------------------------------------
+# Pure functions of story time (no node state read except the key-less placement)
+# ---------------------------------------------------------------------------
+## Root and spin transform at s: {"pos" (parent-local), "yaw", "spin_rot" (Euler), "spin_pos"}.
+func xf_at(s: float) -> Dictionary:
+	var pos: Vector3
+	var yaw: float
+	var srot: Vector3 = Vector3.ZERO
+	if not keys.is_empty():
+		var k0: Dictionary = keys[0]
+		var k1: Dictionary = keys[0]
+		for i: int in keys.size():
+			if float(keys[i]["s"]) <= s:
+				k0 = keys[i]
+				k1 = keys[mini(i + 1, keys.size() - 1)]
+		if s < float(keys[0]["s"]):
+			k1 = k0
+		var u: float = 0.0
+		var span: float = float(k1["s"]) - float(k0["s"])
+		if span > 0.0001:
+			u = clampf((s - float(k0["s"])) / span, 0.0, 1.0)
+		var e: float = ease_u(u, String(k1["mode"]))
+		pos = (k0["pos"] as Vector3).lerp(k1["pos"], e)
+		var arc: float = float(k1["arc"])
+		if arc != 0.0:
+			pos = (k0["pos"] as Vector3).lerp(k1["pos"], u)
+			pos.y += 4.0 * arc * u * (1.0 - u)
+		yaw = lerpf(float(k0["yaw"]), float(k1["yaw"]), e)
+		srot = (k0["spin"] as Vector3).lerp(k1["spin"], e)
+	elif _home.is_empty():
+		pos = position
+		yaw = rotation.y
+	else:
+		pos = _home["pos"]
+		yaw = _home["yaw"]
+	# extras of the move playing now (A1-D4)
+	var c: Dictionary = active_move(s)
+	if not c.is_empty():
+		var res: Dictionary = c["res"]
+		yaw += deg_to_rad(float(res["yaw"]))
+		var air: Array = res["air"]
+		if air.size() >= 2:
+			var uu: float = (s - float(c["s"])) / maxf(float(c["dur"]), 0.0001)
+			var u0: float = air[0]
+			var u1: float = air[1]
+			var spin_deg: Vector3 = res["spin"]
+			if uu >= u0 and uu <= u1:
+				var a: float = (uu - u0) / maxf(u1 - u0, 0.0001)
+				pos.y += 4.0 * float(res["arc"]) * a * (1.0 - a)
+				srot += spin_deg * (PI / 180.0) * (a * a * (3.0 - 2.0 * a))
+			elif uu > u1 and uu <= 1.0 and absf(spin_deg.x) + absf(spin_deg.y) + absf(spin_deg.z) < 300.0:
+				var back: float = (uu - u1) / maxf(1.0 - u1, 0.0001)
+				var keep: float = 1.0 if bool(res["hold_spin"]) else 1.0 - back * back * (3.0 - 2.0 * back)
+				srot += spin_deg * (PI / 180.0) * keep
+	# whole-body pitch / drop of code poses (lying, getting up), crossfaded like the bones
+	var bk: Vector2 = _body_keys_at(s)
+	srot.x += bk.x
+	return {"pos": pos, "yaw": yaw, "spin_rot": srot, "spin_pos": Vector3(0.0, PIVOT_Y + bk.y, 0.0)}
+
+
+## Global point of this actor's (neutral) head at story time s – what other actors look at.
+func head_point_at(s: float) -> Vector3:
+	var x: Dictionary = xf_at(s)
+	var root_xf := Transform3D(Basis.from_euler(Vector3(rotation.x, float(x["yaw"]), rotation.z)) * Basis.from_scale(scale), x["pos"])
+	var spin_xf := Transform3D(Basis.from_euler(x["spin_rot"]), x["spin_pos"])
+	var p: Vector3 = root_xf * (spin_xf * _head_in_spin)
+	var par: Node3D = get_parent() as Node3D
+	return par.global_transform * p if par and par.is_inside_tree() else p
+
+
+func _cue_index(s: float) -> int:
+	var i: int = 0
+	for j: int in moves.size():
+		if float(moves[j]["s"]) <= s:
+			i = j
+	return i
+
+
+## Weight of cue i at s (1 = no crossfade from cue i - 1).
+func _fade_w(i: int, s: float) -> float:
+	var dt: float = s - float(moves[i]["s"])
+	var fade: float = moves[i]["fade"]
+	if i > 0 and dt >= 0.0 and dt < fade and fade > 0.0:
+		var x: float = clampf(dt / fade, 0.0, 1.0)
+		return x * x * (3.0 - 2.0 * x)
+	return 1.0
+
+
+## Pose-u of a code-tier cue at s: loops by phase, one-shots through the entry's [0, hit, 1] window (impact on hit_u).
+func _code_u(c: Dictionary, s: float) -> float:
+	var x: float = s - float(c["s"])
+	var dur: float = c["dur"]
+	if dur <= 0.0:
+		return 1.0
+	if bool(c["loop"]):
+		return fposmod(x / dur, 1.0)
+	return CineMoves.clip_time(c["res"], x, dur, false)
+
+
+func _body_keys_at(s: float) -> Vector2:
+	if moves.is_empty():
+		return Vector2.ZERO
+	var i: int = _cue_index(s)
+	var w: float = _fade_w(i, s)
+	var out: Vector2 = _cue_body(moves[i], s) * w
+	if w < 1.0:
+		out += _cue_body(moves[i - 1], s) * (1.0 - w)
+	return out
+
+
+func _cue_body(c: Dictionary, s: float) -> Vector2:
+	var res: Dictionary = c["res"]
+	if String(res["t"]) != "code":
+		return Vector2.ZERO
+	var cp: Dictionary = CineMoves.code_pose(String(res["a"]), _code_u(c, s))
+	return Vector2(float(cp.get("body_pitch", 0.0)), float(cp.get("body_y", 0.0)))
+
+
+# ---------------------------------------------------------------------------
 # Evaluation at story time s
 # ---------------------------------------------------------------------------
 func evaluate(s: float) -> void:
@@ -144,57 +299,13 @@ func evaluate(s: float) -> void:
 
 
 func _eval_transform(s: float) -> void:
-	spin.position = Vector3(0.0, PIVOT_Y, 0.0)
-	if not keys.is_empty():
-		var k0: Dictionary = keys[0]
-		var k1: Dictionary = keys[0]
-		for i: int in keys.size():
-			if float(keys[i]["s"]) <= s:
-				k0 = keys[i]
-				k1 = keys[mini(i + 1, keys.size() - 1)]
-		if s < float(keys[0]["s"]):
-			k1 = k0
-		var u: float = 0.0
-		var span: float = float(k1["s"]) - float(k0["s"])
-		if span > 0.0001:
-			u = clampf((s - float(k0["s"])) / span, 0.0, 1.0)
-		var e: float = ease_u(u, String(k1["mode"]))
-		var p: Vector3 = (k0["pos"] as Vector3).lerp(k1["pos"], e)
-		var arc: float = float(k1["arc"])
-		if arc != 0.0:
-			p = (k0["pos"] as Vector3).lerp(k1["pos"], u)
-			p.y += 4.0 * arc * u * (1.0 - u)
-		position = p
-		rotation.y = lerpf(float(k0["yaw"]), float(k1["yaw"]), e)
-		spin.rotation = (k0["spin"] as Vector3).lerp(k1["spin"], e)
-	else:
-		# no keys: the placement at the first evaluate is the base every frame (extras below must not accumulate)
-		if _home.is_empty():
-			_home = {"pos": position, "yaw": rotation.y}
-		position = _home["pos"]
-		rotation.y = _home["yaw"]
-		spin.rotation = Vector3.ZERO
-	# extras of the move playing now (A1-D4)
-	var c: Dictionary = active_move(s)
-	if c.is_empty():
-		return
-	var res: Dictionary = c["res"]
-	rotation.y += deg_to_rad(float(res["yaw"]))
-	var air: Array = res["air"]
-	if air.size() < 2:
-		return
-	var uu: float = (s - float(c["s"])) / maxf(float(c["dur"]), 0.0001)
-	var u0: float = air[0]
-	var u1: float = air[1]
-	var spin_deg: Vector3 = res["spin"]
-	if uu >= u0 and uu <= u1:
-		var a: float = (uu - u0) / maxf(u1 - u0, 0.0001)
-		position.y += 4.0 * float(res["arc"]) * a * (1.0 - a)
-		spin.rotation += spin_deg * (PI / 180.0) * (a * a * (3.0 - 2.0 * a))
-	elif uu > u1 and uu <= 1.0 and absf(spin_deg.x) + absf(spin_deg.y) + absf(spin_deg.z) < 300.0:
-		var back: float = (uu - u1) / maxf(1.0 - u1, 0.0001)
-		var keep: float = 1.0 if bool(res["hold_spin"]) else 1.0 - back * back * (3.0 - 2.0 * back)
-		spin.rotation += spin_deg * (PI / 180.0) * keep
+	if keys.is_empty() and _home.is_empty():
+		_home = {"pos": position, "yaw": rotation.y}
+	var x: Dictionary = xf_at(s)
+	position = x["pos"]
+	rotation.y = x["yaw"]
+	spin.rotation = x["spin_rot"]
+	spin.position = x["spin_pos"]
 
 
 static func ease_u(u: float, mode: String) -> float:
@@ -218,7 +329,7 @@ func _cue_pose(c: Dictionary, s: float) -> Dictionary:
 	var u: float = clampf(x / dur, 0.0, 1.0) if dur > 0.0 else 1.0
 	var out: Dictionary = {"pose": _base_pose, "code": {}, "add": {}}
 	if String(res["t"]) == "code":
-		out["code"] = CineMoves.code_pose(String(res["a"]), fposmod(x / dur, 1.0) if bool(c["loop"]) else u)
+		out["code"] = CineMoves.code_pose(String(res["a"]), _code_u(c, s))
 	else:
 		var t: float = CineMoves.clip_time(res, x, dur, bool(c["loop"]))
 		if String(res["t"]) == "native":
@@ -227,45 +338,40 @@ func _cue_pose(c: Dictionary, s: float) -> Dictionary:
 			out["pose"] = CineRetarget.sample(bd, String(res["t"]), String(res["a"]), t, false,
 				{"xz": true, "y": String(res["root_y"]) == "strip", "ref": float(res["from"])})
 	if String(res["add"]) != "":
-		out["add"] = CineMoves.code_pose(String(res["add"]), u)
+		out["add"] = CineMoves.code_pose(String(res["add"]), CineMoves.add_u(res, u))
 	return out
+
+
+## Write one cue's full pose (clip or base, code pose, additive layer) to the skeleton.
+func _render_cue(cp: Dictionary) -> void:
+	CineRetarget.apply(sk, bd, cp["pose"])
+	if not (cp["code"] as Dictionary).is_empty():
+		CharacterBuilder._apply_bone_pose(sk, cp["code"], 1.0)
+	_add_pose(cp["add"], 1.0)
+
+
+## Local pose of every bone as it stands on the skeleton now.
+func _snapshot() -> Dictionary:
+	var rot: Dictionary = {}
+	var pos: Dictionary = {}
+	for b: int in int(bd["n"]):
+		rot[b] = sk.get_bone_pose_rotation(b)
+		pos[b] = sk.get_bone_pose_position(b)
+	return {"rot": rot, "pos": pos}
 
 
 func _eval_pose(s: float) -> void:
 	if moves.is_empty():
 		CineRetarget.apply(sk, bd, _base_pose)
-		return
-	var i: int = 0
-	for j: int in moves.size():
-		if float(moves[j]["s"]) <= s:
-			i = j
-	var cur: Dictionary = _cue_pose(moves[i], s)
-	var prev: Dictionary = {}
-	var w: float = 1.0
-	var dt: float = s - float(moves[i]["s"])
-	var fade: float = moves[i]["fade"]
-	if i > 0 and dt >= 0.0 and dt < fade and fade > 0.0:
-		prev = _cue_pose(moves[i - 1], s)
-		var x: float = clampf(dt / fade, 0.0, 1.0)
-		w = x * x * (3.0 - 2.0 * x)
-	var pose: Dictionary = cur["pose"] if prev.is_empty() else CineRetarget.blend(bd, prev["pose"], cur["pose"], w)
-	CineRetarget.apply(sk, bd, pose)
-	if not prev.is_empty() and not (prev["code"] as Dictionary).is_empty():
-		CharacterBuilder._apply_bone_pose(sk, prev["code"], 1.0 - w)
-	if not (cur["code"] as Dictionary).is_empty():
-		CharacterBuilder._apply_bone_pose(sk, cur["code"], w)
-	if not prev.is_empty():
-		_add_pose(prev["add"], 1.0 - w)
-	_add_pose(cur["add"], w)
-	# whole-body pitch / drop of code poses (lying, getting up), crossfaded like the bones
-	var pitch: float = float((cur["code"] as Dictionary).get("body_pitch", 0.0)) * w
-	var drop: float = float((cur["code"] as Dictionary).get("body_y", 0.0)) * w
-	if not prev.is_empty():
-		pitch += float((prev["code"] as Dictionary).get("body_pitch", 0.0)) * (1.0 - w)
-		drop += float((prev["code"] as Dictionary).get("body_y", 0.0)) * (1.0 - w)
-	if pitch != 0.0 or drop != 0.0:
-		spin.rotation.x += pitch
-		spin.position.y += drop
+	else:
+		var i: int = _cue_index(s)
+		var w: float = _fade_w(i, s)
+		_render_cue(_cue_pose(moves[i], s))
+		if w < 1.0:
+			# crossfade the two cues' FULL poses (a code pose blended against the bare base would sag mid-fade)
+			var cur: Dictionary = _snapshot()
+			_render_cue(_cue_pose(moves[i - 1], s))
+			CineRetarget.apply(sk, bd, CineRetarget.blend(bd, _snapshot(), cur, w))
 	for o: Dictionary in overrides:
 		var s0: float = o["s0"]
 		var s1: float = o["s1"]
@@ -286,12 +392,21 @@ func _eval_pose(s: float) -> void:
 			_add_pose(cpose, w2)
 		else:
 			CharacterBuilder._apply_bone_pose(sk, cpose, w2)
+	_seat_feet()
 
 
-## Additive rotation (character-frame Euler × w) on the current pose – same operation as RigAnimator._add_rot.
+## Additive rotation (character-frame Euler × w) on the current pose – same operation as RigAnimator._add_rot. Leg keys
+## carry the Foot.L/R IK targets with the shin (CharacterBuilder._foot_follow from the pre-layer shin / foot transforms).
 func _add_pose(cpose: Dictionary, w: float) -> void:
 	if cpose.is_empty() or w <= 0.0:
 		return
+	var feet: Array = []
+	for side: String in ["l", "r"]:
+		if cpose.has("thigh_" + side) or cpose.has("knee_" + side) or cpose.has("foot_" + side):
+			var lb: int = sk.find_bone("LowerLeg." + side.to_upper())
+			var fb: int = sk.find_bone("Foot." + side.to_upper())
+			if lb >= 0 and fb >= 0:
+				feet.append([lb, fb, CharacterBuilder._bone_global_now(sk, lb), CharacterBuilder._bone_global_now(sk, fb), side])
 	for k: String in cpose.keys():
 		if not CharacterBuilder.BONE_OF.has(k):
 			continue
@@ -300,9 +415,31 @@ func _add_pose(cpose: Dictionary, w: float) -> void:
 			continue
 		var r: Basis = CharacterBuilder._char_rot_local(sk, b, (cpose[k] as Vector3) * w)
 		sk.set_bone_pose_rotation(b, (r * Basis(sk.get_bone_pose_rotation(b))).get_rotation_quaternion())
+	for f: Array in feet:
+		var fk: String = "foot_" + String(f[4])
+		var ef: Variant = (cpose[fk] as Vector3) * w if cpose.has(fk) else null
+		CharacterBuilder._foot_follow(sk, f[0], f[1], f[2], f[3], ef, 1.0)
 	CharacterBuilder._mark_bone_poses_dirty(sk)
 
 
+## Seat each foot on its shin's ankle, keeping the foot's own rotation: native clips (IK targets keyed apart from the FK
+## shin) and crossfades (feet blended apart from the leg chain) otherwise leave a few cm of gap at the ankle.
+func _seat_feet() -> void:
+	for e: Array in _ankles:
+		var lb: int = e[0]
+		var fb: int = e[1]
+		var by_shin: Vector3 = CharacterBuilder._bone_global_now(sk, lb) * (e[2] as Vector3)
+		var by_foot: Vector3 = CharacterBuilder._bone_global_now(sk, fb) * (e[3] as Vector3)
+		var d: Vector3 = by_shin - by_foot
+		if d.length_squared() < 1e-10:
+			continue
+		var pf: int = sk.get_bone_parent(fb)
+		var pg: Basis = CharacterBuilder._bone_global_now(sk, pf).basis if pf >= 0 else Basis.IDENTITY
+		sk.set_bone_pose_position(fb, sk.get_bone_pose_position(fb) + pg.inverse() * d)
+	CharacterBuilder._mark_bone_poses_dirty(sk)
+
+
+## Head + neck toward each active look target, measured in the spin node's frame (correct while flipping or lying).
 func _eval_look(s: float) -> void:
 	for l: Dictionary in looks:
 		var s0: float = l["s0"]
@@ -310,18 +447,23 @@ func _eval_look(s: float) -> void:
 		if s < s0 - LOOK_FADE or s > s1 + LOOK_FADE:
 			continue
 		var w: float = clampf(minf((s - (s0 - LOOK_FADE)) / LOOK_FADE, ((s1 + LOOK_FADE) - s) / LOOK_FADE), 0.0, 1.0)
+		var tgt: Variant = l["t"]
 		var tp: Vector3
-		if l["t"] is Node3D:
-			var n: Node3D = l["t"]
-			tp = (n as CineActor).bone_world("Head") if n is CineActor else n.global_position + Vector3(0.0, 1.5, 0.0)
+		if tgt is Object:
+			if not is_instance_valid(tgt):
+				continue
+			if tgt is CineActor:
+				tp = (tgt as CineActor).head_point_at(s)
+			elif tgt is Node3D:
+				tp = (tgt as Node3D).global_position + Vector3(0.0, 1.5, 0.0)
+			else:
+				continue
 		else:
 			var parent3d: Node3D = get_parent() as Node3D
-			tp = parent3d.to_global(l["t"]) if parent3d else (l["t"] as Vector3)
-		var head: Vector3 = bone_world("Head")
-		var d: Vector3 = tp - head
-		var fwd: Vector3 = -global_transform.basis.z   # characters face -Z
-		var yaw: float = clampf(Vector2(fwd.x, fwd.z).angle_to(Vector2(d.x, d.z)) * -1.0, -LOOK_YAW_MAX, LOOK_YAW_MAX)
-		var pitch: float = clampf(atan2(d.y, Vector2(d.x, d.z).length()), -LOOK_PITCH_MAX, LOOK_PITCH_MAX)
+			tp = parent3d.to_global(tgt) if parent3d else (tgt as Vector3)
+		var dl: Vector3 = spin.global_transform.basis.orthonormalized().inverse() * (tp - bone_world("Head"))
+		var yaw: float = clampf(atan2(-dl.x, -dl.z), -LOOK_YAW_MAX, LOOK_YAW_MAX)   # characters face -Z; + = to the left
+		var pitch: float = clampf(atan2(dl.y, Vector2(dl.x, dl.z).length()), -LOOK_PITCH_MAX, LOOK_PITCH_MAX)
 		_add_pose({"neck": Vector3(-pitch * 0.4, yaw * 0.4, 0.0), "head": Vector3(-pitch * 0.6, yaw * 0.6, 0.0)}, w)
 
 

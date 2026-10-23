@@ -1,7 +1,7 @@
 # File: res://tests/test_cine_retarget.gd
 # Headless test of the source-generic CineRetarget (spec A1-D2, A1-D5): UAL and native always; Mixamo when the owner's files
 # are in res://assets/local/mixamo/ (otherwise SKIP). Checks: no NaN, flat-foot ankle height, flips turn the body over,
-# horizontal root-motion strip, disabled-source hook, name helpers, sample cost.
+# horizontal root-motion strip, disabled-source hook, name helpers, sample cost; female rig with its own ankle / k bands.
 # Run:  godot --headless --path . --script tests/test_cine_retarget.gd
 # CINE_NO_MIXAMO=1 sets CineRetarget.disabled = ["mixamo"] before any check (covers the fallback path with files present).
 extends SceneTree
@@ -39,6 +39,28 @@ func _nan(p: Dictionary) -> bool:
 		if is_nan(q.x) or is_nan(q.w):
 			return true
 	return false
+
+
+## women/* rigs sit higher than men/* (rest ankle 0.132 vs 0.109, leg ratio k 1.109 vs 1.032): own bands.
+func _female_checks() -> void:
+	var fbody: Node3D = CharacterBuilder.build({"preset": "player", "seed": 7, "female": true, "rigged": true, "animate": false})
+	_check(bool(fbody.get_meta("female", false)), "female rig built")
+	sk = fbody.get_meta("skeleton") as Skeleton3D
+	var ap: AnimationPlayer = fbody.get_node("Model").find_child("AnimationPlayer", true, false) as AnimationPlayer
+	bd = CineRetarget.bind(sk, ap)
+	CineRetarget.apply(sk, bd, CineRetarget.sample(bd, "ual1", "Idle", 0.5, true))
+	var ay: float = _ankle_y()
+	_check(ay > 0.05 and ay < 0.19, "female ual1 Idle ankle height %.3f in 0.05..0.19" % ay)
+	if CineRetarget.available("mixamo") and CineRetarget.has_anim("mixamo", "Fighting_Idle"):
+		var lo_y: float = 99.0
+		for i: int in 8:
+			CineRetarget.apply(sk, bd, CineRetarget.sample(bd, "mixamo", "Fighting_Idle", float(i) * 0.4))
+			lo_y = minf(lo_y, _ankle_y())
+		var k: float = float(bd["mixamo"]["k"])
+		print("  female rig: mixamo Fighting_Idle lowest ankle %.3f, k = %.3f" % [lo_y, k])
+		_check(lo_y > 0.12 and lo_y < 0.20, "female mixamo Fighting_Idle lowest ankle %.3f in 0.12..0.20" % lo_y)
+		_check(k > 1.08 and k < 1.14, "female mixamo leg ratio k %.3f in 1.08..1.14" % k)
+	fbody.free()
 
 
 func _initialize() -> void:
@@ -124,6 +146,7 @@ func _initialize() -> void:
 		var us_mx: float = float(Time.get_ticks_usec() - t1) / 50.0
 		_check(us_mx < 600.0, "Mixamo sample %.0f us < 600" % us_mx)
 	body.free()
+	_female_checks()
 	if fails.is_empty():
 		print("✅ SUCCESS: CINE RETARGET (UAL, native%s)" % (", mixamo" if CineRetarget.available("mixamo") else ", mixamo skipped"))
 		quit(0)

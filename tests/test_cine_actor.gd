@@ -2,7 +2,8 @@
 # Headless test of CineMoves + CineActor (spec A1-D4, A1-D5, A1-D21, A1-D22): tier resolution under every cap, impact frame
 # alignment, piecewise clip-time mapping, reversed windows, pure function of story time, root keys and arcs, airborne
 # extras for code-tier flips and kicks, lying / get-up code poses, look-at, expression cells (PS2) and textures (classic),
-# visibility, evaluate cost.
+# visibility, evaluate cost; fix round: ankle-foot gap and no pop through additive leg layers, effector peak on the impact
+# for code / native / UAL / Mixamo tiers, order-independent mutual look-at, code-pose crossfades without sag, place().
 # Run:  godot --headless --path . --script tests/test_cine_actor.gd
 # CINE_NO_MIXAMO=1 sets CineRetarget.disabled = ["mixamo"] before any check (covers the fallback path with files present).
 extends SceneTree
@@ -22,6 +23,194 @@ func _actor(seed: int) -> CineActor:
 	world.add_child(a)
 	a.setup({"preset": "player", "seed": seed})
 	return a
+
+
+func _actor_m(seed: int, female: bool = false) -> CineActor:
+	var a := CineActor.new()
+	world.add_child(a)
+	a.setup({"preset": "player", "seed": seed, "female": female})
+	return a
+
+
+## Distance (m) between the ankle carried by the shin and the ankle carried by the foot (Foot.L/R are IK targets under
+## Root, so a layer that turns the leg without re-attaching the foot opens a gap). Rest frames, as CineRetarget attaches.
+func _foot_gap(a: CineActor, side: String) -> float:
+	var sk: Skeleton3D = a.sk
+	var lb: int = sk.find_bone("LowerLeg." + side)
+	var fb: int = sk.find_bone("Foot." + side)
+	var l0: Transform3D = sk.get_bone_global_rest(lb)
+	var f0: Transform3D = sk.get_bone_global_rest(fb)
+	var ankle0: Vector3 = l0.origin + l0.basis.y.normalized() * CharacterBuilder.ANKLE_DOWN_SHIN
+	var by_shin: Vector3 = CharacterBuilder._bone_global_now(sk, lb) * (l0.affine_inverse() * ankle0)
+	var by_foot: Vector3 = CharacterBuilder._bone_global_now(sk, fb) * (f0.affine_inverse() * ankle0)
+	return (sk.global_transform * by_shin).distance_to(sk.global_transform * by_foot)
+
+
+## Effector metric in skeleton space (model frame: +Z forward), relative to the hips.
+func _metric(a: CineActor, eff: String) -> float:
+	var sk: Skeleton3D = a.sk
+	var h: Vector3 = CharacterBuilder._bone_global_now(sk, sk.find_bone("Hips")).origin
+	match eff:
+		"wristL_z":
+			return (CharacterBuilder._bone_global_now(sk, sk.find_bone("Wrist.L")).origin - h).z
+		"wristR_z":
+			return (CharacterBuilder._bone_global_now(sk, sk.find_bone("Wrist.R")).origin - h).z
+		"footR_d":
+			return (CharacterBuilder._bone_global_now(sk, sk.find_bone("Foot.R")).origin - h).length()
+		"footR_z":
+			return (CharacterBuilder._bone_global_now(sk, sk.find_bone("Foot.R")).origin - h).z
+		"kneeL_y":
+			return (CharacterBuilder._bone_global_now(sk, sk.find_bone("LowerLeg.L")).origin - h).y
+	return 0.0
+
+
+## Story time of the effector's peak (first sample within 1 cm of the max) minus the strike's s_hit (1.0).
+func _peak_offset(seed: int, cap: int, mv: String, eff: String, female: bool = false) -> Array:
+	CineMoves.max_tier = cap
+	var a: CineActor = _actor_m(seed, female)
+	a.move(0.0, "fight_idle")
+	var r: Dictionary = a.strike(1.0, mv)
+	var c: Dictionary = a.active_move(1.0)
+	var vals: Array[float] = []
+	var ts: Array[float] = []
+	var s: float = float(c["s"])
+	while s <= float(c["s"]) + float(c["dur"]) + 1e-6:
+		a.evaluate(s)
+		vals.append(_metric(a, eff) * a.sk.global_transform.basis.get_scale().y)
+		ts.append(s)
+		s += 1.0 / 120.0
+	var mx: float = vals.max()
+	var t_pk: float = ts[0]
+	for i: int in vals.size():
+		if vals[i] >= mx - 0.01:
+			t_pk = ts[i]
+			break
+	a.queue_free()
+	CineMoves.max_tier = 0
+	return [t_pk - 1.0, String(r.get("tier", "")) + " " + String(r.get("a", ""))]
+
+
+## Max ankle gap on side and max Foot step (m per 1/120 s, in the body's own frame so root arcs do not count) through a
+## strike at s_hit 1.0 followed by fight_idle.
+func _gap_run(seed: int, cap: int, mv: String, side: String) -> Array:
+	CineMoves.max_tier = cap
+	var a: CineActor = _actor_m(seed)
+	a.move(0.0, "fight_idle")
+	var r: Dictionary = a.strike(1.0, mv)
+	var c: Dictionary = a.active_move(1.0)
+	var s_end: float = float(c["s"]) + float(c["dur"])
+	a.move(s_end, "fight_idle")
+	var gap: float = 0.0
+	var gap_hit: float = 0.0
+	var step: float = 0.0
+	var step_s: float = 0.0
+	var prev: Vector3 = Vector3.INF
+	var s: float = float(c["s"]) - 0.2
+	while s <= s_end + 0.4:
+		a.evaluate(s)
+		var g: float = _foot_gap(a, side)
+		gap = maxf(gap, g)
+		if absf(s - 1.0) < 0.5 / 120.0:
+			gap_hit = g
+		var fp: Vector3 = (CharacterBuilder._bone_global_now(a.sk, a.sk.find_bone("Foot." + side)).origin) * a.sk.global_transform.basis.get_scale().y
+		if prev != Vector3.INF:
+			if fp.distance_to(prev) > step:
+				step = fp.distance_to(prev)
+				step_s = s
+		prev = fp
+		s += 1.0 / 120.0
+	a.queue_free()
+	CineMoves.max_tier = 0
+	return [gap, step, String(r.get("tier", "")) + " " + String(r.get("a", "")) + " + " + String(r.get("add", "")), gap_hit, step_s]
+
+
+func _head_q(a: CineActor) -> Quaternion:
+	return (a.sk.global_transform.basis * CharacterBuilder._bone_global_now(a.sk, a.sk.find_bone("Head")).basis).get_rotation_quaternion()
+
+
+func _fix_round_checks() -> void:
+	# --- additive leg layers keep the feet on the shins, deltas vanish at the window ends
+	for e: Array in [[2, "roundhouse", "R"], [2, "knee_strike", "L"], [2, "knee_strike", "R"], [2, "uppercut", "R"]]:
+		var g: Array = _gap_run(31, e[0], e[1], e[2])
+		print("  gap %s cap %d side %s (%s): max %.3f m, at hit %.3f m, max foot step %.3f m at s %.3f" % [e[1], e[0], e[2], g[2], g[0], g[3], g[1], g[4]])
+		_check(float(g[0]) < 0.05, "%s cap %d: ankle-foot gap %s %.3f m < 0.05" % [e[1], e[0], e[2], g[0]])
+		_check(float(g[1]) < 0.08, "%s cap %d: no foot pop (max step %.3f m per 1/120 s)" % [e[1], e[0], g[1]])
+	for mv: String in CineMoves.MOVES.keys():
+		for en: Dictionary in CineMoves.MOVES[mv]["src"]:
+			var add: String = String(en.get("add", ""))
+			if add == "":
+				continue
+			var mag: float = 0.0
+			for u: float in [0.0, 1.0]:
+				for v: Variant in CineMoves.code_pose(add, u).values():
+					mag = maxf(mag, (v as Vector3).length() if v is Vector3 else absf(float(v)))
+			_check(mag < 1e-4, "%s: additive layer %s is zero at both window ends (%.4f)" % [mv, add, mag])
+			var mid: float = 0.0
+			for v2: Variant in CineMoves.code_pose(add, 0.5).values():
+				mid = maxf(mid, (v2 as Vector3).length() if v2 is Vector3 else absf(float(v2)))
+			_check(mid > 0.1, "%s: additive layer %s peaks mid-move (%.2f)" % [mv, add, mid])
+	# --- impact frame: effector peak lands on s_hit (code tiers + re-measured native / Mixamo windows)
+	var peaks: Array = [[3, "flying_kick", "footR_d"], [3, "roundhouse", "footR_d"], [3, "hurricane_kick", "footR_d"],
+		[3, "knee_strike", "kneeL_y"], [2, "jab", "wristL_z"], [2, "cross", "wristR_z"], [2, "roundhouse", "footR_z"],
+		[2, "knee_strike", "kneeL_y"], [1, "jab", "wristL_z"], [1, "cross", "wristR_z"]]
+	if CineRetarget.available("mixamo"):
+		peaks.append([0, "knee_strike", "kneeL_y"])
+		peaks.append([0, "jab", "wristL_z"])
+		peaks.append([0, "cross", "wristR_z"])
+	for e2: Array in peaks:
+		var po: Array = _peak_offset(32, e2[0], e2[1], e2[2])
+		print("  peak %s cap %d (%s): %+.3f s from the hit" % [e2[1], e2[0], po[1], po[0]])
+		_check(absf(float(po[0])) <= 0.06, "%s cap %d (%s): effector peak %+.3f s from the hit (±0.06)" % [e2[1], e2[0], po[1], po[0]])
+	var pf: Array = _peak_offset(33, 2, "jab", "wristL_z", true)
+	_check(absf(float(pf[0])) <= 0.06, "female native jab peak %+.3f s from the hit" % pf[0])
+	# --- look-at depends only on s: mutual looks, seek t -> far -> t in both evaluation orders
+	var la: CineActor = _actor_m(34)
+	var lb: CineActor = _actor_m(35)
+	la.key(0.0, Vector3(10.0, 0.0, 0.0), 0.0)
+	lb.key(0.0, Vector3(10.0, 0.0, -3.0), PI)
+	lb.key(9.0, Vector3(16.0, 0.0, -3.0), PI)
+	la.move(0.0, "fight_idle")
+	lb.move(0.0, "fight_idle")
+	la.look(0.0, 20.0, lb)
+	lb.look(0.0, 20.0, la)
+	var res_ord: Array = []
+	for order: Array in [[la, lb], [lb, la]]:
+		for st: float in [2.0, 9.0, 2.0]:
+			for x: CineActor in order:
+				x.evaluate(st)
+		res_ord.append([_head_q(la), _head_q(lb)])
+	var drift_a: float = rad_to_deg((res_ord[0][0] as Quaternion).angle_to(res_ord[1][0]))
+	var drift_b: float = rad_to_deg((res_ord[0][1] as Quaternion).angle_to(res_ord[1][1]))
+	print("  look-at order drift: A %.3f°, B %.3f°" % [drift_a, drift_b])
+	# 0.1°: float32 quaternions re-set from the same values differ by ~0.04° in angle_to (1 ulp near identity)
+	_check(drift_a < 0.1 and drift_b < 0.1, "mutual look-at independent of evaluation order (A %.3f°, B %.3f°)" % [drift_a, drift_b])
+	la.queue_free()
+	lb.queue_free()
+	# --- crossfade between two code poses does not sag toward the standing base (fall_back -> lie)
+	CineMoves.max_tier = 3
+	var cf: CineActor = _actor_m(36)
+	cf.key(0.0, Vector3(-10.0, 0.0, 0.0), 0.0)
+	cf.move(0.0, "knocked_out")
+	cf.move(2.0, "lie")
+	var ua: int = cf.sk.find_bone("UpperArm.L")
+	cf.evaluate(1.99)
+	var q0: Quaternion = CharacterBuilder._bone_global_now(cf.sk, ua).basis.get_rotation_quaternion()
+	var sag: float = 0.0
+	for sx: float in [2.03, 2.06, 2.09, 2.13]:
+		cf.evaluate(sx)
+		sag = maxf(sag, rad_to_deg(q0.angle_to(CharacterBuilder._bone_global_now(cf.sk, ua).basis.get_rotation_quaternion())))
+	print("  code-pose crossfade sag: %.2f°" % sag)
+	_check(sag < 2.0, "code-pose crossfade keeps the pose (shoulder moves %.2f° < 2)" % sag)
+	cf.queue_free()
+	CineMoves.max_tier = 0
+	# --- place(): moving a key-less actor after a pre-roll evaluate re-anchors it
+	var pl: CineActor = _actor_m(37)
+	pl.move(0.0, "fight_idle")
+	pl.evaluate(0.0)
+	pl.place(Vector3(-8.0, 0.0, 2.0), 0.5)
+	pl.evaluate(0.5)
+	_check(pl.position.is_equal_approx(Vector3(-8.0, 0.0, 2.0)) and absf(pl.rotation.y - 0.5) < 1e-5, "place() re-anchors a key-less actor (%s)" % pl.position)
+	pl.queue_free()
 
 
 func _initialize() -> void:
@@ -58,7 +247,7 @@ func _initialize() -> void:
 				_check(CineRetarget.available("mixamo"), "mixamo tier only with files")
 			if r["tier"] != "code":
 				_check(float(r["to"]) > 0.0 or float(r["from"]) > 0.0, "%s window non-empty (%s %s)" % [mv, r["t"], r["a"]])
-			if CineMoves.is_strike(mv) and r["tier"] != "code":
+			if CineMoves.is_strike(mv) and (r["tier"] != "code" or float(r["hit"]) >= 0.0):
 				var x_hit: float = float(r["hit_u"]) * float(r["dur"])
 				_check(absf(CineMoves.clip_time(r, x_hit, float(r["dur"]), false) - float(r["hit"])) < 1e-5, "%s impact frame aligned (%s)" % [mv, r["tier"]])
 				_check(float(r["from"]) <= float(r["hit"]) and float(r["hit"]) <= float(r["to"]), "%s window from <= hit <= to (%s %s: %.2f/%.2f/%.2f)" % [mv, r["t"], r["a"], r["from"], r["hit"], r["to"]])
@@ -196,6 +385,7 @@ func _initialize() -> void:
 		_check(g.face_mat.uv1_offset.is_equal_approx(Vector3.ZERO), "classic: face texture not shifted (uv1_offset %s)" % g.face_mat.uv1_offset)
 		g.evaluate(0.5)
 		_check(g.face_mat.albedo_texture == tex_open, "classic: back to the open face when evaluated before the cue")
+	_fix_round_checks()
 	# --- cost
 	var t0: int = Time.get_ticks_usec()
 	for i: int in 60:

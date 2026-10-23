@@ -1109,22 +1109,30 @@ static func _apply_bone_pose(sk: Skeleton3D, cpose: Dictionary, w: float) -> voi
 		var fb: int = sk.find_bone("Foot." + s.to_upper())
 		if lb < 0 or fb < 0:
 			continue
-		var l0: Transform3D = _base_global(sk, nb, lb)
-		var follow: Transform3D = _bone_global_now(sk, lb) * l0.affine_inverse()   # chuyển động cứng của ống chân so với gốc
-		var foot: Transform3D = follow * _base_global(sk, nb, fb)
-		if cpose.has("foot_" + s):
-			var ef: Vector3 = cpose["foot_" + s]
-			if MODEL_YAW != 0.0:
-				ef = Vector3(-ef.x, ef.y, -ef.z)
-			var q: Basis = follow.basis.orthonormalized()
-			var rf: Basis = q * Basis.from_euler(ef) * q.inverse()
-			var ankle: Vector3 = follow * (l0.origin + l0.basis.y.normalized() * ANKLE_DOWN_SHIN)
-			foot = Transform3D(rf, ankle - rf * ankle) * foot
-		var pf: int = sk.get_bone_parent(fb)
-		var local: Transform3D = (_bone_global_now(sk, pf).affine_inverse() * foot) if pf >= 0 else foot
-		sk.set_bone_pose_position(fb, sk.get_bone_pose_position(fb).lerp(local.origin, w))
-		sk.set_bone_pose_rotation(fb, sk.get_bone_pose_rotation(fb).slerp(local.basis.get_rotation_quaternion(), w))
+		_foot_follow(sk, lb, fb, _base_global(sk, nb, lb), _base_global(sk, nb, fb), cpose.get("foot_" + s, null), w)
 	_mark_bone_poses_dirty(sk)
+
+
+## Bàn chân fb (đích IK Foot.L/R dưới Root) đi cứng theo ống chân lb: foot = (ống_chân_now · shin_ref⁻¹) · foot_ref, rồi quay
+## ef (Euler hệ nhân vật, trong hệ ống chân; null = không quay) quanh cổ chân (ANKLE_DOWN_SHIN dọc ống chân từ gối); trộn vào tư
+## thế bàn chân hiện tại theo w. shin_ref / foot_ref: tư thế toàn cục (hệ skeleton) của ống chân và bàn chân khi chúng còn khớp
+## nhau – gốc trung tính (_apply_bone_pose) hoặc tư thế ngay trước một lớp xoay cộng thêm (CineActor._add_pose). Nơi DUY NHẤT
+## chứa phép bám bàn chân.
+static func _foot_follow(sk: Skeleton3D, lb: int, fb: int, shin_ref: Transform3D, foot_ref: Transform3D, ef: Variant, w: float) -> void:
+	var follow: Transform3D = _bone_global_now(sk, lb) * shin_ref.affine_inverse()   # chuyển động cứng của ống chân so với ref
+	var foot: Transform3D = follow * foot_ref
+	if ef is Vector3:
+		var e: Vector3 = ef
+		if MODEL_YAW != 0.0:
+			e = Vector3(-e.x, e.y, -e.z)
+		var q: Basis = follow.basis.orthonormalized()
+		var rf: Basis = q * Basis.from_euler(e) * q.inverse()
+		var ankle: Vector3 = follow * (shin_ref.origin + shin_ref.basis.y.normalized() * ANKLE_DOWN_SHIN)
+		foot = Transform3D(rf, ankle - rf * ankle) * foot
+	var pf: int = sk.get_bone_parent(fb)
+	var local: Transform3D = (_bone_global_now(sk, pf).affine_inverse() * foot) if pf >= 0 else foot
+	sk.set_bone_pose_position(fb, sk.get_bone_pose_position(fb).lerp(local.origin, w))
+	sk.set_bone_pose_rotation(fb, sk.get_bone_pose_rotation(fb).slerp(local.basis.get_rotation_quaternion(), w))
 
 
 ## Xoay e (Euler hệ nhân vật) đổi sang hệ cục bộ của xương b: Pg⁻¹·R·Pg, Pg = gốc toàn cục (_base_global) của xương cha (mô hình quay
