@@ -4936,3 +4936,43 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | A1-D21 real game models | 2 |
 | A1-D23 budgets | 1, 2, 4, 5, 7 tests |
 | Deferred A2 list, main menu untouched | Global Constraints |
+
+## Plan review corrections (2026-10-23, MUST be applied; they override the code above)
+
+The independent plan review (verdict "Needs fixes": 1 blocker, 6 majors) verified the clock numbers, stepping counts, FreeRoam/StageManager names, clip names and the retargeter. Its fixes are listed here by task; each implementer applies the items of its task and reports them as deviations-by-design.
+
+**Effort (controller decision per the owner's saved rule: xhigh only for crowds, traffic, combat systems, final boss):** all seven A1 tasks run at effort high; the `[effort: xhigh]` marks above are superseded.
+
+**All tasks**
+- No-Mixamo path: Task 1 makes `tests/test_cine_retarget.gd` honour `CINE_NO_MIXAMO=1` (sets `CineRetarget.disabled = ["mixamo"]` before any check). Every later task's regression also runs `test_cine_retarget` (and its own new test) once with `CINE_NO_MIXAMO=1`, so the fallback tiers stay green after the Mixamo files are copied into the worktree.
+
+**Task 2 (moves, tiers, actor)**
+- M1 Classic faces: CineActor `_eval_expr` writes `face_mat.uv1_offset` only when `face_mat.get_meta("ps2_face", false)`; otherwise `CharacterBuilder.set_expression(body, e)`. `test_cine_actor` adds a classic-style (ps2 = false) assertion that an expression change keeps the face texture un-shifted and swaps the expression.
+- M2 Hurricane kick code entry: `spin: Vector3(0, -360, 0)` (spec table), not -540, so the body ends facing forward without a 180° pop.
+- Minor 5: UAL `lie` window uses Death01 2.38-2.40 s (clip end), not 1.24-1.25.
+- Minor 6: add code poses `lie_back` and `getup` (A1-D22) to `code_pose` and the MOVES code tier, or record the deviation in the report.
+
+**Task 3 (clock, timeline, validator)**
+- Minor 9: `validate()` checks that every fx `where` actor id exists.
+
+**Task 5 (player, cameras, overlay, FreeRoam hosting)**
+- B1 Music worker: the worker lambda writes into a holder (`var box := [null]`; `add_task(func(): box[0] = CineAudio.synth_cue(L, hits, mood))`), `_poll_music` reads `box[0]`; `_notification(NOTIFICATION_PREDELETE)` (or `_exit_tree`) calls `WorkerThreadPool.wait_for_task_completion(_task)` when `_task >= 0`; new setup opt `{"music": false}` skips the cue entirely.
+- M3 FreeRoam music: `play_cinematic` stops it (`get_node_or_null("/root/GameFX")` then `music_stop(true)`), `_on_cine_finished` resumes `music_play("menu", 0.15)`.
+- M4 Stage search: floor rays start ~2 m above the landmark ground height and reject floors more than ~0.5 m from it (no shed roofs); reject frames where any visible MeshInstance3D AABB pokes more than 0.15 m above the floor inside the box (gate barrier arm, poles); the timeline supplies a road-aligned `yaw_deg` and the search centre is pushed to the road side of the west gate. Tests assert the floor height and that no visual clutter is inside the box; report which spot won.
+- M5 No dt clamp: `_process` advances the real clock by the full dt (no `minf(dt, 0.1)`), so the real length and music sync hold through hitches; clamp only per-frame FX integration if needed.
+- Minor 1: save `get_viewport().get_camera_3d()` before the cinematic and restore that camera (bike camera when riding).
+- Minor 2: hide `map_overlay` during the cinematic.
+- Minor 3: CinePlayer `_exit_tree` clears `StageManager.cinematic_active` when not `_done`.
+- Minor 4: CineOverlay reaches GameFX via `get_node_or_null("/root/GameFX")` + `call("is_vice_ui")` / `call("vice_font")` (class_name scripts never name `GameFX`).
+- Minor 10: StageManager's Ctrl+Tab stage select is blocked while `cinematic_active`.
+
+**Task 6 (replay)**
+- M5 also applies to CineReplay `_process` (full dt).
+- M6 Replay test timing: run `_run_replays` at frame >= 185, or compute the expected r_hit from `replay_clock(5, f, rec.newest_time() - f)`.
+- Minor 3: CineReplay `_exit_tree` clears `cinematic_active` when not done.
+- Minor 8: the replay sting is cached by (length, r_hit) or built on a worker like the cinematic cue (no main-thread synth hitch).
+
+**Task 7 (seg_d1_brawl)**
+- B1: the contact-check players use `{"music": false}`.
+- M4: timeline gives the road-aligned `yaw_deg`; positions (S10 dolly end, phone, C1_DOWN, H8) re-checked against the chosen spot.
+- Minor 7: contact checks also run cap 2 (native tier: roundhouse, knee with the "add" layer).
