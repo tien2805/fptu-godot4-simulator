@@ -1,6 +1,7 @@
 # File: res://tests/test_cine_clock.gd
 # Headless test of CineClock (analytic slow-motion ramps) and its validator: closed-form spans, monotonic story time,
-# real <-> story round trips, freezes, the seg_d1_brawl ramp set landing on exactly 25.000 s, validator failures.
+# real <-> story round trips, freezes, the seg_d1_brawl ramp set landing on exactly 25.000 s, validator failures, impacts
+# placed by real time ("r") within 0.5 ms and unreachable real targets reported.
 # Run:  godot --headless --path . --script tests/test_cine_clock.gd
 extends SceneTree
 
@@ -112,6 +113,40 @@ func _initialize() -> void:
 	rp.story_end = 1.0 + 0.3875 + 0.4   # anything after the ramp
 	var want: float = (rp.story_end - story_spans) / 0.5 + 1.73
 	_check(absf(rp.real_duration() - want) < 1e-5, "base 0.5 real duration (%.5f vs %.5f)" % [rp.real_duration(), want])
+	# 5. impacts placed by REAL time ("r" override: the story time follows from the constant base speed between ramps)
+	var rt := CineClock.new()
+	rt.length = 14.0
+	rt.tail_rule = false
+	rt.add("R1", 0.0, "heavy", {"r": 1.45})
+	rt.add("R2", 0.0, "medium", {"r": 6.15})
+	rt.add("R3", 0.0, "light", {"r": 7.72})
+	rt.build()
+	for want_r: Array in [["R1", 1.45], ["R2", 6.15], ["R3", 7.72]]:
+		var got_r: float = float(rt.ramp(want_r[0])["r_hit"])
+		_check(absf(got_r - float(want_r[1])) < 0.0005, "%s impact at real %.3f (got %.5f)" % [want_r[0], want_r[1], got_r])
+		_check(absf(rt.real_at(float(rt.ramp(want_r[0])["s"])) - float(want_r[1])) < 0.0005, "%s story time maps back to real %.3f" % [want_r[0], want_r[1]])
+	rt.story_end = float(rt.ramp("R3")["s1"]) + 1.0
+	rt.length = rt.real_duration()
+	_check(rt.validate().is_empty(), "real-placed ramps valid: %s" % str(rt.validate()))
+	var rb := CineClock.new()
+	rb.length = 5.0
+	rb.base = 0.5
+	rb.tail_rule = false
+	rb.add("B1", 0.0, "heavy", {"r": 2.75})
+	_check(absf(float(rb.ramp("B1")["r_hit"]) - 2.75) < 0.0005, "real placement at base 0.5 (got %.5f)" % float(rb.ramp("B1")["r_hit"]))
+	var un := CineClock.new()
+	un.length = 10.0
+	un.tail_rule = false
+	un.add("U1", 1.0, "heavy", {"r": 2.0})
+	un.add("U2", 2.0, "heavy", {"r": 2.5})   # U1 ends at real 3.28: unreachable
+	un.story_end = 6.0
+	_check(str(un.validate()).contains("U2: impact at real 2.500 would need a gap < 0"), "unreachable real impact reported: %s" % str(un.validate()))
+	var un0 := CineClock.new()
+	un0.length = 10.0
+	un0.tail_rule = false
+	un0.add("Z0", 1.0, "heavy", {"r": 0.2})   # needs ri + hp = 0.45 s before it
+	un0.story_end = 6.0
+	_check(str(un0.validate()).contains("Z0: impact at real 0.200 would need a gap < 0"), "first ramp too early reported: %s" % str(un0.validate()))
 	if fails.is_empty():
 		print("✅ SUCCESS: CINE CLOCK (analytic ramps, round trips, d1 = 25.000 s, validator)")
 		quit(0)

@@ -2,14 +2,19 @@
 # Code-built impact FX for cinematics (spec A1). Everything is driven by the cinematic clock through update(s, speed):
 # - sparks / dust are CPUParticles3D whose speed_scale follows the clock speed (they freeze in freezes, crawl in slow motion);
 # - flash, debris and daze stars are pure functions of story time s (seeking or re-evaluating the same s gives the same frame);
-# - debris chunks fly a ballistic arc, bounce once, then rest on the ground until this node is freed (aftermath).
+# - debris chunks fly a ballistic arc, bounce once, then rest flat on the ground (at half their box height) until this node
+#   is freed (aftermath);
+# - particle emitters use a fixed seed from their position (repeatable runs) and start at the current clock speed (a burst
+#   fired inside a freeze is frozen from its first frame).
+# Playback is FORWARD-ONLY: crate_break hides the intact crates and expired flashes / particles are freed, so seeking back
+# before an event does not undo it (debris and stars themselves are pure functions of s).
 # Positions passed to burst() are in this node's local space (CinePlayer parents CineFX under the stage).
 # Also builds the A1 set-dressing props (crate stack, scooter, banana, phone) from plain meshes; no imported art, no
 # GPUParticles, no AI images. Textures are generated in code (radial_texture).
 class_name CineFX
 extends Node3D
 
-const REST_Y: float = 0.03
+const REST_Y: float = 0.03            # rest height of a chunk whose mesh is not a BoxMesh
 const GRAVITY: float = 9.8
 const FLASH_LEN: float = 0.12
 const PARTICLE_GRACE: float = 2.0
@@ -22,9 +27,10 @@ const COL_CRATE_EDGE: Color = Color("#6E5232")
 
 var _serial: int = 0
 var _parts: Array[Dictionary] = []     # {node: CPUParticles3D, s0, life}
-var _debris: Array[Dictionary] = []    # {node, p0, v, w, r0, s0, tg, p1, v2, dt2, rot_g}
+var _debris: Array[Dictionary] = []    # {node, p0, v, w, r0, s0, tg, p1, v2, dt2, rot_g, rest}
 var _flashes: Array[Dictionary] = []   # {node, mat, s0, size}
 var _stars: Array[Dictionary] = []     # {nodes: Array[Node3D], actor, s0, s1}
+var _last_ss: float = 1.0              # particle speed_scale of the last update() (new bursts start at it)
 
 static var _tex_cache: Dictionary = {}
 static var _star_mesh: ArrayMesh = null
@@ -82,6 +88,9 @@ func _add_particles(p: CPUParticles3D, prefix: String, pos: Vector3, s: float) -
 	p.explosiveness = 1.0
 	p.local_coords = false
 	p.position = pos
+	p.use_fixed_seed = true
+	p.seed = hash(pos)
+	p.speed_scale = _last_ss
 	add_child(p)
 	p.emitting = true
 	_parts.append({"node": p, "s0": s, "life": p.lifetime})
@@ -177,17 +186,18 @@ func _spawn_chunk(mesh: Mesh, mat: Material, p0: Vector3, v: Vector3, w: Vector3
 	mi.mesh = mesh
 	mi.material_override = mat
 	add_child(mi)
+	var rest: float = (mesh as BoxMesh).size.y * 0.5 if mesh is BoxMesh else REST_Y   # lies flat, does not sink
 	var a: float = 0.5 * GRAVITY
-	# first contact: p0.y + v.y t - a t^2 = REST_Y
-	var disc: float = v.y * v.y + 4.0 * a * (p0.y - REST_Y)
+	# first contact: p0.y + v.y t - a t^2 = rest
+	var disc: float = v.y * v.y + 4.0 * a * (p0.y - rest)
 	var tg: float = maxf((v.y + sqrt(maxf(disc, 0.0))) / (2.0 * a), 0.0)
 	var p1: Vector3 = p0 + v * tg + Vector3(0.0, -a * tg * tg, 0.0)
-	p1.y = REST_Y
+	p1.y = rest
 	var vy_contact: float = v.y - GRAVITY * tg
 	var v2 := Vector3(0.35 * v.x, -0.3 * vy_contact, 0.35 * v.z)
 	var dt2: float = maxf(2.0 * v2.y / GRAVITY, 1e-4)
 	var c: Dictionary = {"node": mi, "p0": p0, "v": v, "w": w, "r0": r0, "s0": s, "tg": tg, "p1": p1, "v2": v2, "dt2": dt2,
-		"rot_g": r0 + w * tg}
+		"rot_g": r0 + w * tg, "rest": rest}
 	_debris.append(c)
 	_eval_chunk(c, s)
 
@@ -204,7 +214,7 @@ func crate_break(prop: Node3D, dir: Vector3, power: float, s: float) -> void:
 	rng.seed = hash(base) ^ hash(s)
 	var mats: Array[StandardMaterial3D] = [_mat(col, 0.85), _mat(col.darkened(0.15), 0.85), _mat(COL_CRATE_EDGE, 0.85)]
 	var plank := BoxMesh.new()
-	plank.size = Vector3(0.55, 0.07, 0.02)
+	plank.size = Vector3(0.55, 0.02, 0.07)
 	var d: Vector3 = dir.normalized()
 	for i: int in n_planks:
 		var src: Vector3 = _local_of(crates[i % crates.size()]) if not crates.is_empty() else base + Vector3(0.0, 0.3, 0.0)
@@ -247,6 +257,7 @@ func stars(actor: Node3D, s0: float, s1: float) -> void:
 ## Called every frame by the player with the story time s and the clock speed (story s per real s; 0 in a freeze).
 func update(s: float, speed: float) -> void:
 	var ss: float = speed / maxf(Engine.time_scale, 0.01)
+	_last_ss = ss
 	for i: int in range(_parts.size() - 1, -1, -1):
 		var d: Dictionary = _parts[i]
 		var p: CPUParticles3D = d["node"] if is_instance_valid(d["node"]) else null
@@ -313,9 +324,10 @@ func _eval_chunk(c: Dictionary, s: float) -> void:
 	var dt2: float = c["dt2"]
 	var tt: float = minf(t - tg, dt2)
 	var pos: Vector3 = p1 + v2 * tt + Vector3(0.0, -a * tt * tt, 0.0)
-	pos.y = maxf(pos.y, REST_Y)
+	var rest: float = c["rest"]
+	pos.y = maxf(pos.y, rest)
 	if t - tg >= dt2:
-		pos.y = REST_Y
+		pos.y = rest
 	mi.position = pos
 	var rg: Vector3 = c["rot_g"]
 	var u: float = tt / dt2

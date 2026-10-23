@@ -176,6 +176,7 @@ static func synth_sting(length: float, r_hit: float) -> AudioStreamWAV:
 
 ## A1 SFX cue: user://sfx/<cue>.ogg if present, else synthesized (cached).
 static func sfx(cue: String) -> AudioStream:
+	assert(OS.get_thread_caller_id() == OS.get_main_thread_id(), "CineAudio.sfx() is main-thread only (static cache)")
 	if _sfx_cache.has(cue):
 		return _sfx_cache[cue]
 	var st: AudioStream = null

@@ -10,6 +10,9 @@
 #   real = (story_end − Σ(pre + post)) / base + Σ real_span
 # exactly, and validate() checks it against the declared slot length (A1-D8). The impact's real time is the start of its
 # freeze. Playback only needs story_at(r) (closed form); real_at(s) inverts with bisection inside smooth ramps.
+# Real-time placement: a ramp whose overrides carry "r" (a target REAL impact time, e.g. a music onset) gets its story time
+# computed in build(): between ramps the clock runs at constant `base`, so the impact lands at r exactly (validate() reports
+# a target that would need a negative gap). Ramps are ordered by s, or by r when every ramp carries "r".
 class_name CineClock
 extends RefCounted
 
@@ -33,7 +36,8 @@ var ramps: Array[Dictionary] = []  # sorted by s: {name, preset, s, k, freeze, r
 var _segs: Array = []              # [r0, dur, s0, Seg, k]
 
 
-## Add a ramp around the impact at story time s. over: per-ramp overrides of the preset values (extra keys are kept).
+## Add a ramp around the impact at story time s. over: per-ramp overrides of the preset values (extra keys are kept);
+## over "r" = target REAL impact time (s is then only provisional and is recomputed by build()).
 func add(name: String, s: float, preset: String = "medium", over: Dictionary = {}) -> void:
 	var p: Dictionary = (PRESETS[preset] as Dictionary).duplicate()
 	p.merge(over, true)
@@ -54,7 +58,9 @@ static func _S(u: float) -> float:
 
 ## Sort the ramps and build the real-time segment list. Called lazily by the queries.
 func build() -> void:
-	ramps.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["s"]) < float(b["s"]))
+	var all_r: bool = not ramps.is_empty() and ramps.all(func(p: Dictionary) -> bool: return p.has("r"))
+	var key: String = "r" if all_r else "s"
+	ramps.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a[key]) < float(b[key]))
 	_segs.clear()
 	var r: float = 0.0
 	var s: float = 0.0
@@ -63,6 +69,10 @@ func build() -> void:
 		var k: float = p["k"]
 		var pre: float = float(p["ri"]) * (b + k) * 0.5 + float(p["hp"]) * k
 		var post: float = float(p["hq"]) * k + float(p["ro"]) * (k + b) * 0.5
+		if p.has("r"):
+			# exact: the gap before this ramp runs at constant base speed (Tasks 3+4 review Important 2)
+			p["r_gap"] = float(p["r"]) - (float(p["ri"]) + float(p["hp"])) - r
+			p["s"] = s + float(p["r_gap"]) * b + pre
 		p["s0"] = float(p["s"]) - pre
 		p["s1"] = float(p["s"]) + post
 		var gap: float = maxf(float(p["s0"]) - s, 0.0)
@@ -211,6 +221,8 @@ func validate() -> PackedStringArray:
 		var nm: String = p["name"]
 		var k: float = p["k"]
 		var fr: float = p["freeze"]
+		if p.has("r") and float(p.get("r_gap", 0.0)) < -1e-6:
+			err.append("%s: impact at real %.3f would need a gap < 0" % [nm, float(p["r"])])
 		if float(p["s0"]) < prev_s1 - 1e-6:
 			err.append("%s: ramp starts at story %.4f before %s ends at %.4f" % [nm, float(p["s0"]), prev_name, prev_s1])
 		if fr > 0.0 and (k < 0.25 - 1e-6 or k > 0.40 + 1e-6):

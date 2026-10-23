@@ -1,6 +1,7 @@
 # File: res://tests/test_cine_audio_fx.gd
 # Headless test of CineAudio (slot loader, gain rule, synthesized cue/sting/SFX) and CineFX (particles follow the clock speed,
-# analytic debris freezes with story time, crate break, stars, props, code textures, no GPU particles).
+# analytic debris freezes with story time and rests flat at half its height, fixed particle seeds, a burst inside a freeze
+# starts frozen, crate break, stars, props, code textures, no GPU particles).
 # Run:  godot --headless --path . --script tests/test_cine_audio_fx.gd
 extends SceneTree
 
@@ -104,6 +105,16 @@ func _initialize() -> void:
 	_check(frozen, "particles stop while the clock is frozen")
 	fx.update(2.1, 0.5)
 	_check(is_equal_approx((parts[0] as CPUParticles3D).speed_scale, 0.5), "particles run at the clock speed")
+	var seeded: bool = true
+	for p2: Node in parts:
+		var cp: CPUParticles3D = p2 as CPUParticles3D
+		seeded = seeded and cp.use_fixed_seed and cp.seed == (hash(cp.position) & 0xFFFFFFFF)
+	_check(seeded, "particle emitters use a fixed seed from their position (repeatable runs)")
+	# a burst fired inside a freeze is frozen from its first frame (Tasks 3+4 review Minor 2)
+	fx.update(2.15, 0.0)
+	fx.burst("sparks", Vector3(0.5, 1.0, 0.0), Vector3.UP, 1.0, 2.15)
+	var newest: CPUParticles3D = fx.get_child(fx.get_child_count() - 1) as CPUParticles3D
+	_check(newest != null and is_equal_approx(newest.speed_scale, 0.0), "burst inside a freeze starts frozen (%s)" % (str(newest.speed_scale) if newest else "none"))
 	var chunks: Array[Node] = fx.find_children("Debris*", "Node3D", true, false)
 	_check(not chunks.is_empty(), "debris chunks exist")
 	if not chunks.is_empty():
@@ -114,6 +125,8 @@ func _initialize() -> void:
 		_check(ch.position.is_equal_approx(p1), "debris position is a function of story time")
 		fx.update(6.0, 1.0)
 		_check(ch.position.y > -0.01 and ch.position.y < 0.2, "debris rests on the ground (y %.3f)" % ch.position.y)
+		var half_y: float = ((ch as MeshInstance3D).mesh as BoxMesh).size.y * 0.5
+		_check(absf(ch.position.y - half_y) < 1e-4, "debris chunk rests on its half height %.3f (y %.4f)" % [half_y, ch.position.y])
 	_check(fx.find_children("*", "GPUParticles3D", true, false).is_empty(), "no GPUParticles3D")
 	# --- crate break, stars, props, texture
 	var crates: Node3D = CineFX.build_prop("crate_stack")
@@ -127,6 +140,16 @@ func _initialize() -> void:
 		hidden = hidden and not c2.visible
 	_check(hidden, "crate break hides the intact crates")
 	_check(fx.live_count() >= before_n + 8, "crate break launches >= 8 planks")
+	fx.update(40.0, 1.0)
+	var planks_flat: int = 0
+	var planks_n: int = 0
+	for ch2: Node in fx.find_children("Debris*", "MeshInstance3D", true, false):
+		var bm2: BoxMesh = (ch2 as MeshInstance3D).mesh as BoxMesh
+		if bm2 and bm2.size.is_equal_approx(Vector3(0.55, 0.02, 0.07)):
+			planks_n += 1
+			if absf((ch2 as Node3D).position.y - 0.01) < 1e-4:
+				planks_flat += 1
+	_check(planks_n >= 8 and planks_flat == planks_n, "planks are 0.55 x 0.02 x 0.07 and rest flat at y 0.01 (%d / %d)" % [planks_flat, planks_n])
 	var dummy := Node3D.new()
 	world.add_child(dummy)
 	fx.stars(dummy, 9.0, 12.0)

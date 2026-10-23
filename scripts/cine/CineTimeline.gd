@@ -71,6 +71,7 @@ func actor(id: String, opts: Dictionary, speaker: String = "", color: Color = Co
 	actors[id] = {"opts": opts, "name": speaker if speaker != "" else id, "color": color}
 
 
+## over: per-ramp overrides of the preset; {"r": 6.15} places the impact at REAL 6.150 s (s then only orders the hits).
 func hit(name: String, s: float, preset: String, what: String, over: Dictionary = {}) -> void:
 	var o: Dictionary = over.duplicate()
 	o["what"] = what
@@ -214,6 +215,9 @@ func validate() -> PackedStringArray:
 		var st: float = story_time(e["at"])
 		if st < 0.0 or st > story_end + 1e-6:
 			err.append("%s at %s is outside the story" % [String(e.get("cue", e.get("kind", "?"))), str(e["at"])])
+	for e1: Dictionary in sfx:
+		if not CineAudio.SFX_CUES.has(String(e1["cue"])):
+			err.append("unknown sfx cue %s (known: %s)" % [String(e1["cue"]), ", ".join(CineAudio.SFX_CUES)])
 	for e2: Dictionary in fx:
 		if not FX_KINDS.has(String(e2["kind"])):
 			err.append("unknown fx kind %s" % String(e2["kind"]))

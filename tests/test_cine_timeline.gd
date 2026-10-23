@@ -1,7 +1,8 @@
 # File: res://tests/test_cine_timeline.gd
 # Headless test of CineTimeline: the test timeline validates, its beat sheet has the exact real times, and the validator
 # catches a wrong story_end, a missing strike, an unknown move, an untranslated Anh Duy line, a shot not starting at 0 and a
-# cue after the story end, and an fx placed on a missing actor. Slot registry tolerates missing slots.
+# cue after the story end, an fx placed on a missing actor and an unknown sfx cue; hit() takes a real-time impact override.
+# Slot registry tolerates missing slots.
 # Independent of user://music (the owner's local music files never change these results).
 # Run:  godot --headless --path . --script tests/test_cine_timeline.gd
 extends SceneTree
@@ -70,6 +71,15 @@ func _initialize() -> void:
 	ok_fx.fx_at("H1", "flash", Vector3(0.0, 1.0, 0.0))
 	ok_fx.fx_at("H1", "crate", "crates")
 	_check(ok_fx.validate().is_empty(), "fx on an actor, a point and a crate prop accepted: %s" % str(ok_fx.validate()))
+	# sfx cue names must be known A1 cues (Tasks 3+4 review Minor 1)
+	var sx: CineTimeline = _tl()
+	sx.sfx_at("H1", "kazoo_solo")
+	_check(str(sx.validate()).contains("unknown sfx cue kazoo_solo"), "unknown sfx cue rejected: %s" % str(sx.validate()))
+	# hit() with a real-time impact override (Tasks 3+4 review Important 2)
+	var rh := CineTimeline.new()
+	rh.hit("HR", 0.0, "medium", "punch on the onset", {"r": 6.15})
+	_check(absf(float(rh.clock.ramp("HR")["r_hit"]) - 6.15) < 0.0005, "hit(..., {r: 6.15}) lands at real 6.150 (got %.5f)" % float(rh.clock.ramp("HR")["r_hit"]))
+	_check(absf(rh.clock.real_at(rh.story_time("HR")) - 6.15) < 0.0005, "story_time of a real-placed hit maps back to 6.150")
 	# registry
 	_check(CineTimeline.load_slot("no_such_slot") == null, "load_slot of a missing slot returns null")
 	_check(CineTimeline.slots() is PackedStringArray, "slots() lists the timelines folder")
