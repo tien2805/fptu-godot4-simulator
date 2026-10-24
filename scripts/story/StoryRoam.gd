@@ -47,7 +47,7 @@ var toast_label: Label
 var phone: StoryPhone
 var call: StoryCall
 var video: StoryVideo
-var cards: StoryIntroCards
+var cards: CanvasLayer   # StoryIntroCards (ai_intro) or StoryDayCard (cine_day_start)
 var runs: int = 0
 var _check_t: float = 0.0
 var _obj_t: float = 0.0
@@ -437,38 +437,86 @@ static func beat_cues(b: Dictionary) -> Array:
 	return out
 
 
-func _play_cine(b: Dictionary) -> bool:
-	var tl: CineTimeline = CineTimeline.load_slot(String(b["slot"]))
+## Loads `slot`, stages it at anchor `at_id` (its "stage_pos" or spot, its yaw) and plays it through FreeRoam with the 2D card
+## layer it needs (ai_intro: StoryIntroCards, cine_day_start: StoryDayCard). null when FreeRoam found no stage spot.
+func _start_cinematic(slot: String, at_id: String) -> CinePlayer:
+	var tl: CineTimeline = CineTimeline.load_slot(slot)
 	if tl == null:
-		director.call("complete_step", String(b["id"]))
-		return false
-	var a: Dictionary = anchors.get(String(b.get("at", "")), {})
+		return null
+	var a: Dictionary = anchors.get(at_id, {})
 	if not a.is_empty():
 		var at: Vector3 = a.get("stage_pos", a["pos"])
 		tl.stage["at"] = Vector2(at.x, at.z)
 		tl.stage["yaw_deg"] = rad_to_deg(float(a["yaw"]))
 	var cp: Variant = roam.call("play_cinematic", tl, cine_opts.duplicate())
 	if cp == null:
-		director.call("complete_step", String(b["id"]))   # never block the story on a missing stage spot
+		return null
+	if slot == "ai_intro":
+		var ic := StoryIntroCards.new()
+		ic.name = "IntroCards"
+		ic.player = cp
+		cards = ic
+		add_child(ic)
+	elif slot == "cine_day_start":
+		var dc := StoryDayCard.new()
+		dc.name = "DayCard"
+		dc.days = int(tl.get("days"))
+		dc.left = int(tl.get("left"))
+		dc.player = cp
+		cards = dc
+		add_child(dc)
+	return cp
+
+
+func _play_cine(b: Dictionary) -> bool:
+	var cp: CinePlayer = _start_cinematic(String(b["slot"]), String(b.get("at", "")))
+	if cp == null:
+		director.call("complete_step", String(b["id"]))   # never block the story on a missing timeline / stage spot
 		return false
 	busy = true
 	running = String(b["id"])
-	if String(b["slot"]) == "ai_intro":
-		cards = StoryIntroCards.new()
-		cards.name = "IntroCards"
-		cards.player = cp
-		add_child(cards)
 	roam.connect("cinematic_finished", _on_cine_done.bind(String(b["id"])), CONNECT_ONE_SHOT)
 	return true
+
+
+func _free_cards() -> void:
+	if cards:
+		cards.queue_free()
+		cards = null
 
 
 func _on_cine_done(_slot: String, _skipped: bool, id: String) -> void:
 	busy = false
 	running = ""
-	if cards:
-		cards.queue_free()
-		cards = null
+	_free_cards()
 	director.call("complete_step", id)
+
+
+## Mission intro (A2-D17): the stage beat's "intro" cinematic plays once when [E] is pressed, then the stage starts. A retry
+## from the fail card never comes here (StoryDirector.retry_stage), so it skips the intro; so does a second [E] after a fail.
+func _play_intro(b: Dictionary) -> bool:
+	var cp: CinePlayer = _start_cinematic(String(b["intro"]), String(b.get("anchor", "")))
+	if cp == null:
+		return false
+	busy = true
+	running = String(b["id"])
+	roam.connect("cinematic_finished", _on_intro_done.bind(b), CONNECT_ONE_SHOT)
+	return true
+
+
+func _on_intro_done(_slot: String, _skipped: bool, b: Dictionary) -> void:
+	busy = false
+	running = ""
+	_free_cards()
+	(director.get("flags") as Dictionary)["intro_" + String(b["intro"])] = true
+	_launch(b)
+
+
+func _launch(b: Dictionary) -> bool:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	var win: Variant = anchor_return(String(b.get("return", "")))
+	var fail: Variant = anchor_return(String(b.get("anchor", "")))
+	return bool(director.call("launch_stage_beat", String(b["id"]), win, fail))
 
 
 func _start_call(b: Dictionary) -> void:
@@ -591,10 +639,10 @@ func start_marker(id: String) -> bool:
 	var b: Dictionary = StoryMissions.beat(id)
 	match String(b.get("kind", "")):
 		"stage":
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-			var win: Variant = anchor_return(String(b.get("return", "")))
-			var fail: Variant = anchor_return(String(b.get("anchor", "")))
-			return bool(director.call("launch_stage_beat", id, win, fail))
+			var intro: String = String(b.get("intro", ""))
+			if intro != "" and not bool((director.get("flags") as Dictionary).get("intro_" + intro, false)) and _play_intro(b):
+				return true   # the stage starts when the intro ends
+			return _launch(b)
 		"bed":
 			director.set("spawn", null)
 			return bool(director.call("complete_step", id))

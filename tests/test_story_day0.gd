@@ -146,7 +146,22 @@ func _process(_d: float) -> bool:
 			if frames < 5:
 				return false
 			_check(sr.markers.has("d0_exam") and not sr.markers.has("d0_race"), "the exam marker replaces the race marker")
-			_check(sr.start_marker("d0_exam") and String(sd.get("last_nav")) == "stage:7", "[E] starts the Extra stage beat")
+			var map: Control = fr.get("map_overlay")
+			map.visible = true
+			_check(not sr.start_marker("d0_exam"), "[E] is refused with the map open")
+			map.visible = false
+			sr.phone.open()
+			_check(not sr.start_marker("d0_exam") and bool(fr.call("mayhem_blocked")), "[E] is refused and mayhem blocked with the phone open")
+			sr.phone.close()
+			# A2-D17: [E] plays the mission intro cine_d0_brief, then the Extra stage starts
+			_check(sr.start_marker("d0_exam") and fr.get("cine_player") != null and String(sd.get("last_nav")) == "roam", "[E] on Phòng 311 plays the mission intro first")
+			_check(_finish_cine() == "cine_d0_brief" and String(sd.get("last_nav")) == "stage:7", "after cine_d0_brief the Extra stage starts")
+			sm.call("report_stage_result", 7, {"result": "fail", "score": 0, "rank": "C", "detail": "test"})
+			(sd.get("result_buttons")["retry"] as Button).emit_signal("pressed")
+			_check(String(sd.get("last_nav")) == "retry:7" and fr.get("cine_player") == null, "retry from the fail card skips the intro")
+			sm.call("report_stage_result", 7, {"result": "fail", "score": 0, "rank": "C", "detail": "test"})
+			(sd.get("result_buttons")["roam"] as Button).emit_signal("pressed")
+			_check(sr.start_marker("d0_exam") and fr.get("cine_player") == null and String(sd.get("last_nav")) == "stage:7", "a second [E] after a fail starts the stage without the intro")
 			sm.call("report_stage_result", 7, {"result": "win", "score": 1200, "rank": "S", "detail": "test"})
 			_check(sd.call("has_evidence", "E1") and String(sd.get("step")) == "d0_exam_end", "exam win: E1, d0_exam_end")
 			(sd.get("result_buttons")["continue"] as Button).emit_signal("pressed")
@@ -209,6 +224,17 @@ func _process(_d: float) -> bool:
 				return false
 			_check(sr.cards != null and String((fr.get("cine_player") as CinePlayer).timeline.slot) == "ai_intro", "no owner video: the ai_intro fallback with its cards")
 			_finish_cine()
+			phase = 105
+			frames = 0
+		105:
+			if fr.get("cine_player") == null:
+				if frames > 120:
+					_check(false, "cine_day_start did not start")
+					return _end()
+				return false
+			var dc: StoryDayCard = sr.cards as StoryDayCard
+			_check(dc != null and dc.days == 1 and dc.left == 7 and int(sd.get("day")) == 1, "Day 1 morning: cine_day_start with the calendar page NGÀY 1 · CÒN 7 NGÀY")
+			_check(_finish_cine() == "cine_day_start", "cine_day_start plays after ai_intro")
 			phase = 11
 			frames = 0
 		11:
@@ -221,7 +247,8 @@ func _process(_d: float) -> bool:
 			_check(String(sd.get("objective")) == "Ngày 1: Shipper bóng đêm – sắp có trong bản cập nhật sau" and sr.markers.is_empty(), "locked objective, no marker")
 			_check(int((sd.call("read_save", TMP) as Dictionary).get("day", -1)) == 1, "Day 1 autosaved")
 			var mr: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Thầy tin em. Tìm bằng chứng đi.")
-			_check(mr.size() == 1, "Mr.T's Day-1 text")
+			var ph: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Ê, tao nghe chuyện rồi… tối nay gặp ở campus nhé." and int(m["day"]) == 1)
+			_check(mr.size() == 1 and ph.size() == 1, "Mr.T's text once (ai_intro) and Phúc's Day-1 text")
 			# phone opens and blocks input
 			var pk := InputEventKey.new()
 			pk.physical_keycode = KEY_P

@@ -37,13 +37,13 @@ Vật phẩm mua ở 7-Eleven (Màn 5) dùng được ở Màn 2 và 3. Kết qu
 Chọn **✚ CỐT TRUYỆN MỚI: TOOL ĐEN** trong menu chính (đã có bản lưu thì game hỏi *"Ghi đè bản lưu Ngày N?"*).
 
 - **Tạo nhân vật:** chọn giới tính, tên (mặc định "Bạn", tối đa 16 ký tự), khuôn mặt, kiểu tóc, màu tóc, màu da; kéo chuột để xoay nhân vật, `🎲 Ngẫu nhiên` nếu lười. Đồng phục cố định: áo polo cam FPT, quần jeans, giày trắng, ba lô đen. Nhân vật này xuất hiện ở mọi nơi: thế giới mở, cinematic, Màn 1 và phòng thi 311.
-- **Ngày 0 (chơi trọn được):** tỉnh dậy trước sảnh BE6 → đua xe tới FPTU (Màn 1) → phụ Mr.T coi thi ở phòng 311 và chụp bằng chứng (màn Extra) → về BE6 đi ngủ → nửa đêm có chuyện lạ → cuộc gọi 3 giờ sáng → sáng hôm sau… Ngày 1 trở đi sẽ có ở các bản cập nhật sau.
+- **Ngày 0 (chơi trọn được):** tỉnh dậy trước sảnh BE6 → đua xe tới FPTU (Màn 1) → Mr.T nhờ phụ coi thi ở phòng 311, chụp bằng chứng (màn Extra) → về BE6 đi ngủ → nửa đêm có chuyện lạ → cuộc gọi 3 giờ sáng → sáng hôm sau… → tờ lịch "NGÀY 1 · CÒN 7 NGÀY". Ngày 1 trở đi sẽ có ở các bản cập nhật sau.
 - **Nhiệm vụ** là cột sáng màu hồng (có chấm trên radar và bản đồ `M`), đứng vào rồi bấm `E`. Đang bị truy nã thì phải cắt đuôi trước. Dòng mục tiêu hiện ở giữa đáy màn hình; ngày hiện dưới ví tiền ("NGÀY 1 · CÒN 7 NGÀY").
 - **Điện thoại `P`:** tin nhắn của Mr.T, Phúc, Anh Duy, Số lạ; ô bằng chứng E1–E7 (chưa có thì hiện "???"); nhiệm vụ và số ngày còn lại. `P` hoặc `Esc` để đóng.
 - **Lưu và tiếp tục:** game tự lưu khi tạo nhân vật, sau mỗi nhiệm vụ thắng, khi sang ngày mới và khi về menu chính. Nút **▶ TIẾP TỤC – NGÀY N** chỉ hiện khi có bản lưu.
 - **"Giảm hù dọa"** (Cài đặt ở menu chính hoặc menu tạm dừng): bỏ tiếng rít và đèn chớp, cuộc gọi 3 giờ sáng không rung / loé, âm thanh kinh dị nhỏ hơn 6 dB.
 - **File riêng của bạn (tùy chọn, chỉ trên máy bạn, không bao giờ commit hay đóng gói):** trong thư mục người dùng của game
-  - `music\<slot>.ogg` hoặc `.mp3` cho nhạc cinematic: `cine_d0_wake`, `cine_d0_exam`, `cine_d0_midnight`, `ai_intro`, `seg_d0_race`, `seg_d0_exam`;
+  - `music\<slot>.ogg` hoặc `.mp3` cho nhạc cinematic: `cine_d0_wake`, `cine_d0_brief`, `cine_d0_exam`, `cine_d0_midnight`, `ai_intro`, `cine_day_start`, `seg_d0_race`, `seg_d0_exam`;
   - `sfx\<tên>.ogg`, `.mp3` hoặc `.wav` thay âm meme / kinh dị: `boom`, `sad_trombone`, `record_scratch`, `ba_dum_tss`, `bonk`, `dun_dun_duun`, `success_fanfare`, `toang_sting`, `heartbeat`, `breath`, `whisper_bed`, `violin_screech`, `music_box`, `metal_creak`, `sheep_bleat_distorted`, `phone_ring_3am`, `static_burst`;
   - `video\ai_intro_m.ogv` (nhân vật nam) hoặc `video\ai_intro_f.ogv` (nữ): clip mở đầu tự làm, phát thay đoạn dựng trong game (đổi MP4 sang Ogg Theora: `ffmpeg -i in.mp4 -c:v libtheora -q:v 7 -c:a libvorbis -q:a 5 out.ogv`).
 

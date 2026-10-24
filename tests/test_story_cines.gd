@@ -9,7 +9,8 @@
 # Run:  godot --headless --path . --script tests/test_story_cines.gd
 extends SceneTree
 
-const SLOTS: Dictionary = {"cine_d0_wake": 8.0, "cine_d0_exam": 18.0, "cine_d0_midnight": 22.0, "ai_intro": 24.0}
+const SLOTS: Dictionary = {"cine_d0_wake": 8.0, "cine_d0_exam": 18.0, "cine_d0_midnight": 22.0, "ai_intro": 24.0,
+	"cine_d0_brief": 12.0, "cine_day_start": 9.0}   # A2-D17: mission intro + day start
 const BANNED: Array[String] = ["anh ấy", "cô ấy", "cậu ấy", "chàng", "nàng", " hắn", "anh ta", "cô ta"]
 const VID_DIR: String = "user://test_story_video/"
 var fails: Array[String] = []
@@ -43,7 +44,7 @@ func _process(_d: float) -> bool:
 	sd.call("reset_state")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_story_cines.cfg"))
 	if fails.is_empty():
-		print("✅ SUCCESS: STORY CINEMATICS (4 Day-0 slots valid + in sync, reduce scares, playback, intro cards, video pick)")
+		print("✅ SUCCESS: STORY CINEMATICS (6 Day-0 slots valid + in sync, reduce scares, playback, intro cards, video pick)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())
@@ -67,6 +68,7 @@ func _timelines() -> void:
 		_check(bool(ho.get("female", false)) and String(ho.get("hair_style", "")) == "bun" and int(ho.get("variant", -1)) == 1 and String(hero["name"]) == "Minh Thư",
 			"%s: the hero is the protagonist (%s)" % [s, str(ho)])
 		for sb: Dictionary in tl.subs:
+			_check(float(sb["dur"]) >= 0.06 * float(String(sb["text"]).length()) - 1e-6, "%s: '%s' reads at >= 0.06 s per character (%.2f s)" % [s, String(sb["text"]), float(sb["dur"])])
 			var line: String = String(sb["text"]).to_lower()
 			_check(not line.contains("{name}"), "%s: {name} formatted in '%s'" % [s, String(sb["text"])])
 			for w: String in BANNED:
@@ -83,7 +85,24 @@ func _timelines() -> void:
 	_check(shows.size() == 3 and is_equal_approx(float(shows[2]["s"]) - float(shows[1]["s"]), 1.5), "the sheep figure is seen for 1.5 s")
 	var wk: CineTimeline = CineTimeline.load_slot("cine_d0_wake")
 	_check(wk.subs.any(func(sb3: Dictionary) -> bool: return String(sb3["text"]) == "Tôi là ai, đây là đâu?") and wk.subs.any(func(sb4: Dictionary) -> bool: return String(sb4["text"]) == "Ê!!! Thi EOS 8h đó, 7h05 rồi!!!"), "wake lines")
-	for id: String in ["d0_wake", "d0_exam_end", "d0_midnight", "d0_intro"]:
+	var br: CineTimeline = CineTimeline.load_slot("cine_d0_brief")
+	var bsaid: String = ""
+	for sb5: Dictionary in br.subs:
+		bsaid += String(sb5["text"]) + "|"
+	_check(bsaid.contains("Minh Thư! Phòng 311 thiếu giám thị, em phụ thầy được không?") and bsaid.contains("Thầy nghe đồn có tool tên 'Lọ Thần'. Thấy gì lạ thì chụp lại giúp thầy."), "brief lines (Mr.T, {name})")
+	_check(br.cues.any(func(c: Dictionary) -> bool: return c["type"] == "move" and c["move"] == "nod") and br.shots.any(func(sh: Dictionary) -> bool: return sh["rig"] == "dolly"), "the protagonist nods; push-in on the door")
+	# the day-start template takes N, M and the text from StoryDirector
+	sd.call("set_step", "d1_morning")
+	sd.set("day", 1)
+	var ds: CineTimeline = CineTimeline.load_slot("cine_day_start")
+	_check(int(ds.get("days")) == 1 and int(ds.get("left")) == 7 and ds.subs.any(func(sb6: Dictionary) -> bool: return String(sb6["text"]) == "Ê, tao nghe chuyện rồi… tối nay gặp ở campus nhé." and String(sb6["speaker"]).begins_with("Phúc")), "day start Day 1: NGÀY 1 · CÒN 7 NGÀY + Phúc's text")
+	_check(ds.cues.any(func(c2: Dictionary) -> bool: return c2["type"] == "move" and c2["move"] == "hold_up"), "the phone is read with hold_up")
+	sd.set("day", 3)
+	var ds3: CineTimeline = CineTimeline.load_slot("cine_day_start")
+	_check(int(ds3.get("days")) == 3 and int(ds3.get("left")) == 5 and ds3.validate().is_empty(), "the same template serves a later day (N 3, M 5)")
+	sd.set("day", 0)
+	sd.call("set_step", "d0_wake")
+	for id: String in ["d0_wake", "d0_exam_end", "d0_midnight", "d0_intro", "d1_morning"]:
 		_check(SLOTS.has(String(StoryMissions.beat(id)["slot"])), "beat %s plays a Day-0 slot" % id)
 	for gone: String in ["Thầy Toàn", "ToanHLM"]:
 		for s2: String in SLOTS.keys():
@@ -177,7 +196,25 @@ func _cards() -> void:
 	_check(cards.stamp.visible and cards.email_box.visible and cards.email_body.text.contains("Minh Thư") and cards.stamp.text == "TOANG!", "cards node: email with {name} + stamp")
 	cards.update(14.5)
 	_check(cards.count_label.visible and cards.count_label.text == "CÒN 7 NGÀY" and not cards.email_box.visible, "cards node: CÒN 7 NGÀY")
+	# no one-letter-per-line labels (review A2-R3): the big words keep their text width
+	var widths: Array = [cards.stamp.get_combined_minimum_size().x, cards.count_label.get_combined_minimum_size().x]
+	for l: Node in cards.title_box.find_children("*", "Label", true, false):
+		widths.append((l as Label).get_combined_minimum_size().x)
+	var tc: Control = cards.title_box.find_child("TitleColumn", true, false) as Control
+	_check(widths.size() == 4 and widths.all(func(w: float) -> bool: return w > 200.0) and tc != null and tc.get_combined_minimum_size().x >= 700.0,
+		"stamp, countdown and title keep their width: %s" % str(widths))
 	cards.queue_free()
+	var day: StoryDayCard = StoryDayCard.new()
+	day.days = 1
+	day.left = 7
+	root.add_child(day)
+	day.update(1.5)
+	var d1: Dictionary = StoryDayCard.state_at(1.5)
+	var d2: Dictionary = StoryDayCard.state_at(StoryDayCard.TEAR_AT + 0.4)
+	var d3: Dictionary = StoryDayCard.state_at(8.5)
+	_check(bool(d1["shown"]) and float(d1["fall"]) == 0.0 and float(d2["fall"]) > 0.0 and not bool(d3["shown"]), "calendar page shows, tears off and falls, then is gone")
+	_check(day.page_label.text == "NGÀY 1 · CÒN 7 NGÀY" and day.page_label.get_combined_minimum_size().x > 200.0, "calendar page NGÀY 1 · CÒN 7 NGÀY")
+	day.queue_free()
 
 
 func _video() -> void:
@@ -188,6 +225,14 @@ func _video() -> void:
 	f.store_string("not really a video")
 	f.close()
 	_check(StoryVideo.video_file("ai_intro", true) == VID_DIR + "ai_intro_f.ogv" and StoryVideo.video_file("ai_intro", false) == "", "the female protagonist picks ai_intro_f.ogv only")
+	var v := StoryVideo.new()
+	root.add_child(v)
+	var played: bool = v.play_file(VID_DIR + "ai_intro_f.ogv")
+	_check(not played and v.get_children().all(func(c: Node) -> bool: return c.is_queued_for_deletion()),
+		"an undecodable owner file is refused (the fallback cinematic plays)")
+	var sm: Node = root.get_node_or_null("StageManager")
+	_check(sm == null or not bool(sm.get("cinematic_active")), "a refused video leaves no cinematic flag")
+	v.queue_free()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(VID_DIR + "ai_intro_f.ogv"))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(VID_DIR))
 	StoryVideo.video_dir = StoryVideo.VIDEO_DIR

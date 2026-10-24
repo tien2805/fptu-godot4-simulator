@@ -61,7 +61,7 @@ func _registry() -> void:
 	while cur != "" and chain.size() < 40:
 		chain.append(cur)
 		cur = String(StoryMissions.beat(cur).get("next", ""))
-	var want: Array[String] = ["d0_wake", "d0_race", "d0_exam", "d0_exam_end", "d0_bed", "d0_midnight", "d0_call", "d0_intro", "d1_start", "d1_locked"]
+	var want: Array[String] = ["d0_wake", "d0_race", "d0_exam", "d0_exam_end", "d0_bed", "d0_midnight", "d0_call", "d0_intro", "d1_start", "d1_morning", "d1_locked"]
 	_check(chain == want, "Day-0 chain is %s (got %s)" % [str(want), str(chain)])
 	_check(int(StoryMissions.beat("d0_race")["stage"]) == 1 and int(StoryMissions.beat("d0_exam")["stage"]) == 7, "race = Stage 1, exam = Extra (7)")
 	_check(String(StoryMissions.beat("d0_exam").get("evidence", "")) == "E1", "the exam win grants E1")
@@ -111,12 +111,17 @@ func _state() -> void:
 	_check(String(sd.get("tod")) == "morning" and String(sd.get("step")) == "d0_intro", "after the call: d0_intro in the morning")
 	var day0: int = counts["day"]
 	sd.call("complete_step", "d0_intro")
-	_check(int(sd.get("day")) == 1 and counts["day"] == day0 + 1 and String(sd.get("step")) == "d1_locked", "d0_intro -> Day 1 -> d1_locked")
+	_check(int(sd.get("day")) == 1 and counts["day"] == day0 + 1 and String(sd.get("step")) == "d1_morning", "d0_intro -> Day 1 -> d1_morning (cine_day_start, A2-D17)")
+	_check(String(StoryMissions.beat("d1_morning")["slot"]) == "cine_day_start" and String(StoryMissions.beat("d0_exam")["intro"]) == "cine_d0_brief", "A2-D17 beats: day start + mission intro")
+	sd.call("complete_step", "d1_morning")
+	_check(String(sd.get("step")) == "d1_locked", "d1_morning -> d1_locked")
 	_check(String(sd.call("day_chip_text")) == "NGÀY 1 · CÒN 7 NGÀY" and int(sd.call("days_left")) == 7, "Day 1 chip: CÒN 7 NGÀY")
 	_check(String(sd.get("objective")) == "Ngày 1: Shipper bóng đêm – sắp có trong bản cập nhật sau", "Day 1 locked objective")
 	_check(String(sd.get("tod")) == "morning", "Day 1 morning")
-	var d1: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Thầy tin em. Tìm bằng chứng đi.")
-	_check(d1.size() == 1 and int(d1[0]["day"]) == 1, "the Day-1 text is stamped Day 1, not Day 0")
+	var d1: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Ê, tao nghe chuyện rồi… tối nay gặp ở campus nhé.")
+	_check(d1.size() == 1 and int(d1[0]["day"]) == 1 and String(d1[0]["from"]) == "Phúc", "Phúc's Day-1 text is stamped Day 1, not Day 0")
+	var mt: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Thầy tin em. Tìm bằng chứng đi.")
+	_check(mt.size() == 1 and int(mt[0]["day"]) == 0, "Mr.T's text arrives with ai_intro (Day 0) and is not repeated on Day 1")
 
 
 func _save_load() -> void:

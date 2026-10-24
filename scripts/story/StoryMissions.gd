@@ -4,6 +4,7 @@
 #   objective (phone + HUD line, {name} substituted by StoryDirector), tod (FreeRoam time of day while the beat runs),
 #   texts ([sender, text] sent when the beat starts), and per kind:
 #   cine / video: slot (timeline / music slot), at (StoryRoam anchor the stage is searched around);
+#   stage: optional intro (mission-intro cinematic played on [E] before the stage, once; A2-D17);
 #   stage: stage (StageManager.StageID), anchor (marker), return (anchor of the return spot after a win), replay (short
 #          replay music slot), evidence (granted on the win);
 #   bed: anchor; call: days (N of "Mày còn N ngày").
@@ -36,7 +37,7 @@ const BEATS: Dictionary = {
 		"objective": "Phóng xe tới FPTU trước 07:30! Tới cột hồng trước sảnh BE6, bấm [E]",
 		"texts": [["Phúc", "Ê!!! Thi EOS 8h đó, 7h05 rồi!!!"]]},
 	"d0_exam": {"day": 0, "title": "Phòng 311", "kind": "stage", "stage": 7, "anchor": "room311", "return": "room311",
-		"replay": "seg_d0_exam", "evidence": "E1", "tod": "morning", "next": "d0_exam_end",
+		"replay": "seg_d0_exam", "evidence": "E1", "intro": "cine_d0_brief", "tod": "morning", "next": "d0_exam_end",
 		"objective": "Lên phòng 311 phụ Mr.T coi thi: cột hồng ở sân trong, bấm [E]",
 		"texts": [["Mr.T", "{name} ơi, em lên phòng 311 phụ thầy coi thi nhé. Thấy gì lạ thì chụp lại giúp thầy."]]},
 	"d0_exam_end": {"day": 0, "title": "Bằng chứng đầu tiên", "kind": "cine", "slot": "cine_d0_exam", "at": "room311",
@@ -51,9 +52,12 @@ const BEATS: Dictionary = {
 		"objective": "Ai gọi giờ này?"},
 	"d0_intro": {"day": 0, "title": "TOANG!", "kind": "video", "slot": "ai_intro", "at": "be6_door", "tod": "morning",
 		"next": "d1_start", "objective": "Đọc email của Phòng Khảo thí…",
-		"texts": [["Số lạ", "Mày… còn… 7 ngày…"]]},
-	"d1_start": {"day": 1, "title": "Ngày 1", "kind": "day", "tod": "morning", "next": "d1_locked",
-		"texts": [["Mr.T", "Thầy tin em. Tìm bằng chứng đi."]]},
+		"texts": [["Số lạ", "Mày… còn… 7 ngày…"], ["Mr.T", "Thầy tin em. Tìm bằng chứng đi."]]},
+	"d1_start": {"day": 1, "title": "Ngày 1", "kind": "day", "tod": "morning", "next": "d1_morning"},
+	# day start (A2-D17): the parameterized cine_day_start with the day's first text; later days add dN_start / dN_morning
+	"d1_morning": {"day": 1, "title": "Sáng Ngày 1", "kind": "cine", "slot": "cine_day_start", "at": "be6_door",
+		"tod": "morning", "next": "d1_locked", "objective": "Ngày mới… còn 7 ngày để minh oan",
+		"texts": [["Phúc", "Ê, tao nghe chuyện rồi… tối nay gặp ở campus nhé."]]},
 }
 
 
@@ -85,6 +89,13 @@ static func all_ids() -> PackedStringArray:
 	for n: int in range(1, 8):
 		out.append("d%d_locked" % n)
 	return out
+
+
+## [sender, text] of day N's first text (the dN_morning beat), ["Phúc", ""] when the day has none yet.
+static func day_start_text(n: int) -> Array:
+	var b: Dictionary = beat("d%d_morning" % n)
+	var t: Array = b.get("texts", [])
+	return t[0] if not t.is_empty() else ["Phúc", ""]
 
 
 static func evidence_name(id: String) -> String:
