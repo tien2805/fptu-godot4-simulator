@@ -24,6 +24,7 @@ const RETURN_M: float = 3.5
 const WARM: Array[String] = ["phone_ring_3am", "whisper_bed", "static_burst", "heartbeat", "breath", "violin_screech",
 	"ba_dum_tss", "dun_dun_duun", "toang_sting", "success_fanfare", "sad_trombone", "record_scratch", "metal_creak",
 	"boom", "call_hangup"]
+const AUDIO_WAIT_MAX: float = 3.0
 const BLOCKED_HINT: String = "Đang bị truy nã – cắt đuôi rồi hãy làm nhiệm vụ!"
 
 var roam: Node3D
@@ -53,6 +54,9 @@ var _obj_t: float = 0.0
 var _toast_t: float = 0.0
 var _run_t: float = -1.0
 var _hud_saved: Dictionary = {}
+var _audio_wait: float = 0.0
+var _marker_info: Dictionary = {}   # beat id -> {"kind", "title"} (hint_text without a beat lookup per tick)
+var _toasts: Array[Array] = []        # queued [text, cue] while a toast is showing
 
 
 func setup(r: Node3D) -> void:
@@ -69,7 +73,7 @@ func setup(r: Node3D) -> void:
 		director.connect("day_changed", _on_day)
 		director.connect("evidence_added", _on_evidence)
 		director.connect("step_changed", _on_step)
-	StoryAudio.warm(WARM)
+	StoryAudio.warm(beat_cues(director.call("beat") if director else {}) + WARM)   # the current beat's cues first
 	refresh()
 	_run_t = RUN_DELAY
 
@@ -138,6 +142,7 @@ func _rebuild_markers() -> void:
 			n.queue_free()
 	markers.clear()
 	marker_pos.clear()
+	_marker_info.clear()
 	active_marker = ""
 	var b: Dictionary = director.call("beat") if director else {}
 	var kind: String = String(b.get("kind", ""))
@@ -147,6 +152,7 @@ func _rebuild_markers() -> void:
 		var m: Node3D = _make_marker(id, pos, String(b.get("title", "")), kind)
 		markers[id] = m
 		marker_pos[id] = Vector2(pos.x, pos.z)
+		_marker_info[id] = {"kind": kind, "title": String(b.get("title", ""))}
 	_sync_map()
 
 
@@ -293,7 +299,7 @@ func _build_ui() -> void:
 	toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	toast_panel.add_child(toast_label)
 	phone = StoryPhone.new()
-	phone.setup(director, roam.get("player"))
+	phone.setup(director, roam.get("player"), roam)
 	ui.add_child(phone)
 	phone.opened_changed.connect(func(_o: bool) -> void: _update_chip())
 
@@ -330,6 +336,9 @@ func show_objective(text: String) -> void:
 
 
 func toast(text: String, cue: String = "phone_buzz") -> void:
+	if toast_panel.visible and _toast_t > 0.0:
+		_toasts.append([text, cue])   # two texts from one beat both show, one after the other
+		return
 	toast_label.text = text
 	toast_panel.visible = true
 	_toast_t = TOAST_S
@@ -348,9 +357,9 @@ func _on_objective(text: String) -> void:
 
 func _on_text(msg: Dictionary) -> void:
 	toast("✉ %s: %s" % [String(msg["from"]), String(msg["text"])])
-	_update_chip()
 	if phone.is_open():
 		phone.refresh()
+	_update_chip()
 
 
 func _on_day(_d: int) -> void:
@@ -363,6 +372,8 @@ func _on_evidence(id: String) -> void:
 
 func _on_step(_id: String) -> void:
 	_run_t = 0.05 if not busy else -1.0
+	if director:
+		StoryAudio.warm(beat_cues(director.call("beat")))
 
 
 # ---------------------------------------------------------------------------
@@ -386,8 +397,19 @@ func run_step() -> void:
 	if roam.get("cine_player") != null:
 		_run_t = 0.25   # another cinematic (busted) is playing: try again
 		return
-	refresh()
 	var b: Dictionary = director.call("beat")
+	var kind: String = String(b.get("kind", ""))
+	if kind in ["cine", "call", "video"]:
+		# the beat's cues come from their warm tasks; wait (re-armed) up to AUDIO_WAIT_MAX s rather than synthesize on
+		# the main thread (review A2-R1)
+		if not StoryAudio.ready_for(beat_cues(b)) and _audio_wait < AUDIO_WAIT_MAX:
+			_audio_wait += 0.1
+			_run_t = 0.1
+			return
+		_audio_wait = 0.0
+		if phone.is_open():
+			phone.close()   # never leave the phone open under a cinematic / the call / the video
+	refresh()
 	var id: String = String(b.get("id", ""))
 	runs += 1
 	step_started.emit(id)
@@ -398,6 +420,21 @@ func run_step() -> void:
 			_start_call(b)
 		"video":
 			_play_video(b)
+
+
+## The SFX cues a beat needs (timeline sfx for cinematics, the call's cues), warmed first and waited on in run_step.
+static func beat_cues(b: Dictionary) -> Array:
+	var out: Array = []
+	match String(b.get("kind", "")):
+		"cine", "video":
+			var tl: CineTimeline = CineTimeline.load_slot(String(b.get("slot", "")))
+			if tl:
+				for e: Dictionary in tl.sfx:
+					if StoryAudio.is_cue(String(e["cue"])) and not out.has(String(e["cue"])):
+						out.append(String(e["cue"]))
+		"call":
+			out = ["phone_ring_3am", "whisper_bed", "static_burst", "call_hangup"]
+	return out
 
 
 func _play_cine(b: Dictionary) -> bool:
@@ -466,19 +503,39 @@ func _play_video(b: Dictionary) -> void:
 			busy = true
 			running = String(b["id"])
 			_pause(true)
-			video.finished.connect(_on_video_done.bind(String(b["id"])), CONNECT_ONE_SHOT)
+			_music(false)
+			video.finished.connect(_on_video_done.bind(b), CONNECT_ONE_SHOT)
 			return
 		video.queue_free()
 		video = null
 	_play_cine(b)
 
 
-func _on_video_done(_skipped: bool, id: String) -> void:
+func _on_video_done(_skipped: bool, b: Dictionary) -> void:
+	var v: StoryVideo = video
+	video = null
+	if v and v.left_tree:
+		return   # the window / scene closed mid-video: the intro is not "seen", Continue plays it again
 	_pause(false)
 	busy = false
 	running = ""
-	video = null
-	director.call("complete_step", id)
+	_music(true)
+	if v and v.failed:
+		_play_cine(b)   # the owner's file could not be decoded or stalled: the in-engine fallback instead (review A2-R3)
+		return
+	director.call("complete_step", String(b["id"]))
+
+
+## Roam music off under the owner's clip, back to the roam style after (FreeRoam.play_cinematic does the same for cinematics).
+func _music(on: bool) -> void:
+	var fx: Node = get_node_or_null("/root/GameFX")
+	if fx == null or not fx.has_method("music_play"):
+		return
+	if on:
+		fx.call("music_stop", false)
+		fx.call("music_play", "ride" if bool(roam.get("mounted")) else "menu", 0.15)
+	else:
+		fx.call("music_stop", true)
 
 
 ## Pauses the game for the call / the owner's video and hides the roam HUD; unpausing restores each node's own visibility.
@@ -515,16 +572,19 @@ func hint_text() -> String:
 		return ""
 	if wanted_blocked():
 		return BLOCKED_HINT
-	var b: Dictionary = StoryMissions.beat(active_marker)
-	if String(b.get("kind", "")) == "bed":
-		return "[E] Đi ngủ (kết thúc ngày) · " + String(b.get("title", ""))
-	return "[E] Nhiệm vụ: %s" % String(b.get("title", ""))
+	var info: Dictionary = _marker_info.get(active_marker, {})
+	if String(info.get("kind", "")) == "bed":
+		return "[E] Đi ngủ (kết thúc ngày) · " + String(info.get("title", ""))
+	return "[E] Nhiệm vụ: %s" % String(info.get("title", ""))
 
 
 ## [E] at a marker: launches its stage beat (StoryDirector.launch_stage_beat) or goes to bed. false when blocked.
 func start_marker(id: String) -> bool:
 	if not markers.has(id) or busy or bool(roam.get("mounted")):
 		return false
+	var map: Control = roam.get("map_overlay")
+	if phone.is_open() or (map != null and map.visible):
+		return false   # review A2-R4: never start a beat with the phone or the map on top
 	if wanted_blocked():
 		roam.call("flash_hint", BLOCKED_HINT)
 		return false
@@ -566,6 +626,9 @@ func _process(delta: float) -> void:
 		_toast_t -= delta
 		if _toast_t <= 0.0:
 			toast_panel.visible = false
+			if not _toasts.is_empty():
+				var nx: Array = _toasts.pop_front()
+				toast(String(nx[0]), String(nx[1]))
 	_check_t -= delta
 	if _check_t > 0.0:
 		return
@@ -606,6 +669,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 		KEY_P:
 			var map: Control = roam.get("map_overlay")
-			if not busy and roam.get("cine_player") == null and not (map and map.visible):
-				phone.toggle()
+			if not busy and roam.get("cine_player") == null and not (map and map.visible) and not bool(roam.get("mounted")):
+				phone.toggle()   # on foot only: the bike reads its keys directly (review A2-R2)
 				get_viewport().set_input_as_handled()

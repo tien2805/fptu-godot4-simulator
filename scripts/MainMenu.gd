@@ -485,10 +485,12 @@ func _on_continue_pressed() -> void:
 	var sd: Node = _director()
 	if sd == null:
 		return
-	GameFX.play_sfx("success", -2.0)
-	GameFX.flash(Color.WHITE, 0.6, 0.4)
 	if not bool(sd.call("continue_story")):
 		_refresh_story_buttons()   # the save went bad meanwhile: hide the button
+		_first_button().grab_focus()
+		return
+	GameFX.play_sfx("success", -2.0)
+	GameFX.flash(Color.WHITE, 0.6, 0.4)
 
 ## "CỐT TRUYỆN MỚI": with a save, ask "Ghi đè bản lưu Ngày N?" first.
 func _on_story_pressed() -> void:
@@ -502,6 +504,9 @@ func _on_story_pressed() -> void:
 	confirm_panel.visible = true
 	guide_panel.visible = false
 	settings_panel.visible = false
+	var no_btn: Button = confirm_panel.find_child("ConfirmNo", true, false) as Button
+	if no_btn:
+		no_btn.call_deferred("grab_focus")   # keyboard reaches the confirm; "Thôi" is the safe default (review A2-R1)
 
 func _open_creator() -> void:
 	GameFX.play_sfx("success", -2.0)

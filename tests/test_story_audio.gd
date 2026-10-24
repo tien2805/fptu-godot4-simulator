@@ -49,8 +49,13 @@ func _warm() -> void:
 	var t0: int = Time.get_ticks_usec()
 	var task: int = StoryAudio.warm(StoryAudio.CUES + StoryAudio.EXTRA)
 	var dt_ms: float = float(Time.get_ticks_usec() - t0) / 1000.0
-	print("  warm() returned in %.2f ms (task %d)" % [dt_ms, task])
-	_check(task >= 0 and dt_ms < 16.0, "warm() starts a worker task and returns within a frame (%.2f ms)" % dt_ms)
+	print("  warm() returned in %.2f ms (%d tasks)" % [dt_ms, task])
+	_check(task == 18 and dt_ms < 16.0, "warm() starts one worker task per cue and returns within a frame (%.2f ms)" % dt_ms)
+	# a cue asked for at once waits only for its own task (review A2-R1)
+	var tb: int = Time.get_ticks_usec()
+	StoryAudio.stream("bonk")
+	print("  stream(bonk) right after warm: %.2f ms (pending %s)" % [float(Time.get_ticks_usec() - tb) / 1000.0, str(StoryAudio.warm_pending())])
+	_check(StoryAudio.is_cached("bonk"), "an early stream() adopts its own cue")
 	var waited: int = 0
 	while not StoryAudio.poll() and waited < 30000:
 		OS.delay_msec(10)
@@ -63,7 +68,7 @@ func _warm() -> void:
 		worst = maxf(worst, float(Time.get_ticks_usec() - t1) / 1000.0)
 	print("  worst stream() after warm: %.3f ms, built on the worker: %d" % [worst, StoryAudio.warm_builds])
 	_check(worst < 2.0 and StoryAudio.warm_builds >= 17, "every cue comes from the warm cache (worst %.3f ms)" % worst)
-	_check(StoryAudio.warm(StoryAudio.CUES) == -1, "warming cached cues does nothing")
+	_check(StoryAudio.warm(StoryAudio.CUES) == 0 and StoryAudio.ready_for(StoryAudio.CUES), "warming cached cues does nothing")
 
 
 func _cues() -> void:
@@ -102,7 +107,7 @@ func _override() -> void:
 	_check(StoryAudio.override_file("bonk") == TMP_DIR + "bonk.wav", "override found in the sfx folder")
 	var st: AudioStream = StoryAudio.stream("bonk")
 	_check(st != null and absf(st.get_length() - 0.75) < 0.02, "owner file wins over the synthesized bonk (%.2f s)" % (st.get_length() if st else -1.0))
-	_check(StoryAudio.warm(["bonk"]) == -1, "warm skips overridden cues")
+	_check(StoryAudio.warm(["bonk"]) == 0, "warm skips overridden cues")
 	_cleanup()
 	StoryAudio.clear_cache()
 	_check(absf(StoryAudio.stream("bonk").get_length() - 0.75) > 0.1, "without the file the synthesized cue is back")

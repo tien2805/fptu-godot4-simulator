@@ -58,7 +58,7 @@ func _run() -> void:
 	var sm: Node = root.get_node_or_null("StageManager")
 	# 1. auto-answer
 	var c: StoryCall = _make(7, {"manual": true, "reduce": false})
-	_check(c.phase == "fade" and c.layer >= 100, "starts with the black fade above the HUD")
+	_check(c.phase == "fade" and c.layer == 121 and c.find_child("SkipHint", true, false) != null, "starts with the black fade above the HUD, with the hold-Esc hint")
 	if sm:
 		_check(bool(sm.get("cinematic_active")) and not bool(sm.call("_can_pause")), "Esc cannot open the pause menu during the call")
 	_run_until(c, 0.9)

@@ -135,15 +135,16 @@ func _enter(id: String) -> void:
 		return
 	if b.has("tod"):
 		tod = String(b["tod"])
+	var is_day: bool = String(b["kind"]) == "day"
+	if is_day:
+		advance_day(int(b["day"]))   # before the texts: they are stamped with the new day (review A2-R1)
 	for t: Array in b.get("texts", []):
 		add_text(String(t[0]), String(t[1]))
 	if b.has("objective"):
 		set_objective(fmt(String(b["objective"])))
 	set_step(id)
-	if String(b["kind"]) == "day":
-		advance_day(int(b["day"]))
-		save_game()
-		_enter(String(b["next"]))
+	if is_day:
+		_enter(String(b["next"]))   # no save of the transient "day" step: complete_step saves the next beat
 
 
 func advance_day(to_day: int = -1) -> void:
@@ -219,7 +220,9 @@ func from_dict(d: Dictionary) -> void:
 	tod = String(d.get("tod", "morning"))
 	step = String(d.get("step", StoryMissions.first_beat()))
 	for e: Variant in d.get("evidence", []):
-		evidence.append(String(e))
+		var eid: String = String(e)
+		if eid in StoryMissions.EVIDENCE_IDS and not (eid in evidence):   # an edited save cannot inflate the count
+			evidence.append(eid)
 	var ch: Variant = d.get("choices", {})
 	if ch is Dictionary:
 		choices.merge(ch, true)

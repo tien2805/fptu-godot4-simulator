@@ -484,6 +484,8 @@ func _trigger_absent_screen() -> void:
 		_play_procedural_absent_bell()
 
 func _on_destination_reached() -> void:
+	if is_game_ended:
+		return   # already ABSENT (time ran out just before the line) or already reported: no second result / replay
 	is_game_ended = true
 	if player_bike:
 		player_bike.set("is_controls_locked", true)

@@ -31,11 +31,15 @@ var scroll: ScrollContainer
 var header: Label
 var _open: bool = false
 var _controls_was: bool = true
+var _mouse_was: int = Input.MOUSE_MODE_VISIBLE
+## FreeRoam (optional): close() gives the player controls back unless riding (review A2-R2).
+var roam: Node = null
 
 
-func setup(sd: Node, block: Object = null) -> void:
+func setup(sd: Node, block: Object = null, roam_node: Node = null) -> void:
 	director = sd
 	block_target = block
+	roam = roam_node
 	name = "StoryPhone"
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -128,6 +132,7 @@ func open() -> void:
 	if block_target and "controls_enabled" in block_target:
 		_controls_was = bool(block_target.get("controls_enabled"))
 		block_target.set("controls_enabled", false)
+	_mouse_was = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if thread == "" or director.call("unread_count") > 0:
 		thread = _default_thread()
@@ -141,7 +146,10 @@ func close() -> void:
 	_open = false
 	visible = false
 	if block_target and "controls_enabled" in block_target:
-		block_target.set("controls_enabled", _controls_was)
+		var on: bool = not bool(roam.get("mounted")) if roam else _controls_was
+		block_target.set("controls_enabled", on)
+	if _mouse_was == Input.MOUSE_MODE_CAPTURED and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED   # roam had the mouse: give it back
 	opened_changed.emit(false)
 
 
@@ -214,11 +222,6 @@ func mission_text() -> String:
 func refresh() -> void:
 	if list == null:
 		return
-	for i: int in tab_buttons.size():
-		var sel: bool = i == tab
-		var n: int = int(director.call("unread_count")) if i == 0 and director else 0
-		tab_buttons[i].text = TABS[i] + (" (%d)" % n if n > 0 else "")
-		tab_buttons[i].add_theme_color_override("font_color", PINK if sel else Color("#E9E1FF"))
 	for c: Node in list.get_children():
 		list.remove_child(c)
 		c.queue_free()
@@ -231,6 +234,7 @@ func refresh() -> void:
 				list.add_child(_label(("🔒 " if locked else "📎 ") + t, 16, Color("#8F84A8") if locked else CYAN, false))
 		2:
 			list.add_child(_label(mission_text(), 16, Color("#F4F1FF"), false))
+	_refresh_tabs()
 
 
 func _fill_messages() -> void:
@@ -274,10 +278,22 @@ func _fill_messages() -> void:
 		list.add_child(_label("Ngày %d" % int(m.get("day", 0)), 11, Color("#8F84A8"), false))
 
 
+## Tab captions after the list is filled (the shown thread is read by then: no stale count).
+func _refresh_tabs() -> void:
+	for i: int in tab_buttons.size():
+		var sel: bool = i == tab
+		var n: int = int(director.call("unread_count")) if i == 0 and director else 0
+		tab_buttons[i].text = TABS[i] + (" (%d)" % n if n > 0 else "")
+		tab_buttons[i].add_theme_color_override("font_color", PINK if sel else Color("#E9E1FF"))
+
+
+## While open the phone owns the keyboard (review A2-R2): P / Esc close it, every other key press is consumed so no roam
+## key (F bike, E marker, B emotes, R reload, M map...) acts behind it. Mouse events pass (tabs, scrolling).
 func _input(event: InputEvent) -> void:
 	if not _open or not (event is InputEventKey):
 		return
 	var k: InputEventKey = event
 	if k.pressed and not k.echo and (k.physical_keycode == KEY_ESCAPE or k.physical_keycode == KEY_P):
 		close()
+	if k.pressed or k.echo:
 		get_viewport().set_input_as_handled()

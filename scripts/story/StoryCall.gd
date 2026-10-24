@@ -11,6 +11,8 @@ extends CanvasLayer
 
 signal finished(skipped: bool)
 
+const GameFXScript: Script = preload("res://scripts/GameFX.gd")
+
 const FADE_IN: float = 0.8
 const RING_MAX: float = 6.0
 const VOICE_LEN: float = 7.0
@@ -54,7 +56,7 @@ func start(n: int, opts: Dictionary = {}) -> void:
 	days = n
 	manual = bool(opts.get("manual", false))
 	reduce = bool(opts.get("reduce", StoryUtil.reduce_scares()))
-	layer = 120
+	layer = 121   # above StageManager.modal_layer / CinePreview (120) and the cinematic overlay (110)
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build()
 	_set_flag(true)
@@ -126,6 +128,15 @@ func _build() -> void:
 	skip_bar.show_percentage = false
 	skip_bar.visible = false
 	add_child(skip_bar)
+	var skip_hint: Label = _label("Giữ Esc để bỏ qua", 14, Color(0.85, 0.8, 0.95, 0.75))
+	skip_hint.name = "SkipHint"
+	skip_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	skip_hint.offset_left = -240.0
+	skip_hint.offset_top = -66.0
+	skip_hint.offset_right = -24.0
+	skip_hint.offset_bottom = -44.0
+	skip_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	add_child(skip_hint)
 	loop_player = AudioStreamPlayer.new()
 	loop_player.bus = CinePlayer._bus("SFX")
 	add_child(loop_player)
@@ -133,8 +144,6 @@ func _build() -> void:
 	sfx_player.bus = CinePlayer._bus("SFX")
 	add_child(sfx_player)
 
-
-const GameFXScript: Script = preload("res://scripts/GameFX.gd")
 
 
 func _label(text: String, size: int, col: Color) -> Label:

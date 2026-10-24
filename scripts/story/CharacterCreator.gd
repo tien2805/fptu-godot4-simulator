@@ -8,6 +8,7 @@ class_name CharacterCreator
 extends Node3D
 
 const GameFXScript: Script = preload("res://scripts/GameFX.gd")
+const StoryDirectorScript: Script = preload("res://scripts/story/StoryDirector.gd")
 
 const ROWS: Array[String] = ["sex", "name", "face", "hair", "hair_color", "skin"]
 const ROW_TITLES: Dictionary = {"sex": "Giới tính", "name": "Tên", "face": "Khuôn mặt", "hair": "Kiểu tóc", "hair_color": "Màu tóc", "skin": "Màu da"}
@@ -33,6 +34,7 @@ var name_edit: LineEdit
 var row_boxes: Array[PanelContainer] = []
 var value_labels: Dictionary = {}
 var swatches: Dictionary = {}
+var row_arrows: Dictionary = {}   # row key -> [◀, ▶]
 var btn_random: Button
 var btn_confirm: Button
 var btn_back: Button
@@ -198,19 +200,23 @@ func _build_ui() -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
 	margin.offset_right = 560.0
-	for side: String in ["margin_left", "margin_top", "margin_bottom"]:
-		margin.add_theme_constant_override(side, 36)
+	margin.add_theme_constant_override("margin_left", 36)
+	for side: String in ["margin_top", "margin_bottom"]:
+		margin.add_theme_constant_override(side, 20)   # the column fits 1280x720 with room to spare (review A2-R2)
 	ui.add_child(margin)
 	panel = PanelContainer.new()
 	panel.name = "Panel"
 	panel.add_theme_stylebox_override("panel", GameFXScript.make_panel_style(ACCENT, Color(0.07, 0.04, 0.13, 0.9), 14))
 	margin.add_child(panel)
 	var pm := MarginContainer.new()
-	for side: String in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
-		pm.add_theme_constant_override(side, 20)
+	for side: String in ["margin_left", "margin_right"]:
+		pm.add_theme_constant_override(side, 18)
+	for side2: String in ["margin_top", "margin_bottom"]:
+		pm.add_theme_constant_override(side2, 12)
 	panel.add_child(pm)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
+	col.name = "Column"
+	col.add_theme_constant_override("separation", 5)
 	pm.add_child(col)
 	var title: Label = GameFXScript.make_label("TẠO NHÂN VẬT", 34, ACCENT, HORIZONTAL_ALIGNMENT_LEFT)
 	title.add_theme_font_override("font", GameFXScript.vice_font(0.8, 0.24))
@@ -252,7 +258,7 @@ func _build_row(i: int) -> PanelContainer:
 	for side: String in ["margin_left", "margin_right"]:
 		m.add_theme_constant_override(side, 10)
 	for side2: String in ["margin_top", "margin_bottom"]:
-		m.add_theme_constant_override(side2, 4)
+		m.add_theme_constant_override(side2, 2)
 	box.add_child(m)
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 8)
@@ -295,6 +301,7 @@ func _build_row(i: int) -> PanelContainer:
 		set_row(i)
 		step_value(1))
 	hb.add_child(right)
+	row_arrows[key] = [left, right]
 	return box
 
 
@@ -359,7 +366,14 @@ func set_value(r: int, idx: int) -> void:
 
 
 func step_value(dir: int) -> void:
+	if ROWS[row] == "face" and not face_row_active():
+		return
 	set_value(row, value_index(row) + dir)
+
+
+## The face variants exist only on the PS2 heads (Vice style); the classic head has none (review A2-R2).
+static func face_row_active() -> bool:
+	return CharacterBuilder.ps2
 
 
 func set_row(r: int) -> void:
@@ -396,7 +410,10 @@ func _refresh_rows() -> void:
 	if value_labels.is_empty():
 		return
 	(value_labels["sex"] as Label).text = "Nữ" if bool(opts["female"]) else "Nam"
-	(value_labels["face"] as Label).text = "Gương mặt %d/3" % (int(opts["variant"]) + 1)
+	var face_on: bool = face_row_active()
+	(value_labels["face"] as Label).text = ("Gương mặt %d/3" % (int(opts["variant"]) + 1)) if face_on else "(chỉ kiểu Vice)"
+	for b: Button in row_arrows.get("face", []):
+		b.disabled = not face_on
 	(value_labels["hair"] as Label).text = String(HAIR_NAMES.get(String(opts["hair_style"]), String(opts["hair_style"])))
 	(value_labels["hair_color"] as Label).text = "Màu %d/%d" % [int(opts["hair_color"]) + 1, CharacterBuilder.HAIR_COLORS.size()]
 	(value_labels["skin"] as Label).text = "Tông %d/%d" % [int(opts["skin"]) + 1, CharacterBuilder.SKIN_TONES.size()]
@@ -406,10 +423,7 @@ func _refresh_rows() -> void:
 
 ## Trimmed name, 1..16 characters, "Bạn" when empty.
 static func clean_name(text: String) -> String:
-	var s: String = text.strip_edges()
-	if s == "":
-		return "Bạn"
-	return s.substr(0, NAME_MAX).strip_edges()
+	return StoryDirectorScript.clean_name(text)   # one name rule for the creator and the save (review A2-R2)
 
 
 ## "✔ Bắt đầu": stores the pick in StoryDirector (new story, autosave) and enters story free roam.

@@ -6,8 +6,8 @@
 #   horror: heartbeat, breath, whisper_bed, violin_screech, music_box, metal_creak, sheep_bleat_distorted, phone_ring_3am,
 #           static_burst
 # Owner override: user://sfx/<cue>.ogg | .mp3 | .wav (local only, never committed). LOOPS loop (owner files too).
-# stream(cue) is main-thread only (static cache); synth(cue) is pure, so warm(cues) builds a list on a WorkerThreadPool task
-# and poll() / stream() adopt the results on the main thread (a long cue never stalls a frame: Phase W lesson).
+# stream(cue) is main-thread only (static cache); synth(cue) is pure, so warm(cues) builds each cue on its own WorkerThreadPool
+# task and poll() / stream() adopt the results on the main thread (a long cue never stalls a frame: Phase W lesson).
 # cue_db(cue): extra gain, -6 dB for horror cues while "Giảm hù dọa" is on (A2-D14).
 class_name StoryAudio
 extends RefCounted
@@ -32,9 +32,7 @@ const LENGTHS: Dictionary = {
 
 static var sfx_dir: String = "user://sfx/"
 static var _cache: Dictionary = {}
-static var _task: int = -1
-static var _box: Dictionary = {}
-static var _pending: PackedStringArray = []
+static var _tasks: Dictionary = {}   # cue -> {"task": int, "box": [AudioStreamWAV or null]}
 static var warm_builds: int = 0
 
 
@@ -65,9 +63,8 @@ static func stream(cue: String) -> AudioStream:
 	poll()
 	if _cache.has(cue):
 		return _cache[cue]
-	if _task >= 0 and cue in _pending:
-		WorkerThreadPool.wait_for_task_completion(_task)   # only if asked for before the warm task finished
-		_adopt()
+	if _tasks.has(cue):
+		_adopt(cue)   # asked for before its warm task finished: waits for this one cue only
 		if _cache.has(cue):
 			return _cache[cue]
 	var st: AudioStream = null
@@ -125,64 +122,63 @@ static func is_cached(cue: String) -> bool:
 
 
 static func clear_cache() -> void:
-	if _task >= 0:
-		WorkerThreadPool.wait_for_task_completion(_task)
-		_task = -1
+	for cue: String in _tasks.keys():
+		WorkerThreadPool.wait_for_task_completion(int((_tasks[cue] as Dictionary)["task"]))
+	_tasks.clear()
 	_cache.clear()
-	_box = {}
-	_pending = PackedStringArray()
 
 
-## Builds the cues that are neither cached nor overridden on a WorkerThreadPool task; returns at once. -1 = nothing to do.
+## Builds the cues that are neither cached, pending nor overridden, ONE WorkerThreadPool task per cue (review A2-R1:
+## stream() then waits for at most one cue), in the given order (put the current beat's cues first). Returns at once with
+## the number of tasks started.
 static func warm(cues: Array) -> int:
 	poll()
-	if _task >= 0:
-		return _task
-	var todo := PackedStringArray()
+	var n: int = 0
 	for c: Variant in cues:
 		var cue: String = String(c)
-		if is_cue(cue) and not _cache.has(cue) and override_file(cue) == "":
-			todo.append(cue)
-	if todo.is_empty():
-		return -1
-	_pending = todo
-	_box = {}
-	_task = WorkerThreadPool.add_task(_warm_job(_box, todo))
-	return _task
+		if not is_cue(cue) or _cache.has(cue) or _tasks.has(cue) or override_file(cue) != "":
+			continue
+		var box: Array = [null]
+		_tasks[cue] = {"task": WorkerThreadPool.add_task(_warm_job(box, cue)), "box": box}
+		n += 1
+	return n
 
 
 ## Worker job built in a static function: writes only into its own box.
-static func _warm_job(box: Dictionary, todo: PackedStringArray) -> Callable:
-	return func() -> void:
-		for cue: String in todo:
-			box[cue] = synth(cue)
+static func _warm_job(box: Array, cue: String) -> Callable:
+	return func() -> void: box[0] = synth(cue)
 
 
-## Adopts a finished warm task (main thread). true when nothing is pending any more.
+## Adopts finished warm tasks (main thread). true when nothing is pending any more.
 static func poll() -> bool:
-	if _task < 0:
-		return true
-	if not WorkerThreadPool.is_task_completed(_task):
-		return false
-	WorkerThreadPool.wait_for_task_completion(_task)
-	_adopt()
-	return true
+	for cue: String in _tasks.keys():
+		if WorkerThreadPool.is_task_completed(int((_tasks[cue] as Dictionary)["task"])):
+			_adopt(cue)
+	return _tasks.is_empty()
 
 
-static func _adopt() -> void:
-	_task = -1
-	for cue: String in _box.keys():
-		if not _cache.has(cue):
-			var st: AudioStream = _box[cue]
-			_set_loop(st, cue in LOOPS)
-			_cache[cue] = st
-			warm_builds += 1
-	_box = {}
-	_pending = PackedStringArray()
+static func _adopt(cue: String) -> void:
+	var t: Dictionary = _tasks[cue]
+	WorkerThreadPool.wait_for_task_completion(int(t["task"]))
+	_tasks.erase(cue)
+	if not _cache.has(cue) and (t["box"] as Array)[0] != null:
+		var st: AudioStream = (t["box"] as Array)[0]
+		_set_loop(st, cue in LOOPS)
+		_cache[cue] = st
+		warm_builds += 1
 
 
 static func warm_pending() -> bool:
-	return _task >= 0
+	return not _tasks.is_empty()
+
+
+## true when every cue of `cues` can be played without synthesizing on the main thread (cached, overridden or not a cue).
+static func ready_for(cues: Array) -> bool:
+	poll()
+	for c: Variant in cues:
+		if _tasks.has(String(c)):
+			return false
+	return true
 
 
 # ---------------------------------------------------------------------------

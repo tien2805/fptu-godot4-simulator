@@ -701,13 +701,24 @@ func next_stage() -> void:
 		next_id = StageID.STAGE_1_RACE
 	change_stage(next_id)
 
+## The story owns stage launches: no Campaign Hub (M, Ctrl/Shift+Tab, stage buttons) while a story runs (review A2-R4).
+func _story_blocks_hub() -> bool:
+	if not story_context.is_empty():
+		return true
+	var sd: Node = get_node_or_null("/root/StoryDirector")
+	return sd != null and bool(sd.get("active"))
+
 func toggle_stage_select() -> void:
+	if modal_layer and not modal_layer.visible and _story_blocks_hub():
+		return
 	if modal_layer:
 		modal_layer.visible = not modal_layer.visible
 		if modal_layer.visible:
 			_refresh_rank_labels()
 
 func open_stage_select() -> void:
+	if _story_blocks_hub():
+		return
 	if modal_layer:
 		modal_layer.visible = true
 		_refresh_rank_labels()

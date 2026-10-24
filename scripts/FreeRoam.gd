@@ -72,6 +72,8 @@ const HUD_REFRESH: float = 0.2
 const MAP_TOP: float = 66.0              # bản đồ [M] bắt đầu dưới bảng giờ / FPS (cao ~56 px)
 const MAP_BOTTOM: float = 30.0
 const HINT_DEFAULT: String = "[WASD] đi · [Shift] chạy nước rút · [Ctrl] đi bộ · [Space] nhảy · [Z]/[C] xoay camera · [F] xe máy · [T] giờ trong ngày · [M] bản đồ · [ESC] tạm dừng"
+## Story mode (A2): the story drives the time of day, so [T] gives way to the phone [P].
+const HINT_STORY: String = "[WASD] đi · [Shift] chạy nước rút · [Ctrl] đi bộ · [Space] nhảy · [Z]/[C] xoay camera · [F] xe máy · [P] điện thoại · [M] bản đồ · [ESC] tạm dừng"
 const HINT_RIDING: String = "[F] xuống xe · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [H] còi"
 const HINT_NO_DISMOUNT: String = "Không có chỗ trống cạnh xe để xuống (nước / tường / vật cản) – chạy ra chỗ rộng rồi bấm [F]"
 const HINT_RESCUED: String = "Rơi xuống kênh! Đã đưa bạn về chỗ khô gần nhất"
@@ -187,7 +189,7 @@ func _ready() -> void:
 	_apply_spawn()
 	for k: String in GameFXScript.TOD_PRESETS.keys():
 		var tod: Dictionary = GameFXScript.TOD_PRESETS[k]
-		if bool(tod.get("outdoor", false)) or k == "night":
+		if (bool(tod.get("outdoor", false)) and k != "sunset") or k == "night":   # sunset is story-only (A2-D13)
 			tod_cycle.append(k)
 	set_time_of_day(String(sd.get("tod")) if story_mode else "morning")
 	if crowd_enabled:
@@ -1246,17 +1248,16 @@ func _hint_text() -> String:
 		var sh: String = story_roam.hint_text()
 		if sh != "":
 			return sh
-	if story_mode and not mounted:
-		return HINT_DEFAULT.replace("[T] giờ trong ngày", "[P] điện thoại")
+	var base: String = HINT_STORY if story_mode else HINT_DEFAULT
 	if active_hotspot:
 		return "[E] Chơi %s" % _stage_title(int(active_hotspot.get_meta("stage_id")))
 	if mounted:
 		return HINT_RIDING
 	if bike_parked:
 		if can_mount():
-			return "[F] lên xe máy · " + HINT_DEFAULT
-		return HINT_DEFAULT.replace("[F] xe máy", "[F] xe máy cách %d m" % bike_distance_m())
-	return HINT_DEFAULT
+			return "[F] lên xe máy · " + base
+		return base.replace("[F] xe máy", "[F] xe máy cách %d m" % bike_distance_m())
+	return base
 
 
 func _physics_process(delta: float) -> void:
@@ -1365,6 +1366,8 @@ func mayhem_blocked() -> bool:
 		return true
 	if map_overlay and map_overlay.visible:
 		return true
+	if story_roam and story_roam.phone and story_roam.phone.is_open():
+		return true   # story phone open (A2-D7): no weapons, wheels, reload or emotes
 	if wanted and wanted.state != "free":
 		return true   # busted (stamp, cutscene) or community service
 	if is_inside_tree() and get_tree().paused:

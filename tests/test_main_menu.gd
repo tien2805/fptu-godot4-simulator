@@ -205,6 +205,12 @@ func _process(_d: float) -> bool:
 			if not cp.visible or (menu.get("confirm_label") as Label).text != "Ghi đè bản lưu Ngày 0?":
 				_fail("cốt truyện mới khi đã có bản lưu không hỏi ghi đè")
 				return true
+		32:
+			var focus: Control = get_root().gui_get_focus_owner()
+			if focus == null or focus.name != "ConfirmNo":
+				_fail("hộp hỏi ghi đè không nhận focus bàn phím (focus = %s)" % str(focus))
+				return true
+			var cp: Control = menu.get("confirm_panel")
 			menu.call("_hide_modals")
 			if cp.visible:
 				_fail("hộp hỏi ghi đè không đóng")

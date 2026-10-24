@@ -115,6 +115,8 @@ func _state() -> void:
 	_check(String(sd.call("day_chip_text")) == "NGÀY 1 · CÒN 7 NGÀY" and int(sd.call("days_left")) == 7, "Day 1 chip: CÒN 7 NGÀY")
 	_check(String(sd.get("objective")) == "Ngày 1: Shipper bóng đêm – sắp có trong bản cập nhật sau", "Day 1 locked objective")
 	_check(String(sd.get("tod")) == "morning", "Day 1 morning")
+	var d1: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Thầy tin em. Tìm bằng chứng đi.")
+	_check(d1.size() == 1 and int(d1[0]["day"]) == 1, "the Day-1 text is stamped Day 1, not Day 0")
 
 
 func _save_load() -> void:
@@ -150,6 +152,10 @@ func _guard() -> void:
 	_check(sd.call("read_save", TMP).is_empty(), "an unknown step is refused")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))
 	_check(sd.call("read_save", TMP).is_empty() and not bool(sd.call("has_save")), "a missing file = no save")
+	var sd3: Node = (load("res://scripts/story/StoryDirector.gd") as Script).new()
+	sd3.call("from_dict", {"step": "d0_wake", "evidence": ["E1", "E1", "E9", "E7"]})
+	_check(Array(sd3.get("evidence")) == ["E1", "E7"], "from_dict filters unknown and duplicate evidence")
+	sd3.free()
 	_check(sd.call("read_save", "user://story_save.cfg") is Dictionary, "default path readable without crashing")
 
 
