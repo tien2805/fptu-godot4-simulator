@@ -48,6 +48,20 @@ Continue works from the menu at every autosave.
 | A2-D15 | **Text rules.** <ul><li>All game text in Vietnamese, fictional names only (Mr.T, Phúc, Anh Duy).</li><li>The protagonist is addressed by `{name}` and "em" (Mr.T) or "mày" (Phúc), never by a gendered pronoun in narration.</li><li>No real person's name, face or voice.</li><li>No copyrighted song.</li></ul> |
 | A2-D16 | **Tests** (headless, `_check()` + quit pattern, `Engine.max_fps = 60` where timing matters). New:<ul><li>`test_story_director`: state, signals, save/load round trip, version guard, `evaluate_ending` truth table;</li><li>`test_character_creator`: rows, randomize, name rules, confirm stores opts, preview rebuild;</li><li>`test_story_audio`: all 17 new cues, lengths and loops, override file, warm without stalls;</li><li>`test_story_phone`: texts, unread, evidence slots, input block;</li><li>`test_story_call`;</li><li>`test_story_day0`: new story through Day 1 morning with stage results simulated through `report_stage_result`, cinematics stepped or skipped, autosaves, continue restores Day 1;</li><li>timeline validator coverage for the new slots.</li></ul>Updated: `test_main_menu`. Unchanged and green: all 55 current tests, smoke, and `test_mayhem_perf` (< 3 ms; the story layer must not add measurable per-frame cost). |
 
+### Amendment A2-D17 (owner 2026-10-24, story spec S-D15 and 8.4)
+
+Two mid-story cinematics join Day 0. Same rules as A2-D10: A1 timelines, fixed lengths, beat sheets, validator clean, synthesized default music, skippable.
+
+- **`cine_d0_brief`** (12.0 s, room 311 module courtyard, morning). It is the mission intro of `d0_exam`: it plays when the player presses [E] on the Phòng 311 marker, then the Extra stage starts.
+  - Mr.T: "{name}! Phòng 311 thiếu giám thị, em phụ thầy được không?"
+  - Then: "Thầy nghe đồn có tool tên 'Lọ Thần'. Thấy gì lạ thì chụp lại giúp thầy."
+  - The protagonist nods; a camera push-in on the room 311 door.
+- **`cine_day_start`** (9.0 s, one parameterized template, BE6 lobby, morning). It plays at `d1_start`, after `ai_intro`, and later days reuse it.
+  - The protagonist steps out of the lobby.
+  - A code-drawn calendar page "NGÀY N · CÒN M NGÀY" (2D card) tears off and falls.
+  - The phone buzzes with the day's first text. Day 1: Phúc "Ê, tao nghe chuyện rồi… tối nay gặp ở campus nhé.", so it does not repeat the Mr.T text from `ai_intro`.
+  - Lines and N / M come from StoryDirector.
+
 ## 3. Music slots added (story spec 8.3)
 
 - `cine_d0_wake`: upbeat panic.
