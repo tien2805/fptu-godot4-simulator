@@ -4,6 +4,12 @@ Cập nhật: 2026-10-25.
 
 Gu chung là kiểu phim *Nobody*: nhạc cũ, vui, đặt ngược với cảnh hành động hoặc thảm họa.
 
+**Trạng thái 2026-10-25:**
+- Bạn đã tải mọi bài gợi ý bên dưới và 12 âm thanh. Tất cả đã nằm trong `music\` và `sfx\` trên máy.
+- Mỗi bài được cắt bỏ đoạn im lặng ở đầu. Riêng các replay ngắn bắt đầu ở chỗ bài vào đoạn mạnh.
+- Còn thiếu 2 bài: `seg_d0_race` (*Deja Vu*) và `seg_d2_chase` (*Tokyo Drift*).
+- Điểm cắt chính xác cho từng cảnh chưa làm sẽ chỉnh khi dựng cảnh đó.
+
 ## Cách dùng
 
 - Bạn tự tải hoặc tự thu file, rồi bỏ vào thư mục dữ liệu của game: `%APPDATA%\Godot\app_userdata\FPTU Student Simulator- Godot 4 Edition\`.
