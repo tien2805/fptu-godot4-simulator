@@ -417,11 +417,11 @@ static func _build_glasses(head: Node3D, k: Dictionary) -> void:
 
 ## Thanh hộp nối p0 -> p1 theo hướng bất kỳ, chiều dài theo trục Z cục bộ: gọng kính (vuông, cạnh thick); quai mũ bảo hiểm dẹt
 ## (width > 0: bản rộng width, dày thick, mặt rộng quay về phía out).
-static func _bar(parent: Node3D, p0: Vector3, p1: Vector3, mat: Material, thick: float = 0.003, width: float = 0.0, out: Vector3 = Vector3.ZERO) -> void:
+static func _bar(parent: Node3D, p0: Vector3, p1: Vector3, mat: Material, thick: float = 0.003, width: float = 0.0, out: Vector3 = Vector3.ZERO) -> MeshInstance3D:
 	var d: Vector3 = p1 - p0
 	var dir: Vector3 = d.normalized()
 	var up: Vector3 = out if out != Vector3.ZERO else (Vector3.UP if absf(dir.y) < 0.99 else Vector3.RIGHT)
-	CharacterBuilder._box(parent, (p0 + p1) * 0.5, Vector3(width if width > 0.0 else thick, thick, d.length()), mat, Basis.looking_at(dir, up).get_euler())
+	return CharacterBuilder._box(parent, (p0 + p1) * 0.5, Vector3(width if width > 0.0 else thick, thick, d.length()), mat, Basis.looking_at(dir, up).get_euler())
 
 
 # ===========================================================================
@@ -442,9 +442,10 @@ static func _build_helmet_straps(head: Node3D, fit: Node3D, k: Dictionary) -> vo
 		var rim := Vector3(sx * 0.090 * w, 0.152, -0.012)
 		var jaw := Vector3(sx * 0.077 * w, 0.050, -0.022)
 		var chin := Vector3(sx * 0.030 * w, -0.008, -0.032)
-		_bar(head, rim, jaw, sm, 0.003, 0.012, Vector3(sx, 0.0, -0.15))
-		_bar(head, jaw, chin, sm, 0.003, 0.012, Vector3(sx * 0.6, -0.8, -0.2))
-	_bar(head, Vector3(-0.030 * w, -0.008, -0.032), Vector3(0.030 * w, -0.008, -0.032), sm, 0.003, 0.012, Vector3(0.0, -1.0, -0.3))
+		_bar(head, rim, jaw, sm, 0.003, 0.012, Vector3(sx, 0.0, -0.15)).set_meta("helmet_part", true)
+		_bar(head, jaw, chin, sm, 0.003, 0.012, Vector3(sx * 0.6, -0.8, -0.2)).set_meta("helmet_part", true)
+	# tagged like CharacterBuilder's helmet meshes: cinematics hide the whole helmet when it is knocked off (CineActor part)
+	_bar(head, Vector3(-0.030 * w, -0.008, -0.032), Vector3(0.030 * w, -0.008, -0.032), sm, 0.003, 0.012, Vector3(0.0, -1.0, -0.3)).set_meta("helmet_part", true)
 
 
 ## Tấm che trước mũ bảo hiểm: lưỡi liềm cùng màu mũ ôm cung trước của vành (hệ đầu: ngang 0.126 * 0.98 * width * 0.74, sâu
@@ -464,6 +465,7 @@ static func _build_helmet_visor(fit: Node3D, color: Color, width: float) -> void
 	v.material_override = CharacterBuilder._mat("helmet_" + color.to_html(false), color, 0.25, 0.1)
 	v.scale = Vector3.ONE / HELMET_FIT_SCALE
 	v.position = Vector3(0.0, 0.166 - HELMET_LIFT, 0.0) / HELMET_FIT_SCALE
+	v.set_meta("helmet_part", true)
 	fit.add_child(v)
 
 

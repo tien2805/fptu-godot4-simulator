@@ -23,3 +23,9 @@ build/
 
 # Raw third-party building footprint tiles (large; only the scoped extract is committed)
 reference_data/msbuildings/*.gz
+
+# Owner-local raw assets (Mixamo FBX etc.): never committed, never exported (spec A1-D1)
+assets/local/
+
+# Python bytecode from the offline tools/music helpers
+__pycache__/

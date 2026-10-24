@@ -103,6 +103,7 @@ var return_to_roam: bool = false
 var roam_spawn: Variant = null
 ## FreeRoam đặt true: phím [M] là bản đồ của thế giới mở, không mở Campaign Hub.
 var hub_key_blocked: bool = false
+var cinematic_active: bool = false   # cinematic / replay đang chạy: ESC là "giữ để bỏ qua", không mở menu tạm dừng (spec A1-D16)
 var roam_return_layer: CanvasLayer
 ## Kỷ lục lưu trên đĩa: stage_id -> {"score": int, "rank": String, "wins": int, "plays": int}
 var best_stats: Dictionary = {}
@@ -303,11 +304,12 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.is_pressed() and not event.is_echo():
 		if event.physical_keycode == KEY_M:
-			if typing_mode or hub_key_blocked or _is_text_input_focused():
+			if typing_mode or hub_key_blocked or cinematic_active or _is_text_input_focused():
 				return
 			toggle_stage_select()
 		elif event.physical_keycode == KEY_TAB and (Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_SHIFT)):
-			toggle_stage_select()
+			if not cinematic_active:   # không mở chọn màn giữa cinematic (plan review A1 Minor 10)
+				toggle_stage_select()
 		elif event.physical_keycode == KEY_ESCAPE and modal_layer and modal_layer.visible:
 			modal_layer.visible = false
 		elif event.physical_keycode == KEY_ESCAPE and _can_pause():
@@ -318,6 +320,7 @@ func _input(event: InputEvent) -> void:
 # TẠM DỪNG (ESC trong màn chơi)
 # ---------------------------------------------------------------------------
 func _can_pause() -> bool:
+	if cinematic_active: return false
 	var cs: Node = get_tree().current_scene
 	if cs == null or cs is MainMenu or transition_active:
 		return false
