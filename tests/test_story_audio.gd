@@ -85,7 +85,10 @@ func _cues() -> void:
 		_check(loops == (cue in StoryAudio.LOOPS), "%s loop flag %s" % [cue, str(loops)])
 		if loops:
 			_check(w.loop_end == w.data.size() / 2, "%s loops over the whole cue" % cue)
-	_check(CineAudio.sfx("heartbeat") == StoryAudio.stream("heartbeat"), "CineAudio.sfx() serves the story cue")
+	var once: AudioStream = CineAudio.sfx("heartbeat")
+	_check(once is AudioStreamWAV and (once as AudioStreamWAV).loop_mode == AudioStreamWAV.LOOP_DISABLED
+		and absf(once.get_length() - StoryAudio.stream("heartbeat").get_length()) < 0.001, "CineAudio.sfx() serves a one-shot copy of a looping story cue")
+	_check(CineAudio.sfx("bonk") == StoryAudio.stream("bonk"), "CineAudio.sfx() serves the story cue")
 	_check(CineAudio.sfx("impact_light") is AudioStreamWAV, "A1 cues unchanged")
 	for cue2: String in ["heartbeat", "whisper_bed", "music_box"]:
 		_check(cue2 in StoryAudio.LOOPS, "%s loops (A2-D9)" % cue2)

@@ -81,6 +81,25 @@ static func stream(cue: String) -> AudioStream:
 	return st
 
 
+## One-shot version for timelines (CineAudio.sfx): a looping cue comes back with the loop off (shared sample data).
+static func stream_once(cue: String) -> AudioStream:
+	var st: AudioStream = stream(cue)
+	if not (cue in LOOPS):
+		return st
+	var key: String = cue + "#once"
+	if _cache.has(key):
+		return _cache[key]
+	var once: AudioStream = st.duplicate()
+	if once is AudioStreamWAV:
+		(once as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_DISABLED
+	elif once is AudioStreamOggVorbis:
+		(once as AudioStreamOggVorbis).loop = false
+	elif once is AudioStreamMP3:
+		(once as AudioStreamMP3).loop = false
+	_cache[key] = once
+	return once
+
+
 static func _load_override(p: String) -> AudioStream:
 	if p.ends_with(".wav"):
 		return AudioStreamWAV.load_from_file(p)

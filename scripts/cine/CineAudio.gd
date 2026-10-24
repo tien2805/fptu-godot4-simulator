@@ -183,7 +183,7 @@ static func synth_sting(length: float, r_hit: float) -> AudioStreamWAV:
 static func sfx(cue: String) -> AudioStream:
 	assert(OS.get_thread_caller_id() == OS.get_main_thread_id(), "CineAudio.sfx() is main-thread only (static cache)")
 	if StoryAudio.is_cue(cue):
-		return StoryAudio.stream(cue)   # A2-D9: the story's meme / horror cues (own cache, owner overrides, loops)
+		return StoryAudio.stream_once(cue)   # A2-D9: the story's meme / horror cues (own cache, owner overrides, loops)
 	if _sfx_cache.has(cue):
 		return _sfx_cache[cue]
 	var st: AudioStream = null
