@@ -248,12 +248,16 @@ func sync_style_settings(root: Node) -> void:
 		scares.set_pressed_no_signal(reduce_scares)
 
 
-## Story settings row (main-menu settings and the pause settings): CheckButton "Giảm hù dọa" (ReduceScaresCheck).
-func build_story_settings(parent: Control) -> void:
-	var row := HBoxContainer.new()
-	row.name = "StorySettingsRow"
-	row.add_theme_constant_override("separation", 12)
-	parent.add_child(row)
+## Story settings (main-menu settings and the pause settings): CheckButton "Giảm hù dọa" (ReduceScaresCheck). compact: the
+## check joins the ArtStyleRow built by build_style_settings (the pause card must stay inside 720 px), no hint label.
+func build_story_settings(parent: Control, compact: bool = false) -> void:
+	var row: HBoxContainer = parent.find_child("ArtStyleRow", false, false) as HBoxContainer if compact else null
+	if row == null:
+		compact = false
+		row = HBoxContainer.new()
+		row.name = "StorySettingsRow"
+		row.add_theme_constant_override("separation", 12)
+		parent.add_child(row)
 	var scares := CheckButton.new()
 	scares.name = "ReduceScaresCheck"
 	scares.text = "Giảm hù dọa"
@@ -261,9 +265,10 @@ func build_story_settings(parent: Control) -> void:
 	scares.add_theme_font_size_override("font_size", 15)
 	scares.set_pressed_no_signal(reduce_scares)
 	row.add_child(scares)
-	var hint: Label = make_label("(cốt truyện: bớt cảnh hù, âm thanh kinh dị nhỏ hơn)", 12, Color("#95A5A6"), HORIZONTAL_ALIGNMENT_LEFT)
-	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
-	row.add_child(hint)
+	if not compact:
+		var hint: Label = make_label("(cốt truyện: bớt cảnh hù, âm thanh kinh dị nhỏ hơn)", 12, Color("#95A5A6"), HORIZONTAL_ALIGNMENT_LEFT)
+		hint.autowrap_mode = TextServer.AUTOWRAP_OFF
+		row.add_child(hint)
 	scares.toggled.connect(func(on: bool) -> void:
 		set_reduce_scares(on)
 		play_ui("tick", -10.0, 1.3))

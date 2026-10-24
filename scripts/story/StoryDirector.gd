@@ -362,6 +362,11 @@ func _nav(where: String) -> void:
 		get_tree().change_scene_to_file(CREATOR_SCENE)
 
 
+## Main menu: story start goes through the character creator.
+func open_creator() -> void:
+	_nav("creator")
+
+
 func hide_result() -> void:
 	if result_layer:
 		result_layer.visible = false
