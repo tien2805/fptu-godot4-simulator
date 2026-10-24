@@ -139,6 +139,10 @@ const MOVES: Dictionary = {
 	"head_shake": {"dur": 0.6, "src": [{"t": "code", "a": "head_shake"}]},
 	"neck_crack": {"dur": 0.8, "hit_u": 0.45, "src": [{"t": "code", "a": "neck_crack", "hit": 0.45}]},
 	"lie_flat": {"dur": 1.0, "loop": true, "src": [{"t": "code", "a": "lie_back"}]},   # after "thrown" (same pose family)
+	# slammed back into something behind him (the scooter), sliding down to sit against it, knees up; and up from there
+	"slammed": {"dur": 0.8, "hit_u": 0.05, "src": [{"t": "code", "a": "slammed", "hit": 0.05}]},
+	"slumped": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "slumped"}]},
+	"get_up_sit": {"dur": 1.2, "src": [{"t": "code", "a": "get_up_sit"}]},
 	"pickup": {"dur": 0.5, "hit_u": 0.5, "src": [{"t": "code", "a": "pickup", "hit": 0.5}]},
 }
 
@@ -401,6 +405,8 @@ static func _lay_drop(p: float) -> float:
 ## Get-up keyframes (u 0 lying = lie_back, 0.4 sitting, 0.7 squatting, 1 standing), smoothstep between them. Leg angles
 ## keep the ankles near the floor: with the body pitched back by p, a thigh flexed by f points f + p from straight down,
 ## the shin f + p + knee; ankle height = pivot - 0.45 (cos(thigh) + cos(shin)) (Task 7, checked numerically per frame).
+## Pose-u of getup's sitting key (slumped / get_up_sit start there).
+const GETUP_SIT_U: float = 0.4
 const GETUP_KEYS: Array = [
 	[0.0, PI * 0.5, LIE_PIVOT_Y, 0.35, -0.6, 0.05, -0.1, 0.3, 1.0, 0.4],
 	[0.4, 0.3, 0.27, 1.7, -1.0, 1.7, -1.0, -0.5, 0.35, 0.2],
@@ -543,7 +549,7 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 		"thrown":     # thrown over the hip: limbs fly out, the body rolls onto its back (with the keys' forward flip)
 			var kt: float = _sm(u)
 			var lb: Dictionary = code_pose("lie_back", 0.0)
-			var spread: float = sin(clampf(u, 0.0, 1.0) * PI)
+			var spread: float = sin(clampf((u - 0.2) / 0.8, 0.0, 1.0) * PI)   # limbs fly out once he is off the thrower
 			var o2: Dictionary = {}
 			for j2: String in lb.keys():
 				if j2 == "body_pitch" or j2 == "body_y":
@@ -599,4 +605,27 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 			return _kpose(NECK_CRACK_KEYS, u)
 		"pickup":
 			return _kpose(PICKUP_KEYS, u)
+		"slumped":    # sitting against what he was slammed into, knees up, head lolling (= getup's sitting key)
+			var sl: Dictionary = code_pose("getup", GETUP_SIT_U)
+			sl["head"] = Vector3(0.25, 0.2, 0.35 + 0.04 * sin(u * TAU))
+			return sl
+		"get_up_sit":
+			return code_pose("getup", lerpf(GETUP_SIT_U, 1.0, clampf(u, 0.0, 1.0)))
+		"slammed":    # impact (hit), slammed back upright against it with arms flung out, then slides down to sit
+			var sit: Dictionary = code_pose("slumped", 0.0)
+			var keys: Array = [
+				[0.0, {"body_pitch": 0.0, "body_y": 0.0, "torso": Vector3(-0.2, 0.0, 0.0), "head": Vector3(-0.1, 0.0, 0.0),
+					"shoulder_l": Vector3(1.0, 0.0, -0.3), "elbow_l": Vector3(1.2, 0.0, 0.0), "shoulder_r": Vector3(1.0, 0.0, 0.3),
+					"elbow_r": Vector3(1.2, 0.0, 0.0), "thigh_l": Vector3(0.1, 0.0, 0.1), "knee_l": Vector3(-0.2, 0.0, 0.0),
+					"thigh_r": Vector3(0.1, 0.0, -0.1), "knee_r": Vector3(-0.2, 0.0, 0.0)}],
+				[0.35, {"body_pitch": 0.3, "body_y": 0.0, "torso": Vector3(0.1, 0.0, 0.0), "head": Vector3(0.35, 0.0, 0.0),
+					"shoulder_l": Vector3(0.6, 0.0, -1.0), "elbow_l": Vector3(0.3, 0.0, 0.0), "shoulder_r": Vector3(0.6, 0.0, 1.0),
+					"elbow_r": Vector3(0.3, 0.0, 0.0), "thigh_l": Vector3(-0.3, 0.0, 0.1), "knee_l": Vector3(0.0, 0.0, 0.0),
+					"thigh_r": Vector3(-0.3, 0.0, -0.1), "knee_r": Vector3(0.0, 0.0, 0.0)}],
+				[0.65, {"body_pitch": 0.3, "body_y": -0.3, "torso": Vector3(0.05, 0.0, 0.0), "head": Vector3(0.3, 0.0, 0.2),
+					"shoulder_l": Vector3(0.0, 0.0, -0.6), "elbow_l": Vector3(0.3, 0.0, 0.0), "shoulder_r": Vector3(0.0, 0.0, 0.6),
+					"elbow_r": Vector3(0.3, 0.0, 0.0), "thigh_l": Vector3(1.1, 0.0, 0.1), "knee_l": Vector3(-1.3, 0.0, 0.0),
+					"thigh_r": Vector3(1.1, 0.0, -0.1), "knee_r": Vector3(-1.3, 0.0, 0.0)}],
+				[1.0, sit]]
+			return _kpose(keys, u)
 	return {}

@@ -24,6 +24,13 @@ const COL_ASPHALT: Color = Color("#2E2E33")
 const COL_WOOD_CHUNK: Color = Color("#8A6A43")
 const COL_CRATE: Color = Color("#9A7448")
 const COL_CRATE_EDGE: Color = Color("#6E5232")
+## Scooter headlight (owner: the road patch looked pasted on): dim energy, soft angular falloff (spot_angle_attenuation),
+## haze cones [width of the beam, alpha] and dust mote alpha - kept faint so the actors never blow out.
+const HEADLIGHT_ENERGY: float = 1.1
+const HEADLIGHT_EDGE: float = 3.0
+const HAZE_LEN: float = 4.5
+const HAZE_LAYERS: Array = [[0.45, 0.03], [0.7, 0.022], [0.95, 0.015]]
+const DUST_ALPHA: float = 0.28
 ## Prop kinds build_prop knows (timeline props and held props).
 const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", "helmet"]
 
@@ -33,6 +40,7 @@ var _debris: Array[Dictionary] = []    # {node, p0, v, w, r0, s0, tg, p1, v2, dt
 var _flashes: Array[Dictionary] = []   # {node, mat, s0, size}
 var _stars: Array[Dictionary] = []     # {nodes: Array[Node3D], actor, s0, s1}
 var _last_ss: float = 1.0              # particle speed_scale of the last update() (new bursts start at it)
+var _ambient: Array[CPUParticles3D] = []   # looping prop particles (headlight dust) that follow the clock too
 
 static var _tex_cache: Dictionary = {}
 static var _star_mesh: ArrayMesh = null
@@ -257,9 +265,19 @@ func stars(actor: Node3D, s0: float, s1: float) -> void:
 # Evaluation
 # ---------------------------------------------------------------------------
 ## Called every frame by the player with the story time s and the clock speed (story s per real s; 0 in a freeze).
+## Let looping prop particles under root (meta "cine_ambient", e.g. the headlight dust) follow the cinematic clock.
+func adopt_ambient(root: Node) -> void:
+	for n: Node in root.find_children("*", "CPUParticles3D", true, false):
+		if n.has_meta("cine_ambient"):
+			_ambient.append(n as CPUParticles3D)
+
+
 func update(s: float, speed: float) -> void:
 	var ss: float = speed / maxf(Engine.time_scale, 0.01)
 	_last_ss = ss
+	for ap: CPUParticles3D in _ambient:
+		if is_instance_valid(ap):
+			ap.speed_scale = ss
 	for i: int in range(_parts.size() - 1, -1, -1):
 		var d: Dictionary = _parts[i]
 		var p: CPUParticles3D = d["node"] if is_instance_valid(d["node"]) else null
@@ -551,18 +569,95 @@ static func _build_scooter(root: Node3D, opts: Dictionary) -> void:
 		hm.emission = Color("#FFF4D6")
 		hm.emission_energy_multiplier = 3.0
 		hm.set_meta("vice_done", true)
+		# a dim pool with a soft angular and distance falloff (no hard-edged disc on the road), plus faint haze and dust
 		var spot := SpotLight3D.new()
 		spot.name = "HeadlightBeam"
 		spot.light_color = Color("#FFF1CC")
-		spot.light_energy = float(opts.get("headlight_energy", 3.0))
-		spot.spot_range = 14.0
-		spot.spot_angle = 34.0
+		spot.light_energy = float(opts.get("headlight_energy", HEADLIGHT_ENERGY))
+		spot.spot_range = 11.0
+		spot.spot_angle = 38.0
+		spot.spot_angle_attenuation = HEADLIGHT_EDGE
+		spot.spot_attenuation = 1.6
 		spot.shadow_enabled = true
 		spot.position = Vector3(0.0, 1.0, -0.75)
 		spot.rotation_degrees = Vector3(-9.0, 0.0, 0.0)
 		root.add_child(spot)
+		_build_haze(root, spot)
 	_box(root, "Rack", Vector3(0.36, 0.04, 0.4), Vector3(0.0, 0.8, 0.72), metal)
 	_box(root, "DeliveryBox", Vector3(0.45, 0.45, 0.45), Vector3(0.0, 1.05, 0.72), teal)
+
+
+## Night haze in the headlight: three nested additive cones (alpha fading toward the far end and at the lamp, soft where
+## they meet the ground or a body) and slow dust motes drifting inside the beam (clock-driven through adopt_ambient).
+static func _build_haze(root: Node3D, spot: SpotLight3D) -> void:
+	var haze := Node3D.new()
+	haze.name = "HeadlightHaze"
+	haze.transform = spot.transform
+	root.add_child(haze)
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.65, 0.92, 1.0])
+	g.colors = PackedColorArray([Color(1, 1, 1, 0.0), Color(1, 1, 1, 1.0), Color(1, 1, 1, 0.6), Color(1, 1, 1, 0.0)])
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.width = 4
+	gt.height = 64
+	gt.fill_from = Vector2(0.0, 0.0)
+	gt.fill_to = Vector2(0.0, 1.0)
+	var half: float = deg_to_rad(spot.spot_angle)
+	for i: int in HAZE_LAYERS.size():
+		var k: float = HAZE_LAYERS[i][0]
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+		m.albedo_color = Color(1.0, 0.94, 0.78, float(HAZE_LAYERS[i][1]))
+		m.albedo_texture = gt
+		m.proximity_fade_enabled = true
+		m.proximity_fade_distance = 0.6
+		m.set_meta("vice_done", true)
+		var cm := CylinderMesh.new()
+		cm.height = HAZE_LEN
+		cm.top_radius = tan(half * k) * HAZE_LEN
+		cm.bottom_radius = 0.05
+		cm.cap_top = false
+		cm.cap_bottom = false
+		cm.radial_segments = 24
+		var mi := MeshInstance3D.new()
+		mi.name = "Haze%d" % i
+		mi.mesh = cm
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.rotation = Vector3(-PI * 0.5, 0.0, 0.0)        # mesh +Y (the wide end) points down the beam (-Z)
+		mi.position = Vector3(0.0, 0.0, -HAZE_LEN * 0.5)
+		haze.add_child(mi)
+	var dust := CPUParticles3D.new()
+	dust.name = "HeadlightDust"
+	dust.set_meta("cine_ambient", true)
+	dust.amount = 48
+	dust.lifetime = 9.0
+	dust.preprocess = 9.0
+	dust.local_coords = true
+	dust.use_fixed_seed = true
+	dust.seed = 4242
+	dust.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	dust.emission_box_extents = Vector3(0.45, 0.3, 1.4)
+	dust.position = Vector3(0.0, 0.0, -1.8)
+	dust.direction = Vector3(0.0, 0.2, 0.0)
+	dust.spread = 180.0
+	dust.initial_velocity_min = 0.02
+	dust.initial_velocity_max = 0.07
+	dust.gravity = Vector3(0.0, -0.004, 0.0)
+	dust.scale_amount_min = 0.012
+	dust.scale_amount_max = 0.026
+	var dg := Gradient.new()
+	dg.offsets = PackedFloat32Array([0.0, 0.2, 0.8, 1.0])
+	dg.colors = PackedColorArray([Color(1, 0.95, 0.8, 0.0), Color(1, 0.95, 0.8, DUST_ALPHA), Color(1, 0.95, 0.8, DUST_ALPHA), Color(1, 0.95, 0.8, 0.0)])
+	dust.color_ramp = dg
+	dust.mesh = _particle_mesh(true)
+	haze.add_child(dust)
+	dust.emitting = true
 
 
 static func _build_banana(root: Node3D) -> void:

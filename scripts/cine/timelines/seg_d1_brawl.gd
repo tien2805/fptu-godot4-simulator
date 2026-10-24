@@ -26,12 +26,14 @@ const SCOOTER_YAW: float = 160.0
 # tests/test_cine_d1_brawl.gd): strikes land at full reach of the longest-reaching tier, the others fall short a little.
 const D_SHOVE: float = 0.8                    # Mũ Vàng's shove
 const D_HOOK: float = 0.97                     # the sucker punch
-const K_SLAM: float = 3.32                     # he lands / gets up / slams from SC + K_SLAM·L
+const K_C2: float = 1.62                       # Mũ Đỏ squares up just in front of the scooter (SC + K_C2·L)
+const K_C2_HIT: float = 0.95                   # ... his back meets the headlight / handlebar here
+const K_C2_SIT: float = 1.2                    # ... and he slides down to sit against the front wheel
 const D_C2: float = 0.95                       # gut punch and arm's-length grab on Mũ Đỏ's collar
 const D_C3: float = 1.0                        # Mũ Xanh's jab
 const D_C1: float = 1.0                       # the helmet swing
 const D_C1B: float = 1.25                       # Mũ Vàng staggers back to this after the helmet
-const D_DRIVE: float = 0.86                     # tackle: his shoulder in Mũ Vàng's midriff, head beside his hip
+const D_DRIVE: float = 0.81                     # tackle: his shoulder in Mũ Vàng's midriff, head beside his hip
 const LAT_DRIVE: float = 0.25                  # ... offset to his left so the head passes beside the body
 # opening: the protagonist walks up to Mũ Vàng, is shoved back and punched flat (falls toward -X onto the road)
 const H0 := Vector3(-4.85, 0.0, 1.05)
@@ -59,7 +61,9 @@ var C1_BACK: Vector3
 var P_SLAM: Vector3
 var P_SLAM_BACK: Vector3
 var C2_STAND: Vector3
-var C2_LIE: Vector3
+var C2_HIT: Vector3
+var C2_SIT: Vector3
+var slam_s: float      # story time Mũ Đỏ's back meets the scooter (tests: contact + hit window)
 var P_C3B: Vector3
 var P_C1Y: Vector3
 var P_C1B: Vector3
@@ -135,18 +139,20 @@ func _layout() -> void:
 	C1_SHOVE = P_STOP + Vector3(D_SHOVE, 0.0, 0.0)
 	C1_HOOK = P_HIT + Vector3(D_HOOK, 0.0, 0.0)
 	C1_BACK = C1_HOOK + Vector3(0.35, 0.0, 0.0)
-	P_SLAM = _sc(K_SLAM)
+	P_SLAM = _sc(K_C2 + D_C2)
 	P_SLAM_BACK = P_SLAM + Vector3(0.94, 0.0, 0.342) * 0.6   # sideways, out of the line Mũ Đỏ falls along
-	C2_STAND = _sc(K_SLAM - D_C2)
-	C2_LIE = _sc(K_SLAM - D_C2 + 0.15)
+	C2_STAND = _sc(K_C2)
+	C2_HIT = _sc(K_C2_HIT)
+	C2_SIT = _sc(K_C2_SIT)
+	slam_s = h2 + 0.28
 	P_C3B = P_C3 + DIR_C3 * D_C3
 	P_C1Y = P_C3 + DIR_C1 * D_C1
 	P_C1B = P_C3 + DIR_C1 * D_C1B
 	DIR_DRIVE = (C1_REL - P_C1B).normalized()
 	var lat: Vector3 = Vector3(DIR_DRIVE.z, 0.0, -DIR_DRIVE.x) * LAT_DRIVE   # to his left as he faces DIR_DRIVE
 	P_TACKLE = P_C1B - DIR_DRIVE * D_DRIVE + lat
-	P_REL = C1_REL - DIR_DRIVE * (D_DRIVE + 0.12) + lat   # eases off as he heaves him away
-	P_STUMBLE = P_REL - DIR_DRIVE * 0.12   # rocks back on his heels after the throw-off
+	P_REL = C1_REL - DIR_DRIVE * D_DRIVE + lat
+	P_STUMBLE = P_REL - DIR_DRIVE * 0.25   # rocks back on his heels as he heaves him off
 	C1_CRASH = CRATES - DIR_DRIVE * 1.1 + Vector3(0.0, 0.25, 0.0)
 	C1_REST = CRATES - DIR_DRIVE * 0.95
 
@@ -219,10 +225,10 @@ func _hero() -> void:
 	strike("hero", "N1", "neck_crack", {"dur": 0.5})   # plays through the slow-motion accent
 	expr("hero", _sr(6.9), "open")
 	# 7.72: gut punch, grab, 8.48: slams Mũ Đỏ back into the scooter, steps back off his legs
-	strike("hero", xg, "uppercut", {"dur": 0.6})   # a short uppercut to the body
+	strike("hero", xg, "uppercut", {"dur": 0.6, "reach": {"mixamo": Vector2(0.17, -0.03), "ual": 0.12, "native": 0.12, "code": 0.12}})   # a short uppercut to the body
 	expr("hero", xg - 0.1, "angry")
 	move("hero", xg + 0.22, "grab", {"fade": 0.12})
-	strike("hero", "H2", "shove")
+	strike("hero", "H2", "shove", {"reach": 0.1})
 	key("hero", h2 + 0.05, P_SLAM, y_c2)
 	key("hero", h2 + 0.06, P_SLAM_BACK, y_c2, {"mode": "out"})   # sidesteps Mũ Đỏ's legs as he goes down
 	var y_c3: float = face(P_C3, P_C3B)
@@ -231,14 +237,14 @@ func _hero() -> void:
 	key("hero", _sr(9.27), P_C3, y_c3)
 	strike("hero", _sr(9.30), "hit_stomach")
 	expr("hero", _sr(9.30), "pain")
-	strike("hero", "H3", "headbutt")
+	strike("hero", "H3", "headbutt", {"reach": {"mixamo": 0.12, "ual": 0.12, "native": 0.12, "code": 0.12}})
 	key("hero", h3 - 0.28, P_C3, y_c3)
 	key("hero", h3, P_C3 + DIR_C3 * 0.25, y_c3, {"mode": "in"})     # steps into the headbutt
 	key("hero", xt - 0.25, P_C3 + DIR_C3 * 0.05, y_c3)
 	expr("hero", h3 - 0.15, "angry")
 	strike("hero", _sr(10.14), "hit_head")
 	expr("hero", _sr(10.14), "pain")
-	strike("hero", xt, "hip_throw", {"dur": 0.6})
+	strike("hero", xt, "hip_throw", {"dur": 0.6, "reach": {"mixamo": 0.15, "ual": 0.12, "native": 0.1, "code": 0.1}})
 	expr("hero", xt - 0.1, "angry")
 	# snatches the helmet up, swings it into Mũ Vàng's face (11.76)
 	var y_hel: float = face(P_C3, HELMET_A)
@@ -248,7 +254,7 @@ func _hero() -> void:
 	strike("hero", sp, "pickup", {"dur": 0.4})
 	hold("hero", sp, _sr(12.13), "helmet", {"color": C3_HELMET, "offset": Vector3(0.0, 0.0, -0.1), "rot": Vector3(-90.0, 0.0, 0.0)})
 	key("hero", h4 - 0.2, P_C3, y_c1)
-	strike("hero", "H4", "cross", {"dur": 0.5})   # a right straight, helmet first
+	strike("hero", "H4", "cross", {"dur": 0.5, "reach": {"mixamo": -0.17}})   # a right straight, helmet first
 	# 12.13 drops low; 12.71 spear tackle, then drives him across the kerb in slow motion; lets go before the crates
 	strike("hero", "H5", "tackle")
 	var y_dr: float = face(P_TACKLE, P_REL)
@@ -258,7 +264,7 @@ func _hero() -> void:
 	key("hero", h5 + 0.35, P_TACKLE.lerp(P_REL, 0.07), y_dr)
 	key("hero", sc - 0.3, P_REL, y_dr, {"mode": "linear"})
 	move("hero", sc - 0.2, "winded", {"fade": 0.3})   # heaves him off the shoulder and folds, hands on knees
-	key("hero", sc + 0.15, P_STUMBLE, y_dr, {"mode": "out"})
+	key("hero", sc - 0.15, P_STUMBLE, y_dr, {"mode": "out"})
 	expr("hero", sc - 0.3, "angry")
 	expr("hero", sc + 0.1, "pain")
 	# tail: gets his breath back, the phone lights up at his feet
@@ -278,13 +284,13 @@ func _c1() -> void:
 	expr("c1", 0.0, "happy")
 	move("c1", 0.95, "fight_idle", {"fade": 0.15})
 	# 1.45 shove, 2.76 the sucker punch
-	strike("c1", 1.45, "shove")
+	strike("c1", 1.45, "shove", {"reach": {"mixamo": -0.06}})
 	key("c1", 1.15, C1_0, y_c1)
 	key("c1", 1.45, C1_SHOVE, y_c1, {"mode": "out"})
 	expr("c1", 1.4, "angry")
 	key("c1", 2.05, C1_SHOVE, y_c1)
 	key("c1", h1 - 0.1, C1_HOOK, y_c1, {"mode": "out"})
-	strike("c1", "H1", "cross")
+	strike("c1", "H1", "cross", {"reach": {"mixamo": Vector2(0.05, 0.06), "ual": -0.02}})
 	key("c1", h1 + 0.04, C1_HOOK, y_c1)
 	key("c1", h1 + 0.4, C1_BACK, y_c1, {"mode": "out"})   # steps back to watch him fall
 	move("c1", h1 + 0.45, "taunt", {"fade": 0.2})
@@ -311,10 +317,10 @@ func _c1() -> void:
 	key("c1", h5, P_C1B, y_back)
 	key("c1", h5 + 0.35, P_C1B.lerp(C1_REL, 0.07), y_back)
 	key("c1", sc - 0.3, C1_REL, y_back, {"mode": "linear"})
-	strike("c1", sc - 0.25, "launched_back", {"arc": 0.0})
+	strike("c1", sc - 0.2, "launched_back", {"arc": 0.0})
 	key("c1", sc, C1_CRASH, y_back, {"mode": "linear", "arc": 0.3})
 	key("c1", sc + 0.35, C1_REST, y_back, {"mode": "out"})
-	move("c1", sc - 0.25 - 0.08 + 1.6, "lie")
+	move("c1", sc - 0.2 - 0.08 + 1.6, "lie")
 	expr("c1", sc + 0.4, "done")
 
 
@@ -334,27 +340,28 @@ func _c2() -> void:
 	key("c2", s_jog, C2_0, y_in)
 	move("c2", s_jog, "jog")
 	key("c2", xg - 0.12, C2_STAND, y_face, {"mode": "linear"})
-	move("c2", xg - 0.12, "fight_idle", {"fade": 0.1})
+	move("c2", xg - 0.12, "idle", {"fade": 0.1})   # runs in arms low: the body shot lands
 	strike("c2", xg, "hit_stomach")
 	expr("c2", xg, "pain")
 	move("c2", xg + 0.3, "stunned", {"fade": 0.15})   # held at arm's length by the collar
-	strike("c2", "H2", "launched_back", {"arc": 0.0})
+	strike("c2", "H2", "slammed")   # back into the scooter's headlight (slam_s), slides down to sit against the wheel
 	key("c2", h2, C2_STAND, y_face)
-	key("c2", h2 + 0.45, C2_LIE, y_face, {"mode": "out"})
-	move("c2", h2 - 0.08 + 1.6, "lie")
+	key("c2", slam_s, C2_HIT, y_face, {"mode": "out"})
+	key("c2", h2 - 0.04 + 0.8, C2_SIT, y_face)
+	move("c2", h2 - 0.04 + 0.8, "slumped", {"fade": 0.15})
 	expr("c2", h2 + 0.5, "done")
 	# end of the slow motion / tail: gets up, wanders toward Mũ Vàng and slips on the banana peel
 	var s_up: float = _sr(19.43)
 	var s_walk: float = _sr(22.83)
-	move("c2", s_up, "get_up", {"dur": s_walk - s_up})
-	var y_away: float = face(C2_LIE, BANANA)
-	key("c2", s_walk - 0.3, C2_LIE, y_face)   # no turning on the ground: he turns as he gets to his feet
-	key("c2", s_walk, C2_LIE, y_away)
+	move("c2", s_up, "get_up_sit", {"dur": s_walk - s_up})
+	var y_away: float = face(C2_SIT, BANANA)
+	key("c2", s_walk - 0.3, C2_SIT, y_face)   # no turning on the ground: he turns as he gets to his feet
+	key("c2", s_walk, C2_SIT, y_away)
 	move("c2", s_walk, "walk")
 	strike("c2", ss, "slip_fall")
 	expr("c2", ss - 0.05, "surprised")
 	key("c2", ss, BANANA, y_away, {"mode": "linear"})
-	var d_slip: Vector3 = (BANANA - C2_LIE).normalized() * 0.4
+	var d_slip: Vector3 = (BANANA - C2_SIT).normalized() * 0.4
 	key("c2", ss + 0.4, BANANA + d_slip, y_away, {"mode": "out"})
 	expr("c2", ss + 0.4, "pain")
 	move("c2", ss - 0.36 + 1.2, "lie")
@@ -376,7 +383,7 @@ func _c3() -> void:
 	key("c3", s_run, C3_0, y_run)
 	move("c3", s_run, "sprint")
 	key("c3", _sr(9.2), P_C3B, y_face, {"mode": "linear"})
-	strike("c3", _sr(9.30), "jab")
+	strike("c3", _sr(9.30), "jab", {"reach": {"ual": 0.15, "native": 0.1}})
 	strike("c3", "H3", "hit_head")
 	expr("c3", h3, "pain")
 	strike("c3", xt, "thrown")

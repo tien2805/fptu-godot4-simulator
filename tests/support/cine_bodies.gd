@@ -14,7 +14,7 @@ const HEAD_R: float = 0.12
 const HEAD_UP: float = 0.11          # head sphere centre along the Head bone axis
 const CORE: Array[String] = ["torso", "head"]
 ## Prop meshes that are not solid (lights, lamp lens, thin battens).
-const SKIP_MESH: Array[String] = ["Headlight", "Edge", "Screen", "Hub"]
+const SKIP_MESH: Array[String] = ["Headlight", "Haze", "Edge", "Screen", "Hub"]
 
 
 ## [[part, a, b, r], ...] in world space (the head as a zero-length capsule).
@@ -114,4 +114,57 @@ static func actor_boxes(ca: Array, boxes: Array) -> Dictionary:
 				var d: float = r - _box_sdf(inv * p, h)
 				if d > float(best["d"]):
 					best = {"d": d, "part": String(x[0]), "box": String(bx[0])}
+	return best
+
+
+# ---------------------------------------------------------------------------
+# Surface gaps (m; < 0 = overlapping) for contact checks
+# ---------------------------------------------------------------------------
+const FIST_R: float = 0.05
+const FIST_OUT: float = 0.06          # fist centre beyond the wrist, along the forearm
+const HELMET_R: float = 0.12
+
+
+## Both fists as spheres [[name, centre, r], ...].
+static func fists(a: CineActor) -> Array:
+	var out: Array = []
+	for sd: String in ["L", "R"]:
+		var w: Vector3 = a.bone_world("Wrist." + sd)
+		var e: Vector3 = a.bone_world("LowerArm." + sd)
+		out.append(["fist." + sd, w + (w - e).normalized() * FIST_OUT, FIST_R])
+	return out
+
+
+## Smallest surface gap between spheres [[name, c, r]] and capsules [[part, a, b, r]]: {"g", "from", "to"}.
+static func gap_spheres(spheres: Array, caps: Array) -> Dictionary:
+	var best: Dictionary = {"g": INF, "from": "", "to": ""}
+	for sp: Array in spheres:
+		for c: Array in caps:
+			var g: float = seg_dist(sp[1], sp[1], c[1], c[2]) - float(sp[2]) - float(c[3])
+			if g < float(best["g"]):
+				best = {"g": g, "from": String(sp[0]), "to": String(c[0])}
+	return best
+
+
+## Smallest surface gap between two capsule sets: {"g", "from", "to"}.
+static func gap_caps(ca: Array, cb: Array) -> Dictionary:
+	var best: Dictionary = {"g": INF, "from": "", "to": ""}
+	for x: Array in ca:
+		for y: Array in cb:
+			var g: float = seg_dist(x[1], x[2], y[1], y[2]) - float(x[3]) - float(y[3])
+			if g < float(best["g"]):
+				best = {"g": g, "from": String(x[0]), "to": String(y[0])}
+	return best
+
+
+## Smallest surface gap from capsules to boxes (9 samples per capsule axis): {"g", "from", "to"}.
+static func gap_boxes(ca: Array, boxes: Array) -> Dictionary:
+	var best: Dictionary = {"g": INF, "from": "", "to": ""}
+	for x: Array in ca:
+		for bx: Array in boxes:
+			var inv: Transform3D = (bx[1] as Transform3D).affine_inverse()
+			for i: int in 9:
+				var g: float = _box_sdf(inv * (x[1] as Vector3).lerp(x[2], float(i) / 8.0), bx[2]) - float(x[3])
+				if g < float(best["g"]):
+					best = {"g": g, "from": String(x[0]), "to": String(bx[0])}
 	return best

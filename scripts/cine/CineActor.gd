@@ -107,7 +107,9 @@ func setup(opts: Dictionary) -> void:
 # Script
 # ---------------------------------------------------------------------------
 ## Start move_name at story time s. opts: dur (story s, default the move's), fade (crossfade from the previous move), loop,
-## arc (overrides the tier's airborne height, e.g. 0 when timeline keys already carry the flight arc).
+## arc (overrides the tier's airborne height, e.g. 0 when timeline keys already carry the flight arc), reach (a step into
+## the strike: metres along the facing - or Vector2(forward, right) - 0 at the move's ends and full on its impact; one value,
+## or {tier: value} keyed by scene_tier() so each tier lands its striking part on the target's surface).
 func move(s: float, move_name: String, opts: Dictionary = {}) -> Dictionary:
 	var res: Dictionary = CineMoves.resolve(move_name, bd)
 	if res.is_empty():
@@ -116,10 +118,21 @@ func move(s: float, move_name: String, opts: Dictionary = {}) -> Dictionary:
 	if opts.has("arc"):
 		res = res.duplicate()
 		res["arc"] = float(opts["arc"])
+	if opts.has("reach"):
+		var rv: Variant = opts["reach"]
+		res = res.duplicate()
+		var rt: Variant = (rv as Dictionary).get(scene_tier(), 0.0) if rv is Dictionary else rv
+		res["reach"] = rt if rt is Vector2 else Vector2(float(rt), 0.0)
 	moves.append({"s": s, "dur": float(opts.get("dur", res["dur"])), "fade": float(opts.get("fade", 0.12)),
 		"loop": bool(opts.get("loop", res["loop"])), "res": res, "move": move_name})
 	moves.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["s"]) < float(b["s"]))
 	return res
+
+
+## The tier this actor plays at (what fight_idle resolves to under the current cap): the key of per-tier "reach" offsets,
+## so a code-only strike can still be tuned against the clip tier its target plays.
+func scene_tier() -> String:
+	return String(CineMoves.resolve("fight_idle", bd).get("tier", "code"))
 
 
 ## Start move_name so its impact frame lands on story time s_hit.
@@ -234,6 +247,18 @@ func xf_at(s: float) -> Dictionary:
 	else:
 		pos = _home["pos"]
 		yaw = _home["yaw"]
+	# reach: steps into strikes along the facing (every cue whose window holds s, so a cut never pops)
+	for m: Dictionary in moves:
+		var rres: Dictionary = m["res"]
+		var rch: Vector2 = rres.get("reach", Vector2.ZERO)
+		if rch == Vector2.ZERO:
+			continue
+		var ru: float = (s - float(m["s"])) / maxf(float(m["dur"]), 0.0001)
+		if ru <= 0.0 or ru >= 1.0:
+			continue
+		var hu: float = clampf(float(rres["hit_u"]), 0.05, 0.95)
+		var bell: float = CineMoves._sm(ru / hu) if ru <= hu else 1.0 - CineMoves._sm((ru - hu) / (1.0 - hu))
+		pos += (Vector3(-sin(yaw), 0.0, -cos(yaw)) * rch.x + Vector3(cos(yaw), 0.0, -sin(yaw)) * rch.y) * bell
 	# extras of the move playing now (A1-D4)
 	var c: Dictionary = active_move(s)
 	if not c.is_empty():

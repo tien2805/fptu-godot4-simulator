@@ -3,7 +3,8 @@
 # slow motion only on 4 impacts + the finisher, each on its music onset within 0.5 ms (ramps placed by real time), the long
 # finisher slow-mo ending at real 22.000 with a 3.000 s tail, the crate crash and the SFX accents on their onsets, the shot
 # cuts, the held helmet and the punch-ins, the committed beat sheet in sync (CRLF normalised); plays 1500 steps of 1/60 with
-# actors inside the 14 x 10 m box; contacts within 0.6 m (ramps and the normal-speed shove / gut punch / jab / throw grab),
+# actors inside the 14 x 10 m box; surface contact at every impact (fist / head / shoulder / held helmet to the target's bone
+# capsules) <= 0.04 m on Mixamo and <= 0.15 m on the fallbacks, also through the drive and for Mũ Đỏ into the scooter,
 # lying bodies on the floor and no hips skating (<= 0.08 m per frame) through lie / get-up crossfades on every tier (cap 0 Mixamo when present, 1 UAL, 2 native, 3 code); a clear stage at the campus west gate; F9 plays
 # it inside FreeRoam and a hold-Esc skip restores the world. Bodies never sink into each other or the props (bone capsules,
 # tests/support/cine_bodies.gd, every 1/60 s on every tier): <= 0.03 m, or within 0.08 story s of a hit <= 0.06 m for a
@@ -34,8 +35,16 @@ const HALF: Vector2 = Vector2(7.0, 5.0)
 ## Non-ramp hits checked like the ramps: [name, real time, attacker points, target points].
 const EXTRA_CONTACTS: Array = [["SH", 1.45, "c1:hands", "hero:Chest"], ["GUT", 7.72, "hero:hands", "c2:torso"],
 	["JAB", 9.30, "c3:hands", "hero:torso"], ["THR", 10.73, "hero:hands", "c3:torso"]]
+## Striking part per impact: [attacker, part (fists | head | shoulder | helmet), target].
+const STRIKES: Dictionary = {"SH": ["c1", "fists", "hero"], "H1": ["c1", "fists", "hero"], "GUT": ["hero", "fists", "c2"],
+	"H2": ["hero", "fists", "c2"], "JAB": ["c3", "fists", "hero"], "H3": ["hero", "head", "c3"], "THR": ["hero", "fists", "c3"],
+	"H4": ["hero", "helmet", "c1"], "H5": ["hero", "shoulder", "c1"]}
+## Surface gap at the impact: Mixamo tier (the owner's) and the fallback tiers.
+const GAP_MIXAMO: float = 0.04
+const GAP_OTHER: float = 0.15
 ## Lie / get-up transitions: the hips may move at most this much per 1/60 frame relative to the actor root (no skating).
 const HIPS_STEP_MAX: float = 0.08
+const LIE_MOVES: Array[String] = ["lie", "lie_flat", "get_up", "slumped", "get_up_sit"]
 ## Body penetration limits (m): normal frames, and within PEN_WINDOW story s of a hit (limb / torso-head pairs).
 const PEN_MAX: float = 0.03
 const PEN_HIT_LIMB: float = 0.06
@@ -72,24 +81,77 @@ func _points(pl: CinePlayer, spec: String) -> Array[Vector3]:
 	return out
 
 
+## Surface gap (bone-capsule bodies) from the striking part to the target at each impact, through the drive (his
+## shoulder in Mũ Vàng's midriff) and for Mũ Đỏ's back into the scooter: <= GAP_MIXAMO on the Mixamo tier (what the owner
+## watches), <= GAP_OTHER on the fallbacks; overlap is limited by _penetration.
 func _contacts(pl: CinePlayer, label: String) -> void:
+	var lim: float = GAP_MIXAMO if label == "mixamo" else GAP_OTHER
 	var rows: Array = []
 	for rw: Dictionary in tl.clock.ramps:
-		if rw.has("att"):
-			rows.append(rw)
+		if STRIKES.has(String(rw["name"])):
+			rows.append([String(rw["name"]), float(rw["r_hit"])])
 	for ex: Array in EXTRA_CONTACTS:
-		rows.append({"name": ex[0], "r_hit": ex[1], "att": ex[2], "tgt": ex[3]})
-	for row: Dictionary in rows:
-		pl.seek(float(row["r_hit"]))
-		var best: float = 99.0
-		for x: Vector3 in _points(pl, String(row["att"])):
-			for y: Vector3 in _points(pl, String(row["tgt"])):
-				best = minf(best, x.distance_to(y))
-		var who: String = String(row["att"]).get_slice(":", 0)
-		var mv: Dictionary = (pl.actors[who] as CineActor).active_move(pl.s)
-		print("  contact %-6s %-3s %.2f m  (%s %s)" % [label, String(row["name"]), best, String(mv.get("move", "?")),
-			String((mv.get("res", {}) as Dictionary).get("tier", "?"))])
-		_check(best < 0.6, "%s: %s contact %.2f m < 0.6" % [label, String(row["name"]), best])
+		rows.append([String(ex[0]), float(ex[1])])
+	for row: Array in rows:
+		pl.seek(float(row[1]))
+		var st: Array = STRIKES[row[0]]
+		var res: Dictionary = _strike_gap(pl, String(st[0]), String(st[1]), String(st[2]))
+		var mv: Dictionary = (pl.actors[String(st[0])] as CineActor).active_move(pl.s)
+		print("  gap     %-6s %-3s %+.3f m  %s %s -> %s %s  (%s %s)" % [label, String(row[0]), float(res["g"]), st[0], res["from"], st[2],
+			res["to"], String(mv.get("move", "?")), String((mv.get("res", {}) as Dictionary).get("tier", "?"))])
+		_check(float(res["g"]) <= lim, "%s: %s surface gap %.3f m <= %.2f (%s %s -> %s %s)" % [label, String(row[0]), float(res["g"]), lim,
+			st[0], res["from"], st[2], res["to"]])
+		var deep: float = PEN_HIT_CORE if String(st[1]) in ["head", "shoulder"] else PEN_HIT_LIMB
+		_check(float(res["g"]) >= -deep, "%s: %s strike sinks %.3f m into the target (> %.2f)" % [label, String(row[0]), -float(res["g"]), deep])
+	# the drive: his shoulder stays on Mũ Vàng from the tackle until he heaves him off
+	var h5: float = tl.story_time("H5")
+	var s_rel: float = float(tl.get("sc")) - 0.3
+	var worst: float = -INF
+	var at: float = 0.0
+	var r: float = tl.clock.real_at(h5 + 0.1)
+	while r <= tl.clock.real_at(s_rel):
+		pl.seek(r)
+		var g: float = float(_strike_gap(pl, "hero", "shoulder", "c1")["g"])
+		if g > worst:
+			worst = g
+			at = r
+		r += 1.0 / 60.0
+	print("  gap     %-6s DRV %+.3f m  worst through the drive at r %.2f" % [label, worst, at])
+	_check(worst <= lim, "%s: tackle contact through the drive, worst gap %.3f m <= %.2f at r %.2f" % [label, worst, lim, at])
+	# Mũ Đỏ's back into the scooter
+	var boxes: Array = Bodies.prop_boxes(pl.prop_nodes["scooter"])
+	var h2: float = tl.story_time("H2")
+	var best: float = INF
+	var bat: float = 0.0
+	r = tl.clock.real_at(h2)
+	while r <= tl.clock.real_at(h2 + 0.7):
+		pl.seek(r)
+		var g2: float = float(Bodies.gap_boxes(Bodies.capsules(pl.actors["c2"]), boxes)["g"])
+		if g2 < best:
+			best = g2
+			bat = r
+		r += 1.0 / 60.0
+	print("  gap     %-6s SCT %+.3f m  Mũ Đỏ into the scooter at r %.2f" % [label, best, bat])
+	_check(best <= lim, "%s: Mũ Đỏ reaches the scooter, gap %.3f m <= %.2f" % [label, best, lim])
+
+
+func _strike_gap(pl: CinePlayer, who: String, part: String, target: String) -> Dictionary:
+	var a: CineActor = pl.actors[who]
+	var tc: Array = Bodies.capsules(pl.actors[target])
+	var mine: Array = Bodies.capsules(a)
+	match part:
+		"fists":
+			return Bodies.gap_spheres(Bodies.fists(a), tc)
+		"head":
+			return Bodies.gap_caps(mine.filter(func(c: Array) -> bool: return c[0] == "head"), tc)
+		"shoulder":
+			return Bodies.gap_caps(mine.filter(func(c: Array) -> bool: return c[0] in ["torso", "upper_arm.L", "upper_arm.R", "head"]), tc)
+		"helmet":
+			var hd: Dictionary = a.holds[0]
+			var hx: Transform3D = a.sk.global_transform * CharacterBuilder._bone_global_now(a.sk, a.sk.find_bone(String(hd["bone"])))
+			var nx: Transform3D = hx * (hd["node"] as Node3D).transform
+			return Bodies.gap_spheres([["helmet", nx.origin + nx.basis.y.normalized() * 0.05, Bodies.HELMET_R]], tc)
+	return {"g": INF, "from": "?", "to": "?"}
 
 
 func _lying(pl: CinePlayer, label: String) -> void:
@@ -136,6 +198,7 @@ func _penetration(pl: CinePlayer, label: String) -> void:
 	for ex: Array in EXTRA_CONTACTS:
 		hits.append(tl.clock.story_at(float(ex[1])))
 	hits.append(tl.clock.story_at(CRASH_R))
+	hits.append(float(tl.get("slam_s")))
 	var s_crash: float = tl.clock.story_at(CRASH_R)
 	var boxes: Dictionary = {"scooter": Bodies.prop_boxes(pl.prop_nodes["scooter"]), "crates": Bodies.prop_boxes(pl.prop_nodes["crates"]),
 		"kerb": [["kerb", Transform3D(Basis.IDENTITY, KERB_C), KERB_H]]}
@@ -181,6 +244,35 @@ func _penetration(pl: CinePlayer, label: String) -> void:
 	_check(fail == "", "%s: bodies never sink in (%s)" % [label, fail])
 
 
+## The scooter headlight reads as a headlight in night haze: a dim soft pool (energy, angular falloff), faint additive haze
+## cones, slow dust motes following the clock, and no opaque unshaded quad (the old "sticker" on the road).
+func _headlight(pl: CinePlayer) -> void:
+	var sc: Node3D = pl.prop_nodes["scooter"]
+	var spot: SpotLight3D = sc.find_child("HeadlightBeam", true, false) as SpotLight3D
+	_check(spot != null and spot.light_energy <= 1.5 and spot.spot_angle_attenuation >= 2.0,
+		"headlight is a dim soft pool (energy %.2f <= 1.5, edge falloff %.1f >= 2)" % [spot.light_energy if spot else -1.0, spot.spot_angle_attenuation if spot else -1.0])
+	var haze: int = 0
+	var bad: String = ""
+	for n: Node in sc.find_children("*", "MeshInstance3D", true, false):
+		var m: StandardMaterial3D = (n as MeshInstance3D).material_override as StandardMaterial3D
+		if m == null or m.shading_mode != BaseMaterial3D.SHADING_MODE_UNSHADED:
+			continue
+		if m.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
+			bad = String(n.name)
+		elif String(n.name).begins_with("Haze"):
+			haze += 1
+			if m.albedo_color.a > 0.05 or m.blend_mode != BaseMaterial3D.BLEND_MODE_ADD:
+				bad = "%s (alpha %.3f)" % [n.name, m.albedo_color.a]
+	_check(haze >= 2 and bad == "", "headlight haze: %d faint additive cones, no opaque unshaded quad (%s)" % [haze, bad])
+	var dust: CPUParticles3D = sc.find_child("HeadlightDust", true, false) as CPUParticles3D
+	_check(dust != null and dust.has_meta("cine_ambient") and dust.use_fixed_seed, "headlight dust motes (fixed seed, clock-driven)")
+	if dust:
+		pl.seek(12.9)   # inside the H5 freeze
+		_check(dust.speed_scale < 0.01, "dust freezes with the clock (speed_scale %.2f)" % dust.speed_scale)
+		pl.seek(24.0)
+		_check(absf(dust.speed_scale - 1.0) < 0.05, "dust drifts at normal speed in the tail (%.2f)" % dust.speed_scale)
+
+
 ## Story start of every move cue next to a lie / get_up (strikes resolved like the validator): [actor, s, "prev->move"].
 func _lie_transitions() -> Array:
 	var by_actor: Dictionary = {}
@@ -200,7 +292,7 @@ func _lie_transitions() -> Array:
 		arr.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
 		for i: int in arr.size():
 			var prev: String = arr[i - 1][1] if i > 0 else ""
-			if String(arr[i][1]) in ["lie", "lie_flat", "get_up"] or prev in ["lie", "lie_flat", "get_up"]:
+			if String(arr[i][1]) in LIE_MOVES or prev in LIE_MOVES:
 				out.append([id, float(arr[i][0]), "%s->%s" % [prev, String(arr[i][1])]])
 	return out
 
@@ -321,6 +413,7 @@ func _process(_d: float) -> bool:
 			_skate(p, "ual")
 			_penetration(p, "ual")
 			_helmet(p)
+			_headlight(p)
 			p.queue_free()
 			var caps: Array[int] = [2, 3]
 			if CineRetarget.available("mixamo"):

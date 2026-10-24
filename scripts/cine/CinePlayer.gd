@@ -92,6 +92,7 @@ func setup(tl: CineTimeline, xf: Transform3D = Transform3D.IDENTITY, opts: Dicti
 	fx = CineFX.new()
 	fx.name = "FX"
 	stage.add_child(fx)
+	fx.adopt_ambient(stage)   # looping prop particles (headlight dust) follow the clock
 	camera = Camera3D.new()
 	camera.name = "CineCamera"
 	camera.near = 0.05
