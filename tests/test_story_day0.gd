@@ -23,6 +23,7 @@ var sr: StoryRoam
 var saved_spawn: Transform3D
 var saves0: int = 0
 var race_spot: Vector2 = Vector2.ZERO
+var cine_frames: int = 0
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -171,6 +172,10 @@ func _process(_d: float) -> bool:
 		8:
 			if fr.get("cine_player") == null:
 				return false
+			cine_frames += 1
+			if cine_frames < 3:
+				return false
+			_check(not sr.ui.visible, "the story HUD (objective, chip, toasts) hides during cinematics")
 			_check(String(fr.get("tod_preset")) == "night", "midnight at night")
 			_check(_finish_cine() == "cine_d0_midnight", "the midnight cinematic plays")
 			phase = 9
@@ -192,6 +197,8 @@ func _process(_d: float) -> bool:
 				c.step(DT)
 				n += 1
 			_check(sr.call == null and not paused, "the call ended and the game runs again")
+			var vh: ViceHUD = fr.get("vice_hud")
+			_check(vh == null or vh.visible == ViceHUD.style_active(), "the roam HUD comes back as it was after the call")
 			phase = 10
 			frames = 0
 		10:

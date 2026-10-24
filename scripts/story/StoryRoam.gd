@@ -242,6 +242,10 @@ func _build_ui() -> void:
 	ui.name = "StoryUI"
 	ui.layer = 3
 	add_child(ui)
+	var watch := UIWatch.new()   # runs while the tree is paused: the story HUD hides with the rest during cinematics
+	watch.name = "UIWatch"
+	watch.owner_roam = self
+	add_child(watch)
 	objective_panel = PanelContainer.new()
 	objective_panel.name = "Objective"
 	objective_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
@@ -554,8 +558,6 @@ func _process(delta: float) -> void:
 		_run_t -= delta
 		if _run_t < 0.0:
 			run_step()
-	var in_cine: bool = roam.get("cine_player") != null or busy
-	ui.visible = not in_cine
 	if _obj_t > 0.0:
 		_obj_t -= delta
 		if _obj_t <= 0.0:
@@ -569,6 +571,25 @@ func _process(delta: float) -> void:
 		return
 	_check_t = CHECK_S
 	_update_active()
+
+
+## Story HUD visible only in plain free roam (A2-D12): hidden during cinematics (FreeRoam.cine_player), the call, the video.
+func hud_should_show() -> bool:
+	return roam.get("cine_player") == null and not busy
+
+
+## PROCESS_MODE_ALWAYS helper: keeps the story HUD visibility right while the tree is paused (one bool read per frame).
+class UIWatch extends Node:
+	var owner_roam: StoryRoam
+
+	func _ready() -> void:
+		process_mode = Node.PROCESS_MODE_ALWAYS
+
+	func _process(_d: float) -> void:
+		if owner_roam and owner_roam.ui:
+			var show: bool = owner_roam.hud_should_show()
+			if owner_roam.ui.visible != show:
+				owner_roam.ui.visible = show
 
 
 func _unhandled_input(event: InputEvent) -> void:

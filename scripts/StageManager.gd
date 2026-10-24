@@ -312,8 +312,8 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.is_pressed() and not event.is_echo():
 		if event.physical_keycode == KEY_M:
-			if typing_mode or hub_key_blocked or cinematic_active or _is_text_input_focused():
-				return
+			if typing_mode or hub_key_blocked or cinematic_active or _is_text_input_focused() or not story_context.is_empty():
+				return   # no Campaign Hub in the middle of a story mission either
 			toggle_stage_select()
 		elif event.physical_keycode == KEY_TAB and (Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_SHIFT)):
 			if not cinematic_active:   # không mở chọn màn giữa cinematic (plan review A1 Minor 10)
@@ -735,7 +735,7 @@ func consume_item(item_id: String) -> bool:
 ## ghi lại vào result["coins"] (thua: 0).
 func report_stage_result(stage_id: int, result: Dictionary) -> void:
 	# story beat (A2-D11): StoryDirector completes the beat on a win and replaces the card buttons
-	var sd: Node = get_node_or_null("/root/StoryDirector") if not story_context.is_empty() else null
+	var sd: Node = get_node_or_null("/root/StoryDirector") if int(story_context.get("stage", -1)) == stage_id else null
 	var won: bool = result.get("result", "") == "win"
 	var coins: int = int(RANK_COINS.get(String(result.get("rank", "C")), RANK_COINS["C"])) if won else 0
 	result["coins"] = coins

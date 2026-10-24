@@ -388,10 +388,10 @@ func launch_stage_beat(id: String, win_xf: Variant = null, fail_xf: Variant = nu
 ## StageManager.report_stage_result forwards here while story_context is set: a win completes the beat (evidence, next
 ## beat, autosave) and moves the return spot to win_xf; the result gets "story" = "win" | "fail" (card titles) and the story
 ## result buttons replace the stage card's own.
-func on_stage_result(_stage_id: int, result: Dictionary) -> void:
+func on_stage_result(stage_id: int, result: Dictionary) -> void:
 	var sm: Node = _sm()
 	var ctx: Dictionary = sm.get("story_context") if sm else {}
-	if ctx.is_empty():
+	if ctx.is_empty() or int(ctx.get("stage", -1)) != stage_id:
 		return
 	var won: bool = String(result.get("result", "")) == "win"
 	result["story"] = "win" if won else "fail"
