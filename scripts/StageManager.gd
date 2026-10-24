@@ -734,6 +734,8 @@ func consume_item(item_id: String) -> bool:
 ## "caught": bool (tuỳ chọn: thua vì bị bắt -> thẻ "BỊ BẮT")}. Thắng được trả Cóc Vàng theo rank (RANK_COINS); số xu
 ## ghi lại vào result["coins"] (thua: 0).
 func report_stage_result(stage_id: int, result: Dictionary) -> void:
+	# story beat (A2-D11): StoryDirector completes the beat on a win and replaces the card buttons
+	var sd: Node = get_node_or_null("/root/StoryDirector") if not story_context.is_empty() else null
 	var won: bool = result.get("result", "") == "win"
 	var coins: int = int(RANK_COINS.get(String(result.get("rank", "C")), RANK_COINS["C"])) if won else 0
 	result["coins"] = coins
@@ -750,9 +752,11 @@ func report_stage_result(stage_id: int, result: Dictionary) -> void:
 		earn(coins, "stage_%d_rank_%s" % [stage_id, String(result.get("rank", "C"))])   # earn() lưu cả kỷ lục
 	else:
 		save_progress()
+	if sd:
+		sd.call("on_stage_result", stage_id, result)
 	_refresh_rank_labels()
 	_apply_result_card(result)
-	if return_to_roam:
+	if return_to_roam and sd == null:
 		_show_roam_return()
 
 ## Thẻ kết quả của màn (HUD/ModalOverlay/.../VBox ở Màn 2..Extra, HUD/AbsentOverlay/.../VBoxContainer ở Màn 1): ở
@@ -843,6 +847,8 @@ func _result_card_box() -> VBoxContainer:
 
 ## Tiêu đề lớn của thẻ kết quả (phong cách vice): thắng "QUA MÔN!", thua vì bị bắt "BỊ BẮT", thua "TRƯỢT MÔN".
 static func result_banner_title(result: Dictionary) -> String:
+	if result.has("story"):   # story beat (story spec 7): "QUA MÔN! Uy tín +" / "TOANG!"
+		return "QUA MÔN! Uy tín +" if String(result["story"]) == "win" else "TOANG!"
 	if result.get("result", "") == "win":
 		return "QUA MÔN!"
 	if bool(result.get("caught", false)):

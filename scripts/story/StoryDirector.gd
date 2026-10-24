@@ -8,6 +8,8 @@
 # StageManager.story_context and starts the stage; StageManager.report_stage_result forwards to on_stage_result().
 extends Node
 
+const GameFXScript: Script = preload("res://scripts/GameFX.gd")
+
 signal day_changed(day: int)
 signal evidence_added(id: String)
 signal objective_changed(text: String)
@@ -360,6 +362,146 @@ func _nav(where: String) -> void:
 		sm.call("start_stage_from_roam", int(where.get_slice(":", 1)), sm.get("roam_spawn"))
 	elif where == "creator" and is_inside_tree():
 		get_tree().change_scene_to_file(CREATOR_SCENE)
+
+
+# ---------------------------------------------------------------------------
+# Stage beats (A2-D11)
+# ---------------------------------------------------------------------------
+## Starts the stage of beat `id` (the current step) with StageManager.story_context set. win_xf / fail_xf: free-roam return
+## spots after a win (next beat) / a fail or a quit (the marker stays). The save resumes at fail_xf until the win.
+func launch_stage_beat(id: String, win_xf: Variant = null, fail_xf: Variant = null) -> bool:
+	var b: Dictionary = StoryMissions.beat(id)
+	if id != step or String(b.get("kind", "")) != "stage":
+		return false
+	var ctx: Dictionary = {"beat": id, "stage": int(b["stage"]), "replay": String(b.get("replay", "")), "name": display_name(),
+		"opts": protagonist_opts(), "win_xf": win_xf, "fail_xf": fail_xf}
+	if fail_xf is Transform3D:
+		spawn = fail_xf
+	var sm: Node = _sm()
+	if sm:
+		sm.set("story_context", ctx)
+		sm.set("roam_spawn", fail_xf if fail_xf is Transform3D else null)
+	_nav("stage:%d" % int(b["stage"]))
+	return true
+
+
+## StageManager.report_stage_result forwards here while story_context is set: a win completes the beat (evidence, next
+## beat, autosave) and moves the return spot to win_xf; the result gets "story" = "win" | "fail" (card titles) and the story
+## result buttons replace the stage card's own.
+func on_stage_result(_stage_id: int, result: Dictionary) -> void:
+	var sm: Node = _sm()
+	var ctx: Dictionary = sm.get("story_context") if sm else {}
+	if ctx.is_empty():
+		return
+	var won: bool = String(result.get("result", "")) == "win"
+	result["story"] = "win" if won else "fail"
+	if won:
+		if ctx.get("win_xf") is Transform3D:
+			spawn = ctx["win_xf"]
+		complete_step(String(ctx["beat"]))
+	show_result(won)
+
+
+## Story result card title (story spec 7): win "QUA MÔN! Uy tín +", fail "TOANG!".
+static func result_title_for(won: bool) -> String:
+	return "QUA MÔN! Uy tín +" if won else "TOANG!"
+
+
+func show_result(won: bool) -> void:
+	if result_layer == null:
+		_build_result_layer()
+	result_title.text = result_title_for(won)
+	result_title.add_theme_color_override("font_color", Color("#FF4FA3") if won else Color("#FF3B5C"))
+	(result_buttons["continue"] as Button).visible = won
+	(result_buttons["retry"] as Button).visible = not won
+	(result_buttons["roam"] as Button).visible = not won
+	result_layer.visible = true
+	_hide_card_buttons.call_deferred()
+
+
+## The stage's own card buttons (Chơi lại, Màn tiếp, Campaign Hub...) are replaced by the story's (deferred: stages show
+## theirs right after reporting).
+func _hide_card_buttons() -> void:
+	var sm: Node = _sm()
+	if sm == null or not sm.has_method("_result_card_box") or result_layer == null or not result_layer.visible:
+		return
+	var vb: Node = sm.call("_result_card_box")
+	if vb:
+		for b: Node in vb.find_children("*", "Button", true, false):
+			(b as Button).visible = false
+
+
+func _build_result_layer() -> void:
+	result_layer = CanvasLayer.new()
+	result_layer.name = "StoryResult"
+	result_layer.layer = 117
+	result_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(result_layer)
+	var panel := PanelContainer.new()
+	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	panel.offset_bottom = -22.0
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.08, 0.03, 0.14, 0.96)
+	sb.border_color = Color("#FF4FA3")
+	sb.set_border_width_all(3)
+	sb.set_corner_radius_all(14)
+	sb.content_margin_left = 22
+	sb.content_margin_right = 22
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 12
+	panel.add_theme_stylebox_override("panel", sb)
+	result_layer.add_child(panel)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 8)
+	panel.add_child(vb)
+	result_title = Label.new()
+	result_title.name = "StoryResultTitle"
+	result_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_title.add_theme_font_override("font", GameFXScript.vice_font(0.9, 0.26))
+	result_title.add_theme_font_size_override("font_size", 40)
+	result_title.add_theme_color_override("font_outline_color", Color("#2A0E3A"))
+	result_title.add_theme_constant_override("outline_size", 8)
+	vb.add_child(result_title)
+	var hb := HBoxContainer.new()
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hb.add_theme_constant_override("separation", 12)
+	vb.add_child(hb)
+	for pair: Array in [["continue", "▶   TIẾP TỤC CỐT TRUYỆN", continue_from_stage], ["retry", "↻   THỬ LẠI", retry_stage],
+			["roam", "🌏   VỀ THẾ GIỚI MỞ", back_to_roam]]:
+		var b := Button.new()
+		b.name = "Story_" + String(pair[0])
+		b.text = String(pair[1])
+		b.custom_minimum_size = Vector2(260.0, 44.0)
+		b.add_theme_font_size_override("font_size", 17)
+		b.add_theme_stylebox_override("normal", GameFXScript.make_panel_style(Color("#FF4FA3"), Color(0.12, 0.05, 0.2, 0.95), 10))
+		b.add_theme_stylebox_override("hover", GameFXScript.make_panel_style(Color("#3FF2FF"), Color(0.2, 0.08, 0.3, 0.98), 10))
+		b.pressed.connect(pair[2])
+		hb.add_child(b)
+		result_buttons[String(pair[0])] = b
+
+
+## Win: back to story free roam at the beat's return spot (next beat).
+func continue_from_stage() -> void:
+	hide_result()
+	enter_roam()
+
+
+## Fail: the same stage with the same context.
+func retry_stage() -> void:
+	hide_result()
+	var sm: Node = _sm()
+	var ctx: Dictionary = sm.get("story_context") if sm else {}
+	last_nav = "retry:%d" % int(ctx.get("stage", 0))
+	if nav_enabled and sm and not ctx.is_empty():
+		sm.call("change_stage", int(ctx["stage"]), true)
+
+
+## Fail: back to free roam beside the marker (it stays).
+func back_to_roam() -> void:
+	hide_result()
+	enter_roam()
 
 
 ## Main menu: story start goes through the character creator.
