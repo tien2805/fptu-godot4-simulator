@@ -12,7 +12,7 @@ Date: 2026-10-23. Status: design approved by the owner in chat (AskUserQuestion)
 | W-D4 | Eight slots: unarmed, knife, pistol, shotgun, rocket launcher, and the owner's three funny weapons: **dép tổ ong boomerang**, **sầu riêng stink bomb**, **loa kẹo kéo** (sonic blast). |
 | W-D5 | Loa kẹo kéo plays a synthesized bolero cue by default. The owner wants it to blast songs by a real Vietnamese singer: copyrighted music by a real person is never committed, shipped or named in game text; the owner drops his own file at `user://sfx/loa_keo_keo.ogg` or `.mp3` (git-ignored, never exported), same rule as the owner music slots (story spec S-D10). |
 | W-D6 | **Wanted level**, 1-3 stars ("phương án B"). Mayhem raises heat; officers chase; escaping their sight long enough lowers the stars. |
-| W-D7 | Chasers: on campus the security guards (bảo vệ) on foot, and from 2 stars **Thầy Toàn (ThS. ToanHLM, the story's fictional lecturer)** joins the chase ("thêm ToanHLM dí nữa"); on the streets police on motorbikes who dismount near the player. Officers never shoot; they catch. |
+| W-D7 | Chasers: on campus the security guards (bảo vệ) on foot, and from 2 stars **Mr.T (the story's fictional lecturer)** joins the chase ("thêm Mr.T dí nữa"); on the streets police on motorbikes who dismount near the player. Officers never shoot; they catch. |
 | W-D8 | **Busted → community service** ("cảnh sát bắt được thì phải bị bắt đi lao động công ích"): a short "BỊ TÓM!" cutscene, then a timed community-service chore in an orange vest; finishing clears the wanted level and frees the player. |
 | W-D9 | Weapons are used on foot only in this phase (no drive-by). Unlimited reserve ammo with magazine reloads; no shops, no pickups. Player has no health bar: explosions and officers knock the player down comically but never kill. |
 | W-D10 | **Emotes** (owner 2026-10-24, AskUserQuestion): an emote wheel opened by **holding B**, same radial UI and rules as the weapon wheel (section 9). Built inside Phase W as its last feature task. |
@@ -49,19 +49,19 @@ Controls on foot: right mouse = aim (over-the-shoulder camera, FOV narrows, cros
 ## 4. Wanted level
 - Heat accumulates from the table in section 3 (+5 for knocking out an officer). Stars: 1 at 4 heat, 2 at 12, 3 at 25. ViceHUD shows the stars (classic HUD: a small star row under the clock).
 - Officers spawn by star and zone:
-  - campus (inside the plot): 2 / 4 / 6 security guards on foot; from 2 stars also Thầy Toàn (faster, shouts "Em kia! Đứng lại! Thẻ sinh viên đâu?").
+  - campus (inside the plot): 2 / 4 / 6 security guards on foot; from 2 stars also Mr.T (faster, shouts "Em kia! Đứng lại! Thẻ sinh viên đâu?").
   - streets and residential: 1 / 2 / 3 police motorbikes (reusing RoamTraffic bodies with police colours and PS2 riders) that ride to the player, dismount within 15 m and chase on foot; at 3 stars a second wave arrives after 30 s.
 - Losing them: when no officer has line of sight to the player for 12 / 20 / 30 s (by stars), the level drops one star; a minimap circle shows the search area. Hiding inside a building or riding away fast works; entering BE6 does not clear it.
 - Officers knocked out by weapons get up after 10 s; officers never shoot and never hurt the player beyond a comic tackle.
 
 ## 5. Busted and community service
 - Busted when an officer stays within 1.2 m of the player for 1.5 s while the player is not knocked down, or tackles a knocked-down player.
-- Sequence: freeze, "BỊ TÓM!" stamp, a 6-8 s cutscene through the A1 cinematic player (officer cuffs the player; Thầy Toàn shakes his head if he made the catch), fade.
+- Sequence: freeze, "BỊ TÓM!" stamp, a 6-8 s cutscene through the A1 cinematic player (officer cuffs the player; Mr.T shakes his head if he made the catch), fade.
 - Community service ("Lao động công ích"): the player in an orange vest on a fixed verge of Nguyễn Xiển (or the campus parking if the catch was on campus) must pick up 8 rubbish bags and drop them in a bin within 120 s; meme lines from a supervising officer; weapons and the bike are locked during it. Running out of time restarts the chore with fewer bags (never a softlock). Finishing clears the wanted level, restores the weapons and puts the player next to the bike.
 - Hold Esc to skip the cutscene, not the chore.
 
 ## 6. Systems and files (detailed in the plan)
-- `WeaponWheel` (UI, real time; its radial UI is shared with the emote wheel), `WeaponDirector` (equipped weapon, ammo, fire/aim, per-weapon logic), weapon scripts or data entries per slot, projectiles (rocket, dép, sầu riêng), `StinkCloud`, `SonicCone`, `WantedDirector` (heat, stars, decay, line-of-sight checks), `Officer` (guard / Thầy Toàn / police on foot) and police bikes on top of RoamTraffic, `CommunityService` (chore), audio cues in the existing synth, HUD stars, `EmoteWheel` + `EmoteDirector` + bystander reactions (section 9), FreeRoam wiring behind a flag like `crowd_enabled` so `test_free_roam` stays deterministic.
+- `WeaponWheel` (UI, real time; its radial UI is shared with the emote wheel), `WeaponDirector` (equipped weapon, ammo, fire/aim, per-weapon logic), weapon scripts or data entries per slot, projectiles (rocket, dép, sầu riêng), `StinkCloud`, `SonicCone`, `WantedDirector` (heat, stars, decay, line-of-sight checks), `Officer` (guard / Mr.T / police on foot) and police bikes on top of RoamTraffic, `CommunityService` (chore), audio cues in the existing synth, HUD stars, `EmoteWheel` + `EmoteDirector` + bystander reactions (section 9), FreeRoam wiring behind a flag like `crowd_enabled` so `test_free_roam` stays deterministic.
 - Implementer effort: xhigh for weapons/combat, wanted/officer AI; high for the wheel UI, HUD, audio and docs.
 
 ## 7. Testing

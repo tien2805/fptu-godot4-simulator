@@ -349,7 +349,7 @@ func _build_neon() -> void:
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# HUD mẫu kiểu Vice City (chỉ phong cách): giờ + tiền Cóc Vàng + sao "thầy Toàn để ý" góc trên phải, radar tròn góc
+# HUD mẫu kiểu Vice City (chỉ phong cách): giờ + tiền Cóc Vàng + sao "Mr.T để ý" góc trên phải, radar tròn góc
 # dưới trái vẽ từ mapdata, tên khu vực chữ nghiêng hồng góc dưới phải. Chỉ anchors/containers.
 # ---------------------------------------------------------------------------------------------------------------
 func _italic_font(embolden: float = 0.6, slant: float = 0.22) -> FontVariation:

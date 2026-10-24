@@ -24,7 +24,7 @@ Replaces: `docs/superpowers/specs/2026-10-21-story-mode-design.md` (the Monday-t
 
 ## 2. Premise and tone
 
-On the morning of the end-of-semester (EOS) exam the protagonist races from tower BE6 to FPTU (Stage 1), sits the exam in room 311 and notices a candidate whose earbud glows blue. They tip off the proctor, Thầy Toàn, and help him photograph the evidence (Extra stage workflow). That night a pair of cheat smart-glasses "falls" out of the protagonist's backpack. Next morning the exam office suspends them; the disciplinary hearing is in 7 days. Thầy Toàn believes them but needs proof. Each day breaks one link of the "Lọ Thần 9.0" ring, collecting evidence on the way to the man behind it.
+On the morning of the end-of-semester (EOS) exam the protagonist races from tower BE6 to FPTU (Stage 1), sits the exam in room 311 and notices a candidate whose earbud glows blue. They tip off the proctor, Mr.T, and help him photograph the evidence (Extra stage workflow). That night a pair of cheat smart-glasses "falls" out of the protagonist's backpack. Next morning the exam office suspends them; the disciplinary hearing is in 7 days. Mr.T believes them but needs proof. Each day breaks one link of the "Lọ Thần 9.0" ring, collecting evidence on the way to the man behind it.
 
 Tone rules:
 - Comedy first, but every mission has one horror sequence: 30-60 s of build-up (darkness, flicker, heartbeat, whispers, distorted music), a scare, then a dumb line plus a meme sound.
@@ -42,7 +42,7 @@ All characters are fictional. No real person's likeness, name or voice. FPT bran
 ### 3.2 Allies
 | Character | Look | Role |
 |---|---|---|
-| Thầy Toàn (ThS. ToanHLM, fictional) | lecturer preset: light-blue shirt, navy trousers, glasses, lanyard | the only staff member who believes you; quest giver; texts at 23:58 |
+| Mr.T (fictional lecturer) | lecturer preset: light-blue shirt, navy trousers, glasses, lanyard | the only staff member who believes you; quest giver; texts at 23:58 |
 | Phúc | student_m, spiky hair, rumpled orange polo, energy drink | best friend and comic relief; secretly bought a tool and is being blackmailed; becomes the informant (or is reported, choice 1) |
 | Anh Duy "Deploy" | big belly, faded FPT hoodie, over-ear headphones, a lanyard with a jangling bunch of server-room keys, energy-drink can | IT at the exam office; opens cameras, decrypts USB sticks, guides you over the radio in lairs; speaks jargon with a "Dịch:" subtitle, e.g. "Ok e, a check log r, server timeout do bên kia spam request, a rollback cái patch xong deploy hotfix lên prod, e cứ chill, gg." / "(Dịch: Anh sẽ giúp em)"; in the true ending he puts the evidence on the hearing-room screen |
 | Chú Bảy | guard preset: uniform, cap; a shiba dog that "bonks" | campus gate guard; lends the bike and tools |
@@ -66,7 +66,7 @@ Each day: a mission marker on the map (morning or night), the mission, an end ci
 
 | Day | Mission | Place (real map) | Gameplay | Horror beat | Memes | Choice / evidence | End cinematic (music slot) |
 |---|---|---|---|---|---|---|---|
-| 0 | Phòng 311 | BE6 → route → room 311 | character creator; alarm; Stage 1 race; Extra-stage evidence workflow as a candidate helping Thầy Toàn | midnight at BE6: the planted glasses glow red, a whisper "Lọ… Thần…" → it is Phúc in a face mask slurping noodles | "Tôi là ai, đây là đâu?" on the alarm; a huge "TOANG!" stamp on the suspension letter; "Ét o ét" | evidence E1 (earbud photo, guaranteed) | AI clip #1: the suspension, the 7-day countdown, title card "TOOL ĐEN" (`ai_intro`) |
+| 0 | Phòng 311 | BE6 → route → room 311 | character creator; alarm; Stage 1 race; Extra-stage evidence workflow as a candidate helping Mr.T | midnight at BE6: the planted glasses glow red, a whisper "Lọ… Thần…" → it is Phúc in a face mask slurping noodles | "Tôi là ai, đây là đâu?" on the alarm; a huge "TOANG!" stamp on the suspension letter; "Ét o ét" | evidence E1 (earbud photo, guaranteed) | AI clip #1: the suspension, the 7-day countdown, title card "TOOL ĐEN" (`ai_intro`) |
 | 1 | Shipper bóng đêm | D1 parking, campus | stake-out in the parking (Stage 2 scene), foot chase through the campus crowds, first unarmed fight (3 couriers) | basement corridor: flickering lights, a sheep-masked figure standing still at the end; lights off, on: gone; distorted bleat | courier slips on a banana peel (slide whistle); chú Bảy's shiba "bonk"; "Gét gô!" | choice 1: cover for Phúc or report him; E2 optional (courier list in a campus locker) | courier's phone: "Sói Xám: hàng đêm nay ở Nguyễn Xiển" (`cine_d1`) |
 | 2 | Bầy Sói | Nguyễn Xiển, Rạch Hầm bridge | night bike chase with kicks against bikers (Stage 1 at night), duel under the bridge | fog, a wolf howl, LED eyes in the dark → his ringtone is a cheesy synth tune | "Tới công chuyện luôn!"; "Đỉnh nóc kịch trần bay phấp phới" on the win | E3 optional (ledger page under the bridge) | Sói Xám tied to a pillar: "hàng về bến container của ngài Alexander" (`cine_d2`) |
 | 3 | Bến container | container yard by the canal | sneak in, first gunfight, destroy every crate of smart glasses, forklift boss | a container door creaks open: hundreds of mannequins in smart glasses turn their heads at once → Alexander pops out with a party horn: "Surprise!" | his name intro refills his boss bar; guards carry a crate in a coffin-dance parody (own music) | E4 optional (manifest, needs every crate destroyed) | Alexander's endless name cut off; he drops a USB "Za Mẫn Labs" (`cine_d3`) |
@@ -78,7 +78,7 @@ Each day: a mission marker on the map (morning or night), the mission, an end ci
 Guaranteed evidence: E1, E6, E7. Optional: E2, E3, E4, E5. Free roam also hides the optional pieces' second chances: if a mission's optional piece was missed, it can be found later at a night event in the same area.
 
 ## 5. Free roam layer
-- Mission markers per day (morning and night), the BE6 bed (end the day), phone (texts from Thầy Toàn and Anh Duy; the 3 a.m. call).
+- Mission markers per day (morning and night), the BE6 bed (end the day), phone (texts from Mr.T and Anh Duy; the 3 a.m. call).
 - Night events: "Ma kênh Rạch Hầm" (a ghostly boat that turns out to be sheep clones smuggling tools; second chance for an optional evidence piece), BE6 lift stopping at floor 13 (a floor that does not exist; the door opens on Phúc in a sheep mask: "Prank thôi mà!"), stalker sightings of Cừu Dolly at the edge of vision.
 - Crowds, traffic and pedestrians from the vice-people work; mission areas raise local crowd density (campus by day, Vincom at night).
 
@@ -92,7 +92,7 @@ Evaluation order:
 3. Reported Phúc → **B "Thắng nhưng mất bạn"** (cleared, Phúc suspended; bittersweet).
 4. Evidence 4-6, or took the bribe → **D "Minh oan nửa vời"** (suspension reduced to a warning; Lùm Văn Lọ escapes by helicopter; sequel hook).
 5. Otherwise (all 7 pieces, Phúc covered, no offer, no bribe) → **A "Minh oan trọn vẹn"** (true ending: the hearing becomes a commendation, Anh Duy plays the evidence, the "Lọ Academy" billboard comes down; post-credits a sheep mask floats away down the canal) — AI clip #3.
-6. Secret **F "Học thật, đậu thật"**: ending A plus rank S in every original study stage (3 Roll call FAP, 6 Capstone, Extra EOS) adds an extra scene: Thầy Toàn hands you a scholarship while Lùm Văn Lọ screams in the police car.
+6. Secret **F "Học thật, đậu thật"**: ending A plus rank S in every original study stage (3 Roll call FAP, 6 Capstone, Extra EOS) adds an extra scene: Mr.T hands you a scholarship while Lùm Văn Lọ screams in the police car.
 
 ## 7. Memes and sound effects
 - Rules (S-D7): memes are situations, compositions and catchphrases re-staged with our characters; never a real person's face, voice or name; no copyrighted character, artwork or song (for example the "This is fine" situation, not its drawing; a coffin-dance parody, not its song).

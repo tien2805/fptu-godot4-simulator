@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A GTA-style radial weapon wheel (hold the middle mouse button, slow motion), eight on-foot weapons that work everywhere in the open world without gore, and a 1-3 star wanted level: campus guards, Thầy Toàn and police motorbikes chase the player, and a catch plays a "BỊ TÓM!" cutscene followed by a community-service chore. Holding B opens an emote wheel built on the same radial UI; its first emote is "Siuuu!" (run-up, jump with a half turn, landing synced to a shout, bystanders react). Everything is wired into FreeRoam behind one flag.
+**Goal:** A GTA-style radial weapon wheel (hold the middle mouse button, slow motion), eight on-foot weapons that work everywhere in the open world without gore, and a 1-3 star wanted level: campus guards, Mr.T and police motorbikes chase the player, and a catch plays a "BỊ TÓM!" cutscene followed by a community-service chore. Holding B opens an emote wheel built on the same radial UI; its first emote is "Siuuu!" (run-up, jump with a half turn, landing synced to a shout, bystanders react). Everything is wired into FreeRoam behind one flag.
 
 **Architecture:**
 - `RadialWheel` (data-driven UI, real time, the only Phase W writer of `Engine.time_scale`, outside `scripts/cine/`) is shared by `WeaponWheel` (middle mouse) and `EmoteWheel` (B).
@@ -24,7 +24,7 @@
 - Pure GDScript, Godot 4.7.2 API; no C#, no plugins or addons. Keep the folder structure, scene names and existing `class_name`s.
 - Textures, meshes and icons are made only in code. Weapon icons are polygons drawn with `draw_colored_polygon`. Never use AI-generated images. Phase W adds no image files.
 - Fictional names only:
-  - Thầy Toàn (ThS. ToanHLM) is the story's fictional lecturer: `lecturer` preset, light-blue shirt, glasses.
+  - Mr.T is the story's fictional lecturer: `lecturer` preset, light-blue shirt, glasses.
   - Never name or reference a real singer, a real song or any real person anywhere: code, comments, tests and game text. The loa kẹo kéo default is a cue called `bolero` (a genre) built from chord tones.
 - These never go in git:
   - `user://music/`;
@@ -112,7 +112,7 @@ Run the regression once and record the baseline. All tests should pass on `4c8f9
 | P5 | Officer knockout length | Section 4 ("officers … get up after 10 s") is more specific than the dép row ("knocked out 4 s"). Officers stay down 10 s whatever the weapon; pedestrians stay down 4 s after a dép and 6-10 s otherwise. |
 | P6 | Unarmed combo | The 1st and 2nd hits on the same person within 1.5 s make them stumble 0.25 m. The 3rd hit knocks them out. |
 | P7 | Second wave | At 3 stars on the streets, the wanted count becomes 3 + 3 police after 30 s at 3 stars. |
-| P8 | Busted catcher art | The busted cutscene uses the catcher's role. When Thầy Toàn made the catch, a guard cuffs the player and Thầy Toàn stands in front shaking his head. |
+| P8 | Busted catcher art | The busted cutscene uses the catcher's role. When Mr.T made the catch, a guard cuffs the player and Mr.T stands in front shaking his head. |
 | P9 | No traffic (crowd off) | Police arrive on foot at 25-45 m instead of on bikes, so the wanted level still works with `crowd_enabled = false`. |
 | P10 | fps table | Measuring fps needs windowed preview runs, which agents no longer do. Task 13 records the headless physics costs and leaves the fps column for the owner, with the exact command to run. |
 | P11 | Bystanders | Gunfire scares pedestrians within 10 m and explosions within 25 m: they flee. Officers ignore scares. |
@@ -146,7 +146,7 @@ Run the regression once and record the baseline. All tests should pass on `4c8f9
 | `scripts/weapons/SonicCone.gd` | create | 6 | loa kẹo kéo blast and music |
 | `scripts/wanted/WantedDirector.gd` | create, extend | 7-11 | heat, stars, LOS decay, search circle, spawns, busts, service |
 | `scripts/ui/ViceRadar.gd`, `scripts/ui/ViceStars.gd` | modify | 7 | search circle; 3-cell star row |
-| `scripts/wanted/Officer.gd` | create | 8 | guard / Thầy Toàn / police on foot |
+| `scripts/wanted/Officer.gd` | create | 8 | guard / Mr.T / police on foot |
 | `scripts/wanted/BustedStamp.gd` | create | 10 | "BỊ TÓM!" stamp |
 | `scripts/cine/timelines/wanted_busted.gd`, `docs/cinematics/wanted_busted.txt` | create | 10 | busted cutscene (A1 timeline) and its beat sheet |
 | `scripts/wanted/CommunityService.gd` | create | 11 | community-service chore |
@@ -5891,7 +5891,7 @@ git commit -m "feat(wanted): wanted level - heat from weapons, 1/2/3 stars at 4/
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
-### Task 8: Officers on foot – campus guards and Thầy Toàn  [effort: xhigh]
+### Task 8: Officers on foot – campus guards and Mr.T  [effort: xhigh]
 
 **Files:**
 - Create: `scripts/wanted/Officer.gd`.
@@ -5907,7 +5907,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `class_name Officer extends CharacterBody3D`:
     - signal `knocked(officer)`;
     - `enum State { CHASE, SEARCH, TACKLE, KNOCKED, LAUNCHED, STUNNED, GIVE_UP, SUPERVISE }`;
-    - constants `SPEEDS {"guard": 5.0, "toan": 6.2, "police": 5.4}`, `KO_S 10.0`, `TACKLE_R 1.5`, `TACKLE_MIN_SPEED 4.5`, `STOP_R 0.9`, `LINES`, `PRESETS`;
+    - constants `SPEEDS {"guard": 5.0, "mr_t": 6.2, "police": 5.4}`, `KO_S 10.0`, `TACKLE_R 1.5`, `TACKLE_MIN_SPEED 4.5`, `STOP_R 0.9`, `LINES`, `PRESETS`;
     - vars `role, state, wanted, player, model, bubble: Label3D, sees_player, bike_idx, ko_left, hits, shouts`;
     - `setup(role, wanted_node, player_node, seed)` (before `add_child`), `take_hit(info) -> String`, `is_down()`, `can_catch()`, `give_up()`, `supervise()`, `say(text, secs := SAY_S)`.
   - `WantedDirector`:
@@ -5920,8 +5920,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```gdscript
 # File: res://tests/test_officers.gd
 # Headless test of the Phase W officers on foot (spec W-D7, section 4): on campus 2 / 4 / 6 security guards by stars and
-# Thầy Toàn from 2 stars (at most 2 spawns per second, never more than 12 officers); they chase the player they see
-# (guards ~5 m/s, Thầy Toàn faster), Thầy Toàn shouts "Em kia! Đứng lại! Thẻ sinh viên đâu?" first; a weapon knocks an
+# Mr.T from 2 stars (at most 2 spawns per second, never more than 12 officers); they chase the player they see
+# (guards ~5 m/s, Mr.T faster), Mr.T shouts "Em kia! Đứng lại! Thẻ sinh viên đâu?" first; a weapon knocks an
 # officer out for 10 s (+5 heat), then he is back on his feet; officers dive at a player sprinting past (comic tackle: the
 # player is knocked down, never hurt); once the stars are gone they give up and vanish. Busting is off here
 # (catch_enabled = false; Task 10 tests it). Counts physics frames (Engine.max_fps = 60).
@@ -6008,24 +6008,24 @@ func _on_physics() -> void:
 			if t == 2:
 				wanted.add_heat(4.0)
 			if t == 70:
-				_check(wanted.count_role("guard") == 2 and wanted.count_role("toan") == 0, "1 star on campus: 2 guards, no Thầy Toàn (%d, %d)" % [wanted.count_role("guard"), wanted.count_role("toan")])
+				_check(wanted.count_role("guard") == 2 and wanted.count_role("mr_t") == 0, "1 star on campus: 2 guards, no Mr.T (%d, %d)" % [wanted.count_role("guard"), wanted.count_role("mr_t")])
 				wanted.add_heat(8.0)
 				_next("two")
 		"two":
 			if t == 130:
-				_check(wanted.count_role("guard") == 4 and wanted.count_role("toan") == 1, "2 stars: 4 guards and Thầy Toàn (%d, %d)" % [wanted.count_role("guard"), wanted.count_role("toan")])
+				_check(wanted.count_role("guard") == 4 and wanted.count_role("mr_t") == 1, "2 stars: 4 guards and Mr.T (%d, %d)" % [wanted.count_role("guard"), wanted.count_role("mr_t")])
 				wanted.add_heat(13.0)
 				_next("three")
 		"three":
 			if t == 130:
-				_check(wanted.count_role("guard") == 6 and wanted.count_role("toan") == 1, "3 stars: 6 guards and Thầy Toàn")
+				_check(wanted.count_role("guard") == 6 and wanted.count_role("mr_t") == 1, "3 stars: 6 guards and Mr.T")
 				_check(wanted.officers().size() <= WantedDirector.MAX_OFFICERS and wanted.officers_spawned == 7, "no more than needed (%d spawned)" % wanted.officers_spawned)
-				_check(checked_speed.has("guard") and checked_speed.has("toan"), "speeds measured for a guard and Thầy Toàn")
-				var toan: Officer = null
+				_check(checked_speed.has("guard") and checked_speed.has("mr_t"), "speeds measured for a guard and Mr.T")
+				var mr_t: Officer = null
 				for o: Officer in wanted.officers():
-					if o.role == "toan":
-						toan = o
-				_check(toan != null and toan.shouts >= 1 and toan.bubble.text == String((Officer.LINES["toan"] as Array)[0]), "Thầy Toàn's first shout (0.6 s after he sees the player): 'Em kia! Đứng lại! Thẻ sinh viên đâu?'")
+					if o.role == "mr_t":
+						mr_t = o
+				_check(mr_t != null and mr_t.shouts >= 1 and mr_t.bubble.text == String((Officer.LINES["mr_t"] as Array)[0]), "Mr.T's first shout (0.6 s after he sees the player): 'Em kia! Đứng lại! Thẻ sinh viên đâu?'")
 				var g: Officer = null
 				for o: Officer in wanted.officers():
 					if o.role == "guard" and g == null:
@@ -6074,7 +6074,7 @@ func _on_physics() -> void:
 				_check(wanted.officers().is_empty(), "they are gone after the give-up time")
 				Engine.time_scale = 1.0
 				if fails.is_empty():
-					print("✅ SUCCESS: OFFICERS (campus counts by star, Thầy Toàn from 2 stars, chase speeds, shout, knock-out +5, get up, tackle, give up)")
+					print("✅ SUCCESS: OFFICERS (campus counts by star, Mr.T from 2 stars, chase speeds, shout, knock-out +5, get up, tackle, give up)")
 					quit(0)
 				else:
 					print("❌ FAILED: %d issues" % fails.size())
@@ -6090,7 +6090,7 @@ Expected: a parse error (`Officer` not declared).
 
 ```gdscript
 # File: res://scripts/wanted/Officer.gd
-# Phase W chaser on foot (spec W-D7, section 4): a campus security guard (bảo vệ), Thầy Toàn (ThS. ToanHLM, the story's
+# Phase W chaser on foot (spec W-D7, section 4): a campus security guard (bảo vệ), Mr.T (the story's
 # fictional lecturer: lecturer preset, faster, shouts "Em kia! Đứng lại! Thẻ sinh viên đâu?") or a police officer off his
 # bike. CHASE runs straight at the player while WantedDirector says he sees him (sees_player); SEARCH walks to the last
 # seen point and wanders inside the search circle; GIVE_UP walks away once the stars are gone. Officers never shoot: within
@@ -6109,7 +6109,7 @@ enum State { CHASE, SEARCH, TACKLE, KNOCKED, LAUNCHED, STUNNED, GIVE_UP, SUPERVI
 const RADIUS: float = 0.3
 const HEIGHT: float = 1.75
 const GRAVITY: float = 20.0
-const SPEEDS: Dictionary = {"guard": 5.0, "toan": 6.2, "police": 5.4}
+const SPEEDS: Dictionary = {"guard": 5.0, "mr_t": 6.2, "police": 5.4}
 const SEARCH_FACTOR: float = 0.7
 const GIVE_UP_SPEED: float = 2.0
 const STOP_R: float = 0.9
@@ -6135,12 +6135,12 @@ const SAY_S: float = 3.5
 const LAND_MIN_S: float = 0.15
 const PRESETS: Dictionary = {
 	"guard": {"preset": "guard"},
-	"toan": {"preset": "lecturer", "seed": 1995, "glasses": true},
+	"mr_t": {"preset": "lecturer", "seed": 1995, "glasses": true},
 	"police": {"preset": "cop"},
 }
 const LINES: Dictionary = {
 	"guard": ["Đứng lại!", "Bảo vệ đây, đứng yên đó!", "Chạy đi đâu, cổng khoá rồi!"],
-	"toan": ["Em kia! Đứng lại! Thẻ sinh viên đâu?", "Em học lớp nào? Đứng lại cho tôi!", "Chạy nữa là tôi cho F môn này đấy!"],
+	"mr_t": ["Em kia! Đứng lại! Thẻ sinh viên đâu?", "Em học lớp nào? Đứng lại cho tôi!", "Chạy nữa là tôi cho F môn này đấy!"],
 	"police": ["Dừng lại!", "Đứng yên, xuất trình giấy tờ!", "Không được chạy!"],
 }
 
@@ -6205,7 +6205,7 @@ func setup(r: String, wanted_node: Node, player_node: Node3D, seed_v: int) -> vo
 	bubble.position = Vector3(0.0, 2.25, 0.0)
 	bubble.visible = false
 	add_child(bubble)
-	_shout_t = 0.6 if role == "toan" else _rng.randf_range(1.0, 3.0)
+	_shout_t = 0.6 if role == "mr_t" else _rng.randf_range(1.0, 3.0)
 
 
 func _physics_process(delta: float) -> void:
@@ -6636,7 +6636,7 @@ func search_radius() -> float:
 	return SEARCH_R[clampi(stars, 1, 3) - 1]
 
 
-## Spawn an officer (role "guard" | "toan" | "police") at `at` or at a free spot 25-45 m from the player, out of view when
+## Spawn an officer (role "guard" | "mr_t" | "police") at `at` or at a free spot 25-45 m from the player, out of view when
 ## possible. null when the cap is reached or no spot is found.
 func spawn_officer(role: String, at: Variant = null) -> Officer:
 	if officers().size() >= MAX_OFFICERS:
@@ -6689,7 +6689,7 @@ func _in_view(p: Vector3) -> bool:
 
 
 ## Once per MAINTAIN_S: officers far away and out of view leave; campus (inside the plot): guards up to GUARDS[stars] and
-## Thầy Toàn from 2 stars (police bikes on the streets: Task 9). At most SPAWNS_PER_MAINTAIN new officers per call.
+## Mr.T from 2 stars (police bikes on the streets: Task 9). At most SPAWNS_PER_MAINTAIN new officers per call.
 func _maintain() -> void:
 	var p: Vector3 = target_pos()
 	for o: Officer in officers():
@@ -6705,8 +6705,8 @@ func _maintain() -> void:
 				break
 			have += 1
 			budget -= 1
-		if stars >= 2 and count_role("toan") == 0 and budget > 0:
-			spawn_officer("toan")
+		if stars >= 2 and count_role("mr_t") == 0 and budget > 0:
+			spawn_officer("mr_t")
 
 
 func _despawn(o: Officer) -> void:
@@ -6755,7 +6755,7 @@ Expected: the cache count is 1, and the test prints `✅ SUCCESS: OFFICERS …`.
 
 ```bash
 git add scripts/wanted/Officer.gd scripts/wanted/Officer.gd.uid scripts/wanted/WantedDirector.gd scripts/FreeRoam.gd tests/test_officers.gd tests/test_officers.gd.uid
-git commit -m "feat(wanted): officers on foot - campus guards 2/4/6 by stars and Thầy Toàn (fictional lecturer, faster, 'Em kia! Đứng lại! Thẻ sinh viên đâu?') from 2 stars, chase on sight, search the last-seen circle, comic tackle of a sprinting player, knocked out 10 s by any weapon (+5 heat), stunned by stink, pushed by the loa, give up and vanish when the stars are gone; officers are weapon targets
+git commit -m "feat(wanted): officers on foot - campus guards 2/4/6 by stars and Mr.T (fictional lecturer, faster, 'Em kia! Đứng lại! Thẻ sinh viên đâu?') from 2 stars, chase on sight, search the last-seen circle, comic tackle of a sprinting player, knocked out 10 s by any weapon (+5 heat), stunned by stink, pushed by the loa, give up and vanish when the stars are gone; officers are weapon targets
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -7313,7 +7313,7 @@ var bikes_sent: int = 0
 
 ```gdscript
 ## Once per MAINTAIN_S: officers far away and out of view leave; campus (inside the plot): guards up to GUARDS[stars] and
-## Thầy Toàn from 2 stars; streets and residential: police bikes up to BIKES[stars] (+3 for the second wave after 30 s at
+## Mr.T from 2 stars; streets and residential: police bikes up to BIKES[stars] (+3 for the second wave after 30 s at
 ## 3 stars), counting the ones on their way and the officers already off their bikes. At most SPAWNS_PER_MAINTAIN per call.
 func _maintain() -> void:
 	var p: Vector3 = target_pos()
@@ -7330,8 +7330,8 @@ func _maintain() -> void:
 				break
 			have += 1
 			budget -= 1
-		if stars >= 2 and count_role("toan") == 0 and budget > 0:
-			spawn_officer("toan")
+		if stars >= 2 and count_role("mr_t") == 0 and budget > 0:
+			spawn_officer("mr_t")
 	else:
 		_prune_pending()
 		var want: int = BIKES[stars - 1] + (BIKES[2] if second_wave else 0)
@@ -7407,7 +7407,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - Task 9: `_release_bikes()`.
 - Produces:
   - `class_name BustedStamp extends CanvasLayer`: signal `done`, constants `SHOW_S 1.0`, `TEXT "BỊ TÓM!"`, vars `manual`, `t`, `label`, `step_real(dt)`.
-  - Timeline `wanted_busted` (7.000 s, one medium ramp `B1` at real 2.400 s, tail 3.740 s): `var catcher: String` ("guard" | "police" | "toan").
+  - Timeline `wanted_busted` (7.000 s, one medium ramp `B1` at real 2.400 s, tail 3.740 s): `var catcher: String` ("guard" | "police" | "mr_t").
   - `WantedDirector`:
     - signal `busted(catcher: String)`;
     - constants `CATCH_R 1.2, CATCH_S 1.5, BUSTED_TIMELINE`;
@@ -7457,7 +7457,7 @@ func _initialize() -> void:
 	CharacterBuilder.toon = false
 	CharacterBuilder.head_scale_default = 1.0
 	print("--- TEST BUSTED ---")
-	for who: String in ["guard", "police", "toan"]:
+	for who: String in ["guard", "police", "mr_t"]:
 		var tl: CineTimeline = (load(TL_PATH) as GDScript).new()
 		tl.set("catcher", who)
 		tl.build()
@@ -7465,7 +7465,7 @@ func _initialize() -> void:
 		_check(errs.is_empty(), "busted timeline (%s) passes the A1 validator %s" % [who, str(errs)])
 		var tail: float = tl.length - float(tl.clock.ramps[tl.clock.ramps.size() - 1]["r1"])
 		_check(is_equal_approx(tl.length, 7.0) and tail >= 3.0 and tail <= 4.0, "7 s long, %.3f s normal-speed tail" % tail)
-		_check(tl.actors.has("toan") == (who == "toan"), "Thầy Toàn appears only when he made the catch (%s)" % who)
+		_check(tl.actors.has("mr_t") == (who == "mr_t"), "Mr.T appears only when he made the catch (%s)" % who)
 	var committed: String = FileAccess.get_file_as_string("res://docs/cinematics/wanted_busted.txt").replace("\r\n", "\n")
 	_check(committed == CineTimeline.load_slot("wanted_busted").beat_sheet(), "docs/cinematics/wanted_busted.txt is in sync (run tools/cine_beats.gd)")
 	physics_frame.connect(_on_physics)
@@ -7590,7 +7590,7 @@ func _part_b(t: int) -> void:
 		w.spawn_officer("guard", near if near is Vector3 else pl.global_position + Vector3(1.0, 0.0, 0.0))
 	if t > 70 and w.busts == 1 and not has_meta("bb"):
 		set_meta("bb", true)
-		_check(w.state == "stamp" and paused and w.catcher in ["guard", "toan"], "busted on campus by %s: frozen + stamp" % w.catcher)
+		_check(w.state == "stamp" and paused and w.catcher in ["guard", "mr_t"], "busted on campus by %s: frozen + stamp" % w.catcher)
 		w.stamp.step_real(1.1)
 		var cp: CinePlayer = roam.get("cine_player")
 		_check(w.state == "cutscene" and cp != null and cp.timeline.slot == "wanted_busted", "the busted cutscene plays through play_cinematic")
@@ -7711,9 +7711,9 @@ The slot is named `wanted_busted` so it sorts after `seg_d1_brawl`: F9 cycles `C
 ```gdscript
 # File: res://scripts/cine/timelines/wanted_busted.gd
 # wanted_busted (7.000 s, Phase W spec section 5 / W-D8, plan Task 10): "BỊ TÓM!" – the officer who made the catch walks up behind
-# the player and cuffs him on the B1 click (one medium ramp at real 2.400 s); if Thầy Toàn (ThS. ToanHLM, the story's
-# fictional lecturer) made the catch, a guard cuffs and Thầy Toàn stands in front shaking his head. WantedDirector sets
-# `catcher` ("guard" | "police" | "toan") before build() and plays it through FreeRoam.play_cinematic with opts "xf" (the
+# the player and cuffs him on the B1 click (one medium ramp at real 2.400 s); if Mr.T (the story's
+# fictional lecturer) made the catch, a guard cuffs and Mr.T stands in front shaking his head. WantedDirector sets
+# `catcher` ("guard" | "police" | "mr_t") before build() and plays it through FreeRoam.play_cinematic with opts "xf" (the
 # player's spot and facing), so `stage` stays empty. CineTimeline.load_slot("wanted_busted") builds the guard variant (beat sheet
 # docs/cinematics/wanted_busted.txt). The ramp ends at 3.260 s real: a 3.740 s normal-speed tail (A1-D8: 3-4 s).
 # Stage frame: X right, -Z forward (where the player faces), ground y = 0; yaw in degrees, characters face -Z at 0.
@@ -7722,7 +7722,7 @@ extends CineTimeline
 const HERO := Vector3(0.0, 0.0, 0.0)
 const COP_FROM := Vector3(0.9, 0.0, 2.6)
 const COP_AT := Vector3(0.3, 0.0, 0.8)
-const TOAN_AT := Vector3(-0.9, 0.0, -1.6)
+const MR_T_AT := Vector3(-0.9, 0.0, -1.6)
 
 var catcher: String = "guard"
 
@@ -7755,17 +7755,17 @@ func build() -> void:
 	shot("S1", 0.0, "static", "wide: the officer walks up behind", {"pos": Vector3(-2.8, 1.7, -3.2), "look": Vector3(0.3, 1.0, 0.9), "fov": 50.0})
 	shot("S2", 1.85, "orbit", "close on the cuffs", {"center": Vector3(0.15, 1.0, 0.4), "radius": 1.9, "deg_from": 70.0, "deg_to": 110.0, "height": 1.25, "fov": 42.0})
 	shot("S3", 3.3, "static", "front two-shot", {"pos": Vector3(0.35, 1.55, -3.4), "look": Vector3(0.15, 1.15, 0.3), "fov": 45.0, "hand": 0.3})
-	if catcher == "toan":
-		actor("toan", {"preset": "lecturer", "seed": 1995, "glasses": true}, "Thầy Toàn", Color("#9B59B6"))
-		key("toan", 0.0, TOAN_AT, CineTimeline.face(TOAN_AT, HERO))
-		move("toan", 0.0, "idle")
-		move("toan", 3.5, "head_shake")
-		move("toan", 4.1, "head_shake")
-		move("toan", 4.7, "idle")
-		look("toan", 0.0, 6.2, "hero")
-		look("hero", 3.4, 6.2, "toan")
-		sub(3.3, 1.3, "toan", "Em kia! Thẻ sinh viên đâu?")
-		sub(4.7, 1.1, "toan", "Mười năm đi dạy, chưa thấy em nào lì như em.")
+	if catcher == "mr_t":
+		actor("mr_t", {"preset": "lecturer", "seed": 1995, "glasses": true}, "Mr.T", Color("#9B59B6"))
+		key("mr_t", 0.0, MR_T_AT, CineTimeline.face(MR_T_AT, HERO))
+		move("mr_t", 0.0, "idle")
+		move("mr_t", 3.5, "head_shake")
+		move("mr_t", 4.1, "head_shake")
+		move("mr_t", 4.7, "idle")
+		look("mr_t", 0.0, 6.2, "hero")
+		look("hero", 3.4, 6.2, "mr_t")
+		sub(3.3, 1.3, "mr_t", "Em kia! Thẻ sinh viên đâu?")
+		sub(4.7, 1.1, "mr_t", "Mười năm đi dạy, chưa thấy em nào lì như em.")
 	else:
 		look("hero", 3.4, 6.2, "cop")
 		sub(3.6, 1.8, "cop", "Mời anh đi lao động công ích!" if police else "Đi lao động công ích với chú nào!")
@@ -7934,7 +7934,7 @@ Expected: the cache count is 1, and the test prints `✅ SUCCESS: BUSTED …`. `
 
 ```bash
 git add scripts/wanted/BustedStamp.gd scripts/wanted/BustedStamp.gd.uid scripts/cine/timelines/wanted_busted.gd scripts/cine/timelines/wanted_busted.gd.uid docs/cinematics/wanted_busted.txt scripts/wanted/WantedDirector.gd scripts/FreeRoam.gd tests/test_busted.gd tests/test_busted.gd.uid
-git commit -m "feat(wanted): busted - an officer 1.2 m from a standing player for 1.5 s (or reaching a knocked-down one) busts him: freeze, 'BỊ TÓM!' stamp, the 7 s busted cutscene (A1 timeline, validator-clean, one medium ramp on the cuffs click, Thầy Toàn shakes his head when he made the catch) played at the player's spot via play_cinematic opts xf, hold Esc skips; beat sheet docs/cinematics/wanted_busted.txt
+git commit -m "feat(wanted): busted - an officer 1.2 m from a standing player for 1.5 s (or reaching a knocked-down one) busts him: freeze, 'BỊ TÓM!' stamp, the 7 s busted cutscene (A1 timeline, validator-clean, one medium ramp on the cuffs click, Mr.T shakes his head when he made the catch) played at the player's spot via play_cinematic opts xf, hold Esc skips; beat sheet docs/cinematics/wanted_busted.txt
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -9810,7 +9810,7 @@ Expected: `✅ SUCCESS: MAYHEM PERFORMANCE …` with both costs below 3 ms. Writ
 3a. In the "🌏 Thế giới mở" section, insert after the paragraph that starts `Ở phong cách Vice City, mọi nhân vật là người kiểu PS2`:
 
 ```markdown
-**Vũ khí, truy nã và biểu cảm.** Giữ **chuột giữa** để mở vòng chọn vũ khí (game chậm lại, đưa chuột về ô rồi thả; `ESC` hoặc chuột phải để đóng), lăn chuột để đổi nhanh. Tám ô: Tay không, Dao, Súng lục, Shotgun, Tên lửa, Dép tổ ong (ném vòng rồi bay về tay), Sầu riêng (lựu đạn mùi), Loa kẹo kéo (giữ để phát nhạc đẩy người ra). Chuột phải ngắm qua vai, chuột trái bắn, `R` nạp đạn; chỉ dùng khi đi bộ. Không máu me, không ai chết: người trúng đòn nằm sao bay vòng vòng rồi đứng dậy bỏ chạy, xe trúng tên lửa lật ngửa bốc khói. Gây rối thì bị truy nã 1-3 sao: trong campus bảo vệ đuổi (từ 2 sao có cả Thầy Toàn), ngoài đường cảnh sát chạy xe máy tới rồi xuống đuổi bộ; trốn khỏi tầm nhìn đủ lâu thì mất sao (vòng xanh trên radar là vùng đang bị tìm). Bị tóm thì xem đoạn "BỊ TÓM!" rồi đi lao động công ích: mặc áo cam nhặt 8 bao rác bỏ vô thùng trong 120 giây. Giữ **B** để mở vòng biểu cảm: "Siuuu!" chạy đà, nhảy xoay người, tiếp đất dang tay, người xung quanh vỗ tay, hô theo hoặc giơ điện thoại quay.
+**Vũ khí, truy nã và biểu cảm.** Giữ **chuột giữa** để mở vòng chọn vũ khí (game chậm lại, đưa chuột về ô rồi thả; `ESC` hoặc chuột phải để đóng), lăn chuột để đổi nhanh. Tám ô: Tay không, Dao, Súng lục, Shotgun, Tên lửa, Dép tổ ong (ném vòng rồi bay về tay), Sầu riêng (lựu đạn mùi), Loa kẹo kéo (giữ để phát nhạc đẩy người ra). Chuột phải ngắm qua vai, chuột trái bắn, `R` nạp đạn; chỉ dùng khi đi bộ. Không máu me, không ai chết: người trúng đòn nằm sao bay vòng vòng rồi đứng dậy bỏ chạy, xe trúng tên lửa lật ngửa bốc khói. Gây rối thì bị truy nã 1-3 sao: trong campus bảo vệ đuổi (từ 2 sao có cả Mr.T), ngoài đường cảnh sát chạy xe máy tới rồi xuống đuổi bộ; trốn khỏi tầm nhìn đủ lâu thì mất sao (vòng xanh trên radar là vùng đang bị tìm). Bị tóm thì xem đoạn "BỊ TÓM!" rồi đi lao động công ích: mặc áo cam nhặt 8 bao rác bỏ vô thùng trong 120 giây. Giữ **B** để mở vòng biểu cảm: "Siuuu!" chạy đà, nhảy xoay người, tiếp đất dang tay, người xung quanh vỗ tay, hô theo hoặc giơ điện thoại quay.
 ```
 
 3b. In the "🌏 Thế giới mở" section's `**Điều khiển:**` line, insert this text just before the `F` (lên/xuống xe máy) item: `` · giữ chuột giữa: vòng vũ khí · chuột phải ngắm, chuột trái bắn, `R` nạp đạn · giữ `B`: vòng biểu cảm ``. In the "🕹️ Điều khiển" section, replace the `* **Thế giới mở:** …` line with:
@@ -9839,7 +9839,7 @@ Spec `docs/superpowers/specs/2026-10-23-phase-w-weapons-wanted-design.md` (W-D1 
 
 * **Wheels.** `RadialWheel` (scripts/weapons/) is data-driven: the weapon wheel (hold middle mouse, 8 slots, scroll cycles) and the emote wheel (hold B, "Siuuu!" + 7 greyed slots) are thin subclasses. Only the radial wheel writes `Engine.time_scale` (0.2, eased 0.1 s real, restored on close / block / exit); nothing under scripts/cine/ does (A1-D6).
 * **Weapons.** `WeaponDirector` (magazines with unlimited reserve, aim camera, hip fire, analytic capsule / box ray tests with world occlusion) and its projectiles. Targets are duck-typed (`take_hit`, `is_down`): pedestrians get knocked out with stars, launched, stink, dance, flee; officers too; vehicles halt or flip and smoke (`RoamTraffic.hit_vehicle`). FX on the A1 `CineFX` with a game clock, sounds synthesized in `WeaponAudio` with `user://sfx` overrides (never committed).
-* **Wanted level.** `WantedDirector`: 4 / 12 / 25 heat for 1 / 2 / 3 stars, line-of-sight decay 12 / 20 / 30 s, radar search circle, campus guards and Thầy Toàn, police bikes from `RoamTraffic` (second wave at 3 stars), busted after 1.5 s within 1.2 m, the 7 s `wanted_busted` cutscene, community service.
+* **Wanted level.** `WantedDirector`: 4 / 12 / 25 heat for 1 / 2 / 3 stars, line-of-sight decay 12 / 20 / 30 s, radar search circle, campus guards and Mr.T, police bikes from `RoamTraffic` (second wave at 3 stars), busted after 1.5 s within 1.2 m, the 7 s `wanted_busted` cutscene, community service.
 * **Emotes.** `EmoteDirector` "Siuuu!": run-up, jump with a 180° turn, landing at 1.70 s, shout cue started at landing − 0.31 s, 3.30 s total, bystander reactions within 10 m.
 * **Headless physics cost** (`tests/test_mayhem_perf.gd`, BE6, full daytime crowd + traffic, 3 stars + second wave): W1 weapons + wanted = the `W1 … ms per physics frame` line it prints; W2 emote + bystanders = its `W2 …` line. Gate: < 3 ms each.
 
@@ -9848,7 +9848,7 @@ Spec `docs/superpowers/specs/2026-10-23-phase-w-weapons-wanted-design.md` (W-D1 
 | Spot | fps | Gate |
 | :--- | ---: | ---: |
 | FreeRoam BE6 lobby, 3 stars, loa + stink cloud | (owner) | ≥ 45 |
-| FreeRoam campus courtyard, 3 stars (6 guards + Thầy Toàn) | (owner) | ≥ 45 |
+| FreeRoam campus courtyard, 3 stars (6 guards + Mr.T) | (owner) | ≥ 45 |
 | FreeRoam BE6, "Siuuu!" in the crowd | (owner) | ≥ 45 |
 ```
 
@@ -9883,7 +9883,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | W-D4, section 3 table (8 weapons and their numbers) | 1 (data), 3 (unarmed, knife), 4 (pistol, shotgun), 5 (rocket), 6 (dép, sầu riêng, loa) |
 | W-D5 (bolero default, local loa_keo_keo override, no real singer) | 6, Global Constraints |
 | W-D6, section 4 (heat, stars 4 / 12 / 25, +5 officer, LOS decay 12 / 20 / 30 s, search circle, HUD stars, BE6 not special) | 7, 8 (+5) |
-| W-D7 (guards 2 / 4 / 6, Thầy Toàn from 2 stars with his line, police bikes 1 / 2 / 3, dismount ≤ 15 m, second wave after 30 s, never shoot) | 8, 9 |
+| W-D7 (guards 2 / 4 / 6, Mr.T from 2 stars with his line, police bikes 1 / 2 / 3, dismount ≤ 15 m, second wave after 30 s, never shoot) | 8, 9 |
 | W-D8, section 5 (busted rule, freeze, stamp, 6-8 s cutscene through the A1 player, Esc skips, community service, timeout restart, finish clears + bike) | 10, 11 |
 | W-D9 (on foot only, unlimited reserve, player never hurt) | 3, 5 (knock-down), 8 (tackle) |
 | W-D10 … W-D13, section 9 (emote wheel on B reusing the radial UI, "Siuuu!" timings, cue layout and sync, override, bystanders) | 1 (shared base), 12 |

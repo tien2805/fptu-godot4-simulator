@@ -1,5 +1,5 @@
 # File: res://scripts/wanted/Officer.gd
-# Phase W chaser on foot (spec W-D7, section 4): a campus security guard (bảo vệ), Thầy Toàn (ThS. ToanHLM, the story's
+# Phase W chaser on foot (spec W-D7, section 4): a campus security guard (bảo vệ), Mr.T (the story's
 # fictional lecturer: lecturer preset, faster, shouts "Em kia! Đứng lại! Thẻ sinh viên đâu?") or a police officer off his
 # bike. CHASE runs straight at the player while WantedDirector says he sees him (sees_player); SEARCH walks to the last
 # seen point and wanders inside the search circle; GIVE_UP walks away once the stars are gone. Officers never shoot: within
@@ -20,7 +20,7 @@ enum State { CHASE, SEARCH, TACKLE, KNOCKED, LAUNCHED, STUNNED, GIVE_UP, SUPERVI
 const RADIUS: float = 0.3
 const HEIGHT: float = 1.75
 const GRAVITY: float = 20.0
-const SPEEDS: Dictionary = {"guard": 5.0, "toan": 6.2, "police": 5.4}
+const SPEEDS: Dictionary = {"guard": 5.0, "mr_t": 6.2, "police": 5.4}
 const SEARCH_FACTOR: float = 0.7
 const GIVE_UP_SPEED: float = 2.0
 const STOP_R: float = 0.9
@@ -48,12 +48,12 @@ const STEP_CONTACT_MAX: float = 0.35     # a wall contact higher than this above
 const LOD_FAR_M: float = 20.0            # chasing / searching beyond this from the player: move every other frame (x2)
 const PRESETS: Dictionary = {
 	"guard": {"preset": "guard"},
-	"toan": {"preset": "lecturer", "seed": 1995, "glasses": true},
+	"mr_t": {"preset": "lecturer", "seed": 1995, "glasses": true},
 	"police": {"preset": "cop"},
 }
 const LINES: Dictionary = {
 	"guard": ["Đứng lại!", "Bảo vệ đây, đứng yên đó!", "Chạy đi đâu, cổng khoá rồi!"],
-	"toan": ["Em kia! Đứng lại! Thẻ sinh viên đâu?", "Em học lớp nào? Đứng lại cho tôi!", "Chạy nữa là tôi cho F môn này đấy!"],
+	"mr_t": ["Em kia! Đứng lại! Thẻ sinh viên đâu?", "Em học lớp nào? Đứng lại cho tôi!", "Chạy nữa là tôi cho F môn này đấy!"],
 	"police": ["Dừng lại!", "Đứng yên, xuất trình giấy tờ!", "Không được chạy!"],
 }
 
@@ -127,7 +127,7 @@ func setup(r: String, wanted_node: Node, player_node: Node3D, seed_v: int) -> vo
 	bubble.position = Vector3(0.0, 2.25, 0.0)
 	bubble.visible = false
 	add_child(bubble)
-	_shout_t = 0.6 if role == "toan" else _rng.randf_range(1.0, 3.0)
+	_shout_t = 0.6 if role == "mr_t" else _rng.randf_range(1.0, 3.0)
 
 
 func _physics_process(delta: float) -> void:

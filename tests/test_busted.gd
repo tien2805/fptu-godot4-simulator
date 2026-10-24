@@ -37,7 +37,7 @@ func _initialize() -> void:
 	CharacterBuilder.toon = false
 	CharacterBuilder.head_scale_default = 1.0
 	print("--- TEST BUSTED ---")
-	for who: String in ["guard", "police", "toan"]:
+	for who: String in ["guard", "police", "mr_t"]:
 		var tl: CineTimeline = (load(TL_PATH) as GDScript).new()
 		tl.set("catcher", who)
 		tl.build()
@@ -45,7 +45,7 @@ func _initialize() -> void:
 		_check(errs.is_empty(), "busted timeline (%s) passes the A1 validator %s" % [who, str(errs)])
 		var tail: float = tl.length - float(tl.clock.ramps[tl.clock.ramps.size() - 1]["r1"])
 		_check(is_equal_approx(tl.length, 7.0) and tail >= 3.0 and tail <= 4.0, "7 s long, %.3f s normal-speed tail" % tail)
-		_check(tl.actors.has("toan") == (who == "toan"), "Thầy Toàn appears only when he made the catch (%s)" % who)
+		_check(tl.actors.has("mr_t") == (who == "mr_t"), "Mr.T appears only when he made the catch (%s)" % who)
 	var committed: String = FileAccess.get_file_as_string("res://docs/cinematics/wanted_busted.txt").replace("\r\n", "\n")
 	_check(committed == CineTimeline.load_slot("wanted_busted").beat_sheet(), "docs/cinematics/wanted_busted.txt is in sync (run tools/cine_beats.gd)")
 	physics_frame.connect(_on_physics)
@@ -170,7 +170,7 @@ func _part_b(t: int) -> void:
 		w.spawn_officer("guard", near if near is Vector3 else pl.global_position + Vector3(1.0, 0.0, 0.0))
 	if t > 70 and w.busts == 1 and not has_meta("bb"):
 		set_meta("bb", true)
-		_check(w.state == "stamp" and paused and w.catcher in ["guard", "toan"], "busted on campus by %s: frozen + stamp" % w.catcher)
+		_check(w.state == "stamp" and paused and w.catcher in ["guard", "mr_t"], "busted on campus by %s: frozen + stamp" % w.catcher)
 		w.stamp.step_real(1.1)
 		var cp: CinePlayer = roam.get("cine_player")
 		_check(w.state == "cutscene" and cp != null and cp.timeline.slot == "wanted_busted", "the busted cutscene plays through play_cinematic")

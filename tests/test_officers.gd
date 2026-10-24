@@ -1,7 +1,7 @@
 # File: res://tests/test_officers.gd
 # Headless test of the Phase W officers on foot (spec W-D7, section 4): on campus 2 / 4 / 6 security guards by stars and
-# Thầy Toàn from 2 stars (at most 2 spawns per second, never more than 12 officers); they chase the player they see
-# (guards ~5 m/s, Thầy Toàn faster), Thầy Toàn shouts "Em kia! Đứng lại! Thẻ sinh viên đâu?" first; a weapon knocks an
+# Mr.T from 2 stars (at most 2 spawns per second, never more than 12 officers); they chase the player they see
+# (guards ~5 m/s, Mr.T faster), Mr.T shouts "Em kia! Đứng lại! Thẻ sinh viên đâu?" first; a weapon knocks an
 # officer out for 10 s (+5 heat), then he is back on his feet; officers dive at a player sprinting past (comic tackle: the
 # player is knocked down, never hurt); once the stars are gone they give up and vanish – unless a new crime brings the stars
 # back while they walk away, then they rejoin the hunt; an officer pinned in a corner out of view is replaced (fix round
@@ -102,24 +102,24 @@ func _on_physics() -> void:
 			if t == 2:
 				wanted.add_heat(4.0)
 			if t == 70:
-				_check(wanted.count_role("guard") == 2 and wanted.count_role("toan") == 0, "1 star on campus: 2 guards, no Thầy Toàn (%d, %d)" % [wanted.count_role("guard"), wanted.count_role("toan")])
+				_check(wanted.count_role("guard") == 2 and wanted.count_role("mr_t") == 0, "1 star on campus: 2 guards, no Mr.T (%d, %d)" % [wanted.count_role("guard"), wanted.count_role("mr_t")])
 				wanted.add_heat(8.0)
 				_next("two")
 		"two":
 			if t == 130:
-				_check(wanted.count_role("guard") == 4 and wanted.count_role("toan") == 1, "2 stars: 4 guards and Thầy Toàn (%d, %d)" % [wanted.count_role("guard"), wanted.count_role("toan")])
+				_check(wanted.count_role("guard") == 4 and wanted.count_role("mr_t") == 1, "2 stars: 4 guards and Mr.T (%d, %d)" % [wanted.count_role("guard"), wanted.count_role("mr_t")])
 				wanted.add_heat(13.0)
 				_next("three")
 		"three":
 			if t == 130:
-				_check(wanted.count_role("guard") == 6 and wanted.count_role("toan") == 1, "3 stars: 6 guards and Thầy Toàn")
+				_check(wanted.count_role("guard") == 6 and wanted.count_role("mr_t") == 1, "3 stars: 6 guards and Mr.T")
 				_check(wanted.officers().size() <= WantedDirector.MAX_OFFICERS and wanted.officers_spawned == 7, "no more than needed (%d spawned)" % wanted.officers_spawned)
-				_check(checked_speed.has("guard") and checked_speed.has("toan"), "speeds measured for a guard and Thầy Toàn")
-				var toan: Officer = null
+				_check(checked_speed.has("guard") and checked_speed.has("mr_t"), "speeds measured for a guard and Mr.T")
+				var mr_t: Officer = null
 				for o: Officer in wanted.officers():
-					if o.role == "toan":
-						toan = o
-				_check(toan != null and toan.shouts >= 1 and toan.bubble.text == String((Officer.LINES["toan"] as Array)[0]), "Thầy Toàn's first shout (0.6 s after he sees the player): 'Em kia! Đứng lại! Thẻ sinh viên đâu?'")
+					if o.role == "mr_t":
+						mr_t = o
+				_check(mr_t != null and mr_t.shouts >= 1 and mr_t.bubble.text == String((Officer.LINES["mr_t"] as Array)[0]), "Mr.T's first shout (0.6 s after he sees the player): 'Em kia! Đứng lại! Thẻ sinh viên đâu?'")
 				var g: Officer = null
 				for o: Officer in wanted.officers():
 					if o.role == "guard" and g == null:
@@ -192,7 +192,7 @@ func _on_physics() -> void:
 				_check(wanted.officers_replaced >= 1 and not is_instance_valid(stuck_o), "an officer pinned in a corner out of view is replaced after ~3 s (R4-I3, %d replaced)" % wanted.officers_replaced)
 				Engine.time_scale = 1.0
 				if fails.is_empty():
-					print("✅ SUCCESS: OFFICERS (campus counts by star, Thầy Toàn from 2 stars, chase speeds, shout, knock-out +5, get up, tackle, give up)")
+					print("✅ SUCCESS: OFFICERS (campus counts by star, Mr.T from 2 stars, chase speeds, shout, knock-out +5, get up, tackle, give up)")
 					quit(0)
 				else:
 					print("❌ FAILED: %d issues" % fails.size())

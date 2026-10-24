@@ -16,7 +16,7 @@ Ngày: 2026-10-21 · Trạng thái: đã duyệt từng phần với chủ dự 
 | Phân nhánh | **Thân cây chung**; lựa chọn thoại và kết quả mini-game cộng/trừ 3 trục điểm; **4 kết thúc** cuối tuần. |
 | Thế giới mở | Đi bộ/đi xe tự do trong campus, tới đúng địa điểm thì vào mini-game để phá kỷ lục; mở từ menu ngay từ đầu; NPC chỉ nói một câu, không nhiệm vụ. |
 | Trình bày | Cảnh 3D + hộp thoại; chân dung render trực tiếp từ nhân vật 3D; **không ảnh AI**, không ảnh người thật. |
-| Giảng viên phản diện hài | Tên hư cấu **ThS. ToanHLM**, nhóm chat gọi **"Toàn Nổ"**; mặt hư cấu (nam ~40, mặt tròn, trán chữ M hơi hói, tóc ngắn củn, polo bóng, thẻ giảng viên, đồng hồ to). Không dựng theo ảnh người thật, không gắn tính cách với dân tộc nào. |
+| Giảng viên phản diện hài | Tên hư cấu **Mr.T**, nhóm chat gọi **"Toàn Nổ"**; mặt hư cấu (nam ~40, mặt tròn, trán chữ M hơi hói, tóc ngắn củn, polo bóng, thẻ giảng viên, đồng hồ to). Không dựng theo ảnh người thật, không gắn tính cách với dân tộc nào. |
 | Băng bán tool | Cừu Dolly, Lò Văn Lụm, Lò Thị Lụm, Lê Minh Gia Mẫn (tất cả là tên hư cấu do chủ dự án nghĩ ra, theo chất tên meme group FB). |
 
 Ràng buộc kỹ thuật không đổi: Godot 4.7 GDScript thuần, không plugin, không C#, giữ cấu trúc thư mục và `class_name`, texture chỉ vẽ/xử lý bằng code (Pillow), sau mỗi thay đổi chạy `--check-only` + smoke + bot test.
@@ -45,10 +45,10 @@ Mỗi chương là file GDScript dữ liệu trả về `Array` nhịp. Ba loạ
 
 ```gdscript
 {"type": "scene", "id": "mon_lab_intro", "set": "lab402", "time": "07:29",
- "actors": {"MC": {"at": "seat_mc", "clip": "sit"}, "ToanHLM": {"at": "door"}},
+ "actors": {"MC": {"at": "seat_mc", "clip": "sit"}, "Mr.T": {"at": "door"}},
  "script": [ ... lệnh ... ]}
 {"type": "stage", "id": "mon_rollcall", "stage": 3,
- "params": {"lecturer": "ToanHLM"},
+ "params": {"lecturer": "Mr.T"},
  "on_result": {"win": {"rep": 1}, "rank_S": {"team": 1}, "fail": {"rep": -2, "flag": "absent_mon"}}}
 {"type": "summary", "id": "mon_end", "title": "THỨ HAI – SỐNG SÓT SLOT 1", "journal": "…", "teaser": "…"}
 ```
@@ -61,11 +61,11 @@ Câu thoại dùng `{MC}` (tên nhân vật chính) và `{anh|chị}`, `{cậu|c
 Hiệu ứng của `choice`: `{"team": ±n, "romance": ±n, "rep": ±n, "flag": "tên"}`; điều kiện hiện: `{"req": "rep>=3"}`.
 
 ### 2.3 Cinematic bẩn bựa (node `Cinematic`)
-`slowmo` tỷ_lệ giây · `punch_in` nhân vật (zoom giật + sting "dun dun duuun") · `dutch` độ · `shake` cường_độ · `letterbox` on/off · `freeze` chữ (đóng băng + tiếng đĩa than + caption "Đúng vậy, đó là tôi…") · `caption` chữ (meme to giữa màn hình: SEEN KHÔNG REP, ABSENT, NO NÊ) · `sticker` nhân vật biểu_tượng · `flop` nhân vật (ngã sõng soài) · `scream` nhân vật · `dab` · `kneel` (quỳ xin điểm) · `sprint_panic` · `sting` tên (nhạc ngắt + hợp âm bi kịch hoặc kèn vuvuzela) · `light` preset (đèn đỏ sân khấu, chớp sét ngoài cửa sổ, đèn nháy) · `crowd` phản_ứng ("ồồồ", vỗ tay, quay lưng bỏ đi) · `jumpscare` nhân vật (mặt thầy Toàn phóng to 0,3 giây kèm tiếng thét, dùng tối đa 2 lần cả tuần).
+`slowmo` tỷ_lệ giây · `punch_in` nhân vật (zoom giật + sting "dun dun duuun") · `dutch` độ · `shake` cường_độ · `letterbox` on/off · `freeze` chữ (đóng băng + tiếng đĩa than + caption "Đúng vậy, đó là tôi…") · `caption` chữ (meme to giữa màn hình: SEEN KHÔNG REP, ABSENT, NO NÊ) · `sticker` nhân vật biểu_tượng · `flop` nhân vật (ngã sõng soài) · `scream` nhân vật · `dab` · `kneel` (quỳ xin điểm) · `sprint_panic` · `sting` tên (nhạc ngắt + hợp âm bi kịch hoặc kèn vuvuzela) · `light` preset (đèn đỏ sân khấu, chớp sét ngoài cửa sổ, đèn nháy) · `crowd` phản_ứng ("ồồồ", vỗ tay, quay lưng bỏ đi) · `jumpscare` nhân vật (mặt Mr.T phóng to 0,3 giây kèm tiếng thét, dùng tối đa 2 lần cả tuần).
 
 Mọi hiệu ứng là camera, animation `CharacterBuilder` (thêm clip `flop`, `scream`, `dab`, `kneel`, `sprint_panic`), `Label3D`/Control và `MusicDirector`/SFX tổng hợp; không tài nguyên ngoài.
 
-Cảm hứng "dramatic" thêm từ *Quán Phở Của Anh Hai* (indie Godot Việt, kinh dị pha hài, cắt cảnh meme): dựng vài đoạn **kinh dị giả** trong khung hài: đêm cày Capstone đèn chớp tắt và "quái vật deadline" (đã có ở Màn 6) được dẫn bằng cảnh tin nhắn 23:58 của thầy Toàn; hành lang phòng thi Thứ Sáu với nhạc căng, bước chân giám thị, rồi vỡ ra thành chuyện bẩn bựa (thí sinh nuốt phao). Nhịp: căng 10–15 giây rồi xả bằng một câu ngu người.
+Cảm hứng "dramatic" thêm từ *Quán Phở Của Anh Hai* (indie Godot Việt, kinh dị pha hài, cắt cảnh meme): dựng vài đoạn **kinh dị giả** trong khung hài: đêm cày Capstone đèn chớp tắt và "quái vật deadline" (đã có ở Màn 6) được dẫn bằng cảnh tin nhắn 23:58 của Mr.T; hành lang phòng thi Thứ Sáu với nhạc căng, bước chân giám thị, rồi vỡ ra thành chuyện bẩn bựa (thí sinh nuốt phao). Nhịp: căng 10–15 giây rồi xả bằng một câu ngu người.
 
 Ranh giới: slapstick, meme sinh viên, trash talk, gross-out nhẹ. Không nội dung tình dục, không nhắm vào người thật, không dùng ảnh người thật.
 
@@ -78,7 +78,7 @@ Ranh giới: slapstick, meme sinh viên, trash talk, gross-out nhẹ. Không n�
 | Linh | Linh | student_f, tóc bob | frontend, tuyến tình cảm |
 | Tu | Tú | student_m casual | tester, hài, uống Monster |
 | Phuc | Phúc | student_m, tóc spiky | "seen không rep", ngủ gục, biến mất Thứ Năm |
-| ToanHLM | ThS. ToanHLM "Toàn Nổ" | lecturer_boss (mới: trán chữ M, hói nhẹ, tóc củn, polo bóng, đồng hồ to) | phản diện hài, dạy slot 1, ngồi hội đồng |
+| Mr.T | Mr.T "Toàn Nổ" | lecturer_boss (mới: trán chữ M, hói nhẹ, tóc củn, polo bóng, đồng hồ to) | phản diện hài, dạy slot 1, ngồi hội đồng |
 | Hanh | Cô Hạnh | lecturer (nữ, bun) | hướng dẫn Capstone, hiền nhưng nghiêm |
 | Bay | Chú Bảy | guard | bảo vệ cổng |
 | CoBa | Cô Ba | cook | căn tin |
@@ -88,7 +88,7 @@ Ranh giới: slapstick, meme sinh viên, trash talk, gross-out nhẹ. Không n�
 | GiaMan | Lê Minh Gia Mẫn | casual áo sơ mi, kính | trùm băng tool, giọng khởi nghiệp, lộ diện Thứ Sáu |
 
 ### 2.5 Bank câu đặc trưng (`story/Lines.gd`)
-- ToanHLM: "Nhà tôi không có gì ngoài tiền.", "Sáng nay tôi mới đi uống cà phê với anh Minh bên Marvell.", "Ai muốn đi thực tập bên Qualcomm gửi CV đi, tôi nói mấy anh bên đó duyệt cho.", "Dốt như bò. Mấy ông cho về đi chăn heo.", "Code kiểu này mà đòi lương nghìn đô? Bên Marvell người ta cho về sau hai phút.", "Slide này tôi soạn ở lounge sân bay, hạng thương gia đấy.", "Hỏi gì mà hỏi. Google mất hai giây, hỏi tôi mất hai điểm.", "Điểm này tôi cho vì thương, không phải vì giỏi.", "Ai làm được câu này tôi mời Starbucks, tiền lẻ với tôi thôi.", "Hồi tôi bằng tuổi mấy ông, tôi đã có hai cái nhà rồi."
+- Mr.T: "Nhà tôi không có gì ngoài tiền.", "Sáng nay tôi mới đi uống cà phê với anh Minh bên Marvell.", "Ai muốn đi thực tập bên Qualcomm gửi CV đi, tôi nói mấy anh bên đó duyệt cho.", "Dốt như bò. Mấy ông cho về đi chăn heo.", "Code kiểu này mà đòi lương nghìn đô? Bên Marvell người ta cho về sau hai phút.", "Slide này tôi soạn ở lounge sân bay, hạng thương gia đấy.", "Hỏi gì mà hỏi. Google mất hai giây, hỏi tôi mất hai điểm.", "Điểm này tôi cho vì thương, không phải vì giỏi.", "Ai làm được câu này tôi mời Starbucks, tiền lẻ với tôi thôi.", "Hồi tôi bằng tuổi mấy ông, tôi đã có hai cái nhà rồi."
 - Băng tool: "ib anh cứu", "ib em cứu nha mọi người", "full đề EOS, bao pass, không pass hoàn tiền", "ai cần tool PRN ib mình", "uy tín 5 năm, feedback đầy", "còn 3 slot, nhanh tay", "ib mình gửi key", "nhận làm lab, đồ án, bao điểm 8+", "ad duyệt bài giúp em với", "cmt chấm để nhận tài liệu", "chốt đơn", "xin vía qua môn", "thi xong đừng khoe điểm, ib anh cứu"; Gia Mẫn: "hệ sinh thái tool", "uy tín 5 năm", "kết nối mentor", "em nghĩ lớn đi".
 - Sinh viên campus / nhóm chat: "cho em hỏi thầy này dễ không ạ", "có ai slot 1 bị kẹt xe không", "chụp giúp mình điểm danh với", "xin link slide", "seen không rep là có lý do", "cần tìm team Capstone, mình làm tester", "pass môn này bao không", "lên đồ đi thi", "cà phê Passio ai đi không", "nhà tôi không có gì ngoài deadline".
 
@@ -101,12 +101,12 @@ Ranh giới: slapstick, meme sinh viên, trash talk, gross-out nhẹ. Không n�
 
 | Chương | Mini-game | Trục truyện | Khoảnh khắc bẩn bựa |
 | :-- | :-- | :-- | :-- |
-| Thứ Hai – "Slot 1" | Màn 1, Màn 3 (thầy Toàn) | ra mắt nhóm, thầy Toàn, cô Hạnh, chú Bảy, cô Ba | quẹt thẻ trượt 3 lần quay chậm; thầy gọi tên punch-in, tiếng ruồi |
+| Thứ Hai – "Slot 1" | Màn 1, Màn 3 (Mr.T) | ra mắt nhóm, Mr.T, cô Hạnh, chú Bảy, cô Ba | quẹt thẻ trượt 3 lần quay chậm; thầy gọi tên punch-in, tiếng ruồi |
 | Thứ Ba – "Khay cơm định mệnh" | Màn 2 (cầu thang trong nhà), Màn 5 | mâu thuẫn nhóm bắt đầu, Linh | Phúc gục bàn phím 400 dòng "jjjj"; trượt vũng nước, cô Ba "KHAY CỦA CÔ", freeze |
 | Thứ Tư – "Đòn chân kẹp cổ" | Màn 4 | manh mối 1: bài đăng "ib anh cứu", Lò Văn Lụm lụm thẻ | đá hụt quay chậm, đồng môn facepalm; Linh nhắn nhầm nhóm, caption SEEN |
 | Thứ Năm – "Đêm không ngủ" | Màn 6 biến thể ngắn (đêm cày) | Phúc biến mất; lựa chọn lớn: che hay tố giác việc Phúc mua tool | Tú uống Monster thứ tư mắt sáng xanh; tin nhắn 23:58, chớp sét, cả nhóm quỳ |
 | Thứ Sáu – "Phòng 311" | Extra (MC được thầy nhờ quan sát) | cao trào băng tool, Gia Mẫn lộ diện | giám thị dolly, nuốt phao, "KHÔNG TÌM THẤY BẰNG CHỨNG"; truy đuổi sprint_panic |
-| Thứ Bảy – "Bảo vệ" | Màn 6 bản cuối | buổi bảo vệ, thầy Toàn trong hội đồng, kết thúc | demo crash quay chậm, Minh dab, "nhóm em không có gì ngoài bug"; cảnh kết riêng |
+| Thứ Bảy – "Bảo vệ" | Màn 6 bản cuối | buổi bảo vệ, Mr.T trong hội đồng, kết thúc | demo crash quay chậm, Minh dab, "nhóm em không có gì ngoài bug"; cảnh kết riêng |
 
 ### 3.2 Ba trục điểm
 Nhóm, Tình cảm, Uy tín: 0–20, bắt đầu 5. Nguồn: lựa chọn (±1/±2), mini-game (bảng §3.3), sự kiện phụ. Chỉ hiện ở thẻ tổng kết ngày và nhật ký.
@@ -125,7 +125,7 @@ Nhóm, Tình cảm, Uy tín: 0–20, bắt đầu 5. Nguồn: lựa chọn (±1/
 | Thứ Bảy – Màn 6 cuối | quyết định kết thúc | | quyết định kết thúc |
 
 ### 3.4 Truyện → màn chơi (`StoryDirector.stage_params`)
-Nhóm ≥ 10: Phúc tỉnh táo từ đầu Màn 6, team +HP. Tình cảm ≥ 8: Linh chờ ở căn tin, giảm số lần bị xô. Uy tín ≤ 4: thầy Toàn gắt hơn (thời gian nhập mã ngắn hơn, nhiều câu chửi). Cờ `mocked_toan`: đổi lời thoại của ông ở mọi màn. Màn 3 dùng mô hình và bộ thoại thầy Toàn khi `lecturer == "ToanHLM"`.
+Nhóm ≥ 10: Phúc tỉnh táo từ đầu Màn 6, team +HP. Tình cảm ≥ 8: Linh chờ ở căn tin, giảm số lần bị xô. Uy tín ≤ 4: Mr.T gắt hơn (thời gian nhập mã ngắn hơn, nhiều câu chửi). Cờ `mocked_toan`: đổi lời thoại của ông ở mọi màn. Màn 3 dùng mô hình và bộ thoại Mr.T khi `lecturer == "Mr.T"`.
 
 ### 3.5 Bốn kết thúc (xét theo thứ tự)
 1. **Kết ẩn "Anh Minh bên Marvell có thật"**: bảo vệ thắng, Uy tín ≥ 12, Nhóm ≥ 10, đủ 3 manh mối, không có `mocked_toan`.

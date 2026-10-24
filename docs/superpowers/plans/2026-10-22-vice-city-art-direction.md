@@ -34,7 +34,7 @@
 | D2 | UI palette | Vice palette (dark purple panels, pink `#FF5FB0` / cyan `#3FF2FF` borders, italic headings); FPT orange only on FPT-branded items |
 | D3 | Character proportions in vice | Superseded by docs/superpowers/specs/2026-10-22-vice-people-and-movement-design.md: PS2 people at realistic scale |
 | D4 | Temporal "trails" smear (signature PS2 effect) | On at sunset and night, off by day; Settings toggle |
-| D5 | HUD semantics | Money = "Cóc Vàng" (CV) wallet from the open-world plan; 5 stars = "Thầy Toàn để ý" (lecturer attention) |
+| D5 | HUD semantics | Money = "Cóc Vàng" (CV) wallet from the open-world plan; 5 stars = "Mr.T để ý" (lecturer attention) |
 
 ## Time-of-day mapping
 
@@ -144,7 +144,7 @@ Values for `sunset`, `day`, `night` are the final ones in `tests/preview_vice_lo
 
 **Status:** Outfit items and vehicle paint dropped by the owner on 2026-10-23 (clothes unchanged; only the people models matter).
 
-**Files:** Modify `scripts/PropBuilder.gd` (scooter paint palette `PASTEL_PAINTS = [#FF8FC7, #7FE3E0, #FFD27F, #B79CFF, #F4F4F4, #FF6F6F]`, clearcoat 0.7 for the 80s gloss), `scenes/TrafficCar.tscn` / its builder (boxy sedan silhouette and pastel colours), `scripts/CharacterBuilder.gd` (`casual` and crowd presets draw from a pastel outfit palette; new Pillow texture `char_shirt_hawaii.png` (floral pattern, code-drawn) for some casual NPCs; `lecturer_boss` (ThS. ToanHLM) can wear a white blazer over a pastel tee as a nod to 80s TV-detective fashion; students keep the orange FPT polo), `generate_character_textures.py` (the Hawaiian shirt texture), tests `tests/test_character_builder.gd`, `tests/test_wheel_spin.gd`.
+**Files:** Modify `scripts/PropBuilder.gd` (scooter paint palette `PASTEL_PAINTS = [#FF8FC7, #7FE3E0, #FFD27F, #B79CFF, #F4F4F4, #FF6F6F]`, clearcoat 0.7 for the 80s gloss), `scenes/TrafficCar.tscn` / its builder (boxy sedan silhouette and pastel colours), `scripts/CharacterBuilder.gd` (`casual` and crowd presets draw from a pastel outfit palette; new Pillow texture `char_shirt_hawaii.png` (floral pattern, code-drawn) for some casual NPCs; `lecturer_boss` (Mr.T) can wear a white blazer over a pastel tee as a nod to 80s TV-detective fashion; students keep the orange FPT polo), `generate_character_textures.py` (the Hawaiian shirt texture), tests `tests/test_character_builder.gd`, `tests/test_wheel_spin.gd`.
 - [ ] Steps: implement, regenerate textures (`python generate_character_textures.py`), import, run tests, preview `tests/preview_rigged.gd` + `tests/preview_props.gd`, commit `feat(vice): pastel vehicles, Hawaiian-shirt crowd, 80s outfits`.
 
 ### Task VC-7: Trails and film post-processing

@@ -389,7 +389,7 @@ func search_radius() -> float:
 	return SEARCH_R[clampi(stars, 1, 3) - 1]
 
 
-## Spawn an officer (role "guard" | "toan" | "police") at `at` or at a free spot 25-45 m from the player, out of view when
+## Spawn an officer (role "guard" | "mr_t" | "police") at `at` or at a free spot 25-45 m from the player, out of view when
 ## possible. null when the cap is reached or no spot is found.
 func spawn_officer(role: String, at: Variant = null) -> Officer:
 	if _officers.size() >= MAX_OFFICERS:
@@ -444,7 +444,7 @@ func _in_view(p: Vector3) -> bool:
 
 
 ## Once per MAINTAIN_S: officers far away and out of view leave; campus (inside the plot): guards up to GUARDS[stars] and
-## Thầy Toàn from 2 stars; streets and residential: police bikes up to BIKES[stars] (+3 for the second wave after 30 s at
+## Mr.T from 2 stars; streets and residential: police bikes up to BIKES[stars] (+3 for the second wave after 30 s at
 ## 3 stars), counting the ones on their way and the officers already off their bikes. At most SPAWNS_PER_MAINTAIN per call.
 ## Also: officers pinned for STUCK_REPLACE_S out of view (or STUCK_FORCE_S anywhere) are replaced, the campus / street
 ## HUD label follows the player across the plot border, and the exclusion list of the sight rays is refreshed. The spawns
@@ -467,22 +467,22 @@ func _maintain() -> void:
 		_spawn_budget = SPAWNS_PER_MAINTAIN
 
 
-## After a star drop: guards beyond GUARDS[stars] (and Thầy Toàn below 2 stars) leave when out of view.
+## After a star drop: guards beyond GUARDS[stars] (and Mr.T below 2 stars) leave when out of view.
 func _trim_surplus() -> void:
 	var extra_g: int = count_role("guard") - GUARDS[stars - 1]
-	var extra_t: int = count_role("toan") - (1 if stars >= 2 else 0)
+	var extra_t: int = count_role("mr_t") - (1 if stars >= 2 else 0)
 	if extra_g <= 0 and extra_t <= 0:
 		return
 	for o: Officer in officers():
 		if o.role == "guard" and extra_g > 0 and not _in_view(o.global_position):
 			_despawn(o)
 			extra_g -= 1
-		elif o.role == "toan" and extra_t > 0 and not _in_view(o.global_position):
+		elif o.role == "mr_t" and extra_t > 0 and not _in_view(o.global_position):
 			_despawn(o)
 			extra_t -= 1
 
 
-## One spawn of the current maintain budget: campus guards up to GUARDS[stars], then Thầy Toàn from 2 stars; streets:
+## One spawn of the current maintain budget: campus guards up to GUARDS[stars], then Mr.T from 2 stars; streets:
 ## police bikes up to BIKES[stars] (+ the second wave), never more police than the free officer slots.
 func _spawn_one() -> void:
 	_spawn_budget -= 1
@@ -490,8 +490,8 @@ func _spawn_one() -> void:
 		if count_role("guard") < GUARDS[stars - 1]:
 			if spawn_officer("guard") == null:
 				_spawn_budget = 0
-		elif stars >= 2 and count_role("toan") == 0:
-			spawn_officer("toan")
+		elif stars >= 2 and count_role("mr_t") == 0:
+			spawn_officer("mr_t")
 			_spawn_budget = 0
 		else:
 			_spawn_budget = 0

@@ -1,8 +1,8 @@
 # File: res://scripts/cine/timelines/wanted_busted.gd
 # wanted_busted (7.000 s, Phase W spec section 5 / W-D8, plan Task 10): "BỊ TÓM!" – the officer who made the catch walks up behind
-# the player and cuffs him on the B1 click (one medium ramp at real 2.400 s); if Thầy Toàn (ThS. ToanHLM, the story's
-# fictional lecturer) made the catch, a guard cuffs and Thầy Toàn stands in front shaking his head. WantedDirector sets
-# `catcher` ("guard" | "police" | "toan") before build() and plays it through FreeRoam.play_cinematic with opts "xf" (the
+# the player and cuffs him on the B1 click (one medium ramp at real 2.400 s); if Mr.T (the story's
+# fictional lecturer) made the catch, a guard cuffs and Mr.T stands in front shaking his head. WantedDirector sets
+# `catcher` ("guard" | "police" | "mr_t") before build() and plays it through FreeRoam.play_cinematic with opts "xf" (the
 # player's spot and facing), so `stage` stays empty. CineTimeline.load_slot("wanted_busted") builds the guard variant (beat sheet
 # docs/cinematics/wanted_busted.txt). The ramp ends at 3.260 s real: a 3.740 s normal-speed tail (A1-D8: 3-4 s).
 # Stage frame: X right, -Z forward (where the player faces), ground y = 0; yaw in degrees, characters face -Z at 0.
@@ -11,7 +11,7 @@ extends CineTimeline
 const HERO := Vector3(0.0, 0.0, 0.0)
 const COP_FROM := Vector3(0.9, 0.0, 2.6)
 const COP_AT := Vector3(0.3, 0.0, 0.8)
-const TOAN_AT := Vector3(-0.9, 0.0, -1.6)
+const MR_T_AT := Vector3(-0.9, 0.0, -1.6)
 
 var catcher: String = "guard"
 
@@ -44,17 +44,17 @@ func build() -> void:
 	shot("S1", 0.0, "static", "wide: the officer walks up behind", {"pos": Vector3(-2.8, 1.7, -3.2), "look": Vector3(0.3, 1.0, 0.9), "fov": 50.0})
 	shot("S2", 1.85, "orbit", "close on the cuffs", {"center": Vector3(0.15, 1.0, 0.4), "radius": 1.9, "deg_from": 70.0, "deg_to": 110.0, "height": 1.25, "fov": 42.0})
 	shot("S3", 3.3, "static", "front two-shot", {"pos": Vector3(0.35, 1.55, -3.4), "look": Vector3(0.15, 1.15, 0.3), "fov": 45.0, "hand": 0.3})
-	if catcher == "toan":
-		actor("toan", {"preset": "lecturer", "seed": 1995, "glasses": true}, "Thầy Toàn", Color("#9B59B6"))
-		key("toan", 0.0, TOAN_AT, CineTimeline.face(TOAN_AT, HERO))
-		move("toan", 0.0, "idle")
-		move("toan", 3.5, "head_shake")
-		move("toan", 4.1, "head_shake")
-		move("toan", 4.7, "idle")
-		look("toan", 0.0, 6.2, "hero")
-		look("hero", 3.4, 6.2, "toan")
-		sub(3.3, 1.3, "toan", "Em kia! Thẻ sinh viên đâu?")
-		sub(4.7, 1.1, "toan", "Mười năm đi dạy, chưa thấy em nào lì như em.")
+	if catcher == "mr_t":
+		actor("mr_t", {"preset": "lecturer", "seed": 1995, "glasses": true}, "Mr.T", Color("#9B59B6"))
+		key("mr_t", 0.0, MR_T_AT, CineTimeline.face(MR_T_AT, HERO))
+		move("mr_t", 0.0, "idle")
+		move("mr_t", 3.5, "head_shake")
+		move("mr_t", 4.1, "head_shake")
+		move("mr_t", 4.7, "idle")
+		look("mr_t", 0.0, 6.2, "hero")
+		look("hero", 3.4, 6.2, "mr_t")
+		sub(3.3, 1.3, "mr_t", "Em kia! Thẻ sinh viên đâu?")
+		sub(4.7, 1.1, "mr_t", "Mười năm đi dạy, chưa thấy em nào lì như em.")
 	else:
 		look("hero", 3.4, 6.2, "cop")
 		sub(3.6, 1.8, "cop", "Mời anh đi lao động công ích!" if police else "Đi lao động công ích với chú nào!")
