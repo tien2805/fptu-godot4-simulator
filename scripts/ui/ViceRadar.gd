@@ -21,6 +21,8 @@ const ROAD_COLORS: Array[Color] = [Color(0.56, 0.52, 0.77, 0.75), Color("#B9B0EA
 const ROAD_WIDTHS: Array[float] = [1.2, 2.0, 3.0]
 const ROUTE := Color("#FF5FB0")
 const INK := Color("#1B0F33")
+const SEARCH_FILL := Color(0.3, 0.55, 1.0, 0.22)
+const SEARCH_RIM := Color(0.45, 0.7, 1.0, 0.85)
 
 var md: MapData:
 	set(v):
@@ -48,6 +50,13 @@ var route: PackedVector2Array = PackedVector2Array():
 		route = v
 		_cache_center = Vector2(INF, INF)
 		_dirty = true
+## Phase W wanted search area (map x, map z, radius m); radius 0 = none. A translucent disc clipped to the radar.
+var search: Vector3 = Vector3.ZERO:
+	set(v):
+		if not v.is_equal_approx(search):
+			search = v
+			_dirty = true
+var search_draws: int = 0
 
 var draws: int = 0
 var last_draw_usec: int = 0
@@ -254,6 +263,21 @@ func _draw() -> void:
 	if rl.size() >= 2:
 		draw_multiline(rl, INK, 7.0, true)
 		draw_multiline(rl, ROUTE, 4.0, true)
+	# Phase W: vòng tìm kiếm của truy nã (cắt theo đĩa radar)
+	if search.z > 0.0:
+		var sc: Vector2 = to_radar(Vector2(search.x, search.y))
+		var sr: float = search.z * k
+		var disc := PackedVector2Array()
+		var rim_poly := PackedVector2Array()
+		for i3: int in 48:
+			var a3: float = TAU * float(i3) / 48.0
+			disc.append(sc + Vector2(cos(a3), sin(a3)) * sr)
+			rim_poly.append(c + Vector2(cos(a3), sin(a3)) * rr)
+		for piece: PackedVector2Array in Geometry2D.intersect_polygons(disc, rim_poly):
+			draw_colored_polygon(piece, SEARCH_FILL)
+		if sc.distance_to(c) + sr <= rr:
+			draw_arc(sc, sr, 0.0, TAU, 48, SEARCH_RIM, 2.0, true)
+		search_draws += 1
 	# blip (ngoài tầm: nằm ở mép)
 	for bl: Dictionary in blips:
 		var bp: Vector2 = to_radar(bl.get("pos", Vector2.ZERO))

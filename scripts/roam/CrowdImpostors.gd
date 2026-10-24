@@ -183,6 +183,24 @@ func remove_farthest(center: Vector3, n: int) -> int:
 	return all.size()
 
 
+## Phase W: impostors within r of center run away (spec section 3: impostors inside an effect radius simply flee) – flee
+## speed, and the ones walking toward the center turn round. Returns how many.
+func scatter(center: Vector3, r: float) -> int:
+	if graph == null:
+		return 0
+	var n: int = 0
+	for i: int in range(_wid.size()):
+		if _flat(_pos[i], center) > r:
+			continue
+		_speed[i] = Pedestrian.FLEE_SPEED
+		if _flat(graph.node_pos(_node[i]), center) < _flat(_pos[i], center):
+			var tmp: int = _node[i]
+			_node[i] = _prev[i]
+			_prev[i] = tmp
+		n += 1
+	return n
+
+
 ## Đi tiếp dt giây theo cạnh đồ thị; tới nút thì chọn nút kế (next_node); nút cô lập (block_near) thì đứng yên.
 func step(dt: float) -> void:
 	if graph == null:

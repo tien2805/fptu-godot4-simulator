@@ -6,12 +6,15 @@
 # Tầng giữa (lod_far, PedestrianSpawner đặt): trượt theo đồ thị không vật lý, không đo va chạm, không tách đám.
 # Danh tính (identity) giữ nguyên khi đổi tầng: preset / seed / female quyết định mô hình (model_opts), profile / wseed
 # quyết định cách đi. Không dùng autoload ở đây (class_name biên dịch trước autoload khi chạy test --script).
+# Phase W (spec 2026-10-23-phase-w-weapons-wanted-design.md, W-D3): take_hit(info) – weapons knock people out (comic
+# stars by WeaponFX, up after 6-10 s, then they flee), launch them along a ballistic arc (explosion, shotgun), make them
+# pinch their nose (stink) or dance / get pushed (loa), or just scare them. Nobody dies; a mid-tier person is promoted.
 class_name Pedestrian
 extends CharacterBody3D
 
 signal hit(ped: Pedestrian, kind: String)
 
-enum State { WALK, IDLE, STUMBLE, KNOCKDOWN, FLEE }
+enum State { WALK, IDLE, STUMBLE, KNOCKDOWN, FLEE, KNOCKED_OUT, LAUNCHED, STINK, DANCE, REACT }
 
 const RADIUS: float = 0.28
 const HEIGHT: float = 1.7
@@ -43,6 +46,18 @@ const SPRINT_HIT_SPEED: float = 6.0
 const BIKE_HIT_SPEED: float = 3.0
 const IDLE_CHANCE: float = 0.1
 const ARRIVE_R: float = 0.6
+## Phase W weapon reactions (W-D3: nobody dies – knocked out, up after KO_MIN..KO_MAX s, then flee).
+const KO_MIN: float = 6.0
+const KO_MAX: float = 10.0
+const FLEE_HIT_TIME: float = 6.0          # bỏ chạy sau phản ứng vũ khí (va chạm thường: FLEE_TIME 3 s)
+const STINK_TIME: float = 2.5
+const DANCE_TIME: float = 2.0
+const DANCE_CHANCE: float = 0.35
+const PUNCH_STEP_M: float = 0.25          # cú đấm 1-2 của combo: lùi 0,25 m (đòn 3 vẫn trong tầm với)
+const PUSH_DECEL: float = 8.0
+const LAUNCH_MAX_S: float = 4.0
+const LAUNCH_SPIN: float = 9.0            # rad/s quanh trục đứng khi bay
+const LAND_MIN_S: float = 0.15
 const PED_LINES: Dictionary = {
 	"bump": ["Ê, nhìn đường chứ bạn!", "Đi đứng kiểu gì vậy trời…", "Từ từ thôi, trễ học hả?", "Xin lỗi một tiếng coi!"],
 	"sprint": ["Chạy deadline hả em?!", "Ối giời ơi, đụng người ta rồi!", "Thanh niên gì mà hấp tấp vậy!", "Điểm danh trễ cũng đâu cần chạy vậy!"],
@@ -78,6 +93,15 @@ var _walked: int = 0
 var _sep: Vector3 = Vector3.ZERO
 var _sep_phase: int = 0
 var _rng := RandomNumberGenerator.new()
+var ko_left: float = 0.0
+var flee_left: float = FLEE_TIME
+var _push_v: Vector3 = Vector3.ZERO
+var _flee_src: Vector3 = Vector3.ZERO
+## Phase W emotes: reacting to the player's emote (clap / shout / film / look), then back to the previous state.
+var react_kind: String = ""
+var react_left: float = 0.0
+var _react_prev: int = State.WALK
+var _react_prop: Node3D = null
 
 
 ## Tuỳ chọn CharacterBuilder.build() của một danh tính (dùng chung với bake người nộm của CrowdImpostors).
@@ -110,6 +134,8 @@ func setup(g: PedWalkGraph, node: int, ident: Dictionary) -> void:
 	_sep_phase = int(identity["wseed"]) % SEPARATION_EVERY
 	prev_node = node
 	target_node = node
+	if react_kind != "":
+		_end_react()                         # recycled mid-reaction: no phone left on the reused body
 	state = State.WALK
 	velocity = Vector3.ZERO
 	hits.clear()
@@ -125,6 +151,13 @@ func setup(g: PedWalkGraph, node: int, ident: Dictionary) -> void:
 	_getting_up = false
 	_walked = 0
 	_sep = Vector3.ZERO
+	ko_left = 0.0
+	flee_left = FLEE_TIME
+	_push_v = Vector3.ZERO
+	if _react_prop:
+		_react_prop.queue_free()
+		_react_prop = null
+	react_kind = ""
 	floor_snap_length = 0.4
 	if get_node_or_null("Capsule") == null:
 		var cs := CollisionShape3D.new()
@@ -160,7 +193,7 @@ func set_far(far: bool) -> void:
 	# tầng giữa không phản ứng va chạm nên cũng không được là capsule cứng chắn người chơi / xe
 	if far:
 		collision_layer = 0
-	elif state != State.KNOCKDOWN:
+	elif not is_down():
 		collision_layer = 1
 	if not far:
 		snap_to_floor()
@@ -191,6 +224,16 @@ func _physics_process(delta: float) -> void:
 			_stumble(delta)
 		State.KNOCKDOWN:
 			_knockdown(delta)
+		State.KNOCKED_OUT:
+			_knocked_out(delta)
+		State.LAUNCHED:
+			_launched(delta)
+		State.STINK:
+			_stinking(delta)
+		State.DANCE:
+			_dancing(delta)
+		State.REACT:
+			_reacting(delta)
 	_check_contacts()
 
 
@@ -198,7 +241,7 @@ func _physics_process(delta: float) -> void:
 # VA CHẠM
 # ---------------------------------------------------------------------------
 func _check_contacts() -> void:
-	if lod_far or _cool > 0.0 or state == State.KNOCKDOWN:
+	if lod_far or _cool > 0.0 or is_down():
 		return
 	var mounted: bool = bool(mounted_fn.call()) if mounted_fn.is_valid() else false
 	var other: Node3D = bike if mounted else player
@@ -228,6 +271,8 @@ func _check_contacts() -> void:
 
 
 func react(kind: String, away: Vector3, speed: float) -> void:
+	if state == State.REACT:
+		_end_react()                         # bumped while reacting to an emote: drop the phone, free the head look
 	hits.append(kind)
 	_away = away
 	_t = 0.0
@@ -268,8 +313,9 @@ func _walk(delta: float) -> void:
 		_sep = _separation()
 	var dir: Vector3 = (to.normalized() + (Vector3.ZERO if lod_far else _sep * 0.8)).normalized()
 	var sp: float = FLEE_SPEED if state == State.FLEE else walk_speed
-	velocity.x = dir.x * sp
-	velocity.z = dir.z * sp
+	velocity.x = dir.x * sp + _push_v.x
+	velocity.z = dir.z * sp + _push_v.z
+	_push_v = _push_v.move_toward(Vector3.ZERO, PUSH_DECEL * delta)
 	if lod_far:
 		velocity.y = 0.0
 		global_position += Vector3(velocity.x, 0.0, velocity.z) * delta
@@ -277,13 +323,13 @@ func _walk(delta: float) -> void:
 			snap_to_floor()
 	else:
 		_gravity(delta)
-		if is_on_wall():
+		if is_on_wall() and _wall_is_low_static():
 			_try_step_up(dir, delta)
 		move_and_slide()
 	_face(dir, delta)
 	CharacterBuilder.set_speed(model, sp)
 	_stuck_check(delta)
-	if state == State.FLEE and _t >= FLEE_TIME:
+	if state == State.FLEE and _t >= flee_left:
 		state = State.WALK
 
 
@@ -349,22 +395,242 @@ func _knockdown(delta: float) -> void:
 		_getting_up = false
 		_throw_v = Vector3.ZERO
 		collision_layer = 1
-		state = State.FLEE
-		_t = 0.0
-		CharacterBuilder.stop_clip(model)
 		CharacterBuilder.set_expression(model, "open")
 		# bỏ chạy: chọn nút kề xa người chơi nhất
-		if graph and target_node >= 0:
-			var best: int = target_node
-			var best_d: float = -1.0
-			var src: Node3D = player if player else self
-			for v: int in graph.neighbours(target_node):
-				var d: float = graph.node_pos(v).distance_to(src.global_position)
-				if d > best_d:
-					best_d = d
-					best = v
-			prev_node = target_node
-			target_node = best
+		flee_from(player.global_position if player else global_position, FLEE_TIME)
+
+
+# ---------------------------------------------------------------------------
+# PHASE W: PHẢN ỨNG VŨ KHÍ
+# ---------------------------------------------------------------------------
+## Weapon hit (Phase W, spec section 3). info:
+##   "kind": "punch" (1st / 2nd hit of a punch combo: stumble) | "melee" | "bullet" | "bonk" (knock out) | "pellet" |
+##           "blast" (launch with info "vel") | "stink" | "sonic" (push along info "dir" at info "power" m/s; info "dance"
+##           forces the dance roll) | "scare" (flee only);
+##   "from": Vector3 source position; "ko": knock-out seconds (default random KO_MIN..KO_MAX).
+## A mid-tier pedestrian is promoted first. Returns "knocked_out" | "launched" | "stink" | "dance" | "pushed" | "flee" |
+## "stumble" | "none" (already down).
+func take_hit(info: Dictionary) -> String:
+	if is_down():
+		return "none"
+	if state == State.REACT:
+		_end_react()
+		state = State.WALK
+	if lod_far:
+		set_far(false)
+	var kind: String = String(info.get("kind", "melee"))
+	var from: Vector3 = info.get("from", global_position)
+	var away: Vector3 = _flat_dir(global_position - from)
+	_flee_src = from
+	match kind:
+		"punch":
+			react("bump", away, 1.0)
+			var v0: float = sqrt(2.0 * STUMBLE_DECEL * PUNCH_STEP_M)
+			velocity.x = away.x * v0
+			velocity.z = away.z * v0
+			return "stumble"
+		"melee", "bullet", "bonk":
+			knock_out(float(info.get("ko", _rng.randf_range(KO_MIN, KO_MAX))), away)
+			return "knocked_out"
+		"pellet", "blast":
+			launch(info.get("vel", away * 6.0 + Vector3(0.0, 5.0, 0.0)), float(info.get("ko", _rng.randf_range(KO_MIN, KO_MAX))))
+			return "launched"
+		"stink":
+			if state == State.STINK:
+				return "stink"
+			state = State.STINK
+			_t = 0.0
+			velocity.x = 0.0
+			velocity.z = 0.0
+			CharacterBuilder.play(model, "facepalm", STINK_TIME)
+			CharacterBuilder.set_expression(model, "done")
+			hits.append("stink")
+			return "stink"
+		"sonic":
+			_push_v = _flat_dir(info.get("dir", away)) * float(info.get("power", 5.0))
+			if state == State.DANCE or state == State.FLEE:
+				return "pushed"
+			var dance: bool = bool(info["dance"]) if info.has("dance") else _rng.randf() < DANCE_CHANCE
+			if dance:
+				state = State.DANCE
+				_t = 0.0
+				CharacterBuilder.play(model, "cheer", DANCE_TIME)
+				CharacterBuilder.set_expression(model, "happy")
+				hits.append("dance")
+				return "dance"
+			flee_from(from, FLEE_HIT_TIME)
+			hits.append("pushed")
+			return "pushed"
+		"scare":
+			if state == State.STINK or state == State.DANCE:
+				return "none"                    # already reacting; they flee when it ends
+			if state != State.FLEE:
+				flee_from(from, FLEE_HIT_TIME)
+			return "flee"
+	return "none"
+
+
+## Knocked out on the spot (WeaponFX draws the comic stars): lies down `secs`, gets up (GETUP_TIME), then flees.
+func knock_out(secs: float, away: Vector3) -> void:
+	state = State.KNOCKED_OUT
+	ko_left = maxf(secs, GETUP_TIME + 0.1)
+	_t = 0.0
+	_getting_up = false
+	_push_v = Vector3.ZERO
+	velocity = Vector3(away.x, 0.0, away.z) * 1.5
+	collision_layer = 0
+	if away.length_squared() > 0.0001:
+		model.rotation.y = atan2(away.x, away.z)   # nhìn về phía cú đánh: ngã ngửa ra xa nó
+	CharacterBuilder.play(model, "knockdown")
+	CharacterBuilder.set_expression(model, "pain")
+	hits.append("ko")
+
+
+## Thrown along a ballistic arc (explosion, shotgun), spinning; lands knocked out for `ko` seconds.
+func launch(vel: Vector3, ko: float) -> void:
+	state = State.LAUNCHED
+	velocity = vel
+	ko_left = ko
+	_t = 0.0
+	_push_v = Vector3.ZERO
+	collision_layer = 0
+	CharacterBuilder.play(model, "fall_flail")
+	CharacterBuilder.set_expression(model, "surprised")
+	hits.append("launched")
+
+
+## Run away from `src` for `secs`: the next node is the neighbour farthest from src.
+func flee_from(src: Vector3, secs: float) -> void:
+	state = State.FLEE
+	_t = 0.0
+	flee_left = secs
+	_flee_src = src
+	CharacterBuilder.stop_clip(model)
+	if graph and target_node >= 0:
+		var best: int = target_node
+		var best_d: float = -1.0
+		for v: int in graph.neighbours(target_node):
+			var d: float = graph.node_pos(v).distance_to(src)
+			if d > best_d:
+				best_d = d
+				best = v
+		prev_node = target_node
+		target_node = best
+
+
+func is_down() -> bool:
+	return state == State.KNOCKDOWN or state == State.KNOCKED_OUT or state == State.LAUNCHED
+
+
+func _knocked_out(delta: float) -> void:
+	_gravity(delta)
+	velocity.x = move_toward(velocity.x, 0.0, THROW_DECEL * delta)
+	velocity.z = move_toward(velocity.z, 0.0, THROW_DECEL * delta)
+	move_and_slide()
+	CharacterBuilder.set_speed(model, 0.0)
+	ko_left -= delta
+	if ko_left <= GETUP_TIME and not _getting_up:
+		_getting_up = true
+		CharacterBuilder.play(model, "getup")
+	if ko_left <= 0.0:
+		_getting_up = false
+		collision_layer = 0 if lod_far else 1
+		CharacterBuilder.set_expression(model, "open")
+		flee_from(_flee_src, FLEE_HIT_TIME)
+
+
+func _launched(delta: float) -> void:
+	velocity.y -= GRAVITY * delta
+	move_and_slide()
+	model.rotation.y += LAUNCH_SPIN * delta
+	CharacterBuilder.set_speed(model, 0.0)
+	if (_t >= LAND_MIN_S and is_on_floor() and velocity.y <= 0.0) or _t >= LAUNCH_MAX_S:
+		knock_out(ko_left, _flat_dir(Vector3(velocity.x, 0.0, velocity.z)))
+
+
+func _stinking(delta: float) -> void:
+	_gravity(delta)
+	velocity.x = move_toward(velocity.x, 0.0, STUMBLE_DECEL * delta)
+	velocity.z = move_toward(velocity.z, 0.0, STUMBLE_DECEL * delta)
+	move_and_slide()
+	CharacterBuilder.set_speed(model, 0.0)
+	if _t >= STINK_TIME:
+		flee_from(_flee_src, FLEE_HIT_TIME)
+
+
+func _dancing(delta: float) -> void:
+	_gravity(delta)
+	_push_v = _push_v.move_toward(Vector3.ZERO, PUSH_DECEL * delta)
+	velocity.x = _push_v.x
+	velocity.z = _push_v.z
+	move_and_slide()
+	CharacterBuilder.set_speed(model, 0.0)
+	if _t >= DANCE_TIME:
+		flee_from(_flee_src, FLEE_HIT_TIME)
+
+
+## Can react to an emote: walking or standing only (not fleeing, down, stinking, dancing or already reacting).
+func can_react_emote() -> bool:
+	return state == State.WALK or state == State.IDLE
+
+
+## React to the player's emote from `from` for `secs`: "clap" (cheer clip), "shout" (wave; the bubble and the cue come
+## from EmoteDirector), "film" (phone_stand + a glowing phone prop), "look" (turns the head). Then resumes its state.
+func react_emote(kind: String, from: Vector3, secs: float) -> bool:
+	if not can_react_emote():
+		return false
+	_react_prev = state
+	state = State.REACT
+	react_kind = kind
+	react_left = secs
+	velocity.x = 0.0
+	velocity.z = 0.0
+	var d: Vector3 = _flat_dir(from - global_position)
+	model.rotation.y = atan2(-d.x, -d.z)
+	match kind:
+		"clap":
+			CharacterBuilder.play(model, "cheer", secs)
+		"shout":
+			CharacterBuilder.play(model, "wave", secs)
+		"film":
+			CharacterBuilder.play(model, "phone_stand", secs)
+			_react_prop = CineFX.build_prop("phone")
+			_react_prop.name = "Phone"
+			model.add_child(_react_prop)
+			_react_prop.position = Vector3(0.12, 1.3, -0.3)
+			CineFX.set_prop_glow(_react_prop, true)
+		_:
+			CharacterBuilder.look_at_point(model, from + Vector3(0.0, 1.5, 0.0))
+	hits.append("react_" + kind)
+	return true
+
+
+func _reacting(delta: float) -> void:
+	if not lod_far:
+		_gravity(delta)
+		velocity.x = 0.0
+		velocity.z = 0.0
+		move_and_slide()
+	CharacterBuilder.set_speed(model, 0.0)
+	react_left -= delta
+	if react_left <= 0.0:
+		_end_react()
+		state = _react_prev
+
+
+func _end_react() -> void:
+	if _react_prop:
+		_react_prop.queue_free()
+		_react_prop = null
+	react_kind = ""
+	CharacterBuilder.stop_clip(model)
+	CharacterBuilder.look_at_point(model, null)
+
+
+## Horizontal unit direction of v; +Z when v is (almost) vertical or zero.
+static func _flat_dir(v: Vector3) -> Vector3:
+	var f := Vector3(v.x, 0.0, v.z)
+	return f.normalized() if f.length_squared() > 1e-6 else Vector3(0.0, 0.0, 1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +650,16 @@ func _face(dir: Vector3, delta: float) -> void:
 
 
 ## Bước lên bậc thấp khi đang bị chặn (lề, bậc sân campus), như ThirdPersonController._try_step_up.
+## Phase W (performance gate): only a low static contact (kerb, step) is worth the step-up probes; bumping into people,
+## officers, vehicles or a building wall (contact higher than STEP_HEIGHT above the feet) costs no test_move.
+func _wall_is_low_static() -> bool:
+	for i: int in get_slide_collision_count():
+		var c: KinematicCollision3D = get_slide_collision(i)
+		if absf(c.get_normal().y) < 0.7 and c.get_position().y - global_position.y <= STEP_HEIGHT 				and c.get_collider() is StaticBody3D:
+			return true
+	return false
+
+
 func _try_step_up(dir: Vector3, delta: float) -> void:
 	var motion: Vector3 = Vector3(velocity.x, 0.0, velocity.z) * delta
 	if motion.length_squared() < 0.000001:

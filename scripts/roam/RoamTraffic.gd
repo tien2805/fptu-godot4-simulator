@@ -10,13 +10,17 @@
 # tầm camera thì cất xe. Chỗ xuất hiện tránh xe khác, người đi đường, người chơi và xe người chơi. Thân AnimatableBody3D
 # nhóm "traffic_obstacle" (xe buýt thêm "slipstream_vehicle"): PlayerBike tông vào thì dùng xử lý va chạm sẵn có. Không
 # dùng autoload ở đây.
+# Phase W (spec section 3): hit_vehicle – bullets stop a vehicle for good and its rider / driver flees (fleer_fn,
+# PedestrianSpawner.spawn_fleer); a rocket launches it, flips it onto its roof with a smoke column. Halted and wrecked
+# vehicles stay as obstacles and are recycled after HALT_RECYCLE_S out of view. Stop zones (sầu riêng stink clouds) stop
+# every vehicle inside them for a while. Queries for analytic ray tests: active_indices, vehicles_near, vehicle_box.
 class_name RoamTraffic
 extends Node3D
 
-enum Kind { MOTO, CAR, BUS }
+enum Kind { MOTO, CAR, BUS, POLICE }
 
 const KIND_COUNT: Array[int] = [20, 3, 2]          # mặc định: 20 xe máy, 3 ô tô, 2 xe buýt
-const KIND_SIZE: Array = [Vector3(0.7, 1.4, 1.9), Vector3(1.7, 1.5, 3.9), Vector3(2.5, 3.0, 7.5)]
+const KIND_SIZE: Array = [Vector3(0.7, 1.4, 1.9), Vector3(1.7, 1.5, 3.9), Vector3(2.5, 3.0, 7.5), Vector3(0.7, 1.4, 1.9)]
 const NIGHT_FACTOR: float = 0.3
 const SPAWN_MIN: float = 40.0
 const SPAWN_MAX: float = 150.0
@@ -54,6 +58,22 @@ const SPEED_DEFAULT: float = 6.5
 const BUS_CLASSES: Array[String] = ["motorway", "primary", "secondary", "tertiary"]
 const CAR_PAINTS: Array[Color] = [Color("#F4A6C0"), Color("#7FD8D2"), Color("#FFF1B5"), Color("#AFCBFF"), Color("#F2F4F5"), Color("#3A3F44"), Color("#E57373")]
 const HELMETS: Array[Color] = [Color("#E74C3C"), Color("#F1C40F"), Color("#FFFFFF"), Color("#0984E3"), Color("#2C3E50")]
+const HALT_RECYCLE_S: float = 8.0      # Phase W: a halted / wrecked vehicle out of view this long is recycled
+const WRECK_UP: float = 7.0            # Phase W: flipped by an explosion – initial upward speed (m/s)
+const WRECK_G: float = 20.0
+const RIDER_SIDE_M: float = 1.3        # the rider jumps off this far to the side
+
+signal rider_fled(idx: int, at: Vector3, away_from: Vector3)
+const POLICE_PAINT := Color("#F4F6F8")
+const POLICE_SPEED: float = 12.0
+const POLICE_DISMOUNT_M: float = 15.0       # the rider gets off within this distance of the player
+const POLICE_NEAR_M: float = 60.0           # ... or within this one once he stops getting closer (player off the road)
+const POLICE_NO_PROGRESS_S: float = 2.0
+const POLICE_GIVE_UP_S: float = 20.0        # a bike that has not got closer for this long (looping far away) stops
+const POLICE_MAX: int = 8
+const SIREN_MS: int = 166                   # red / blue swap
+
+signal police_arrived(idx: int, at: Vector3)
 
 
 class Vehicle:
@@ -81,6 +101,18 @@ class Vehicle:
 	var blocker: int = -1            # chỉ số xe đang chặn (blocked_by "car"), -1 = không (chỉ số, không giữ tham chiếu vòng)
 	var stuck_t: float = 0.0
 	var ghost_t: float = 0.0
+	var halted: bool = false             # Phase W: shot -> stopped for good, the rider ran away
+	var wreck_t: float = -1.0            # Phase W: >= 0 flipped by an explosion, seconds since
+	var wreck_from: Transform3D = Transform3D.IDENTITY
+	var wreck_roll: float = 1.0          # roll direction (+1 / -1)
+	var rider_gone: bool = false
+	var idle_t: float = 0.0              # seconds halted / wrecked while out of view
+	var police: bool = false             # Phase W police bike (Kind.POLICE)
+	var police_state: String = ""        # "ride" toward the player | "parked" (rider got off) | ""
+	var best_d: float = INF              # closest distance to the player so far (no-progress dismount)
+	var no_prog_t: float = 0.0
+	var siren_r: Node3D = null           # cached siren lamps (police)
+	var siren_b: Node3D = null
 
 
 var md: MapData
@@ -103,6 +135,9 @@ var _rng := RandomNumberGenerator.new()
 var _check_t: float = 0.0
 var _frame: int = 0
 var _rot: int = 0
+var stop_zones: Array = []               # Phase W: [Vector2 centre, float radius, float seconds left] (stink clouds)
+var fleer_fn: Callable                   # Phase W: (at: Vector3, away_from: Vector3) -> Pedestrian (spawn_fleer)
+var police_target_fn: Callable           # Phase W: -> Vector3 where police bikes ride to (WantedDirector.target_pos)
 
 
 func setup(map_data: MapData, player_node: Node3D, opts: Dictionary = {}) -> void:
@@ -183,6 +218,11 @@ func _make_vehicle(kind: int) -> Vehicle:
 			PropBuilder.build_car(b, CAR_PAINTS[_rng.randi() % CAR_PAINTS.size()], true)
 		Kind.BUS:
 			PropBuilder.build_bus(b, _rng.randf() < 0.5, true)
+		Kind.POLICE:
+			c.police = true
+			PropBuilder.build_scooter(b, Vector3.ZERO, 0.0, POLICE_PAINT, {"baked": true, "name": "Scooter"})
+			CharacterBuilder.build_baked_rider(b, Vector3(0.0, 0.32, 0.12), {"preset": "cop", "seed": _rng.randi()})
+			_add_siren(b)
 	add_child(b)
 	c.body = b
 	_park(c)
@@ -195,6 +235,18 @@ func _park(c: Vehicle) -> void:
 	c.speed = 0.0
 	c.blocked_by = ""
 	c.blocker = -1
+	c.halted = false
+	c.wreck_t = -1.0
+	c.rider_gone = false
+	c.idle_t = 0.0
+	c.police_state = ""
+	var rider: Node3D = c.body.get_node_or_null("Rider") as Node3D
+	if rider:
+		rider.visible = true
+	var smoke: Node = c.body.get_node_or_null("Smoke")
+	if smoke:
+		c.body.remove_child(smoke)
+		smoke.queue_free()
 	c.body.visible = false
 	c.body.process_mode = Node.PROCESS_MODE_DISABLED
 	c.body.position = Vector3(0.0, -200.0, 0.0)
@@ -237,12 +289,13 @@ func _fill_initial() -> void:
 
 
 ## Mỗi CHECK_EVERY: cất xe ra ngoài DESPAWN, đêm thì cất xe xa nhất cho còn 30 %, thiếu thì đưa xe đang cất ra (tối đa
-## SPAWNS_PER_CHECK, xoay vòng điểm bắt đầu để mọi loại xe đều được dùng).
+## SPAWNS_PER_CHECK, xoay vòng điểm bắt đầu để mọi loại xe đều được dùng). Phase W: police bikes are not civil traffic –
+## never counted, trimmed or spawned here (only parked beyond DESPAWN).
 func _maintain() -> void:
 	var c3: Vector3 = _center()
 	var c2 := Vector2(c3.x, c3.z)
 	night = _is_night()
-	var target: int = roundi(float(vehicles.size()) * (NIGHT_FACTOR if night else 1.0))
+	var target: int = roundi(float(_civil_count()) * (NIGHT_FACTOR if night else 1.0))
 	var live: Array = []
 	for c: Vehicle in vehicles:
 		if not c.active:
@@ -250,7 +303,7 @@ func _maintain() -> void:
 		if c.pos.distance_to(c2) > DESPAWN:
 			_park(c)
 			recycled += 1
-		else:
+		elif not c.police:
 			live.append(c)
 	if live.size() > target:
 		live.sort_custom(func(a: Vehicle, b: Vehicle) -> bool: return a.pos.distance_to(c2) > b.pos.distance_to(c2))
@@ -268,7 +321,7 @@ func _maintain() -> void:
 		if active >= target or made >= SPAWNS_PER_CHECK:
 			break
 		var c: Vehicle = vehicles[(_rot + k) % n]
-		if c.active:
+		if c.active or c.police:
 			continue
 		var spot: Array = _random_spot(c2, SPAWN_MIN, SPAWN_MAX, c.kind, true, people)
 		if spot.is_empty():
@@ -281,6 +334,7 @@ func _maintain() -> void:
 
 func _physics_process(delta: float) -> void:
 	_frame += 1
+	_tick_stop_zones(delta)
 	_check_t -= delta
 	if _check_t <= 0.0:
 		_check_t = CHECK_EVERY
@@ -291,12 +345,17 @@ func _physics_process(delta: float) -> void:
 		var c: Vehicle = vehicles[i]
 		if not c.active:
 			continue
+		if c.halted or c.wreck_t >= 0.0:
+			_idle_vehicle(c, delta)
+			continue
 		if (_frame + i) % LOOK_EVERY == 0:
 			if not gathered:
 				obs = _obstacles()
 				gathered = true
 			c.limit = _look_ahead(c, obs)
 		var target: float = minf(c.cruise * (TURN_FACTOR if c.conn.size() == 3 else 1.0), c.limit)
+		if not stop_zones.is_empty() and _in_stop_zone(c.pos):
+			target = 0.0
 		c.speed = move_toward(c.speed, target, (ACCEL if target > c.speed else BRAKE) * delta)
 		if c.speed < 0.2 and _held(c):
 			c.stuck_t += delta
@@ -314,6 +373,8 @@ func _physics_process(delta: float) -> void:
 		_advance(c, c.speed * delta)
 		if c.active:
 			_place(c, delta)
+		if c.active and c.police_state == "ride":
+			_police_progress(c, delta)
 
 
 ## Vật cản cho nhìn trước: [vị trí, nửa dài, nửa rộng, loại, xe, hướng]; hướng ZERO = vật cản tròn bán kính nửa dài.
@@ -380,7 +441,7 @@ func _look_ahead(c: Vehicle, obs: Array) -> float:
 	c.blocked_by = ""
 	c.blocker = -1
 	for o: Array in obs:
-		if o[4] == c or (c.ghost_t > 0.0 and String(o[3]) == "car"):
+		if o[4] == c or (c.ghost_t > 0.0 and String(o[3]) == "car") or (c.police and String(o[3]) == "player"):
 			continue
 		var rel: Vector2 = (o[0] as Vector2) - c.pos
 		if rel.length_squared() > reach2:
@@ -459,10 +520,23 @@ func _choose_exit(c: Vehicle) -> void:
 func _pick_exit(c: Vehicle) -> Array:
 	var opts: Array = []
 	for ex: Array in lane_exits[c.lane]:
-		if lane_kinds[int(ex[0])] & (1 << c.kind):
+		if lane_kinds[int(ex[0])] & _lane_bit(c.kind):
 			opts.append(ex)
 	if opts.is_empty():
 		return []
+	if c.police and c.police_state == "ride" and police_target_fn.is_valid():
+		# police: greedy toward the player – the exit whose lane, 15 m in, is closest to him
+		var t3: Vector3 = police_target_fn.call()
+		var t2 := Vector2(t3.x, t3.z)
+		var best: Array = opts[0]
+		var best_d: float = INF
+		for ex2: Array in opts:
+			var l2: int = int(ex2[0])
+			var d: float = _lane_point(l2, minf(float(ex2[1]) + 15.0, lane_len[l2])).distance_to(t2)
+			if d < best_d:
+				best_d = d
+				best = ex2
+		return best
 	return opts[_rng.randi_range(0, opts.size() - 1)]
 
 
@@ -479,6 +553,296 @@ func _place(c: Vehicle, delta: float) -> void:
 		c.dir = _lane_dir(c.lane, c.s)
 	var yaw: float = lerp_angle(c.body.rotation.y, atan2(-c.dir.x, -c.dir.y), minf(1.0, delta * 10.0))
 	c.body.global_transform = Transform3D(Basis(Vector3.UP, yaw), Vector3(c.pos.x, MapBuilder.ROAD_Y, c.pos.y))
+	if c.police:
+		_siren(c)
+
+
+# ===========================================================================
+# PHASE W: TRÚNG ĐẠN / NỔ / VÙNG MÙI
+# ===========================================================================
+## Weapon hit on vehicle idx (Phase W). kind "bullet" / "pellet": the vehicle stops for good and its rider (or driver)
+## flees; "blast": it is launched, flips onto its roof and smokes, the rider is thrown off and flees. false = nothing new.
+func hit_vehicle(idx: int, kind: String, from: Vector3) -> bool:
+	if idx < 0 or idx >= vehicles.size():
+		return false
+	var c: Vehicle = vehicles[idx]
+	if not c.active or c.wreck_t >= 0.0:
+		return false
+	var dismounted: bool = false
+	if c.police and c.police_state == "ride":
+		police_dismount(idx)                 # a police rider under fire gets off and chases on foot
+		dismounted = true
+	if kind == "blast":
+		c.wreck_t = 0.0
+		c.halted = true
+		c.speed = 0.0
+		c.wreck_from = c.body.global_transform
+		var rel := Vector2(from.x, from.z) - c.pos
+		c.wreck_roll = 1.0 if rel.cross(c.dir) >= 0.0 else -1.0
+		_add_smoke(c)
+		_rider_flees(c, from)
+		return true
+	if c.halted:
+		return dismounted
+	c.halted = true
+	c.speed = 0.0
+	_rider_flees(c, from)
+	return true
+
+
+func _rider_flees(c: Vehicle, from: Vector3) -> void:
+	if c.rider_gone:
+		return
+	c.rider_gone = true
+	var rider: Node3D = c.body.get_node_or_null("Rider") as Node3D
+	if rider:
+		rider.visible = false
+	var side := Vector2(-c.dir.y, c.dir.x)
+	if side.dot(Vector2(from.x, from.z) - c.pos) > 0.0:
+		side = -side                       # jump off on the side away from the shooter
+	var at := Vector3(c.pos.x + side.x * RIDER_SIDE_M, MapBuilder.ROAD_Y, c.pos.y + side.y * RIDER_SIDE_M)
+	rider_fled.emit(c.idx, at, from)
+	if fleer_fn.is_valid():
+		fleer_fn.call(at, from)
+
+
+## Halted / wrecked vehicle: no driving; the wreck plays its flip; recycled after HALT_RECYCLE_S out of view.
+func _idle_vehicle(c: Vehicle, delta: float) -> void:
+	c.speed = 0.0
+	if c.wreck_t >= 0.0:
+		c.wreck_t += delta
+		_wreck_pose(c)
+	if _in_view(Vector3(c.pos.x, 1.0, c.pos.y)):
+		c.idle_t = 0.0
+		return
+	c.idle_t += delta
+	if c.idle_t >= HALT_RECYCLE_S:
+		_park(c)
+		recycled += 1
+
+
+## Flip as a pure function of wreck_t: a ballistic hop of WRECK_UP m/s while rolling 180° about the long (-Z) axis; the
+## origin rises by the body height so the vehicle ends resting on its roof.
+func _wreck_pose(c: Vehicle) -> void:
+	var t: float = c.wreck_t
+	var flight: float = 2.0 * WRECK_UP / WRECK_G
+	var u: float = smoothstep(0.0, flight, t)
+	var h: float = maxf(0.0, WRECK_UP * t - 0.5 * WRECK_G * t * t)
+	var size: Vector3 = KIND_SIZE[c.kind]
+	var roll := Basis(Vector3(0.0, 0.0, -1.0), PI * u * c.wreck_roll)
+	c.body.global_transform = Transform3D(c.wreck_from.basis * roll, c.wreck_from.origin + Vector3(0.0, h + size.y * u, 0.0))
+
+
+func _add_smoke(c: Vehicle) -> void:
+	var p := CPUParticles3D.new()
+	p.name = "Smoke"
+	p.amount = 28
+	p.lifetime = 2.6
+	p.local_coords = false
+	p.position = Vector3(0.0, (KIND_SIZE[c.kind] as Vector3).y * 0.5, 0.0)
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 0.4
+	p.direction = Vector3.UP
+	p.spread = 12.0
+	p.gravity = Vector3(0.0, 1.2, 0.0)
+	p.initial_velocity_min = 0.8
+	p.initial_velocity_max = 1.6
+	p.scale_amount_min = 0.6
+	p.scale_amount_max = 1.4
+	p.mesh = CineFX._particle_mesh(false)
+	p.color_ramp = CineFX._ramp([Color(0.22, 0.22, 0.24, 0.75), Color(0.4, 0.4, 0.42, 0.0)], PackedFloat32Array([0.0, 1.0]))
+	c.body.add_child(p)
+	p.emitting = true
+
+
+## Phase W: every vehicle inside this circle stops for `secs` (sầu riêng stink cloud).
+func add_stop_zone(center: Vector3, r: float, secs: float) -> void:
+	stop_zones.append([Vector2(center.x, center.z), r, secs])
+
+
+func _tick_stop_zones(delta: float) -> void:
+	for i: int in range(stop_zones.size() - 1, -1, -1):
+		var z: Array = stop_zones[i]
+		z[2] = float(z[2]) - delta
+		if float(z[2]) <= 0.0:
+			stop_zones.remove_at(i)
+
+
+func _in_stop_zone(p: Vector2) -> bool:
+	for z: Array in stop_zones:
+		if p.distance_to(z[0]) <= float(z[1]):
+			return true
+	return false
+
+
+## Phase W queries: indices of the active vehicles.
+func active_indices() -> Array[int]:
+	var out: Array[int] = []
+	for c: Vehicle in vehicles:
+		if c.active:
+			out.append(c.idx)
+	return out
+
+
+## Active vehicles whose centre is within r (+ their half length) of p.
+func vehicles_near(p: Vector3, r: float) -> Array[int]:
+	var out: Array[int] = []
+	var p2 := Vector2(p.x, p.z)
+	for c: Vehicle in vehicles:
+		if c.active and c.pos.distance_to(p2) <= r + c.half_len:
+			out.append(c.idx)
+	return out
+
+
+## Box of vehicle idx for analytic ray tests: [Transform3D (orthonormal, origin at the box centre), Vector3 half extents].
+func vehicle_box(idx: int) -> Array:
+	var c: Vehicle = vehicles[idx]
+	var size: Vector3 = KIND_SIZE[c.kind]
+	var xf: Transform3D = c.body.global_transform
+	return [Transform3D(xf.basis.orthonormalized(), xf * Vector3(0.0, size.y * 0.5, 0.0)), size * 0.5]
+
+
+func vehicle_of(body: Node) -> int:
+	for c: Vehicle in vehicles:
+		if c.body == body:
+			return c.idx
+	return -1
+
+
+## Phase W police motorbike (spec section 4): a lane spot 40-120 m from police_target_fn(), preferring lanes heading toward
+## it; reuses a parked police body or builds one (at most POLICE_MAX); rides at POLICE_SPEED with greedy exits. Returns the
+## vehicle index, or -1 when no lane spot is found.
+func spawn_police() -> int:
+	var tgt: Vector3 = police_target_fn.call() if police_target_fn.is_valid() else _center()
+	var c2 := Vector2(tgt.x, tgt.z)
+	var spot: Array = []
+	var people: Array = []
+	_append_people(people)
+	for k: int in 6:
+		var s: Array = _random_spot(c2, SPAWN_MIN, SPAWN_MAX * 0.8, Kind.POLICE, k < 4, people)
+		if s.is_empty():
+			continue
+		spot = s
+		if _lane_dir(int(s[0]), float(s[1])).dot(c2 - _lane_point(int(s[0]), float(s[1]))) > 0.0:
+			break
+	if spot.is_empty():
+		return -1
+	var c: Vehicle = null
+	for v: Vehicle in vehicles:
+		if v.police and not v.active:
+			c = v
+			break
+	if c == null:
+		if _police_count() >= POLICE_MAX:
+			return -1
+		c = _make_vehicle(Kind.POLICE)
+		vehicles.append(c)
+		_exclude_from_cameras(c.body)
+	c.police_state = "ride"
+	_activate(c, int(spot[0]), float(spot[1]))
+	c.cruise = POLICE_SPEED
+	c.speed = POLICE_SPEED * 0.6
+	c.best_d = INF
+	c.no_prog_t = 0.0
+	return c.idx
+
+
+func _police_progress(c: Vehicle, delta: float) -> void:
+	var t3: Vector3 = police_target_fn.call() if police_target_fn.is_valid() else _center()
+	var d: float = c.pos.distance_to(Vector2(t3.x, t3.z))
+	if d < c.best_d - 0.5:
+		c.best_d = d
+		c.no_prog_t = 0.0
+	else:
+		c.no_prog_t += delta
+	if d <= POLICE_DISMOUNT_M or (d <= POLICE_NEAR_M and c.no_prog_t >= POLICE_NO_PROGRESS_S):
+		police_dismount(c.idx)
+	elif c.no_prog_t >= POLICE_GIVE_UP_S:
+		# lost far away: the bike stops (recycled out of view); WantedDirector drops it and sends a fresh one
+		c.police_state = ""
+		c.halted = true
+		c.speed = 0.0
+
+
+## The police rider gets off beside his bike; the bike stays as a halted obstacle (recycled out of view) and
+## police_arrived(idx, at) asks WantedDirector for an officer on foot there.
+func police_dismount(idx: int) -> void:
+	var c: Vehicle = vehicles[idx]
+	if not c.police or c.police_state != "ride":
+		return
+	c.police_state = "parked"
+	c.halted = true
+	c.speed = 0.0
+	c.rider_gone = true
+	var rider: Node3D = c.body.get_node_or_null("Rider") as Node3D
+	if rider:
+		rider.visible = false
+	var side := Vector2(-c.dir.y, c.dir.x)
+	police_arrived.emit(idx, Vector3(c.pos.x + side.x * RIDER_SIDE_M, MapBuilder.ROAD_Y, c.pos.y + side.y * RIDER_SIDE_M))
+
+
+## Wanted level over / busted: riding police bikes stop where they are (recycled out of view), no officer gets off.
+func release_police() -> void:
+	for c: Vehicle in vehicles:
+		if c.police and c.active and c.police_state == "ride":
+			c.police_state = ""
+			c.halted = true
+			c.speed = 0.0
+
+
+func is_police_riding(idx: int) -> bool:
+	return idx >= 0 and idx < vehicles.size() and vehicles[idx].active and vehicles[idx].police_state == "ride"
+
+
+func _police_count() -> int:
+	var n: int = 0
+	for v: Vehicle in vehicles:
+		if v.police:
+			n += 1
+	return n
+
+
+func _civil_count() -> int:
+	return vehicles.size() - _police_count()
+
+
+## Police bikes use the motorbike lanes.
+func _lane_bit(kind: int) -> int:
+	return 1 << (Kind.MOTO if kind == Kind.POLICE else kind)
+
+
+## Bodies built after FreeRoam._build_traffic: the player camera ray and the bike spring arm look through them too.
+func _exclude_from_cameras(body: CollisionObject3D) -> void:
+	if player and player.get("cam_ray"):
+		(player.get("cam_ray") as RayCast3D).add_exception(body)
+	if bike and bike.get("spring_arm"):
+		(bike.get("spring_arm") as SpringArm3D).add_excluded_object(body.get_rid())
+
+
+func _add_siren(b: Node3D) -> void:
+	for k: int in 2:
+		var mi := MeshInstance3D.new()
+		mi.name = "SirenR" if k == 0 else "SirenB"
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.09, 0.07, 0.09)
+		mi.mesh = bm
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = Color("#FF2E3C") if k == 0 else Color("#2E6BFF")
+		m.set_meta("vice_done", true)
+		mi.material_override = m
+		mi.position = Vector3(-0.06 + 0.12 * float(k), 1.2, 0.75)
+		b.add_child(mi)
+
+
+func _siren(c: Vehicle) -> void:
+	var on: bool = (Time.get_ticks_msec() / SIREN_MS) % 2 == 0
+	if c.siren_r == null:
+		c.siren_r = c.body.get_node_or_null("SirenR") as Node3D
+		c.siren_b = c.body.get_node_or_null("SirenB") as Node3D
+	if c.siren_r and c.siren_b and c.siren_r.visible != on:
+		c.siren_r.visible = on
+		c.siren_b.visible = not on
 
 
 # ===========================================================================
@@ -655,7 +1019,7 @@ func _random_spot(c2: Vector2, r_min: float, r_max: float, kind: int, avoid_view
 			continue
 		var cand: Array = cell[_rng.randi_range(0, cell.size() - 1)]
 		var l: int = int(cand[0])
-		if not (lane_kinds[l] & (1 << kind)):
+		if not (lane_kinds[l] & _lane_bit(kind)):
 			continue
 		var p: Vector2 = _lane_point(l, float(cand[1]))
 		var d: float = p.distance_to(c2)

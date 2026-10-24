@@ -16,6 +16,8 @@ const INK := Color("#1B0F33")
 var filled: int = 0
 var align_right: bool = true
 var flash_t: float = 0.0
+## Number of star cells drawn (5 for the Màn 3 lecturer bar; FreeRoam's wanted level uses 3, Phase W).
+var cells: int = 5
 
 
 func _ready() -> void:
@@ -49,7 +51,7 @@ func _draw() -> void:
 	var cell: float = size.y
 	var r: float = cell * 0.46
 	var blink_on: bool = flash_t > 0.0 and int(flash_t * FLASH_HZ * 2.0) % 2 == 0
-	for i: int in range(5):
+	for i: int in range(cells):
 		var cx: float = size.x - (i + 0.5) * cell if align_right else (i + 0.5) * cell
 		var c := Vector2(cx, cell * 0.5)
 		var pts := PackedVector2Array()

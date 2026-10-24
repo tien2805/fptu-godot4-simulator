@@ -153,6 +153,25 @@ func targets() -> Vector2i:
 	return targets_at(_center())
 
 
+## Phase W: impostors inside an effect radius flee (CrowdImpostors.scatter).
+func scatter_impostors(center: Vector3, r: float) -> int:
+	return impostors.scatter(center, r) if impostors else 0
+
+
+## Phase W: a rider / driver who jumps off a stopped or flipped vehicle – a new pedestrian at `at` (identity of the zone of
+## the nearest walk node within 30 m) fleeing from away_from. null when the crowd is full or no walk node is near.
+func spawn_fleer(at: Vector3, away_from: Vector3) -> Pedestrian:
+	if graph == null or _peds.size() >= PED_CAP:
+		return null
+	var node: int = graph.nearest(at, 30.0)
+	if node < 0:
+		return null
+	var spot: Variant = _free_spot(at)
+	var p: Pedestrian = _spawn_ped(node, node, spot if spot is Vector3 else at, _new_identity(graph.zone_at(node)))
+	p.flee_from(away_from, Pedestrian.FLEE_HIT_TIME)
+	return p
+
+
 ## Câu càu nhàu của người đi đường (giới hạn: mỗi LINE_GAP_S giây một câu cho cả đám).
 func request_line(ped: Pedestrian, kind: String) -> void:
 	var now: float = float(Time.get_ticks_msec()) / 1000.0

@@ -1,6 +1,6 @@
 # Phase W: Weapon Wheel, Weapons and Wanted Level – Design
 
-Date: 2026-10-23. Status: design approved by the owner in chat (AskUserQuestion); spec pending owner review. Runs after story Phase A1 (cinematics) and before A2 (story framework). Own implementation plan, branch `phase-w`.
+Date: 2026-10-23. Status: design approved by the owner in chat (AskUserQuestion); spec pending owner review. Runs after story Phase A1 (cinematics) and before A2 (story framework). Own implementation plan, branch `phase-w`. Implemented on branch phase-w (plan docs/superpowers/plans/2026-10-24-phase-w-weapons-wanted.md).
 
 ## 1. Owner decisions
 
@@ -15,6 +15,10 @@ Date: 2026-10-23. Status: design approved by the owner in chat (AskUserQuestion)
 | W-D7 | Chasers: on campus the security guards (bảo vệ) on foot, and from 2 stars **Thầy Toàn (ThS. ToanHLM, the story's fictional lecturer)** joins the chase ("thêm ToanHLM dí nữa"); on the streets police on motorbikes who dismount near the player. Officers never shoot; they catch. |
 | W-D8 | **Busted → community service** ("cảnh sát bắt được thì phải bị bắt đi lao động công ích"): a short "BỊ TÓM!" cutscene, then a timed community-service chore in an orange vest; finishing clears the wanted level and frees the player. |
 | W-D9 | Weapons are used on foot only in this phase (no drive-by). Unlimited reserve ammo with magazine reloads; no shops, no pickups. Player has no health bar: explosions and officers knock the player down comically but never kill. |
+| W-D10 | **Emotes** (owner 2026-10-24, AskUserQuestion): an emote wheel opened by **holding B**, same radial UI and rules as the weapon wheel (section 9). Built inside Phase W as its last feature task. |
+| W-D11 | First emote: the famous football "Siuuu" celebration (owner request). The game names it only **"Siuuu!"**: no real footballer's name, face, shirt or voice anywhere in code, comments, tests or game text; our own player character performs it. |
+| W-D12 | The shout is a synthesized "Siuuu" cue by default; the owner's own local file at `user://sfx/siuuu.ogg` or `.mp3` overrides it (git-ignored, never committed or exported), same rule as W-D5. The owner supplied one on 2026-10-24; it lives only on his machine. |
+| W-D13 | Bystanders react to an emote ("Có, cho vui"): people nearby clap, some shout "Siuuu" back, some raise a phone to film, then carry on. |
 
 ## 2. Weapon wheel
 - Input: middle mouse held ≥ 0.12 s opens it (a tap is ignored); release equips the highlighted slot; Esc or right click closes without change. Scroll up/down cycles the 8 slots and shows a small toast with the weapon name.
@@ -57,7 +61,7 @@ Controls on foot: right mouse = aim (over-the-shoulder camera, FOV narrows, cros
 - Hold Esc to skip the cutscene, not the chore.
 
 ## 6. Systems and files (detailed in the plan)
-- `WeaponWheel` (UI, real time), `WeaponDirector` (equipped weapon, ammo, fire/aim, per-weapon logic), weapon scripts or data entries per slot, projectiles (rocket, dép, sầu riêng), `StinkCloud`, `SonicCone`, `WantedDirector` (heat, stars, decay, line-of-sight checks), `Officer` (guard / Thầy Toàn / police on foot) and police bikes on top of RoamTraffic, `CommunityService` (chore), audio cues in the existing synth, HUD stars, FreeRoam wiring behind a flag like `crowd_enabled` so `test_free_roam` stays deterministic.
+- `WeaponWheel` (UI, real time; its radial UI is shared with the emote wheel), `WeaponDirector` (equipped weapon, ammo, fire/aim, per-weapon logic), weapon scripts or data entries per slot, projectiles (rocket, dép, sầu riêng), `StinkCloud`, `SonicCone`, `WantedDirector` (heat, stars, decay, line-of-sight checks), `Officer` (guard / Thầy Toàn / police on foot) and police bikes on top of RoamTraffic, `CommunityService` (chore), audio cues in the existing synth, HUD stars, `EmoteWheel` + `EmoteDirector` + bystander reactions (section 9), FreeRoam wiring behind a flag like `crowd_enabled` so `test_free_roam` stays deterministic.
 - Implementer effort: xhigh for weapons/combat, wanted/officer AI; high for the wheel UI, HUD, audio and docs.
 
 ## 7. Testing
@@ -70,3 +74,26 @@ Controls on foot: right mouse = aim (over-the-shoulder camera, FOV narrows, cros
 ## 8. Out of scope
 - Drive-by shooting, weapon shops and pickups, player health, police shooting, a 4-5 star level, helicopters.
 - Enemy combat AI in lairs stays in story Phase C; Vovinam combos in Phase B replace the unarmed placeholder.
+- More emotes: the owner adds them later, one by one, into the free wheel slots.
+
+## 9. Emotes (W-D10..W-D13)
+- **Emote wheel:** hold B ≥ 0.12 s to open (a tap is ignored), move the mouse toward a slot, release to play it; Esc or right click closes without playing. It reuses the weapon wheel's radial UI, wedge mapping, dead zone, code-drawn icons, real-time processing and the 0.2× eased slow motion. Only one wheel can be open at a time. Eight slots: slot 0 = "Siuuu!", slots 1-7 empty and drawn greyed with "Sắp có" (not selectable), so a new emote later is one data entry plus its animation.
+- **When allowed:** on foot only, and not while aiming, firing, reloading, knocked down, riding the bike, busted, in community service, during a cinematic or a replay (same blocked states as the weapon wheel). Wanted level does not block it; officers keep chasing, so a mid-celebration catch is possible.
+- **"Siuuu!" emote (3.30 s, owner amendment: "chạy xong nhảy quay lại"):** the classic celebration as a run, jump and turn. Times are from the emote start; keep them as named constants:
+  - 0.00-1.10 **run-up**: about 4 running strides straight ahead (away from the camera), about 4.5 m, arms pumping. Movement goes through the normal body collision, so a wall just stops the run.
+  - 1.10 **take-off** off the last stride.
+  - 1.10-1.70 **airborne**: apex about 0.55 m, a 180° yaw turn (most of it between 1.20 and 1.60), so the character lands facing back toward the camera.
+  - **1.70 landing**: wide stance, knees bent, both arms swung down and out, chest pushed forward, and a small dust puff.
+  - 1.70-2.96 **hold** while the shout sustains, with the chest rising slightly.
+  - 2.96-3.30 blend back to idle.
+- **Animation and rules:** code-built bone poses on the player's PS2 rig. No image files, no AI images; a Mixamo or UAL clip may be used only if a suitable one is already in the project. The equipped weapon is hidden during the emote and restored after it. Run, jump and turn cannot be cancelled; from 2.20 on, movement input ends the emote early. The emote adds no heat.
+- **Shout, synced to the landing (owner: "căn cho chuẩn nhịp nhảy với tiếng siuuu"):** every `siuuu` cue file follows one layout:
+  - 0.25-0.31 s the "S" sibilant;
+  - **0.31 s the vowel burst** (the loudest instant);
+  - the vowel sustains to 1.57 s;
+  - crowd tail to 2.00 s.
+- **Cue start time:** the emote starts the cue at landing − 0.31 s (emote time 1.39), so the "S" sounds in the air and the "IUUU" burst lands exactly on the 1.70 landing frame. The hold ends with the vowel (1.39 + 1.57 = 2.96).
+- **Default and override cue:** the synthesized default cue is built to the same layout: a noise "s" from 0.25 s, a vowel from 0.31 s that glides from "i" to a long "uuu", and a fade by 1.57 s. The owner's local override `user://sfx/siuuu.mp3` (W-D12) was trimmed to this layout from his file: source 2.58-4.58 s, 0.15 s fade-in, fade-out from 1.60 s, peak -1.3 dB.
+- **Speech bubble:** "SIUUU!" pops above the player at the landing.
+- **Bystanders (W-D13):** full-tier and mid-tier people within 10 m at the landing moment turn toward the player; about 50 % clap for 2-3 s, about 25 % shout "Siuuu" back (speech bubble + the cue at lower volume and a random pitch), about 15 % raise a phone and film for 3 s (phone prop with screen glow), the rest just look; then they resume what they were doing. Impostors ignore it. People already fleeing, knocked out or chasing (officers) ignore it.
+- **Tests:** wheel opens on B hold and not on a tap, slot mapping and greyed slots not selectable, emote blocked in every blocked state, emote length (3.30 s), run-up distance, 180° turn by landing, cue start at landing − 0.31 s (vowel burst on the landing frame, within one physics frame), the cancel window from 2.20, weapon hidden and restored, shout override resolution, bystander reaction counts by share and radius on stub people, nobody reacts beyond 10 m or while fleeing/knocked out.
