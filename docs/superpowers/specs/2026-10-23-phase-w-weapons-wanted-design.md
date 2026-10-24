@@ -1,6 +1,6 @@
 # Phase W: Weapon Wheel, Weapons and Wanted Level – Design
 
-Date: 2026-10-23. Status: design approved by the owner in chat (AskUserQuestion); spec pending owner review. Runs after story Phase A1 (cinematics) and before A2 (story framework). Own implementation plan, branch `phase-w`.
+Date: 2026-10-23. Status: design approved by the owner in chat (AskUserQuestion); spec pending owner review. Runs after story Phase A1 (cinematics) and before A2 (story framework). Own implementation plan, branch `phase-w`. Implemented on branch phase-w (plan docs/superpowers/plans/2026-10-24-phase-w-weapons-wanted.md).
 
 ## 1. Owner decisions
 

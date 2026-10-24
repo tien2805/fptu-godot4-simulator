@@ -40,7 +40,7 @@ Chọn **🌏 KHÁM PHÁ CAMPUS** trong menu chính. Bạn xuất phát ngay tr�
 | :---: | :---: |
 | ![](docs/preview/roam_01_spawn_be6.png) | ![](docs/preview/roam_08_map.png) |
 
-**Điều khiển:** `WASD` chạy bộ · `Shift` chạy nước rút (có thể lực) · `Ctrl` đi bộ · `Space` nhảy (trên xe vẫn là drift) · `Z`/`C` xoay camera · chuột nhìn (bấm chuột để bắt, `ESC` thả) · `F` lên/xuống xe máy (khi lái: `W/S` ga/phanh, `A/D` lái, `SPACE` drift, `H` còi) · `E` vào điểm nóng để chơi màn · `T` đổi giờ (bình minh, sáng, trưa, đêm) · `M` bản đồ · `ESC` tạm dừng.
+**Điều khiển:** `WASD` chạy bộ · `Shift` chạy nước rút (có thể lực) · `Ctrl` đi bộ · `Space` nhảy (trên xe vẫn là drift) · `Z`/`C` xoay camera · chuột nhìn (bấm chuột để bắt, `ESC` thả) · giữ chuột giữa: vòng vũ khí · chuột phải ngắm, chuột trái bắn, `R` nạp đạn · giữ `B`: vòng biểu cảm · `F` lên/xuống xe máy (khi lái: `W/S` ga/phanh, `A/D` lái, `SPACE` drift, `H` còi) · `E` vào điểm nóng để chơi màn · `T` đổi giờ (bình minh, sáng, trưa, đêm) · `M` bản đồ · `ESC` tạm dừng.
 
 **6 điểm nóng** (cột sáng màu, đứng vào vòng sáng rồi bấm `E`):
 
@@ -57,6 +57,8 @@ Chơi xong một màn mở từ điểm nóng, bảng kết quả có nút **�
 
 Ở phong cách Vice City, mọi nhân vật là người kiểu PS2: tỉ lệ người thật, đầu ít mặt với gương mặt vẽ tay bằng code (8 biểu cảm), quần áo giữ nguyên. Ở cả hai phong cách, thế giới mở đông người hơn: sinh viên kín sân trường, cư dân dạo phố Vinhomes (có người chạy bộ, người tản bộ), người đi bộ trên lề các tuyến đường, nhìn xa vẫn thấy dòng người; xe máy, ô tô và xe buýt chạy đúng làn bên phải và dừng lại khi có người chắn đường. Ban đêm vắng hơn. Va nhẹ thì người đi đường lảo đảo càu nhàu, chạy nước rút hay đi xe tông thì họ ngã rồi đứng dậy bỏ chạy. Rơi từ cao không mất máu: dưới 2,5 m nhún gối, 2,5-6 m lăn, cao hơn thì nằm một lúc rồi đứng dậy.
 
+**Vũ khí, truy nã và biểu cảm.** Giữ **chuột giữa** để mở vòng chọn vũ khí (game chậm lại, đưa chuột về ô rồi thả; `ESC` hoặc chuột phải để đóng), lăn chuột để đổi nhanh. Tám ô: Tay không, Dao, Súng lục, Shotgun, Tên lửa, Dép tổ ong (ném vòng rồi bay về tay), Sầu riêng (lựu đạn mùi), Loa kẹo kéo (giữ để phát nhạc đẩy người ra). Chuột phải ngắm qua vai, chuột trái bắn, `R` nạp đạn; chỉ dùng khi đi bộ. Không máu me, không ai chết: người trúng đòn nằm sao bay vòng vòng rồi đứng dậy bỏ chạy, xe trúng tên lửa lật ngửa bốc khói. Gây rối thì bị truy nã 1-3 sao: trong campus bảo vệ đuổi (từ 2 sao có cả Thầy Toàn), ngoài đường cảnh sát chạy xe máy tới rồi xuống đuổi bộ; trốn khỏi tầm nhìn đủ lâu thì mất sao (vòng xanh trên radar là vùng đang bị tìm). Bị tóm thì xem đoạn "BỊ TÓM!" rồi đi lao động công ích: mặc áo cam nhặt 8 bao rác bỏ vô thùng trong 120 giây. Giữ **B** để mở vòng biểu cảm: "Siuuu!" chạy đà, nhảy xoay người, tiếp đất dang tay, người xung quanh vỗ tay, hô theo hoặc giơ điện thoại quay.
+
 Bản đồ thế giới mở dựng từ dữ liệu **OpenStreetMap** (© OpenStreetMap contributors, [ODbL](https://www.openstreetmap.org/copyright)) và footprint nhà ống **Microsoft Global ML Building Footprints** (© Microsoft, [CDLA-Permissive-2.0](https://cdla.dev/permissive-2-0/)); trên bản đồ `M`, nhà lấy từ OpenStreetMap tô đậm hơn nhà lấy từ dữ liệu Microsoft.
 
 ## 🕹️ Điều khiển
@@ -69,7 +71,7 @@ Bản đồ thế giới mở dựng từ dữ liệu **OpenStreetMap** (© Open
 * **Màn 5:** `WASD` đi · `E` tương tác · đứng yên giữ `SPACE` cân khay · kéo thả món vào giỏ.
 * **Màn 6:** gõ chữ trên đạn · `TAB` đổi người · `ENTER` skill / gọi điện · `←/→` chọn khối code.
 * **Extra:** `WASD` đi tuần (theo hướng camera) · `C` CCTV · `S` chụp · `E` soi / lập biên bản.
-* **Thế giới mở:** `WASD` chạy bộ · `Shift` chạy nước rút (có thể lực) · `Ctrl` đi bộ · `Space` nhảy (trên xe vẫn là drift) · `Z/C` xoay camera · chuột nhìn · `F` lên/xuống xe máy · `E` vào điểm nóng chơi màn · `T` đổi giờ · `M` bản đồ · `ESC` tạm dừng.
+* **Thế giới mở:** `WASD` chạy bộ · `Shift` chạy nước rút (có thể lực) · `Ctrl` đi bộ · `Space` nhảy (trên xe vẫn là drift) · `Z/C` xoay camera · chuột nhìn · giữ chuột giữa: vòng vũ khí · lăn chuột: đổi vũ khí · chuột phải: ngắm · chuột trái: bắn · `R` nạp đạn · giữ `B`: vòng biểu cảm · `F` lên/xuống xe máy · `E` vào điểm nóng chơi màn · `T` đổi giờ · `M` bản đồ · `ESC` tạm dừng.
 
 ## 🛠️ Chạy từ mã nguồn / tự build
 
@@ -87,7 +89,7 @@ Phát hành tự động: push một tag `v*` lên GitHub, workflow `.github/wor
 
 Icon game (Cóc Vàng áo cam) được tạo bằng `generate_icon.py` từ ảnh gốc `assets/icon/source_frog.png`: tách nền, đổi tông màu da và áo, vẽ logo – thuần xử lý ảnh bằng Pillow. Exporter của Godot tự nhúng icon này vào file exe.
 
-Kiểm thử headless (không cần cửa sổ): `tests/smoke_all_stages.gd`, `tests/test_stage*.gd`, `tests/test_main_menu.gd`, `tests/test_free_roam.gd` (thế giới mở), `tests/test_mapdata.gd` / `tests/test_mapbuilder.gd` (bản đồ thật). Chi tiết thiết kế xem [PLAN.md](PLAN.md).
+Kiểm thử headless (không cần cửa sổ): `tests/smoke_all_stages.gd`, `tests/test_stage*.gd`, `tests/test_main_menu.gd`, `tests/test_free_roam.gd` (thế giới mở), `tests/test_mapdata.gd` / `tests/test_mapbuilder.gd` (bản đồ thật), `tests/test_weapon_wheel.gd` … `tests/test_mayhem_perf.gd` (vũ khí, truy nã, biểu cảm). Chi tiết thiết kế xem [PLAN.md](PLAN.md).
 
 ## Cinematic: mocap Mixamo và nhạc (tùy chọn)
 
@@ -98,6 +100,8 @@ Kiểm thử headless (không cần cửa sổ): `tests/smoke_all_stages.gd`, `t
   - hoặc chạy `godot --path . res://scenes/dev/CinePreview.tscn`, thêm `CINE_DEBUG=1` để hiện thanh nhịp. **R** phát lại, **F10** bật/tắt thanh nhịp.
   - Nhạc của cinematic này là `seg_d1_brawl.ogg` hoặc `.mp3` trong thư mục `music\` ở trên (bản cắt "I've Gotta Be Me" của chủ dự án: mọi cú đánh rơi đúng nhịp mạnh của bài).
   - Thời điểm các cú đánh và cảnh quay nằm trong `docs/cinematics/seg_d1_brawl.txt` (tạo bằng `tools/cine_beats.gd`, đừng sửa tay).
+- **Âm thanh vũ khí / biểu cảm (tùy chọn, chỉ trên máy của bạn):** đặt `<tên>.ogg` (hoặc `.mp3`) vào thư mục `sfx\` trong thư mục người dùng của game để thay âm tổng hợp. Tên: `punch`, `swish`, `knife_hit`, `reload`, `dry_click`, `shot_pistol`, `shot_shotgun`, `pump`, `ricochet`, `rocket_launch`, `explosion`, `bonk`, `dep_whoosh`, `durian_pop`, `cough`, `bolero`, `bag_drop`. Loa kẹo kéo phát `sfx\loa_keo_keo.ogg` hoặc `.mp3` nếu có, không có thì phát nhạc bolero tổng hợp. Tiếng "Siuuu" là `sfx\siuuu.ogg` hoặc `.mp3`, cắt theo bố cục cố định: chữ "S" từ 0,25 s, tiếng hô mạnh nhất ở 0,31 s, ngân tới 1,57 s. Các file này không bao giờ được commit hay đóng gói.
+- **Đoạn "BỊ TÓM!"** (`wanted_busted`, 7 s) chạy bằng hệ cinematic; nhạc của nó là `music\wanted_busted.ogg` / `.mp3` nếu có. Thời điểm nằm trong `docs/cinematics/wanted_busted.txt`.
 
 ## 🧱 Công nghệ & tư liệu
 

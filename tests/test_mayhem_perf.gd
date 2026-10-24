@@ -5,8 +5,12 @@
 #   W1 weapons + wanted: the loa kẹo kéo blasting into the crowd, a stink cloud, officers chasing, police bikes;
 #   W2 emote: "Siuuu!" from its run-up through the landing (bystanders within 10 m react) into the hold.
 # Each window must cost < 3 ms per physics frame more than the baseline (headless script time, the phase-change frame
-# dropped). A window's figure is the MEDIAN of its per-frame times: a laptop's OS / GC spikes swing the mean by ±0.5 ms
-# between runs, the median is stable. The means are printed too. Also: no GPUParticles3D anywhere in FreeRoam, Engine.time_scale back at 1.0. Prints the numbers for PLAN.md.
+# dropped), by two statistics of its per-frame times:
+#   - the MEDIAN (stable against the laptop's OS / GC spikes),
+#   - the 5 %-TRIMMED MEAN (the 6 lowest and 6 highest of 120 frames dropped), so work that does not run every frame
+#     (spawns, the 1 Hz maintain, the loa's 0.2 s sonic tick) still counts.
+# The plain means are printed too. Also: no GPUParticles3D anywhere in FreeRoam, Engine.time_scale back at 1.0. Prints the
+# numbers for PLAN.md.
 # Run:  godot --headless --path . --script tests/test_mayhem_perf.gd
 extends SceneTree
 
@@ -31,6 +35,7 @@ var timing: bool = false
 var _pt0: int = 0
 var samples: PackedInt32Array = PackedInt32Array()
 var means: Array[float] = []
+var trimmed: Array[float] = []
 var with_w: float = 0.0
 var with_e: float = 0.0
 var without: float = 0.0
@@ -76,11 +81,12 @@ func _start_window() -> void:
 	timing = true
 
 
-## Median per-frame script time of the window (us); its mean is appended to `means`.
+## Median per-frame script time of the window (us); its mean is appended to `means`, its 5 %-trimmed mean to `trimmed`.
 func _window_us() -> float:
 	timing = false
 	if samples.is_empty():
 		means.append(0.0)
+		trimmed.append(0.0)
 		return 0.0
 	var total: int = 0
 	for s: int in samples:
@@ -88,7 +94,20 @@ func _window_us() -> float:
 	means.append(float(total) / float(samples.size()))
 	var sorted: PackedInt32Array = samples.duplicate()
 	sorted.sort()
+	trimmed.append(trimmed_mean(sorted, 0.05))
 	return float(sorted[sorted.size() / 2])
+
+
+## Mean of a sorted sample without the lowest and highest `frac` of it (at least one value is kept).
+static func trimmed_mean(sorted: PackedInt32Array, frac: float) -> float:
+	var k: int = int(floor(float(sorted.size()) * frac))
+	var n: int = sorted.size() - 2 * k
+	if n <= 0:
+		return float(sorted[sorted.size() / 2])
+	var t: int = 0
+	for i: int in range(k, k + n):
+		t += sorted[i]
+	return float(t) / float(n)
 
 
 func _on_physics() -> void:
@@ -148,15 +167,19 @@ func _on_physics() -> void:
 				without = _window_us()
 				var cost_w: float = (with_w - without) / 1000.0
 				var cost_e: float = (with_e - without) / 1000.0
-				print("  W1 weapons + wanted + crowd + traffic: %.2f ms per physics frame (median %.0f vs %.0f us; mean %.0f vs %.0f us)" % [cost_w, with_w, without, means[0], means[2]])
-				print("  W2 emote + bystanders + crowd + traffic: %.2f ms per physics frame (median %.0f vs %.0f us; mean %.0f vs %.0f us)" % [cost_e, with_e, without, means[1], means[2]])
-				_check(cost_w < GATE_MS, "weapons + wanted + crowd + traffic < 3 ms per physics frame at BE6 with 3 stars (%.2f)" % cost_w)
-				_check(cost_e < GATE_MS, "the Siuuu! emote with bystanders + crowd + traffic < 3 ms per physics frame (%.2f)" % cost_e)
+				var trim_w: float = (trimmed[0] - trimmed[2]) / 1000.0
+				var trim_e: float = (trimmed[1] - trimmed[2]) / 1000.0
+				print("  W1 weapons + wanted + crowd + traffic: %.2f ms per physics frame median, %.2f ms trimmed mean (median %.0f vs %.0f us; trimmed %.0f vs %.0f us; mean %.0f vs %.0f us)" % [cost_w, trim_w, with_w, without, trimmed[0], trimmed[2], means[0], means[2]])
+				print("  W2 emote + bystanders + crowd + traffic: %.2f ms per physics frame median, %.2f ms trimmed mean (median %.0f vs %.0f us; trimmed %.0f vs %.0f us; mean %.0f vs %.0f us)" % [cost_e, trim_e, with_e, without, trimmed[1], trimmed[2], means[1], means[2]])
+				_check(cost_w < GATE_MS, "weapons + wanted + crowd + traffic < 3 ms per physics frame at BE6 with 3 stars, median (%.2f)" % cost_w)
+				_check(trim_w < GATE_MS, "weapons + wanted + crowd + traffic < 3 ms per physics frame, 5 %%-trimmed mean (%.2f)" % trim_w)
+				_check(cost_e < GATE_MS, "the Siuuu! emote with bystanders + crowd + traffic < 3 ms per physics frame, median (%.2f)" % cost_e)
+				_check(trim_e < GATE_MS, "the Siuuu! emote with bystanders + crowd + traffic < 3 ms, 5 %%-trimmed mean (%.2f)" % trim_e)
 				_check(roam.find_children("*", "GPUParticles3D", true, false).is_empty(), "no GPUParticles3D in FreeRoam")
 				_check(is_equal_approx(Engine.time_scale, 1.0), "Engine.time_scale is 1.0")
 				Engine.time_scale = 1.0
 				if fails.is_empty():
-					print("✅ SUCCESS: MAYHEM PERFORMANCE (W1 %.2f ms, W2 %.2f ms < 3 ms per physics frame)" % [cost_w, cost_e])
+					print("✅ SUCCESS: MAYHEM PERFORMANCE (W1 %.2f / %.2f ms, W2 %.2f / %.2f ms median / trimmed mean < 3 ms per physics frame)" % [cost_w, trim_w, cost_e, trim_e])
 					quit(0)
 				else:
 					print("❌ FAILED: %d issues" % fails.size())

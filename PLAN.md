@@ -346,6 +346,24 @@ The three FreeRoam crowd spots pass. Menu and s1_03 sit at the same battery leve
 * `tests/test_pedestrians.gd` (parts A graph, B pedestrian, C spawner), `tests/test_crowd_impostors.gd` and `tests/test_roam_traffic.gd` cover crowds and traffic.
 * No preview renders were made after Task 5, at the owner's request; he play-tests himself.
 
+## 🔫 XV. PHASE W: WEAPONS, WANTED LEVEL AND EMOTES (24/10/2026)
+
+Spec `docs/superpowers/specs/2026-10-23-phase-w-weapons-wanted-design.md` (W-D1 … W-D13), plan `docs/superpowers/plans/2026-10-24-phase-w-weapons-wanted.md` (13 tasks, branch `phase-w`).
+
+* **Wheels.** `RadialWheel` (scripts/weapons/) is data-driven: the weapon wheel (hold middle mouse, 8 slots, scroll cycles) and the emote wheel (hold B, "Siuuu!" + 7 greyed slots) are thin subclasses. Only the radial wheel writes `Engine.time_scale` (0.2, eased 0.1 s real, restored on close / block / exit); nothing under scripts/cine/ does (A1-D6).
+* **Weapons.** `WeaponDirector` (magazines with unlimited reserve, aim camera, hip fire, analytic capsule / box ray tests with world occlusion) and its projectiles. Targets are duck-typed (`take_hit`, `is_down`): pedestrians get knocked out with stars, launched, stink, dance, flee; officers too; vehicles halt or flip and smoke (`RoamTraffic.hit_vehicle`). FX on the A1 `CineFX` with a game clock, sounds synthesized in `WeaponAudio` with `user://sfx` overrides (never committed).
+* **Wanted level.** `WantedDirector`: 4 / 12 / 25 heat for 1 / 2 / 3 stars, line-of-sight decay 12 / 20 / 30 s, radar search circle, campus guards and Thầy Toàn, police bikes from `RoamTraffic` (second wave at 3 stars), busted after 1.5 s within 1.2 m, the 7 s `wanted_busted` cutscene, community service.
+* **Emotes.** `EmoteDirector` "Siuuu!": run-up, jump with a 180° turn, landing at 1.70 s, shout cue started at landing − 0.31 s, 3.30 s total, bystander reactions within 10 m.
+* **Headless physics cost** (`tests/test_mayhem_perf.gd`, BE6, full daytime crowd + traffic, 3 stars + second wave, fix round 24/10/2026, three runs in a row): W1 weapons + wanted = 2.27 / 2.09 / 2.30 ms median, 2.17 / 2.06 / 2.17 ms 5 %-trimmed mean; W2 "Siuuu!" + bystanders = 2.32 / 2.41 / 2.44 ms median, 2.25 / 2.32 / 2.32 ms trimmed mean. Gate: both statistics < 3 ms per physics frame (headless script time; the PhysicsServer step itself is not in it). Of W1, about 1.6-1.9 ms is the existing crowd + traffic (headless timings on the owner's laptop swing ±15 % with its load).
+
+**fps table** (owner, windowed, V-Sync off, on AC power; agents no longer run windowed previews): start the game (F5), open Thế giới mở, raise the wanted level to 3 stars at each spot and read the fps counter (`PREVIEW_NOVSYNC=1 godot --path . --script tests/preview_free_roam.gd` gives the same spots' crowd baseline without Phase W).
+
+| Spot | fps | Gate |
+| :--- | ---: | ---: |
+| FreeRoam BE6 lobby, 3 stars, loa + stink cloud | (owner) | ≥ 45 |
+| FreeRoam campus courtyard, 3 stars (6 guards + Thầy Toàn) | (owner) | ≥ 45 |
+| FreeRoam BE6, "Siuuu!" in the crowd | (owner) | ≥ 45 |
+
 ## 🧪 VII. KIỂM THỬ HEADLESS (tests/)
 
 | Lệnh | Kiểm tra |
