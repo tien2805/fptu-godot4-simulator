@@ -309,7 +309,13 @@ func _build_procedural_bike_and_seated_rider() -> void:
 
 	# 4. SINH VIÊN FPTU NGỒI LÁI XE – CharacterBuilder (mặt, tóc, áo polo FPT, ba lô, mũ bảo hiểm, tay ôm ghi-đông)
 	#    Gốc nhân vật đặt tại yên: hông ở 0.62 m trên gốc khi ở clip "ride"; yên xe cao 0.85 m → gốc y = 0.23.
-	rider_node = CharacterBuilder.build({"preset": "rider", "seed": 2805, "name": "SeatedFPTURider", "helmet_color": Color("#0066CC"), "backpack": true, "clip": "ride", "glasses": false})
+	var ro: Dictionary = {"preset": "rider", "seed": 2805, "name": "SeatedFPTURider", "helmet_color": Color("#0066CC"), "backpack": true, "clip": "ride", "glasses": false}
+	var hero: Dictionary = StoryUtil.hero_opts()
+	if not hero.is_empty():
+		# story (A2-D5): the rider is the protagonist (sex, skin, face; the helmet stays on)
+		for k: String in ["female", "skin", "hair_color", "hair_style", "variant"]:
+			ro[k] = hero[k]
+	rider_node = CharacterBuilder.build(ro)
 	rider_node.position = Vector3(0.0, 0.32, 0.14)
 	visual_pivot.add_child(rider_node)
 	CharacterBuilder.set_param(rider_node, "ride_shoulder", 1.2)
