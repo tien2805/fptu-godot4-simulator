@@ -5,9 +5,12 @@ Cập nhật: 2026-10-25.
 Gu chung là kiểu phim *Nobody*: nhạc cũ, vui, đặt ngược với cảnh hành động hoặc thảm họa.
 
 **Trạng thái 2026-10-25:**
-- Bạn đã tải mọi bài gợi ý bên dưới và 12 âm thanh. Tất cả đã nằm trong `music\` và `sfx\` trên máy.
+- Bạn đã tải mọi bài gợi ý bên dưới, toàn bộ bài trong mục Đã chốt và 12 âm thanh. Tất cả đã nằm trong `music\` và `sfx\` trên máy.
 - Mỗi bài được cắt bỏ đoạn im lặng ở đầu. Riêng các replay ngắn bắt đầu ở chỗ bài vào đoạn mạnh.
-- Còn thiếu 2 bài: `seg_d0_race` (*Deja Vu*) và `seg_d2_chase` (*Tokyo Drift*).
+- Cả 2 bài `seg_d0_race` (*Deja Vu*) và `seg_d2_chase` (*Tokyo Drift*) đã có trong `music\`.
+  - *Deja Vu* bắt đầu từ giây 38,8 của file gốc, ngay trước điệp khúc "Deja vu!". Điệp khúc được dò bằng đoạn lặp nhiều nhất trong bài, nên có thể lệch một nhịp.
+  - *Tokyo Drift* bắt đầu từ giây 11,4, đoạn hook "I wonder if you know…".
+- Cả 39 bài nhạc và 13 âm thanh đều đã được nạp thử qua bộ đọc file của game: đọc được hết.
 - Điểm cắt chính xác cho từng cảnh chưa làm sẽ chỉnh khi dựng cảnh đó.
 
 ## Cách dùng
