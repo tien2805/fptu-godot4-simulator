@@ -2,7 +2,8 @@
 # Phase W sound cues, synthesized in code with the A1 voice helpers (CineAudio._tone / _noise / _mix / _paste / _to_wav).
 # Any cue can be overridden by the owner's user://sfx/<cue>.ogg (local only: never committed, never exported). The loa kẹo
 # kéo music (W-D5) is the owner's user://sfx/loa_keo_keo.ogg or .mp3 when present, otherwise the synthesized "bolero" cue
-# (Task 6). Main thread only (static cache). Each task adds its cues to CUES and to synth().
+# (Task 6). Main thread only (static cache). Each task adds its cues to CUES and to synth(). warm() fills the cache once per
+# process when the weapons load (the bolero alone takes ~0.3 s to synthesize): equipping or scrolling never synthesizes.
 class_name WeaponAudio
 extends RefCounted
 
@@ -28,10 +29,21 @@ static func bus() -> StringName:
 	return &"SFX" if AudioServer.get_bus_index("SFX") >= 0 else &"Master"
 
 
-## The owner's override file of a cue ("" when there is none).
+## The owner's override file of a cue: sfx_dir/<cue>.ogg or .mp3 ("" when there is none).
 static func override_file(cue: String) -> String:
-	var p: String = sfx_dir + cue + ".ogg"
-	return p if FileAccess.file_exists(p) else ""
+	return owner_file(cue)
+
+
+## Fill the cache with every cue, the loa music and the siuuu shout (at load time; cheap once cached).
+static func warm() -> void:
+	for c: String in CUES:
+		stream(c)
+	loa_stream()
+	siuuu_stream()
+
+
+static func is_warm() -> bool:
+	return _cache.has("@loa") and _cache.has("@siuuu") and _cache.size() >= CUES.size() + 2
 
 
 static func stream(cue: String) -> AudioStream:
@@ -41,10 +53,19 @@ static func stream(cue: String) -> AudioStream:
 	var f: String = override_file(cue)
 	if f != "":
 		st = CineAudio._load_file(f)
+		if cue == "bolero":
+			_set_loop(st)                    # an owner bolero override loops like the synthesized one
 	if st == null:
 		st = synth(cue)
 	_cache[cue] = st
 	return st
+
+
+static func _set_loop(st: AudioStream) -> void:
+	if st is AudioStreamOggVorbis:
+		(st as AudioStreamOggVorbis).loop = true
+	elif st is AudioStreamMP3:
+		(st as AudioStreamMP3).loop = true
 
 
 static func _gap(secs: float) -> PackedFloat32Array:
@@ -168,10 +189,7 @@ static func loa_stream() -> AudioStream:
 	var f: String = loa_file()
 	if f != "":
 		st = CineAudio._load_file(f)
-		if st is AudioStreamOggVorbis:
-			(st as AudioStreamOggVorbis).loop = true
-		elif st is AudioStreamMP3:
-			(st as AudioStreamMP3).loop = true
+		_set_loop(st)
 	if st == null:
 		st = stream("bolero")
 	_cache["@loa"] = st

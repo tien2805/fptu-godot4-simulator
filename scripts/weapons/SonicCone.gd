@@ -2,7 +2,8 @@
 # Loa kẹo kéo blast (spec section 3, W-D5): while the fire button is held, every TICK_S everyone inside the 10 m / 60° cone in
 # front of the player is pushed away (PUSH m/s; some dance on the spot, then flee) and a pink ring shoots out; the music is
 # WeaponAudio.loa_stream() (the owner's local loa_keo_keo file, else the synthesized bolero) on a looping AudioStreamPlayer;
-# +1 heat every HEAT_EVERY_S of blasting. Created and stopped by WeaponDirector._tick_held.
+# +1 heat every HEAT_EVERY_S of blasting, counted on the director (WeaponDirector.loa_heat_acc) so short bursts add up.
+# Created and stopped by WeaponDirector._tick_held.
 class_name SonicCone
 extends Node3D
 
@@ -14,7 +15,6 @@ var director: WeaponDirector
 var held_t: float = 0.0
 var music: AudioStreamPlayer
 var _acc: float = 0.0
-var _heat_acc: float = 0.0
 
 
 func setup(d: WeaponDirector) -> void:
@@ -32,9 +32,9 @@ func setup(d: WeaponDirector) -> void:
 func tick(delta: float, apex: Vector3, dir: Vector3) -> void:
 	held_t += delta
 	_acc += delta
-	_heat_acc += delta
-	if _heat_acc >= HEAT_EVERY_S:
-		_heat_acc -= HEAT_EVERY_S
+	director.loa_heat_acc += delta
+	if director.loa_heat_acc >= HEAT_EVERY_S:
+		director.loa_heat_acc -= HEAT_EVERY_S
 		director._heat(WeaponData.HEAT_LOA_PER_2S, apex, "loa")
 	if _acc < TICK_S:
 		return

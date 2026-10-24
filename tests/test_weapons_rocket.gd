@@ -3,7 +3,9 @@
 # flies at 35 m/s to the person on the crosshair and explodes there; everyone within 6 m flies in a comic arc and lands
 # knocked out, a person 7 m away is not launched but flees, one 32 m away is untouched; a car within the radius flips onto
 # its roof and smokes; camera shake, smoke puff and scorch mark; +6 heat; 1 round, 2.5 s reload; a blast within 6 m of the
-# player knocks him down (comic, he gets up); a rocket into the sky explodes after 140 m.
+# player knocks him down (comic, he gets up); a rocket into the sky explodes after 140 m, leaving no scorch in the air; fired
+# point blank against a wall it blasts at the wall instead of passing through (R3-I1); a blast near a riding (hidden) player
+# does not knock him down.
 # Counts physics frames (Engine.max_fps = 60).
 # Run:  godot --headless --path . --script tests/test_weapons_rocket.gd
 extends SceneTree
@@ -135,6 +137,25 @@ func _on_physics() -> void:
 				_check(dir.explosions.size() == 3, "the rocket into the sky exploded")
 				var far: float = dir.explosions.back().distance_to(player.global_position + Vector3(0.0, WeaponDirector.ROCKET_UP, 0.0)) if dir.explosions.size() == 3 else 0.0
 				_check(far > 134.0 and far < 142.0, "... after 140 m (%.1f m)" % far)
+				_check(dir.fx.transient_count("scorch") == 2, "no scorch disc floating in the air (%d scorch marks)" % dir.fx.transient_count("scorch"))
+				player.pitch = 0.0
+				player.teleport(Vector3.ZERO, 0.0)
+				targets.clear()
+				_ped("W", Vector3(0.0, 0.0, -8.0))
+				World.wall(arena, Vector3(0.0, 1.5, -0.95), Vector3(4.0, 3.0, 1.0))   # face at z = -0.45, the capsule is 0.4
+				_next("wall")
+		"wall":
+			if t == 10:
+				_fire()
+			if t == 14:
+				var e: Vector3 = dir.explosions.back() if dir.explosions.size() == 4 else Vector3(0.0, 0.0, -99.0)
+				_check(dir.explosions.size() == 4 and e.z > -0.6 and e.z < -0.2 and absf(e.x) < 1.0, "point blank against a wall: the rocket blasts at the wall, not behind it (%s)" % str(e))
+			if t == 200:
+				_check(player.move_state == "GROUND", "test setup: the player is up again")
+				player.visible = false
+				dir.explode_at(player.global_position + Vector3(2.0, 0.0, 0.0))
+				_check(not player.is_knocked_down(), "a blast next to the riding (hidden) player does not knock him down")
+				player.visible = true
 				_check(arena.find_children("*", "GPUParticles3D", true, false).is_empty(), "no GPUParticles3D")
 				Engine.time_scale = 1.0
 				if fails.is_empty():

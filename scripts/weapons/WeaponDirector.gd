@@ -10,7 +10,10 @@
 # vehicles go through RoamTraffic.hit_vehicle. Heat leaves on the `mayhem` signal (WantedDirector.add_heat). Blocked (no
 # aim, no fire) while blocked_fn says so (riding, cinematic, replay, busted, community service, map) or `locked`; nothing
 # fires while the wheel is open. Times are game seconds (the wheel's slow motion slows reloads too). Input overrides
-# (fire_override / aim_override / reload_override) drive it in tests. GameFX / StageManager are never named here.
+# (fire_override / aim_override / reload_override) drive it in tests. No autoload is referenced here.
+# The hand prop's visibility is owned here (_apply_held_vis): hidden while the dép is in flight and while any reason in
+# held_hide is set (the emote, community service). After the mouse is captured or a block / the wheel ends, the fire button
+# must be released once before it fires (the capturing click never shoots).
 class_name WeaponDirector
 extends Node3D
 
@@ -71,6 +74,10 @@ var dep_returns: int = 0
 var last_dep_return: Vector3 = Vector3.ZERO
 var stink_clouds: int = 0
 var sonic: SonicCone = null
+var loa_heat_acc: float = 0.0            # seconds of loa blasting toward the next +1 heat (kept across presses)
+var held_hide: Dictionary = {}           # reason -> true: the hand prop is hidden ("emote", "service")
+var _need_release: bool = true           # the fire button must be up once before an edge counts
+var _was_captured: bool = false
 
 
 func _ready() -> void:
@@ -78,6 +85,7 @@ func _ready() -> void:
 	ammo.resize(WeaponData.COUNT)
 	for i: int in WeaponData.COUNT:
 		ammo[i] = WeaponData.mag_of(i)
+	WeaponAudio.warm()                   # every cue now, at load: equip / scroll never synthesize (R3-I2)
 	fx = WeaponFX.new()
 	fx.name = "WeaponFX"
 	add_child(fx)
@@ -129,8 +137,6 @@ func equip(slot: int) -> void:
 	if slot == current:
 		return
 	_on_unequip()
-	if slot == WeaponData.Slot.LOA:
-		WeaponAudio.loa_stream()   # synthesize the bolero now (wheel open, game slowed) rather than on the first blast
 	current = slot
 	reload_left = 0.0
 	cooldown = maxf(cooldown, 0.15)
@@ -175,7 +181,16 @@ func _physics_process(delta: float) -> void:
 	player.aiming = aiming
 	if hud:
 		hud.set_aim(aiming, 4.0 if aiming else 14.0)
-	var fire: bool = not blocked and not wheel_open and not player.is_knocked_down() and _fire_input()
+	var raw: bool = _fire_input()
+	var forced: bool = fire_override is bool
+	var captured: bool = forced or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var can: bool = not blocked and not wheel_open and not player.is_knocked_down() and captured
+	if not can or (captured and not _was_captured and not forced):
+		_need_release = true                 # capture click, wheel close, unblock: wait for the button to come up
+	_was_captured = captured
+	if not raw:
+		_need_release = false
+	var fire: bool = can and raw and not _need_release
 	var edge: bool = fire and not _fire_prev
 	_fire_prev = fire
 	_tick_held(delta, fire)
@@ -184,7 +199,22 @@ func _physics_process(delta: float) -> void:
 	if fire and (edge or bool(WeaponData.SLOTS[current]["auto"])) and cooldown <= 0.0001 and reload_left <= 0.0:
 		try_fire()
 	_tick_pending()
+	_apply_held_vis()
 	_update_held_pose()
+
+
+## Hide (on = true) or show the hand prop for a reason ("emote", "service"); the prop shows when no reason is left.
+func set_held_hidden(reason: String, on: bool) -> void:
+	if on:
+		held_hide[reason] = true
+	else:
+		held_hide.erase(reason)
+	_apply_held_vis()
+
+
+func _apply_held_vis() -> void:
+	if held:
+		held.visible = held_hide.is_empty() and not (current == WeaponData.Slot.DEP and dep_in_flight)
 
 
 func _fire_input() -> bool:
@@ -300,6 +330,9 @@ func _melee(w: Dictionary) -> void:
 			hits.append(n)
 	if unarmed and best != null:
 		hits = [best]
+	for key0: Variant in _combo.keys():       # forget combos older than COMBO_S (bounded)
+		if _t - float((_combo[key0] as Array)[1]) > COMBO_S:
+			_combo.erase(key0)
 	if hits.is_empty():
 		play_cue("swish", hand_position(), -4.0)
 		return
@@ -376,6 +409,7 @@ func _update_held() -> void:
 	held = WeaponProps.build(current)
 	if held == null:
 		return
+	_apply_held_vis()                        # a dép still in flight is not in the hand
 	var sk: Skeleton3D = player.model.get_meta("skeleton", null) as Skeleton3D
 	if sk and sk.find_bone("Wrist.R") >= 0:
 		if _held_att == null or not is_instance_valid(_held_att):
@@ -539,6 +573,16 @@ func _fire_rocket(w: Dictionary) -> void:
 	var h: Dictionary = first_hit(aim_origin() + d0 * (player.camera.position.z + 0.3), d0, float(w["range"]))
 	var f: Vector3 = player.facing_dir()
 	var from: Vector3 = player.global_position + Vector3(0.0, ROCKET_UP, 0.0) + f * 0.5 + Vector3(-f.z, 0.0, f.x) * 0.25
+	var chest: Vector3 = player.global_position + Vector3(0.0, ROCKET_UP, 0.0)
+	var wall: Dictionary = _world_ray(chest, from)
+	if not wall.is_empty():
+		# point blank against a wall: the launch point is inside it, the rocket would fly through - comic blast right here
+		var at: Vector3 = (wall["position"] as Vector3) + (wall["normal"] as Vector3) * 0.05
+		fx.muzzle(at, f, 1.2)
+		play_cue("rocket_launch", at, 2.0)
+		rockets_fired += 1
+		explode_at(at)
+		return
 	var to: Vector3 = h["pos"]
 	var d: Vector3 = (to - from).normalized() if float(h["t"]) > 2.0 else d0
 	var r := WeaponRocket.new()
@@ -553,19 +597,32 @@ func _fire_rocket(w: Dictionary) -> void:
 		CharacterBuilder.play(player.model, "flinch", 0.3)
 
 
+## World geometry between two points (people and traffic ignored, like the shots): the hit Dictionary or {}.
+func _world_ray(a: Vector3, b: Vector3) -> Dictionary:
+	if not is_inside_tree():
+		return {}
+	var rq := PhysicsRayQueryParameters3D.create(a, b)
+	rq.exclude = _exclusions()
+	rq.collide_with_areas = false
+	return get_world_3d().direct_space_state.intersect_ray(rq)
+
+
 ## Rocket explosion (spec section 3): flash, sparks, dust, smoke, scorch, camera shake; people within the radius fly in comic
 ## arcs and land knocked out, vehicles flip and smoke, the player inside it is knocked down (never hurt), bystanders flee,
 ## impostors scatter. +6 heat.
 func explode_at(pos: Vector3) -> void:
 	var rad: float = float(WeaponData.SLOTS[WeaponData.Slot.ROCKET]["radius"])
 	explosions.append(pos)
+	if explosions.size() > LOG_MAX:
+		explosions.remove_at(0)
 	fx.explosion(pos, rad, _exclusions())
 	play_cue("explosion", pos, 6.0)
 	var pd: float = player.global_position.distance_to(pos)
-	if pd < 40.0:
-		player.shake(lerpf(1.0, 0.15, pd / 40.0))
-	if pd <= rad:
-		player.knock_down(player.global_position - pos, 4.0)
+	if player.visible:                       # riding: the player body is hidden, no shake / SPLAT after dismounting
+		if pd < 40.0:
+			player.shake(lerpf(1.0, 0.15, pd / 40.0))
+		if pd <= rad:
+			player.knock_down(player.global_position - pos, 4.0)
 	for n: Node3D in soft_targets():
 		var d: float = WeaponMath.flat(n.global_position, pos)
 		if d > rad or absf(n.global_position.y - pos.y) > 4.0:
@@ -590,8 +647,7 @@ func _throw_dep(w: Dictionary) -> void:
 	d.launch(self, hand_position(), WeaponMath.flat_dir(aim_dir()), float(w["reach"]))
 	d.returned.connect(_on_dep_returned)
 	dep_in_flight = true
-	if held:
-		held.visible = false
+	_apply_held_vis()
 	play_cue("dep_whoosh", hand_position(), -2.0)
 	if player.model:
 		CharacterBuilder.play(player.model, "punch", 0.3)
@@ -601,8 +657,7 @@ func _on_dep_returned(at: Vector3) -> void:
 	dep_in_flight = false
 	dep_returns += 1
 	last_dep_return = at
-	if held:
-		held.visible = true
+	_apply_held_vis()
 
 
 ## A dép bonk: knocked out DEP_KO_S with stars, "bonk", +1 heat.

@@ -18,6 +18,7 @@ var cine: CineFX
 var t: float = 0.0
 var recycles: int = 0
 var _busy_until: float = 0.0
+static var _ring_mesh: TorusMesh = null
 var _transient: Array[Dictionary] = []    # {"node", "t0", "life", "kind", "mat", "a0", "fade", "grow"}
 
 
@@ -166,8 +167,9 @@ func _scorch(pos: Vector3, r: float, ex: Array[RID]) -> void:
 		rq.exclude = ex
 		rq.collide_with_areas = false
 		var h: Dictionary = get_world_3d().direct_space_state.intersect_ray(rq)
-		if not h.is_empty():
-			floor_y = (h["position"] as Vector3).y
+		if h.is_empty():
+			return                           # exploded in the air (a rocket at max range): no floating scorch disc
+		floor_y = (h["position"] as Vector3).y
 	var mi := MeshInstance3D.new()
 	mi.name = "Scorch"
 	var pm := PlaneMesh.new()
@@ -232,10 +234,13 @@ func stink(pos: Vector3, r: float, secs: float) -> void:
 func sonic_ring(apex: Vector3, dir: Vector3) -> void:
 	var mi := MeshInstance3D.new()
 	mi.name = "SonicRing"
-	var tm := TorusMesh.new()
-	tm.inner_radius = 0.45
-	tm.outer_radius = 0.55
-	mi.mesh = tm
+	if _ring_mesh == null:                   # one shared torus (building one every 0.2 s showed up in the frame time)
+		_ring_mesh = TorusMesh.new()
+		_ring_mesh.inner_radius = 0.45
+		_ring_mesh.outer_radius = 0.55
+		_ring_mesh.rings = 24
+		_ring_mesh.ring_segments = 8
+	mi.mesh = _ring_mesh
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA

@@ -25,6 +25,7 @@ var heat: Array[float] = []
 var peds: Dictionary = {}
 var cloud_pos: Vector3
 var hold: bool = false
+var shots0: int = 0
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -120,8 +121,17 @@ func _on_physics() -> void:
 		traffic = World.traffic(arena, player, -40.0)
 		World.place_vehicle(traffic, 0, -80.0)
 		World.place_vehicle(traffic, 1, 60.0)
+		WeaponAudio.sfx_dir = "res://tests/__no_sfx__/"   # never depend on the owner's local files
+		WeaponAudio.clear_cache()
 		dir = World.director(arena, player, targets, traffic)
 		dir.mayhem.connect(func(h: float, _at: Vector3, _c: String) -> void: heat.append(h))
+		_check(WeaponAudio.is_warm(), "every cue (and the bolero) is synthesized when the weapons load (R3-I2)")
+		var t_us: int = Time.get_ticks_usec()
+		dir.equip(WeaponData.Slot.LOA)
+		dir.cycle(1)
+		dir.cycle(-1)
+		var ms: float = float(Time.get_ticks_usec() - t_us) / 1000.0
+		_check(ms < 25.0, "equipping the loa and scrolling never synthesize audio (%.1f ms)" % ms)
 		dir.equip(WeaponData.Slot.DEP)
 		_ped("P", Vector3(0.0, 0.0, -8.0))
 		_next("dep")
@@ -139,6 +149,10 @@ func _on_physics() -> void:
 				_fire()
 			if t == 12:
 				_check(_count("Dep*") == 1, "only one dép in flight at a time")
+			if t == 15:
+				dir.equip(WeaponData.Slot.PISTOL)
+				dir.equip(WeaponData.Slot.DEP)
+				_check(dir.held != null and not dir.held.visible, "switching away and back while the dép flies: no second dép in the hand")
 			if t == 45:
 				var p: Pedestrian = peds["P"]
 				_check(p.state == Pedestrian.State.KNOCKED_OUT and p.ko_left <= 4.0 and p.ko_left > 3.0, "bonk: knocked out 4 s (%.2f s left)" % p.ko_left)
@@ -217,6 +231,39 @@ func _on_physics() -> void:
 				_check(dir.sonic != null, "blasting again")
 				dir.equip(WeaponData.Slot.UNARMED)
 				_check(dir.sonic == null, "switching weapon stops the loa")
+				hold = false
+				dir.fire_override = false
+				heat.clear()
+				dir.loa_heat_acc = 0.0
+				dir.equip(WeaponData.Slot.LOA)
+				_next("taps")
+		"taps":
+			# five bursts of 1 s with short pauses: 5 s of blasting = +2 heat (the counter is kept between presses)
+			var k: int = t % 70
+			if t < 350:
+				hold = k < 60
+				dir.fire_override = hold
+			if t == 352:
+				_check(heat.count(WeaponData.HEAT_LOA_PER_2S) == 2, "short loa bursts add up: +2 heat for 5 s in five presses (%s)" % str(heat))
+				dir.equip(WeaponData.Slot.PISTOL)
+				hold = true
+				dir.fire_override = true
+				dir.locked = true
+				_next("release")
+		"release":
+			if t == 10:
+				shots0 = dir.shots
+				dir.cooldown = 0.0
+				dir.locked = false
+			if t == 20:
+				_check(dir.shots == shots0, "fire held through a block does not shoot when the block ends (release first)")
+				hold = false
+				dir.fire_override = false
+			if t == 22:
+				hold = true
+				dir.fire_override = true
+			if t == 24:
+				_check(dir.shots == shots0 + 1, "after a release the next press shoots")
 				hold = false
 				dir.fire_override = false
 				_check(arena.find_children("*", "GPUParticles3D", true, false).is_empty(), "no GPUParticles3D")

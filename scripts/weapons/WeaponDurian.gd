@@ -6,7 +6,7 @@ extends Node3D
 
 signal burst(at: Vector3)
 
-const FUSE_S: float = 2.0
+const FUSE_S: float = WeaponData.SLOTS[WeaponData.Slot.DURIAN]["fuse"]
 const GRAVITY: float = 20.0
 const BOUNCE: float = 0.35
 const RADIUS: float = 0.13

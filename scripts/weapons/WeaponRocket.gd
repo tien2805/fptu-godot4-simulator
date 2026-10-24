@@ -8,8 +8,8 @@ extends Node3D
 
 signal exploded(at: Vector3)
 
-const SPEED: float = 35.0
-const MAX_RANGE: float = 140.0
+const SPEED: float = WeaponData.SLOTS[WeaponData.Slot.ROCKET]["speed"]
+const MAX_RANGE: float = WeaponData.SLOTS[WeaponData.Slot.ROCKET]["range"]
 
 var director: WeaponDirector
 var dir: Vector3 = Vector3.FORWARD
