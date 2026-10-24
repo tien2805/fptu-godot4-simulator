@@ -122,7 +122,7 @@ func _ready() -> void:
 	StageManager.typing_mode = true
 	GameFX.upgrade_scene_visuals(self, "night")
 	GameFX.music_play("capstone", 0.3)
-	_log("⚔️ 23:57:30 – QUÁI VẬT DEADLINE XUẤT HIỆN! GÕ TÊN LỖI ĐỂ BẮN HẠ. [TAB] ĐỔI NGƯỜI · [ENTER] SKILL")
+	_log("23:57:30 – QUÁI VẬT DEADLINE XUẤT HIỆN! GÕ TÊN LỖI ĐỂ BẮN HẠ. [TAB] ĐỔI NGƯỜI · [ENTER] SKILL")
 	_update_boss_ui()
 
 func _exit_tree() -> void:
@@ -146,13 +146,13 @@ func _apply_laptop_texture() -> void:
 
 func _init_members() -> void:
 	members = [
-		{"name": "LEADER", "icon": "💻", "hp": 100.0, "awake": true, "down": false,
+		{"name": "LEADER", "hp": 100.0, "awake": true, "down": false,
 		 "skill": "Clean Architecture", "skill_desc": "xóa 3 đạn thấp nhất", "cd": 10.0, "cd_left": 0.0, "shield": 0, "color": Color("#F37021")},
-		{"name": "FRONTEND", "icon": "🎨", "hp": 100.0, "awake": true, "down": false,
+		{"name": "FRONTEND", "hp": 100.0, "awake": true, "down": false,
 		 "skill": "CSS Shield", "skill_desc": "chặn 3 đạn làn mình", "cd": 12.0, "cd_left": 0.0, "shield": 0, "color": Color("#3498DB")},
-		{"name": "TESTER QA", "icon": "📑", "hp": 100.0, "awake": true, "down": false,
+		{"name": "TESTER QA", "hp": 100.0, "awake": true, "down": false,
 		 "skill": "Ném SRS 300 trang", "skill_desc": "đóng băng đạn 2.5s", "cd": 15.0, "cd_left": 0.0, "shield": 0, "color": Color("#2ECC71")},
-		{"name": "SEEN KO REP", "icon": "📞", "hp": 100.0, "awake": false, "down": false,
+		{"name": "SEEN KO REP", "hp": 100.0, "awake": false, "down": false,
 		 "skill": "git merge", "skill_desc": "hồi 40 HP cả team", "cd": 20.0, "cd_left": 0.0, "shield": 0, "color": Color("#9B59B6")}
 	]
 
@@ -170,7 +170,7 @@ func _build_team_meshes() -> void:
 		root.add_child(person)
 		team_people.append(person)
 		var lbl := Label3D.new()
-		lbl.text = "%s %s" % [m["icon"], m["name"]]
+		lbl.text = String(m["name"])
 		lbl.font_size = 22
 		lbl.outline_size = 8
 		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -180,7 +180,7 @@ func _build_team_meshes() -> void:
 			root.rotation_degrees.z = 80.0
 			root.position.y = 0.3
 			sleep_label = Label3D.new()
-			sleep_label.text = "💤 zZz (seen lúc 22:03)"
+			sleep_label.text = "zZz (seen lúc 22:03)"
 			sleep_label.font_size = 26
 			sleep_label.outline_size = 8
 			sleep_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -298,7 +298,7 @@ func _build_member_cards() -> void:
 		vb.add_theme_constant_override("separation", 3)
 		card.add_child(vb)
 		var btn := Button.new()
-		btn.text = "%s %s" % [m["icon"], m["name"]]
+		btn.text = String(m["name"])
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.add_theme_font_size_override("font_size", 14)
 		btn.pressed.connect(func() -> void: _select_member(i))
@@ -318,15 +318,15 @@ func _refresh_cards() -> void:
 		hp_bar.value = m["hp"]
 		var sk: Label = c["skill"]
 		if m["down"]:
-			sk.text = "💀 GỤC – không còn gõ nổi"
+			sk.text = "GỤC – không còn gõ nổi"
 		elif not m["awake"]:
-			sk.text = "💤 ĐANG NGỦ – chọn + [Enter] để gọi dậy"
+			sk.text = "ĐANG NGỦ – chọn + [Enter] để gọi dậy"
 		elif m["cd_left"] > 0.0:
 			sk.text = "%s (%.0fs)" % [m["skill"], m["cd_left"]]
 		else:
-			sk.text = "✅ [Enter] %s: %s" % [m["skill"], m["skill_desc"]]
+			sk.text = "[Enter] %s: %s" % [m["skill"], m["skill_desc"]]
 		if m["shield"] > 0:
-			sk.text += " · 🛡x%d" % m["shield"]
+			sk.text += " · KHIÊN x%d" % m["shield"]
 		var card: PanelContainer = c["card"]
 		var border: Color = GameFX.ui_accent() if i == active_idx else Color(0.3, 0.35, 0.45)
 		if m["down"]:
@@ -351,7 +351,7 @@ func _build_typing_ui() -> void:
 	var pv := VBoxContainer.new()
 	pv.add_theme_constant_override("separation", 6)
 	phone_panel.add_child(pv)
-	pv.add_child(GameFX.make_label("📞 ĐANG GỌI BẠN SEEN KHÔNG REP...", 22, Color("#9B59B6")))
+	pv.add_child(GameFX.make_label("ĐANG GỌI BẠN SEEN KHÔNG REP...", 22, Color("#9B59B6")))
 	phone_label = GameFX.make_label("MASH [SPACE] 0 / 14 – còn 4.0s", 18, Color.WHITE)
 	pv.add_child(phone_label)
 	phone_bar = GameFX.make_bar(0.0, Color("#9B59B6"), 18)
@@ -389,7 +389,7 @@ func _log(text: String) -> void:
 func _update_boss_ui() -> void:
 	boss_hp_bar.value = boss_hp / BOSS_MAX_HP * 100.0
 	GameFX.music_tension(0.3 + 0.7 * (1.0 - boss_hp / BOSS_MAX_HP))
-	boss_name_lbl.text = "👾 QUÁI VẬT DEADLINE 23:59 · HP %d/%d · COMBO x%d (%d) · ĐIỂM %d" % [int(boss_hp), int(BOSS_MAX_HP), _mult(), combo, score]
+	boss_name_lbl.text = "QUÁI VẬT DEADLINE 23:59 · HP %d/%d · COMBO x%d (%d) · ĐIỂM %d" % [int(boss_hp), int(BOSS_MAX_HP), _mult(), combo, score]
 
 func _mult() -> int:
 	return 1 + mini(combo / 6, 2)
@@ -673,7 +673,7 @@ func _destroy_bullet(b: Dictionary, by_typing: bool) -> void:
 	if by_typing:
 		GameFX.float_text(self, boss_root.global_position + Vector3(randf_range(-1.0, 1.0), 1.0, 0.0), "-%d" % dmg, Color("#F1C40F"), 44)
 		if combo > 0 and combo % 6 == 0:
-			GameFX.popup("🔥 COMBO %d! x%d SÁT THƯƠNG" % [combo, _mult()], Color("#F39C12"), 30, 0.8)
+			GameFX.popup("COMBO %d! x%d SÁT THƯƠNG" % [combo, _mult()], Color("#F39C12"), 30, 0.8)
 	_update_boss_ui()
 	_check_boss_phase()
 
@@ -694,7 +694,7 @@ func _bullet_hits_bottom(b: Dictionary) -> void:
 	if int(target["shield"]) > 0:
 		target["shield"] = int(target["shield"]) - 1
 		GameFX.play_sfx("pop", -4.0, 0.7)
-		_log("🛡 CSS Shield chặn '%s'! (còn %d)" % [str(b["word"]), int(target["shield"])])
+		_log("CSS Shield chặn '%s'! (còn %d)" % [str(b["word"]), int(target["shield"])])
 		return
 	var dmg: float = [18.0, 22.0, 26.0][_wave() - 1]
 	target["hp"] = maxf(0.0, float(target["hp"]) - dmg)
@@ -703,11 +703,11 @@ func _bullet_hits_bottom(b: Dictionary) -> void:
 	GameFX.play_sfx("hit", -2.0, 0.8)
 	GameFX.shake(0.35)
 	GameFX.flash(Color("#E74C3C"), 0.25, 0.3)
-	_log("💥 '%s' trúng %s %s: -%d HP!" % [str(b["word"]), target["icon"], target["name"], int(dmg)])
+	_log("'%s' trúng %s: -%d HP!" % [str(b["word"]), target["name"], int(dmg)])
 	if float(target["hp"]) <= 0.0 and not target["down"]:
 		target["down"] = true
-		_log("💀 %s %s GỤC TRÊN BÀN PHÍM! %s" % [target["icon"], target["name"], "Team còn %d người..." % (LANE_COUNT - _down_count())])
-		GameFX.popup("💀 %s GỤC!" % target["name"], Color("#E74C3C"), 32, 1.2)
+		_log("%s GỤC TRÊN BÀN PHÍM! %s" % [target["name"], "Team còn %d người..." % (LANE_COUNT - _down_count())])
+		GameFX.popup("%s GỤC!" % target["name"], Color("#E74C3C"), 32, 1.2)
 		var idx: int = members.find(target)
 		if idx >= 0 and idx < team_meshes.size():
 			var tw := create_tween()
@@ -761,13 +761,13 @@ func _use_skill() -> void:
 		if phone_active:
 			return
 		if phone_cd > 0.0:
-			_log("📞 Máy bận... thử lại sau %.0fs" % phone_cd)
+			_log("Máy bận... thử lại sau %.0fs" % phone_cd)
 			return
 		_phone_start()
 		return
 	if float(m["cd_left"]) > 0.0:
 		GameFX.play_sfx("error", -10.0)
-		_log("⏳ %s đang hồi chiêu (%.0fs)" % [m["skill"], float(m["cd_left"])])
+		_log("%s đang hồi chiêu (%.0fs)" % [m["skill"], float(m["cd_left"])])
 		return
 	m["cd_left"] = float(m["cd"])
 	GameFX.play_sfx("success", -4.0)
@@ -778,20 +778,20 @@ func _use_skill() -> void:
 			var n: int = mini(3, alive.size())
 			for i: int in range(n):
 				_destroy_bullet(alive[i], false)
-			_log("💻 LEADER 'Clean Architecture': refactor bay %d viên đạn thấp nhất!" % n)
+			_log("LEADER 'Clean Architecture': refactor bay %d viên đạn thấp nhất!" % n)
 			GameFX.flash(Color("#F37021"), 0.25, 0.3)
 		1:
 			m["shield"] = 3
-			_log("🎨 FRONTEND bật 'CSS Shield' (flex + z-index 9999): chặn 3 đạn làn mình!")
+			_log("FRONTEND bật 'CSS Shield' (flex + z-index 9999): chặn 3 đạn làn mình!")
 		2:
 			freeze_timer = 2.5
-			_log("📑 TESTER ném SRS 300 trang: Boss choáng, đạn đóng băng 2.5s!")
+			_log("TESTER ném SRS 300 trang: Boss choáng, đạn đóng băng 2.5s!")
 			GameFX.flash(Color("#2ECC71"), 0.2, 0.3)
 		3:
 			for mm: Dictionary in members:
 				if not mm["down"]:
 					mm["hp"] = minf(100.0, float(mm["hp"]) + 40.0)
-			_log("📞 'git merge' thành công: cả team hồi +40 HP!")
+			_log("'git merge' thành công: cả team hồi +40 HP!")
 			GameFX.flash(Color("#9B59B6"), 0.25, 0.3)
 	_refresh_cards()
 
@@ -801,7 +801,7 @@ func _phone_start() -> void:
 	phone_timer = 4.0
 	phone_panel.visible = true
 	GameFX.play_sfx("ring", -2.0)
-	_log("📞 Gọi bạn seen không rep... (mash [SPACE] 14 lần trong 4s)")
+	_log("Gọi bạn seen không rep... (mash [SPACE] 14 lần trong 4s)")
 
 func _phone_press() -> void:
 	phone_presses += 1
@@ -817,8 +817,8 @@ func _phone_end(success: bool) -> void:
 		m["awake"] = true
 		m["hp"] = 100.0
 		GameFX.play_sfx("success")
-		GameFX.popup("📞 BẮT MÁY RỒI! 'Hả? Deadline hả?! Để tui merge!'", Color("#9B59B6"), 28, 1.8)
-		_log("📞 SEEN KO REP đã tỉnh! Skill 'git merge' (+40 HP team) đã mở.")
+		GameFX.popup("BẮT MÁY RỒI! 'Hả? Deadline hả?! Để tui merge!'", Color("#9B59B6"), 28, 1.8)
+		_log("SEEN KO REP đã tỉnh! Skill 'git merge' (+40 HP team) đã mở.")
 		if team_meshes.size() > 3:
 			var tw := create_tween()
 			tw.tween_property(team_meshes[3], "rotation_degrees:z", 0.0, 0.4)
@@ -826,11 +826,11 @@ func _phone_end(success: bool) -> void:
 			if team_people.size() > 3:
 				CharacterBuilder.play(team_people[3], "type")
 		if sleep_label:
-			sleep_label.text = "☕ tỉnh rồi!"
+			sleep_label.text = "tỉnh rồi!"
 	else:
 		phone_cd = 5.0
 		GameFX.play_sfx("error")
-		_log("📞 Vẫn seen không rep... (thử lại sau 5s)")
+		_log("Vẫn seen không rep... (thử lại sau 5s)")
 	_refresh_cards()
 
 # ===========================================================================
@@ -858,15 +858,15 @@ func _start_git_phase() -> void:
 	conflict_idx = 0
 	GameFX.play_sfx("alarm")
 	GameFX.flash(Color("#E74C3C"), 0.35, 0.4)
-	GameFX.popup("⚠️ CẢ NHÓM PUSH CÙNG LÚC 23:58 → GIT MERGE CONFLICT!", Color("#E74C3C"), 30, 2.0)
-	_log("⚠️ Boss yếu rồi nhưng branch main xung đột! Chọn đúng khối code [←]/[→] trong 8s.")
+	GameFX.popup("CẢ NHÓM PUSH CÙNG LÚC 23:58 → GIT MERGE CONFLICT!", Color("#E74C3C"), 30, 2.0)
+	_log("Boss yếu rồi nhưng branch main xung đột! Chọn đúng khối code [←]/[→] trong 8s.")
 	git_panel.visible = true
 	_show_conflict()
 
 func _show_conflict() -> void:
 	var c: Dictionary = conflicts[conflict_idx]
 	conflict_timer = 8.0
-	git_title.text = "⚠️ GIT MERGE CONFLICT %d/3 TRÊN MAIN!" % (conflict_idx + 1)
+	git_title.text = "GIT MERGE CONFLICT %d/3 TRÊN MAIN!" % (conflict_idx + 1)
 	git_desc.text = str(c["hint"])
 	git_head_lbl.text = str(c["head"])
 	git_theirs_lbl.text = str(c["theirs"])
@@ -880,7 +880,7 @@ func _resolve_conflict(choice: int) -> void:
 		boss_hp = maxf(1.0, boss_hp - dmg)
 		score += int(dmg)
 		GameFX.play_sfx("success", -2.0)
-		GameFX.popup("✅ RESOLVE ĐÚNG! Boss -%d HP" % int(dmg), Color("#2ECC71"), 28, 1.0)
+		GameFX.popup("RESOLVE ĐÚNG! Boss -%d HP" % int(dmg), Color("#2ECC71"), 28, 1.0)
 		_shake_boss()
 	else:
 		for m: Dictionary in members:
@@ -889,7 +889,7 @@ func _resolve_conflict(choice: int) -> void:
 		GameFX.play_sfx("miss")
 		GameFX.shake(0.4)
 		GameFX.flash(Color("#E74C3C"), 0.3, 0.3)
-		GameFX.popup("❌ MERGE SAI! Build fail, cả team -25 HP" if choice != -1 else "⏰ HẾT 8s! Conflict tự merge bừa, cả team -25 HP", Color("#E74C3C"), 26, 1.2)
+		GameFX.popup("MERGE SAI! Build fail, cả team -25 HP" if choice != -1 else "HẾT 8s! Conflict tự merge bừa, cả team -25 HP", Color("#E74C3C"), 26, 1.2)
 	_update_boss_ui()
 	_refresh_cards()
 	conflict_idx += 1
@@ -903,8 +903,8 @@ func _start_final_push() -> void:
 	git_panel.visible = false
 	spawn_timer = 1.0
 	GameFX.play_sfx("whoosh")
-	GameFX.popup("🚀 MAIN SẠCH RỒI! GÕ LỆNH: git push origin main", Color("#F1C40F"), 30, 2.5)
-	_log("🚀 GÕ NGUYÊN CÂU LỆNH 'git push origin main' (có dấu cách) để nộp đồ án! Đạn vẫn rơi, cẩn thận!")
+	GameFX.popup("MAIN SẠCH RỒI! GÕ LỆNH: git push origin main", Color("#F1C40F"), 30, 2.5)
+	_log("GÕ NGUYÊN CÂU LỆNH 'git push origin main' (có dấu cách) để nộp đồ án! Đạn vẫn rơi, cẩn thận!")
 	hint_label.text = "Gõ 'git push origin main' (có dấu cách) · vẫn có thể bắn đạn lỗi khác"
 	final_bullet = {"word": FINAL_COMMAND, "lane": 0, "y": 0.35, "dead": false}
 	var pc: Control = _make_bullet_node(final_bullet)
@@ -965,11 +965,11 @@ func _show_win_modal() -> void:
 		"detail": "words=%d maxcombo=%d typos=%d hits=%d conflicts=%d/3" % [words_destroyed, max_combo, typos, hits_taken, conflicts_right]
 	})
 	var done_sec: int = 57 * 60 + 30 + int(BATTLE_TIME - time_left)
-	modal_title.text = "🏆 DANH HIỆU 'CÓC VÀNG FPTU' – NỘP CAPSTONE LÚC 23:%02d:%02d! RANK %s" % [done_sec / 60, done_sec % 60, rank]
+	modal_title.text = "DANH HIỆU 'CÓC VÀNG FPTU' – NỘP CAPSTONE LÚC 23:%02d:%02d! RANK %s" % [done_sec / 60, done_sec % 60, rank]
 	modal_title.modulate = Color("#F1C40F")
 	modal_sub.text = "Bắn hạ %d viên đạn lỗi · combo cao nhất x%d (%d) · %d lần gõ sai · trúng %d đạn.\nGit conflict resolve đúng %d/3 · Bạn seen không rep: %s.\nĐiểm %d (thưởng thời gian +%d). Pháo hoa rực sáng campus FPTU!" % [
 		words_destroyed, 1 + mini(max_combo / 6, 2), max_combo, typos, hits_taken, conflicts_right,
-		("đã tỉnh và merge" if members[3]["awake"] else "ngủ tới sáng 💤"), score, time_bonus
+		("đã tỉnh và merge" if members[3]["awake"] else "ngủ tới sáng"), score, time_bonus
 	]
 	modal_overlay.visible = true
 	modal_overlay.modulate.a = 0.0
@@ -985,7 +985,7 @@ func _lose(reason: String) -> void:
 	phone_panel.visible = false
 	StageManager.report_stage_result(StageManager.StageID.STAGE_6_CAPSTONE, {"result": "fail", "score": score, "rank": "C", "detail": reason})
 	GameFX.play_sfx("res://assets/audio/absent_gameover.wav", 2.0)
-	modal_title.text = "❌ THẤT BẠI TRƯỚC DEADLINE 23:59!"
+	modal_title.text = "THẤT BẠI TRƯỚC DEADLINE 23:59!"
 	modal_title.modulate = Color("#E74C3C")
 	modal_sub.text = reason + "\nBoss còn %d%% HP · bắn hạ %d đạn · combo cao nhất %d – thiếu chút nữa thôi!" % [int(boss_hp / BOSS_MAX_HP * 100.0), words_destroyed, max_combo]
 	extra_btn.visible = false

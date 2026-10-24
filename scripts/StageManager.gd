@@ -224,7 +224,7 @@ func _create_roam_return_ui() -> void:
 	var lbl: Label = GameFX.make_label("Xong màn này rồi – quay lại thế giới mở?", 14, Color("#DFE6E9"))
 	lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hb.add_child(lbl)
-	var btn: Button = _pause_button("🏫   VỀ CAMPUS  (thế giới mở)")
+	var btn: Button = _pause_button("VỀ CAMPUS  (thế giới mở)")
 	btn.custom_minimum_size = Vector2(300, 42)
 	btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	btn.pressed.connect(go_to_roam)
@@ -293,7 +293,7 @@ func get_best_text(stage_id: int) -> String:
 	var b: Dictionary = best_stats[stage_id]
 	if int(b.get("wins", 0)) <= 0:
 		return "chưa qua (%d lần thử)" % int(b.get("plays", 0))
-	return "🏆 %s · %d điểm · %d/%d thắng" % [String(b.get("rank", "B")), int(b.get("score", 0)), int(b.get("wins", 0)), int(b.get("plays", 0))]
+	return "RANK %s · %d điểm · %d/%d thắng" % [String(b.get("rank", "B")), int(b.get("score", 0)), int(b.get("wins", 0)), int(b.get("plays", 0))]
 
 ## Màn chơi đặt true khi người chơi đang gõ chữ (bullet-hell typing...) để phím M không mở Campaign Hub
 var typing_mode: bool = false
@@ -392,15 +392,15 @@ func _create_pause_ui() -> void:
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 10)
 	margin.add_child(vb)
-	pause_title = GameFX.make_label("⏸ TẠM DỪNG", 26, GameFX.ui_accent())
+	pause_title = GameFX.make_label("TẠM DỪNG", 26, GameFX.ui_accent())
 	vb.add_child(pause_title)
 	var sub: Label = GameFX.make_label("Thời gian trong game đã dừng. Giảng viên vẫn chưa điểm danh… tranh thủ đi.", 13, Color("#BDC3C7"))
 	vb.add_child(sub)
 
-	pause_resume_btn = _pause_button("▶   TIẾP TỤC  [ESC]")
+	pause_resume_btn = _pause_button("TIẾP TỤC  [ESC]")
 	pause_resume_btn.pressed.connect(resume_game)
 	vb.add_child(pause_resume_btn)
-	var settings_btn: Button = _pause_button("⚙   CÀI ĐẶT (đồ hoạ · âm lượng)")
+	var settings_btn: Button = _pause_button("CÀI ĐẶT (đồ hoạ · âm lượng)")
 	settings_btn.pressed.connect(func() -> void:
 		pause_settings_box.visible = not pause_settings_box.visible
 		pause_controls_scroll.visible = false)
@@ -436,7 +436,7 @@ func _create_pause_ui() -> void:
 	GameFX.build_audio_settings(pause_settings_box)
 	GameFX.build_story_settings(pause_settings_box, true)   # "Giảm hù dọa" (A2-D14) in the style row: card stays < 720 px
 
-	var controls_btn: Button = _pause_button("🎮   ĐIỀU KHIỂN")
+	var controls_btn: Button = _pause_button("ĐIỀU KHIỂN")
 	controls_btn.pressed.connect(func() -> void:
 		pause_controls_scroll.visible = not pause_controls_scroll.visible
 		pause_settings_box.visible = false)
@@ -464,18 +464,18 @@ func _create_pause_ui() -> void:
 		d.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(d)
 
-	var hub_btn: Button = _pause_button("📋   CHỌN MÀN KHÁC (Campaign Hub)")
+	var hub_btn: Button = _pause_button("CHỌN MÀN KHÁC (Campaign Hub)")
 	hub_btn.pressed.connect(func() -> void:
 		resume_game()
 		open_stage_select())
 	vb.add_child(hub_btn)
 	pause_hub_btn = hub_btn
-	var menu_btn: Button = _pause_button("🏠   VỀ MENU CHÍNH")
+	var menu_btn: Button = _pause_button("VỀ MENU CHÍNH")
 	menu_btn.pressed.connect(func() -> void:
 		resume_game()
 		go_to_main_menu())
 	vb.add_child(menu_btn)
-	var quit_btn: Button = _pause_button("✖   THOÁT GAME")
+	var quit_btn: Button = _pause_button("THOÁT GAME")
 	quit_btn.pressed.connect(func() -> void: get_tree().quit())
 	vb.add_child(quit_btn)
 
@@ -494,10 +494,10 @@ func _pause_button(text: String) -> Button:
 	b.mouse_entered.connect(func() -> void: GameFX.play_ui("tick", -12.0, 1.4))
 	return b
 
-## Chữ trên nút mức đồ hoạ q của menu tạm dừng theo phong cách hiện tại: "🟢 Thấp\nbóng cơ bản"...
+## Chữ trên nút mức đồ hoạ q của menu tạm dừng theo phong cách hiện tại: "Thấp\nbóng cơ bản"...
 func _pause_quality_text(q: int) -> String:
 	var cap: PackedStringArray = GameFX.quality_caption(q)
-	return "%s %s\n%s" % [["🟢", "🟡", "🔴"][q], ["Thấp", "Trung bình", "Cao"][q], cap[1]]
+	return "%s\n%s" % [["Thấp", "Trung bình", "Cao"][q], cap[1]]
 
 func _on_art_style_changed(_style: String) -> void:
 	_restyle_ui()
@@ -878,8 +878,8 @@ func get_stage_rank_text(stage_id: int) -> String:
 		return "— chưa chơi hôm nay —" + best
 	var r: Dictionary = run_stats[stage_id]
 	if r.get("result", "") == "win":
-		return "✅ RANK %s · %d điểm" % [str(r.get("rank", "B")), int(r.get("score", 0))] + best
-	return "❌ Thất bại lần gần nhất" + best
+		return "RANK %s · %d điểm" % [str(r.get("rank", "B")), int(r.get("score", 0))] + best
+	return "Thất bại lần gần nhất" + best
 
 func _refresh_rank_labels() -> void:
 	for sid: int in _rank_labels.keys():
@@ -924,7 +924,7 @@ func _create_stage_select_ui() -> void:
 	main_vbox.add_child(header_hbox)
 
 	var title := Label.new()
-	title.text = "📋 FPTU STUDENT SIMULATOR - CHỌN MÀN CHƠI (CAMPAIGN HUB)"
+	title.text = "FPTU STUDENT SIMULATOR - CHỌN MÀN CHƠI (CAMPAIGN HUB)"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size", 22)
 	title.add_theme_color_override("font_color", GameFX.ui_accent())
@@ -989,7 +989,7 @@ func _create_stage_select_ui() -> void:
 
 		var play_btn := Button.new()
 		play_btn.custom_minimum_size = Vector2(150, 46)
-		play_btn.text = "▶️ CHƠI NGAY"
+		play_btn.text = "CHƠI NGAY"
 		play_btn.add_theme_font_size_override("font_size", 15)
 		play_btn.pressed.connect(func() -> void: change_stage(stage_id)) # từ hub: from_roam = false
 		hbox.add_child(play_btn)
@@ -1001,13 +1001,13 @@ func _create_stage_select_ui() -> void:
 	bottom_hbox.add_theme_constant_override("separation", 14)
 	var menu_btn := Button.new()
 	menu_btn.custom_minimum_size = Vector2(260, 44)
-	menu_btn.text = "🏠 VỀ MENU CHÍNH"
+	menu_btn.text = "VỀ MENU CHÍNH"
 	menu_btn.add_theme_font_size_override("font_size", 15)
 	menu_btn.pressed.connect(go_to_main_menu)
 	bottom_hbox.add_child(menu_btn)
 	var close_btn := Button.new()
 	close_btn.custom_minimum_size = Vector2(280, 44)
-	close_btn.text = "✖ ĐÓNG CỬA SỔ CHỌN MÀN"
+	close_btn.text = "ĐÓNG CỬA SỔ CHỌN MÀN"
 	close_btn.add_theme_font_size_override("font_size", 15)
 	close_btn.pressed.connect(toggle_stage_select)
 	bottom_hbox.add_child(close_btn)

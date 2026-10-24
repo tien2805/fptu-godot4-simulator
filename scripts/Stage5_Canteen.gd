@@ -48,8 +48,8 @@ const HALL_HALF: Vector2 = Vector2(14.5, 11.0)
 var table_spots: Dictionary = {}
 
 const ORDERS: Array = [
-	{"food": "🍛 CƠM TẤM SƯỜN TRỨNG", "table": Vector3(10.0, 0.0, 5.0), "friend": "Minh 'ăn chực'"},
-	{"food": "🧋 TRÀ ĐÁ + MÌ XÀO BÒ", "table": Vector3(-10.0, 0.0, 5.0), "friend": "Hằng 'deadline'"}
+	{"food": "CƠM TẤM SƯỜN TRỨNG", "table": Vector3(10.0, 0.0, 5.0), "friend": "Minh 'ăn chực'"},
+	{"food": "TRÀ ĐÁ + MÌ XÀO BÒ", "table": Vector3(-10.0, 0.0, 5.0), "friend": "Hằng 'deadline'"}
 ]
 
 # Giá được cân để: 30k có ĐÚNG 1 lời giải (mì + bánh bao + sting + trà), 40k thoải mái hơn,
@@ -151,7 +151,7 @@ func _ready() -> void:
 	GameFX.upgrade_scene_visuals(self, "midday_open")
 	GameFX.music_play("canteen", 0.35)
 	mission_label.text = "11:30 – GIỜ CƠM TRƯA! TỚI QUẦY CÔ CĂN TIN (BÊN TRÁI) BẤM [E] LẤY KHAY CƠM"
-	_say("🍛 [WASD] DI CHUYỂN · [E] LẤY KHAY / GIAO BÀN · ĐỨNG YÊN GIỮ [SPACE] ĐỂ CÂN KHAY", GameFX.FPT_YELLOW)
+	_say("[WASD] DI CHUYỂN · [E] LẤY KHAY / GIAO BÀN · ĐỨNG YÊN GIỮ [SPACE] ĐỂ CÂN KHAY", GameFX.FPT_YELLOW)
 
 # ===========================================================================
 # 3D
@@ -346,7 +346,7 @@ func _build_hall() -> void:
 			left_tray.position = p + Vector3(0.6, 0.77, 0.3)
 	# Quầy cô căn tin: biển + cô bán hàng
 	var lbl := Label3D.new()
-	lbl.text = "🍚 QUẦY CƠM CÔ BA – CƠM TẤM 35K · MÌ XÀO 30K\n[E] LẤY KHAY"
+	lbl.text = "QUẦY CƠM CÔ BA – CƠM TẤM 35K · MÌ XÀO 30K\n[E] LẤY KHAY"
 	lbl.font_size = 34
 	lbl.outline_size = 10
 	lbl.modulate = Color("#F1C40F")
@@ -358,7 +358,7 @@ func _build_hall() -> void:
 	cook.rotation.y = PI
 	hall.add_child(cook)
 	var lbl2 := Label3D.new()
-	lbl2.text = "🏪 7-ELEVEN CAMPUS – [E] VÀO MUA COMBO"
+	lbl2.text = "7-ELEVEN CAMPUS – [E] VÀO MUA COMBO"
 	lbl2.font_size = 22
 	lbl2.outline_size = 8
 	lbl2.modulate = Color("#2ECC71")
@@ -386,7 +386,7 @@ func _build_hall() -> void:
 				CharacterBuilder.play(talker, "phone")
 			gi += 1
 		var glbl := Label3D.new()
-		glbl.text = "💬 'Ê nghe nói slot 3 nghỉ hả?'"
+		glbl.text = "'Ê nghe nói slot 3 nghỉ hả?'"
 		glbl.font_size = 20
 		glbl.outline_size = 7
 		glbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -460,7 +460,7 @@ func _build_npcs(count: int) -> void:
 # HUD
 # ===========================================================================
 func _build_hud() -> void:
-	balance_title.text = "⚖️ KHAY CƠM – giữ vạch ở giữa (đứng yên + giữ [SPACE] để cân lại)"
+	balance_title.text = "KHAY CƠM – giữ vạch ở giữa (đứng yên + giữ [SPACE] để cân lại)"
 	balance_bar.value = 50.0
 	GameFX.set_bar_color(balance_bar, Color("#2ECC71"))
 	balance_hbox.visible = false
@@ -637,7 +637,7 @@ func _set_order(idx: int) -> void:
 	order_idx = clampi(idx, 0, ORDERS.size() - 1)
 	var o: Dictionary = ORDERS[order_idx]
 	friend_root.position = table_spots.get(o["table"], o["table"]) + Vector3(0.0, 0.0, 1.3)
-	friend_label.text = "🙋 %s: 'ĐÂY NÈ!! %s CỦA TUI ĐÂU?!'" % [o["friend"], o["food"]]
+	friend_label.text = "%s: 'ĐÂY NÈ!! %s CỦA TUI ĐÂU?!'" % [o["friend"], o["food"]]
 	mission_label.text = "ĐƠN %d/2: LẤY %s Ở QUẦY → GIAO TỚI BÀN %s (%s)" % [order_idx + 1, o["food"], ("BÊN PHẢI" if o["table"].x > 0 else "BÊN TRÁI"), o["friend"]]
 
 func _take_tray() -> void:
@@ -646,7 +646,7 @@ func _take_tray() -> void:
 	tilt = 0.0
 	tray_mesh.visible = true
 	GameFX.play_sfx("pop", -2.0)
-	_say("🍛 ĐÃ LẤY %s! Đi chậm thôi, né đám đông!" % ORDERS[order_idx]["food"], GameFX.FPT_GREEN)
+	_say("ĐÃ LẤY %s! Đi chậm thôi, né đám đông!" % ORDERS[order_idx]["food"], GameFX.FPT_GREEN)
 	balance_hint.text = "Đang bưng khay: đi chậm, né người; đứng yên + [SPACE] để cân"
 
 func _deliver() -> void:
@@ -656,14 +656,14 @@ func _deliver() -> void:
 	orders_done += 1
 	GameFX.play_sfx("success")
 	GameFX.flash(GameFX.FPT_GREEN, 0.3, 0.3)
-	GameFX.popup("✅ GIAO XONG! %s: 'Trời ơi cứu tinh!'" % ORDERS[order_idx]["friend"], GameFX.FPT_GREEN, 28, 1.4)
+	GameFX.popup("GIAO XONG! %s: 'Trời ơi cứu tinh!'" % ORDERS[order_idx]["friend"], GameFX.FPT_GREEN, 28, 1.4)
 	score_phase1 += 300
 	if orders_done >= ORDERS.size():
 		_start_to_shop()
 	else:
 		_set_order(order_idx + 1)
 		_build_npcs(5) # Đơn 2: đông hơn
-		_say("🧋 ĐƠN 2: quay lại quầy lấy TRÀ ĐÁ + MÌ XÀO cho Hằng (bàn BÊN TRÁI). Căn tin đông hơn rồi!", GameFX.FPT_YELLOW)
+		_say("ĐƠN 2: quay lại quầy lấy TRÀ ĐÁ + MÌ XÀO cho Hằng (bàn BÊN TRÁI). Căn tin đông hơn rồi!", GameFX.FPT_YELLOW)
 		balance_hint.text = "Chưa cầm khay – quay lại quầy cô Ba"
 
 func _spill() -> void:
@@ -676,7 +676,7 @@ func _spill() -> void:
 	GameFX.play_sfx("miss", -4.0)
 	GameFX.shake(0.6)
 	GameFX.flash(GameFX.FPT_RED, 0.35, 0.35)
-	GameFX.popup("💥 ĐỔ CƠM!! Cô Ba: 'TRỜI ƠI CƠM CỦA TUI!' – quay lại quầy lấy khay mới", GameFX.FPT_RED, 26, 2.0)
+	GameFX.popup("ĐỔ CƠM!! Cô Ba: 'TRỜI ƠI CƠM CỦA TUI!' – quay lại quầy lấy khay mới", GameFX.FPT_RED, 26, 2.0)
 	GameFX.float_text(self, player.global_position + Vector3(0, 2.2, 0), "ĐỔ RỒI!", GameFX.FPT_RED, 48)
 	balance_hint.text = "Đổ rồi... quay lại quầy cô Ba lấy khay mới"
 	# Vũng cơm trên sàn
@@ -714,7 +714,7 @@ func _process(delta: float) -> void:
 			_process_npcs(delta)
 			_process_tray(delta)
 			_update_camera(delta)
-			mission_label.text = mission_label.text.get_slice(" ⏱", 0) + " ⏱ %ds" % int(ceil(maxf(0.0, time_left)))
+			mission_label.text = mission_label.text.get_slice(" – CÒN ", 0) + " – CÒN %ds" % int(ceil(maxf(0.0, time_left)))
 			if time_left <= 0.0:
 				_fail_stage("HẾT GIỜ NGHỈ TRƯA! Bạn bè đói meo, cô Ba lắc đầu: 'Lần sau lẹ lên em!'")
 		Phase.SHOP:
@@ -796,7 +796,7 @@ func _process_tray(delta: float) -> void:
 	var danger: float = absf(tilt) / 100.0
 	GameFX.set_bar_color(balance_bar, Color("#2ECC71") if danger < 0.5 else (Color("#F1C40F") if danger < 0.8 else Color("#E74C3C")))
 	if danger >= 0.8:
-		balance_hint.text = "⚠️ SẮP ĐỔ! ĐỨNG YÊN GIỮ [SPACE] ĐỂ CÂN LẠI!"
+		balance_hint.text = "SẮP ĐỔ! ĐỨNG YÊN GIỮ [SPACE] ĐỂ CÂN LẠI!"
 		balance_hint.add_theme_color_override("font_color", Color("#E74C3C"))
 	else:
 		balance_hint.add_theme_color_override("font_color", Color("#BDC3C7"))
@@ -821,8 +821,8 @@ func _start_to_shop() -> void:
 	mission_label.text = "ĐÃ GIAO 2 ĐƠN! GHÉ 7-ELEVEN (BÊN PHẢI) BẤM [E] MUA COMBO CỨU SINH CHO ĐÊM CAPSTONE"
 	mission_label.add_theme_color_override("font_color", Color("#2ECC71"))
 	balance_panel.visible = false
-	_say("🏪 Đi tới 7-Eleven bên phải rồi bấm [E]", GameFX.FPT_GREEN)
-	friend_label.text = "🙋 Cảm ơn nha! Tối nay nhớ merge code!"
+	_say("Đi tới 7-Eleven bên phải rồi bấm [E]", GameFX.FPT_GREEN)
+	friend_label.text = "Cảm ơn nha! Tối nay nhớ merge code!"
 
 func _open_shop() -> void:
 	phase = Phase.SHOP
@@ -833,18 +833,18 @@ func _open_shop() -> void:
 	_build_shop_ui()
 	shop_panel.visible = true
 	GameFX.play_sfx("cash", -2.0)
-	mission_label.text = "7-ELEVEN: KÉO THẢ (hoặc double-click) MÓN VÀO GIỎ – NGÂN SÁCH %dk · CẦN ⚡≥%d & 🧠≥%d" % [budget, TARGET_ENERGY, TARGET_SANITY]
+	mission_label.text = "7-ELEVEN: KÉO THẢ (hoặc double-click) MÓN VÀO GIỎ – NGÂN SÁCH %dk · CẦN NĂNG LƯỢNG ≥%d & TINH THẦN ≥%d" % [budget, TARGET_ENERGY, TARGET_SANITY]
 
 func _build_shop_ui() -> void:
 	for c: Node in [buy_noodles_btn, buy_drink_btn, finish_shop_btn]:
 		c.visible = false
 	shop_panel.custom_minimum_size = Vector2(960, 560)
-	shop_title.text = "🏪 7-ELEVEN FPTU CAMPUS – NGÂN SÁCH %dk · 35 GIÂY" % budget
+	shop_title.text = "7-ELEVEN FPTU CAMPUS – NGÂN SÁCH %dk · 35 GIÂY" % budget
 	shop_timer_bar = GameFX.make_bar(100.0, Color("#E74C3C"), 10)
 	shop_vbox.add_child(shop_timer_bar)
-	var hint := GameFX.make_label("Mục tiêu: ⚡ NĂNG LƯỢNG ≥ %d và 🧠 TINH THẦN ≥ %d, không vượt %dk." % [TARGET_ENERGY, TARGET_SANITY, budget], 14, Color("#BDC3C7"))
+	var hint := GameFX.make_label("Mục tiêu: NĂNG LƯỢNG ≥ %d và TINH THẦN ≥ %d, không vượt %dk." % [TARGET_ENERGY, TARGET_SANITY, budget], 14, Color("#BDC3C7"))
 	shop_vbox.add_child(hint)
-	var keys_hint := GameFX.make_label("⌨ [←→↑↓] chọn món · [ENTER] thêm vào giỏ · [BACKSPACE] bỏ món cuối · [TAB] sang giỏ · [SPACE] trả tiền   (chuột: kéo thả / double-click)", 13, GameFX.FPT_YELLOW)
+	var keys_hint := GameFX.make_label("[←→↑↓] chọn món · [ENTER] thêm vào giỏ · [BACKSPACE] bỏ món cuối · [TAB] sang giỏ · [SPACE] trả tiền   (chuột: kéo thả / double-click)", 13, GameFX.FPT_YELLOW)
 	shop_vbox.add_child(keys_hint)
 
 	var hb := HBoxContainer.new()
@@ -869,12 +869,12 @@ func _build_shop_ui() -> void:
 		card.add_child(vb)
 		vb.add_child(GameFX.make_label("%s %s" % [item["icon"], item["name"]], 15, Color.WHITE))
 		vb.add_child(GameFX.make_label("%dk" % item["price"], 20, Color("#F1C40F")))
-		var stat: String = ""
+		var stat: PackedStringArray = []
 		if int(item["energy"]) != 0:
-			stat += "⚡%+d " % int(item["energy"])
+			stat.append("Năng lượng %+d" % int(item["energy"]))
 		if int(item["sanity"]) != 0:
-			stat += "🧠%+d" % int(item["sanity"])
-		vb.add_child(GameFX.make_label(stat, 13, Color("#74B9FF")))
+			stat.append("Tinh thần %+d" % int(item["sanity"]))
+		vb.add_child(GameFX.make_label("\n".join(stat), 13, Color("#74B9FF")))
 		grid.add_child(card)
 		shop_cards.append(card)
 
@@ -886,14 +886,14 @@ func _build_shop_ui() -> void:
 	var bvb := VBoxContainer.new()
 	bvb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	basket_panel.add_child(bvb)
-	bvb.add_child(GameFX.make_label("🛒 GIỎ HÀNG (thả vào đây)", 16, GameFX.ui_accent()))
+	bvb.add_child(GameFX.make_label("GIỎ HÀNG (thả vào đây)", 16, GameFX.ui_accent()))
 	basket_list = VBoxContainer.new()
 	basket_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	bvb.add_child(basket_list)
 	totals_label = GameFX.make_label("", 14, Color.WHITE)
 	bvb.add_child(totals_label)
 	pay_btn = Button.new()
-	pay_btn.text = "💳 THANH TOÁN"
+	pay_btn.text = "THANH TOÁN"
 	pay_btn.custom_minimum_size = Vector2(0, 44)
 	pay_btn.focus_mode = Control.FOCUS_NONE
 	pay_btn.pressed.connect(_on_pay_pressed)
@@ -909,7 +909,7 @@ func add_to_basket(item: Dictionary) -> void:
 	var total: int = _basket_total("price") + int(item["price"])
 	if total > budget:
 		GameFX.play_sfx("error", -4.0)
-		GameFX.popup("💸 Thu ngân: 'Thiếu %dk rồi em ơi!'" % (total - budget), GameFX.FPT_RED, 24, 1.0)
+		GameFX.popup("Thu ngân: 'Thiếu %dk rồi em ơi!'" % (total - budget), GameFX.FPT_RED, 24, 1.0)
 		return
 	if basket.size() >= 6:
 		GameFX.play_sfx("error", -4.0)
@@ -938,7 +938,7 @@ func _refresh_basket() -> void:
 	for i: int in range(basket.size()):
 		var it: Dictionary = basket[i]
 		var b := Button.new()
-		b.text = "%s %s – %dk ✖" % [it["icon"], it["name"], it["price"]]
+		b.text = "%s – %dk ✖" % [it["name"], it["price"]]
 		b.focus_mode = Control.FOCUS_NONE
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.pressed.connect(_remove_idx.bind(i))
@@ -948,10 +948,10 @@ func _refresh_basket() -> void:
 	var e: int = _basket_total("energy")
 	var s: int = _basket_total("sanity")
 	var ok: bool = e >= TARGET_ENERGY and s >= TARGET_SANITY and money <= budget
-	totals_label.text = "💰 %dk / %dk   ⚡ %d/%d %s   🧠 %d/%d %s" % [money, budget, e, TARGET_ENERGY, "✓" if e >= TARGET_ENERGY else "", s, TARGET_SANITY, "✓" if s >= TARGET_SANITY else ""]
+	totals_label.text = "%dk / %dk\nNăng lượng %d/%d %s\nTinh thần %d/%d %s" % [money, budget, e, TARGET_ENERGY, "✓" if e >= TARGET_ENERGY else "", s, TARGET_SANITY, "✓" if s >= TARGET_SANITY else ""]
 	totals_label.add_theme_color_override("font_color", Color("#2ECC71") if ok else Color.WHITE)
 	pay_btn.disabled = not ok
-	pay_btn.text = "💳 THANH TOÁN %dk – ĐỦ COMBO!" % money if ok else "💳 CHƯA ĐỦ CHỈ SỐ / VƯỢT NGÂN SÁCH"
+	pay_btn.text = "THANH TOÁN %dk – ĐỦ COMBO!" % money if ok else "CHƯA ĐỦ CHỈ SỐ / VƯỢT NGÂN SÁCH"
 
 func _remove_idx(i: int) -> void:
 	remove_from_basket(i)
@@ -987,14 +987,11 @@ func _complete_stage() -> void:
 	})
 	GameFX.play_sfx("res://assets/audio/victory_fanfare.wav", 2.0)
 	GameFX.flash(GameFX.FPT_GREEN, 0.4, 0.5)
-	var items_txt: String = ""
-	for it: Dictionary in basket:
-		items_txt += str(it["icon"]) + " "
 	var inv_txt: String = "Monster x%d · Cà phê x%d · Bánh bao x%d" % [StageManager.item_count("monster"), StageManager.item_count("coffee"), StageManager.item_count("banh_bao")]
-	modal_title.text = "🎉 NO NÊ CĂN TIN & NẠP ĐẦY PIN 7-ELEVEN! RANK %s" % rank
+	modal_title.text = "NO NÊ CĂN TIN & NẠP ĐẦY PIN 7-ELEVEN! RANK %s" % rank
 	modal_title.modulate = Color("#2ECC71")
-	modal_sub.text = "Giao 2 đơn · đổ cơm %d lần · va %d người.\nCombo 7-Eleven: %s(⚡%d 🧠%d) còn dư %dk.\nTúi đồ mang sang màn khác: %s\nĐiểm %d (căn tin %d + 7-Eleven %d)" % [
-		spills, bumps, items_txt, _basket_total("energy"), _basket_total("sanity"), money_left, inv_txt, score, serve_score, shop_score
+	modal_sub.text = "Giao 2 đơn · đổ cơm %d lần · va %d người.\nCombo 7-Eleven: %d món (năng lượng %d, tinh thần %d), còn dư %dk.\nTúi đồ mang sang màn khác: %s\nĐiểm %d (căn tin %d + 7-Eleven %d)" % [
+		spills, bumps, basket.size(), _basket_total("energy"), _basket_total("sanity"), money_left, inv_txt, score, serve_score, shop_score
 	]
 	modal_overlay.visible = true
 	modal_overlay.modulate.a = 0.0
@@ -1009,7 +1006,7 @@ func _fail_stage(reason: String) -> void:
 	shop_panel.visible = false
 	StageManager.report_stage_result(StageManager.StageID.STAGE_5_CANTEEN, {"result": "fail", "score": score_phase1, "rank": "C", "detail": reason})
 	GameFX.play_sfx("res://assets/audio/absent_gameover.wav", 2.0)
-	modal_title.text = "❌ THẤT BẠI TẠI CĂN TIN!"
+	modal_title.text = "THẤT BẠI TẠI CĂN TIN!"
 	modal_title.modulate = Color("#E74C3C")
 	modal_sub.text = reason + "\nĐã giao %d/2 đơn · đổ cơm %d lần." % [orders_done, spills]
 	next_btn.visible = false

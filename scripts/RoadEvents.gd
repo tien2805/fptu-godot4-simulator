@@ -180,7 +180,7 @@ func _on_pothole_entered(body: Node3D, hole: Area3D) -> void:
 	pothole_cooldowns[hole] = now
 	if player_bike.has_method("hit_pothole"):
 		player_bike.hit_pothole()
-	emit_signal("banner", "🕳 Ổ GÀ NGUYỄN XIỂN! 'Đường này 3 năm chưa vá!'", Color("#FFA502"), 1.6)
+	emit_signal("banner", "Ổ GÀ NGUYỄN XIỂN! 'Đường này 3 năm chưa vá!'", Color("#FFA502"), 1.6)
 
 # ---------------------------------------------------------------------------
 # XE TẢI HỎNG CHẮN LÀN TRÊN ĐẠI LỘ D2
@@ -249,7 +249,7 @@ func _build_broken_trucks() -> void:
 		tri.position = Vector3(0.0, 0.4, 6.0)
 		truck.add_child(tri)
 		var lbl := Label3D.new()
-		lbl.text = "⚠️ XE TẢI HỎNG GIỮA ĐƯỜNG\n'Chờ cứu hộ 2 tiếng rồi...'"
+		lbl.text = "XE TẢI HỎNG GIỮA ĐƯỜNG\n'Chờ cứu hộ 2 tiếng rồi...'"
 		lbl.font_size = 30
 		lbl.outline_size = 10
 		lbl.modulate = Color("#FFEAA7")
@@ -302,7 +302,7 @@ func _build_dog() -> void:
 			leg.position = Vector3(lx, 0.18, lz)
 			dog_root.add_child(leg)
 	var lbl := Label3D.new()
-	lbl.text = "🐕 GÂU GÂU!!"
+	lbl.text = "GÂU GÂU!!"
 	lbl.font_size = 30
 	lbl.outline_size = 10
 	lbl.modulate = Color("#FFFFFF")
@@ -327,7 +327,7 @@ func _on_dog_hit(body: Node3D) -> void:
 	dog_state = 2
 	if player_bike.has_method("hit_soft_obstacle"):
 		player_bike.hit_soft_obstacle()
-	emit_signal("time_penalty", 3.0, "🐕 ĐÂM TRÚNG CHÓ CÔ BA! Cô Ba đuổi theo chửi 3 giây... +3s PHẠT")
+	emit_signal("time_penalty", 3.0, "ĐÂM TRÚNG CHÓ CÔ BA! Cô Ba đuổi theo chửi 3 giây... +3s PHẠT")
 	GameFX.play_sfx("miss")
 	var tw := create_tween()
 	tw.tween_property(dog_root, "position:y", dog_root.position.y + 1.5, 0.3)
@@ -339,7 +339,7 @@ func _update_dog(delta: float, player_offset: float) -> void:
 			dog_state = 1
 			dog_t = 0.0
 			dog_root.visible = true
-			emit_signal("banner", "🐕 CHÓ CÔ BA LAO RA ĐƯỜNG! NÉ!!", Color("#FF4757"), 1.5)
+			emit_signal("banner", "CHÓ CÔ BA LAO RA ĐƯỜNG! NÉ!!", Color("#FF4757"), 1.5)
 			GameFX.play_sfx("alarm", -6.0)
 	elif dog_state == 1:
 		dog_t += delta / 2.4
@@ -407,7 +407,7 @@ func _build_traffic_light() -> void:
 	cop.rotation.y = PI * 0.5
 	root.add_child(cop)
 	cop_bubble = Label3D.new()
-	cop_bubble.text = "👮 CSGT: Đèn đỏ là dừng nha mấy đứa!"
+	cop_bubble.text = "CSGT: Đèn đỏ là dừng nha mấy đứa!"
 	cop_bubble.font_size = 28
 	cop_bubble.outline_size = 10
 	cop_bubble.modulate = Color("#FFFFFF")
@@ -455,14 +455,14 @@ func _update_traffic_light(delta: float, player_offset: float) -> void:
 			if player_offset > LIGHT_OFFSET - 62.0 and not light_penalized and not light_rewarded:
 				_set_light("yellow")
 				light_timer = 1.4
-				emit_signal("banner", "🟡 ĐÈN VÀNG TRƯỚC CẦU RẠCH HẦM! CHUẨN BỊ DỪNG [S]!", Color("#F1C40F"), 1.4)
+				emit_signal("banner", "ĐÈN VÀNG TRƯỚC CẦU RẠCH HẦM! CHUẨN BỊ DỪNG [S]!", Color("#F1C40F"), 1.4)
 				GameFX.play_sfx("beep", -4.0)
 		"yellow":
 			light_timer -= delta
 			if light_timer <= 0.0:
 				_set_light("red")
 				light_timer = 4.2
-				emit_signal("banner", "🔴 ĐÈN ĐỎ! DỪNG TRƯỚC VẠCH – CSGT ĐANG NHÌN!", Color("#FF4757"), 1.6)
+				emit_signal("banner", "ĐÈN ĐỎ! DỪNG TRƯỚC VẠCH – CSGT ĐANG NHÌN!", Color("#FF4757"), 1.6)
 				GameFX.play_sfx("alarm", -3.0)
 		"red":
 			light_timer -= delta
@@ -470,8 +470,8 @@ func _update_traffic_light(delta: float, player_offset: float) -> void:
 			# Vượt đèn đỏ
 			if dist_to_line < 0.0 and dist_to_line > -14.0 and speed > 2.5 and not light_penalized:
 				light_penalized = true
-				emit_signal("time_penalty", 4.0, "🚨 VƯỢT ĐÈN ĐỎ! CSGT HUÝT CÒI: 'Em ơi tấp vô lề!' +4s PHẠT")
-				cop_bubble.text = "👮 TUÝT! Em ơi tấp vô lề!!"
+				emit_signal("time_penalty", 4.0, "VƯỢT ĐÈN ĐỎ! CSGT HUÝT CÒI: 'Em ơi tấp vô lề!' +4s PHẠT")
+				cop_bubble.text = "TUÝT! Em ơi tấp vô lề!!"
 				GameFX.play_sfx("alarm")
 				GameFX.flash(Color("#E74C3C"), 0.4, 0.4)
 				_set_light("green")
@@ -485,11 +485,11 @@ func _update_traffic_light(delta: float, player_offset: float) -> void:
 				light_state = "done"
 				if light_stop_hold > 1.0 and not light_rewarded:
 					light_rewarded = true
-					emit_signal("time_bonus", 1.5, "✅ CHẤP HÀNH LUẬT GIAO THÔNG! CSGT gật đầu: +1.5s")
-					cop_bubble.text = "👮 Ngoan! Đi đi em!"
+					emit_signal("time_bonus", 1.5, "CHẤP HÀNH LUẬT GIAO THÔNG! CSGT gật đầu: +1.5s")
+					cop_bubble.text = "Ngoan! Đi đi em!"
 					GameFX.play_sfx("success", -2.0)
 				else:
-					emit_signal("banner", "🟢 ĐÈN XANH! VÍT GA LÊN CẦU RẠCH HẦM!", Color("#2ECC71"), 1.2)
+					emit_signal("banner", "ĐÈN XANH! VÍT GA LÊN CẦU RẠCH HẦM!", Color("#2ECC71"), 1.2)
 		_:
 			pass
 
@@ -498,11 +498,11 @@ func _update_traffic_light(delta: float, player_offset: float) -> void:
 # ---------------------------------------------------------------------------
 func _build_checkpoints() -> void:
 	var specs: Array = [
-		[_mark("hai_dang_end", 150.0) - 12.0, "🏁 RỜI THE BEVERLY! 'Nhớ đổ xăng chưa đó?!'", "HẾT ĐƯỜNG HẢI ĐĂNG"],
-		[_mark("bridge_end", 795.0) + 25.0, "🌉 QUA CẦU RẠCH HẦM RỒI! 'Vành Đai 3 xây 10 năm chưa xong!'", "CẦU RẠCH HẦM"],
-		[_mark("nvt_start", 1035.0) + 40.0, "🛣 NGUYỄN VĂN TĂNG THẲNG TẮP! 'Vít ga, lách sát xe đi!'", "NGUYỄN VĂN TĂNG"],
-		[_mark("roundabout", 1522.0) - 70.0, "🔄 BÙNG BINH D2B - D1 KÌA! 'Đi VÒNG, đừng đi THẲNG!'", "VÒNG XOAY D2B - D1"],
-		[_mark("d1_start", 1705.0) + 25.0, "🎓 HUTECH BÊN TRÁI – 'Đừng rẽ nhầm trường!' FPTU BÊN PHẢI!", "ĐƯỜNG D1 ➔ FPTU"]
+		[_mark("hai_dang_end", 150.0) - 12.0, "RỜI THE BEVERLY! 'Nhớ đổ xăng chưa đó?!'", "HẾT ĐƯỜNG HẢI ĐĂNG"],
+		[_mark("bridge_end", 795.0) + 25.0, "QUA CẦU RẠCH HẦM RỒI! 'Vành Đai 3 xây 10 năm chưa xong!'", "CẦU RẠCH HẦM"],
+		[_mark("nvt_start", 1035.0) + 40.0, "NGUYỄN VĂN TĂNG THẲNG TẮP! 'Vít ga, lách sát xe đi!'", "NGUYỄN VĂN TĂNG"],
+		[_mark("roundabout", 1522.0) - 70.0, "BÙNG BINH D2B - D1 KÌA! 'Đi VÒNG, đừng đi THẲNG!'", "VÒNG XOAY D2B - D1"],
+		[_mark("d1_start", 1705.0) + 25.0, "HUTECH BÊN TRÁI – 'Đừng rẽ nhầm trường!' FPTU BÊN PHẢI!", "ĐƯỜNG D1 ➔ FPTU"]
 	]
 	var mat_post := StandardMaterial3D.new()
 	mat_post.albedo_color = Color("#F37021")
@@ -587,7 +587,7 @@ func _update_rain(player_offset: float) -> void:
 		if player_bike.has_method("set_rain"):
 			player_bike.set_rain(true)
 		emit_signal("rain_changed", true)
-		emit_signal("banner", "🌧 MƯA RÀO BẤT CHỢT TRÊN NGUYỄN VĂN TĂNG! ĐƯỜNG TRƠN – LÁI NHẸ TAY, DRIFT DỄ VĂNG!", Color("#74B9FF"), 2.6)
+		emit_signal("banner", "MƯA RÀO BẤT CHỢT TRÊN NGUYỄN VĂN TĂNG! ĐƯỜNG TRƠN – LÁI NHẸ TAY, DRIFT DỄ VĂNG!", Color("#74B9FF"), 2.6)
 		GameFX.play_sfx("whoosh", -2.0, 0.6)
 		if world_env and world_env.environment:
 			_rain_fog_start(world_env.environment)
@@ -598,7 +598,7 @@ func _update_rain(player_offset: float) -> void:
 		if player_bike.has_method("set_rain"):
 			player_bike.set_rain(false)
 		emit_signal("rain_changed", false)
-		emit_signal("banner", "☀️ TẠNH MƯA RỒI! VÍT GA TIẾP!", Color("#FDCB6E"), 1.6)
+		emit_signal("banner", "TẠNH MƯA RỒI! VÍT GA TIẾP!", Color("#FDCB6E"), 1.6)
 		_rain_fog_end()
 
 func _rain_fog_start(env: Environment) -> void:

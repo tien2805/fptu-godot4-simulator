@@ -104,7 +104,7 @@ func _process(_delta: float) -> bool:
 		var title: String = (stage.get("modal_title") as Label).text
 		print("  Kết thúc sau %d frame: %s" % [frames, title])
 		print("  perfect=%d good=%d miss=%d pushups=%d fin_fails=%d score=%d" % [stage.get("perfects"), stage.get("goods"), stage.get("misses"), stage.get("pushups_done"), stage.get("fin_fails"), stage.get("score")])
-		if title.begins_with("🥋 ĐIỂM 10") and int(stage.get("pushups_done")) >= 1 and int(stage.get("fin_fails")) >= 1:
+		if title.begins_with("ĐIỂM 10") and int(stage.get("pushups_done")) >= 1 and int(stage.get("fin_fails")) >= 1:
 			print("✅ SUCCESS: RHYTHM + PUSHUP + FINISHER CHAIN ALL EXERCISED, STAGE WON")
 			quit(0)
 		else:

@@ -151,7 +151,7 @@ theme_override_constants/separation = 6
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.92, 1, 1)
 theme_override_font_sizes/font_size = 14
-text = "❄️ PHÒNG LẠNH 16°C & MỨC BUỒN NGỦ:"
+text = "PHÒNG LẠNH 16°C & MỨC BUỒN NGỦ:"
 
 [node name="SleepBar" type="ProgressBar" parent="HUD/SleepPanel/VBox"]
 custom_minimum_size = Vector2(0, 20)
@@ -162,7 +162,7 @@ value = 20.0
 custom_minimum_size = Vector2(0, 38)
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
-text = "☕ NHẤP CÀ PHÊ 7-ELEVEN (-28% BUỒN NGỦ)"
+text = "NHẤP CÀ PHÊ 7-ELEVEN (-28% BUỒN NGỦ)"
 
 [node name="CenterModals" type="CenterContainer" parent="HUD"]
 anchors_preset = 15
@@ -189,21 +189,21 @@ theme_override_constants/separation = 14
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.44, 0.13, 1)
 theme_override_font_sizes/font_size = 22
-text = "🌐 CỔNG ĐIỂM DANH FAP - SLOT 1 (07:30 AM)"
+text = "CỔNG ĐIỂM DANH FAP - SLOT 1 (07:30 AM)"
 horizontal_alignment = 1
 
 [node name="StatusLabel" type="Label" parent="HUD/CenterModals/FAPModal/Margin/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.7, 0.2, 1)
 theme_override_font_sizes/font_size = 15
-text = "⚠️ Wi-Fi FPTU_Student đang quá tải quay vòng tròn! Hãy chuyển sang 4G!"
+text = "Wi-Fi FPTU_Student đang quá tải quay vòng tròn! Hãy chuyển sang 4G!"
 horizontal_alignment = 1
 
 [node name="Switch4GButton" type="Button" parent="HUD/CenterModals/FAPModal/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "📶 BẬT 4G VIETTEL/VINA TỐC ĐỘ CAO (CỨU FAP)"
+text = "BẬT 4G VIETTEL/VINA TỐC ĐỘ CAO (CỨU FAP)"
 
 [node name="CodeInput" type="LineEdit" parent="HUD/CenterModals/FAPModal/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
@@ -218,7 +218,7 @@ custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 17
 disabled = true
-text = "✅ GỬI MÃ ĐIỂM DANH [ROLL CALL]"
+text = "GỬI MÃ ĐIỂM DANH [ROLL CALL]"
 
 [node name="QuizModal" type="PanelContainer" parent="HUD/CenterModals"]
 visible = false
@@ -241,7 +241,7 @@ theme_override_constants/separation = 12
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
 theme_override_font_sizes/font_size = 17
-text = "🎓 GIẢNG VIÊN HỎI BẤT NGỜ:\nTrong kiến trúc lập trình SOLID, chữ S đại diện cho nguyên lý nào?"
+text = "GIẢNG VIÊN HỎI BẤT NGỜ:\nTrong kiến trúc lập trình SOLID, chữ S đại diện cho nguyên lý nào?"
 horizontal_alignment = 1
 
 [node name="OptionA" type="Button" parent="HUD/CenterModals/QuizModal/Margin/VBox"]
@@ -310,16 +310,16 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-text = "TIẾP TỤC MÀN 4: VOVINAM ĐẠI CHIẾN ➔"
+text = "TIẾP TỤC MÀN 4: VOVINAM ĐẠI CHIẾN"
 
 [node name="RetryButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "🔄 CHƠI LẠI MÀN NÀY"
+text = "CHƠI LẠI MÀN NÀY"
 
 [node name="MenuButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "📋 CHỌN MÀN CHƠI (CAMPAIGN MENU)"
+text = "CHỌN MÀN CHƠI (CAMPAIGN MENU)"

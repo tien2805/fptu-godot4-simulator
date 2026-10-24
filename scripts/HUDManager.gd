@@ -112,7 +112,7 @@ func _ready() -> void:
 	if campaign_hub_btn:
 		campaign_hub_btn.pressed.connect(_on_campaign_hub_pressed)
 	if stage_select_btn:
-		stage_select_btn.text = "📋 CHỌN MÀN [M]"
+		stage_select_btn.text = "CHỌN MÀN [M]"
 		stage_select_btn.pressed.connect(_on_stage_select_pressed)
 	_setup_hud_audio()
 	_setup_overlays()
@@ -146,7 +146,7 @@ func _ready() -> void:
 			ev.connect("banner", _on_event_banner)
 			ev.connect("rain_changed", _on_rain_changed)
 
-	_show_notice("🏍 [W] GA · [S] PHANH/LÙI · [SPACE]+[A/D] DRIFT · LÁCH SÁT XE = +GIÂY · DỪNG ĐÈN ĐỎ!", Color("#F1C40F"), 4.5)
+	_show_notice("[W] GA · [S] PHANH/LÙI · [SPACE]+[A/D] DRIFT · LÁCH SÁT XE = +GIÂY · DỪNG ĐÈN ĐỎ!", Color("#F1C40F"), 4.5)
 
 func _setup_overlays() -> void:
 	# Speed lines (dưới cùng, không chặn chuột)
@@ -182,13 +182,13 @@ func _setup_overlays() -> void:
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 4)
 	panel.add_child(vb)
-	stats_label = GameFX.make_label("⏱ THƯỞNG +0.0s · PHẠT +0.0s\n💨 SÁT NÚT 0 · 🔥 DRIFT 0", 14, Color("#DFE6E9"), HORIZONTAL_ALIGNMENT_LEFT)
+	stats_label = GameFX.make_label("THƯỞNG +0.0s · PHẠT +0.0s\nSÁT NÚT 0 · DRIFT 0", 14, Color("#DFE6E9"), HORIZONTAL_ALIGNMENT_LEFT)
 	vb.add_child(stats_label)
 	_build_chain_panel()
 	drift_hint_label = GameFX.make_label("", 15, Color("#F39C12"), HORIZONTAL_ALIGNMENT_LEFT)
 	vb.add_child(drift_hint_label)
 	# Quãng đường còn lại tới cổng FPTU (đọc từ curve tuyến thật qua RoadManager.remaining_m) + thanh tiến độ
-	dist_label = GameFX.make_label("📏 CÒN LẠI – m", 14, Color("#74B9FF"), HORIZONTAL_ALIGNMENT_LEFT)
+	dist_label = GameFX.make_label("CÒN LẠI – m", 14, Color("#74B9FF"), HORIZONTAL_ALIGNMENT_LEFT)
 	vb.add_child(dist_label)
 	dist_bar = GameFX.make_bar(0.0, Color("#74B9FF"), 8)
 	vb.add_child(dist_bar)
@@ -255,12 +255,12 @@ func _update_distance() -> void:
 		return
 	var total_m: float = maxf(1.0, float(total))
 	var remaining: float = clampf(float(rem), 0.0, total_m)
-	dist_label.text = "📏 CÒN %d m TỚI CỔNG FPTU · ĐÃ ĐI %.1f / %.1f km" % [int(ceil(remaining)), (total_m - remaining) / 1000.0, total_m / 1000.0]
+	dist_label.text = "CÒN %d m TỚI CỔNG FPTU · ĐÃ ĐI %.1f / %.1f km" % [int(ceil(remaining)), (total_m - remaining) / 1000.0, total_m / 1000.0]
 	dist_bar.value = (total_m - remaining) / total_m * 100.0
 
 func _refresh_stats() -> void:
 	if stats_label:
-		stats_label.text = "⏱ THƯỞNG -%.1fs · PHẠT +%.1fs\n💨 SÁT NÚT %d · 🔥 DRIFT BOOST %d · 💥 VA CHẠM %d" % [bonus_total, penalty_total, near_miss_count, drift_boosts, crashes]
+		stats_label.text = "THƯỞNG -%.1fs · PHẠT +%.1fs\nSÁT NÚT %d · DRIFT BOOST %d · VA CHẠM %d" % [bonus_total, penalty_total, near_miss_count, drift_boosts, crashes]
 
 func _on_player_crashed() -> void:
 	crashes += 1
@@ -336,7 +336,7 @@ func _on_player_speed_changed(speed_kmh: float, slip_ratio: float, boosting: boo
 	speed_label.text = "%02d km/h" % int(round(speed_kmh))
 	slipstream_bar.value = slip_ratio * 100.0
 	if boosting:
-		slipstream_status.text = "🔥 BOOST! (NÚP GIÓ / DRIFT)"
+		slipstream_status.text = "BOOST! (NÚP GIÓ / DRIFT)"
 		slipstream_status.modulate = Color("#FBC531")
 	else:
 		slipstream_status.text = "NÚP GIÓ SAU F-BUS (< 8M) · DRIFT: GIỮ [SPACE]+[A/D]"
@@ -345,12 +345,12 @@ func _on_player_speed_changed(speed_kmh: float, slip_ratio: float, boosting: boo
 func _on_drift_state_changed(active: bool) -> void:
 	is_drifting = active
 	if drift_hint_label:
-		drift_hint_label.text = "🏍 ĐANG DRIFT... GIỮ ≥0.7s RỒI THẢ ĐỂ BOOST!" if active else ""
+		drift_hint_label.text = "ĐANG DRIFT... GIỮ ≥0.7s RỒI THẢ ĐỂ BOOST!" if active else ""
 
 func _on_drift_boost(_duration: float) -> void:
 	drift_boosts += 1
 	_refresh_stats()
-	GameFX.popup("🔥 DRIFT BOOST!", Color("#F39C12"), 34, 0.8)
+	GameFX.popup("DRIFT BOOST!", Color("#F39C12"), 34, 0.8)
 	GameFX.flash(Color("#F39C12"), 0.22, 0.3)
 
 func _on_near_miss(chain: int) -> void:
@@ -360,11 +360,11 @@ func _on_near_miss(chain: int) -> void:
 	var granted: float = _grant_bonus(bonus)
 	var txt: String
 	if chain <= 1:
-		txt = "💨 SÁT NÚT! -%.1fs" % granted
+		txt = "SÁT NÚT! -%.1fs" % granted
 	else:
-		txt = "💨 SÁT NÚT x%d! -%.2fs" % [chain, granted]
+		txt = "SÁT NÚT x%d! -%.2fs" % [chain, granted]
 	if granted <= 0.0:
-		txt = "💨 SÁT NÚT x%d! (đã đạt trần thưởng %.0fs – vẫn tính điểm)" % [chain, BONUS_CAP]
+		txt = "SÁT NÚT x%d! (đã đạt trần thưởng %.0fs – vẫn tính điểm)" % [chain, BONUS_CAP]
 	GameFX.popup(txt, Color("#00D2D3"), 30 if chain <= 1 else 36, 0.6)
 	_show_chain(chain)
 	_refresh_stats()
@@ -456,13 +456,13 @@ func _on_rain_changed(raining: bool) -> void:
 	rain_target = 1.0 if raining else 0.0
 
 func _on_zone_changed(zone_name: String) -> void:
-	zone_label.text = "📍 " + zone_name
+	zone_label.text = zone_name
 	if checkpoint_player:
 		checkpoint_player.play()
 
 func _on_curb_hit(penalty_sec: float) -> void:
 	_apply_penalty(penalty_sec)
-	_show_notice("🧱 LEO LỀ! Văng ngược lại lòng đường (+%d GIÂY PHẠT)" % int(penalty_sec), Color("#FFA502"), 1.6)
+	_show_notice("LEO LỀ! Văng ngược lại lòng đường (+%d GIÂY PHẠT)" % int(penalty_sec), Color("#FFA502"), 1.6)
 
 func _trigger_absent_screen() -> void:
 	is_game_ended = true
@@ -548,18 +548,18 @@ func _play_procedural_absent_bell() -> void:
 
 func _on_player_respawned(penalty_sec: float) -> void:
 	_apply_penalty(penalty_sec)
-	_show_notice("💥 NGÃ XE RƠI KHỎI ĐƯỜNG! ĐÃ CỨU HỘ VỀ TIM ĐƯỜNG (+%d GIÂY PHẠT)!" % int(penalty_sec), Color("#FF4757"), 2.4)
+	_show_notice("NGÃ XE RƠI KHỎI ĐƯỜNG! ĐÃ CỨU HỘ VỀ TIM ĐƯỜNG (+%d GIÂY PHẠT)!" % int(penalty_sec), Color("#FF4757"), 2.4)
 
 func _on_player_offroad_changed(is_offroad: bool) -> void:
 	if is_offroad:
-		notice_label.text = "⚠️ LEO LỀ! ĐANG ĐẨY XE VỀ LÒNG ĐƯỜNG – GIẢM TỐC!"
+		notice_label.text = "LEO LỀ! ĐANG ĐẨY XE VỀ LÒNG ĐƯỜNG – GIẢM TỐC!"
 		notice_label.modulate = Color("#FFA502")
 		notice_banner.visible = true
 		notice_banner.modulate.a = 1.0
 		if notice_tween:
 			notice_tween.kill()
 	else:
-		if notice_label.text.begins_with("⚠️ LEO LỀ"):
+		if notice_label.text.begins_with("LEO LỀ"):
 			notice_banner.visible = false
 
 func _show_notice(text: String, color: Color, duration: float) -> void:

@@ -134,7 +134,7 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_hud")
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
 theme_override_font_sizes/font_size = 20
-text = "🥋 MÀN 4: VOVINAM ĐẠI CHIẾN - SÂN VÕ FPTU"
+text = "MÀN 4: VOVINAM ĐẠI CHIẾN - SÂN VÕ FPTU"
 horizontal_alignment = 1
 
 [node name="RhythmPanel" type="PanelContainer" parent="HUD"]
@@ -198,7 +198,7 @@ theme_override_constants/separation = 12
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
 theme_override_font_sizes/font_size = 18
-text = "⚡ ĐÒN CHÂN KẸP CỔ SỐ 21: CĂN THANH LỰC VÙNG VÀNG (>65%)!"
+text = "ĐÒN CHÂN KẸP CỔ SỐ 21: CĂN THANH LỰC VÙNG VÀNG (>65%)!"
 horizontal_alignment = 1
 
 [node name="PowerBar" type="ProgressBar" parent="HUD/FinisherPanel/VBox"]
@@ -209,7 +209,7 @@ layout_mode = 2
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-text = "⚡ THI TRIỂN ĐÒN CHÂN KẸP CỔ QUẬT NGÃ HÌNH NỘM!"
+text = "THI TRIỂN ĐÒN CHÂN KẸP CỔ QUẬT NGÃ HÌNH NỘM!"
 
 [node name="ModalOverlay" type="ColorRect" parent="HUD"]
 visible = false
@@ -259,16 +259,16 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-text = "TIẾP TỤC MÀN 5: CĂN TIN & 7-ELEVEN ➔"
+text = "TIẾP TỤC MÀN 5: CĂN TIN & 7-ELEVEN"
 
 [node name="RetryButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "🔄 CHƠI LẠI MÀN NÀY"
+text = "CHƠI LẠI MÀN NÀY"
 
 [node name="MenuButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "📋 CHỌN MÀN CHƠI (CAMPAIGN MENU)"
+text = "CHỌN MÀN CHƠI (CAMPAIGN MENU)"

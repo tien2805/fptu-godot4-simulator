@@ -101,7 +101,7 @@ func _process(_d: float) -> bool:
 			_check(FileAccess.file_exists(TMP), "autosave after the mission win")
 			var layer: CanvasLayer = sd.get("result_layer")
 			var btns: Dictionary = sd.get("result_buttons")
-			_check(layer != null and layer.visible and (btns["continue"] as Button).visible and not (btns["retry"] as Button).visible, "story card: ▶ TIẾP TỤC CỐT TRUYỆN")
+			_check(layer != null and layer.visible and (btns["continue"] as Button).visible and not (btns["retry"] as Button).visible, "story card: TIẾP TỤC CỐT TRUYỆN")
 			_check((sd.get("result_title") as Label).text == "QUA MÔN! Uy tín +", "story win title")
 			var r: Dictionary = (sm.get("run_stats") as Dictionary).get(7, {})
 			_check(String(r.get("story", "")) == "win" and String(sm.call("result_banner_title", r)) == "QUA MÔN! Uy tín +", "banner title QUA MÔN! Uy tín +")

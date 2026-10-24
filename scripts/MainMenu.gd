@@ -213,25 +213,25 @@ func _build_ui() -> void:
 	spacer.custom_minimum_size = Vector2(0, 14)
 	col.add_child(spacer)
 
-	btn_continue = _menu_button("▶   TIẾP TỤC – NGÀY 0", GameFX.FPT_ORANGE)
+	btn_continue = _menu_button("TIẾP TỤC – NGÀY 0", GameFX.FPT_ORANGE)
 	btn_continue.name = "ContinueButton"
 	btn_continue.pressed.connect(_on_continue_pressed)
 	btn_continue.visible = false
 	col.add_child(btn_continue)
-	btn_story = _menu_button("✚   CỐT TRUYỆN MỚI: TOOL ĐEN", Color("#FF4FA3"))
+	btn_story = _menu_button("CỐT TRUYỆN", Color("#FF4FA3"))
 	btn_story.name = "NewStoryButton"
 	btn_story.pressed.connect(_on_story_pressed)
 	col.add_child(btn_story)
-	btn_roam = _menu_button("🌏   KHÁM PHÁ CAMPUS  (chơi tự do · BE6 → FPTU)", Color("#1ABC9C"))
+	btn_roam = _menu_button("KHÁM PHÁ CAMPUS  (chơi tự do · BE6 → FPTU)", Color("#1ABC9C"))
 	btn_roam.pressed.connect(_on_roam_pressed)
 	col.add_child(btn_roam)
-	btn_guide = _menu_button("🎮   HƯỚNG DẪN ĐIỀU KHIỂN", Color("#3498DB"))
+	btn_guide = _menu_button("HƯỚNG DẪN ĐIỀU KHIỂN", Color("#3498DB"))
 	btn_guide.pressed.connect(_show_guide)
 	col.add_child(btn_guide)
-	btn_settings = _menu_button("⚙   CÀI ĐẶT ĐỒ HOẠ", Color("#2ECC71"))
+	btn_settings = _menu_button("CÀI ĐẶT ĐỒ HOẠ", Color("#2ECC71"))
 	btn_settings.pressed.connect(_show_settings)
 	col.add_child(btn_settings)
-	btn_quit = _menu_button("✖   THOÁT GAME", Color("#E74C3C"))
+	btn_quit = _menu_button("THOÁT GAME", Color("#E74C3C"))
 	btn_quit.pressed.connect(_on_quit_pressed)
 	col.add_child(btn_quit)
 
@@ -283,7 +283,7 @@ func _build_guide_panel() -> PanelContainer:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
 	m.add_child(v)
-	v.add_child(GameFX.make_label("🎮 HƯỚNG DẪN ĐIỀU KHIỂN", 24, Color("#3498DB")))
+	v.add_child(GameFX.make_label("HƯỚNG DẪN ĐIỀU KHIỂN", 24, Color("#3498DB")))
 	var lines: Array = StageManager.CONTROLS_GUIDE
 	for ln: Array in lines:
 		var row := HBoxContainer.new()
@@ -298,7 +298,7 @@ func _build_guide_panel() -> PanelContainer:
 		row.add_child(d)
 	v.add_child(HSeparator.new())
 	v.add_child(_build_map_credits())
-	var close := _menu_button("✔   ĐÃ HIỂU, ĐÓNG  [ESC]", Color("#3498DB"))
+	var close := _menu_button("ĐÃ HIỂU, ĐÓNG  [ESC]", Color("#3498DB"))
 	close.custom_minimum_size = Vector2(320, 46)
 	close.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	close.pressed.connect(_hide_modals)
@@ -314,7 +314,7 @@ func _build_map_credits() -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.name = "MapCredits"
 	row.add_theme_constant_override("separation", 14)
-	var k: Label = GameFX.make_label("🗺 " + MAP_CREDITS_TITLE, 14, Color("#1ABC9C"), HORIZONTAL_ALIGNMENT_LEFT)
+	var k: Label = GameFX.make_label(MAP_CREDITS_TITLE, 14, Color("#1ABC9C"), HORIZONTAL_ALIGNMENT_LEFT)
 	k.custom_minimum_size = Vector2(190, 0)
 	row.add_child(k)
 	var d: Label = GameFX.make_label("\n".join(PackedStringArray(MAP_CREDITS)), 12, Color("#BDC3C7"), HORIZONTAL_ALIGNMENT_LEFT)
@@ -332,7 +332,7 @@ func _build_settings_panel() -> PanelContainer:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
 	m.add_child(v)
-	v.add_child(GameFX.make_label("⚙ CÀI ĐẶT ĐỒ HOẠ", 24, Color("#2ECC71")))
+	v.add_child(GameFX.make_label("CÀI ĐẶT ĐỒ HOẠ", 24, Color("#2ECC71")))
 	var desc: Label = GameFX.make_label("Phong cách Vice City (mặc định) dùng ánh sáng phẳng kiểu PS2, nhẹ máy; mức đồ hoạ đổi bóng đổ và khử răng cưa. Phong cách Cổ điển ở mức CAO bật SDFGI, SSIL, phản xạ màn hình, sương thể tích. Áp dụng ngay và lưu cho lần sau.", 13, Color("#BDC3C7"))
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(desc)
@@ -364,9 +364,9 @@ func _build_settings_panel() -> PanelContainer:
 	# Phong cách đồ hoạ (Vice City / Cổ điển) + vệt sáng: GameFX.set_art_style() áp lại nền 3D của menu ngay
 	GameFX.build_style_settings(v)
 	GameFX.build_story_settings(v)
-	v.add_child(GameFX.make_label("🔈 ÂM LƯỢNG", 18, Color("#2ECC71")))
+	v.add_child(GameFX.make_label("ÂM LƯỢNG", 18, Color("#2ECC71")))
 	GameFX.build_audio_settings(v)
-	var close := _menu_button("✔   LƯU & ĐÓNG  [ESC]", Color("#2ECC71"))
+	var close := _menu_button("LƯU & ĐÓNG  [ESC]", Color("#2ECC71"))
 	close.custom_minimum_size = Vector2(320, 46)
 	close.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	close.pressed.connect(_hide_modals)
@@ -377,10 +377,10 @@ func _build_settings_panel() -> PanelContainer:
 	_refresh_quality_buttons()
 	return panel
 
-## Chữ trên nút mức đồ hoạ q theo phong cách hiện tại (GameFX.quality_caption): "🟢 THẤP\nbóng cơ bản"...
+## Chữ trên nút mức đồ hoạ q theo phong cách hiện tại (GameFX.quality_caption): "THẤP\nbóng cơ bản"...
 func _quality_text(q: int) -> String:
 	var cap: PackedStringArray = GameFX.quality_caption(q)
-	return "%s %s%s\n%s" % [["🟢", "🟡", "🔴"][q], cap[0], " (mặc định)" if q == 2 else "", cap[1]]
+	return "%s%s\n%s" % [cap[0], " (mặc định)" if q == 2 else "", cap[1]]
 
 func _on_art_style_changed(_style: String) -> void:
 	_refresh_quality_buttons()
@@ -412,7 +412,7 @@ func _build_confirm_panel() -> PanelContainer:
 	hb.alignment = BoxContainer.ALIGNMENT_CENTER
 	hb.add_theme_constant_override("separation", 14)
 	v.add_child(hb)
-	var yes := _menu_button("✔   GHI ĐÈ", Color("#FF4FA3"))
+	var yes := _menu_button("GHI ĐÈ", Color("#FF4FA3"))
 	yes.name = "ConfirmYes"
 	yes.custom_minimum_size = Vector2(200, 46)
 	yes.alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -420,7 +420,7 @@ func _build_confirm_panel() -> PanelContainer:
 		_hide_modals()
 		_open_creator())
 	hb.add_child(yes)
-	var no := _menu_button("✖   THÔI", Color("#7F8C8D"))
+	var no := _menu_button("THÔI", Color("#7F8C8D"))
 	no.name = "ConfirmNo"
 	no.custom_minimum_size = Vector2(200, 46)
 	no.alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -443,7 +443,7 @@ func _refresh_story_buttons() -> void:
 	var info: Dictionary = _save_info()
 	btn_continue.visible = not info.is_empty()
 	if not info.is_empty():
-		btn_continue.text = "▶   TIẾP TỤC – NGÀY %d" % int(info.get("day", 0))
+		btn_continue.text = "TIẾP TỤC – NGÀY %d" % int(info.get("day", 0))
 
 func _first_button() -> Button:
 	return btn_continue if btn_continue.visible else btn_story

@@ -229,7 +229,7 @@ func _build_arena_extras() -> void:
 	master_model.rotation.y = PI
 	master.add_child(master_model)
 	master_bubble = Label3D.new()
-	master_bubble.text = "🥋 THẦY: Nghiêm! Lễ!"
+	master_bubble.text = "THẦY: Nghiêm! Lễ!"
 	master_bubble.font_size = 40
 	master_bubble.outline_size = 12
 	master_bubble.modulate = Color.WHITE
@@ -337,7 +337,7 @@ func _build_pushup_ui() -> void:
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 8)
 	pushup_panel.add_child(vb)
-	vb.add_child(GameFX.make_label("💢 THẦY: 'SAI NHỊP 3 LẦN! HÍT ĐẤT 10 CÁI!'", 22, Color("#E74C3C")))
+	vb.add_child(GameFX.make_label("THẦY: 'SAI NHỊP 3 LẦN! HÍT ĐẤT 10 CÁI!'", 22, Color("#E74C3C")))
 	pushup_label = GameFX.make_label("MASH [SPACE]: 0 / 10 – còn 4.0s", 20, Color.WHITE)
 	vb.add_child(pushup_label)
 	pushup_bar = GameFX.make_bar(0.0, Color("#E74C3C"), 20)
@@ -355,11 +355,11 @@ func _update_title() -> void:
 	match state:
 		State.RHYTHM, State.PUSHUP, State.BREAK, State.INTRO:
 			var r: Dictionary = ROUNDS[mini(round_idx, 2)]
-			top_title.text = "🥋 VOVINAM · %s · %d BPM · ĐIỂM %d" % [str(r["name"]).split(" –")[0], int(r["bpm"]), score]
+			top_title.text = "VOVINAM · %s · %d BPM · ĐIỂM %d" % [str(r["name"]).split(" –")[0], int(r["bpm"]), score]
 		State.FINISHER:
-			top_title.text = "🥋 FINISHER ĐÒN CHÂN KẸP CỔ #21 · BƯỚC %d/5 · ⏱ %ds · ĐIỂM %d" % [fin_step, int(ceil(fin_time_left)), score]
+			top_title.text = "FINISHER ĐÒN CHÂN KẸP CỔ #21 · BƯỚC %d/5 · CÒN %ds · ĐIỂM %d" % [fin_step, int(ceil(fin_time_left)), score]
 		_:
-			top_title.text = "🥋 VOVINAM ĐẠI CHIẾN – SÂN VÕ FPTU · ĐIỂM %d" % score
+			top_title.text = "VOVINAM ĐẠI CHIẾN – SÂN VÕ FPTU · ĐIỂM %d" % score
 
 # ===========================================================================
 # INPUT
@@ -457,7 +457,7 @@ func _start_round(idx: int) -> void:
 		last_key = k
 		_spawn_note(song_time + APPROACH_TIME + 0.6 + float(i) * beat, k)
 	command_label.text = "THẦY HÔ: '%s' – %d BPM" % [str(r["name"]), int(r["bpm"])]
-	master_bubble.text = "🥋 THẦY: %s" % str(r["name"]).split(" –")[0]
+	master_bubble.text = "THẦY: %s" % str(r["name"]).split(" –")[0]
 	target_key_label.text = "MỘT! HAI! BA! BỐN! – bấm đúng phím khi nốt vào vùng HIT"
 	target_key_label.modulate = Color("#F1C40F")
 	GameFX.play_sfx("beep", -4.0, 0.9 + idx * 0.15)
@@ -551,11 +551,11 @@ func _judge_result(n: Dictionary, grade: String, text: String) -> void:
 			combo = 0
 			misses += 1
 			consecutive_misses += 1
-			target_key_label.text = "✗ " + text
+			target_key_label.text = text
 			target_key_label.modulate = Color("#E74C3C")
 			GameFX.play_sfx("miss", -4.0)
 			GameFX.shake(0.12)
-			master_bubble.text = "🥋 THẦY: Tập trung khí công nào!"
+			master_bubble.text = "THẦY: Tập trung khí công nào!"
 			if is_instance_valid(node):
 				var tw := create_tween()
 				tw.tween_property(node, "modulate", Color(1, 0.3, 0.3, 0.0), 0.25)
@@ -577,7 +577,7 @@ func _check_round_end() -> void:
 		state = State.BREAK
 		break_timer = 1.6
 		command_label.text = "THẦY: 'ĐƯỢC! %d%% trúng. %s'" % [int(ratio * 100.0), str(ROUNDS[round_idx]["name"])]
-		master_bubble.text = "🥋 THẦY: Nhanh hơn nữa!"
+		master_bubble.text = "THẦY: Nhanh hơn nữa!"
 		GameFX.popup("HẾT VÒNG %d – %d%% TRÚNG" % [round_idx, int(ratio * 100.0)], Color("#F1C40F"), 30, 1.2)
 		notes.clear()
 	else:
@@ -591,7 +591,7 @@ func _check_round_end() -> void:
 				state = State.BREAK
 				break_timer = 2.0
 				command_label.text = "THẦY: 'Mới %d%%! TẬP LẠI VÒNG 3 – cần ≥70% để được thi đòn kẹp cổ!'" % int(ratio * 100.0)
-				master_bubble.text = "🥋 THẦY: Tập lại vòng 3!"
+				master_bubble.text = "THẦY: Tập lại vòng 3!"
 				GameFX.popup("CHƯA ĐỦ 70%! TẬP LẠI VÒNG 3 (lần cuối)", Color("#E74C3C"), 28, 1.6)
 				GameFX.play_sfx("error")
 			else:
@@ -605,7 +605,7 @@ func _start_pushup() -> void:
 	pushup_bar.value = 0.0
 	GameFX.play_sfx("alarm", -2.0)
 	GameFX.shake(0.3)
-	master_bubble.text = "🥋 THẦY: HÍT ĐẤT 10 CÁI!!"
+	master_bubble.text = "THẦY: HÍT ĐẤT 10 CÁI!!"
 	var tw := create_tween()
 	CharacterBuilder.play(fighter_model, "plank", 999.0)
 	tw.tween_property(player_fighter, "rotation_degrees:z", -80.0, 0.25)
@@ -631,11 +631,11 @@ func _end_pushup(success: bool) -> void:
 	tw.parallel().tween_property(player_fighter, "position:y", fighter_start_pos.y, 0.25)
 	if success:
 		GameFX.popup("HÍT ĐẤT XONG! VÀO LẠI NHỊP!", Color("#2ECC71"), 28, 1.0)
-		master_bubble.text = "🥋 THẦY: Được rồi, vào nhịp!"
+		master_bubble.text = "THẦY: Được rồi, vào nhịp!"
 	else:
 		score = maxi(0, score - 100)
 		GameFX.popup("HÍT ĐẤT CHẬM QUÁ! -100 ĐIỂM", Color("#E74C3C"), 28, 1.2)
-		master_bubble.text = "🥋 THẦY: Yếu quá! Vào nhịp lại!"
+		master_bubble.text = "THẦY: Yếu quá! Vào nhịp lại!"
 	# Dời các nốt chưa đánh về sau để người chơi kịp phản ứng
 	for n: Dictionary in notes:
 		if not n["judged"]:
@@ -705,8 +705,8 @@ func _start_finisher() -> void:
 	finisher_panel.visible = true
 	fin_time_left = FINISHER_TIME
 	fin_fails = 0
-	master_bubble.text = "🥋 THẦY: Đòn chân kẹp cổ số 21! Lấy đà!"
-	GameFX.popup("🎉 QUA VÒNG 3! THI TRIỂN ĐÒN CHÂN KẸP CỔ SỐ 21!", Color("#2ECC71"), 30, 1.8)
+	master_bubble.text = "THẦY: Đòn chân kẹp cổ số 21! Lấy đà!"
+	GameFX.popup("QUA VÒNG 3! THI TRIỂN ĐÒN CHÂN KẸP CỔ SỐ 21!", Color("#2ECC71"), 30, 1.8)
 	GameFX.play_sfx("success")
 	_set_fin_step(1)
 
@@ -842,8 +842,8 @@ func _finisher_fail(reason: String) -> void:
 	GameFX.play_sfx("thud")
 	GameFX.shake(0.5)
 	GameFX.flash(Color("#E74C3C"), 0.3, 0.3)
-	GameFX.popup("💥 RỚT XUỐNG THẢM! %s (-3s, làm lại từ bước 1)" % reason, Color("#E74C3C"), 26, 1.6)
-	master_bubble.text = "🥋 THẦY: Đứng dậy! Làm lại!"
+	GameFX.popup("RỚT XUỐNG THẢM! %s (-3s, làm lại từ bước 1)" % reason, Color("#E74C3C"), 26, 1.6)
+	master_bubble.text = "THẦY: Đứng dậy! Làm lại!"
 	var tw := create_tween()
 	tw.tween_property(player_fighter, "rotation_degrees", Vector3(0, 0, 70.0), 0.2)
 	tw.tween_property(player_fighter, "position", fighter_start_pos + Vector3(0, -0.4, 0), 0.2)
@@ -861,7 +861,7 @@ func _finisher_success() -> void:
 	GameFX.shake(0.9)
 	GameFX.play_sfx("explode")
 	GameFX.play_sfx("res://assets/audio/crash_bump.wav", 4.0, 0.7)
-	master_bubble.text = "🥋 THẦY: TUYỆT KỸ SỐ 21!!!"
+	master_bubble.text = "THẦY: TUYỆT KỸ SỐ 21!!!"
 	GameFX.float_text(self, dummy.global_position + Vector3(0, 2.6, 0), "ĐÒN CHÂN KẸP CỔ SỐ 21!!!", Color("#F1C40F"), 64, 2.0)
 	# Nộm ngã bounce, võ sinh tiếp đất
 	var tw := create_tween()
@@ -893,7 +893,7 @@ func _complete_stage() -> void:
 		"detail": "perfect=%d good=%d miss=%d maxcombo=%d finfails=%d" % [perfects, goods, misses, max_combo, fin_fails]
 	})
 	GameFX.play_sfx("res://assets/audio/victory_fanfare.wav", 2.0)
-	modal_title.text = "🥋 ĐIỂM 10 VOVINAM – ĐÒN CHÂN KẸP CỔ #21! RANK %s" % rank
+	modal_title.text = "ĐIỂM 10 VOVINAM – ĐÒN CHÂN KẸP CỔ #21! RANK %s" % rank
 	modal_title.modulate = Color("#2ECC71")
 	modal_sub.text = "Quyền pháp: %d PERFECT · %d GOOD · %d MISS (%d nốt) · combo cao nhất %d · hít đất %d lần.\nFinisher: ngã %d lần, hoàn thành khi còn %ds (+%d điểm).\nTổng điểm: %d – đồng môn vỗ tay rần rần!" % [
 		perfects, goods, misses, total_notes, max_combo, pushups_done, fin_fails, int(maxf(0.0, fin_time_left)), fin_bonus, score
@@ -913,7 +913,7 @@ func _fail_stage(reason: String) -> void:
 	pushup_panel.visible = false
 	StageManager.report_stage_result(StageManager.StageID.STAGE_4_VOVINAM, {"result": "fail", "score": score, "rank": "C", "detail": reason})
 	GameFX.play_sfx("res://assets/audio/absent_gameover.wav", 2.0)
-	modal_title.text = "❌ RỚT MÔN VOVINAM!"
+	modal_title.text = "RỚT MÔN VOVINAM!"
 	modal_title.modulate = Color("#E74C3C")
 	modal_sub.text = reason + "\nĐiểm quyền pháp tạm tính: %d (PERFECT %d · GOOD %d · MISS %d)" % [score, perfects, goods, misses]
 	next_btn.visible = false

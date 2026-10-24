@@ -76,7 +76,7 @@ func _run() -> void:
 	phone.refresh()
 	ev = phone.evidence_texts()
 	_check(ev[0] == "E1 · " + StoryMissions.evidence_name("E1") and ev[1] == "E2 · ???", "E1 unlocked, E2 still ???")
-	_check(_texts(phone).contains("🔒 E2 · ???") and _texts(phone).contains("📎 E1"), "evidence tab lists locked and owned slots")
+	_check(_texts(phone).contains("E2 · ???") and _texts(phone).contains("E1 · " + StoryMissions.evidence_name("E1")), "evidence tab lists locked and owned slots")
 	phone.set_tab(2)
 	var mt: String = _texts(phone)
 	_check(mt.contains("NGÀY 0 · THI EOS") and mt.contains(String(sd.get("objective"))), "missions tab: day chip + objective")

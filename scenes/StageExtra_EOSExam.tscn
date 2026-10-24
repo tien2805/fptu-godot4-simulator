@@ -178,7 +178,7 @@ theme_override_constants/separation = 14
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.44, 0.13, 1)
 theme_override_font_sizes/font_size = 20
-text = "🔍 SOI BÀI THI EOS THÍ SINH"
+text = "SOI BÀI THI EOS THÍ SINH"
 horizontal_alignment = 1
 
 [node name="StatusLabel" type="Label" parent="HUD/CenterModals/InspectModal/Margin/VBox"]
@@ -193,7 +193,7 @@ custom_minimum_size = Vector2(0, 46)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.35, 0.35, 1)
 theme_override_font_sizes/font_size = 17
-text = "🚨 LẬP BIÊN BẢN HỦY BÀI THI & ĐÌNH CHỈ THI!"
+text = "LẬP BIÊN BẢN HỦY BÀI THI & ĐÌNH CHỈ THI!"
 
 [node name="CloseButton" type="Button" parent="HUD/CenterModals/InspectModal/Margin/VBox"]
 custom_minimum_size = Vector2(0, 40)
@@ -249,16 +249,16 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-text = "🔄 CHƠI LẠI TOÀN BỘ CHIẾN DỊCH TỪ MÀN 1 ➔"
+text = "CHƠI LẠI TOÀN BỘ CHIẾN DỊCH TỪ MÀN 1"
 
 [node name="RetryButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "🔄 CHƠI LẠI MÀN EXTRA"
+text = "CHƠI LẠI MÀN EXTRA"
 
 [node name="MenuButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "📋 CHỌN MÀN CHƠI (CAMPAIGN MENU)"
+text = "CHỌN MÀN CHƠI (CAMPAIGN MENU)"

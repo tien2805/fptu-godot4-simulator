@@ -246,7 +246,7 @@ func _build_room_extras() -> void:
 	lecturer.position = Vector3(2.6, 0.0, -4.0)
 	$Room.add_child(lecturer)
 	lecturer_bubble = Label3D.new()
-	lecturer_bubble.text = "🎓 Các em nhập mã nhanh lên!"
+	lecturer_bubble.text = "Các em nhập mã nhanh lên!"
 	lecturer_bubble.font_size = 34
 	lecturer_bubble.outline_size = 10
 	lecturer_bubble.modulate = Color.WHITE
@@ -284,37 +284,37 @@ func _build_room_extras() -> void:
 # UI
 # ===========================================================================
 func _build_fap_ui() -> void:
-	projector_hint = GameFX.make_label("📺 MÃ TRÊN MÀN CHIẾU: ------", 26, Color("#F1C40F"))
+	projector_hint = GameFX.make_label("MÃ TRÊN MÀN CHIẾU: ------", 26, Color("#F1C40F"))
 	fap_vbox.add_child(projector_hint)
 	fap_vbox.move_child(projector_hint, 1)
 	switch_bar = GameFX.make_bar(0.0, Color("#0984E3"), 12)
 	switch_bar.visible = false
 	fap_vbox.add_child(switch_bar)
 	fap_vbox.move_child(switch_bar, 4)
-	wifi_status_lbl.text = "📶 Wi-Fi FPTU_Student: 1 vạch, mã bị nhòe. Đoán cho nhanh, hoặc [TAB] bật 4G (mất 5s)."
-	switch_4g_btn.text = "📶 BẬT 4G VIETTEL [TAB] – MẤT 5s CHUYỂN MẠNG, MÃ RÕ NÉT"
-	submit_btn.text = "✅ GỬI MÃ ĐIỂM DANH [ENTER] (sai 3 lần = ABSENT)"
+	wifi_status_lbl.text = "Wi-Fi FPTU_Student: 1 vạch, mã bị nhòe. Đoán cho nhanh, hoặc [TAB] bật 4G (mất 5s)."
+	switch_4g_btn.text = "BẬT 4G VIETTEL [TAB] – MẤT 5s CHUYỂN MẠNG, MÃ RÕ NÉT"
+	submit_btn.text = "GỬI MÃ ĐIỂM DANH [ENTER] (sai 3 lần = ABSENT)"
 
 func _build_survive_ui() -> void:
 	sleep_bar.value = sleepiness
 	GameFX.set_bar_color(sleep_bar, Color("#74B9FF"))
-	coffee_btn.text = "☕ CÀ PHÊ 7-ELEVEN [C] x%d (-15 buồn ngủ)" % coffee_left
+	coffee_btn.text = "CÀ PHÊ 7-ELEVEN [C] x%d (-15 buồn ngủ)" % coffee_left
 
-	var hl := GameFX.make_label("🍜 ĐÓI BỤNG (>70 là bụng kêu ục ục):", 14, Color("#FDCB6E"), HORIZONTAL_ALIGNMENT_LEFT)
+	var hl := GameFX.make_label("ĐÓI BỤNG (>70 là bụng kêu ục ục):", 14, Color("#FDCB6E"), HORIZONTAL_ALIGNMENT_LEFT)
 	sleep_vbox.add_child(hl)
 	hunger_bar = GameFX.make_bar(hunger, Color("#FDCB6E"), 18)
 	sleep_vbox.add_child(hunger_bar)
 	banhbao_btn = Button.new()
-	banhbao_btn.text = "🥟 ĂN LÉN BÁNH BAO [B] x%d (-40 đói, cẩn thận cô nhìn!)" % banhbao_left
+	banhbao_btn.text = "ĂN LÉN BÁNH BAO [B] x%d (-40 đói, cẩn thận cô nhìn!)" % banhbao_left
 	banhbao_btn.custom_minimum_size = Vector2(0, 36)
 	banhbao_btn.pressed.connect(_on_banhbao_pressed)
 	sleep_vbox.add_child(banhbao_btn)
 
-	var al := GameFX.make_label("👀 GIẢNG VIÊN ĐỂ Ý (100 = mời ra khỏi lớp):", 14, Color("#FF7675"), HORIZONTAL_ALIGNMENT_LEFT)
+	var al := GameFX.make_label("GIẢNG VIÊN ĐỂ Ý (100 = mời ra khỏi lớp):", 14, Color("#FF7675"), HORIZONTAL_ALIGNMENT_LEFT)
 	sleep_vbox.add_child(al)
 	attention_bar = GameFX.make_bar(0.0, Color("#FF7675"), 18)
 	sleep_vbox.add_child(attention_bar)
-	watch_label = GameFX.make_label("📖 Giảng viên đang nhìn slide", 14, Color("#BDC3C7"), HORIZONTAL_ALIGNMENT_LEFT)
+	watch_label = GameFX.make_label("Giảng viên đang nhìn slide", 14, Color("#BDC3C7"), HORIZONTAL_ALIGNMENT_LEFT)
 	sleep_vbox.add_child(watch_label)
 
 	beat_panel = GameFX.anchored_panel(hud, Control.PRESET_CENTER_BOTTOM, Vector2(460, 0), 24, Color("#F1C40F"))
@@ -323,7 +323,7 @@ func _build_survive_ui() -> void:
 	vb.alignment = BoxContainer.ALIGNMENT_CENTER
 	vb.add_theme_constant_override("separation", 4)
 	beat_panel.add_child(vb)
-	vb.add_child(GameFX.make_label("💓 GIỮ NHỊP TỈNH TÁO: BẤM [SPACE] ĐÚNG LÚC VÒNG NGOÀI CHẠM VÒNG VÀNG", 14, Color("#F1C40F")))
+	vb.add_child(GameFX.make_label("GIỮ NHỊP TỈNH TÁO: BẤM [SPACE] ĐÚNG LÚC VÒNG NGOÀI CHẠM VÒNG VÀNG", 14, Color("#F1C40F")))
 	var center := CenterContainer.new()
 	vb.add_child(center)
 	beat_ring = BeatRing.new()
@@ -370,9 +370,9 @@ func _set_event_prompt(text: String, color: Color = Color("#FF7675")) -> void:
 	event_prompt.add_theme_color_override("font_color", color)
 
 func _refresh_consumables() -> void:
-	coffee_btn.text = "☕ CÀ PHÊ 7-ELEVEN [C] x%d (-15 buồn ngủ)" % coffee_left
+	coffee_btn.text = "CÀ PHÊ 7-ELEVEN [C] x%d (-15 buồn ngủ)" % coffee_left
 	if banhbao_btn:
-		banhbao_btn.text = "🥟 ĂN LÉN BÁNH BAO [B] x%d (-40 đói, cẩn thận cô nhìn!)" % banhbao_left
+		banhbao_btn.text = "ĂN LÉN BÁNH BAO [B] x%d (-40 đói, cẩn thận cô nhìn!)" % banhbao_left
 
 # ===========================================================================
 # INPUT
@@ -449,10 +449,10 @@ func _process_fap(delta: float) -> void:
 		code_change_timer = 20.0
 		code_changes += 1
 		_generate_code()
-		lecturer_bubble.text = "🎓 Lộ mã lên group lớp rồi! ĐỔI MÃ!"
+		lecturer_bubble.text = "Lộ mã lên group lớp rồi! ĐỔI MÃ!"
 		GameFX.play_sfx("alarm", -4.0)
 		GameFX.flash(Color("#F1C40F"), 0.25, 0.3)
-		GameFX.popup("⚠️ GIẢNG VIÊN ĐỔI MÃ FAP! ĐỌC LẠI MÀN CHIẾU!", Color("#F1C40F"), 28, 1.5)
+		GameFX.popup("GIẢNG VIÊN ĐỔI MÃ FAP! ĐỌC LẠI MÀN CHIẾU!", Color("#F1C40F"), 28, 1.5)
 		var tw := create_tween()
 		tw.tween_property(code_label3d, "scale", Vector3(1.3, 1.3, 1.3), 0.15)
 		tw.tween_property(code_label3d, "scale", Vector3.ONE, 0.2)
@@ -473,20 +473,20 @@ func _process_fap(delta: float) -> void:
 			displayed_code = s
 	code_label3d.text = displayed_code
 	code_label3d.modulate = Color("#F1C40F") if is_using_4g else Color("#F1C40F").lerp(Color("#B2BEC3"), 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.02))
-	projector_hint.text = "📺 MÃ TRÊN MÀN CHIẾU: %s   %s" % [displayed_code, "" if is_using_4g else "⟳ Wi-Fi đang tải..."]
+	projector_hint.text = "MÃ TRÊN MÀN CHIẾU: %s   %s" % [displayed_code, "" if is_using_4g else "Wi-Fi đang tải..."]
 
 	# Đang chuyển 4G
 	if switching_4g_timer >= 0.0:
 		switching_4g_timer -= delta
 		switch_bar.value = (1.0 - switching_4g_timer / 5.0) * 100.0
-		wifi_status_lbl.text = "📶 Đang chuyển sang 4G Viettel... %.1fs (tạm thời không gửi được)" % maxf(0.0, switching_4g_timer)
+		wifi_status_lbl.text = "Đang chuyển sang 4G Viettel... %.1fs (tạm thời không gửi được)" % maxf(0.0, switching_4g_timer)
 		if switching_4g_timer <= 0.0:
 			switching_4g_timer = -1.0
 			is_using_4g = true
 			switch_bar.visible = false
 			switch_4g_btn.disabled = true
-			switch_4g_btn.text = "📶 4G ĐÃ BẬT – MÃ RÕ NÉT"
-			wifi_status_lbl.text = "✅ 4G ỔN ĐỊNH! Mã rõ nét trên màn chiếu, gửi là nhận ngay."
+			switch_4g_btn.text = "4G ĐÃ BẬT – MÃ RÕ NÉT"
+			wifi_status_lbl.text = "4G ỔN ĐỊNH! Mã rõ nét trên màn chiếu, gửi là nhận ngay."
 			wifi_status_lbl.add_theme_color_override("font_color", Color("#2ECC71"))
 			code_input.editable = true
 			submit_btn.disabled = false
@@ -496,11 +496,11 @@ func _process_fap(delta: float) -> void:
 	# Đang gửi qua Wi-Fi lag
 	if submitting_timer >= 0.0:
 		submitting_timer -= delta
-		wifi_status_lbl.text = "⏳ Đang gửi mã '%s' qua Wi-Fi... (%.1fs) quay vòng tròn..." % [pending_code, maxf(0.0, submitting_timer)]
+		wifi_status_lbl.text = "Đang gửi mã '%s' qua Wi-Fi... (%.1fs) quay vòng tròn..." % [pending_code, maxf(0.0, submitting_timer)]
 		if submitting_timer <= 0.0:
 			submitting_timer = -1.0
 			if randf() < 0.3:
-				wifi_status_lbl.text = "❌ REQUEST TIMEOUT! Wi-Fi FPTU_Student rớt mạng. Gửi lại hoặc bật 4G [TAB]!"
+				wifi_status_lbl.text = "REQUEST TIMEOUT! Wi-Fi FPTU_Student rớt mạng. Gửi lại hoặc bật 4G [TAB]!"
 				wifi_status_lbl.add_theme_color_override("font_color", Color("#E74C3C"))
 				GameFX.play_sfx("error", -4.0)
 				code_input.editable = true
@@ -535,7 +535,7 @@ func _on_submit_fap_pressed() -> void:
 		return
 	var entered: String = code_input.text.strip_edges().to_upper()
 	if entered.length() < 6:
-		wifi_status_lbl.text = "⚠️ Mã FAP có đúng 6 ký tự! Bạn mới gõ %d." % entered.length()
+		wifi_status_lbl.text = "Mã FAP có đúng 6 ký tự! Bạn mới gõ %d." % entered.length()
 		wifi_status_lbl.add_theme_color_override("font_color", Color("#F1C40F"))
 		GameFX.play_sfx("error", -8.0)
 		return
@@ -565,9 +565,9 @@ func _evaluate_code(entered: String) -> void:
 		if entered[i] == real_code[i]:
 			correct_pos += 1
 	hint = " (%d/6 ký tự đúng vị trí)" % correct_pos
-	wifi_status_lbl.text = "❌ SAI MÃ LẦN %d/3!%s Khóa 2s rồi thử lại." % [strikes, hint]
+	wifi_status_lbl.text = "SAI MÃ LẦN %d/3!%s Khóa 2s rồi thử lại." % [strikes, hint]
 	wifi_status_lbl.add_theme_color_override("font_color", Color("#E74C3C"))
-	lecturer_bubble.text = "🎓 Nhập sai nữa là tôi điểm danh tay đó!"
+	lecturer_bubble.text = "Nhập sai nữa là tôi điểm danh tay đó!"
 	input_lock_timer = 2.0
 	code_input.editable = false
 	submit_btn.disabled = true
@@ -580,9 +580,9 @@ func _fap_success() -> void:
 	beat_panel.visible = true
 	GameFX.play_sfx("success")
 	GameFX.flash(Color("#2ECC71"), 0.35, 0.4)
-	GameFX.popup("✅ [P] PRESENT! Giờ là 90 phút sinh tồn trong phòng 16°C...", Color("#2ECC71"), 30, 2.0)
+	GameFX.popup("[P] PRESENT! Giờ là 90 phút sinh tồn trong phòng 16°C...", Color("#2ECC71"), 30, 2.0)
 	mission_label.text = "SỐNG SÓT 60s: [SPACE] ĐÚNG NHỊP CHỐNG NGỦ · [C] CÀ PHÊ · [B] BÁNH BAO LÉN · [F] ÚP ĐIỆN THOẠI KHI CÔ XUỐNG"
-	lecturer_bubble.text = "🎓 Điểm danh xong rồi, vào bài nào!"
+	lecturer_bubble.text = "Điểm danh xong rồi, vào bài nào!"
 	code_label3d.text = "SLIDE 1/120: OOP"
 	code_label3d.font_size = 120
 	# Lịch sự kiện bất ngờ (tính theo giây đã trôi của pha 2)
@@ -622,7 +622,7 @@ func _process_survive(delta: float) -> void:
 	if watch_timer <= 0.0:
 		lecturer_watching = not lecturer_watching
 		watch_timer = randf_range(2.5, 4.0) if lecturer_watching else randf_range(3.0, 6.0)
-		watch_label.text = "👀 GIẢNG VIÊN ĐANG NHÌN XUỐNG LỚP!" if lecturer_watching else "📖 Giảng viên đang nhìn slide"
+		watch_label.text = "GIẢNG VIÊN ĐANG NHÌN XUỐNG LỚP!" if lecturer_watching else "Giảng viên đang nhìn slide"
 		watch_label.add_theme_color_override("font_color", Color("#FF7675") if lecturer_watching else Color("#BDC3C7"))
 		if lecturer and not phone_active:
 			var tw := create_tween()
@@ -635,7 +635,7 @@ func _process_survive(delta: float) -> void:
 			growl_timer = 4.0
 			GameFX.play_sfx("growl", 2.0)
 			attention = clampf(attention + 15.0, 0.0, 100.0)
-			GameFX.popup("ỤC ỤC... 🍜 bụng kêu to quá! Cô liếc nhìn (+15 để ý)", Color("#FDCB6E"), 24, 1.2)
+			GameFX.popup("ỤC ỤC... bụng kêu to quá! Cô liếc nhìn (+15 để ý)", Color("#FDCB6E"), 24, 1.2)
 			GameFX.shake(0.15)
 	else:
 		growl_timer = 4.0
@@ -682,7 +682,7 @@ func _on_beat_press() -> void:
 	if dist <= BEAT_WINDOW:
 		beat_hits += 1
 		sleepiness = clampf(sleepiness - 8.0, 0.0, 100.0)
-		beat_feedback.text = "✓ ĐÚNG NHỊP! (-8 buồn ngủ) · chuỗi %d" % beat_hits
+		beat_feedback.text = "ĐÚNG NHỊP! (-8 buồn ngủ) · chuỗi %d" % beat_hits
 		beat_feedback.add_theme_color_override("font_color", Color("#2ECC71"))
 		beat_ring.good = true
 		beat_ring.flash = 1.0
@@ -690,7 +690,7 @@ func _on_beat_press() -> void:
 	else:
 		beat_misses += 1
 		sleepiness = clampf(sleepiness + 3.0, 0.0, 100.0)
-		beat_feedback.text = "✗ LỆCH NHỊP... gật gù (+3 buồn ngủ)"
+		beat_feedback.text = "LỆCH NHỊP... gật gù (+3 buồn ngủ)"
 		beat_feedback.add_theme_color_override("font_color", Color("#E74C3C"))
 		beat_ring.good = false
 		beat_ring.flash = 1.0
@@ -700,7 +700,7 @@ func _on_coffee_pressed() -> void:
 	if phase != Phase.SURVIVE or is_stage_ended:
 		return
 	if coffee_left <= 0:
-		GameFX.popup("☕ HẾT CÀ PHÊ RỒI! Phải giữ nhịp bằng tay thôi...", Color("#BDC3C7"), 22, 1.0)
+		GameFX.popup("HẾT CÀ PHÊ RỒI! Phải giữ nhịp bằng tay thôi...", Color("#BDC3C7"), 22, 1.0)
 		GameFX.play_sfx("error", -8.0)
 		return
 	coffee_left -= 1
@@ -709,13 +709,13 @@ func _on_coffee_pressed() -> void:
 	sleepiness = maxf(0.0, sleepiness - 15.0)
 	_refresh_consumables()
 	GameFX.play_sfx("cash", -4.0)
-	GameFX.popup("☕ NHẤP CÀ PHÊ 7-ELEVEN! (-15 buồn ngủ) còn %d ly" % coffee_left, Color("#2ECC71"), 24, 1.0)
+	GameFX.popup("NHẤP CÀ PHÊ 7-ELEVEN! (-15 buồn ngủ) còn %d ly" % coffee_left, Color("#2ECC71"), 24, 1.0)
 
 func _on_banhbao_pressed() -> void:
 	if phase != Phase.SURVIVE or is_stage_ended:
 		return
 	if banhbao_left <= 0:
-		GameFX.popup("🥟 HẾT BÁNH BAO! Nhịn tới trưa thôi...", Color("#BDC3C7"), 22, 1.0)
+		GameFX.popup("HẾT BÁNH BAO! Nhịn tới trưa thôi...", Color("#BDC3C7"), 22, 1.0)
 		GameFX.play_sfx("error", -8.0)
 		return
 	banhbao_left -= 1
@@ -725,11 +725,11 @@ func _on_banhbao_pressed() -> void:
 	_refresh_consumables()
 	if lecturer_watching:
 		attention = clampf(attention + 30.0, 0.0, 100.0)
-		GameFX.popup("😱 CÔ THẤY EM ĂN TRONG LỚP! (+30 để ý)", Color("#E74C3C"), 26, 1.3)
+		GameFX.popup("CÔ THẤY EM ĂN TRONG LỚP! (+30 để ý)", Color("#E74C3C"), 26, 1.3)
 		GameFX.play_sfx("alarm", -4.0)
-		lecturer_bubble.text = "🎓 Em kia! Lớp học hay căn tin?!"
+		lecturer_bubble.text = "Em kia! Lớp học hay căn tin?!"
 	else:
-		GameFX.popup("🥟 Nhai lén thành công! (-40 đói)", Color("#2ECC71"), 24, 1.0)
+		GameFX.popup("Nhai lén thành công! (-40 đói)", Color("#2ECC71"), 24, 1.0)
 		GameFX.play_sfx("pop", -4.0)
 
 func _start_quiz() -> void:
@@ -738,13 +738,13 @@ func _start_quiz() -> void:
 	quiz_timer = 8.0
 	var q: Array = QUIZ_POOL[randi() % QUIZ_POOL.size()]
 	quiz_answers = q[1]
-	quiz_question.text = "🎓 GIẢNG VIÊN GỌI TÊN BẠN BẤT NGỜ!\n\"%s\"\n(8 giây – gõ đáp án ngắn rồi Enter)" % str(q[0])
+	quiz_question.text = "GIẢNG VIÊN GỌI TÊN BẠN BẤT NGỜ!\n\"%s\"\n(8 giây – gõ đáp án ngắn rồi Enter)" % str(q[0])
 	quiz_question.add_theme_color_override("font_color", Color("#F1C40F"))
 	quiz_panel.visible = true
 	answer_input.text = ""
 	answer_input.editable = true
 	answer_input.grab_focus()
-	lecturer_bubble.text = "🎓 Em áo cam bàn 3, trả lời cô!"
+	lecturer_bubble.text = "Em áo cam bàn 3, trả lời cô!"
 	GameFX.play_sfx("alarm", -3.0)
 	GameFX.shake(0.2)
 	beat_feedback.text = "(đang bị gọi tên – nhịp tạm dừng)"
@@ -765,16 +765,16 @@ func _resolve_quiz(correct: bool, given: String) -> void:
 	if correct:
 		quiz_correct += 1
 		attention = clampf(attention - 10.0, 0.0, 100.0)
-		GameFX.popup("✅ ĐÚNG RỒI! 'Giỏi, ngồi xuống.' (-10 để ý)", Color("#2ECC71"), 28, 1.4)
+		GameFX.popup("ĐÚNG RỒI! 'Giỏi, ngồi xuống.' (-10 để ý)", Color("#2ECC71"), 28, 1.4)
 		GameFX.play_sfx("success", -2.0)
-		lecturer_bubble.text = "🎓 Giỏi! Ngồi xuống."
+		lecturer_bubble.text = "Giỏi! Ngồi xuống."
 	else:
 		attention = clampf(attention + 25.0, 0.0, 100.0)
 		sleepiness = clampf(sleepiness + 15.0, 0.0, 100.0)
-		GameFX.popup("❌ '%s'?! Cô: 'Em học hành kiểu gì vậy?' (+25 để ý, +15 buồn ngủ)\nĐáp án: %s" % [given, str(quiz_answers[0]).to_upper()], Color("#E74C3C"), 24, 2.0)
+		GameFX.popup("'%s'?! Cô: 'Em học hành kiểu gì vậy?' (+25 để ý, +15 buồn ngủ)\nĐáp án: %s" % [given, str(quiz_answers[0]).to_upper()], Color("#E74C3C"), 24, 2.0)
 		GameFX.play_sfx("error")
 		GameFX.shake(0.3)
-		lecturer_bubble.text = "🎓 Em học hành kiểu gì vậy?!"
+		lecturer_bubble.text = "Em học hành kiểu gì vậy?!"
 	beat_feedback.text = ""
 
 func _start_phone_check() -> void:
@@ -783,10 +783,10 @@ func _start_phone_check() -> void:
 	phone_active = true
 	phone_timer = 1.5
 	phone_saved = false
-	_set_event_prompt("📱 GIẢNG VIÊN ĐI XUỐNG DÃY BÀN! ÚP ĐIỆN THOẠI NGAY [F]!", Color("#FF7675"))
+	_set_event_prompt("GIẢNG VIÊN ĐI XUỐNG DÃY BÀN! ÚP ĐIỆN THOẠI NGAY [F]!", Color("#FF7675"))
 	GameFX.play_sfx("alarm")
 	GameFX.shake(0.25)
-	lecturer_bubble.text = "🎓 Để cô xuống xem ai chơi điện thoại..."
+	lecturer_bubble.text = "Để cô xuống xem ai chơi điện thoại..."
 	if lecturer:
 		var tw := create_tween()
 		CharacterBuilder.set_speed(lecturer, 1.3)
@@ -800,7 +800,7 @@ func _on_phone_flip() -> void:
 	if phone_active and not phone_saved:
 		_resolve_phone(true)
 	else:
-		GameFX.popup("📱 (điện thoại đã úp sẵn rồi)", Color("#BDC3C7"), 20, 0.7)
+		GameFX.popup("(điện thoại đã úp sẵn rồi)", Color("#BDC3C7"), 20, 0.7)
 
 func _resolve_phone(saved: bool) -> void:
 	phone_active = false
@@ -811,16 +811,16 @@ func _resolve_phone(saved: bool) -> void:
 		phone_mat.albedo_color = Color("#2D3436")
 		var tw := create_tween()
 		tw.tween_property(phone_mesh, "rotation_degrees:z", 180.0, 0.15)
-		GameFX.popup("😮‍💨 ÚP KỊP! Cô đi ngang không thấy gì.", Color("#2ECC71"), 26, 1.2)
+		GameFX.popup("ÚP KỊP! Cô đi ngang không thấy gì.", Color("#2ECC71"), 26, 1.2)
 		GameFX.play_sfx("pop", -2.0)
-		lecturer_bubble.text = "🎓 Hmm... tốt, học tiếp."
+		lecturer_bubble.text = "Hmm... tốt, học tiếp."
 	else:
 		phone_confiscated = true
 		attention = clampf(attention + 40.0, 0.0, 100.0)
-		GameFX.popup("📱 TỊCH THU ĐIỆN THOẠI! 'Cuối giờ lên văn phòng lấy.' (+40 để ý)", Color("#E74C3C"), 26, 1.8)
+		GameFX.popup("TỊCH THU ĐIỆN THOẠI! 'Cuối giờ lên văn phòng lấy.' (+40 để ý)", Color("#E74C3C"), 26, 1.8)
 		GameFX.play_sfx("miss")
 		GameFX.shake(0.4)
-		lecturer_bubble.text = "🎓 Điện thoại! Cuối giờ lên lấy!"
+		lecturer_bubble.text = "Điện thoại! Cuối giờ lên lấy!"
 		var tw := create_tween()
 		tw.tween_property(phone_mesh, "position", lecturer.position + Vector3(0, 1.3, 0), 0.4)
 		tw.tween_callback(phone_mesh.queue_free)
@@ -865,12 +865,12 @@ func _complete_stage() -> void:
 		"result": "win", "score": score, "rank": rank,
 		"detail": "strikes=%d beats=%d/%d quiz=%d/%d attention=%d" % [strikes, beat_hits, beat_hits + beat_misses, quiz_correct, quiz_count, int(attention)]
 	})
-	modal_title.text = "🎉 SỐNG SÓT SLOT 1 – [P] PRESENT! RANK %s" % rank
+	modal_title.text = "SỐNG SÓT SLOT 1 – [P] PRESENT! RANK %s" % rank
 	modal_title.modulate = Color("#2ECC71")
 	modal_sub.text = "FAP: %d lần nhập sai, %s · Mã bị đổi %d lần.\nSinh tồn: %d nhịp đúng / %d lệch · Trả lời đúng %d/%d câu · Để ý cuối: %d%%\n%s · Điểm %d" % [
-		strikes, ("dùng 4G" if is_using_4g else "đoán qua Wi-Fi lag 😎"), code_changes,
+		strikes, ("dùng 4G" if is_using_4g else "đoán qua Wi-Fi lag"), code_changes,
 		beat_hits, beat_misses, quiz_correct, quiz_count, int(attention),
-		("Điện thoại bị tịch thu 📱" if phone_confiscated else "Giữ được điện thoại 📱✅"), score
+		("Điện thoại bị tịch thu" if phone_confiscated else "Giữ được điện thoại"), score
 	]
 	modal_overlay.visible = true
 	modal_overlay.modulate.a = 0.0
@@ -890,7 +890,7 @@ func _fail_stage(reason: String, caught: bool = false) -> void:
 	GameFX.clear_vignette()
 	GameFX.play_sfx("res://assets/audio/absent_gameover.wav", 2.0)
 	StageManager.report_stage_result(StageManager.StageID.STAGE_3_CLASSROOM, {"result": "fail", "score": 0, "rank": "C", "detail": reason, "caught": caught})
-	modal_title.text = "❌ THẤT BẠI - BỊ ĐÁNH ABSENT!"
+	modal_title.text = "THẤT BẠI - BỊ ĐÁNH ABSENT!"
 	modal_title.modulate = Color("#E74C3C")
 	modal_sub.text = reason
 	next_btn.visible = false

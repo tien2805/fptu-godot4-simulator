@@ -58,7 +58,7 @@ func _process(_d: float) -> bool:
 			if (menu.get("btn_continue") as Button).visible:
 				_fail("không có bản lưu mà vẫn hiện TIẾP TỤC")
 				return true
-			if (menu.get("btn_story") as Button).text != "✚   CỐT TRUYỆN MỚI: TOOL ĐEN":
+			if (menu.get("btn_story") as Button).text != "CỐT TRUYỆN":
 				_fail("nhãn nút cốt truyện mới sai")
 				return true
 			print("  nút menu OK (TIẾP TỤC ẩn khi chưa lưu); focus = ", str(get_root().gui_get_focus_owner()))
@@ -190,14 +190,14 @@ func _process(_d: float) -> bool:
 				return true
 			sm.call("resume_game")
 		30:
-			# có bản lưu (Ngày 0, file tạm): TIẾP TỤC hiện, CỐT TRUYỆN MỚI hỏi ghi đè
+			# có bản lưu (Ngày 0, file tạm): TIẾP TỤC hiện, CỐT TRUYỆN hỏi ghi đè
 			sd.set("nav_enabled", false)
 			sd.call("new_story", {"female": false, "name": "Test"})
 			sd.set("nav_enabled", true)
 			sd.call("reset_state")
 			menu.call("_refresh_story_buttons")
 			var bc: Button = menu.get("btn_continue")
-			if not bc.visible or bc.text != "▶   TIẾP TỤC – NGÀY 0":
+			if not bc.visible or bc.text != "TIẾP TỤC – NGÀY 0":
 				_fail("có bản lưu mà TIẾP TỤC không hiện đúng: %s" % bc.text)
 				return true
 			(menu.get("btn_story") as Button).emit_signal("pressed")

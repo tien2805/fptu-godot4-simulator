@@ -30,17 +30,17 @@ Yêu cầu: Windows 10/11 64-bit, card đồ hoạ hỗ trợ Vulkan 1.0 (hoặc
 | 23:00 | **6 · Boss Capstone** | Bullet-hell gõ chữ trong Lab 402 lúc nửa đêm: bắn hạ 404 / NullPointer, gọi dậy đứa seen không rep, resolve Git conflict trước 23:59. |
 | 08:00 | **Extra · Giám thị EOS** | Đi tuần phòng thi 311 hoặc xem CCTV, chụp bằng chứng đúng lúc, lập biên bản 5 thánh tool mà không bắt oan. |
 
-Vật phẩm mua ở 7-Eleven (Màn 5) dùng được ở Màn 2 và 3. Kết quả từng màn có rank S/A/B/C và kỷ lục được lưu. Chơi lẻ từng màn: vào **🌏 KHÁM PHÁ CAMPUS** rồi tới cột sáng của màn đó, bấm `E`.
+Vật phẩm mua ở 7-Eleven (Màn 5) dùng được ở Màn 2 và 3. Kết quả từng màn có rank S/A/B/C và kỷ lục được lưu. Chơi lẻ từng màn: vào **KHÁM PHÁ CAMPUS** rồi tới cột sáng của màn đó, bấm `E`.
 
 ## 📖 Cốt truyện TOOL ĐEN – 7 ngày minh oan
 
-Chọn **✚ CỐT TRUYỆN MỚI: TOOL ĐEN** trong menu chính (đã có bản lưu thì game hỏi *"Ghi đè bản lưu Ngày N?"*).
+Chọn **CỐT TRUYỆN** trong menu chính (đã có bản lưu thì game hỏi *"Ghi đè bản lưu Ngày N?"*).
 
-- **Tạo nhân vật:** chọn giới tính, tên (mặc định "Bạn", tối đa 16 ký tự), khuôn mặt, kiểu tóc, màu tóc, màu da; kéo chuột để xoay nhân vật, `🎲 Ngẫu nhiên` nếu lười. Đồng phục cố định: áo polo cam FPT, quần jeans, giày trắng, ba lô đen. Nhân vật này xuất hiện ở mọi nơi: thế giới mở, cinematic, Màn 1 và phòng thi 311.
+- **Tạo nhân vật:** chọn giới tính, tên (mặc định "Bạn", tối đa 16 ký tự), khuôn mặt, kiểu tóc, màu tóc, màu da; kéo chuột để xoay nhân vật, `Ngẫu nhiên` nếu lười. Đồng phục cố định: áo polo cam FPT, quần jeans, giày trắng, ba lô đen. Nhân vật này xuất hiện ở mọi nơi: thế giới mở, cinematic, Màn 1 và phòng thi 311.
 - **Ngày 0 (chơi trọn được):** tỉnh dậy trước sảnh BE6 → đua xe tới FPTU (Màn 1) → Mr.T nhờ phụ coi thi ở phòng 311, chụp bằng chứng (màn Extra) → về BE6 đi ngủ → nửa đêm có chuyện lạ → cuộc gọi 3 giờ sáng → sáng hôm sau… → tờ lịch "NGÀY 1 · CÒN 7 NGÀY". Ngày 1 trở đi sẽ có ở các bản cập nhật sau.
 - **Nhiệm vụ** là cột sáng màu hồng (có chấm trên radar và bản đồ `M`), đứng vào rồi bấm `E`. Đang bị truy nã thì phải cắt đuôi trước. Dòng mục tiêu hiện ở giữa đáy màn hình; ngày hiện dưới ví tiền ("NGÀY 1 · CÒN 7 NGÀY").
 - **Điện thoại `P`:** tin nhắn của Mr.T, Phúc, Anh Duy, Số lạ; ô bằng chứng E1–E7 (chưa có thì hiện "???"); nhiệm vụ và số ngày còn lại. `P` hoặc `Esc` để đóng.
-- **Lưu và tiếp tục:** game tự lưu khi tạo nhân vật, sau mỗi nhiệm vụ thắng, khi sang ngày mới và khi về menu chính. Nút **▶ TIẾP TỤC – NGÀY N** chỉ hiện khi có bản lưu.
+- **Lưu và tiếp tục:** game tự lưu khi tạo nhân vật, sau mỗi nhiệm vụ thắng, khi sang ngày mới và khi về menu chính. Nút **TIẾP TỤC – NGÀY N** chỉ hiện khi có bản lưu.
 - **"Giảm hù dọa"** (Cài đặt ở menu chính hoặc menu tạm dừng): bỏ tiếng rít và đèn chớp, cuộc gọi 3 giờ sáng không rung / loé, âm thanh kinh dị nhỏ hơn 6 dB.
 - **File riêng của bạn (tùy chọn, chỉ trên máy bạn, không bao giờ commit hay đóng gói):** trong thư mục người dùng của game
   - `music\<slot>.ogg` hoặc `.mp3` cho nhạc cinematic: `cine_d0_wake`, `cine_d0_brief`, `cine_d0_exam`, `cine_d0_midnight`, `ai_intro`, `cine_day_start`, `seg_d0_race`, `seg_d0_exam`;
@@ -51,7 +51,7 @@ Mọi nhân vật đều hư cấu (Mr.T, Phúc, Anh Duy…); không dùng tên,
 
 ## 🌏 Thế giới mở
 
-Chọn **🌏 KHÁM PHÁ CAMPUS** trong menu chính. Bạn xuất phát ngay trước sảnh **toà BE6 (The Beverly, Vinhomes Grand Park)**, bấm `F` lấy xe máy rồi tự chạy **tuyến đường thật 5,5 km** tới campus FPTU (Cầu Vồng 5, Nguyễn Xiển, cầu Rạch Hầm, Nguyễn Văn Tăng, D2B, đường D1), hoặc đi bộ ngắm khu đô thị, kênh đào Hoa giấy, dãy nhà ống hai bên đường. Góc trên phải luôn báo còn bao nhiêu mét tới cổng FPTU.
+Chọn **KHÁM PHÁ CAMPUS** trong menu chính. Bạn xuất phát ngay trước sảnh **toà BE6 (The Beverly, Vinhomes Grand Park)**, bấm `F` lấy xe máy rồi tự chạy **tuyến đường thật 5,5 km** tới campus FPTU (Cầu Vồng 5, Nguyễn Xiển, cầu Rạch Hầm, Nguyễn Văn Tăng, D2B, đường D1), hoặc đi bộ ngắm khu đô thị, kênh đào Hoa giấy, dãy nhà ống hai bên đường. Góc trên phải luôn báo còn bao nhiêu mét tới cổng FPTU.
 
 | Xuất phát ở BE6 | Bản đồ `M` |
 | :---: | :---: |
@@ -70,7 +70,7 @@ Chọn **🌏 KHÁM PHÁ CAMPUS** trong menu chính. Bạn xuất phát ngay tr�
 | Căn tin tầng trệt | Màn 5 · Căn tin |
 | Sân trong, trước phòng 311 | Extra · Giám thị EOS |
 
-Chơi xong một màn mở từ điểm nóng, bảng kết quả có nút **🏫 VỀ CAMPUS** để quay lại thế giới mở ngay cạnh điểm nóng đó (Màn 1 đưa bạn về BE6). Bấm *Chơi lại* thì nút này vẫn hiện ở lượt sau. Xe máy đang đỗ hiện trên bản đồ, đi xa thì dòng gợi ý báo xe cách bao nhiêu mét; lỡ rơi xuống kênh thì sau 1 giây bạn được đưa lên chỗ khô gần nhất.
+Chơi xong một màn mở từ điểm nóng, bảng kết quả có nút **VỀ CAMPUS** để quay lại thế giới mở ngay cạnh điểm nóng đó (Màn 1 đưa bạn về BE6). Bấm *Chơi lại* thì nút này vẫn hiện ở lượt sau. Xe máy đang đỗ hiện trên bản đồ, đi xa thì dòng gợi ý báo xe cách bao nhiêu mét; lỡ rơi xuống kênh thì sau 1 giây bạn được đưa lên chỗ khô gần nhất.
 
 Ở phong cách Vice City, mọi nhân vật là người kiểu PS2: tỉ lệ người thật, đầu ít mặt với gương mặt vẽ tay bằng code (8 biểu cảm), quần áo giữ nguyên. Ở cả hai phong cách, thế giới mở đông người hơn: sinh viên kín sân trường, cư dân dạo phố Vinhomes (có người chạy bộ, người tản bộ), người đi bộ trên lề các tuyến đường, nhìn xa vẫn thấy dòng người; xe máy, ô tô và xe buýt chạy đúng làn bên phải và dừng lại khi có người chắn đường. Ban đêm vắng hơn. Va nhẹ thì người đi đường lảo đảo càu nhàu, chạy nước rút hay đi xe tông thì họ ngã rồi đứng dậy bỏ chạy. Rơi từ cao không mất máu: dưới 2,5 m nhún gối, 2,5-6 m lăn, cao hơn thì nằm một lúc rồi đứng dậy.
 

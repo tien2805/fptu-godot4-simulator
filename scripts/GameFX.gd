@@ -167,7 +167,7 @@ func play_ui(name_or_path: String, volume_db: float = -8.0, pitch: float = 1.0) 
 
 ## Hàng thanh trượt âm lượng cho bảng cài đặt (menu chính & tạm dừng)
 func build_audio_settings(parent: Control) -> void:
-	var names: Dictionary = {"Master": "🔊 Tổng", "Music": "🎵 Nhạc", "SFX": "💥 Hiệu ứng", "UI": "🖱 Giao diện"}
+	var names: Dictionary = {"Master": "Tổng", "Music": "Nhạc", "SFX": "Hiệu ứng", "UI": "Giao diện"}
 	for b: String in AUDIO_BUSES:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 12)
@@ -201,7 +201,7 @@ func build_style_settings(parent: Control) -> void:
 	row.name = "ArtStyleRow"
 	row.add_theme_constant_override("separation", 12)
 	parent.add_child(row)
-	var lbl: Label = make_label("🎨 Phong cách đồ hoạ", 15, Color("#DFE6E9"), HORIZONTAL_ALIGNMENT_LEFT)
+	var lbl: Label = make_label("Phong cách đồ hoạ", 15, Color("#DFE6E9"), HORIZONTAL_ALIGNMENT_LEFT)
 	lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	lbl.custom_minimum_size = Vector2(130, 0)
 	row.add_child(lbl)

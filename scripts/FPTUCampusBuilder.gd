@@ -1401,7 +1401,7 @@ static func _build_external_stair(root: Node3D, m: Dictionary) -> void:
 	_box(root, Vector3(door.x, st.y + 1.85, RING_V0 + 0.1), Vector3(3.8, 3.9, 0.2), m["granite"])
 	_box(root, Vector3(door.x, st.y + 1.7, RING_V0 - 0.05), Vector3(3.2, 3.4, 0.14), _mat(Color("#2ECC71"), 0.4, 0.0, 0.9))
 	_box(root, Vector3(door.x, st.y + 3.9, RING_V0 - 0.05), Vector3(4.6, 0.6, 0.16), m["orange"])
-	_label(root, Vector3(door.x, st.y + 4.8, RING_V0 - 0.25), "🚪 PHÒNG LAB 402 – KỸ THUẬT PHẦN MỀM\n[FAP SLOT 1 – 07:30 AM]", 24, Color.WHITE, 180.0)
+	_label(root, Vector3(door.x, st.y + 4.8, RING_V0 - 0.25), "PHÒNG LAB 402 – KỸ THUẬT PHẦN MỀM\n[FAP SLOT 1 – 07:30 AM]", 24, Color.WHITE, 180.0)
 	var mat_hall := _tex_mat("fptu_campus_hall_atrium.png", Color("#DDDDDD"), false, Vector3.ONE, 0.7)
 	_box(root, Vector3(door.x + 4.8, st.y + 1.7, RING_V0 - 0.02), Vector3(4.0, 2.6, 0.16), mat_hall)
 	_label(root, Vector3(door.x + 4.8, st.y + 3.3, RING_V0 - 0.2), "ATRIUM HALL FPTU (ẢNH CHỤP THỰC TẾ)", 12, Color.WHITE, 180.0)
@@ -1917,7 +1917,7 @@ static func _build_atrium_stair(root: Node3D, m: Dictionary) -> void:
 	_box(root, Vector3(door.x, st.y + 1.85, door.z + 0.12), Vector3(3.8, 3.9, 0.24), m["granite"])
 	_box(root, Vector3(door.x, st.y + 1.7, door.z + 0.26), Vector3(3.2, 3.4, 0.14), _mat(Color("#2ECC71"), 0.4, 0.0, 0.9))
 	_box(root, Vector3(door.x, st.y + 3.9, door.z + 0.26), Vector3(4.6, 0.6, 0.16), m["orange"])
-	_label(root, Vector3(door.x, st.y + 4.8, door.z + 0.45), "🚪 PHÒNG LAB 402 – KỸ THUẬT PHẦN MỀM\n[FAP SLOT 1 – 07:30 AM]", 24, Color.WHITE, 0.0)
+	_label(root, Vector3(door.x, st.y + 4.8, door.z + 0.45), "PHÒNG LAB 402 – KỸ THUẬT PHẦN MỀM\n[FAP SLOT 1 – 07:30 AM]", 24, Color.WHITE, 0.0)
 	var sf: Vector3 = prof[0]
 	_label(root, Vector3(sf.x, 3.2, sf.z + 2.5), "⬆ SẢNH THÔNG TẦNG – CẦU THANG LÊN LẦU 4 (LAB 402)", 16, Color("#F1C40F"), 0.0)
 

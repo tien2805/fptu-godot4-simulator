@@ -134,7 +134,7 @@ theme_override_constants/separation = 12
 [node name="Label" type="Label" parent="HUD/BalancePanel/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "⚖️ GIỮ THĂNG BẰNG KHAY CƠM (PHÍM A/D HOẶC NÚT BÊN DƯỚI):"
+text = "GIỮ THĂNG BẰNG KHAY CƠM (PHÍM A/D HOẶC NÚT BÊN DƯỚI):"
 horizontal_alignment = 1
 
 [node name="BalanceBar" type="ProgressBar" parent="HUD/BalancePanel/VBox"]
@@ -150,13 +150,13 @@ theme_override_constants/separation = 16
 custom_minimum_size = Vector2(0, 38)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "⬅️ NGHIÊNG TRÁI [A]"
+text = "NGHIÊNG TRÁI [A]"
 
 [node name="RightButton" type="Button" parent="HUD/BalancePanel/VBox/HBox"]
 custom_minimum_size = Vector2(0, 38)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "➡️ NGHIÊNG PHẢI [D]"
+text = "NGHIÊNG PHẢI [D]"
 
 [node name="CenterModals" type="CenterContainer" parent="HUD"]
 anchors_preset = 15
@@ -184,27 +184,27 @@ theme_override_constants/separation = 14
 layout_mode = 2
 theme_override_colors/font_color = Color(0, 0.6, 0.35, 1)
 theme_override_font_sizes/font_size = 22
-text = "🏪 7-ELEVEN FPTU CAMPUS"
+text = "7-ELEVEN FPTU CAMPUS"
 horizontal_alignment = 1
 
 [node name="BuyNoodlesButton" type="Button" parent="HUD/CenterModals/SevenElevenModal/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 15
-text = "🍜 MUA MÌ TRỘN INDOMIE ĐÔI TRỨNG XÚC XÍCH (HỒI STAMINA)"
+text = "MUA MÌ TRỘN INDOMIE ĐÔI TRỨNG XÚC XÍCH (HỒI STAMINA)"
 
 [node name="BuyDrinkButton" type="Button" parent="HUD/CenterModals/SevenElevenModal/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 15
-text = "⚡ MUA LON NƯỚC TĂNG LỰC BÒ HÚC / MONSTER (HỒI SANITY)"
+text = "MUA LON NƯỚC TĂNG LỰC BÒ HÚC / MONSTER (HỒI SANITY)"
 
 [node name="FinishButton" type="Button" parent="HUD/CenterModals/SevenElevenModal/Margin/VBox"]
 custom_minimum_size = Vector2(0, 46)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 disabled = true
-text = "HÃY MUA CẢ 2 MÓN TRÊN ĐỂ NẠP ĐỦ PIN ➔"
+text = "HÃY MUA CẢ 2 MÓN TRÊN ĐỂ NẠP ĐỦ PIN"
 
 [node name="ModalOverlay" type="ColorRect" parent="HUD"]
 visible = false
@@ -254,16 +254,16 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-text = "TIẾP TỤC MÀN 6: BOSS FIGHT CAPSTONE ➔"
+text = "TIẾP TỤC MÀN 6: BOSS FIGHT CAPSTONE"
 
 [node name="RetryButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "🔄 CHƠI LẠI MÀN NÀY"
+text = "CHƠI LẠI MÀN NÀY"
 
 [node name="MenuButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "📋 CHỌN MÀN CHƠI (CAMPAIGN MENU)"
+text = "CHỌN MÀN CHƠI (CAMPAIGN MENU)"
