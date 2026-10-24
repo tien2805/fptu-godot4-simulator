@@ -7,6 +7,8 @@
 class_name CharacterCreator
 extends Node3D
 
+const GameFXScript: Script = preload("res://scripts/GameFX.gd")
+
 const ROWS: Array[String] = ["sex", "name", "face", "hair", "hair_color", "skin"]
 const ROW_TITLES: Dictionary = {"sex": "Giới tính", "name": "Tên", "face": "Khuôn mặt", "hair": "Kiểu tóc", "hair_color": "Màu tóc", "skin": "Màu da"}
 const HAIR_M: Array[String] = ["short", "side_part", "spiky", "undercut"]
@@ -171,10 +173,10 @@ func _rebuild_preview() -> void:
 # UI
 # ---------------------------------------------------------------------------
 func _style_button(b: Button, accent: Color) -> void:
-	b.add_theme_stylebox_override("normal", GameFX.make_panel_style(Color(accent, 0.6), Color(0.08, 0.05, 0.14, 0.88), 10))
-	b.add_theme_stylebox_override("hover", GameFX.make_panel_style(accent, Color(0.16, 0.08, 0.22, 0.96), 10))
-	b.add_theme_stylebox_override("focus", GameFX.make_panel_style(accent, Color(0.16, 0.08, 0.22, 0.96), 10))
-	b.add_theme_stylebox_override("pressed", GameFX.make_panel_style(Color.WHITE, Color(0.3, 0.1, 0.25, 0.98), 10))
+	b.add_theme_stylebox_override("normal", GameFXScript.make_panel_style(Color(accent, 0.6), Color(0.08, 0.05, 0.14, 0.88), 10))
+	b.add_theme_stylebox_override("hover", GameFXScript.make_panel_style(accent, Color(0.16, 0.08, 0.22, 0.96), 10))
+	b.add_theme_stylebox_override("focus", GameFXScript.make_panel_style(accent, Color(0.16, 0.08, 0.22, 0.96), 10))
+	b.add_theme_stylebox_override("pressed", GameFXScript.make_panel_style(Color.WHITE, Color(0.3, 0.1, 0.25, 0.98), 10))
 	b.add_theme_color_override("font_color", Color("#FFF4FA"))
 	b.add_theme_color_override("font_hover_color", Color("#FFE15C"))
 
@@ -201,7 +203,7 @@ func _build_ui() -> void:
 	ui.add_child(margin)
 	panel = PanelContainer.new()
 	panel.name = "Panel"
-	panel.add_theme_stylebox_override("panel", GameFX.make_panel_style(ACCENT, Color(0.07, 0.04, 0.13, 0.9), 14))
+	panel.add_theme_stylebox_override("panel", GameFXScript.make_panel_style(ACCENT, Color(0.07, 0.04, 0.13, 0.9), 14))
 	margin.add_child(panel)
 	var pm := MarginContainer.new()
 	for side: String in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
@@ -210,17 +212,17 @@ func _build_ui() -> void:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
 	pm.add_child(col)
-	var title: Label = GameFX.make_label("TẠO NHÂN VẬT", 34, ACCENT, HORIZONTAL_ALIGNMENT_LEFT)
-	title.add_theme_font_override("font", GameFX.vice_font(0.8, 0.24))
+	var title: Label = GameFXScript.make_label("TẠO NHÂN VẬT", 34, ACCENT, HORIZONTAL_ALIGNMENT_LEFT)
+	title.add_theme_font_override("font", GameFXScript.vice_font(0.8, 0.24))
 	title.add_theme_color_override("font_outline_color", Color("#2A0E3A"))
 	title.add_theme_constant_override("outline_size", 8)
 	col.add_child(title)
-	var sub: Label = GameFX.make_label("TOOL ĐEN – 7 ngày minh oan · sinh viên FPTU, áo polo cam, quần jeans, giày trắng, ba lô đen", 13, Color("#FFD1E8"), HORIZONTAL_ALIGNMENT_LEFT)
+	var sub: Label = GameFXScript.make_label("TOOL ĐEN – 7 ngày minh oan · sinh viên FPTU, áo polo cam, quần jeans, giày trắng, ba lô đen", 13, Color("#FFD1E8"), HORIZONTAL_ALIGNMENT_LEFT)
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(sub)
 	for i: int in ROWS.size():
 		col.add_child(_build_row(i))
-	var hint: Label = GameFX.make_label("↑↓ chọn dòng · ←→ đổi · Enter bắt đầu · kéo chuột để xoay nhân vật", 12, Color("#C9B8E8"), HORIZONTAL_ALIGNMENT_LEFT)
+	var hint: Label = GameFXScript.make_label("↑↓ chọn dòng · ←→ đổi · Enter bắt đầu · kéo chuột để xoay nhân vật", 12, Color("#C9B8E8"), HORIZONTAL_ALIGNMENT_LEFT)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(hint)
 	var hb := HBoxContainer.new()
@@ -255,7 +257,7 @@ func _build_row(i: int) -> PanelContainer:
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 8)
 	m.add_child(hb)
-	var lbl: Label = GameFX.make_label(String(ROW_TITLES[key]), 16, Color("#FFF4FA"), HORIZONTAL_ALIGNMENT_LEFT)
+	var lbl: Label = GameFXScript.make_label(String(ROW_TITLES[key]), 16, Color("#FFF4FA"), HORIZONTAL_ALIGNMENT_LEFT)
 	lbl.custom_minimum_size = Vector2(120.0, 0.0)
 	lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hb.add_child(lbl)
@@ -283,7 +285,7 @@ func _build_row(i: int) -> PanelContainer:
 		sw.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hb.add_child(sw)
 		swatches[key] = sw
-	var val: Label = GameFX.make_label("", 16, Color("#FFE15C"), HORIZONTAL_ALIGNMENT_CENTER)
+	var val: Label = GameFXScript.make_label("", 16, Color("#FFE15C"), HORIZONTAL_ALIGNMENT_CENTER)
 	val.custom_minimum_size = Vector2(150.0 if swatches.has(key) else 184.0, 0.0)
 	val.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hb.add_child(val)
@@ -389,7 +391,7 @@ func randomize_opts(seed_v: int = -1) -> void:
 func _refresh_rows() -> void:
 	for i: int in row_boxes.size():
 		var sel: bool = i == row
-		row_boxes[i].add_theme_stylebox_override("panel", GameFX.make_panel_style(ACCENT if sel else Color(1, 1, 1, 0.12),
+		row_boxes[i].add_theme_stylebox_override("panel", GameFXScript.make_panel_style(ACCENT if sel else Color(1, 1, 1, 0.12),
 			Color(0.3, 0.08, 0.24, 0.85) if sel else Color(0.1, 0.06, 0.16, 0.6), 8))
 	if value_labels.is_empty():
 		return
