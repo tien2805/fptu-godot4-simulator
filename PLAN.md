@@ -364,13 +364,25 @@ Spec `docs/superpowers/specs/2026-10-23-phase-w-weapons-wanted-design.md` (W-D1 
 | FreeRoam campus courtyard, 3 stars (6 guards + Mr.T) | (owner) | ≥ 45 |
 | FreeRoam BE6, "Siuuu!" in the crowd | (owner) | ≥ 45 |
 
+## 📖 XVI. STORY PHASE A2: FRAMEWORK + DAY 0 "TOOL ĐEN" (24/10/2026)
+
+Spec `docs/superpowers/specs/2026-10-24-story-phase-a2-framework-design.md` (A2-D1 … A2-D16), plan `docs/superpowers/plans/2026-10-24-story-phase-a2.md` (10 tasks, branch `story-a2`). Day 0 plays end to end from the main menu; Days 1-7 are locked placeholders.
+
+* **State and save.** `StoryDirector` autoload (`scripts/story/StoryDirector.gd`): day, time of day, beat, evidence E1-E7, choices, flags, protagonist, texts, objective, return spot; one save slot `user://story_save.cfg` (version 1, refused when newer / unreadable); autosave on creator confirm, every mission win, every beat and day advance, leaving for the menu; `evaluate_ending()` (C, E, B, D, A, F) ready for Phase D.
+* **Missions as data.** `StoryMissions`: d0_wake → d0_race (Stage 1) → d0_exam (Extra, E1) → d0_exam_end → d0_bed → d0_midnight → d0_call → d0_intro → d1_start, then `dN_locked` "Ngày N: … – sắp có trong bản cập nhật sau".
+* **Menu and creator.** "▶ TIẾP TỤC – NGÀY N" (only with a save), "✚ CỐT TRUYỆN MỚI: TOOL ĐEN" (overwrite confirm), "🌏 KHÁM PHÁ CAMPUS" (free play); the start / hub / journal entries are gone. `CharacterCreator` (sex, name, face variant, hair, hair colour, skin on a turntable); the protagonist is the roam player, the cinematic hero, the busted hero, the Stage 1 rider and the room 311 proctor.
+* **Story layer in free roam.** `StoryRoam` (child of FreeRoam in story mode; FreeRoam only got a hook): pink markers with radar blips and map pins, [E] blocked while wanted, objective line, day chip, phone [P] (texts, evidence, missions), toasts, the 3 a.m. call (`StoryCall`), the owner's `ai_intro_m|f.ogv` or the fallback (`StoryVideo`, `StoryIntroCards`), beat chaining through `play_cinematic`. Distance checks at 10 Hz.
+* **Stages in the story.** `StageManager.story_context`; `report_stage_result` forwards to the director: "QUA MÔN! Uy tín +" / "TOANG!", story buttons (TIẾP TỤC CỐT TRUYỆN / THỬ LẠI / VỀ THẾ GIỚI MỞ); 5 s replays `seg_d0_race` (Stage 1 finish) and `seg_d0_exam` (last confiscation) before the result; Mr.T at the room 311 front desk.
+* **Cinematics and sound.** `cine_d0_wake` 8 s, `cine_d0_exam` 18 s, `cine_d0_midnight` 22 s, `ai_intro` 24 s (beat sheets in `docs/cinematics/`); new code-built props; `StoryAudio` 17 meme / horror cues on the frozen CineAudio statics, owner overrides in `user://sfx`, warmed on a worker thread; "Giảm hù dọa" drops the screech, punch and flicker, the call's shake / flash, and lowers horror cues 6 dB.
+* **Perf.** The story layer costs nothing in free play (no StoryRoam) and only a 10 Hz marker check in story mode. `tests/test_mayhem_perf.gd` (free play) on 24/10/2026 with the laptop on battery: story-a2 W1 3.60 ms median / 3.43 ms trimmed mean, W2 3.99 / 3.75 ms; the base commit f5ef496 on the same machine in the same state: W1 3.90 / 3.53 ms, W2 3.80 / 3.60 ms. Both are over the 3 ms gate on battery and within noise of each other; the Phase W numbers above (2.1-2.4 ms) were taken on AC power. `test_free_roam` (stamina bar) and `test_weapons_core` (FreeRoam block) fail the same way on the base commit on battery: their exact frame checks miss when a frame runs long. Re-run all three on AC power.
+
 ## 🧪 VII. KIỂM THỬ HEADLESS (tests/)
 
 | Lệnh | Kiểm tra |
 | :--- | :--- |
 | `godot --headless --quit --check-only --path .` | Biên dịch toàn bộ script |
 | `godot --headless --path . --script tests/smoke_all_stages.gd` | Parse mọi script, nạp & chạy 75 frame menu + cả 7 scene màn chơi |
-| `tests/test_main_menu.gd` | Menu: 5 nút, hướng dẫn mở/đóng, đổi mức đồ hoạ + lưu settings, mở hub, Bắt đầu ngày mới reset inventory & nạp Màn 1 |
+| `tests/test_main_menu.gd` | Menu (A2): TIẾP TỤC chỉ hiện khi có bản lưu, CỐT TRUYỆN MỚI hỏi ghi đè, hướng dẫn mở/đóng, đổi mức đồ hoạ + lưu settings, "Giảm hù dọa" ở cả hai bảng cài đặt, mở màn tạo nhân vật |
 | `tests/test_stage1_race.gd` | Autopilot né xe, dừng đèn đỏ, về đích; 5/5 checkpoint |
 | `tests/test_near_miss.gd` | Vùng near-miss bắt được xe đứng yên & xe ngược chiều, 0 va chạm |
 | `tests/test_stage2_stairs.gd` | Bot auto-runner né/nhảy/trượt, về Lab 402 đúng giờ |
@@ -387,6 +399,13 @@ Spec `docs/superpowers/specs/2026-10-23-phase-w-weapons-wanted-design.md` (W-D1 
 | `tests/test_mapbuilder.gd` | MapBuilder: hình học, BE6 cao 90–100 m, collider, hợp đồng UV, chunk nhà Microsoft, ngân sách thời gian |
 | `tests/test_campus_real.gd` | Campus v8 khớp lô OSM (< 12 m mỗi góc), cổng chính < 2 m, sân trong 105 × 49 m |
 | `tests/test_free_roam.gd` | Thế giới mở: dựng < 15 s, spawn/đi/xe máy, 6 điểm nóng đi tới được, VỀ CAMPUS khi chơi lại, bờ kênh / cầu thấp / cứu khỏi kênh, bản đồ [M] lớp tĩnh vẽ 1 lần + lớp động theo nhịp HUD |
+| `tests/test_story_director.gd` | Story A2: trạng thái + tín hiệu, chuỗi beat Ngày 0, lưu / nạp, chặn phiên bản, bảng kết thúc C/E/B/D/A/F |
+| `tests/test_story_audio.gd` | 17 âm meme / kinh dị: độ dài, lặp, file thay thế, warm không giật, -6 dB khi Giảm hù dọa |
+| `tests/test_character_creator.gd` | Tạo nhân vật: 6 dòng, chỉ dựng lại model xem trước, phím, ngẫu nhiên, luật tên, xác nhận lưu |
+| `tests/test_story_phone.gd` / `tests/test_story_call.gd` | Điện thoại (tin nhắn, chưa đọc, bằng chứng, chặn điều khiển) / cuộc gọi 3 giờ sáng (đổ chuông, tự nghe 6 s, phụ đề, ~10 s, bỏ qua) |
+| `tests/test_story_cines.gd` | 4 cinematic Ngày 0 hợp lệ + đúng độ dài + beat sheet khớp, Giảm hù dọa, phát hết, thẻ ai_intro, chọn video |
+| `tests/test_story_stages.gd` | Extra trong cốt truyện (nhân vật chính, Mr.T, replay, thẻ kết quả, thua / thử lại), Màn 1 replay khi về đích, ngoài cốt truyện không đổi |
+| `tests/test_story_day0.gd` | Ngày 0 từ đầu tới sáng Ngày 1 trong FreeRoam thật, tiếp tục từ bản lưu, chơi tự do không có lớp cốt truyện |
 | `godot --path . --script tests/preview_campus.gd` (cần cửa sổ) | Chụp 7 góc campus trong Màn 1 → `user://preview/*.png` (bản sao ở `docs/preview/`) |
 | `godot --path . --script tests/preview_stage2.gd` (cần cửa sổ) | Chụp 9 góc Màn 2: D1, cổng bãi xe, lối xe, bãi xe, lối sau, sân trong, cầu thang, cửa Lab 402, toàn cảnh |
 | `godot --path . --script tests/preview_stages.gd` (cần cửa sổ) | Chụp Màn 3, 4, 5, 6, Extra từ camera gameplay + 1–2 góc phụ (cửa sổ, hiên, CCTV) |

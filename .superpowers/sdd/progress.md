@@ -12,3 +12,4 @@
 | 7 StoryRoam + FreeRoam hook | d5c4142 | (test_story_day0) | cine_stage "at"; rider + busted hero = protagonist |
 | 8 Stages in the story | 1e5b4de | test_story_stages, test_stage_extra_eos, test_stage1_race, test_free_roam | replays before the result; Stage 1 recorder created deferred |
 | 9 Day 0 end to end | 5d4579d | test_story_day0 | fixes: HUD restore after call, story HUD hidden in cinematics (UIWatch), forward only the beat's stage, no hub [M] mid-mission |
+| 10 Docs + regression | (this commit) | full regression: 61/64 + smoke; perf, free_roam, weapons_core fail identically on base f5ef496 (laptop on battery) | README Cốt truyện TOOL ĐEN, PLAN XVI, spec Status |

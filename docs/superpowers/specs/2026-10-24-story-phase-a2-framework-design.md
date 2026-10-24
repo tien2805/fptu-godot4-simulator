@@ -1,6 +1,6 @@
 # Story Phase A2 "Khung cốt truyện + Ngày 0": Design
 
-Date: 2026-10-24. Status: written by Claude from the approved story spec; the owner asked "Làm xong A2 đi rồi dừng" (build A2, then stop), so the decisions below were taken without a separate review round.
+Date: 2026-10-24. Status: implemented on branch `story-a2` (plan `docs/superpowers/plans/2026-10-24-story-phase-a2.md`, 10 tasks); 8 new story tests green; full regression 61 of 64 tests green plus smoke. `test_mayhem_perf`, `test_free_roam` and `test_weapons_core` fail the same way on the base commit, measured on the laptop on battery; re-run on AC power. Originally written by Claude from the approved story spec; the owner asked "Làm xong A2 đi rồi dừng" (build A2, then stop), so the decisions below were taken without a separate review round.
 Parent: `docs/superpowers/specs/2026-10-22-story-tool-den-design.md` (story spec, sections 4-10). Phase A1 (`docs/superpowers/specs/2026-10-23-story-phase-a1-cinematics-design.md`) built the cinematic player, music slots and short replays. Phase W (`docs/superpowers/specs/2026-10-23-phase-w-weapons-wanted-design.md`) built weapons, the wanted level and emotes.
 
 ## 1. Goal
