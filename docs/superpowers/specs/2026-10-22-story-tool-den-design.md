@@ -11,7 +11,7 @@ Replaces: `docs/superpowers/specs/2026-10-21-story-mode-design.md` (the Monday-t
 | S-D2 | Premise: a student is framed by an exam-cheat-tool ring and has 7 days to clear their name by taking the ring apart up to its boss, Lùm Văn Lọ. |
 | S-D3 | The player picks the protagonist: male or female, name, face variant, hair style and colour, skin tone (the PS2 people of `docs/superpowers/specs/2026-10-22-vice-people-and-movement-design.md`). |
 | S-D4 | Structure: GTA-style missions started from markers on the real FreeRoam map; free roaming with crowds and traffic between missions. |
-| S-D5 | Action: gunfights only inside the gang's lairs (container yard, server basement, penthouse, boats); on the FPTU campus only chases, stealth and unarmed Vovinam fights. Two sword duels (bosses). Vehicle combat on the bike, one boat chase. Hit enemies collapse or are knocked out; no blood, no gore. |
+| S-D5 | Action: gunfights only inside the gang's lairs (container yard, server basement, penthouse, boats); on the FPTU campus only chases, stealth and unarmed Vovinam fights. Two sword duels (bosses). Vehicle combat on the bike, one boat chase. Hit enemies collapse or are knocked out; no blood, no gore. **Amended 2026-10-23 (owner, Phase W):** in free roam the player's weapon wheel works everywhere, campus included ("Kiểu GTA, mọi thứ ở mọi nơi"), still without blood or deaths; story missions keep their own staging (lair gunfights, campus Vovinam). See docs/superpowers/specs/2026-10-23-phase-w-weapons-wanted-design.md. |
 | S-D6 | Tone: GTA Vice City-style action comedy with heavier horror-comedy: a masked cult ("Hội Lọ Thần"), a stalker across several days, one full hide-and-seek horror level, 3 a.m. phone calls, 1-2 jump scares per mission, 30-60 s tension scenes that end in a comic release. A "Giảm hù dọa" (reduce scares) setting cuts jump scares and flashing lights. |
 | S-D7 | Famous memes are woven through every mission, recreated with the game's own characters as situations and catchphrases. Never a real person's face, voice or name; no copyrighted characters, artwork or songs. |
 | S-D8 | Meme and horror sound effects are synthesized in code (like the code-drawn textures); owner-supplied sound files can replace any of them. |
@@ -29,7 +29,7 @@ On the morning of the end-of-semester (EOS) exam the protagonist races from towe
 Tone rules:
 - Comedy first, but every mission has one horror sequence: 30-60 s of build-up (darkness, flicker, heartbeat, whispers, distorted music), a scare, then a dumb line plus a meme sound.
 - Villains are ridiculous when they talk and frightening when they appear (masks, silhouettes, red light).
-- The FPTU campus is a real place: no guns there. Lairs are fictional places on the real map.
+- The FPTU campus is a real place: story missions stage no gunfights there (free-roam weapons are the player's own mayhem, comic and gore-free, per the Phase W amendment of S-D5). Lairs are fictional places on the real map.
 - No gore; knockouts, collapses, comic stars.
 
 ## 3. Cast
@@ -112,12 +112,13 @@ Evaluation order:
     - impacts get freeze frames of 0.1-0.2 s, plus dust, sparks and debris;
     - the clock snaps back to 1× between moves.
     - The last 3-4 s run at normal speed for the story beat: the enemy's comic reaction and the next clue.
-  - **Choreography is airborne and acrobatic.** The protagonist and the enemies:
-    - jump, flip, wall-kick, slide and spin;
-    - throw flying kicks and the Vovinam scissor-kick takedown;
-    - land spinning punches and elbow drops;
-    - get launched through the air and crash into crates.
-  - Camera work: orbiting cameras, low-angle hero shots, a whip-pan on each hit. Gunfights get dodge-dives and rolls under fire; chases get bike jumps and kicks between bikes. The motion is built from the pack clips (Punch, Kick, Roll, Sword_Slash, HitRecieve, Death) plus new code poses (flip, flying kick, scissor kick, airborne spin, elbow drop) moved along keyframed arcs.
+  - **Choreography in the style of the film *Nobody*** (owner amendment 2026-10-23: "làm phân cảnh cinematic giống trong phim Nobody", chose "chuyển hẳn sang kiểu Nobody"; this replaces the earlier "airborne and acrobatic" rule). Style only, never a shot-for-shot copy of the film:
+    - grounded, messy close-quarters brawling: grabs, shoves, headbutts, throws and slams into the scenery (scooter, kerb, crates, shutters), scrappy punches;
+    - improvised weapons picked up mid-fight: a helmet, a delivery box, a phone, a chair or pole where the set has one;
+    - the protagonist takes hits too (head hit, gut punch, knocked down), gets up winded and keeps going: comic because clumsy yet unstoppable; still no blood or gore (bruises, dust, stars);
+    - mostly normal speed and fast; slow motion only on the few most painful or funniest beats, plus one long slow-motion stretch where the music swells; flips and flying kicks are rare accents, the Vovinam scissor-kick takedown stays as the Day 7 finisher signature;
+    - deadpan comic beats between hits (cracking the neck, a sigh, an apology to a bystander).
+  - Camera work: handheld-feel shake, tight framing and fast cuts at normal speed; wide or orbiting shots only in slow motion; a punch-in or whip-pan on the biggest hits. Gunfights get dodge-dives and rolls under fire; chases get bike jumps and kicks between bikes. The motion is built from the pack clips (Punch, Kick, Roll, Sword_Slash, HitRecieve, Death) plus new code poses (flip, flying kick, scissor kick, airborne spin, elbow drop) moved along keyframed arcs.
   - **Music sync.** The slot's music starts on the cinematic's first frame. If the file is longer than the cinematic, it fades out over the last 0.5 s. Each cinematic also gets a beat sheet: the time of every hit and freeze frame in real seconds. It is written to `docs/cinematics/<slot>.txt` and can be shown with a debug overlay, so the owner can line musical hits up with on-screen hits.
   - The last segment of a mission flows straight into that mission's end cinematic, without a gap or a second fade. Every segment cinematic can be skipped (hold Esc).
 
