@@ -161,7 +161,7 @@ func _ready() -> void:
 	GameFX.music_play("parking", 0.35)
 
 	mission_label.text = "RẼ PHẢI VÀO CỔNG BÃI XE D1 (BÊN PHẢI) → DỪNG TRƯỚC BARIE, BẤM [E] QUÉT THẺ DÂY CAM!"
-	_say("⏱ 07:26 AM! VỀ TỚI ĐƯỜNG D1 – FPTU BÊN PHẢI, HUTECH BÊN TRÁI. CỔNG BÃI XE NGAY PHÍA TRƯỚC. [H] CÒI · [S] LÙI", GameFX.FPT_YELLOW, 4.5)
+	_say("07:26 AM! VỀ TỚI ĐƯỜNG D1 – FPTU BÊN PHẢI, HUTECH BÊN TRÁI. CỔNG BÃI XE NGAY PHÍA TRƯỚC. [H] CÒI · [S] LÙI", GameFX.FPT_YELLOW, 4.5)
 
 # ===========================================================================
 # INPUT
@@ -211,7 +211,7 @@ func _build_phase2_hud() -> void:
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 6)
 	hud_run_panel.add_child(vb)
-	vb.add_child(GameFX.make_label("🏁 BÃI XE → LỐI SAU → SÂN TRONG → SẢNH → CẦU THANG NGOÀI TRỜI → LAB 402", 13, GameFX.FPT_YELLOW))
+	vb.add_child(GameFX.make_label("BÃI XE → LỐI SAU → SÂN TRONG → SẢNH → CẦU THANG NGOÀI TRỜI → LAB 402", 13, GameFX.FPT_YELLOW))
 	run_progress_bar = GameFX.make_bar(0.0, GameFX.ui_accent(), 16)
 	vb.add_child(run_progress_bar)
 	monster_label = GameFX.make_label("", 13, Color("#BDC3C7"))
@@ -274,7 +274,7 @@ func _build_world() -> void:
 		cone.position = Vector3(sx * 4.0, 0.35, -0.6)
 		closure.add_child(cone)
 	var lbl := Label3D.new()
-	lbl.text = "⛔ CỔNG CHÍNH: Ô TÔ & KHÁCH\nXE MÁY SINH VIÊN → CỔNG BÃI XE D1 (CUỐI ĐƯỜNG, BÊN PHẢI) ➔"
+	lbl.text = "CỔNG CHÍNH: Ô TÔ & KHÁCH\nXE MÁY SINH VIÊN → CỔNG BÃI XE D1 (CUỐI ĐƯỜNG, BÊN PHẢI) ➔"
 	lbl.font_size = 22
 	lbl.outline_size = 8
 	lbl.modulate = Color("#F1C40F")
@@ -363,7 +363,7 @@ func _build_gate_props() -> void:
 	guard.position = GUARD_POS
 	env_root.add_child(guard)
 	guard_bubble = Label3D.new()
-	guard_bubble.text = "👮 Thẻ sinh viên đâu em?!"
+	guard_bubble.text = "Thẻ sinh viên đâu em?!"
 	guard_bubble.font_size = 30
 	guard_bubble.outline_size = 10
 	guard_bubble.modulate = Color("#FFFFFF")
@@ -414,7 +414,7 @@ func _build_rival() -> void:
 	CharacterBuilder.build_baked_rider(rival_root, Vector3(0.0, 0.32, 0.12), {"seed": 99, "shirt_color": Color("#3498DB"), "helmet_color": Color("#F39C12"), "backpack": true})
 
 	rival_bubble = Label3D.new()
-	rival_bubble.text = "🛵 Ô gần nhất là của tui!"
+	rival_bubble.text = "Ô gần nhất là của tui!"
 	rival_bubble.font_size = 28
 	rival_bubble.outline_size = 10
 	rival_bubble.modulate = Color("#FFEAA7")
@@ -508,7 +508,7 @@ func _build_monster_machine() -> void:
 	monster_can.add_child(can)
 
 	var lbl := Label3D.new()
-	lbl.text = "⚡ MÁY BÁN NƯỚC SAU TOÀ NHÀ: MONSTER MIỄN PHÍ CHO SV ĐI SỚM\nRẼ XE VÀO LẤY (MẤT VÀI GIÂY) · DÙNG [Q] KHI CHẠY BỘ"
+	lbl.text = "MÁY BÁN NƯỚC SAU TOÀ NHÀ: MONSTER MIỄN PHÍ CHO SV ĐI SỚM\nRẼ XE VÀO LẤY (MẤT VÀI GIÂY) · DÙNG [Q] KHI CHẠY BỘ"
 	lbl.font_size = 22
 	lbl.outline_size = 8
 	lbl.modulate = Color("#2ECC71")
@@ -534,7 +534,7 @@ func _on_monster_area_entered(body: Node3D) -> void:
 	_refresh_monster_label()
 	GameFX.play_sfx("cash")
 	GameFX.flash(GameFX.FPT_GREEN, 0.3, 0.3)
-	GameFX.popup("⚡ ĐÃ LẤY MONSTER! (Bấm [Q] khi chạy bộ lên Lab 402)", GameFX.FPT_GREEN, 28, 1.4)
+	GameFX.popup("ĐÃ LẤY MONSTER! (Bấm [Q] khi chạy bộ lên Lab 402)", GameFX.FPT_GREEN, 28, 1.4)
 	if monster_can:
 		var tw := create_tween()
 		tw.tween_property(monster_can, "scale", Vector3(0.01, 0.01, 0.01), 0.3)
@@ -595,9 +595,9 @@ func _build_route() -> void:
 	run_length = run_curve.get_baked_length()
 
 	checkpoints = [
-		{"progress": run_curve.get_closest_offset(pts[cp_back]), "text": "📍 LỐI VÀO SAU – CĂN TIN E2A & 7-ELEVEN. XUYÊN QUA SÂN TRONG!", "done": false},
-		{"progress": run_curve.get_closest_offset(pts[cp_lobby]), "text": "📍 SẢNH THÔNG TẦNG CÁNH PHẢI – VÀO CỬA KÍNH, CẦU THANG NGAY TRƯỚC MẶT!", "done": false},
-		{"progress": run_curve.get_closest_offset(pts[cp_stair]), "text": "📍 CẦU THANG TRONG NHÀ – 105 BẬC LÊN LAB 402! BỨT TỐC!", "done": false}
+		{"progress": run_curve.get_closest_offset(pts[cp_back]), "text": "LỐI VÀO SAU – CĂN TIN E2A & 7-ELEVEN. XUYÊN QUA SÂN TRONG!", "done": false},
+		{"progress": run_curve.get_closest_offset(pts[cp_lobby]), "text": "SẢNH THÔNG TẦNG CÁNH PHẢI – VÀO CỬA KÍNH, CẦU THANG NGAY TRƯỚC MẶT!", "done": false},
+		{"progress": run_curve.get_closest_offset(pts[cp_stair]), "text": "CẦU THANG TRONG NHÀ – 105 BẬC LÊN LAB 402! BỨT TỐC!", "done": false}
 	]
 
 # ===========================================================================
@@ -673,7 +673,7 @@ func _process_phase_1(delta: float) -> void:
 		if p.z > 1.0 and absf(p.x - GATE_U) < 7.5:
 			player_bike.global_position.z = 0.4
 			player_bike.set("current_speed_ms", 0.0)
-			_say("👮 BÁC BẢO VỆ TUÝT CÒI: 'Thẻ sinh viên dây cam đâu em ơi?!' (Bấm [E])", GameFX.FPT_RED, 1.5)
+			_say("BÁC BẢO VỆ TUÝT CÒI: 'Thẻ sinh viên dây cam đâu em ơi?!' (Bấm [E])", GameFX.FPT_RED, 1.5)
 			GameFX.play_sfx("error", -4.0)
 	else:
 		is_near_guard = false
@@ -682,7 +682,7 @@ func _process_phase_1(delta: float) -> void:
 			if rival_horn_cd <= 0.0 and p.distance_to(rival_root.global_position) < 10.0:
 				rival_pause = 1.6
 				rival_horn_cd = 4.0
-				_rival_say("😵 GIẬT CẢ MÌNH!!")
+				_rival_say("GIẬT CẢ MÌNH!!")
 		_check_parking(delta)
 	rival_horn_cd = maxf(0.0, rival_horn_cd - delta)
 
@@ -693,9 +693,9 @@ func _update_guard_nag(delta: float) -> void:
 	guard_nag_timer = 7.0
 	var lines: Array[String]
 	if not has_scanned_card:
-		lines = ["👮 Thẻ sinh viên đâu em?!", "👮 Nhanh lên, 7h29 rồi đó!", "👮 Không thẻ là không vô nha!", "👮 Rẽ vô cổng bãi xe nè em!"]
+		lines = ["Thẻ sinh viên đâu em?!", "Nhanh lên, 7h29 rồi đó!", "Không thẻ là không vô nha!", "Rẽ vô cổng bãi xe nè em!"]
 	else:
-		lines = ["👮 Chạy thẳng tới bãi xe sau nhà!", "👮 Đỗ lẹ lên em ơi!", "👮 Bên trái làn còn ô kìa!", "👮 Xe sau đang chờ đó!", "👮 Dựng chân chống cho thẳng!"]
+		lines = ["Chạy thẳng tới bãi xe sau nhà!", "Đỗ lẹ lên em ơi!", "Bên trái làn còn ô kìa!", "Xe sau đang chờ đó!", "Dựng chân chống cho thẳng!"]
 	guard_bubble.text = lines[guard_nag_idx % lines.size()]
 	guard_nag_idx += 1
 	var tw := create_tween()
@@ -715,14 +715,14 @@ func _update_rival(delta: float) -> void:
 	if rival_delay > 0.0:
 		rival_delay -= delta
 		if rival_delay <= 0.0:
-			_rival_say("🛵 Ô gần nhất là của tui nha!")
+			_rival_say("Ô gần nhất là của tui nha!")
 		return
 	if rival_pause > 0.0:
 		rival_pause -= delta
 		return
 	if has_parked:
 		rival_done = true
-		_rival_say("😭 Trời ơi mất chỗ rồi!")
+		_rival_say("Trời ơi mất chỗ rồi!")
 		return
 	if rival_wp_idx >= rival_waypoints.size():
 		rival_done = true
@@ -747,22 +747,22 @@ func _update_rival(delta: float) -> void:
 	# Nếu người chơi đang đứng trong ô -> NPC nhường
 	if is_last and dist < 3.5 and inside_spot:
 		rival_done = true
-		_rival_say("😅 Ủa có người rồi hả? Thôi nhường!")
+		_rival_say("Ủa có người rồi hả? Thôi nhường!")
 
 func _on_rival_reached_spot() -> void:
 	rival_done = true
 	if has_parked or spot_stolen:
 		return
 	if inside_spot:
-		_rival_say("😅 Ủa có người rồi hả? Thôi nhường!")
+		_rival_say("Ủa có người rồi hả? Thôi nhường!")
 		return
 	spot_stolen = true
-	_rival_say("😜 HEHE NHANH CHÂN HƠN RỒI NHÉ!")
+	_rival_say("HEHE NHANH CHÂN HƠN RỒI NHÉ!")
 	GameFX.play_sfx("error")
 	GameFX.shake(0.35)
 	GameFX.flash(GameFX.FPT_RED, 0.25, 0.3)
 	_apply_spot(spot_idx + 1)
-	_say("😱 BỊ CƯỚP Ô RỒI! Ô TRỐNG KHÁC Ở DÃY ĐỐI DIỆN, GIỮA BÃI – THEO MŨI TÊN VÀNG!", GameFX.FPT_RED, 3.5)
+	_say("BỊ CƯỚP Ô RỒI! Ô TRỐNG KHÁC Ở DÃY ĐỐI DIỆN, GIỮA BÃI – THEO MŨI TÊN VÀNG!", GameFX.FPT_RED, 3.5)
 	mission_label.text = "Ô ĐÃ BỊ CHIẾM! TÌM Ô VÀNG MỚI Ở DÃY A GIỮA BÃI, ĐỖ THẲNG & DỪNG HẲN!"
 
 func _scan_student_card() -> void:
@@ -771,8 +771,8 @@ func _scan_student_card() -> void:
 	has_scanned_card = true
 	is_near_guard = false
 	GameFX.play_sfx("pop")
-	_say("✅ ĐÃ QUÉT THẺ DÂY CAM! BARIE MỞ. CHẠY DỌC LỐI XE VEN TOÀ NHÀ TỚI BÃI XE PHÍA SAU, ĐỖ VÀO Ô VÀNG!", GameFX.FPT_GREEN, 3.0)
-	guard_bubble.text = "👮 Ờ vô đi, bãi xe sau nhà, lẹ lên!"
+	_say("ĐÃ QUÉT THẺ DÂY CAM! BARIE MỞ. CHẠY DỌC LỐI XE VEN TOÀ NHÀ TỚI BÃI XE PHÍA SAU, ĐỖ VÀO Ô VÀNG!", GameFX.FPT_GREEN, 3.0)
+	guard_bubble.text = "Ờ vô đi, bãi xe sau nhà, lẹ lên!"
 	var tween: Tween = create_tween().set_parallel(true)
 	tween.tween_property(barie_arm, "rotation_degrees:z", -80.0, 0.8).set_trans(Tween.TRANS_SINE)
 	if barie_arm2:
@@ -804,7 +804,7 @@ func _check_parking(delta: float) -> void:
 
 	if speed < 0.8 and aligned and centered:
 		park_hold += delta
-		_say("🅿️ ĐANG DỰNG CHÂN CHỐNG... %d%%" % int(park_hold / 0.6 * 100.0), GameFX.FPT_GREEN, 0.2)
+		_say("ĐANG DỰNG CHÂN CHỐNG... %d%%" % int(park_hold / 0.6 * 100.0), GameFX.FPT_GREEN, 0.2)
 		if park_hold >= 0.6:
 			_on_parked()
 	else:
@@ -812,11 +812,11 @@ func _check_parking(delta: float) -> void:
 		if prompt_timer <= 0.2:
 			if not aligned:
 				var deg: int = int(rad_to_deg(acos(clampf(align_dot, 0.0, 1.0))))
-				_say("↔️ XE LỆCH %d°! CHỈNH THẲNG HÀNG VỚI DÃY XE (LÙI [S] RỒI VÀO LẠI)" % deg, GameFX.FPT_YELLOW, 0.2)
+				_say("XE LỆCH %d°! CHỈNH THẲNG HÀNG VỚI DÃY XE (LÙI [S] RỒI VÀO LẠI)" % deg, GameFX.FPT_YELLOW, 0.2)
 			elif not centered:
-				_say("↕️ CHƯA VÀO HẲN Ô! TIẾN / LÙI [W]/[S] CHO GỌN", GameFX.FPT_YELLOW, 0.2)
+				_say("CHƯA VÀO HẲN Ô! TIẾN / LÙI [W]/[S] CHO GỌN", GameFX.FPT_YELLOW, 0.2)
 			else:
-				_say("✋ DỪNG HẲN XE LẠI!", GameFX.FPT_YELLOW, 0.2)
+				_say("DỪNG HẲN XE LẠI!", GameFX.FPT_YELLOW, 0.2)
 
 func _on_parked() -> void:
 	if has_parked:
@@ -826,8 +826,8 @@ func _on_parked() -> void:
 	player_bike.set("is_controls_locked", true)
 	GameFX.play_sfx("success")
 	GameFX.flash(GameFX.FPT_GREEN, 0.35, 0.4)
-	_say("✅ ĐÃ GỬI XE! THANG MÁY KẸT CỨNG → CHẠY BỘ XUYÊN CAMPUS, LEO CẦU THANG NGOÀI TRỜI LÊN LAB 402!", GameFX.FPT_GREEN, 2.0)
-	guard_bubble.text = "👮 Đỗ đẹp đó! Lên lớp lẹ đi!"
+	_say("ĐÃ GỬI XE! THANG MÁY KẸT CỨNG → CHẠY BỘ XUYÊN CAMPUS, LEO CẦU THANG NGOÀI TRỜI LÊN LAB 402!", GameFX.FPT_GREEN, 2.0)
+	guard_bubble.text = "Đỗ đẹp đó! Lên lớp lẹ đi!"
 	var tw := create_tween()
 	tw.tween_interval(1.3)
 	tw.tween_callback(_start_phase_2_stairs_climb)
@@ -852,10 +852,10 @@ func _start_phase_2_stairs_climb() -> void:
 	if rival_root and is_instance_valid(rival_root) and not rival_done:
 		rival_done = true
 
-	mission_label.text = "🏃 PHA 2: CHẠY BỘ XUYÊN CAMPUS & LEO 105 BẬC THANG NGOÀI TRỜI! NÉ SINH VIÊN ÁO CAM, XE ĐẨY, BĂNG RÔN – TỚI LAB 402 TRƯỚC 07:29!"
+	mission_label.text = "PHA 2: CHẠY BỘ XUYÊN CAMPUS & LEO 105 BẬC THANG NGOÀI TRỜI! NÉ SINH VIÊN ÁO CAM, XE ĐẨY, BĂNG RÔN – TỚI LAB 402 TRƯỚC 07:29!"
 	mission_label.add_theme_color_override("font_color", GameFX.ui_accent())
 	stamina_panel.visible = true
-	stamina_label.text = "⚡ THỂ LỰC (GIỮ SHIFT ĐỂ SPRINT – HẾT LÀ HỤT HƠI!)"
+	stamina_label.text = "THỂ LỰC (GIỮ SHIFT ĐỂ SPRINT – HẾT LÀ HỤT HƠI!)"
 	hud_run_panel.visible = true
 	_refresh_monster_label()
 
@@ -865,7 +865,7 @@ func _start_phase_2_stairs_climb() -> void:
 	_spawn_obstacles()
 	GameFX.flash(Color.WHITE, 0.6, 0.5)
 	GameFX.play_sfx("whoosh")
-	_say("⚡ [A/D] ĐỔI LÀN · [SPACE] NHẢY QUA XE ĐẨY/VŨNG NƯỚC · [S] TRƯỢT DƯỚI BĂNG RÔN · [SHIFT] SPRINT · [Q] MONSTER", GameFX.ui_accent(), 5.0)
+	_say("[A/D] ĐỔI LÀN · [SPACE] NHẢY QUA XE ĐẨY/VŨNG NƯỚC · [S] TRƯỢT DƯỚI BĂNG RÔN · [SHIFT] SPRINT · [Q] MONSTER", GameFX.ui_accent(), 5.0)
 
 func _spawn_runner() -> void:
 	runner_body = Node3D.new()
@@ -986,7 +986,7 @@ func _make_obstacle_node(type: String, lanes: Array) -> Node3D:
 				book.rotation.x = 0.35
 				root.add_child(book)
 			var lbl := Label3D.new()
-			lbl.text = "📚 Cô đi chậm..." if is_teacher else "🏃 Ê né ra!!"
+			lbl.text = "Cô đi chậm..." if is_teacher else "Ê né ra!!"
 			lbl.font_size = 22
 			lbl.outline_size = 8
 			lbl.modulate = Color("#FFFFFF")
@@ -1028,7 +1028,7 @@ func _make_obstacle_node(type: String, lanes: Array) -> Node3D:
 			mop.rotation_degrees = Vector3(0, 0, 12)
 			root.add_child(mop)
 			var lbl := Label3D.new()
-			lbl.text = "🧹 XE DỌN VỆ SINH – NHẢY QUA!"
+			lbl.text = "XE DỌN VỆ SINH – NHẢY QUA!"
 			lbl.font_size = 20
 			lbl.outline_size = 8
 			lbl.modulate = Color("#F1C40F")
@@ -1093,7 +1093,7 @@ func _make_obstacle_node(type: String, lanes: Array) -> Node3D:
 			sign.position = Vector3(2.6, 0.35, 0.0)
 			root.add_child(sign)
 			var lbl := Label3D.new()
-			lbl.text = "⚠️ SÀN ƯỚT – NHẢY QUA!"
+			lbl.text = "SÀN ƯỚT – NHẢY QUA!"
 			lbl.font_size = 18
 			lbl.outline_size = 7
 			lbl.modulate = Color("#F1C40F")
@@ -1167,7 +1167,7 @@ func _trigger_exhausted() -> void:
 	exhausted_timer = 2.5
 	heart_sfx_timer = 0.0
 	GameFX.set_vignette(0.85, Color(0.9, 0.08, 0.08), 2.0)
-	GameFX.popup("😮‍💨 HỤT HƠI! CHẠY CHẬM LẠI 2.5s... (Monster: [Q])", GameFX.FPT_RED, 28, 1.6)
+	GameFX.popup("HỤT HƠI! CHẠY CHẬM LẠI 2.5s... (Monster: [Q])", GameFX.FPT_RED, 28, 1.6)
 	GameFX.shake(0.3)
 
 func _try_drink_monster() -> void:
@@ -1178,7 +1178,7 @@ func _try_drink_monster() -> void:
 		GameFX.clear_vignette()
 		GameFX.play_sfx("cash")
 		GameFX.flash(GameFX.FPT_GREEN, 0.3, 0.3)
-		GameFX.popup("⚡ MONSTER! +100% THỂ LỰC, 3s SPRINT MIỄN PHÍ!", GameFX.FPT_GREEN, 30, 1.4)
+		GameFX.popup("MONSTER! +100% THỂ LỰC, 3s SPRINT MIỄN PHÍ!", GameFX.FPT_GREEN, 30, 1.4)
 		_refresh_monster_label()
 	else:
 		GameFX.play_sfx("error", -6.0)
@@ -1335,7 +1335,7 @@ func _complete_stage() -> void:
 		"detail": "park=%d run=%d stumbles=%d dodges=%d" % [park_score, run_score, stumbles, dodges]
 	})
 
-	modal_title.text = "🎉 LÊN TỚI LAB 402 SAU 105 BẬC THANG! RANK %s" % rank
+	modal_title.text = "LÊN TỚI LAB 402 SAU 105 BẬC THANG! RANK %s" % rank
 	modal_title.modulate = Color("#2ECC71")
 	modal_sub.text = "Gửi xe xong (%s), chạy bộ %d m xuyên campus – bãi xe, sân trong, sảnh, cầu thang ngoài trời:\n%d lần vấp · %d pha né đẹp · còn dư %ds. Vào Lab 402 lúc 07:29!\nĐiểm: %d (đỗ xe %d + chạy bộ %d)" % [
 		("bị cướp ô, đỗ ô dự phòng" if spot_stolen else "ô gần nhất"), int(run_length), stumbles, dodges, int(maxf(0.0, time_left)), score, park_score, run_score
@@ -1356,7 +1356,7 @@ func _fail_stage(reason: String) -> void:
 	if player_bike:
 		player_bike.set("is_controls_locked", true)
 	StageManager.report_stage_result(StageManager.StageID.STAGE_2_PARKING, {"result": "fail", "score": 0, "rank": "C", "detail": reason})
-	modal_title.text = "❌ THẤT BẠI - BỊ ĐÁNH ABSENT!"
+	modal_title.text = "THẤT BẠI - BỊ ĐÁNH ABSENT!"
 	modal_title.modulate = Color("#E74C3C")
 	var progress_txt: String = ""
 	if is_phase_2:

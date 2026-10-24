@@ -1006,7 +1006,7 @@ func _build_finish_line() -> void:
 	finish.global_transform = xf
 	finish.global_position = xf.origin + Vector3(0.0, 0.08, 0.0)
 	var fin_lbl := Label3D.new()
-	fin_lbl.text = "🏁 FINISH – CỔNG CHÍNH ĐH FPT (ĐƯỜNG D1)"
+	fin_lbl.text = "FINISH – CỔNG CHÍNH ĐH FPT (ĐƯỜNG D1)"
 	fin_lbl.font_size = 48
 	fin_lbl.outline_size = 14
 	fin_lbl.modulate = Color("#F1C40F")
@@ -1084,7 +1084,7 @@ func _build_bus_stop() -> void:
 	bench.position = Vector3(1.6, 0.5, 0.0)
 	root.add_child(bench)
 	var lbl := Label3D.new()
-	lbl.text = "🚌 TRẠM VINBUS · TTTM VINCOM"
+	lbl.text = "TRẠM VINBUS · TTTM VINCOM"
 	lbl.font_size = 30
 	lbl.outline_size = 8
 	lbl.modulate = Color("#A5D6A7")

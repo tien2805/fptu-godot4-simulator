@@ -209,7 +209,7 @@ layout_mode = 2
 [node name="StaminaLabel" type="Label" parent="HUD/StaminaPanel/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
-text = "⚡ THỂ LỰC LEO THANG (HOLD SHIFT ĐỂ SPRINT)"
+text = "THỂ LỰC LEO THANG (HOLD SHIFT ĐỂ SPRINT)"
 
 [node name="StaminaBar" type="ProgressBar" parent="HUD/StaminaPanel/VBox"]
 custom_minimum_size = Vector2(0, 18)
@@ -286,16 +286,16 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-text = "TIẾP TỤC MÀN 3: ROLL CALL FAP ➔"
+text = "TIẾP TỤC MÀN 3: ROLL CALL FAP"
 
 [node name="RetryButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "🔄 CHƠI LẠI MÀN NÀY"
+text = "CHƠI LẠI MÀN NÀY"
 
 [node name="MenuButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "📋 CHỌN MÀN CHƠI (CAMPAIGN MENU)"
+text = "CHỌN MÀN CHƠI (CAMPAIGN MENU)"

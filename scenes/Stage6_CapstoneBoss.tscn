@@ -135,7 +135,7 @@ theme_override_constants/separation = 4
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.35, 0.35, 1)
 theme_override_font_sizes/font_size = 17
-text = "👾 QUÁI VẬT DEADLINE 23:59 (HP: 1200 / 1200)"
+text = "QUÁI VẬT DEADLINE 23:59 (HP: 1200 / 1200)"
 horizontal_alignment = 1
 
 [node name="BossHPBar" type="ProgressBar" parent="HUD/TopBar/BossPanel/VBox"]
@@ -161,7 +161,7 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_hud")
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.95, 1, 1)
 theme_override_font_sizes/font_size = 15
-text = "⚔️ TRẬN CHIẾN BẮT ĐẦU! HÃY CHỌN CHIÊU THỨC ĐỂ TẤN CÔNG QUÁI VẬT DEADLINE TRƯỚC 23:59!"
+text = "TRẬN CHIẾN BẮT ĐẦU! HÃY CHỌN CHIÊU THỨC ĐỂ TẤN CÔNG QUÁI VẬT DEADLINE TRƯỚC 23:59!"
 horizontal_alignment = 1
 autowrap_mode = 2
 
@@ -241,7 +241,7 @@ theme_override_constants/separation = 16
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.35, 0.35, 1)
 theme_override_font_sizes/font_size = 20
-text = "⚠️ PHÁT SINH GIT MERGE CONFLICT TRÊN MAIN!"
+text = "PHÁT SINH GIT MERGE CONFLICT TRÊN MAIN!"
 horizontal_alignment = 1
 
 [node name="Desc" type="Label" parent="HUD/CenterModals/GitConflictModal/Margin/VBox"]
@@ -255,7 +255,7 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-text = "🚀 RESOLVE CONFLICT & GIT PUSH ORIGIN MAIN!"
+text = "RESOLVE CONFLICT & GIT PUSH ORIGIN MAIN!"
 
 [node name="ModalOverlay" type="ColorRect" parent="HUD"]
 visible = false
@@ -291,7 +291,7 @@ alignment = 1
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.75, 0.15, 1)
 theme_override_font_sizes/font_size = 24
-text = "🏆 ĐẠT DANH HIỆU 'CÓC VÀNG FPTU'!"
+text = "ĐẠT DANH HIỆU 'CÓC VÀNG FPTU'!"
 horizontal_alignment = 1
 
 [node name="SubLabel" type="Label" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
@@ -305,16 +305,16 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-text = "🕵️ CHƠI EXTRA STAGE: GIÁM THỊ COI THI EOS ➔"
+text = "CHƠI EXTRA STAGE: GIÁM THỊ COI THI EOS"
 
 [node name="RetryButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "🔄 CHƠI LẠI MÀN NÀY"
+text = "CHƠI LẠI MÀN NÀY"
 
 [node name="MenuButton" type="Button" parent="HUD/ModalOverlay/Center/Card/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "📋 CHỌN MÀN CHƠI (CAMPAIGN MENU)"
+text = "CHỌN MÀN CHƠI (CAMPAIGN MENU)"

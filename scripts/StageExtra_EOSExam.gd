@@ -129,9 +129,9 @@ func _ready() -> void:
 	_update_hud()
 	if story:
 		_setup_story()
-		GameFX.popup(StoryUtil.fmt("🕵️ Mr.T nhờ {name} làm giám thị phụ – chụp bằng chứng giúp thầy. [S] chụp · [E] lập biên bản · [C] CCTV"), GameFX.FPT_YELLOW, 24, 4.0)
+		GameFX.popup(StoryUtil.fmt("Mr.T nhờ {name} làm giám thị phụ – chụp bằng chứng giúp thầy. [S] chụp · [E] lập biên bản · [C] CCTV"), GameFX.FPT_YELLOW, 24, 4.0)
 	else:
-		GameFX.popup("🕵️ 08:00 – GIỜ THI EOS BẮT ĐẦU. QUAN SÁT → [S] CHỤP BẰNG CHỨNG → [E] LẬP BIÊN BẢN. [C] XEM CCTV", GameFX.FPT_YELLOW, 24, 3.5)
+		GameFX.popup("08:00 – GIỜ THI EOS BẮT ĐẦU. QUAN SÁT → [S] CHỤP BẰNG CHỨNG → [E] LẬP BIÊN BẢN. [C] XEM CCTV", GameFX.FPT_YELLOW, 24, 3.5)
 
 ## Story: Mr.T (the fictional lecturer, role mr_t) at the front desk by the board, facing the class; the replay recorder.
 func _setup_story() -> void:
@@ -392,7 +392,7 @@ func _build_hud_extras() -> void:
 	evidence_panel = GameFX.anchored_panel(hud, Control.PRESET_TOP_RIGHT, Vector2(300, 0), 90, GameFX.FPT_YELLOW)
 	var vb := VBoxContainer.new()
 	evidence_panel.add_child(vb)
-	vb.add_child(GameFX.make_label("📒 SỔ BẰNG CHỨNG (0/8 ảnh)", 15, GameFX.FPT_YELLOW))
+	vb.add_child(GameFX.make_label("SỔ BẰNG CHỨNG (0/8 ảnh)", 15, GameFX.FPT_YELLOW))
 	evidence_label = GameFX.make_label("(chưa có) – bấm [S] khi thấy hành vi đáng ngờ", 13, Color("#DFE6E9"), HORIZONTAL_ALIGNMENT_LEFT)
 	vb.add_child(evidence_label)
 
@@ -401,7 +401,7 @@ func _build_hud_extras() -> void:
 	hint_panel.add_child(hint_label)
 
 	force_btn = Button.new()
-	force_btn.text = "⚠️ ÉP LẬP BIÊN BẢN KHÔNG BẰNG CHỨNG (rủi ro bắt oan) [Shift+Space]"
+	force_btn.text = "ÉP LẬP BIÊN BẢN KHÔNG BẰNG CHỨNG (rủi ro bắt oan) [Shift+Space]"
 	force_btn.custom_minimum_size = Vector2(0, 38)
 	force_btn.focus_mode = Control.FOCUS_NONE
 	force_btn.pressed.connect(_on_force_book)
@@ -409,10 +409,10 @@ func _build_hud_extras() -> void:
 	inspect_vbox.move_child(force_btn, inspect_vbox.get_child_count() - 2)
 
 func _update_hud() -> void:
-	count_label.text = "THÁNH TOOL: %d / %d · 📸 %d/%d · ⚖️ UY TÍN %d · ĐIỂM %d" % [caught, NEED_CAUGHT, photos_used, MAX_PHOTOS, reputation, score]
+	count_label.text = "THÁNH TOOL: %d / %d · ẢNH %d/%d · UY TÍN %d · ĐIỂM %d" % [caught, NEED_CAUGHT, photos_used, MAX_PHOTOS, reputation, score]
 	var kid: Node = evidence_panel.get_child(0).get_child(0)
 	if kid is Label:
-		(kid as Label).text = "📒 SỔ BẰNG CHỨNG (%d/%d ảnh)" % [photos_used, MAX_PHOTOS]
+		(kid as Label).text = "SỔ BẰNG CHỨNG (%d/%d ảnh)" % [photos_used, MAX_PHOTOS]
 	evidence_label.text = "\n".join(evidence_log) if not evidence_log.is_empty() else "(chưa có) – bấm [S] khi thấy hành vi đáng ngờ"
 
 # ===========================================================================
@@ -678,10 +678,10 @@ func _update_decoys(delta: float) -> void:
 # ===========================================================================
 func _take_photo(idx: int) -> void:
 	if idx == -1:
-		GameFX.popup("📸 Chụp gì vậy? Lại gần một máy đã!", Color("#BDC3C7"), 20, 0.8)
+		GameFX.popup("Chụp gì vậy? Lại gần một máy đã!", Color("#BDC3C7"), 20, 0.8)
 		return
 	if photos_used >= MAX_PHOTOS:
-		GameFX.popup("📸 HẾT 8 ẢNH! Dùng bằng chứng đã có thôi.", GameFX.FPT_RED, 22, 1.0)
+		GameFX.popup("HẾT 8 ẢNH! Dùng bằng chứng đã có thôi.", GameFX.FPT_RED, 22, 1.0)
 		GameFX.play_sfx("error", -6.0)
 		return
 	photos_used += 1
@@ -692,12 +692,12 @@ func _take_photo(idx: int) -> void:
 		st["evidence"] = int(st["evidence"]) + 1
 		var info: Dictionary = TELL_INFO[int(st["tell"])]
 		evidence_log.append("#%d Máy %02d (%s): %s" % [photos_used, idx + 1, st["name"], info["name"]])
-		GameFX.popup("📸 BẰNG CHỨNG #%d: Máy %02d – %s!" % [photos_used, idx + 1, info["name"]], GameFX.FPT_GREEN, 26, 1.4)
+		GameFX.popup("BẰNG CHỨNG #%d: Máy %02d – %s!" % [photos_used, idx + 1, info["name"]], GameFX.FPT_GREEN, 26, 1.4)
 		(st["tag"] as Label3D).modulate = Color("#E74C3C")
-		(st["tag"] as Label3D).text = "MÁY %02d 📸x%d" % [idx + 1, int(st["evidence"])]
+		(st["tag"] as Label3D).text = "MÁY %02d · %d ẢNH" % [idx + 1, int(st["evidence"])]
 	else:
 		evidence_log.append("#%d Máy %02d: ...không có gì (tốn 1 ảnh)" % [photos_used, idx + 1])
-		GameFX.popup("📸 Máy %02d: đang làm bài bình thường. Tốn 1 ảnh!" % (idx + 1), Color("#BDC3C7"), 22, 1.0)
+		GameFX.popup("Máy %02d: đang làm bài bình thường. Tốn 1 ảnh!" % (idx + 1), Color("#BDC3C7"), 22, 1.0)
 	_update_hud()
 
 func _inspect_station(idx: int) -> void:
@@ -705,7 +705,7 @@ func _inspect_station(idx: int) -> void:
 	var st: Dictionary = stations[idx]
 	inspect_panel.visible = true
 	inspect_panel.set_meta("idx", idx)
-	inspect_title.text = "🔍 SOI MÁY %02d – THÍ SINH %s" % [idx + 1, st["name"]]
+	inspect_title.text = "SOI MÁY %02d – THÍ SINH %s" % [idx + 1, st["name"]]
 	if st["booked"]:
 		inspect_text.text = "Thí sinh đã bị lập biên bản và đình chỉ thi."
 		inspect_text.modulate = Color("#BDC3C7")
@@ -716,15 +716,15 @@ func _inspect_station(idx: int) -> void:
 	var ev: int = int(st["evidence"])
 	if ev > 0:
 		var info: Dictionary = TELL_INFO[int(st["tell"])]
-		inspect_text.text = "📒 Có %d bằng chứng ảnh: %s\n📜 Đối chiếu: %s → VI PHẠM.\n✅ Đủ căn cứ lập biên bản đình chỉ thi." % [ev, info["name"], info["rule"]]
+		inspect_text.text = "Có %d bằng chứng ảnh: %s\nĐối chiếu: %s → VI PHẠM.\nĐủ căn cứ lập biên bản đình chỉ thi." % [ev, info["name"], info["rule"]]
 		inspect_text.modulate = Color("#E74C3C")
 		confiscate_btn.disabled = false
-		confiscate_btn.text = "🚨 LẬP BIÊN BẢN ĐÌNH CHỈ THI [SPACE]"
+		confiscate_btn.text = "LẬP BIÊN BẢN ĐÌNH CHỈ THI [SPACE]"
 	else:
-		inspect_text.text = "📒 Chưa có bằng chứng ảnh nào của máy này.\nMàn hình hiện EOS bình thường, ngăn bàn trống (lúc này).\n⚠️ Lập biên bản không bằng chứng = rủi ro bắt oan (-35 uy tín)."
+		inspect_text.text = "Chưa có bằng chứng ảnh nào của máy này.\nMàn hình hiện EOS bình thường, ngăn bàn trống (lúc này).\nLập biên bản không bằng chứng = rủi ro bắt oan (-35 uy tín)."
 		inspect_text.modulate = Color("#F1C40F")
 		confiscate_btn.disabled = true
-		confiscate_btn.text = "🚨 LẬP BIÊN BẢN (cần ≥1 bằng chứng)"
+		confiscate_btn.text = "LẬP BIÊN BẢN (cần ≥1 bằng chứng)"
 
 func _on_confiscate_pressed() -> void:
 	if not inspect_panel.visible or confiscate_btn.disabled:
@@ -753,14 +753,14 @@ func _book(idx: int, forced: bool) -> void:
 		if forced and int(st["evidence"]) == 0:
 			reputation -= 10
 			gain = 40
-			GameFX.popup("🚨 ĐÌNH CHỈ MÁY %02d – đúng là thánh tool, nhưng thiếu bằng chứng: SV khiếu nại (-10 uy tín)" % (idx + 1), GameFX.FPT_YELLOW, 24, 1.8)
+			GameFX.popup("ĐÌNH CHỈ MÁY %02d – đúng là thánh tool, nhưng thiếu bằng chứng: SV khiếu nại (-10 uy tín)" % (idx + 1), GameFX.FPT_YELLOW, 24, 1.8)
 		else:
-			GameFX.popup("🚨 ĐÌNH CHỈ MÁY %02d! %s: 'Dạ em... em xin lỗi thầy cô' (+%d)" % [idx + 1, st["name"], gain], GameFX.FPT_GREEN, 26, 1.6)
+			GameFX.popup("ĐÌNH CHỈ MÁY %02d! %s: 'Dạ em... em xin lỗi thầy cô' (+%d)" % [idx + 1, st["name"], gain], GameFX.FPT_GREEN, 26, 1.6)
 		score += gain
 		_set_tell_visual(st, false)
 		st["tell_active"] = false
 		GameFX.play_sfx("success")
-		(st["tag"] as Label3D).text = "MÁY %02d ⛔ ĐÌNH CHỈ" % (idx + 1)
+		(st["tag"] as Label3D).text = "MÁY %02d · ĐÌNH CHỈ" % (idx + 1)
 		(st["tag"] as Label3D).modulate = Color("#E74C3C")
 		var tw := create_tween()
 		tw.tween_property(student, "position", student.position + Vector3(0, 0, 1.5), 0.5)
@@ -772,8 +772,8 @@ func _book(idx: int, forced: bool) -> void:
 		GameFX.play_sfx("miss")
 		GameFX.shake(0.4)
 		GameFX.flash(GameFX.FPT_RED, 0.35, 0.4)
-		GameFX.popup("😭 BẮT OAN! %s khóc: 'EM OAN MÀ THẦY ƠI!' – cả phòng xì xào (-35 uy tín)" % st["name"], GameFX.FPT_RED, 26, 2.2)
-		(st["tag"] as Label3D).text = "MÁY %02d 😭 OAN" % (idx + 1)
+		GameFX.popup("BẮT OAN! %s khóc: 'EM OAN MÀ THẦY ƠI!' – cả phòng xì xào (-35 uy tín)" % st["name"], GameFX.FPT_RED, 26, 2.2)
+		(st["tag"] as Label3D).text = "MÁY %02d · OAN" % (idx + 1)
 		(st["tag"] as Label3D).modulate = Color("#F1C40F")
 	_update_hud()
 	if reputation <= 0:
@@ -806,7 +806,7 @@ func _complete_stage() -> void:
 	})
 	GameFX.play_sfx("res://assets/audio/victory_fanfare.wav", 2.0)
 	GameFX.flash(GameFX.FPT_GREEN, 0.4, 0.5)
-	modal_title.text = "⚖️ DANH HIỆU 'GIÁM THỊ CÔNG LÝ FPTU' – RANK %s" % rank
+	modal_title.text = "DANH HIỆU 'GIÁM THỊ CÔNG LÝ FPTU' – RANK %s" % rank
 	modal_title.modulate = Color("#2ECC71")
 	modal_sub.text = "Bắt đúng %d thánh tool trong %ds · bắt oan %d · dùng %d/%d ảnh · uy tín còn %d.\nQuy trình chuẩn: quan sát → chụp bằng chứng → đối chiếu quy chế → lập biên bản.\nTổng điểm %d. Kỷ cương phòng thi EOS được giữ vững!" % [
 		caught, int(STAGE_TIME - time_left), wrong_books, photos_used, MAX_PHOTOS, reputation, total
@@ -824,7 +824,7 @@ func _fail_stage(reason: String) -> void:
 	GameFX.clear_vignette()
 	StageManager.report_stage_result(StageManager.StageID.STAGE_EXTRA_EOS, {"result": "fail", "score": score, "rank": "C", "detail": reason})
 	GameFX.play_sfx("res://assets/audio/absent_gameover.wav", 2.0)
-	modal_title.text = "❌ THẤT BẠI TRONG PHÒNG KHẢO THÍ!"
+	modal_title.text = "THẤT BẠI TRONG PHÒNG KHẢO THÍ!"
 	modal_title.modulate = Color("#E74C3C")
 	modal_sub.text = reason
 	modal_overlay.visible = true
