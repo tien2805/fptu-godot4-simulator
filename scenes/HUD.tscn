@@ -90,7 +90,7 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_zone")
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
 theme_override_font_sizes/font_size = 20
-text = "📍 VINHOMES GRAND PARK"
+text = "VINHOMES GRAND PARK"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -98,7 +98,7 @@ vertical_alignment = 1
 custom_minimum_size = Vector2(180, 60)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "📋 CHỌN MÀN [M]"
+text = "CHỌN MÀN [M]"
 
 [node name="BottomRight" type="MarginContainer" parent="."]
 anchors_preset = 3
@@ -152,7 +152,7 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_notice")
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.9, 0.9, 1)
 theme_override_font_sizes/font_size = 17
-text = "💥 RƠI KHỎI ĐƯỜNG! ĐÃ CỨU HỘ VỀ LÒNG ĐƯỜNG (+3s PHẠT)"
+text = "RƠI KHỎI ĐƯỜNG! ĐÃ CỨU HỘ VỀ LÒNG ĐƯỜNG (+3s PHẠT)"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -200,20 +200,20 @@ custom_minimum_size = Vector2(380, 52)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 19
-text = "TIẾP TỤC MÀN 2: BÃI XE D1 & LEO NÚI ➔"
+text = "TIẾP TỤC MÀN 2: BÃI XE D1 & LEO NÚI"
 
 [node name="RetryButton" type="Button" parent="AbsentOverlay/CenterContainer/VBoxContainer"]
 custom_minimum_size = Vector2(360, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 18
-text = "🔄 CHƠI LẠI TỪ ĐẦU"
+text = "CHƠI LẠI TỪ ĐẦU"
 
 [node name="CampaignHubButton" type="Button" parent="AbsentOverlay/CenterContainer/VBoxContainer"]
 custom_minimum_size = Vector2(360, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 18
-text = "📋 CHỌN MÀN CHƠI KHÁC (CAMPAIGN HUB)"
+text = "CHỌN MÀN CHƠI KHÁC (CAMPAIGN HUB)"
 
 [node name="AbsentBellPlayer" type="AudioStreamPlayer" parent="."]

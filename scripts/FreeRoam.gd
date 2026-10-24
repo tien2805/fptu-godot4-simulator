@@ -1075,7 +1075,7 @@ func set_time_of_day(preset: String) -> void:
 	GameFXScript.upgrade_scene_visuals(self, key)
 	_refresh_lab_hotspot()
 	if tod_label:
-		tod_label.text = "🕒 %s · [T] đổi giờ" % String(TOD_NAMES.get(key, key))
+		tod_label.text = "%s · [T] đổi giờ" % String(TOD_NAMES.get(key, key))
 	if vice_hud:
 		# giờ của ViceHUD = phần "HH:MM" cuối tên preset ("Buổi sáng 07:30" -> "07:30")
 		var tod_name: String = String(TOD_NAMES.get(key, ""))
@@ -1147,7 +1147,7 @@ func _build_hud() -> void:
 	hint_label = GameFXScript.make_label(HINT_DEFAULT, 15, Color("#F4F5F6"))
 	hint_panel.add_child(hint_label)
 	var tod_panel: PanelContainer = GameFXScript.anchored_panel(hud, Control.PRESET_TOP_LEFT, Vector2(0, 0), 20, Color("#F1C40F"))
-	tod_label = GameFXScript.make_label("🕒 —", 14, Color("#F1C40F"), HORIZONTAL_ALIGNMENT_LEFT)
+	tod_label = GameFXScript.make_label("—", 14, Color("#F1C40F"), HORIZONTAL_ALIGNMENT_LEFT)
 	tod_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	tod_panel.add_child(tod_label)
 	tod_holder = tod_panel.get_parent() as Control
