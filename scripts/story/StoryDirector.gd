@@ -97,17 +97,7 @@ func fmt(text: String) -> String:
 ## CharacterBuilder opts of the protagonist (story spec 3.1: preset "player" = orange FPT polo, jeans, white sneakers,
 ## black backpack; the creator only picks sex, face, hair and skin).
 func protagonist_opts() -> Dictionary:
-	var o: Dictionary = {"preset": "player", "rigged": true, "seed": 2805, "name": "PlayerModel"}
-	if protagonist.is_empty():
-		return o
-	o["female"] = bool(protagonist.get("female", false))
-	o["skin"] = int(protagonist.get("skin", 1))
-	o["hair_color"] = int(protagonist.get("hair_color", 0))
-	o["hair_style"] = String(protagonist.get("hair_style", "bob" if o["female"] else "short"))
-	o["variant"] = int(protagonist.get("variant", 0))
-	o["backpack"] = true
-	o["glasses"] = false
-	return o
+	return StoryUtil.builder_opts(protagonist)
 
 
 func beat() -> Dictionary:

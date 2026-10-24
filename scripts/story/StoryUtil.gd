@@ -41,6 +41,23 @@ static func hero_name() -> String:
 	return String(sd.call("display_name"))
 
 
+## CharacterBuilder opts for a creator pick {female, name, variant, hair_style, hair_color, skin} (story spec 3.1: preset
+## "player" = orange FPT polo, jeans, white sneakers, black backpack; only sex, face, hair and skin vary). Empty pick = the
+## default roam player.
+static func builder_opts(p: Dictionary) -> Dictionary:
+	var o: Dictionary = {"preset": "player", "rigged": true, "seed": 2805, "name": "PlayerModel"}
+	if p.is_empty():
+		return o
+	o["female"] = bool(p.get("female", false))
+	o["skin"] = int(p.get("skin", 1))
+	o["hair_color"] = int(p.get("hair_color", 0))
+	o["hair_style"] = String(p.get("hair_style", "bob" if o["female"] else "short"))
+	o["variant"] = int(p.get("variant", 0))
+	o["backpack"] = true
+	o["glasses"] = false
+	return o
+
+
 ## Substitutes {name} with the protagonist's name ("Bạn" without a story).
 static func fmt(text: String) -> String:
 	return text.replace("{name}", hero_name())
