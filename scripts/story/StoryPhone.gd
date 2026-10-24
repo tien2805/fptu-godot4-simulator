@@ -75,7 +75,7 @@ func _build() -> void:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
 	m.add_child(col)
-	header = _label("📱 ĐIỆN THOẠI", 22, PINK, true)
+	header = _label("ĐIỆN THOẠI", 22, PINK, true)
 	col.add_child(header)
 	var notch := ColorRect.new()
 	notch.custom_minimum_size = Vector2(0.0, 3.0)
@@ -231,7 +231,7 @@ func refresh() -> void:
 		1:
 			for t: String in evidence_texts():
 				var locked: bool = t.ends_with("???")
-				list.add_child(_label(("🔒 " if locked else "📎 ") + t, 16, Color("#8F84A8") if locked else CYAN, false))
+				list.add_child(_label(t, 16, Color("#8F84A8") if locked else CYAN, false))
 		2:
 			list.add_child(_label(mission_text(), 16, Color("#F4F1FF"), false))
 	_refresh_tabs()

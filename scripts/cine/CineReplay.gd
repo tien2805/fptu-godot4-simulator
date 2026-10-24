@@ -116,7 +116,7 @@ func start(recorder: CineReplayRecorder, opts: Dictionary = {}) -> bool:
 	overlay = CineOverlay.new()
 	overlay.name = "Overlay"
 	add_child(overlay)
-	overlay.set_tag("▶ REPLAY")
+	overlay.set_tag("REPLAY")
 	music = AudioStreamPlayer.new()
 	music.name = "Music"
 	music.bus = CinePlayer._bus("Music")

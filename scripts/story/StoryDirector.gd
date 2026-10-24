@@ -471,8 +471,8 @@ func _build_result_layer() -> void:
 	hb.alignment = BoxContainer.ALIGNMENT_CENTER
 	hb.add_theme_constant_override("separation", 12)
 	vb.add_child(hb)
-	for pair: Array in [["continue", "▶   TIẾP TỤC CỐT TRUYỆN", continue_from_stage], ["retry", "↻   THỬ LẠI", retry_stage],
-			["roam", "🌏   VỀ THẾ GIỚI MỞ", back_to_roam]]:
+	for pair: Array in [["continue", "TIẾP TỤC CỐT TRUYỆN", continue_from_stage], ["retry", "THỬ LẠI", retry_stage],
+			["roam", "VỀ THẾ GIỚI MỞ", back_to_roam]]:
 		var b := Button.new()
 		b.name = "Story_" + String(pair[0])
 		b.text = String(pair[1])

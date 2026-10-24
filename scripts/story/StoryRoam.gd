@@ -156,7 +156,7 @@ func _rebuild_markers() -> void:
 	_sync_map()
 
 
-func _make_marker(id: String, pos: Vector3, title: String, kind: String) -> Node3D:
+func _make_marker(id: String, pos: Vector3, title: String, _kind: String) -> Node3D:
 	var root := Node3D.new()
 	root.name = "StoryMarker_" + id
 	root.set_meta("beat", id)
@@ -184,7 +184,7 @@ func _make_marker(id: String, pos: Vector3, title: String, kind: String) -> Node
 	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	ring.material_override = _glow(0.55)
 	root.add_child(ring)
-	for pair: Array in [["Title", ("💤 " if kind == "bed" else "★ ") + title, 44, 5.7, Color(1.0, 0.95, 0.98)], ["Key", "[E]", 64, 6.5, PINK]]:
+	for pair: Array in [["Title", title, 44, 5.7, Color(1.0, 0.95, 0.98)], ["Key", "[E]", 64, 6.5, PINK]]:
 		var l := Label3D.new()
 		l.name = String(pair[0])
 		l.text = String(pair[1])
@@ -330,7 +330,7 @@ func _update_chip() -> void:
 func show_objective(text: String) -> void:
 	if text == "":
 		return
-	objective_label.text = "🎯 " + text
+	objective_label.text = text
 	objective_panel.visible = true
 	_obj_t = OBJECTIVE_S
 
@@ -356,7 +356,7 @@ func _on_objective(text: String) -> void:
 
 
 func _on_text(msg: Dictionary) -> void:
-	toast("✉ %s: %s" % [String(msg["from"]), String(msg["text"])])
+	toast("%s: %s" % [String(msg["from"]), String(msg["text"])])
 	if phone.is_open():
 		phone.refresh()
 	_update_chip()
@@ -367,7 +367,7 @@ func _on_day(_d: int) -> void:
 
 
 func _on_evidence(id: String) -> void:
-	toast("📎 Bằng chứng mới %s: %s" % [id, StoryMissions.evidence_name(id)], "success_fanfare")
+	toast("Bằng chứng mới %s: %s" % [id, StoryMissions.evidence_name(id)], "success_fanfare")
 
 
 func _on_step(_id: String) -> void:
