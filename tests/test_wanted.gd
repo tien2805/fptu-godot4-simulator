@@ -162,6 +162,9 @@ func _part_b() -> void:
 	_check(wanted.stars == 1, "heat is ignored while busted / in community service")
 	wanted.state = "free"
 	_ticks(1)
+	campus = false
+	_ticks(2)
+	_check(vh.stars_label.text == WantedDirector.LABEL_STREET, "leaving the campus with a star: the label switches to the street one within 1 s (R4-I2)")
 
 
 func _start_freeroam() -> void:

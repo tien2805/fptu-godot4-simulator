@@ -5,6 +5,9 @@
 # FreeRoam locks the weapons and the bike. Running out of time restarts the chore with BAG_STEP fewer bags (never fewer than
 # MIN_BAGS: no softlock). Finishing emits `completed` (WantedDirector clears the level, FreeRoam puts the player beside his
 # bike). There is no input handler: hold-Esc skips only the cutscene, never the chore. Bags, bin and vest are code meshes.
+# On the street the bags lie along the verge (RING_MIN..RING_MAX along the road, 0..VERGE_BAND m further from it), never on
+# the carriageway; every bag, the bin and the supervisor stand on a free spot (FreeRoam.find_free_spot: dry floor, no wall),
+# a bag with no free spot near its point is tried elsewhere and finally put next to the chore centre.
 class_name CommunityService
 extends Node3D
 
@@ -24,6 +27,8 @@ const LINE_EVERY: float = 9.0
 const STREET_NEAR := Vector2(2058.0, -71.0)   # mid Nguyễn Xiển (corridor); the chore verge is beside the road there
 const STREET_ROAD: String = "Nguyễn Xiển"
 const VERGE_M: float = 2.5
+const VERGE_BAND: float = 2.5
+const BAG_TRIES: int = 8
 const VEST := Color("#FF7A1A")
 const STRIPE := Color("#D9DEE3")
 const LINES: Array[String] = [
@@ -54,10 +59,19 @@ var _line_t: float = 3.0
 var _line_i: int = 0
 var _sfx: AudioStreamPlayer
 var _rng := RandomNumberGenerator.new()
+var _verge_n: Vector3 = Vector3.ZERO     # street chore: unit vector away from the road (ZERO = ring around the centre)
+var _along: Vector3 = Vector3.ZERO       # street chore: unit vector along the road
 
 
 ## The street chore spot: the Nguyễn Xiển point nearest STREET_NEAR, pushed VERGE_M past the road edge.
 static func street_center(md: MapData) -> Vector3:
+	return street_frame(md)["center"]
+
+
+## {"center": Vector3, "normal": Vector3 (away from the road), "along": Vector3, "points": PackedVector2Array (the road
+## centre line), "half_w": float} of the street chore.
+static func street_frame(md: MapData) -> Dictionary:
+	var best_pts := PackedVector2Array()
 	var best_d: float = INF
 	var best_p: Vector2 = STREET_NEAR
 	var best_n := Vector2(1.0, 0.0)
@@ -76,8 +90,10 @@ static func street_center(md: MapData) -> Vector3:
 					var dir: Vector2 = (pts[i + 1] - pts[i]).normalized()
 					best_n = Vector2(-dir.y, dir.x)
 					best_w = float(r.get("width", 8.0))
+					best_pts = pts
 	var v: Vector2 = best_p + best_n * (best_w * 0.5 + VERGE_M)
-	return Vector3(v.x, 0.0, v.y)
+	return {"center": Vector3(v.x, 0.0, v.y), "normal": Vector3(best_n.x, 0.0, best_n.y),
+		"along": Vector3(best_n.y, 0.0, -best_n.x), "points": best_pts, "half_w": best_w * 0.5}
 
 
 static func campus_center(md: MapData) -> Vector3:
@@ -92,7 +108,16 @@ func start(p: ThirdPersonController, roam_node: Node, md: MapData, campus: bool,
 	player = p
 	roam = roam_node
 	on_campus = campus
-	var c: Vector3 = at if at is Vector3 else (campus_center(md) if campus else street_center(md))
+	var c: Vector3
+	if at is Vector3:
+		c = at
+	elif campus:
+		c = campus_center(md)
+	else:
+		var fr: Dictionary = street_frame(md)
+		c = fr["center"]
+		_verge_n = fr["normal"]
+		_along = fr["along"]
 	center = _spot(c, 8)
 	player.teleport(center, 0.0)
 	_attach_vest()
@@ -113,11 +138,25 @@ func start(p: ThirdPersonController, roam_node: Node, md: MapData, campus: bool,
 
 
 func _spot(q: Vector3, r: int) -> Vector3:
+	var s: Variant = _free(q, r)
+	return s if s is Vector3 else q
+
+
+## A free spot within r m of q (FreeRoam.find_free_spot), q itself without FreeRoam (tests), null when none.
+func _free(q: Vector3, r: int) -> Variant:
 	if roam and roam.has_method("find_free_spot"):
-		var s: Variant = roam.call("find_free_spot", q, q.y, r)
-		if s is Vector3:
-			return s
+		return roam.call("find_free_spot", q, q.y, r)
 	return q
+
+
+## Candidate bag point i (try k): along the verge on the street, else on the 4-10 m ring.
+func _bag_point(i: int, n: int, k: int) -> Vector3:
+	if _verge_n != Vector3.ZERO:
+		var side: float = 1.0 if (i + k) % 2 == 0 else -1.0
+		return center + _along * side * _rng.randf_range(RING_MIN, RING_MAX) + _verge_n * _rng.randf_range(0.0, VERGE_BAND)
+	var a: float = TAU * float(i) / float(n) + _rng.randf_range(-0.3, 0.3) + 0.7 * float(k)
+	var r: float = _rng.randf_range(RING_MIN, RING_MAX)
+	return center + Vector3(cos(a) * r, 0.0, sin(a) * r)
 
 
 func _place_round(n: int) -> void:
@@ -126,11 +165,18 @@ func _place_round(n: int) -> void:
 	bags.clear()
 	_rng.seed = 4242 + restarts
 	for i: int in n:
-		var a: float = TAU * float(i) / float(n) + _rng.randf_range(-0.3, 0.3)
-		var r: float = _rng.randf_range(RING_MIN, RING_MAX)
+		var at: Variant = null
+		for k: int in BAG_TRIES:
+			var q: Vector3 = _bag_point(i, n, k)
+			var f: Variant = _free(q, 1)
+			if f is Vector3 and (f as Vector3).distance_to(center) >= RING_MIN - 1.0:
+				at = f
+				break
+		if at == null:
+			at = _spot(center + _along * 1.2 if _along != Vector3.ZERO else center + Vector3(1.2, 0.0, 0.0), 3)
 		var bag: Node3D = make_bag()
 		bag.name = "Bag%d" % i
-		bag.position = _spot(center + Vector3(cos(a) * r, 0.0, sin(a) * r), 2)
+		bag.position = at
 		add_child(bag)
 		bags.append(bag)
 	_update_hud()

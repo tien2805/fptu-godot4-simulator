@@ -156,6 +156,7 @@ func _part_b(t: int) -> void:
 		_check(bool(roam.get("bike_parked")), "test setup: the bike is parked near BE6")
 		w.cine_opts = {"manual": true, "music": false}
 		w.stamp_manual = true
+		(roam.get("weapons") as WeaponDirector).equip(WeaponData.Slot.PISTOL)
 		var cc: Vector2 = FPTUCampusBuilder.ring_courtyard_rect().get_center()
 		var c3: Vector3 = FPTUCampusBuilder.real_plot_transform() * Vector3(cc.x, 0.0, cc.y)
 		var spot: Variant = roam.call("find_free_spot", c3, 0.0, 8)
@@ -184,9 +185,15 @@ func _part_b(t: int) -> void:
 		_check(not ww.is_open(), "weapons are locked during the chore")
 		roam.call("toggle_bike")
 		_check(not bool(roam.get("mounted")), "the bike is locked during the chore")
+		var vh: ViceHUD = roam.get("vice_hud")
+		_check(vh == null or not vh.stars.visible, "no wanted stars on the HUD during the chore")
+		set_meta("svc_t", t)
 		step_i = 0
 		set_meta("svc_t", t)
 	if has_meta("svc_t") and w.state == "service":
+		if t == int(get_meta("svc_t")) + 1:
+			var wd: WeaponDirector = roam.get("weapons")
+			_check(wd.held != null and not wd.held.visible, "the locked pistol is not shown in the hand during the chore (R5-M3)")
 		_deliver(w.service, pl)
 	if has_meta("svc_t") and w.state == "free" and not has_meta("done_b"):
 		set_meta("done_b", true)
@@ -201,10 +208,39 @@ func _part_b(t: int) -> void:
 		_check(ww2.is_open(), "the weapons are free again")
 		ww2.cancel()
 		ww2.step_real(0.2)
+		var wd2: WeaponDirector = roam.get("weapons")
+		_check(wd2.held != null and wd2.held.visible, "the pistol is back in the hand")
+		_street_bags()
 		_finish()
 	if t == 600 and not has_meta("done_b"):
 		_check(false, "the FreeRoam service flow did not finish (state %s)" % w.state)
 		_finish()
+
+
+## R5-M4: the street chore (Nguyễn Xiển verge) in the real FreeRoam: every bag on dry free ground, none on the carriageway.
+func _street_bags() -> void:
+	var md: MapData = roam.get("md")
+	var s2 := CommunityService.new()
+	s2.name = "StreetService"
+	roam.add_child(s2)
+	s2.start(roam.get("player"), roam, md, false)
+	var fr: Dictionary = CommunityService.street_frame(md)
+	var pts: PackedVector2Array = fr["points"]
+	var half_w: float = float(fr["half_w"])
+	var all_free: bool = true
+	var off_road: bool = true
+	var worst: float = INF
+	for b: Node3D in s2.bags:
+		var p: Vector3 = b.global_position
+		all_free = all_free and roam.call("free_spot_at", p, p.y) != null
+		var d: float = INF
+		for i: int in range(pts.size() - 1):
+			d = minf(d, Geometry2D.get_closest_point_to_segment(Vector2(p.x, p.z), pts[i], pts[i + 1]).distance_to(Vector2(p.x, p.z)))
+		worst = minf(worst, d - half_w)
+		off_road = off_road and d >= half_w + 0.3
+	_check(s2.bags.size() == CommunityService.BAGS and all_free, "street chore: every bag on dry, free ground")
+	_check(off_road, "street chore: no bag on the Nguyễn Xiển carriageway (closest %.1f m past the edge)" % worst)
+	s2.queue_free()
 
 
 func _finish() -> void:

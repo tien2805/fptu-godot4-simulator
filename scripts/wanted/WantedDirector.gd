@@ -10,7 +10,10 @@
 #   - ViceHUD shows the stars (3 cells; classic style: the small row under the clock), the radar shows the search circle
 #     (centre = last seen point, radius SEARCH_R) while nobody sees him. Entering BE6 changes nothing.
 # state: "free" | "stamp" | "cutscene" | "service" (Tasks 10-11). Time-based logic runs in tick(delta) (tests call it with
-# set_physics_process(false)). GameFX / StageManager are only reached through get_node_or_null.
+# set_physics_process(false)). Autoloads are only reached through get_node_or_null.
+# Hot path (performance gate): `target` is computed once per tick and read by the officers; the officers live in a typed
+# list; the line-of-sight rays reuse one query whose exclusion list is rebuilt only when bodies change (and at most once
+# per maintain); with no heat and no officers tick returns at once; spawns are spread one per physics frame.
 class_name WantedDirector
 extends Node3D
 
@@ -43,6 +46,8 @@ const BIKES: Array[int] = [1, 2, 3]
 const SECOND_WAVE_S: float = 30.0
 const CATCH_R: float = 1.2
 const CATCH_S: float = 1.5
+const STUCK_REPLACE_S: float = 3.0       # an officer pinned this long out of view is replaced ...
+const STUCK_FORCE_S: float = 8.0         # ... and after this long even in view
 const BUSTED_TIMELINE: String = "res://scripts/cine/timelines/wanted_busted.gd"
 
 var heat: float = 0.0
@@ -84,6 +89,18 @@ var stamp_manual: bool = false           # tests drive the stamp with stamp.step
 var service: CommunityService = null
 var _ray_i: int = 0
 var _sees: Dictionary = {}               # observer instance id -> latest line-of-sight result
+## Where the officers look for the player this tick (target_pos() once per tick).
+var target: Vector3 = Vector3.ZERO
+var _officers: Array[Officer] = []
+var _ex: Array[RID] = []
+var _ex_dirty: bool = true
+var _rq := PhysicsRayQueryParameters3D.new()
+var _spawn_budget: int = 0
+var _was_campus: int = -1                # -1 unknown, 0 street, 1 campus (HUD label)
+var _catch_o: Officer = null
+var officers_replaced: int = 0           # stuck officers replaced (tests)
+## FreeRoam: the map is open (the classic star row hides like the ViceHUD).
+var hud_hidden: bool = false
 
 
 ## opts: player, roam (FreeRoam: roam_position, find_free_spot, play_cinematic, bike), md (MapData: campus plot), traffic,
@@ -103,7 +120,14 @@ func setup(opts: Dictionary) -> void:
 		var lm: Variant = md.landmark("campus_plot")
 		if lm is Array:
 			campus_poly = MapData.poly(lm)
+	_rq.collide_with_areas = false
+	target = target_pos()
 	refresh_hud()
+
+
+func _exit_tree() -> void:
+	if state == "stamp":
+		_set_cine_flag(false)            # FreeRoam left during the stamp: do not leave the pause menu locked
 
 
 ## Where the officers look for the player: the bike while riding (FreeRoam.roam_position), else the player.
@@ -144,11 +168,13 @@ func add_heat(amount: float, _at: Vector3 = Vector3.ZERO, _cause: String = "") -
 func add_observer(n: Node3D) -> void:
 	if not observers.has(n):
 		observers.append(n)
+		_ex_dirty = true
 
 
 func remove_observer(n: Node3D) -> void:
 	observers.erase(n)
 	_sees.erase(n.get_instance_id())
+	_ex_dirty = true
 
 
 func _physics_process(delta: float) -> void:
@@ -158,12 +184,14 @@ func _physics_process(delta: float) -> void:
 func tick(delta: float) -> void:
 	if state != "free":
 		return
+	if stars == 0 and heat <= 0.0 and observers.is_empty():
+		return                               # idle (most of the game): nothing to do
+	target = target_pos()
 	_prune()
 	if stars == 0:
 		heat = maxf(0.0, heat - IDLE_DECAY * delta)
 		seen = false
 		_retire(delta)
-		_release_bikes()
 		_update_search()
 		return
 	_give_up_t = 0.0
@@ -177,10 +205,12 @@ func tick(delta: float) -> void:
 	if _maintain_t <= 0.0:
 		_maintain_t = MAINTAIN_S
 		_maintain()
+	if _spawn_budget > 0:
+		_spawn_one()
 	_los_step()
 	if seen:
 		seen_t = 0.0
-		last_seen = target_pos()
+		last_seen = target
 	else:
 		seen_t += delta
 		if seen_t >= LOSE_S[stars - 1]:
@@ -195,11 +225,16 @@ func _los_step() -> void:
 	if n == 0:
 		seen = false
 		return
-	var ex: Array[RID] = _ray_exclusions()
+	if _ex_dirty or _ex.is_empty():
+		_ex = _ray_exclusions()
+		_rq.exclude = _ex
+		_ex_dirty = false
+	var chest: Vector3 = target + Vector3(0.0, CHEST_Y, 0.0)
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	for k: int in mini(RAYS_PER_TICK, n):
 		_ray_i = (_ray_i + 1) % n
 		var o: Node3D = observers[_ray_i]
-		var v: bool = can_see(o, ex)
+		var v: bool = _sight(o, chest, space)
 		_sees[o.get_instance_id()] = v
 		if "sees_player" in o:
 			o.set("sees_player", v)
@@ -208,6 +243,21 @@ func _los_step() -> void:
 		if bool(_sees.get(o2.get_instance_id(), false)):
 			seen = true
 			break
+
+
+## One line-of-sight ray of the round robin (the shared query, its exclusions already set).
+func _sight(o: Node3D, chest: Vector3, space: PhysicsDirectSpaceState3D) -> bool:
+	if o is Officer:
+		if (o as Officer).is_down():
+			return false
+	elif o.has_method("is_down") and bool(o.call("is_down")):
+		return false
+	var eye: Vector3 = o.global_position + Vector3(0.0, EYE_Y, 0.0)
+	if eye.distance_squared_to(chest) > SIGHT_R * SIGHT_R:
+		return false
+	_rq.from = eye
+	_rq.to = chest
+	return space.intersect_ray(_rq).is_empty()
 
 
 ## Line of sight from an observer's eyes to the player's chest within SIGHT_R (a knocked-out officer sees nothing). The
@@ -250,23 +300,33 @@ func _drop_star() -> void:
 
 
 func _on_stars_changed() -> void:
+	if stars == 0:
+		three_star_t = 0.0
+		second_wave = false
+		_spawn_budget = 0
+		catch_t = 0.0
+		_release_bikes()                     # once, on the drop to 0 stars
 	refresh_hud()
 	stars_changed.emit(stars)
 
 
-## Stars on ViceHUD (vice) or the classic row under the clock, with the campus / street label.
+## Stars on ViceHUD (vice) or the classic row under the clock, with the campus / street label. Hidden while busted or in
+## community service (state != "free") and, for the classic row, while the map is open.
 func refresh_hud() -> void:
-	var label: String = LABEL_CAMPUS if is_campus(target_pos()) else LABEL_STREET
+	var campus: bool = is_campus(target_pos())
+	_was_campus = 1 if campus else 0
+	var label: String = LABEL_CAMPUS if campus else LABEL_STREET
+	var shown: int = stars if state == "free" else 0
 	if vice_hud:
-		vice_hud.set_stars(stars, label)
+		vice_hud.set_stars(shown, label)
 	if classic_stars:
-		classic_stars.set_filled(stars)
-		classic_stars.visible = stars > 0 and not ViceHUD.style_active()
+		classic_stars.set_filled(shown)
+		classic_stars.visible = shown > 0 and not hud_hidden and not ViceHUD.style_active()
 
 
 ## The search circle (x, z, radius) while nobody has seen the player for CIRCLE_AFTER_S; ZERO otherwise.
 func search_area() -> Vector3:
-	if stars > 0 and not seen and seen_t >= CIRCLE_AFTER_S:
+	if state == "free" and stars > 0 and not seen and seen_t >= CIRCLE_AFTER_S:
 		return Vector3(last_seen.x, last_seen.z, SEARCH_R[stars - 1])
 	return Vector3.ZERO
 
@@ -277,10 +337,24 @@ func _update_search() -> void:
 
 
 func _prune() -> void:
+	var gone: bool = false
 	for i: int in range(observers.size() - 1, -1, -1):
 		var o: Variant = observers[i]
 		if not is_instance_valid(o) or not (o as Node).is_inside_tree():
 			observers.remove_at(i)
+			gone = true
+	if not gone:
+		return
+	for i: int in range(_officers.size() - 1, -1, -1):
+		if not is_instance_valid(_officers[i]) or not _officers[i].is_inside_tree():
+			_officers.remove_at(i)
+	var keep: Dictionary = {}
+	for o2: Node3D in observers:
+		var id: int = o2.get_instance_id()
+		if _sees.has(id):
+			keep[id] = _sees[id]
+	_sees = keep
+	_ex_dirty = true
 
 
 ## Empty the level (end of community service; tests).
@@ -289,23 +363,24 @@ func clear() -> void:
 	stars = 0
 	seen = false
 	seen_t = 0.0
-	_on_stars_changed()
+	_on_stars_changed()                      # also resets the second wave and releases the bikes
 	_update_search()
 	cleared.emit()
 
 
+## A copy of the live officers (safe to iterate while despawning).
 func officers() -> Array:
 	var out: Array = []
-	for o: Variant in observers:
-		if o is Officer and is_instance_valid(o):
+	for o: Officer in _officers:
+		if is_instance_valid(o):
 			out.append(o)
 	return out
 
 
 func count_role(role: String) -> int:
 	var n: int = 0
-	for o: Officer in officers():
-		if o.role == role:
+	for o: Officer in _officers:
+		if is_instance_valid(o) and o.role == role:
 			n += 1
 	return n
 
@@ -317,7 +392,7 @@ func search_radius() -> float:
 ## Spawn an officer (role "guard" | "toan" | "police") at `at` or at a free spot 25-45 m from the player, out of view when
 ## possible. null when the cap is reached or no spot is found.
 func spawn_officer(role: String, at: Variant = null) -> Officer:
-	if officers().size() >= MAX_OFFICERS:
+	if _officers.size() >= MAX_OFFICERS:
 		return null
 	var pos: Variant = at if at is Vector3 else _spawn_point(role)
 	if not (pos is Vector3):
@@ -329,6 +404,8 @@ func spawn_officer(role: String, at: Variant = null) -> Officer:
 	add_child(o)
 	o.knocked.connect(_on_officer_knocked)
 	observers.append(o)
+	_officers.append(o)
+	_ex_dirty = true
 	officers_spawned += 1
 	if player and player.cam_ray:
 		player.cam_ray.add_exception(o)
@@ -369,39 +446,82 @@ func _in_view(p: Vector3) -> bool:
 ## Once per MAINTAIN_S: officers far away and out of view leave; campus (inside the plot): guards up to GUARDS[stars] and
 ## Thầy Toàn from 2 stars; streets and residential: police bikes up to BIKES[stars] (+3 for the second wave after 30 s at
 ## 3 stars), counting the ones on their way and the officers already off their bikes. At most SPAWNS_PER_MAINTAIN per call.
+## Also: officers pinned for STUCK_REPLACE_S out of view (or STUCK_FORCE_S anywhere) are replaced, the campus / street
+## HUD label follows the player across the plot border, and the exclusion list of the sight rays is refreshed. The spawns
+## themselves happen one per physics frame (_spawn_one) so a maintain never costs two ring searches in one frame.
 func _maintain() -> void:
-	var p: Vector3 = target_pos()
+	var p: Vector3 = target
+	_ex_dirty = true
 	for o: Officer in officers():
-		if WeaponMath.flat(o.global_position, p) > DESPAWN_R and not _in_view(o.global_position):
+		var far: bool = WeaponMath.flat(o.global_position, p) > DESPAWN_R
+		var stuck: bool = o.can_catch() and o.stuck_s >= STUCK_REPLACE_S
+		if (far or stuck) and (o.stuck_s >= STUCK_FORCE_S or not _in_view(o.global_position)):
+			if stuck and not far:
+				officers_replaced += 1
 			_despawn(o)
-	if not spawning:
+	_trim_surplus()
+	var campus: int = 1 if is_campus(p) else 0
+	if campus != _was_campus:
+		refresh_hud()
+	if spawning:
+		_spawn_budget = SPAWNS_PER_MAINTAIN
+
+
+## After a star drop: guards beyond GUARDS[stars] (and Thầy Toàn below 2 stars) leave when out of view.
+func _trim_surplus() -> void:
+	var extra_g: int = count_role("guard") - GUARDS[stars - 1]
+	var extra_t: int = count_role("toan") - (1 if stars >= 2 else 0)
+	if extra_g <= 0 and extra_t <= 0:
 		return
-	var budget: int = SPAWNS_PER_MAINTAIN
-	if is_campus(p):
-		var have: int = count_role("guard")
-		while have < GUARDS[stars - 1] and budget > 0:
+	for o: Officer in officers():
+		if o.role == "guard" and extra_g > 0 and not _in_view(o.global_position):
+			_despawn(o)
+			extra_g -= 1
+		elif o.role == "toan" and extra_t > 0 and not _in_view(o.global_position):
+			_despawn(o)
+			extra_t -= 1
+
+
+## One spawn of the current maintain budget: campus guards up to GUARDS[stars], then Thầy Toàn from 2 stars; streets:
+## police bikes up to BIKES[stars] (+ the second wave), never more police than the free officer slots.
+func _spawn_one() -> void:
+	_spawn_budget -= 1
+	if is_campus(target):
+		if count_role("guard") < GUARDS[stars - 1]:
 			if spawn_officer("guard") == null:
-				break
-			have += 1
-			budget -= 1
-		if stars >= 2 and count_role("toan") == 0 and budget > 0:
+				_spawn_budget = 0
+		elif stars >= 2 and count_role("toan") == 0:
 			spawn_officer("toan")
+			_spawn_budget = 0
+		else:
+			_spawn_budget = 0
+		return
+	_prune_pending()
+	var police: int = count_role("police")
+	var free_slots: int = MAX_OFFICERS - (_officers.size() - police)
+	var want: int = mini(BIKES[stars - 1] + (BIKES[2] if second_wave else 0), free_slots)
+	if police + pending_bikes.size() < want:
+		if not _send_bike():
+			_spawn_budget = 0
 	else:
-		_prune_pending()
-		var want: int = BIKES[stars - 1] + (BIKES[2] if second_wave else 0)
-		var have_p: int = count_role("police") + pending_bikes.size()
-		while have_p < want and budget > 0:
-			if not _send_bike():
-				break
-			have_p += 1
-			budget -= 1
+		_spawn_budget = 0
 
 
 func _despawn(o: Officer) -> void:
 	observers.erase(o)
+	_officers.erase(o)
+	_ex_dirty = true
+	if _catch_o == o:
+		_catch_o = null
+		catch_t = 0.0
+	if not is_instance_valid(o):
+		return
 	_sees.erase(o.get_instance_id())
-	if player and player.cam_ray and is_instance_valid(o):
+	if player and player.cam_ray:
 		player.cam_ray.remove_exception(o)
+	var b: Variant = roam.get("bike") if roam else null
+	if b is Node and (b as Node).get("spring_arm"):
+		((b as Node).get("spring_arm") as SpringArm3D).remove_excluded_object(o.get_rid())
 	o.queue_free()
 
 
@@ -425,6 +545,7 @@ func _send_bike() -> bool:
 		if idx >= 0:
 			pending_bikes.append(idx)
 			bikes_sent += 1
+			_ex_dirty = true                     # a police body may have just been built
 			return true
 	return spawn_officer("police") != null
 
@@ -438,6 +559,8 @@ func _prune_pending() -> void:
 func _on_police_arrived(idx: int, at: Vector3) -> void:
 	pending_bikes.erase(idx)
 	if state != "free" or stars == 0:
+		if traffic:
+			traffic.release_police()         # arrived after the level ended: nobody gets off, the rest stop
 		return
 	var spot: Variant = roam.call("find_free_spot", at, at.y, 3) if roam and roam.has_method("find_free_spot") else at
 	var o: Officer = spawn_officer("police", spot if spot is Vector3 else at)
@@ -460,8 +583,8 @@ func _check_catch(delta: float) -> void:
 	var p: Vector3 = player.global_position
 	var near: Officer = null
 	var best: float = CATCH_R
-	for o: Officer in officers():
-		if not o.can_catch():
+	for o: Officer in _officers:
+		if not is_instance_valid(o) or not o.can_catch():
 			continue
 		var d: float = WeaponMath.flat(o.global_position, p)
 		if d <= best:
@@ -469,7 +592,11 @@ func _check_catch(delta: float) -> void:
 			near = o
 	if near == null:
 		catch_t = 0.0
+		_catch_o = null
 		return
+	if near != _catch_o:
+		_catch_o = near                      # another officer took the closest slot: his own 1.5 s
+		catch_t = 0.0
 	if player.is_knocked_down():
 		bust(near)
 		return
@@ -485,6 +612,8 @@ func bust(o: Officer) -> void:
 	state = "stamp"
 	busts += 1
 	catch_t = 0.0
+	refresh_hud()                            # stars and search circle off during the stamp, cutscene and chore
+	_update_search()
 	catcher = o.role if o else "guard"
 	bust_on_campus = is_campus(target_pos())
 	busted.emit(catcher)
@@ -537,7 +666,7 @@ func _start_service() -> void:
 func _on_service_done() -> void:
 	service = null
 	state = "free"
-	clear()
+	clear()                                  # refresh_hud: back to 0 stars shown
 	if roam and roam.has_method("place_beside_bike"):
 		roam.call("place_beside_bike")
 

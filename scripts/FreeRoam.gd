@@ -1084,6 +1084,9 @@ func toggle_map() -> void:
 		hint_holder.visible = not map_overlay.visible   # bản đồ có tiêu đề + chú giải riêng
 	if vice_hud:
 		vice_hud.suppressed = map_overlay.visible        # bản đồ phủ cả radar / cột giờ - ví
+	if wanted:
+		wanted.hud_hidden = map_overlay.visible          # Phase W: the classic star row too
+		wanted.refresh_hud()
 	if map_overlay.visible:
 		_hud_timer = HUD_REFRESH
 		_update_map_dynamic()
@@ -1244,6 +1247,8 @@ func _physics_process(delta: float) -> void:
 		stamina_bar.visible = on_foot and (player.stamina < 0.999 or player.is_sprinting) and not (map_overlay and map_overlay.visible)
 	if weapon_hud:
 		weapon_hud.visible = not mayhem_blocked()
+	if weapons:
+		weapons.set_held_hidden("service", wanted != null and wanted.state == "service")
 	if _hint_flash_t > 0.0:
 		_hint_flash_t -= delta
 	_hud_timer -= delta
@@ -1612,7 +1617,7 @@ func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 		p.queue_free()
 		return null
 	_cine_saved = {"tod": tod_preset, "vis": {}, "proc": {}, "cam": get_viewport().get_camera_3d()}
-	for n: Node in [player, bike, hint_holder, tod_holder, stats_holder, vice_hud, stamina_bar, map_overlay, pedestrians, traffic, weapon_hud, wanted]:
+	for n: Node in [player, bike, hint_holder, tod_holder, stats_holder, vice_hud, stamina_bar, map_overlay, pedestrians, traffic, weapon_hud, wanted, classic_stars]:
 		if n and "visible" in n:
 			_cine_saved["vis"][n] = n.visible
 			n.visible = false
@@ -1703,7 +1708,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	match k.physical_keycode:
 		KEY_E:
-			if active_hotspot and not mounted:
+			# Phase W: no stage while busted or in community service (it would skip the chore)
+			if active_hotspot and not mounted and (wanted == null or wanted.state == "free"):
 				if start_hotspot_stage(active_hotspot):
 					get_viewport().set_input_as_handled()
 		KEY_F:

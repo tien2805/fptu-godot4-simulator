@@ -69,6 +69,7 @@ const POLICE_SPEED: float = 12.0
 const POLICE_DISMOUNT_M: float = 15.0       # the rider gets off within this distance of the player
 const POLICE_NEAR_M: float = 60.0           # ... or within this one once he stops getting closer (player off the road)
 const POLICE_NO_PROGRESS_S: float = 2.0
+const POLICE_GIVE_UP_S: float = 20.0        # a bike that has not got closer for this long (looping far away) stops
 const POLICE_MAX: int = 8
 const SIREN_MS: int = 166                   # red / blue swap
 
@@ -110,6 +111,8 @@ class Vehicle:
 	var police_state: String = ""        # "ride" toward the player | "parked" (rider got off) | ""
 	var best_d: float = INF              # closest distance to the player so far (no-progress dismount)
 	var no_prog_t: float = 0.0
+	var siren_r: Node3D = null           # cached siren lamps (police)
+	var siren_b: Node3D = null
 
 
 var md: MapData
@@ -713,8 +716,10 @@ func spawn_police() -> int:
 	var tgt: Vector3 = police_target_fn.call() if police_target_fn.is_valid() else _center()
 	var c2 := Vector2(tgt.x, tgt.z)
 	var spot: Array = []
+	var people: Array = []
+	_append_people(people)
 	for k: int in 6:
-		var s: Array = _random_spot(c2, SPAWN_MIN, SPAWN_MAX * 0.8, Kind.POLICE, k < 4, [])
+		var s: Array = _random_spot(c2, SPAWN_MIN, SPAWN_MAX * 0.8, Kind.POLICE, k < 4, people)
 		if s.is_empty():
 			continue
 		spot = s
@@ -752,6 +757,11 @@ func _police_progress(c: Vehicle, delta: float) -> void:
 		c.no_prog_t += delta
 	if d <= POLICE_DISMOUNT_M or (d <= POLICE_NEAR_M and c.no_prog_t >= POLICE_NO_PROGRESS_S):
 		police_dismount(c.idx)
+	elif c.no_prog_t >= POLICE_GIVE_UP_S:
+		# lost far away: the bike stops (recycled out of view); WantedDirector drops it and sends a fresh one
+		c.police_state = ""
+		c.halted = true
+		c.speed = 0.0
 
 
 ## The police rider gets off beside his bike; the bike stays as a halted obstacle (recycled out of view) and
@@ -785,7 +795,11 @@ func is_police_riding(idx: int) -> bool:
 
 
 func _police_count() -> int:
-	return vehicles.filter(func(v: Vehicle) -> bool: return v.police).size()
+	var n: int = 0
+	for v: Vehicle in vehicles:
+		if v.police:
+			n += 1
+	return n
 
 
 func _civil_count() -> int:
@@ -823,11 +837,12 @@ func _add_siren(b: Node3D) -> void:
 
 func _siren(c: Vehicle) -> void:
 	var on: bool = (Time.get_ticks_msec() / SIREN_MS) % 2 == 0
-	var r: Node3D = c.body.get_node_or_null("SirenR") as Node3D
-	var bl: Node3D = c.body.get_node_or_null("SirenB") as Node3D
-	if r and bl:
-		r.visible = on
-		bl.visible = not on
+	if c.siren_r == null:
+		c.siren_r = c.body.get_node_or_null("SirenR") as Node3D
+		c.siren_b = c.body.get_node_or_null("SirenB") as Node3D
+	if c.siren_r and c.siren_b and c.siren_r.visible != on:
+		c.siren_r.visible = on
+		c.siren_b.visible = not on
 
 
 # ===========================================================================

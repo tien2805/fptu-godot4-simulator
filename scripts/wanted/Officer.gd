@@ -6,8 +6,10 @@
 # TACKLE_R of a player running faster than TACKLE_MIN_SPEED they dive (comic tackle: the player is knocked down, never
 # hurt); otherwise they stop beside him (WantedDirector counts the catch, Task 10). Weapons knock them out for KO_S whatever
 # the weapon (plan P5) and emit `knocked` (+5 heat); a blast launches them; stink stuns; the loa pushes some into a dance.
-# Steering: straight line, step-up like Pedestrian, sidestep when stuck. SUPERVISE (community service): stands, faces the
-# player, says lines. Rigged CharacterBuilder body (PS2 head in vice). GameFX / StageManager are never named here.
+# Steering: straight line, step-up like Pedestrian (only against low static geometry), sidestep when stuck; `stuck_s` counts
+# how long he has been pinned (WantedDirector replaces him after STUCK_REPLACE_S). GIVE_UP turns back into SEARCH as soon as
+# the stars rise again. Hot path: typed refs to the director, the player and the animator (no dynamic calls). SUPERVISE (community service): stands, faces the
+# player, says lines. Rigged CharacterBuilder body (PS2 head in vice). No autoload is referenced here.
 class_name Officer
 extends CharacterBody3D
 
@@ -42,6 +44,8 @@ const SHOUT_EVERY: float = 8.0
 const SHOUT_S: float = 2.5
 const SAY_S: float = 3.5
 const LAND_MIN_S: float = 0.15
+const STEP_CONTACT_MAX: float = 0.35     # a wall contact higher than this above the feet is a wall, never a kerb
+const LOD_FAR_M: float = 20.0            # chasing / searching beyond this from the player: move every other frame (x2)
 const PRESETS: Dictionary = {
 	"guard": {"preset": "guard"},
 	"toan": {"preset": "lecturer", "seed": 1995, "glasses": true},
@@ -57,6 +61,11 @@ var role: String = "guard"
 var state: int = State.CHASE
 var wanted: Node
 var player: Node3D
+var stuck_s: float = 0.0                 # seconds pinned in place in a row (0 while making progress)
+var _wd: WantedDirector                  # typed wanted (null for the community-service supervisor)
+var _tpc: ThirdPersonController          # typed player (null in odd tests)
+var _an: Node                            # the model's RigAnimator
+var _lod_phase: int = 0
 var model: Node3D
 var bubble: Label3D
 var sees_player: bool = false
@@ -86,7 +95,10 @@ func setup(r: String, wanted_node: Node, player_node: Node3D, seed_v: int) -> vo
 	role = r if SPEEDS.has(r) else "guard"
 	wanted = wanted_node
 	player = player_node
+	_wd = wanted_node as WantedDirector
+	_tpc = player_node as ThirdPersonController
 	_rng.seed = seed_v
+	_lod_phase = seed_v % 2
 	floor_snap_length = 0.4
 	var cs := CollisionShape3D.new()
 	cs.name = "Capsule"
@@ -103,6 +115,7 @@ func setup(r: String, wanted_node: Node, player_node: Node3D, seed_v: int) -> vo
 	o["name"] = "Model"
 	model = CharacterBuilder.build(o)
 	add_child(model)
+	_an = CharacterBuilder.get_animator(model)
 	bubble = Label3D.new()
 	bubble.name = "Bubble"
 	bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -141,9 +154,17 @@ func _physics_process(delta: float) -> void:
 
 
 func _target() -> Vector3:
+	if _wd:
+		return _wd.target
 	if wanted and wanted.has_method("target_pos"):
 		return wanted.call("target_pos")
 	return player.global_position if player else global_position
+
+
+func _set_anim(speed_ms: float, run: float) -> void:
+	if _an:
+		_an.set("speed", speed_ms)
+		(_an.get("params") as Dictionary)["run"] = run
 
 
 func _flat_d(p: Vector3) -> float:
@@ -162,8 +183,8 @@ func _chase(delta: float) -> void:
 		return
 	var p: Vector3 = _target()
 	var d: float = _flat_d(p)
-	var pl_speed: float = float(player.get("horizontal_speed")) if player and player.get("horizontal_speed") != null else 0.0
-	var down: bool = player != null and player.has_method("is_knocked_down") and bool(player.call("is_knocked_down"))
+	var pl_speed: float = _tpc.horizontal_speed if _tpc else 0.0
+	var down: bool = _tpc != null and _tpc.is_knocked_down()
 	if d <= TACKLE_R and pl_speed >= TACKLE_MIN_SPEED and _tackle_cd <= 0.0 and not down and player.visible:
 		_start_tackle(p)
 		return
@@ -188,6 +209,10 @@ func _search(delta: float) -> void:
 
 
 func _give_up(delta: float) -> void:
+	if _wd and _wd.stars > 0 and _wd.state == "free":
+		state = State.SEARCH                 # a new crime while walking away: back on the hunt
+		_has_wander = false
+		return
 	var away: Vector3 = _flat_dir(global_position - _target())
 	_move_to(global_position + away * 10.0, GIVE_UP_SPEED, delta)
 
@@ -207,38 +232,63 @@ func _supervise(delta: float) -> void:
 func _move_to(target: Vector3, speed: float, delta: float) -> void:
 	var to := Vector3(target.x - global_position.x, 0.0, target.z - global_position.z)
 	var d: float = to.length()
+	# LOD (performance gate): far from the player, the body moves every other frame by two frames' worth
+	var lod: bool = (state == State.CHASE or state == State.SEARCH) and _push_v == Vector3.ZERO and player != null 		and _flat_d(player.global_position) > LOD_FAR_M
+	if lod:
+		if (Engine.get_physics_frames() + _lod_phase) % 2 == 1:
+			return
+		delta *= 2.0
 	var dir: Vector3 = to / d if d > 0.01 else Vector3.ZERO
+	var goal_dir: Vector3 = dir
 	if _side_t > 0.0 and dir != Vector3.ZERO:
 		_side_t -= delta
 		dir = (dir + Vector3(-dir.z, 0.0, dir.x) * _side * 1.2).normalized()
-	velocity.x = dir.x * speed + _push_v.x
-	velocity.z = dir.z * speed + _push_v.z
+	if speed <= 0.0 and _push_v == Vector3.ZERO and is_on_floor() and _side_t <= 0.0:
+		# standing beside the player: no physics query (performance gate), just face him
+		velocity = Vector3.ZERO
+		if player:
+			var f0: Vector3 = _flat_dir(player.global_position - global_position)
+			model.rotation.y = lerp_angle(model.rotation.y, atan2(-f0.x, -f0.z), minf(1.0, delta * 6.0))
+		_set_anim(0.0, 0.0)
+		_stuck_check(delta, d, speed, dir)
+		return
+	var k: float = 2.0 if lod else 1.0
+	velocity.x = (dir.x * speed + _push_v.x) * k
+	velocity.z = (dir.z * speed + _push_v.z) * k
 	_push_v = _push_v.move_toward(Vector3.ZERO, PUSH_DECEL * delta)
 	_gravity(delta)
 	if is_on_wall() and speed > 0.0 and _wall_is_static():
-		_try_step_up(dir, delta)
+		_try_step_up(dir, delta / k)
 	move_and_slide()
+	if lod:
+		velocity.x /= k
+		velocity.z /= k
 	if dir != Vector3.ZERO and speed > 0.0:
 		model.rotation.y = lerp_angle(model.rotation.y, atan2(-dir.x, -dir.z), minf(1.0, delta * 10.0))
 	elif player:
 		var f: Vector3 = _flat_dir(player.global_position - global_position)
 		model.rotation.y = lerp_angle(model.rotation.y, atan2(-f.x, -f.z), minf(1.0, delta * 6.0))
-	CharacterBuilder.set_speed(model, Vector2(velocity.x, velocity.z).length())
-	CharacterBuilder.set_param(model, "run", 0.45 if speed > 4.5 else 0.0)
-	_stuck_check(delta, d, speed)
+	_set_anim(Vector2(velocity.x, velocity.z).length(), 0.45 if speed > 4.5 else 0.0)
+	_stuck_check(delta, d, speed, goal_dir)
 
 
-func _stuck_check(delta: float, d: float, speed: float) -> void:
+## Every STUCK_S: an officer who got less than a quarter of his speed closer to his goal (pinned on a wall, or sliding to and
+## fro in a corner) flips his sidestep side and adds to stuck_s; real progress resets it.
+func _stuck_check(delta: float, d: float, speed: float, goal_dir: Vector3) -> void:
 	if speed <= 0.0 or d < 2.0:
 		_stuck_t = 0.0
+		stuck_s = 0.0
 		_last_pos = global_position
 		return
 	_stuck_t += delta
 	if _stuck_t < STUCK_S:
 		return
-	if global_position.distance_to(_last_pos) < speed * STUCK_S * 0.25:
+	if (global_position - _last_pos).dot(goal_dir) < speed * STUCK_S * 0.25:
 		_side = -_side
 		_side_t = SIDESTEP_S
+		stuck_s += _stuck_t
+	else:
+		stuck_s = 0.0
 	_stuck_t = 0.0
 	_last_pos = global_position
 
@@ -251,7 +301,7 @@ func _start_tackle(p: Vector3) -> void:
 	velocity = dir * TACKLE_SPEED
 	model.rotation.y = atan2(-dir.x, -dir.z)
 	CharacterBuilder.play(model, "knockdown")
-	hits.append("tackle")
+	_log("tackle")
 
 
 func _tackle(delta: float) -> void:
@@ -283,7 +333,7 @@ func take_hit(info: Dictionary) -> String:
 		"punch":
 			_push_v = away * 2.0
 			CharacterBuilder.play(model, "stumble")
-			hits.append("stumble")
+			_log("stumble")
 			return "stumble"
 		"melee", "bullet", "bonk":
 			_knock_out(away)
@@ -295,19 +345,19 @@ func take_hit(info: Dictionary) -> String:
 			ko_left = KO_S
 			collision_layer = 0
 			CharacterBuilder.play(model, "fall_flail")
-			hits.append("launched")
+			_log("launched")
 			knocked.emit(self)
 			return "launched"
 		"stink":
 			_stun(STUN_S, "facepalm")
-			hits.append("stink")
+			_log("stink")
 			return "stink"
 		"sonic":
 			_push_v = _flat_dir(info.get("dir", away)) * float(info.get("power", 5.0))
 			var dance: bool = bool(info["dance"]) if info.has("dance") else _rng.randf() < DANCE_CHANCE
 			if dance and state != State.STUNNED:
 				_stun(DANCE_S, "cheer")
-				hits.append("dance")
+				_log("dance")
 				return "dance"
 			return "pushed"
 	return "none"
@@ -324,7 +374,7 @@ func _knock_out(away: Vector3) -> void:
 		model.rotation.y = atan2(away.x, away.z)
 	CharacterBuilder.play(model, "knockdown")
 	CharacterBuilder.set_expression(model, "pain")
-	hits.append("ko")
+	_log("ko")
 	knocked.emit(self)
 
 
@@ -415,6 +465,12 @@ func _maybe_shout(delta: float) -> void:
 	_shout_t = SHOUT_EVERY
 
 
+func _log(what: String) -> void:
+	hits.append(what)
+	if hits.size() > 32:
+		hits.remove_at(0)
+
+
 func _tick_bubble(delta: float) -> void:
 	if _bubble_left <= 0.0:
 		return
@@ -430,17 +486,18 @@ func _gravity(delta: float) -> void:
 		velocity.y -= GRAVITY * delta
 
 
-## Step onto low kerbs / steps while blocked (as Pedestrian._try_step_up).
-## The wall touched by the last move_and_slide is level geometry (a kerb or a step can be climbed), not a person, an
-## officer, the player or a vehicle: bumping into bodies in a crowd must not cost four test_move probes per frame.
+## The wall touched by the last move_and_slide is low level geometry (a kerb or a step can be climbed): not a building
+## wall (contact above STEP_CONTACT_MAX), a person, an officer, the player or a vehicle. Pinned officers must not cost four
+## test_move probes per frame.
 func _wall_is_static() -> bool:
 	for i: int in get_slide_collision_count():
 		var c: KinematicCollision3D = get_slide_collision(i)
-		if absf(c.get_normal().y) < 0.7 and c.get_collider() is StaticBody3D:
+		if absf(c.get_normal().y) < 0.7 and c.get_position().y - global_position.y <= STEP_CONTACT_MAX 				and c.get_collider() is StaticBody3D:
 			return true
 	return false
 
 
+## Step onto low kerbs / steps while blocked (as Pedestrian._try_step_up).
 func _try_step_up(dir: Vector3, delta: float) -> void:
 	var motion: Vector3 = Vector3(velocity.x, 0.0, velocity.z) * delta
 	if motion.length_squared() < 0.000001:

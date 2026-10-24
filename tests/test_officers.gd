@@ -3,7 +3,9 @@
 # Thầy Toàn from 2 stars (at most 2 spawns per second, never more than 12 officers); they chase the player they see
 # (guards ~5 m/s, Thầy Toàn faster), Thầy Toàn shouts "Em kia! Đứng lại! Thẻ sinh viên đâu?" first; a weapon knocks an
 # officer out for 10 s (+5 heat), then he is back on his feet; officers dive at a player sprinting past (comic tackle: the
-# player is knocked down, never hurt); once the stars are gone they give up and vanish. Busting is off here
+# player is knocked down, never hurt); once the stars are gone they give up and vanish – unless a new crime brings the stars
+# back while they walk away, then they rejoin the hunt; an officer pinned in a corner out of view is replaced (fix round
+# R4-I1 / R4-I3). Busting is off here
 # (catch_enabled = false; Task 10 tests it). Counts physics frames (Engine.max_fps = 60).
 # Run:  godot --headless --path . --script tests/test_officers.gd
 extends SceneTree
@@ -22,6 +24,7 @@ var campus: bool = true
 var spawn_k: int = 0
 var seen_at: Dictionary = {}             # officer instance id -> [frame of first sight in the test, distance then]
 var checked_speed: Dictionary = {}       # role -> true
+var stuck_o: Officer = null
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -44,6 +47,17 @@ func _spawn_point(_role: String, near: Vector3) -> Variant:
 	spawn_k += 1
 	var a: float = float(spawn_k) * 0.9
 	return near + Vector3(sin(a) * 30.0, 0.0, cos(a) * 30.0)
+
+
+## A U of walls behind the player (out of the camera's view), open away from him, with a guard inside: walking straight at
+## the player he hits the back wall, his sidesteps slide him from corner to corner, he never gets closer.
+func _stuck_setup() -> void:
+	World.wall(arena, Vector3(0.0, 1.5, 18.6), Vector3(4.0, 3.0, 0.4))
+	World.wall(arena, Vector3(-1.8, 1.5, 20.2), Vector3(0.4, 3.0, 3.6))
+	World.wall(arena, Vector3(1.8, 1.5, 20.2), Vector3(0.4, 3.0, 3.6))
+	wanted.spawning = false
+	wanted.add_heat(4.0)
+	stuck_o = wanted.spawn_officer("guard", Vector3(0.0, 0.0, 20.5))
 
 
 func _next(p: String) -> void:
@@ -145,13 +159,37 @@ func _on_physics() -> void:
 		"give_up":
 			if t == 3:
 				var all_gave_up: bool = true
+				var walking: int = 0
 				for o: Officer in wanted.officers():
 					if o.state != Officer.State.GIVE_UP and not o.is_down():
 						all_gave_up = false
+					if o.state == Officer.State.GIVE_UP:
+						walking += 1
+						o.set_meta("walking", true)
 				_check(all_gave_up, "no stars: the officers give up (or already left out of view)")
-				wanted.set("_give_up_t", WantedDirector.GIVE_UP_DESPAWN_S)
+				_check(walking > 0, "test setup: some officers are still walking away in view (%d)" % walking)
+				wanted.add_heat(4.0)
 			if t == 6:
+				var rejoined: bool = true
+				var n_walk: int = 0
+				for o: Officer in wanted.officers():
+					if o.has_meta("walking"):
+						n_walk += 1
+						if o.state == Officer.State.GIVE_UP:
+							rejoined = false
+				_check(n_walk > 0 and rejoined, "a new crime while they walk away: they rejoin the hunt (R4-I1)")
+				wanted.clear()
+			if t == 9:
+				wanted.set("_give_up_t", WantedDirector.GIVE_UP_DESPAWN_S)
+			if t == 12:
 				_check(wanted.officers().is_empty(), "they are gone after the give-up time")
+				_stuck_setup()
+				_next("stuck")
+		"stuck":
+			if t == 2:
+				_check(stuck_o != null and is_instance_valid(stuck_o) and stuck_o.can_catch(), "test setup: a guard inside the walled corner behind the player")
+			if t == 60 * 7:
+				_check(wanted.officers_replaced >= 1 and not is_instance_valid(stuck_o), "an officer pinned in a corner out of view is replaced after ~3 s (R4-I3, %d replaced)" % wanted.officers_replaced)
 				Engine.time_scale = 1.0
 				if fails.is_empty():
 					print("✅ SUCCESS: OFFICERS (campus counts by star, Thầy Toàn from 2 stars, chase speeds, shout, knock-out +5, get up, tackle, give up)")
