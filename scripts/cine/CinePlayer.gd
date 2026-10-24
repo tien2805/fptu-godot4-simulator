@@ -302,14 +302,32 @@ func _update(rr: float) -> void:
 
 
 ## Props with "show_at" / "hide_at" (story s) are visible only in between (seekable, unlike the forward-only events).
+## A prop with "path" [[s, pos, rot_deg], ...] (+ "arc" m over the whole path) flies along it, linear between keys (seekable).
 func _update_props(ss: float) -> void:
 	for pr: Dictionary in timeline.props:
 		var po: Dictionary = pr["opts"]
-		if not po.has("show_at") and not po.has("hide_at"):
+		if not po.has("show_at") and not po.has("hide_at") and not po.has("path"):
 			continue
 		var pn: Node3D = prop_nodes.get(String(pr["id"]))
-		if pn:
-			pn.visible = ss >= timeline.story_time(po.get("show_at", 0.0)) and ss < timeline.story_time(po.get("hide_at", INF))
+		if pn == null:
+			continue
+		pn.visible = ss >= timeline.story_time(po.get("show_at", 0.0)) and ss < timeline.story_time(po.get("hide_at", INF))
+		var path: Array = po.get("path", [])
+		if path.size() >= 2:
+			var s0: float = float(path[0][0])
+			var s1: float = float(path[path.size() - 1][0])
+			var k0: Array = path[0]
+			var k1: Array = path[0]
+			for i: int in path.size():
+				if float(path[i][0]) <= ss:
+					k0 = path[i]
+					k1 = path[mini(i + 1, path.size() - 1)]
+			if ss < s0:
+				k1 = k0
+			var u: float = clampf((ss - float(k0[0])) / maxf(float(k1[0]) - float(k0[0]), 0.0001), 0.0, 1.0)
+			var w: float = clampf((ss - s0) / maxf(s1 - s0, 0.0001), 0.0, 1.0)
+			pn.position = (k0[1] as Vector3).lerp(k1[1], u) + Vector3(0.0, 4.0 * float(po.get("arc", 0.0)) * w * (1.0 - w), 0.0)
+			pn.rotation_degrees = (k0[2] as Vector3).lerp(k1[2], u)
 
 
 func _fire_events(ss: float) -> void:
@@ -455,7 +473,7 @@ func set_debug(on: bool) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo \
+	if OS.is_debug_build() and event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo \
 			and (event as InputEventKey).physical_keycode == KEY_F10:
 		set_debug(not debug)
 		get_viewport().set_input_as_handled()

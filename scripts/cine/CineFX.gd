@@ -31,6 +31,8 @@ const HEADLIGHT_EDGE: float = 3.0
 const HAZE_LEN: float = 4.5
 const HAZE_LAYERS: Array = [[0.45, 0.03], [0.7, 0.022], [0.95, 0.015]]
 const DUST_ALPHA: float = 0.28
+## Rim centre height in CharacterBuilder._build_helmet's frame (head centre 0.12 + rim offset 0.01).
+const HELMET_RIM_Y: float = 0.13
 ## Prop kinds build_prop knows (timeline props and held props).
 const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", "helmet"]
 
@@ -69,6 +71,7 @@ func _next_name(prefix: String) -> String:
 	return "%s%d" % [prefix, _serial]
 
 
+## Shared with Phase W (called by name from its scripts): signature frozen, do not rename.
 static func _particle_mesh(additive: bool) -> QuadMesh:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -85,6 +88,7 @@ static func _particle_mesh(additive: bool) -> QuadMesh:
 	return q
 
 
+## Shared with Phase W (called by name from its scripts): signature frozen, do not rename.
 static func _ramp(cols: Array[Color], offs: PackedFloat32Array) -> Gradient:
 	var g := Gradient.new()
 	g.offsets = offs
@@ -601,8 +605,10 @@ static func _build_haze(root: Node3D, spot: SpotLight3D) -> void:
 	gt.gradient = g
 	gt.width = 4
 	gt.height = 64
-	gt.fill_from = Vector2(0.0, 0.0)
-	gt.fill_to = Vector2(0.0, 1.0)
+	# CylinderMesh sides span uv.v 0 (top = the wide far end) .. 0.5 (bottom = the lamp); uv1_scale y 2 maps them to 0..1 and
+	# the fill runs from v 1 (lamp, gradient offset 0) to v 0 (far end): 0 at the lens, peak ~2.9 m out, 0 at HAZE_LEN
+	gt.fill_from = Vector2(0.0, 1.0)
+	gt.fill_to = Vector2(0.0, 0.0)
 	var half: float = deg_to_rad(spot.spot_angle)
 	for i: int in HAZE_LAYERS.size():
 		var k: float = HAZE_LAYERS[i][0]
@@ -614,6 +620,7 @@ static func _build_haze(root: Node3D, spot: SpotLight3D) -> void:
 		m.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
 		m.albedo_color = Color(1.0, 0.94, 0.78, float(HAZE_LAYERS[i][1]))
 		m.albedo_texture = gt
+		m.uv1_scale = Vector3(1.0, 2.0, 1.0)
 		m.proximity_fade_enabled = true
 		m.proximity_fade_distance = 0.6
 		m.set_meta("vice_done", true)
@@ -678,34 +685,24 @@ static func _build_banana(root: Node3D) -> void:
 		root.add_child(mi)
 
 
-## A courier's half-shell helmet (as CharacterBuilder's, about 0.25 m across), dome up, visor toward -Z; origin at the rim
-## centre. opts "color".
+## A courier's helmet as worn, built by the same builders as the characters' (CharacterBuilder._build_helmet; in the vice
+## style fitted with PS2Head's scale and crescent visor, without the chin straps that belong to the head), dome up, visor
+## toward -Z, origin at the rim centre (about 0.25 m across). opts "color".
 static func _build_helmet(root: Node3D, opts: Dictionary) -> void:
 	var col: Color = opts.get("color", Color("#F1C40F"))
-	var shell: StandardMaterial3D = _mat(col, 0.25)
-	var dome := MeshInstance3D.new()
-	dome.name = "Dome"
-	var sm := SphereMesh.new()
-	sm.radius = 0.126
-	sm.height = 0.126
-	sm.is_hemisphere = true
-	dome.mesh = sm
-	dome.material_override = shell
-	dome.scale = Vector3(1.0, 1.05, 1.02)
-	root.add_child(dome)
-	var rim := MeshInstance3D.new()
-	rim.name = "Rim"
-	var cm := CylinderMesh.new()
-	cm.top_radius = 0.128
-	cm.bottom_radius = 0.128
-	cm.height = 0.03
-	rim.mesh = cm
-	rim.material_override = shell
-	rim.position = Vector3(0.0, -0.01, 0.0)
-	root.add_child(rim)
-	_box(root, "Visor", Vector3(0.21, 0.012, 0.08), Vector3(0.0, -0.005, -0.15), _mat(Color("#111318"), 0.2))
-	for sx: float in [-1.0, 1.0]:
-		_box(root, "Strap", Vector3(0.01, 0.12, 0.006), Vector3(sx * 0.09, -0.07, -0.02), _mat(Color("#222222"), 0.8))
+	var fit := Node3D.new()
+	fit.name = "HelmetFit"
+	root.add_child(fit)
+	CharacterBuilder._build_helmet(fit, col, 1.0)
+	if CharacterBuilder.ps2:
+		fit.scale = PS2Head.HELMET_FIT_SCALE
+		PS2Head._build_helmet_visor(fit, col, 1.0)
+		for ch: Node in fit.get_children():
+			var mi := ch as MeshInstance3D
+			if mi != null and mi.mesh is BoxMesh and (mi.mesh as BoxMesh).size.y >= 0.1:
+				fit.remove_child(mi)
+				mi.free()
+	fit.position = Vector3(0.0, -HELMET_RIM_Y * fit.scale.y, 0.0)
 
 
 static func _build_phone(root: Node3D) -> void:

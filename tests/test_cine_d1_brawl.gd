@@ -187,6 +187,21 @@ func _helmet(pl: CinePlayer) -> void:
 	_check(att.visible and c3_off and got.distance_to(want) < 0.2, "on the swing the helmet is in his hand and off Mũ Xanh's head")
 	pl.seek(24.0)
 	_check(not att.visible, "the helmet is dropped after the swing")
+	# no gap between the pop-off and the landing (review Minor 3): the loose helmet leaves from his head and is seen in flight
+	var ha: Node3D = pl.prop_nodes["helmet_a"]
+	var xt: float = float(tl.get("xt"))
+	for ds: float in [0.07, 0.14, 0.21]:
+		pl.seek(tl.clock.real_at(xt + ds))
+		var dh: float = ha.global_position.distance_to(c3.bone_world("Head"))
+		if ds < 0.1:
+			print("  loose helmet at xt+%.2f: %.2f m from Mũ Xanh's head" % [ds, dh])
+			_check(ha.visible and dh < 0.4, "the helmet leaves from Mũ Xanh's head (%.2f m)" % dh)
+		else:
+			_check(ha.visible, "the loose helmet is visible in flight at xt+%.2f" % ds)
+	# the prop is the worn helmet's shape in this art style (vice: PS2 fit scale + crescent visor)
+	var fitn: Node3D = ha.find_child("HelmetFit", true, false) as Node3D
+	var want_scale: Vector3 = PS2Head.HELMET_FIT_SCALE if CharacterBuilder.ps2 else Vector3.ONE
+	_check(fitn != null and fitn.scale.is_equal_approx(want_scale), "helmet prop shaped like the worn one (%s)" % (str(fitn.scale) if fitn else "none"))
 
 
 ## Every 1/60 s over the whole 25 s: deepest penetration between every two actors and between each actor and the scooter,
@@ -264,6 +279,22 @@ func _headlight(pl: CinePlayer) -> void:
 			if m.albedo_color.a > 0.05 or m.blend_mode != BaseMaterial3D.BLEND_MODE_ADD:
 				bad = "%s (alpha %.3f)" % [n.name, m.albedo_color.a]
 	_check(haze >= 2 and bad == "", "headlight haze: %d faint additive cones, no opaque unshaded quad (%s)" % [haze, bad])
+	# fade along the beam: side uv.v = 0.5 x (distance from the far end) / length (Godot CylinderMesh), times uv1_scale.y,
+	# then the GradientTexture2D fill (review: it ran backwards, brightest at the lens)
+	var h0: MeshInstance3D = sc.find_child("Haze0", true, false) as MeshInstance3D
+	if h0:
+		var hm: StandardMaterial3D = h0.material_override
+		var gtx: GradientTexture2D = hm.albedo_texture as GradientTexture2D
+		var ln: float = (h0.mesh as CylinderMesh).height
+		var prof: Array[float] = []
+		for dz: float in [0.0, 0.65 * ln, ln]:
+			var v: float = 0.5 * (ln - dz) / ln * hm.uv1_scale.y
+			var a: Vector2 = gtx.fill_from
+			var b: Vector2 = gtx.fill_to
+			var t: float = clampf((v - a.y) / (b.y - a.y), 0.0, 1.0) if absf(b.y - a.y) > 1e-6 else 0.0
+			prof.append(gtx.gradient.sample(t).a)
+		print("  haze alpha along the beam: lamp %.2f, %.1f m %.2f, far end %.2f" % [prof[0], 0.65 * ln, prof[1], prof[2]])
+		_check(prof[0] < 0.05 and prof[1] > 0.9 and prof[2] < 0.05, "haze fades in from the lamp, peaks ~2.9 m out, fades out at the far end (%s)" % str(prof))
 	var dust: CPUParticles3D = sc.find_child("HeadlightDust", true, false) as CPUParticles3D
 	_check(dust != null and dust.has_meta("cine_ambient") and dust.use_fixed_seed, "headlight dust motes (fixed seed, clock-driven)")
 	if dust:
@@ -271,6 +302,34 @@ func _headlight(pl: CinePlayer) -> void:
 		_check(dust.speed_scale < 0.01, "dust freezes with the clock (speed_scale %.2f)" % dust.speed_scale)
 		pl.seek(24.0)
 		_check(absf(dust.speed_scale - 1.0) < 0.05, "dust drifts at normal speed in the tail (%.2f)" % dust.speed_scale)
+
+
+func _set_style(style: String) -> void:
+	var gfx: Node = root.get_node_or_null("/root/GameFX")
+	if gfx and gfx.has_method("set_art_style"):
+		gfx.call("set_art_style", style, false)
+	CharacterBuilder.ps2 = style == "vice"
+
+
+## After the throw no visible mesh on Mũ Xanh uses a helmet material (dome, rim, visor, straps - the PS2 head rebuilds its
+## own visor and straps; review I1), in the given art style.
+func _helmet_off(pl: CinePlayer, style: String) -> void:
+	var mats: Array = []
+	for k: String in CharacterBuilder._mat_cache.keys():
+		if k.begins_with("m_helmet"):
+			mats.append(CharacterBuilder._mat_cache[k])
+	var c3: CineActor = pl.actors["c3"]
+	for rr: float in [5.0, 11.76, 17.0]:
+		pl.seek(rr)
+		var vis: Array[String] = []
+		for n: Node in c3.body.find_children("*", "MeshInstance3D", true, false):
+			var mi: MeshInstance3D = n
+			if mi.is_visible_in_tree() and mats.has(mi.material_override):
+				vis.append(String(mi.name))
+		if rr < 10.0:
+			_check(vis.size() >= 2, "%s: Mũ Xanh wears his helmet before the throw (%d helmet meshes)" % [style, vis.size()])
+		else:
+			_check(vis.is_empty(), "%s: no helmet mesh left on Mũ Xanh at r %.2f (%s)" % [style, rr, ", ".join(vis)])
 
 
 ## Story start of every move cue next to a lie / get_up (strikes resolved like the validator): [actor, s, "prev->move"].
@@ -381,6 +440,8 @@ func _initialize() -> void:
 	root.add_child(world)
 	# nodes added in _initialize enter the tree only after it returns (actor global transforms need the tree)
 	await process_frame
+	# pin the art style (user://settings.cfg must not decide what is tested; review Minor 4): vice here, classic below
+	_set_style("vice")
 	CineMoves.max_tier = 1
 	p = CinePlayer.new()
 	world.add_child(p)
@@ -413,7 +474,15 @@ func _process(_d: float) -> bool:
 			_skate(p, "ual")
 			_penetration(p, "ual")
 			_helmet(p)
+			_helmet_off(p, "vice")
 			_headlight(p)
+			_set_style("classic")
+			var pk := CinePlayer.new()
+			world.add_child(pk)
+			pk.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false})
+			_helmet_off(pk, "classic")
+			pk.queue_free()
+			_set_style("vice")
 			p.queue_free()
 			var caps: Array[int] = [2, 3]
 			if CineRetarget.available("mixamo"):

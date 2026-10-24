@@ -39,6 +39,7 @@ static func load_music(slot: String) -> AudioStream:
 	return _load_file(p)
 
 
+## Shared with Phase W (called by name from its scripts): signature frozen, do not rename.
 static func _load_file(p: String) -> AudioStream:
 	if p.ends_with(".ogg"):
 		return AudioStreamOggVorbis.load_from_file(p)
@@ -65,6 +66,7 @@ static func music_gain(r: float, length: float, stream_len: float) -> float:
 # ---------------------------------------------------------------------------
 # Synthesis helpers
 # ---------------------------------------------------------------------------
+## Shared with Phase W (called by name from its scripts): signature frozen, do not rename.
 static func _tone(dur: float, f0: float, f1: float, amp: float, decay: float) -> PackedFloat32Array:
 	var n: int = int(dur * SR)
 	var out := PackedFloat32Array()
@@ -78,6 +80,7 @@ static func _tone(dur: float, f0: float, f1: float, amp: float, decay: float) ->
 	return out
 
 
+## Shared with Phase W (called by name from its scripts): signature frozen, do not rename.
 static func _noise(dur: float, amp: float, decay: float, rng_seed: int, lp: float = 0.0) -> PackedFloat32Array:
 	var n: int = int(dur * SR)
 	var out := PackedFloat32Array()
@@ -92,6 +95,7 @@ static func _noise(dur: float, amp: float, decay: float, rng_seed: int, lp: floa
 	return out
 
 
+## Shared with Phase W (called by name from its scripts): signature frozen, do not rename.
 static func _paste(buf: PackedFloat32Array, voice: PackedFloat32Array, at: float, gain: float) -> void:
 	var o: int = int(at * SR)
 	var n: int = mini(voice.size(), buf.size() - o)
@@ -99,6 +103,7 @@ static func _paste(buf: PackedFloat32Array, voice: PackedFloat32Array, at: float
 		buf[o + i] += voice[i] * gain
 
 
+## Shared with Phase W (called by name from its scripts): signature frozen, do not rename.
 static func _to_wav(buf: PackedFloat32Array) -> AudioStreamWAV:
 	var data := PackedByteArray()
 	data.resize(buf.size() * 2)
@@ -188,6 +193,7 @@ static func sfx(cue: String) -> AudioStream:
 	return st
 
 
+## Shared with Phase W (called by name from its scripts): signature frozen, do not rename.
 static func _mix(parts: Array) -> PackedFloat32Array:
 	var n: int = 0
 	for p: PackedFloat32Array in parts:

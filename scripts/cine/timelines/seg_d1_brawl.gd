@@ -191,7 +191,10 @@ func _props() -> void:
 	prop("banana", "banana", BANANA, 30.0)
 	prop("phone", "phone", PHONE, 25.0, {"glow_at": _sr(23.55)})
 	# Mũ Xanh's helmet: pops off in the throw, lands by the protagonist, is snatched up, swung, dropped
-	prop("helmet_a", "helmet", HELMET_A, 70.0, {"color": C3_HELMET, "show_at": xt + 0.22, "hide_at": sp})
+	# it leaves his head as he goes over the hip (xt + 0.06: hidden on him, this prop shown there) and tumbles to the road
+	var pop: Vector3 = P_C3B.lerp(C3_DOWN, 0.12) + Vector3(-0.38, 1.75, -0.06)   # his head as he starts the flip (measured)
+	prop("helmet_a", "helmet", HELMET_A, 70.0, {"color": C3_HELMET, "show_at": xt + 0.06, "hide_at": sp, "arc": 0.25,
+		"path": [[xt + 0.06, pop, Vector3(0.0, 70.0, 0.0)], [xt + 0.22, HELMET_A, Vector3(720.0, 70.0, 0.0)]]})
 	prop("helmet_b", "helmet", HELMET_B, -35.0, {"color": C3_HELMET, "show_at": _sr(12.13)})
 
 
