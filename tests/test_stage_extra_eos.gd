@@ -65,7 +65,7 @@ func _process(_delta: float) -> bool:
 		var title: String = (stage.get("modal_title") as Label).text
 		print("  Kết thúc sau %d frame: %s" % [frames, title])
 		print("  caught=%d wrong=%d photos=%d rep=%d cctv_toggles=%d" % [stage.get("caught"), stage.get("wrong_books"), stage.get("photos_used"), stage.get("reputation"), cctv_toggled])
-		if title.begins_with("⚖️") and int(stage.get("wrong_books")) == 1 and int(stage.get("reputation")) == 65 and cctv_toggled == 2:
+		if title.begins_with("DANH HIỆU 'GIÁM THỊ CÔNG LÝ FPTU'") and int(stage.get("wrong_books")) == 1 and int(stage.get("reputation")) == 65 and cctv_toggled == 2:
 			print("✅ SUCCESS: EVIDENCE WORKFLOW, CCTV TOGGLE AND WRONGFUL-BOOKING PENALTY ALL WORK")
 			quit(0)
 		else:

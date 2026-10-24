@@ -172,7 +172,7 @@ func _process(_delta: float) -> bool:
 		var sm: Node = root.get_node_or_null("StageManager")
 		var monsters: int = int(sm.call("item_count", "monster")) if sm else -1
 		print("  orders=%d spills=%d bumps=%d monster_in_inventory=%d" % [stage.get("orders_done"), stage.get("spills"), stage.get("bumps"), monsters])
-		if title.begins_with("🎉"):
+		if title.begins_with("NO NÊ CĂN TIN"):
 			print("✅ SUCCESS: SERVE + SHOP LOOP COMPLETED WITH A WIN")
 			quit(0)
 		else:

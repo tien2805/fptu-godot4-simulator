@@ -72,7 +72,7 @@ func _process(_delta: float) -> bool:
 		print("  Kết thúc sau %d frame: %s" % [frames, title])
 		print("  strikes=%d quiz=%d/%d phone_confiscated=%s" % [stage.get("strikes"), stage.get("quiz_correct"), stage.get("quiz_count"), str(stage.get("phone_confiscated"))])
 		# strikes có thể là 0 nếu lần gửi sai qua Wi-Fi bị "timeout" ngẫu nhiên (30%)
-		if title.begins_with("🎉") and int(stage.get("strikes")) <= 1:
+		if title.begins_with("SỐNG SÓT SLOT 1") and int(stage.get("strikes")) <= 1:
 			print("✅ SUCCESS: FAP + SURVIVAL LOOP COMPLETED WITH A WIN")
 			quit(0)
 		else:

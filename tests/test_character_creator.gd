@@ -54,7 +54,7 @@ func _run() -> void:
 		_check(cc.find_child("Row_" + k, true, false) != null, "row %s built" % k)
 	for b: String in ["btn_random", "btn_confirm", "btn_back"]:
 		_check(cc.get(b) is Button, "button %s" % b)
-	_check((cc.get("btn_random") as Button).text == "🎲 Ngẫu nhiên" and (cc.get("btn_confirm") as Button).text == "✔ Bắt đầu" and (cc.get("btn_back") as Button).text == "✖ Về menu", "button captions")
+	_check((cc.get("btn_random") as Button).text == "Ngẫu nhiên" and (cc.get("btn_confirm") as Button).text == "Bắt đầu" and (cc.get("btn_back") as Button).text == "Về menu", "button captions")
 	_check(cc.has_meta("no_pause"), "creator scene opts out of the pause menu")
 	var pr: Rect2 = (cc.get("panel") as Control).get_global_rect()
 	print("  creator panel %s in %s" % [str(pr), str(root.get_visible_rect())])
