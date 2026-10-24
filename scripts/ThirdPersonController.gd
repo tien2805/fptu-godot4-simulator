@@ -17,6 +17,9 @@
 #      landings (nhật ký kiểu tiếp đất), tín hiệu landed(kind, drop).
 # Actions InputMap tự đăng ký: move_forward (W/↑), move_back (S/↓), move_left (A/←), move_right (D/→), sprint (Shift),
 # walk (Ctrl), jump (Space; trên xe Space vẫn là drift của PlayerBike).
+# Phase W: aiming (WeaponDirector sets `aiming` from the right mouse button) eases the camera over the right shoulder
+# (AIM_DISTANCE behind, AIM_SIDE right, FOV AIM_FOV), turns the body with the camera and caps the speed at AIM_SPEED;
+# knock_down() is the comic fall of a rocket blast / an officer's tackle (SPLAT, never hurts); shake() for explosions.
 class_name ThirdPersonController
 extends CharacterBody3D
 
@@ -68,6 +71,12 @@ const ORBIT_RIGHT_KEY: Key = KEY_C
 const PITCH_MIN: float = -1.1
 const PITCH_MAX: float = 0.55
 const DEFAULT_PITCH: float = -0.2
+const AIM_DISTANCE: float = 1.7          # Phase W: over-the-shoulder camera while aiming
+const AIM_SIDE: float = 0.55
+const AIM_FOV: float = 50.0
+const AIM_SPEED: float = 2.2
+const AIM_TURN_RATE: float = 18.0
+const AIM_EASE_S: float = 0.15
 
 ## Tuỳ chọn truyền cho CharacterBuilder.build() (đặt trước khi vào cây).
 var character_opts: Dictionary = {"preset": "player", "rigged": true, "seed": 2805, "name": "PlayerModel"}
@@ -94,6 +103,9 @@ var jump_override: bool = false
 var slow_t: float = 0.0
 ## Nhật ký kiểu tiếp đất (test).
 var landings: Array[String] = []
+## Phase W: right mouse held (WeaponDirector); aim_blend eases 0..1 over AIM_EASE_S.
+var aiming: bool = false
+var aim_blend: float = 0.0
 var _exhausted: bool = false
 var _stamina_wait: float = 0.0
 var _state_t: float = 0.0
@@ -331,11 +343,13 @@ func _update_stamina(delta: float, sprinting_now: bool) -> void:
 
 func _ground(delta: float, move: Vector3, want_sprint: bool, want_walk: bool) -> void:
 	var has_input: bool = move.length_squared() > 0.0001
-	is_sprinting = want_sprint and has_input and not _exhausted
+	is_sprinting = want_sprint and has_input and not _exhausted and not aiming
 	_update_stamina(delta, is_sprinting)
 	var speed: float = SPRINT_SPEED if is_sprinting else (WALK_SPEED if want_walk else JOG_SPEED)
 	if slow_t > 0.0:
 		speed *= 0.5
+	if aiming:
+		speed = minf(speed, AIM_SPEED)
 	if has_input:
 		var accel: float = ACCEL_SPRINT if is_sprinting else ACCEL_JOG
 		velocity.x = move_toward(velocity.x, move.x * speed, accel * delta)
@@ -465,7 +479,10 @@ func _turn(delta: float, move: Vector3, rate: float) -> void:
 	if model == null:
 		return
 	var before: float = model.rotation.y
-	if move.length_squared() > 0.0001:
+	if aiming:
+		var diff_a: float = wrapf(yaw - before, -PI, PI)
+		model.rotation.y = before + clampf(diff_a, -AIM_TURN_RATE * delta, AIM_TURN_RATE * delta)
+	elif move.length_squared() > 0.0001:
 		var diff: float = wrapf(atan2(-move.x, -move.z) - before, -PI, PI)
 		model.rotation.y = before + clampf(diff, -rate * delta, rate * delta)
 	var turn_rate: float = wrapf(model.rotation.y - before, -PI, PI) / maxf(delta, 0.0001)
@@ -505,11 +522,41 @@ func _try_step_up(move: Vector3, delta: float) -> void:
 		global_position.y += step_h + 0.01
 
 
+## Phase W: comic knock-down (a rocket blast nearby, an officer's tackle): SPLAT – down SPLAT_TIME, getup GETUP_TIME –
+## shoved `power` m/s along `away`; never hurts. Ignored while already down.
+func knock_down(away: Vector3, power: float = 3.0) -> void:
+	if move_state == "SPLAT":
+		return
+	aiming = false
+	var a := Vector3(away.x, 0.0, away.z)
+	a = a.normalized() if a.length_squared() > 1e-6 else -facing_dir()
+	move_state = "SPLAT"
+	_state_t = 0.0
+	_splat_phase = 0
+	_air_clip = ""
+	floor_snap_length = FLOOR_SNAP
+	velocity = Vector3(a.x * power, 0.0, a.z * power)
+	if model:
+		model.rotation.y = atan2(-a.x, -a.z) + PI    # faces the shove, falls on its back away from it
+	_play("knockdown")
+	_shake(0.5)
+
+
+func is_knocked_down() -> bool:
+	return move_state == "SPLAT"
+
+
+## Phase W: camera shake (explosions), amp ~0.15-1.0.
+func shake(amp: float) -> void:
+	_shake(amp)
+
+
 # ---------------------------------------------------------------------------
 # CAMERA
 # ---------------------------------------------------------------------------
 func _process(delta: float) -> void:
 	if _built:
+		aim_blend = move_toward(aim_blend, 1.0 if aiming else 0.0, delta / AIM_EASE_S)
 		_update_camera(false)
 		_camera_fx(delta)
 
@@ -520,13 +567,14 @@ func _update_camera(snap: bool) -> void:
 	pitch = clampf(pitch, PITCH_MIN, PITCH_MAX)
 	cam_pivot.global_position = global_position + Vector3(0.0, CAM_HEIGHT, 0.0)
 	cam_pivot.global_basis = Basis.from_euler(Vector3(pitch, yaw, 0.0))
-	var dist: float = CAM_DISTANCE
+	var full: float = lerpf(CAM_DISTANCE, AIM_DISTANCE, aim_blend)
+	var dist: float = full
 	if cam_ray and cam_ray.enabled:
 		if not snap:
 			cam_ray.force_raycast_update()
 		if cam_ray.is_colliding():
 			var hit: Vector3 = cam_ray.get_collision_point()
-			dist = clampf(cam_pivot.global_position.distance_to(hit) - CAM_MARGIN, 0.6, CAM_DISTANCE)
+			dist = clampf(cam_pivot.global_position.distance_to(hit) - CAM_MARGIN, 0.6, full)
 	if snap:
 		camera.position = Vector3(0.0, 0.0, dist)
 	else:
@@ -538,7 +586,8 @@ func _update_camera(snap: bool) -> void:
 ## nên đổi tốc độ không giật), rung khi tiếp đất mạnh.
 func _camera_fx(delta: float) -> void:
 	var sprinting: bool = is_sprinting and horizontal_speed > JOG_SPEED + 0.5
-	camera.fov = lerpf(camera.fov, _fov_base + (SPRINT_FOV_ADD if sprinting else 0.0), 1.0 - exp(-FOV_EASE * delta))
+	var base_fov: float = lerpf(_fov_base, AIM_FOV, aim_blend)
+	camera.fov = lerpf(camera.fov, base_fov + (SPRINT_FOV_ADD if sprinting else 0.0), 1.0 - exp(-FOV_EASE * delta))
 	var bob: float = 0.0
 	_bob_phase = fmod(_bob_phase + delta * TAU * horizontal_speed / 2.6, TAU)
 	if move_state == "GROUND" and horizontal_speed > JOG_SPEED - 0.5:
@@ -550,7 +599,7 @@ func _camera_fx(delta: float) -> void:
 		var k: float = _shake_amp * clampf(_shake_t / 0.35, 0.0, 1.0) * 0.12
 		sx = randf_range(-k, k)
 		sy = randf_range(-k, k)
-	camera.position.x = sx
+	camera.position.x = AIM_SIDE * aim_blend + sx
 	camera.position.y = bob + sy
 
 

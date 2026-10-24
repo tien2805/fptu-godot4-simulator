@@ -96,6 +96,7 @@ func _initialize() -> void:
 		return
 	roam = packed.instantiate()
 	roam.set("crowd_enabled", false)   # các pha kiểm tra cố định: không người đi đường / xe chạy chen vào
+	roam.set("mayhem_enabled", false)   # Phase W: không vũ khí / truy nã trong các pha kiểm tra cố định
 	root.add_child(roam)   # _ready chạy ở frame đầu tiên của vòng lặp (sau _initialize), nên kiểm tra trong _process
 	md = MapData.load_default()
 	spawn = md.spawn_transform()
@@ -114,6 +115,8 @@ func _after_ready() -> bool:
 	if not _check(player != null and bike != null, "FreeRoam exposes player and bike"):
 		return false
 	if not _check(player is ThirdPersonController, "player is a ThirdPersonController"):
+		return false
+	if not _check(roam.get("weapons") == null and roam.get("weapon_wheel") == null, "mayhem_enabled = false builds no weapons"):
 		return false
 	if not _check(player.get_node_or_null("Model") != null, "player has a CharacterBuilder model child"):
 		return false

@@ -75,6 +75,7 @@ const HINT_DEFAULT: String = "[WASD] đi · [Shift] chạy nước rút · [Ctrl
 const HINT_RIDING: String = "[F] xuống xe · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [H] còi"
 const HINT_NO_DISMOUNT: String = "Không có chỗ trống cạnh xe để xuống (nước / tường / vật cản) – chạy ra chỗ rộng rồi bấm [F]"
 const HINT_RESCUED: String = "Rơi xuống kênh! Đã đưa bạn về chỗ khô gần nhất"
+const HINT_SERVICE_BIKE: String = "Đang lao động công ích – làm xong mới được lấy xe"
 const TOD_NAMES: Dictionary = {"dawn": "Bình minh 06:00", "morning": "Buổi sáng 07:30", "noon": "Giữa trưa 11:30", "night": "Đêm khuya 23:00"}
 const HOTSPOT_COLORS: Dictionary = {1: Color("#F37021"), 2: Color("#3498DB"), 3: Color("#2ECC71"), 4: Color("#E74C3C"), 5: Color("#F1C40F"), 6: Color("#9B59B6"), 7: Color("#1ABC9C")}
 
@@ -88,6 +89,16 @@ var pedestrians: PedestrianSpawner
 var traffic: RoamTraffic
 ## false = không dựng người đi đường / xe chạy (test_free_roam đặt trước add_child để các pha kiểm tra cố định)
 var crowd_enabled: bool = true
+## false = no weapons / wanted level (Phase W): test_free_roam sets it before add_child so its phases stay deterministic.
+var mayhem_enabled: bool = true
+var weapons: WeaponDirector
+var weapon_wheel: WeaponWheel
+var weapon_hud: WeaponHUD
+var wanted: WantedDirector
+## Classic style: small wanted star row under the clock (spec section 4); ViceHUD shows them in vice style.
+var classic_stars: ViceStars
+var emote_wheel: EmoteWheel
+var emotes: EmoteDirector
 var mounted: bool = false
 var bike_parked: bool = false
 var campus_xf: Transform3D = Transform3D.IDENTITY
@@ -175,6 +186,8 @@ func _ready() -> void:
 	if crowd_enabled:
 		_build_pedestrians()
 		_build_traffic()
+	if mayhem_enabled:
+		_build_mayhem()
 	player.camera.make_current()
 	var sm: Node = get_node_or_null("/root/StageManager")
 	if sm:
@@ -191,6 +204,8 @@ func _exit_tree() -> void:
 		sm.set("hub_key_blocked", false)
 	if cine_player != null and is_inside_tree():
 		get_tree().paused = false   # rời cảnh giữa cinematic: không để cảnh sau bị dừng
+	if wanted and wanted.state == "stamp" and is_inside_tree():
+		get_tree().paused = false   # rời cảnh giữa dấu "BỊ TÓM!": không để cảnh sau bị dừng
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
@@ -576,6 +591,8 @@ func _build_traffic() -> void:
 	if pedestrians:
 		opts["peds_fn"] = pedestrians.pedestrians
 	traffic.setup(md, player, opts)
+	if pedestrians:
+		traffic.fleer_fn = pedestrians.spawn_fleer   # Phase W: the rider of a shot / flipped vehicle runs away
 	for b: Variant in traffic.bodies():
 		var body: CollisionObject3D = b
 		if player and player.cam_ray:
@@ -943,10 +960,24 @@ func dismount_bike() -> bool:
 
 
 func toggle_bike() -> void:
+	if wanted and wanted.state != "free":
+		flash_hint(HINT_SERVICE_BIKE)   # Phase W: không lấy xe khi đang bị bắt / lao động công ích
+		return
 	if mounted:
 		dismount_bike()
 	else:
 		mount_bike()
+
+
+## Phase W, after community service (spec section 5): put the player on a free spot beside the parked bike (if parked).
+func place_beside_bike() -> bool:
+	if mounted or not bike_parked:
+		return false
+	var spot: Variant = _dismount_spot()
+	if spot == null:
+		return false
+	player.teleport(spot, bike.rotation.y)
+	return true
 
 
 # ===========================================================================
@@ -1166,6 +1197,8 @@ func _apply_hud_style() -> void:
 	if vice_hud:
 		vice_hud.suppressed = map_overlay != null and map_overlay.visible
 		_update_vice_hud(true)
+	if wanted:
+		wanted.refresh_hud()   # classic star row vs ViceHUD stars
 
 
 ## Radar theo người chơi / xe đang cưỡi (mỗi frame vật lý chỉ gán tâm + hướng); blip hotspot + xe đỗ theo nhịp HUD.
@@ -1209,6 +1242,8 @@ func _physics_process(delta: float) -> void:
 		var on_foot: bool = not mounted and player.visible
 		stamina_bar.value = player.stamina * 100.0
 		stamina_bar.visible = on_foot and (player.stamina < 0.999 or player.is_sprinting) and not (map_overlay and map_overlay.visible)
+	if weapon_hud:
+		weapon_hud.visible = not mayhem_blocked()
 	if _hint_flash_t > 0.0:
 		_hint_flash_t -= delta
 	_hud_timer -= delta
@@ -1237,6 +1272,77 @@ static func _thousands(n: int) -> String:
 		if k % 3 == 0 and i > 0:
 			out = " " + out
 	return out
+
+
+# ===========================================================================
+# PHASE W: VŨ KHÍ / TRUY NÃ (spec 2026-10-23-phase-w-weapons-wanted-design.md)
+# ===========================================================================
+func _build_mayhem() -> void:
+	weapon_wheel = WeaponWheel.new()
+	weapon_wheel.name = "WeaponWheel"
+	add_child(weapon_wheel)
+	weapon_hud = WeaponHUD.new()
+	weapon_hud.name = "WeaponHUD"
+	add_child(weapon_hud)
+	weapons = WeaponDirector.new()
+	weapons.name = "Weapons"
+	add_child(weapons)
+	weapons.setup({"player": player, "wheel": weapon_wheel, "hud": weapon_hud, "targets_fn": mayhem_targets,
+		"traffic": traffic, "spawner": pedestrians, "blocked_fn": mayhem_blocked})
+	classic_stars = ViceStars.new()
+	classic_stars.name = "ClassicStars"
+	classic_stars.cells = 3
+	classic_stars.align_right = false
+	classic_stars.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	classic_stars.offset_left = 24.0
+	classic_stars.offset_top = 64.0
+	classic_stars.offset_right = 24.0 + 3.0 * 22.0
+	classic_stars.offset_bottom = 64.0 + 22.0
+	classic_stars.visible = false
+	hud.add_child(classic_stars)
+	if vice_hud:
+		vice_hud.stars.cells = 3
+		vice_hud.stars.custom_minimum_size = Vector2(3.0 * ViceHUD.STAR_CELL, ViceHUD.STAR_CELL)
+	wanted = WantedDirector.new()
+	wanted.name = "Wanted"
+	add_child(wanted)
+	wanted.setup({"player": player, "roam": self, "md": md, "traffic": traffic, "vice_hud": vice_hud, "classic_stars": classic_stars})
+	weapons.mayhem.connect(wanted.add_heat)
+	emote_wheel = EmoteWheel.new()
+	emote_wheel.name = "EmoteWheel"
+	add_child(emote_wheel)
+	emotes = EmoteDirector.new()
+	emotes.name = "Emotes"
+	add_child(emotes)
+	emotes.setup({"player": player, "weapons": weapons, "wheel": emote_wheel, "weapon_wheel": weapon_wheel,
+		"targets_fn": mayhem_targets, "fx": weapons.fx, "blocked_fn": mayhem_blocked})
+	# one wheel at a time; no weapon during an emote (spec section 9)
+	weapons.blocked_fn = func() -> bool: return mayhem_blocked() or emotes.active or emotes.pending >= 0 or emote_wheel.is_open()
+
+
+## Everything weapons can hit: pedestrians of both tiers (officers join in Task 8).
+func mayhem_targets() -> Array:
+	var out: Array = []
+	if pedestrians:
+		out.append_array(pedestrians.pedestrians())
+	if wanted:
+		out.append_array(wanted.officers())
+	return out
+
+
+## Weapons and the wheel are off while riding (W-D9: on foot only), during a cinematic / replay (tree paused or
+## StageManager.cinematic_active), while the map is open or the player is hidden.
+func mayhem_blocked() -> bool:
+	if mounted or cine_player != null or player == null or not player.visible:
+		return true
+	if map_overlay and map_overlay.visible:
+		return true
+	if wanted and wanted.state != "free":
+		return true   # busted (stamp, cutscene) or community service
+	if is_inside_tree() and get_tree().paused:
+		return true
+	var sm: Node = get_node_or_null("/root/StageManager")
+	return sm != null and bool(sm.get("cinematic_active"))
 
 
 # ===========================================================================
@@ -1495,7 +1601,7 @@ func _cine_clutter_in(items: Array, xf: Transform3D, size: Vector2) -> Array:
 func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 	if tl == null or cine_player != null:
 		return null
-	var xf: Variant = cine_stage(tl.stage) if not tl.stage.is_empty() else Transform3D(Basis.IDENTITY, roam_position())
+	var xf: Variant = opts["xf"] if opts.get("xf") is Transform3D else (cine_stage(tl.stage) if not tl.stage.is_empty() else Transform3D(Basis.IDENTITY, roam_position()))
 	if xf == null:
 		flash_hint("Không tìm được chỗ trống để diễn cinematic %s" % tl.slot)
 		return null
@@ -1506,7 +1612,7 @@ func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 		p.queue_free()
 		return null
 	_cine_saved = {"tod": tod_preset, "vis": {}, "proc": {}, "cam": get_viewport().get_camera_3d()}
-	for n: Node in [player, bike, hint_holder, tod_holder, stats_holder, vice_hud, stamina_bar, map_overlay, pedestrians, traffic]:
+	for n: Node in [player, bike, hint_holder, tod_holder, stats_holder, vice_hud, stamina_bar, map_overlay, pedestrians, traffic, weapon_hud, wanted]:
 		if n and "visible" in n:
 			_cine_saved["vis"][n] = n.visible
 			n.visible = false
