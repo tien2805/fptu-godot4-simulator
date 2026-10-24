@@ -6,7 +6,9 @@
 # restores the weapon, lasts 3.30 s, can only be cancelled by movement from 2.20 s; bystanders within 10 m react by share
 # (clap / shout back / film with a glowing phone / look), nobody beyond 10 m, fleeing or knocked out reacts, then they
 # resume; the synthesized cue follows the fixed layout and the override resolution does not depend on the owner's local
-# file (injectable sfx dir). Part B (FreeRoam, crowd off): blocked on the bike, weapons blocked during the emote.
+# file (injectable sfx dir). Fix round: an emote started while the dép flies leaves the dép visible in the hand once it is
+# back (R1-I2); a reacting bystander bumped by the player drops the phone and the head look (R1-I1).
+# Part B (FreeRoam, crowd off): blocked on the bike, weapons blocked during the emote.
 # Counts physics frames (Engine.max_fps = 60).
 # Run:  godot --headless --path . --script tests/test_emotes.gd
 extends SceneTree
@@ -240,11 +242,32 @@ func _on_physics() -> void:
 				player.input_override = Vector2.ZERO
 				var end_t: float = float(finishes[1][2])
 				_check(finishes[1][1] == true and end_t >= EmoteDirector.CANCEL_FROM - 1e-6 and end_t <= EmoteDirector.CANCEL_FROM + FRAME + 1e-6, "movement input ends the emote only from 2.20 s (ended at %.3f)" % end_t)
+				_next("dep")
+			if t == 400 and not has_meta("e2"):
+				_check(false, "the cancel test never finished")
+				_finish()
+		"dep":
+			if t == 2:
+				dir.equip(WeaponData.Slot.DEP)
+			if t == 10:
+				dir.cooldown = 0.0
+				dir.fire_override = true
+			if t == 11:
+				dir.fire_override = false
+			if t == 14:
+				_check(dir.dep_in_flight and emotes.play(0), "test setup: the dép flies, the emote starts")
+			if finishes.size() == 3 and not has_meta("e3"):
+				set_meta("e3", true)
+				_check(not dir.dep_in_flight and dir.held != null and dir.held.visible, "the dép came back during the emote and shows in the hand afterwards (R1-I2)")
+				var p: Pedestrian = near[0]
+				_check(p.react_emote("film", player.global_position, 3.0), "test setup: a bystander films")
+				p.react("bump", Vector3(1.0, 0.0, 0.0), 3.0)
+				_check(p.get("_react_prop") == null and p.react_kind == "" and p.state == Pedestrian.State.STUMBLE, "bumped while filming: the phone and the head look are dropped (R1-I1)")
 				player.knock_down(Vector3(1.0, 0.0, 0.0), 1.0)
 				_check(not emotes.play(0), "refused while knocked down")
 				_start_b()
-			if t == 400 and not has_meta("e2"):
-				_check(false, "the cancel test never finished")
+			if t == 400 and not has_meta("e3"):
+				_check(false, "the dép emote test never finished")
 				_finish()
 		"b":
 			_part_b(t)

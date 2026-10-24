@@ -74,7 +74,6 @@ var bubble: Label3D
 var _fwd: Vector3 = Vector3.FORWARD
 var _took_off: bool = false
 var _snap: float = 0.4
-var _held_vis: bool = true
 var _bubble_left: float = 0.0
 var _extras: Array = []                  # [node, seconds left]: shout-back bubbles and voices
 
@@ -157,9 +156,8 @@ func _begin(slot: int) -> void:
 	start_pos = player.global_position
 	_snap = player.floor_snap_length
 	player.set_physics_process(false)
-	if weapons and weapons.held:
-		_held_vis = weapons.held.visible
-		weapons.held.visible = false
+	if weapons:
+		weapons.set_held_hidden("emote", true)   # WeaponDirector owns the prop (a dép in flight stays hidden after)
 	started.emit(emote_id)
 
 
@@ -167,12 +165,19 @@ func _physics_process(delta: float) -> void:
 	_tick_extras(delta)
 	if pending >= 0 and not active:
 		if Engine.time_scale >= 0.999:
-			_begin(pending)
+			var slot: int = pending
+			pending = -1
+			if is_blocked():                 # e.g. F to mount during the wheel's ease: drop it, never start for one frame
+				return
+			_begin(slot)
 		return
 	if not active:
 		return
 	if (blocked_fn.is_valid() and bool(blocked_fn.call())) or player.is_knocked_down():
-		_end(true)                        # busted, a cinematic, a tackle...: stop at once
+		_end(true)                        # busted, a cinematic, a tackle...: stop at once, the shout and the bubble too
+		shout.stop()
+		bubble.visible = false
+		_bubble_left = 0.0
 		return
 	t += delta
 	_move()
@@ -235,8 +240,8 @@ func _end(cancelled: bool) -> void:
 	player.set_physics_process(true)
 	CharacterBuilder.set_speed(player.model, 0.0)
 	CharacterBuilder.set_param(player.model, "run", 0.0)
-	if weapons and weapons.held:
-		weapons.held.visible = _held_vis
+	if weapons:
+		weapons.set_held_hidden("emote", false)
 	finished.emit(emote_id, cancelled)
 
 

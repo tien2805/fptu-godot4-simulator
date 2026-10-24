@@ -100,6 +100,7 @@ func _on_physics() -> void:
 	_check(wheel.slots.size() == 8 and String(wheel.slots[5]["name"]) == "Dép tổ ong", "the weapon wheel's slot list is the W-D4 table")
 	_run()
 	_generic()
+	_two_wheels()
 	Engine.time_scale = 1.0
 	if fails.is_empty():
 		print("✅ SUCCESS: WEAPON WHEEL (wedges, dead zone, hold/tap, eased 0.2 time scale, select / cancel, scroll, blocked, icons)")
@@ -249,3 +250,39 @@ func _generic() -> void:
 	rw.step_real(0.2)
 	_check(is_equal_approx(Engine.time_scale, 1.0), "the generic wheel restores the time scale too")
 	rw.queue_free()
+
+
+## Fix round R1: the weapon and the emote wheel pressed in the same tick - only one opens and the slow motion holds; the
+## loser never writes 1.0 (only the owner of the time scale writes it).
+func _two_wheels() -> void:
+	Engine.time_scale = 1.0
+	var ew := EmoteWheel.new()
+	ew.manual = true
+	root.add_child(ew)
+	wheel.blocked_fn = func() -> bool: return ew.is_open()
+	ew.blocked_fn = func() -> bool: return wheel.is_open()
+	for k: int in 2:                     # the emote wheel has been used once already (it wrote the time scale before)
+		ew.press()
+		ew.step_real(0.13)
+		ew.step_real(0.12)
+		ew.cancel()
+		ew.step_real(0.12)
+	var opens: Array = []
+	wheel.opened.connect(func() -> void: opens.append("weapon"))
+	ew.opened.connect(func() -> void: opens.append("emote"))
+	wheel.press()
+	ew.press()
+	wheel.step_real(0.13)
+	ew.step_real(0.13)
+	_check(wheel.is_open() != ew.is_open() and opens.size() == 1, "two wheels pressed together: exactly one opens, the other never emits opened (%s)" % str(opens))
+	for i: int in 3:
+		wheel.step_real(0.05)
+		ew.step_real(0.05)
+	_check(is_equal_approx(Engine.time_scale, WeaponWheel.SLOW), "... and its slow motion holds (%.3f)" % Engine.time_scale)
+	wheel.cancel()
+	ew.cancel()
+	for i2: int in 3:
+		wheel.step_real(0.05)
+		ew.step_real(0.05)
+	_check(is_equal_approx(Engine.time_scale, 1.0) and RadialWheel.scale_owner == null, "closed: back to 1.0, no owner left")
+	ew.queue_free()

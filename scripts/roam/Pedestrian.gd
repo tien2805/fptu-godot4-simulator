@@ -134,6 +134,8 @@ func setup(g: PedWalkGraph, node: int, ident: Dictionary) -> void:
 	_sep_phase = int(identity["wseed"]) % SEPARATION_EVERY
 	prev_node = node
 	target_node = node
+	if react_kind != "":
+		_end_react()                         # recycled mid-reaction: no phone left on the reused body
 	state = State.WALK
 	velocity = Vector3.ZERO
 	hits.clear()
@@ -269,6 +271,8 @@ func _check_contacts() -> void:
 
 
 func react(kind: String, away: Vector3, speed: float) -> void:
+	if state == State.REACT:
+		_end_react()                         # bumped while reacting to an emote: drop the phone, free the head look
 	hits.append(kind)
 	_away = away
 	_t = 0.0
@@ -319,7 +323,7 @@ func _walk(delta: float) -> void:
 			snap_to_floor()
 	else:
 		_gravity(delta)
-		if is_on_wall():
+		if is_on_wall() and _wall_is_low_static():
 			_try_step_up(dir, delta)
 		move_and_slide()
 	_face(dir, delta)
@@ -458,6 +462,8 @@ func take_hit(info: Dictionary) -> String:
 			hits.append("pushed")
 			return "pushed"
 		"scare":
+			if state == State.STINK or state == State.DANCE:
+				return "none"                    # already reacting; they flee when it ends
 			if state != State.FLEE:
 				flee_from(from, FLEE_HIT_TIME)
 			return "flee"
@@ -619,6 +625,8 @@ func _end_react() -> void:
 	react_kind = ""
 	CharacterBuilder.stop_clip(model)
 	CharacterBuilder.look_at_point(model, null)
+
+
 ## Horizontal unit direction of v; +Z when v is (almost) vertical or zero.
 static func _flat_dir(v: Vector3) -> Vector3:
 	var f := Vector3(v.x, 0.0, v.z)
@@ -642,6 +650,16 @@ func _face(dir: Vector3, delta: float) -> void:
 
 
 ## Bước lên bậc thấp khi đang bị chặn (lề, bậc sân campus), như ThirdPersonController._try_step_up.
+## Phase W (performance gate): only a low static contact (kerb, step) is worth the step-up probes; bumping into people,
+## officers, vehicles or a building wall (contact higher than STEP_HEIGHT above the feet) costs no test_move.
+func _wall_is_low_static() -> bool:
+	for i: int in get_slide_collision_count():
+		var c: KinematicCollision3D = get_slide_collision(i)
+		if absf(c.get_normal().y) < 0.7 and c.get_position().y - global_position.y <= STEP_HEIGHT 				and c.get_collider() is StaticBody3D:
+			return true
+	return false
+
+
 func _try_step_up(dir: Vector3, delta: float) -> void:
 	var motion: Vector3 = Vector3(velocity.x, 0.0, velocity.z) * delta
 	if motion.length_squared() < 0.000001:

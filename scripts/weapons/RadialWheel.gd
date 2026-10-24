@@ -15,7 +15,9 @@
 # in real time (PROCESS_MODE_ALWAYS, Time.get_ticks_usec, or step_real(dt) when `manual`). blocked_fn (cinematic, replay,
 # busted, community service, riding, map, the other wheel open, tree paused) stops it from opening and closes it at once
 # (time scale back to 1.0). This file lives OUTSIDE scripts/cine/: A1-D6 forbids cinematic code to write Engine.time_scale.
-# It restores 1.0 when it leaves the tree. GameFX / StageManager are never named here.
+# It restores 1.0 when it leaves the tree. Only the wheel that owns the time scale (scale_owner: the last one opened, until
+# its ease back to 1.0 ends) writes it, so two wheels pressed together never undo each other's slow motion, and a wheel
+# that becomes blocked during its hold never opens. No autoload is referenced here.
 class_name RadialWheel
 extends CanvasLayer
 
@@ -67,6 +69,8 @@ var _scale_to: float = 1.0
 var _ease_t: float = -1.0
 var _wrote: bool = false
 var _last_us: int = 0
+## The wheel currently allowed to write Engine.time_scale (null = none).
+static var scale_owner: Object = null
 
 
 func _ready() -> void:
@@ -84,8 +88,11 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	if _wrote and not is_equal_approx(Engine.time_scale, 1.0):
-		Engine.time_scale = 1.0
+	if scale_owner == self:
+		if not is_equal_approx(Engine.time_scale, 1.0):
+			Engine.time_scale = 1.0
+		scale_owner = null
+	_wrote = false
 	_open = false
 	_pressing = false
 	_ease_t = -1.0
@@ -150,6 +157,7 @@ func open() -> void:
 	vice = ViceHUD.style_active()
 	view.visible = true
 	view.queue_redraw()
+	scale_owner = self
 	_ease_to(SLOW)
 	opened.emit()
 
@@ -175,10 +183,16 @@ func step_real(dt: float) -> void:
 		_set_scale(lerpf(_scale_from, _scale_to, u * u * (3.0 - 2.0 * u)))
 		if u >= 1.0:
 			_ease_t = -1.0
+			if _scale_to >= 1.0 and scale_owner == self:
+				scale_owner = null           # back at normal speed: released
+				_wrote = false
 	if _pressing:
 		_press_t += dt
 		if _press_t >= HOLD_S - 1e-6:
-			open()
+			if is_blocked():
+				_pressing = false            # blocked during the hold (the other wheel opened, F to mount...)
+			else:
+				open()
 	if (_open or _pressing) and is_blocked():
 		_force_close()
 
@@ -198,6 +212,8 @@ func _ease_to(target: float) -> void:
 
 
 func _set_scale(v: float) -> void:
+	if scale_owner != self:
+		return                               # another wheel owns the time scale now
 	Engine.time_scale = v
 	_wrote = true
 
@@ -209,8 +225,10 @@ func _force_close() -> void:
 		view.visible = false
 		closed.emit(false)
 	_ease_t = -1.0
-	if _wrote:
+	if scale_owner == self:
 		_set_scale(1.0)
+		scale_owner = null
+	_wrote = false
 
 
 func _input(event: InputEvent) -> void:
