@@ -889,13 +889,14 @@ static func lamp_on(s: float, windows: Array) -> bool:
 	return true
 
 
+## Lamp on / off without switching shader variants (review A2-R3: toggling emission_enabled can hitch on the first flicker).
 static func set_lamp(prop: Node3D, on: bool) -> void:
 	var ol: OmniLight3D = prop.get_meta("lamp_light", null)
 	if ol:
 		ol.visible = on
 	var b: StandardMaterial3D = prop.get_meta("lamp_bulb", null)
 	if b:
-		b.emission_enabled = on
+		b.emission_energy_multiplier = 2.5 if on else 0.0
 
 
 ## Fluffy white sheep mask (Cừu Dolly's clones): wool puffs, dark muzzle, ears; centred on the head (Head bone + offset).
@@ -906,7 +907,7 @@ static func _build_sheep_mask(root: Node3D) -> void:
 		Vector3(-0.06, 0.13, 0.05), Vector3(0.06, 0.13, 0.05), Vector3(0, 0.15, -0.03)]
 	for i: int in puffs.size():
 		_sphere(root, "Puff%d" % i, 0.085, puffs[i], wool)
-	_sphere(root, "Muzzle", 0.07, Vector3(0.0, 0.03, -0.09), face, Vector3(0.85, 1.1, 0.8))
+	_sphere(root, "Muzzle", 0.075, Vector3(0.0, -0.005, -0.09), face, Vector3(0.9, 1.35, 0.8))   # down over the chin
 	var eye: StandardMaterial3D = _glow_mat(Color("#FFFFFF"), 1.2)
 	for sx: float in [-0.028, 0.028]:
 		_sphere(root, "Eye", 0.012, Vector3(sx, 0.06, -0.15), eye)

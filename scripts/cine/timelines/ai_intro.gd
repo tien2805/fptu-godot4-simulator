@@ -22,13 +22,14 @@ func build() -> void:
 	stage = {"landmark": "be6_center", "near": 70.0, "size": Vector2(7.0, 7.0), "tod": "morning"}
 	actor("hero", StoryUtil.hero_opts({"preset": "player", "seed": 2805}), StoryUtil.hero_name(), Color("#F37021"))
 	key("hero", 0.0, HERO, 0.0)
-	move("hero", 0.0, "idle")
+	move("hero", 0.0, "hold_up")   # reading the phone
 	hold("hero", 0.0, 24.0, "phone", {"offset": Vector3(0.0, 0.0, -0.02), "glow": true})
-	look("hero", 1.2, 12.0, Vector3(0.1, 1.05, -0.45))
+	look("hero", 1.2, 12.0, Vector3(0.12, 1.25, -0.38))
 	expr("hero", 1.2, "open")
 	expr("hero", 5.2, "surprised")
 	expr("hero", 8.2, "done")
 	move("hero", 12.4, "head_shake")
+	move("hero", 13.0, "idle", {"fade": 0.2})
 	expr("hero", 13.2, "angry")
 	look("hero", 13.0, 24.0, Vector3(0.0, 1.6, -5.0))
 	move("hero", 17.6, "victory")
@@ -44,4 +45,4 @@ func build() -> void:
 	shot("S4", 12.4, "static", "low hero shot: determined", {"pos": Vector3(-0.8, 0.7, -2.4), "look": Vector3(0.0, 1.4, 0.0), "fov": 46.0})
 	shot("S5", 17.4, "orbit", "orbit under the title card", {"center": Vector3(0.0, 1.0, 0.0), "radius": 3.2, "deg_from": 200.0, "deg_to": 160.0, "height": 1.5, "fov": 50.0})
 	sub(9.2, 2.2, "hero", "Mình… bị đình chỉ thi á?!")
-	sub(14.6, 2.6, "hero", "Được. Bảy ngày. Phải tìm ra kẻ cài cái kính đó!")
+	sub(14.5, 2.9, "hero", "Được. Bảy ngày. Phải tìm ra kẻ cài cái kính đó!")

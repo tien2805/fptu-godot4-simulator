@@ -13,6 +13,6 @@ SHOT S5      6.400  static    wide: running off to the race
 #
 # Subtitles (real start - end, speaker: line)
 SUB    1.600 -  3.600  Bạn: Tôi là ai, đây là đâu?
-SUB    4.000 -  5.800  Phúc (tin nhắn): Ê!!! Thi EOS 8h đó, 7h05 rồi!!!
+SUB    4.000 -  5.900  Phúc (tin nhắn): Ê!!! Thi EOS 8h đó, 7h05 rồi!!!
 SUB    5.950 -  6.950  Bạn: CHẾT RỒI!!!
 SUB    7.000 -  7.900  Bạn: Ét o ét…

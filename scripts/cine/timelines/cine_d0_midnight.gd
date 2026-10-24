@@ -9,10 +9,10 @@
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline
 
-const SEAT := Vector3(-0.25, 0.42, 0.0)      # sitting on the bench (the "slumped" sit raised to seat height)
+const SEAT := Vector3(-0.25, 0.0, -0.02)     # in front of the seat: sit_bench drops the hips to seat height
 const BAG := Vector3(0.45, 0.455, -0.02)
-const PHUC_LOW := Vector3(0.05, -1.1, 1.05)  # hidden behind the bench back
-const PHUC_UP := Vector3(0.05, 0.0, 1.05)
+const PHUC_LOW := Vector3(0.05, -1.1, 0.45)  # hidden right behind the bench back
+const PHUC_UP := Vector3(0.05, 0.0, 0.45)
 const LAMP := Vector3(1.9, 0.0, 0.9)
 
 var calm: bool = false
@@ -34,7 +34,8 @@ func build() -> void:
 	prop("lamp", "lamp", LAMP, 0.0, {"flicker": [] if calm else [[6.2, 7.4], [8.1, 8.7], [9.5, 10.1]]})
 	# the protagonist, awake on the bench
 	key("hero", 0.0, SEAT, 0.0)
-	move("hero", 0.0, "slumped")
+	move("hero", 0.0, "sit_bench")
+	move("hero", 15.0, "sit_bench_hold", {"fade": 0.3})
 	expr("hero", 0.0, "open")
 	expr("hero", 2.6, "closed")
 	expr("hero", 4.2, "open")
@@ -57,7 +58,6 @@ func build() -> void:
 	move("phuc", 0.0, "idle")
 	hold("phuc", 0.0, 22.0, "face_mask", {"bone": "Head", "offset": Vector3(0.0, 0.02, 0.0)})
 	hold("phuc", 0.0, 22.0, "noodles", {"offset": Vector3(0.0, 0.0, -0.03)})
-	look("phuc", 10.0, 22.0, "hero")
 	expr("phuc", 10.6, "talk")
 	expr("phuc", 12.6, "happy")
 	expr("phuc", 19.0, "talk")
@@ -73,8 +73,8 @@ func build() -> void:
 	sfx_at(12.4, "ba_dum_tss", -3.0)
 	sfx_at(16.0, "dun_dun_duun", -2.0)
 	shot("S1", 0.0, "static", "wide: the bench at night", {"pos": Vector3(3.4, 1.6, -3.8), "look": Vector3(0.0, 0.8, 0.3), "fov": 50.0})
-	shot("S2", 2.0, "static", "close: cannot sleep", {"pos": Vector3(0.35, 1.05, -1.25), "look": Vector3(-0.2, 0.95, 0.0), "fov": 38.0, "hand": 0.15})
-	shot("S3", 5.4, "static", "close: the backpack glows red", {"pos": Vector3(1.0, 0.95, -0.8), "look": Vector3(0.45, 0.6, 0.0), "fov": 36.0})
+	shot("S2", 2.0, "static", "close: cannot sleep", {"pos": Vector3(0.35, 1.05, -1.25), "look": Vector3(-0.2, 1.15, 0.0), "fov": 38.0, "hand": 0.15})
+	shot("S3", 5.4, "static", "close: the backpack glows red", {"pos": Vector3(1.0, 0.95, -0.8), "look": Vector3(0.45, 0.72, 0.0), "fov": 36.0})
 	shot("S4", 8.8, "static", "low front two-shot: the face rises behind", {"pos": Vector3(0.15, 0.9, -2.6), "look": Vector3(0.0, 1.2, 0.8), "fov": 46.0})
 	shot("S5", 13.8, "static", "close: glasses that are not theirs", {"pos": Vector3(0.45, 1.1, -0.8), "look": Vector3(-0.1, 0.85, -0.15), "fov": 32.0})
 	shot("S6", 18.6, "static", "wide: deadpan", {"pos": Vector3(3.0, 1.5, -3.2), "look": Vector3(0.0, 0.9, 0.5), "fov": 48.0})

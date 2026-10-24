@@ -19,6 +19,8 @@ const COUNT := [12.6, 17.0]
 const COUNT_FROM: int = 10
 const COUNT_LAND: float = 14.0
 const TITLE := [17.4, 24.0]
+## Mr.T's text and the countdown sit in the top band of the screen (anchor 0 .. TOP_BAND), above the faces.
+const TOP_BAND: float = 0.42
 const PINK := Color("#FF4FA3")
 const RED := Color("#E8202E")
 
@@ -67,11 +69,13 @@ func _panel(bg: Color, border: Color, radius: int) -> StyleBoxFlat:
 	return sb
 
 
-func _lbl(text: String, size: int, col: Color, italic: bool = false) -> Label:
+## wrap: only the email body and Mr.T's text wrap (they sit in boxes with a minimum width); a wrapping label in a bare
+## CenterContainer would shrink to one letter per line (review A2-R3).
+func _lbl(text: String, size: int, col: Color, italic: bool = false, wrap: bool = false) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if wrap else TextServer.AUTOWRAP_OFF
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", col)
 	l.add_theme_color_override("font_outline_color", Color(0.05, 0.02, 0.08, 0.95))
@@ -82,9 +86,12 @@ func _lbl(text: String, size: int, col: Color, italic: bool = false) -> Label:
 	return l
 
 
-func _centered(min_size: Vector2) -> CenterContainer:
+## A full-width CenterContainer from the top of the screen down to `bottom` (anchor fraction).
+func _centered(min_size: Vector2, bottom: float = 1.0) -> CenterContainer:
 	var c := CenterContainer.new()
 	c.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	c.anchor_bottom = bottom
+	c.offset_bottom = 0.0
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(c)
 	var holder := Control.new()
@@ -108,7 +115,7 @@ func _build() -> void:
 	ev.add_child(_lbl("📧 Hộp thư · 07:02", 14, Color("#6A5A80")))
 	ev.add_child(_lbl("Phòng Khảo thí", 20, Color("#2A1C3C")))
 	ev.add_child(_lbl("QUYẾT ĐỊNH ĐÌNH CHỈ THI", 26, RED))
-	email_body = _lbl("", 15, Color("#2A1C3C"))
+	email_body = _lbl(StoryUtil.fmt("Sinh viên {name} bị đình chỉ thi môn EOS do nghi vấn mang thiết bị gian lận (kính thông minh) vào phòng 311. Hội đồng kỷ luật họp sau 7 ngày."), 15, Color("#2A1C3C"), false, true)
 	ev.add_child(email_body)
 	var c2: CenterContainer = _centered(Vector2.ZERO)
 	stamp = _lbl("TOANG!", 120, RED, true)
@@ -117,7 +124,7 @@ func _build() -> void:
 	stamp.add_theme_constant_override("outline_size", 14)
 	stamp.rotation_degrees = -12.0
 	c2.add_child(stamp)
-	var c3: CenterContainer = _centered(Vector2.ZERO)
+	var c3: CenterContainer = _centered(Vector2.ZERO, TOP_BAND)   # upper third: clear of the face in the close-ups
 	text_box = PanelContainer.new()
 	text_box.name = "MrTText"
 	text_box.custom_minimum_size = Vector2(420.0, 0.0)
@@ -127,8 +134,8 @@ func _build() -> void:
 	var tv := VBoxContainer.new()
 	text_box.add_child(tv)
 	tv.add_child(_lbl("💬 Mr.T", 18, Color("#B98CFF")))
-	tv.add_child(_lbl("Thầy tin em. Tìm bằng chứng đi.", 24, Color("#F4F1FF")))
-	var c4: CenterContainer = _centered(Vector2.ZERO)
+	tv.add_child(_lbl("Thầy tin em. Tìm bằng chứng đi.", 24, Color("#F4F1FF"), false, true))
+	var c4: CenterContainer = _centered(Vector2.ZERO, TOP_BAND)
 	count_label = _lbl("", 72, PINK, true)
 	count_label.name = "Countdown"
 	c4.add_child(count_label)
@@ -147,6 +154,8 @@ func _build() -> void:
 	tc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	title_box.add_child(tc)
 	var tvb := VBoxContainer.new()
+	tvb.name = "TitleColumn"
+	tvb.custom_minimum_size = Vector2(720.0, 0.0)   # the pastel strip under the title needs a width
 	tvb.add_theme_constant_override("separation", 4)
 	tc.add_child(tvb)
 	tvb.add_child(_lbl("TOOL ĐEN", 110, PINK, true))
@@ -157,7 +166,6 @@ func _build() -> void:
 func update(r: float) -> void:
 	var st: Dictionary = state_at(r)
 	last_state = st
-	email_body.text = StoryUtil.fmt("Sinh viên {name} bị đình chỉ thi môn EOS do nghi vấn mang thiết bị gian lận (kính thông minh) vào phòng 311. Hội đồng kỷ luật họp sau 7 ngày.")
 	email_box.visible = bool(st["email"])
 	var sc: float = float(st["stamp_scale"])
 	stamp.visible = sc > 0.0

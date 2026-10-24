@@ -15,9 +15,9 @@ SHOT S7     12.550  static    same view: the opening is empty
 SHOT S8     13.200  static    wide three-shot, deadpan tail
 #
 # Subtitles (real start - end, speaker: line)
-SUB    0.600 -  3.300  Mr.T: Giỏi lắm em! Ảnh tai nghe này là bằng chứng rõ ràng.
-SUB    3.600 -  5.600  Mr.T: Thầy gửi Phòng Khảo thí ngay. Cảm ơn em, Bạn.
+SUB    0.400 -  3.600  Mr.T: Giỏi lắm em! Ảnh tai nghe này là bằng chứng rõ ràng.
+SUB    3.600 -  7.000  Mr.T: Thầy gửi Phòng Khảo thí ngay. Cảm ơn em, Bạn.
 SUB    8.800 - 10.500  Phúc: Ét o ét! Thi xong chưa?!
 SUB   10.900 - 12.400  Bạn: Xong lâu rồi mày ơi…
-SUB   13.400 - 16.200  Phúc: Thôi đi ăn mì đi, tao bao… à quên, tao hết tiền rồi.
-SUB   16.400 - 17.600  Bạn: …
+SUB   13.400 - 16.600  Phúc: Thôi đi ăn mì đi, tao bao… à quên, tao hết tiền rồi.
+SUB   16.700 - 17.700  Bạn: …

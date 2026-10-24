@@ -13,4 +13,4 @@ SHOT S5     17.400  orbit     orbit under the title card
 #
 # Subtitles (real start - end, speaker: line)
 SUB    9.200 - 11.400  Bạn: Mình… bị đình chỉ thi á?!
-SUB   14.600 - 17.200  Bạn: Được. Bảy ngày. Phải tìm ra kẻ cài cái kính đó!
+SUB   14.500 - 17.400  Bạn: Được. Bảy ngày. Phải tìm ra kẻ cài cái kính đó!
