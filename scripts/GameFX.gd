@@ -66,6 +66,9 @@ var fullscreen: bool = false
 var art_style: String = "vice"
 ## Vệt sáng kiểu PS2 lúc hoàng hôn / ban đêm (video/trails). Hiện chỉ lưu cờ; hiệu ứng ở Task VC-7.
 var trails_enabled: bool = true
+## "Giảm hù dọa" (story spec S-D6, A2-D14; story/reduce_scares): no violin screech / light flicker, the 3 a.m. call without
+## shake or flash, horror cues 6 dB quieter (StoryAudio.cue_db).
+var reduce_scares: bool = false
 ## Âm lượng tuyến tính 0..1 theo bus (lưu trong settings.cfg)
 const AUDIO_BUSES: Array[String] = ["Master", "Music", "SFX", "UI"]
 var volumes: Dictionary = {"Master": 1.0, "Music": 0.8, "SFX": 1.0, "UI": 0.9}
@@ -80,6 +83,7 @@ func load_settings() -> void:
 		var st: String = String(cfg.get_value("video", "art_style", "vice"))
 		art_style = st if st in ART_STYLES else "vice"
 		trails_enabled = bool(cfg.get_value("video", "trails", true))
+		reduce_scares = bool(cfg.get_value("story", "reduce_scares", false))
 		for b: String in AUDIO_BUSES:
 			volumes[b] = clampf(float(cfg.get_value("audio", "vol_" + b.to_lower(), volumes[b])), 0.0, 1.0)
 	_apply_global_quality()
@@ -93,6 +97,7 @@ func save_settings() -> void:
 	cfg.set_value("video", "fullscreen", fullscreen)
 	cfg.set_value("video", "art_style", art_style)
 	cfg.set_value("video", "trails", trails_enabled)
+	cfg.set_value("story", "reduce_scares", reduce_scares)
 	for b: String in AUDIO_BUSES:
 		cfg.set_value("audio", "vol_" + b.to_lower(), float(volumes[b]))
 	cfg.save(SETTINGS_PATH)
@@ -238,6 +243,36 @@ func sync_style_settings(root: Node) -> void:
 	var trails: CheckButton = root.find_child("TrailsCheck", true, false) as CheckButton
 	if trails:
 		trails.set_pressed_no_signal(trails_enabled)
+	var scares: CheckButton = root.find_child("ReduceScaresCheck", true, false) as CheckButton
+	if scares:
+		scares.set_pressed_no_signal(reduce_scares)
+
+
+## Story settings row (main-menu settings and the pause settings): CheckButton "Giảm hù dọa" (ReduceScaresCheck).
+func build_story_settings(parent: Control) -> void:
+	var row := HBoxContainer.new()
+	row.name = "StorySettingsRow"
+	row.add_theme_constant_override("separation", 12)
+	parent.add_child(row)
+	var scares := CheckButton.new()
+	scares.name = "ReduceScaresCheck"
+	scares.text = "Giảm hù dọa"
+	scares.tooltip_text = "Cốt truyện TOOL ĐEN: bỏ tiếng rít và đèn chớp, cuộc gọi 3 giờ sáng không rung / loé, âm thanh kinh dị nhỏ hơn"
+	scares.add_theme_font_size_override("font_size", 15)
+	scares.set_pressed_no_signal(reduce_scares)
+	row.add_child(scares)
+	var hint: Label = make_label("(cốt truyện: bớt cảnh hù, âm thanh kinh dị nhỏ hơn)", 12, Color("#95A5A6"), HORIZONTAL_ALIGNMENT_LEFT)
+	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
+	row.add_child(hint)
+	scares.toggled.connect(func(on: bool) -> void:
+		set_reduce_scares(on)
+		play_ui("tick", -10.0, 1.3))
+
+
+func set_reduce_scares(on: bool, persist: bool = true) -> void:
+	reduce_scares = on
+	if persist:
+		save_settings()
 
 ## Đổi phong cách đồ hoạ: lưu cài đặt (persist), đặt kiểu nhân vật dựng sau này (CharacterBuilder.toon, tỉ lệ đầu), quên
 ## cache vật liệu dùng chung (cả hai chiều: cache còn giữ vật liệu của phong cách cũ) rồi áp lại preset ánh sáng của cảnh
@@ -803,6 +838,7 @@ const TOD_PRESETS: Dictionary = {
 	"noon":           {"outdoor": true,  "elev": 58.0, "azim": 150.0, "sun": Color(1.0, 0.98, 0.95), "energy": 1.75, "top": Color(0.22, 0.5, 0.95),  "horizon": Color(0.82, 0.88, 0.96), "exposure": 0.98, "contrast": 1.1,  "saturation": 1.05, "fog_tint": Color(0.9, 0.93, 0.98), "shafts": false, "haze": false},
 	"midday_open":    {"outdoor": false, "elev": 70.0, "azim": 175.0, "sun": Color(1.0, 0.99, 0.96), "energy": 1.85, "top": Color(0.25, 0.52, 0.96), "horizon": Color(0.86, 0.9, 0.95),  "exposure": 1.05, "contrast": 1.06, "saturation": 1.03, "fog_tint": Color(0.95, 0.95, 0.93), "shafts": false, "haze": true},
 	"exam":           {"outdoor": false, "elev": 30.0, "azim": 125.0, "sun": Color(0.97, 0.98, 1.0), "energy": 1.35, "top": Color(0.32, 0.58, 0.95), "horizon": Color(0.85, 0.9, 0.96),  "exposure": 1.08, "contrast": 1.04, "saturation": 0.97, "fog_tint": Color(0.95, 0.97, 1.0), "shafts": false, "haze": false},
+	"sunset":         {"outdoor": false, "elev": 9.0,  "azim": 262.0, "sun": Color(1.0, 0.62, 0.42), "energy": 1.2, "top": Color(0.2, 0.16, 0.42), "horizon": Color(1.0, 0.55, 0.5), "exposure": 1.05, "contrast": 1.08, "saturation": 1.1, "fog_tint": Color(0.98, 0.66, 0.6), "shafts": false, "haze": false},
 	"night":          {"outdoor": false, "elev": 40.0, "azim": 200.0, "sun": Color(0.62, 0.72, 1.0), "energy": 0.22, "top": Color(0.015, 0.025, 0.07), "horizon": Color(0.09, 0.11, 0.2), "exposure": 1.0, "contrast": 1.07, "saturation": 1.0, "fog_tint": Color(0.1, 0.12, 0.2), "shafts": false, "haze": false}
 }
 const TOD_ALIASES: Dictionary = {"outdoor": "morning", "indoor": "exam"}

@@ -349,7 +349,7 @@ func _play_sfx(cue: String, db: float) -> void:
 	var sp: AudioStreamPlayer = _sfx[_sfx_i]
 	_sfx_i = (_sfx_i + 1) % _sfx.size()
 	sp.stream = CineAudio.sfx(cue)
-	sp.volume_db = db
+	sp.volume_db = db + StoryAudio.cue_db(cue)   # horror cues -6 dB with "Giảm hù dọa" (A2-D14)
 	sp.play()
 
 
