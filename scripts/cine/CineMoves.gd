@@ -144,6 +144,13 @@ const MOVES: Dictionary = {
 	"slumped": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "slumped"}]},
 	"get_up_sit": {"dur": 1.2, "src": [{"t": "code", "a": "get_up_sit"}]},
 	"pickup": {"dur": 0.5, "hit_u": 0.5, "src": [{"t": "code", "a": "pickup", "hit": 0.5}]},
+	# --- story Phase A2 (review A2-R3): a held prop (phone, photo, glasses) raised in front of the chest; sitting on a bench
+	# (the actor's key on the ground in front of the seat, pivot dropped to seat height), hands in the lap or one hand up
+	# holding a prop; a small nod.
+	"hold_up": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "hold_up"}]},
+	"sit_bench": {"dur": 3.0, "loop": true, "src": [{"t": "code", "a": "sit_bench"}]},
+	"sit_bench_hold": {"dur": 3.0, "loop": true, "src": [{"t": "code", "a": "sit_bench_hold"}]},
+	"nod": {"dur": 0.8, "src": [{"t": "code", "a": "nod"}]},
 }
 
 ## Fighting stance (code "stance" at u 0) as keyframe joints, shared by the brawling poses below.
@@ -611,6 +618,29 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 			return sl
 		"get_up_sit":
 			return code_pose("getup", lerpf(GETUP_SIT_U, 1.0, clampf(u, 0.0, 1.0)))
+		"hold_up":    # right forearm up, the held prop in front of the chest at reading distance; left arm relaxed
+			var hb: float = sin(u * TAU) * 0.015
+			return {"shoulder_r": Vector3(0.9 + hb, 0.0, 0.15), "elbow_r": Vector3(1.7, 0.0, 0.0),
+				"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0),
+				"torso": Vector3(-0.03, 0.0, 0.0), "head": Vector3(0.28 + hb, 0.0, 0.0)}
+		"sit_bench":  # upright on a seat ~0.45 m high: thighs level, shins down, hands in the lap, slow breathing
+			var sb: float = sin(u * TAU) * 0.015
+			return {"body_y": -0.43, "body_pitch": 0.05, "thigh_l": Vector3(1.55, 0.0, 0.06), "knee_l": Vector3(-1.55, 0.0, 0.0),
+				"thigh_r": Vector3(1.55, 0.0, -0.06), "knee_r": Vector3(-1.55, 0.0, 0.0),
+				"shoulder_l": Vector3(0.45, 0.0, -0.1), "elbow_l": Vector3(0.95, 0.0, 0.0),
+				"shoulder_r": Vector3(0.45, 0.0, 0.1), "elbow_r": Vector3(0.95, 0.0, 0.0),
+				"torso": Vector3(0.06 + sb, 0.0, 0.0), "head": Vector3(0.12 - sb, 0.0, 0.0)}
+		"sit_bench_hold":   # seated, the right hand holding a prop up in front of the face
+			var sh: Dictionary = code_pose("sit_bench", u)
+			sh["shoulder_r"] = Vector3(0.95, 0.0, 0.15)
+			sh["elbow_r"] = Vector3(1.75, 0.0, 0.0)
+			sh["head"] = Vector3(0.22, 0.0, 0.0)
+			return sh
+		"nod":        # two small nods
+			var kn: float = sin(clampf(u, 0.0, 1.0) * PI)
+			return {"head": Vector3(0.28 * maxf(sin(u * TAU * 2.0), 0.0) * kn, 0.0, 0.0), "torso": Vector3(0.04 * kn, 0.0, 0.0),
+				"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0),
+				"shoulder_r": Vector3(0.1, 0.0, 0.12), "elbow_r": Vector3(0.25, 0.0, 0.0)}
 		"slammed":    # impact (hit), slammed back upright against it with arms flung out, then slides down to sit
 			var sit: Dictionary = code_pose("slumped", 0.0)
 			var keys: Array = [

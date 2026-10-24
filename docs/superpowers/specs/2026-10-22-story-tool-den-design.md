@@ -21,6 +21,7 @@ Replaces: `docs/superpowers/specs/2026-10-21-story-mode-design.md` (the Monday-t
 | S-D12 | The IT ally is Anh Duy "Deploy", a man who graduated 2-3 years ago, big-bellied, who talks in hard-to-follow jargon; his lines carry a "Dịch:" (translation) subtitle. A female ally, Linh, is added. |
 | S-D13 | Delivery in five phases A-E (section 10), each with its own spec, plan and reviews. Phase A starts after the vice-people branch (PS2 people, GTA-style movement, dense crowds and traffic) is merged. |
 | S-D14 | Every fight, chase, gunfight, hide-and-seek escape or boss phase ends with a slow-motion cinematic with background music (8 full 20-25 s action cinematics for the biggest fights, 12 short 4-6 s automatic replays) (owner: "cuối mỗi đoạn đánh nhau hay gì đó thì đều phải có cinematic kèm nhạc nền"; 2026-10-23: "cinematic slow-mo cho mỗi đoạn đánh đấm, tầm 10s-15s, nhân vật bay nhảy đánh đấm để tôi ghép nhạc", then "cine khoảng 20-25s"), not only the end of each mission. Fixed length per segment plus a beat sheet for music sync (section 8.1, segment slots and lengths in 8.3). |
+| S-D15 | Mid-story cinematics (owner 2026-10-24: "dọc cốt truyện cũng cần có cine chứ nhỉ?", picked all four kinds): mission intros, villain intro cards, choice scenes and a day-start scene, plus short discovery beats inside missions (section 8.4). Each is built with the phase of its day. |
 
 ## 2. Premise and tone
 
@@ -175,6 +176,54 @@ Each entry gives the mood, then the length:
   - `seg_d7_phase2`: light returns, heroic; 25 s.
   - `seg_d7_finisher`: Đòn chân kẹp cổ số 21, slow-motion triumph; 25 s, flows into the ending.
 - Owner files (S-D10) go to a local folder `user://music/<slot>.ogg` or `.mp3` (and `user://sfx/<cue>.ogg`); the folder is git-ignored and never exported. Without a file the synthesized default cue for that slot plays.
+
+### 8.4 Mid-story cinematics (S-D15)
+In-engine, built with the A1 timeline system and staged on the real map. Mostly dialogue and staging, so they are cheaper than the segment fights. All are skippable (hold Esc) and use the player's own protagonist.
+
+- **Day start** (`cine_day_start`, 8-10 s, one template for Days 1-7):
+  - morning outside BE6;
+  - a code-drawn calendar page "NGÀY N · CÒN M NGÀY" tears off;
+  - the phone buzzes with the day's first text (Mr.T, Anh Duy or Phúc).
+- **Mission intros** (10-15 s, GTA style, play when the player starts a mission marker):
+
+  | Day | Intro |
+  |---|---|
+  | 0 | Mr.T at the room 311 corridor: room 311 is short of a proctor and there are rumours of a tool called "Lọ Thần"; he asks the protagonist to help him photograph anything odd (`cine_d0_brief`). |
+  | 1 | Mr.T replays CCTV of a courier handing over "hàng" in the D1 parking. |
+  | 2 | Anh Duy traces the Bầy Sói route on three laptops, in jargon with a "Dịch:" line. |
+  | 3 | Night drive to the canal with Anh Duy on the radio: "hàng về bến container". |
+  | 4 | Linh pitches the canteen undercover plan; the "distracted boyfriend" gag with Phúc. |
+  | 5 | Anh Duy decrypts the USB "Za Mẫn Labs" and finds a server under a The Beverly tower. |
+  | 6 | Phúc hands over a delivery-rider uniform for Trà Sữa Lọ. |
+  | 7 | Mr.T and Anh Duy: the mass cheat goes live at 08:00; the penthouse lift doors close. |
+
+- **Villain intro cards** (5-8 s, one shared overlay): the first time each villain appears, a freeze frame shows a colour wash, the name, the nickname and a one-line joke.
+  - Sói Xám: LED eyes in the fog under the bridge.
+  - Cừu Dolly: one clone among clones, the card points at the wrong one first.
+  - Alexander ABCXYZ: his endless name runs off the card and shrinks to fit.
+  - Lê Minh Za Mẫn: "CTO · đang pivot".
+  - Lùm Thị Lọ: neon-pink bob in the mirror.
+  - Lùm Văn Lọ: the billboard face, then the real one.
+- **Choice scenes**: the scene freezes and two options appear with a 10 s countdown; on timeout the honest option is taken, with a comic line.
+
+  | Day | Scene | Choice |
+  |---|---|---|
+  | 1 | Phúc confesses he bought a tool and is being blackmailed | choice 1: cover / report |
+  | 5 | Za Mẫn offers "equity 0.01 %" in the burning server room | choice 2: accept / refuse |
+  | 6 | Thị Lọ slides a bag of cash across | choice 3: take / refuse |
+
+- **Discovery beats** (5-10 s, inside missions; the horror and meme beats of section 4 staged as short cinematics):
+  - Day 1: the basement corridor sheep figure.
+  - Day 3: the mannequin container.
+  - Day 4: the whole canteen staring.
+  - Day 5: Za Mẫn on 50 monitors, then "This is fine".
+  - Day 6: the figure in the mirror.
+  - Day 7: Lùm Văn Lọ's monologue before the blackout.
+- **Phase split:**
+  - Phase A2: `cine_d0_brief` and `cine_day_start` (used on the Day 1 morning).
+  - Phase B: the Day 1 and Day 4 scenes.
+  - Phase C: the Day 2, 3 and 5 scenes.
+  - Phase D: the Day 6 and 7 scenes.
 
 ## 9. Systems (detailed in each phase's spec)
 1. Story framework: `StoryDirector` state (day, evidence, choices, flags), mission markers on the FreeRoam map, mission start/fail/retry, day advance at the BE6 bed, save and continue, the 7-day clock on ViceHUD, phone UI (texts, the 3 a.m. call).

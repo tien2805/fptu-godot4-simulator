@@ -521,6 +521,8 @@ func _process(_d: float) -> bool:
 				_check(cl.is_empty(), "no visual clutter inside the 14 x 10 box (%s)" % str(cl))
 			ended.clear()
 			fr.connect("cinematic_finished", func(slot: String, sk: bool) -> void: ended.append([slot, sk]))
+			# F9 cycles the sorted slots; with the story timelines (ai_intro, cine_d0_*) seg_d1_brawl is not first any more
+			fr.set("_cine_slot_i", CineTimeline.slots().find("seg_d1_brawl") - 1)
 			var cp: CinePlayer = fr.call("_play_next_cinematic")
 			_check(cp != null and cp.timeline.slot == "seg_d1_brawl", "F9 plays seg_d1_brawl")
 			if cp == null:

@@ -158,6 +158,8 @@ func _dispatch_cues() -> void:
 				a.show_at(float(c["s"]), bool(c["on"]))
 			"hold":
 				var hn: Node3D = CineFX.build_prop(String(c["kind"]), o)
+				if bool(o.get("glow", false)):
+					CineFX.set_prop_glow(hn, true)   # A2: a held phone with its screen lit
 				a.hold(float(c["s"]), float(c["s1"]), hn, String(o.get("bone", "Wrist.R")), o)
 			"part":
 				a.part_show(float(c["s"]), String(c["part"]), bool(c["on"]))
@@ -306,11 +308,13 @@ func _update(rr: float) -> void:
 func _update_props(ss: float) -> void:
 	for pr: Dictionary in timeline.props:
 		var po: Dictionary = pr["opts"]
-		if not po.has("show_at") and not po.has("hide_at") and not po.has("path"):
+		if not po.has("show_at") and not po.has("hide_at") and not po.has("path") and not po.has("flicker"):
 			continue
 		var pn: Node3D = prop_nodes.get(String(pr["id"]))
 		if pn == null:
 			continue
+		if po.has("flicker"):
+			CineFX.set_lamp(pn, CineFX.lamp_on(ss, po["flicker"]))   # A2 lamp: stutters inside its story windows (seekable)
 		pn.visible = ss >= timeline.story_time(po.get("show_at", 0.0)) and ss < timeline.story_time(po.get("hide_at", INF))
 		var path: Array = po.get("path", [])
 		if path.size() >= 2:
@@ -349,7 +353,7 @@ func _play_sfx(cue: String, db: float) -> void:
 	var sp: AudioStreamPlayer = _sfx[_sfx_i]
 	_sfx_i = (_sfx_i + 1) % _sfx.size()
 	sp.stream = CineAudio.sfx(cue)
-	sp.volume_db = db
+	sp.volume_db = db + StoryAudio.cue_db(cue)   # horror cues -6 dB with "Giảm hù dọa" (A2-D14)
 	sp.play()
 
 

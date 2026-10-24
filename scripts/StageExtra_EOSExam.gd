@@ -68,6 +68,12 @@ var tex_eos: Texture2D
 var decoy_timer: float = 3.0
 var cctv_marker: MeshInstance3D
 var proctor_model: Node3D
+## Story beat d0_exam (A2-D11): the protagonist replaces the proctor, Mr.T stands at the front desk, a replay recorder
+## tracks the protagonist and the cheaters; the final confiscation plays seg_d0_exam before the result.
+var story: bool = false
+var story_rec: CineReplayRecorder
+var story_finishing: bool = false
+var mr_t: Node3D
 var cam_yaw: float = PI # yaw camera đang bám (PI = nhìn về phía bảng / cửa sổ D1)
 
 ## Vật liệu riêng (có alpha) cho thân & đầu giám thị để camera lại gần thì mờ dần.
@@ -78,12 +84,16 @@ func _setup_proctor_materials() -> void:
 		var g: Node3D = proctor.get_node_or_null(n)
 		if g:
 			g.visible = false
-	proctor_model = CharacterBuilder.build({"preset": "proctor", "seed": 2026, "name": "ProctorModel", "female": false})
+	var pm_opts: Dictionary = {"preset": "proctor", "seed": 2026, "name": "ProctorModel", "female": false}
+	if story:
+		pm_opts = StoryUtil.hero_opts(pm_opts)
+		pm_opts["name"] = "ProctorModel"
+	proctor_model = CharacterBuilder.build(pm_opts)
 	proctor_model.position = Vector3(0.0, -0.85, 0.0)
 	proctor_model.rotation.y = PI
 	proctor.add_child(proctor_model)
 	var badge := Label3D.new()
-	badge.text = "GIÁM THỊ"
+	badge.text = StoryUtil.fmt("{name} · GIÁM THỊ PHỤ") if story else "GIÁM THỊ"
 	badge.font_size = 18
 	badge.outline_size = 6
 	badge.modulate = Color("#F1C40F")
@@ -92,6 +102,7 @@ func _setup_proctor_materials() -> void:
 	proctor.add_child(badge)
 
 func _ready() -> void:
+	story = StoryStage.in_story(StageManager.StageID.STAGE_EXTRA_EOS)
 	modal_overlay.visible = false
 	prompt_panel.visible = false
 	inspect_panel.visible = false
@@ -116,7 +127,45 @@ func _ready() -> void:
 	_setup_proctor_materials()
 	_update_walk_camera(1.0)
 	_update_hud()
-	GameFX.popup("🕵️ 08:00 – GIỜ THI EOS BẮT ĐẦU. QUAN SÁT → [S] CHỤP BẰNG CHỨNG → [E] LẬP BIÊN BẢN. [C] XEM CCTV", GameFX.FPT_YELLOW, 24, 3.5)
+	if story:
+		_setup_story()
+		GameFX.popup(StoryUtil.fmt("🕵️ Mr.T nhờ {name} làm giám thị phụ – chụp bằng chứng giúp thầy. [S] chụp · [E] lập biên bản · [C] CCTV"), GameFX.FPT_YELLOW, 24, 4.0)
+	else:
+		GameFX.popup("🕵️ 08:00 – GIỜ THI EOS BẮT ĐẦU. QUAN SÁT → [S] CHỤP BẰNG CHỨNG → [E] LẬP BIÊN BẢN. [C] XEM CCTV", GameFX.FPT_YELLOW, 24, 3.5)
+
+## Story: Mr.T (the fictional lecturer, role mr_t) at the front desk by the board, facing the class; the replay recorder.
+func _setup_story() -> void:
+	mr_t = CharacterBuilder.build({"preset": "lecturer", "seed": 1995, "glasses": true, "name": "MrT"})
+	mr_t.set_meta("role", "mr_t")
+	add_child(mr_t)
+	mr_t.position = Vector3(5.0, 0.0, 2.7)
+	mr_t.rotation.y = PI * 0.5
+	var tag := Label3D.new()
+	tag.text = "Mr.T"
+	tag.font_size = 22
+	tag.outline_size = 6
+	tag.modulate = Color("#B98CFF")
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.position = Vector3(0.0, 2.0, 0.0)
+	mr_t.add_child(tag)
+	var tracked: Array = [proctor_model]
+	for st: Dictionary in stations:
+		if bool(st["is_cheater"]):
+			tracked.append(st["student"])
+	story_rec = StoryStage.make_recorder(self, tracked)
+
+## Story: the final confiscation -> mark, a short beat of the student being led off, the replay, then the result.
+func _story_finish(st: Dictionary) -> void:
+	story_finishing = true
+	inspect_panel.visible = false
+	story_rec.mark("blow")
+	await get_tree().create_timer(StoryStage.REPLAY_AFTER + 0.2, false).timeout
+	var slot: String = String(StoryStage.context_for(StageManager.StageID.STAGE_EXTRA_EOS).get("replay", "seg_d0_exam"))
+	var rp: CineReplay = StoryStage.play_replay(self, story_rec, slot, proctor_model, st["student"])
+	if rp:
+		await rp.finished
+	story_finishing = false
+	_complete_stage()
 
 func _load_eos_texture() -> void:
 	var path: String = "res://assets/textures/eos_exam_screen.png"
@@ -370,7 +419,7 @@ func _update_hud() -> void:
 # INPUT
 # ===========================================================================
 func _input(event: InputEvent) -> void:
-	if is_stage_ended:
+	if is_stage_ended or story_finishing:
 		return
 	if event is InputEventKey and event.is_pressed() and not event.is_echo():
 		var key: int = event.physical_keycode
@@ -404,7 +453,7 @@ func _target_station_idx() -> int:
 # VÒNG LẶP
 # ===========================================================================
 func _process(delta: float) -> void:
-	if is_stage_ended:
+	if is_stage_ended or story_finishing:
 		return
 	time_left -= delta
 	var elapsed: float = STAGE_TIME - time_left
@@ -730,7 +779,10 @@ func _book(idx: int, forced: bool) -> void:
 	if reputation <= 0:
 		_fail_stage("UY TÍN VỀ 0! Phòng Khảo thí: 'Thầy/cô bắt oan quá nhiều, đình chỉ coi thi.' (bắt đúng %d, bắt oan %d)" % [caught, wrong_books])
 	elif caught >= NEED_CAUGHT:
-		_complete_stage()
+		if story and story_rec:
+			_story_finish(st)
+		else:
+			_complete_stage()
 
 func _on_close_inspect() -> void:
 	inspect_panel.visible = false

@@ -210,7 +210,7 @@ static func build(opts: Dictionary = {}) -> Node3D:
 	_cyl(neck, Vector3(0.0, 0.04, 0.005), 0.042 * width, 0.05 * width, 0.09, skin)
 	var head: Node3D
 	if ps2:
-		head = PS2Head.build(neck, Vector3(0.0, 0.065, 0.0), _ps2_head_opts(skin_idx, female, hair_style, hair_idx, width, outfit, rng), rig)
+		head = PS2Head.build(neck, Vector3(0.0, 0.065, 0.0), _ps2_head_opts(skin_idx, female, hair_style, hair_idx, width, outfit, rng, int(opts.get("variant", -1))), rig)
 	else:
 		head = _build_head(neck, Vector3(0.0, 0.065, 0.0), skin_idx, female, width, hair_style, hair_idx, outfit, rng, rig)
 	var head_mi: MeshInstance3D = rig["face_mesh"]
@@ -369,8 +369,12 @@ static func _build_head(parent: Node3D, pos: Vector3, skin_idx: int, female: boo
 	return head
 
 ## Tham số PS2Head.build() chung cho thân tự dựng và thân rigged (rút rng.randi() đúng một lần cho hạt giống của đầu).
-static func _ps2_head_opts(skin_idx: int, female: bool, hair_style: String, hair_idx: int, width: float, outfit: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
-	return {"skin": skin_idx, "female": female, "hair_style": hair_style, "hair_color": hair_idx, "width": width, "seed": rng.randi(), "outfit": outfit}
+## variant >= 0: the creator's face variant (spec A2-D5); PS2Head still draws its rng the same way, so only the face cell changes.
+static func _ps2_head_opts(skin_idx: int, female: bool, hair_style: String, hair_idx: int, width: float, outfit: Dictionary, rng: RandomNumberGenerator, variant: int = -1) -> Dictionary:
+	var d: Dictionary = {"skin": skin_idx, "female": female, "hair_style": hair_style, "hair_color": hair_idx, "width": width, "seed": rng.randi(), "outfit": outfit}
+	if variant >= 0:
+		d["variant"] = variant
+	return d
 
 ## Chớp mắt / biểu cảm đầu PS2 bằng ô atlas: gán vật liệu mặt riêng cho an (Animator hoặc RigAnimator, cùng các trường face_*).
 ## Trả false nếu vật liệu không có atlas (meta "ps2_face"), khi đó người gọi tắt chớp mắt.
@@ -554,7 +558,7 @@ static func _build_rigged(opts: Dictionary) -> Node3D:
 		if hb >= 0:
 			upright.basis = sk.get_bone_global_rest(hb).basis.orthonormalized().inverse()
 		att.add_child(upright)
-		head_pivot = PS2Head.build(upright, Vector3.ZERO, _ps2_head_opts(skin_idx, female, hair_style, hair_idx, width, outfit, rng), rig)
+		head_pivot = PS2Head.build(upright, Vector3.ZERO, _ps2_head_opts(skin_idx, female, hair_style, hair_idx, width, outfit, rng, int(opts.get("variant", -1))), rig)
 	else:
 		head_pivot = _build_head(att, Vector3(0.0, 0.0, 0.0), skin_idx, female, width, hair_style, hair_idx, outfit, rng, rig)
 	head_pivot.rotation.y = PI   # đầu nhìn về -Z của pivot; xương Head nhìn về +Z của mô hình (đã quay PI)
@@ -1457,6 +1461,12 @@ static func _outfit_for(preset: String, female: bool, rng: RandomNumberGenerator
 				o["helmet_color"] = opts.get("helmet_color", [Color("#F1C40F"), Color("#2C3E50"), Color("#E74C3C"), Color("#ECF0F1"), Color("#1ABC9C")][rng.randi_range(0, 4)])
 			if rng.randf() < 0.25:
 				o["shoe_mat"] = black_shoe
+			if preset == "player":
+				# story spec 3.1: the protagonist always wears jeans, white sneakers and a black backpack (rng draws unchanged)
+				o["trousers"] = jeans
+				o["shoe_mat"] = white_shoe
+				o["backpack_mat"] = _cloth_mat("bp_222222", Color("#222222"))
+				o["backpack_pocket_mat"] = _cloth_mat("bp_pocket_222222", Color("#222222").darkened(0.25))
 		"lecturer", "proctor":
 			var shirt_col: Color = Color("#DCE6F2") if preset == "lecturer" else Color("#F5F5F5")
 			o["shirt"] = _cloth_mat("shirt_" + shirt_col.to_html(false), shirt_col)

@@ -59,6 +59,8 @@ var clock_label: Label
 var money_label: Label
 var stars: ViceStars
 var stars_label: Label
+## Story day chip under the money (spec A2-D12): "NGÀY 0 · THI EOS", "NGÀY 1 · CÒN 7 NGÀY" (+ " ✉N" unread texts).
+var day_label: Label
 var area_label: Label
 var vehicle_label: Label
 
@@ -174,6 +176,10 @@ func _build() -> void:
 	money_label.name = "Money"
 	money_label.visible = show_money
 	col.add_child(money_label)
+	day_label = _hud_label("", 22, Color("#FF7AC8"), Color("#2A0E3A"), 6, _italic(0.7, 0.24), align)
+	day_label.name = "DayChip"
+	day_label.visible = false
+	col.add_child(day_label)
 	stars = ViceStars.new()
 	stars.name = "Stars"
 	stars.align_right = right
@@ -217,6 +223,12 @@ func _build() -> void:
 func set_clock(text: String) -> void:
 	clock_label.text = text
 	clock_label.visible = show_clock and text != ""
+
+
+## Story day chip (A2-D12); "" hides it. unread > 0 adds an envelope badge.
+func set_day(text: String, unread: int = 0) -> void:
+	day_label.text = text + (" ✉%d" % unread if unread > 0 and text != "" else "")
+	day_label.visible = text != ""
 
 
 ## Ví "00001250 CV" (8 chữ số); animate: đếm từ số đang hiện tới `amount` trong MONEY_COUNT_S giây.

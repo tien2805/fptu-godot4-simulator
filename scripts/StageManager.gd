@@ -60,7 +60,7 @@ var stage_info: Dictionary = {
 const MAIN_MENU_SCENE: String = "res://scenes/MainMenu.tscn"
 ## Bảng phím dùng chung cho menu chính và menu tạm dừng
 const CONTROLS_GUIDE: Array = [
-	["Chung", "[M] mở Campaign Hub chọn màn (xem rank) · [ESC] tạm dừng / đóng cửa sổ · Vật phẩm mua ở 7-Eleven (Màn 5) dùng được ở Màn 2, 3"],
+	["Chung", "[ESC] tạm dừng / đóng cửa sổ · [P] điện thoại khi chơi cốt truyện (tin nhắn, bằng chứng, nhiệm vụ) · Vật phẩm mua ở 7-Eleven (Màn 5) dùng được ở Màn 2, 3"],
 	["Màn 1 – Đua xe", "[W] ga · [S] phanh/lùi · [A]/[D] lái · [SPACE]+[A]/[D] drift (thả để boost) · [H] còi · lách sát xe ngược chiều liên tiếp để nhân thưởng"],
 	["Màn 2 – Bãi xe & chạy bộ", "[E] quét thẻ · [H] còi doạ xe tranh ô · [S] lùi · pha chạy: [A]/[D] đổi làn, [SPACE] nhảy, [S] trượt, [SHIFT] sprint, [Q] Monster"],
 	["Màn 3 – Roll call FAP", "gõ mã + [ENTER] · [TAB] bật 4G · [SPACE] đúng nhịp · [C] cà phê · [B] bánh bao · [F] úp điện thoại · gõ đáp án khi bị gọi tên"],
@@ -103,6 +103,10 @@ var return_to_roam: bool = false
 var roam_spawn: Variant = null
 ## FreeRoam đặt true: phím [M] là bản đồ của thế giới mở, không mở Campaign Hub.
 var hub_key_blocked: bool = false
+## Story beat context of the stage being played (spec A2-D11): set by StoryDirector.launch_stage_beat, empty outside the
+## story. {"beat", "stage", "replay", "name", "opts"}; report_stage_result forwards to StoryDirector when set.
+var story_context: Dictionary = {}
+var pause_hub_btn: Button
 var cinematic_active: bool = false   # cinematic / replay đang chạy: ESC là "giữ để bỏ qua", không mở menu tạm dừng (spec A1-D16)
 var roam_return_layer: CanvasLayer
 ## Kỷ lục lưu trên đĩa: stage_id -> {"score": int, "rank": String, "wins": int, "plays": int}
@@ -146,6 +150,10 @@ func _on_node_added(node: Node) -> void:
 # MENU CHÍNH & LƯU KỶ LỤC
 # ---------------------------------------------------------------------------
 func go_to_main_menu() -> void:
+	var sd: Node = get_node_or_null("/root/StoryDirector")
+	if sd:
+		sd.call("on_leave_to_menu")   # A2-D2: autosave the story (player spot in story free roam), story off
+	story_context = {}
 	typing_mode = false
 	return_to_roam = false
 	roam_spawn = null
@@ -304,8 +312,8 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.is_pressed() and not event.is_echo():
 		if event.physical_keycode == KEY_M:
-			if typing_mode or hub_key_blocked or cinematic_active or _is_text_input_focused():
-				return
+			if typing_mode or hub_key_blocked or cinematic_active or _is_text_input_focused() or not story_context.is_empty():
+				return   # no Campaign Hub in the middle of a story mission either
 			toggle_stage_select()
 		elif event.physical_keycode == KEY_TAB and (Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_SHIFT)):
 			if not cinematic_active:   # không mở chọn màn giữa cinematic (plan review A1 Minor 10)
@@ -322,7 +330,7 @@ func _input(event: InputEvent) -> void:
 func _can_pause() -> bool:
 	if cinematic_active: return false
 	var cs: Node = get_tree().current_scene
-	if cs == null or cs is MainMenu or transition_active:
+	if cs == null or cs is MainMenu or cs.has_meta("no_pause") or transition_active:
 		return false
 	return true
 
@@ -348,6 +356,9 @@ func pause_game() -> void:
 	GameFX.play_ui("pop", -6.0, 0.8)
 	_refresh_pause_quality()
 	GameFX.sync_style_settings(pause_settings_box)
+	if pause_hub_btn:
+		var sd: Node = get_node_or_null("/root/StoryDirector")
+		pause_hub_btn.visible = sd == null or not bool(sd.get("active"))   # no stage picking in the middle of the story
 	pause_resume_btn.call_deferred("grab_focus")
 
 func resume_game() -> void:
@@ -423,6 +434,7 @@ func _create_pause_ui() -> void:
 	GameFX.build_style_settings(pause_settings_box)
 	GameFX.art_style_changed.connect(_on_art_style_changed)
 	GameFX.build_audio_settings(pause_settings_box)
+	GameFX.build_story_settings(pause_settings_box, true)   # "Giảm hù dọa" (A2-D14) in the style row: card stays < 720 px
 
 	var controls_btn: Button = _pause_button("🎮   ĐIỀU KHIỂN")
 	controls_btn.pressed.connect(func() -> void:
@@ -457,6 +469,7 @@ func _create_pause_ui() -> void:
 		resume_game()
 		open_stage_select())
 	vb.add_child(hub_btn)
+	pause_hub_btn = hub_btn
 	var menu_btn: Button = _pause_button("🏠   VỀ MENU CHÍNH")
 	menu_btn.pressed.connect(func() -> void:
 		resume_game()
@@ -688,13 +701,24 @@ func next_stage() -> void:
 		next_id = StageID.STAGE_1_RACE
 	change_stage(next_id)
 
+## The story owns stage launches: no Campaign Hub (M, Ctrl/Shift+Tab, stage buttons) while a story runs (review A2-R4).
+func _story_blocks_hub() -> bool:
+	if not story_context.is_empty():
+		return true
+	var sd: Node = get_node_or_null("/root/StoryDirector")
+	return sd != null and bool(sd.get("active"))
+
 func toggle_stage_select() -> void:
+	if modal_layer and not modal_layer.visible and _story_blocks_hub():
+		return
 	if modal_layer:
 		modal_layer.visible = not modal_layer.visible
 		if modal_layer.visible:
 			_refresh_rank_labels()
 
 func open_stage_select() -> void:
+	if _story_blocks_hub():
+		return
 	if modal_layer:
 		modal_layer.visible = true
 		_refresh_rank_labels()
@@ -721,6 +745,8 @@ func consume_item(item_id: String) -> bool:
 ## "caught": bool (tuỳ chọn: thua vì bị bắt -> thẻ "BỊ BẮT")}. Thắng được trả Cóc Vàng theo rank (RANK_COINS); số xu
 ## ghi lại vào result["coins"] (thua: 0).
 func report_stage_result(stage_id: int, result: Dictionary) -> void:
+	# story beat (A2-D11): StoryDirector completes the beat on a win and replaces the card buttons
+	var sd: Node = get_node_or_null("/root/StoryDirector") if int(story_context.get("stage", -1)) == stage_id else null
 	var won: bool = result.get("result", "") == "win"
 	var coins: int = int(RANK_COINS.get(String(result.get("rank", "C")), RANK_COINS["C"])) if won else 0
 	result["coins"] = coins
@@ -737,9 +763,11 @@ func report_stage_result(stage_id: int, result: Dictionary) -> void:
 		earn(coins, "stage_%d_rank_%s" % [stage_id, String(result.get("rank", "C"))])   # earn() lưu cả kỷ lục
 	else:
 		save_progress()
+	if sd:
+		sd.call("on_stage_result", stage_id, result)
 	_refresh_rank_labels()
 	_apply_result_card(result)
-	if return_to_roam:
+	if return_to_roam and sd == null:
 		_show_roam_return()
 
 ## Thẻ kết quả của màn (HUD/ModalOverlay/.../VBox ở Màn 2..Extra, HUD/AbsentOverlay/.../VBoxContainer ở Màn 1): ở
@@ -830,6 +858,8 @@ func _result_card_box() -> VBoxContainer:
 
 ## Tiêu đề lớn của thẻ kết quả (phong cách vice): thắng "QUA MÔN!", thua vì bị bắt "BỊ BẮT", thua "TRƯỢT MÔN".
 static func result_banner_title(result: Dictionary) -> String:
+	if result.has("story"):   # story beat (story spec 7): "QUA MÔN! Uy tín +" / "TOANG!"
+		return "QUA MÔN! Uy tín +" if String(result["story"]) == "win" else "TOANG!"
 	if result.get("result", "") == "win":
 		return "QUA MÔN!"
 	if bool(result.get("caught", false)):

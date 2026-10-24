@@ -58,6 +58,9 @@ void fragment() {
 """
 
 var elapsed_sec: float = 0.0
+## Story beat d0_race (A2-D10): replay recorder on the bike + rider; the finish crossing plays seg_d0_race first.
+var story_rec: CineReplayRecorder
+var story_replay: CineReplay
 var is_game_ended: bool = false
 var notice_tween: Tween
 
@@ -115,6 +118,8 @@ func _ready() -> void:
 	_setup_overlays()
 	_setup_vice_hud()
 	GameFX.disable_button_focus(self)
+	if StoryStage.in_story(StageManager.StageID.STAGE_1_RACE) and player_bike:
+		_make_story_recorder.call_deferred()   # the scene root is still adding its children here
 
 	if player_bike:
 		player_bike.connect("speed_changed", _on_player_speed_changed)
@@ -479,9 +484,13 @@ func _trigger_absent_screen() -> void:
 		_play_procedural_absent_bell()
 
 func _on_destination_reached() -> void:
+	if is_game_ended:
+		return   # already ABSENT (time ran out just before the line) or already reported: no second result / replay
 	is_game_ended = true
 	if player_bike:
 		player_bike.set("is_controls_locked", true)
+	if story_rec and is_instance_valid(story_rec):
+		await _story_replay()
 
 	var time_left: float = maxf(0.0, stage_duration_sec - elapsed_sec)
 	var longest_chain: int = int(player_bike.get("longest_near_miss_chain")) if player_bike else 0
@@ -505,6 +514,20 @@ func _on_destination_reached() -> void:
 	if victory_player and victory_player.stream:
 		victory_player.play()
 	GameFX.flash(Color("#2ECC71"), 0.4, 0.5)
+
+func _make_story_recorder() -> void:
+	if is_instance_valid(player_bike):
+		story_rec = StoryStage.make_recorder(player_bike.get_parent(), [player_bike, player_bike.get("rider_node")])
+
+## Story win: mark the crossing, let the bike roll on briefly, then the 5 s slow-motion replay (seg_d0_race).
+func _story_replay() -> void:
+	story_rec.mark("blow")
+	await get_tree().create_timer(StoryStage.REPLAY_AFTER, false).timeout
+	var slot: String = String(StoryStage.context_for(StageManager.StageID.STAGE_1_RACE).get("replay", "seg_d0_race"))
+	story_replay = StoryStage.play_replay(player_bike.get_parent(), story_rec, slot, player_bike, player_bike.get("rider_node"))
+	if story_replay:
+		await story_replay.finished
+	story_replay = null
 
 func _play_procedural_absent_bell() -> void:
 	var gen := AudioStreamGenerator.new()

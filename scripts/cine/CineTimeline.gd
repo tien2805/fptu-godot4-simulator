@@ -250,8 +250,8 @@ func validate() -> PackedStringArray:
 		if st < 0.0 or st > story_end + 1e-6:
 			err.append("%s at %s is outside the story" % [String(e.get("cue", e.get("kind", "?"))), str(e["at"])])
 	for e1: Dictionary in sfx:
-		if not CineAudio.SFX_CUES.has(String(e1["cue"])):
-			err.append("unknown sfx cue %s (known: %s)" % [String(e1["cue"]), ", ".join(CineAudio.SFX_CUES)])
+		if not CineAudio.SFX_CUES.has(String(e1["cue"])) and not StoryAudio.is_cue(String(e1["cue"])):
+			err.append("unknown sfx cue %s (known: %s, %s)" % [String(e1["cue"]), ", ".join(CineAudio.SFX_CUES), ", ".join(StoryAudio.CUES)])
 	for e2: Dictionary in fx:
 		if not FX_KINDS.has(String(e2["kind"])):
 			err.append("unknown fx kind %s" % String(e2["kind"]))

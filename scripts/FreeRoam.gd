@@ -72,11 +72,13 @@ const HUD_REFRESH: float = 0.2
 const MAP_TOP: float = 66.0              # bản đồ [M] bắt đầu dưới bảng giờ / FPS (cao ~56 px)
 const MAP_BOTTOM: float = 30.0
 const HINT_DEFAULT: String = "[WASD] đi · [Shift] chạy nước rút · [Ctrl] đi bộ · [Space] nhảy · [Z]/[C] xoay camera · [F] xe máy · [T] giờ trong ngày · [M] bản đồ · [ESC] tạm dừng"
+## Story mode (A2): the story drives the time of day, so [T] gives way to the phone [P].
+const HINT_STORY: String = "[WASD] đi · [Shift] chạy nước rút · [Ctrl] đi bộ · [Space] nhảy · [Z]/[C] xoay camera · [F] xe máy · [P] điện thoại · [M] bản đồ · [ESC] tạm dừng"
 const HINT_RIDING: String = "[F] xuống xe · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [H] còi"
 const HINT_NO_DISMOUNT: String = "Không có chỗ trống cạnh xe để xuống (nước / tường / vật cản) – chạy ra chỗ rộng rồi bấm [F]"
 const HINT_RESCUED: String = "Rơi xuống kênh! Đã đưa bạn về chỗ khô gần nhất"
 const HINT_SERVICE_BIKE: String = "Đang lao động công ích – làm xong mới được lấy xe"
-const TOD_NAMES: Dictionary = {"dawn": "Bình minh 06:00", "morning": "Buổi sáng 07:30", "noon": "Giữa trưa 11:30", "night": "Đêm khuya 23:00"}
+const TOD_NAMES: Dictionary = {"dawn": "Bình minh 06:00", "morning": "Buổi sáng 07:30", "noon": "Giữa trưa 11:30", "sunset": "Hoàng hôn 17:45", "night": "Đêm khuya 23:00"}
 const HOTSPOT_COLORS: Dictionary = {1: Color("#F37021"), 2: Color("#3498DB"), 3: Color("#2ECC71"), 4: Color("#E74C3C"), 5: Color("#F1C40F"), 6: Color("#9B59B6"), 7: Color("#1ABC9C")}
 
 @onready var world: Node3D = $World
@@ -99,6 +101,10 @@ var wanted: WantedDirector
 var classic_stars: ViceStars
 var emote_wheel: EmoteWheel
 var emotes: EmoteDirector
+## Story mode (spec A2-D4): StoryDirector.active when the scene loads. No stage hotspots, no [T]; the story layer (markers,
+## objective, phone, call, beat runner) lives in the StoryRoam child, scripts/story/.
+var story_mode: bool = false
+var story_roam: StoryRoam = null
 var mounted: bool = false
 var bike_parked: bool = false
 var campus_xf: Transform3D = Transform3D.IDENTITY
@@ -169,25 +175,32 @@ func _ready() -> void:
 	_probe_capsule = CapsuleShape3D.new()
 	_probe_capsule.radius = PLAYER_RADIUS
 	_probe_capsule.height = PLAYER_HEIGHT
+	var sd: Node = get_node_or_null("/root/StoryDirector")
+	story_mode = sd != null and bool(sd.get("active"))
 	_build_ground()
 	_build_regions()
 	_build_campus()
 	_build_player()
 	_build_bike()
-	_build_hotspots()
+	if not story_mode:
+		_build_hotspots()   # story mode: the story's markers replace the stage hotspots
 	_build_hud()
 	build_ms = Time.get_ticks_msec() - t0
 	_apply_spawn()
 	for k: String in GameFXScript.TOD_PRESETS.keys():
 		var tod: Dictionary = GameFXScript.TOD_PRESETS[k]
-		if bool(tod.get("outdoor", false)) or k == "night":
+		if (bool(tod.get("outdoor", false)) and k != "sunset") or k == "night":   # sunset is story-only (A2-D13)
 			tod_cycle.append(k)
-	set_time_of_day("morning")
+	set_time_of_day(String(sd.get("tod")) if story_mode else "morning")
 	if crowd_enabled:
 		_build_pedestrians()
 		_build_traffic()
 	if mayhem_enabled:
 		_build_mayhem()
+	if story_mode:
+		story_roam = StoryRoam.new()
+		add_child(story_roam)
+		story_roam.setup(self)
 	player.camera.make_current()
 	var sm: Node = get_node_or_null("/root/StageManager")
 	if sm:
@@ -549,6 +562,8 @@ func _build_campus() -> void:
 func _build_player() -> void:
 	player = ThirdPersonController.new()
 	player.name = "Player"
+	if story_mode:
+		player.character_opts = StoryUtil.director().call("protagonist_opts")   # the creator's protagonist (A2-D5)
 	add_child(player)
 	if bank_walls and player.cam_ray:
 		player.cam_ray.add_exception(bank_walls)   # tường vô hình không kéo camera vào sát người
@@ -1112,6 +1127,8 @@ func _sync_map_hotspots() -> void:
 	var pts: Array = []
 	for h: Area3D in hotspots:
 		pts.append([Vector2(h.global_position.x, h.global_position.z), HOTSPOT_COLORS.get(int(h.get_meta("stage_id")), Color.WHITE)])
+	if story_roam:
+		pts.append_array(story_roam.map_pins())   # story markers (pink)
 	map_overlay.set_hotspots(pts)
 
 
@@ -1219,21 +1236,28 @@ func _update_vice_hud(blips_too: bool) -> void:
 		bl.append({"pos": Vector2(h.global_position.x, h.global_position.z), "color": HOTSPOT_COLORS.get(int(h.get_meta("stage_id")), Color.WHITE), "shape": "circle"})
 	if bike_parked and not mounted:
 		bl.append({"pos": Vector2(bike.global_position.x, bike.global_position.z), "color": RoamMap.BIKE, "shape": "diamond"})
+	if story_roam:
+		bl.append_array(story_roam.blips())
 	vice_hud.radar.blips = bl
 
 
 func _hint_text() -> String:
 	if _hint_flash_t > 0.0:
 		return _hint_flash
+	if story_roam:
+		var sh: String = story_roam.hint_text()
+		if sh != "":
+			return sh
+	var base: String = HINT_STORY if story_mode else HINT_DEFAULT
 	if active_hotspot:
 		return "[E] Chơi %s" % _stage_title(int(active_hotspot.get_meta("stage_id")))
 	if mounted:
 		return HINT_RIDING
 	if bike_parked:
 		if can_mount():
-			return "[F] lên xe máy · " + HINT_DEFAULT
-		return HINT_DEFAULT.replace("[F] xe máy", "[F] xe máy cách %d m" % bike_distance_m())
-	return HINT_DEFAULT
+			return "[F] lên xe máy · " + base
+		return base.replace("[F] xe máy", "[F] xe máy cách %d m" % bike_distance_m())
+	return base
 
 
 func _physics_process(delta: float) -> void:
@@ -1342,6 +1366,8 @@ func mayhem_blocked() -> bool:
 		return true
 	if map_overlay and map_overlay.visible:
 		return true
+	if story_roam and story_roam.phone and story_roam.phone.is_open():
+		return true   # story phone open (A2-D7): no weapons, wheels, reload or emotes
 	if wanted and wanted.state != "free":
 		return true   # busted (stamp, cutscene) or community service
 	if is_inside_tree() and get_tree().paused:
@@ -1377,8 +1403,10 @@ func cine_stage(stage: Dictionary) -> Variant:
 	var names: Array[String] = [String(stage.get("landmark", ""))]
 	if stage.has("fallback"):
 		names.append(String(stage["fallback"]))
+	if stage.get("at") is Vector2:
+		names.push_front("@at")   # story (A2): an explicit map point (Vector2 x, z) searched first, the landmark stays the fallback
 	for lk: String in names:
-		var lm: Variant = md.landmark(lk)
+		var lm: Variant = [(stage["at"] as Vector2).x, (stage["at"] as Vector2).y] if lk == "@at" else md.landmark(lk)
 		if not (lm is Array and (lm as Array).size() >= 2):
 			continue
 		var lc := Vector2(float(lm[0]), float(lm[1]))
@@ -1716,8 +1744,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			toggle_bike()
 			get_viewport().set_input_as_handled()
 		KEY_T:
-			cycle_time_of_day()
-			get_viewport().set_input_as_handled()
+			if not story_mode:   # the story drives the time of day (A2-D13)
+				cycle_time_of_day()
+				get_viewport().set_input_as_handled()
 		KEY_M:
 			toggle_map()
 			get_viewport().set_input_as_handled()

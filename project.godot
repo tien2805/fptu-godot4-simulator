@@ -11,6 +11,7 @@ config/windows_native_icon="res://assets/icon/cocvang_icon.ico"
 
 [autoload]
 StageManager="*res://scripts/StageManager.gd"
+StoryDirector="*res://scripts/story/StoryDirector.gd"
 GameFX="*res://scripts/GameFX.gd"
 
 [display]

@@ -1,10 +1,12 @@
 # File: res://tests/test_main_menu.gd
-# Test headless MENU CHÍNH: scene nạp được, đủ 5 nút, mở/đóng Hướng dẫn (có khối "Nguồn dữ liệu bản đồ" OSM +
+# Test headless MENU CHÍNH: scene nạp được, đủ nút (story Phase A2, A2-D6: TIẾP TỤC chỉ hiện khi có bản lưu, CỐT TRUYỆN
+# MỚI hỏi ghi đè khi có bản lưu, không còn Bắt đầu ngày mới / Chọn màn / nhật ký), mở/đóng Hướng dẫn (có khối "Nguồn dữ liệu bản đồ" OSM +
 # Microsoft, cả bảng nằm gọn trong viewport), đổi mức đồ hoạ (lưu user://settings.cfg), bảng cài đặt có hàng
 # "Phong cách đồ hoạ" (Vice City / Cổ điển, đổi qua UI áp lại nền menu; chú thích nút mức đồ hoạ ở menu chính và menu
 # tạm dừng đổi theo phong cách, vice không quảng cáo SDFGI / SSAO) + "Vệt sáng (trails)", thẻ tạm dừng mở
 # cài đặt vẫn gọn trong viewport,
-# mở Campaign Hub, rồi "Bắt đầu ngày mới" phải reset hành trình và chuyển sang Màn 1 (scene Main).
+# hàng "Giảm hù dọa" ở cả hai bảng cài đặt, rồi "Cốt truyện mới" (không có bản lưu) mở màn tạo nhân vật (Esc không mở
+# menu tạm dừng ở đó). Bản lưu dùng file tạm (StoryDirector.save_path), không đụng bản lưu thật.
 # Chạy:  godot --headless --path . --script tests/test_main_menu.gd
 extends SceneTree
 
@@ -13,7 +15,8 @@ var frames: int = 0
 var started: bool = false
 var sm: Node
 var fx: Node
-var inv_before: int = 0
+var sd: Node
+const TMP_SAVE: String = "user://test_main_menu_story.cfg"
 
 func _initialize() -> void:
 	for pair: Array in [["StageManager", "res://scripts/StageManager.gd"], ["GameFX", "res://scripts/GameFX.gd"]]:
@@ -24,6 +27,9 @@ func _initialize() -> void:
 			root.add_child(n)
 	sm = root.get_node("StageManager")
 	fx = root.get_node("GameFX")
+	sd = root.get_node("StoryDirector")
+	sd.set("save_path", TMP_SAVE)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP_SAVE))
 	var packed: PackedScene = load("res://scenes/MainMenu.tscn")
 	menu = packed.instantiate()
 	root.add_child(menu)
@@ -41,11 +47,21 @@ func _process(_d: float) -> bool:
 	frames += 1
 	match frames:
 		10:
-			for key: String in ["btn_start", "btn_hub", "btn_guide", "btn_settings", "btn_quit"]:
+			for key: String in ["btn_continue", "btn_story", "btn_roam", "btn_guide", "btn_settings", "btn_quit"]:
 				if menu.get(key) == null:
 					_fail("thiếu nút " + key)
 					return true
-			print("  5 nút menu OK; focus = ", str(get_root().gui_get_focus_owner()))
+			for gone: String in ["btn_start", "btn_hub", "journal_rows"]:
+				if menu.get(gone) != null:
+					_fail("A2-D6: %s phải bị bỏ" % gone)
+					return true
+			if (menu.get("btn_continue") as Button).visible:
+				_fail("không có bản lưu mà vẫn hiện TIẾP TỤC")
+				return true
+			if (menu.get("btn_story") as Button).text != "✚   CỐT TRUYỆN MỚI: TOOL ĐEN":
+				_fail("nhãn nút cốt truyện mới sai")
+				return true
+			print("  nút menu OK (TIẾP TỤC ẩn khi chưa lưu); focus = ", str(get_root().gui_get_focus_owner()))
 			menu.call("_show_guide")
 			if not (menu.get("guide_panel") as Control).visible:
 				_fail("bảng hướng dẫn không hiện")
@@ -94,6 +110,10 @@ func _process(_d: float) -> bool:
 			var hint: Label = sp.find_child("ArtStyleHint", true, false) as Label
 			if opt == null or trails == null or hint == null:
 				_fail("bảng cài đặt thiếu hàng phong cách đồ hoạ / vệt sáng / gợi ý")
+				return true
+			var scares: CheckButton = sp.find_child("ReduceScaresCheck", true, false) as CheckButton
+			if scares == null or scares.text != "Giảm hù dọa":
+				_fail("bảng cài đặt thiếu ô Giảm hù dọa (A2-D14)")
 				return true
 			if opt.item_count != 2 or opt.get_item_text(0) != "Vice City" or opt.get_item_text(1) != "Cổ điển":
 				_fail("OptionButton phong cách phải có 'Vice City' / 'Cổ điển'")
@@ -162,32 +182,58 @@ func _process(_d: float) -> bool:
 			if box.find_child("ArtStyleOption", true, false) == null:
 				_fail("menu tạm dừng thiếu hàng phong cách đồ hoạ")
 				return true
+			if box.find_child("ReduceScaresCheck", true, false) == null:
+				_fail("menu tạm dừng thiếu ô Giảm hù dọa")
+				return true
 			if not root.get_visible_rect().grow(1.0).encloses(r2):
 				_fail("thẻ tạm dừng tràn khỏi viewport khi mở cài đặt: %s" % str(r2))
 				return true
 			sm.call("resume_game")
 		30:
-			(menu.get("btn_hub") as Button).emit_signal("pressed")
-			if not (sm.get("modal_layer") as CanvasLayer).visible:
-				_fail("Campaign Hub không mở từ menu")
+			# có bản lưu (Ngày 0, file tạm): TIẾP TỤC hiện, CỐT TRUYỆN MỚI hỏi ghi đè
+			sd.set("nav_enabled", false)
+			sd.call("new_story", {"female": false, "name": "Test"})
+			sd.set("nav_enabled", true)
+			sd.call("reset_state")
+			menu.call("_refresh_story_buttons")
+			var bc: Button = menu.get("btn_continue")
+			if not bc.visible or bc.text != "▶   TIẾP TỤC – NGÀY 0":
+				_fail("có bản lưu mà TIẾP TỤC không hiện đúng: %s" % bc.text)
 				return true
-			sm.call("toggle_stage_select")
-			print("  Campaign Hub mở từ menu OK")
+			(menu.get("btn_story") as Button).emit_signal("pressed")
+			var cp: Control = menu.get("confirm_panel")
+			if not cp.visible or (menu.get("confirm_label") as Label).text != "Ghi đè bản lưu Ngày 0?":
+				_fail("cốt truyện mới khi đã có bản lưu không hỏi ghi đè")
+				return true
+		32:
+			var focus: Control = get_root().gui_get_focus_owner()
+			if focus == null or focus.name != "ConfirmNo":
+				_fail("hộp hỏi ghi đè không nhận focus bàn phím (focus = %s)" % str(focus))
+				return true
+			var cp: Control = menu.get("confirm_panel")
+			menu.call("_hide_modals")
+			if cp.visible:
+				_fail("hộp hỏi ghi đè không đóng")
+				return true
+			print("  bản lưu: TIẾP TỤC – NGÀY 0 + hỏi ghi đè OK")
 		40:
-			sm.call("add_item", "monster", 2)
-			inv_before = int(sm.call("item_count", "monster"))
-			(menu.get("btn_start") as Button).emit_signal("pressed")
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP_SAVE))
+			menu.call("_refresh_story_buttons")
+			if (menu.get("btn_continue") as Button).visible:
+				_fail("xoá bản lưu mà TIẾP TỤC vẫn hiện")
+				return true
+			(menu.get("btn_story") as Button).emit_signal("pressed")
 		120:
 			var cs: Node = current_scene
-			var inv_after: int = int(sm.call("item_count", "monster"))
-			print("  sau Bắt đầu: current_scene = ", (cs.name if cs else "null"), ", monster ", inv_before, " -> ", inv_after)
-			if cs == null or cs.name != "Main":
-				_fail("không chuyển sang Màn 1 (Main.tscn)")
+			print("  sau Cốt truyện mới: current_scene = ", (cs.name if cs else "null"))
+			if cs == null or cs.name != "CharacterCreator":
+				_fail("không mở màn tạo nhân vật")
 				return true
-			if inv_after != 0:
-				_fail("inventory không reset khi bắt đầu ngày mới")
+			if bool(sm.call("_can_pause")):
+				_fail("Esc mở menu tạm dừng ở màn tạo nhân vật")
 				return true
-			print("✅ SUCCESS: MAIN MENU → GUIDE/SETTINGS/HUB WORK, NEW DAY RESETS RUN AND LOADS STAGE 1")
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP_SAVE))
+			print("✅ SUCCESS: MAIN MENU → GUIDE/SETTINGS WORK, CONTINUE ONLY WITH A SAVE, NEW STORY OPENS THE CREATOR")
 			quit(0)
 			return true
 	if frames > 600:

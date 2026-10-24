@@ -1,0 +1,82 @@
+# Story Phase A2 "Khung cốt truyện + Ngày 0": Design
+
+Date: 2026-10-24. Status: implemented on branch `story-a2` (plan `docs/superpowers/plans/2026-10-24-story-phase-a2.md`, 10 tasks, a review fix round and A2-D17); full regression 60/60 tests + smoke green on AC power, `test_mayhem_perf` W1 1.92-2.48 ms / W2 2.10-2.76 ms (< 3 ms). Originally written by Claude from the approved story spec; the owner asked "Làm xong A2 đi rồi dừng" (build A2, then stop), so the decisions below were taken without a separate review round.
+Parent: `docs/superpowers/specs/2026-10-22-story-tool-den-design.md` (story spec, sections 4-10). Phase A1 (`docs/superpowers/specs/2026-10-23-story-phase-a1-cinematics-design.md`) built the cinematic player, music slots and short replays. Phase W (`docs/superpowers/specs/2026-10-23-phase-w-weapons-wanted-design.md`) built weapons, the wanted level and emotes.
+
+## 1. Goal
+
+Day 0 is playable end to end from the main menu, on the story framework every later day reuses:
+
+1. Main menu "CỐT TRUYỆN MỚI".
+2. Character creator.
+3. Wake-up cutscene at BE6.
+4. Mission "Đua tới FPTU" (Stage 1 race) with a short replay.
+5. Mission "Phòng 311" (Extra-stage evidence workflow beside Mr.T) with a short replay and evidence E1.
+6. End-of-mission cutscene with Mr.T.
+7. Free roam until the player goes to bed at BE6.
+8. Midnight horror beat.
+9. The 3 a.m. call "Mày còn 7 ngày…".
+10. `ai_intro`: the owner's video if present, otherwise the in-engine fallback.
+11. Day 1 morning with "CÒN 7 NGÀY" on the HUD. Day 1 itself comes in Phase B.
+
+Continue works from the menu at every autosave.
+
+**Out of scope:**
+- Days 1-7 content and the remaining segment cinematics.
+- Unarmed combat; the horror toolkit (flashlight, hiding spots, stalker AI).
+- Night events, the endings' cinematics, side activities in story mode.
+- The AI-clip production kits (Phase E).
+
+## 2. Decisions
+
+| # | Decision |
+|---|---|
+| A2-D1 | **`StoryDirector` autoload** (`scripts/story/StoryDirector.gd`, registered in `project.godot` after StageManager). <ul><li>Holds the story state: `active`, `day` (0-7), `tod` (FreeRoam time-of-day preset), `step` (current beat id), `evidence` (subset of E1-E7), `choices` (`phuc`, `zaman_offer`, `bribe`: "" or the picked value), `flags`, `protagonist` (creator opts), `texts` (phone messages), `objective`, `spawn` (saved return point).</li><li>Signals: `day_changed`, `evidence_added`, `objective_changed`, `text_received`, `step_changed`.</li><li>`static func evaluate_ending(state) -> String` implements story spec section 6 exactly (C, E, B, D, A, F in that order) so later phases only call it.</li><li>Autoloads stay optional for class_name scripts: use `get_node_or_null("/root/StoryDirector")`.</li></ul> |
+| A2-D2 | **Save.** <ul><li>One slot: `user://story_save.cfg` (ConfigFile, section `story`: `version = 1`, `data` = the state dictionary through `var_to_str`).</li><li>Autosave on creator confirm, every mission win, every day advance, and when leaving story free roam for the main menu.</li><li>Continue restores the state and enters story free roam at `spawn` (BE6 lobby when none) with the saved `tod`.</li><li>A missing or unreadable file means no save: the Continue button is hidden. A newer `version` is refused the same way.</li><li>Tests pass a temp path (same pattern as `StageManager.load_progress(path)`).</li></ul> |
+| A2-D3 | **Mission registry as data** (`scripts/story/StoryMissions.gd`, static tables). <ul><li>Each beat: id, day, title, kind (`cine` / `stage` / `bed` / `call` / `video`), marker anchor (a named FreeRoam location), stage id and story context for stage beats, evidence granted on win, cinematic or music slot, next beat id, objective text.</li><li>Day 0 beats are implemented: `d0_wake`, `d0_race`, `d0_exam`, `d0_exam_end`, `d0_bed`, `d0_midnight`, `d0_call`, `d0_intro`, `d1_start`.</li><li>Days 1-7 get one locked placeholder each: no marker; the phone objective reads "Ngày N: <tên nhiệm vụ> – sắp có trong bản cập nhật sau".</li></ul> |
+| A2-D4 | **Story layer in free roam** (`scripts/story/StoryRoam.gd`). <ul><li>FreeRoam gets one hook: when `StoryDirector.active` it sets `story_mode`, hides the old stage hotspots, disables the [T] time cycling, and adds a `StoryRoam` child.</li><li>StoryRoam owns: mission markers, the bed marker, [E] to start, the objective line, the phone, the 3 a.m. call overlay, the day chip on the HUD, and chaining cinematics through `FreeRoam.play_cinematic`.</li><li>Markers look like hotspots (glowing pillar plus Label3D) in story pink `#FF4FA3`, with a radar blip and a map pin.</li><li>Distance checks run at 10 Hz, not every frame.</li><li>Markers are blocked while wanted (same rule and message style as the Phase W hotspot block).</li><li>Crowds, traffic, weapons and the wanted level stay on in story mode.</li><li>Keep `scripts/FreeRoam.gd` changes small; the story logic lives in `scripts/story/`.</li></ul> |
+| A2-D5 | **Character creator** (`scenes/story/CharacterCreator.tscn` + `scripts/story/CharacterCreator.gd`). <ul><li>A pastel studio backdrop with the rigged protagonist on a turntable (mouse drag rotates; idle animation).</li><li>Rows:<ul><li>Giới tính (Nam / Nữ);</li><li>Tên (LineEdit, default "Bạn", trimmed, 1-16 characters);</li><li>Khuôn mặt (3 PS2 face variants);</li><li>Kiểu tóc (male: short, side_part, spiky, undercut; female: bob, ponytail, long, bun);</li><li>Màu tóc (`CharacterBuilder.HAIR_COLORS`);</li><li>Màu da (`CharacterBuilder.SKIN_TONES`).</li></ul></li><li>Buttons: "🎲 Ngẫu nhiên", "✔ Bắt đầu", "✖ Về menu".</li><li>Keyboard: ↑↓ row, ←→ value, Enter confirm.</li><li>The outfit is fixed: preset `player` (orange FPT polo, jeans, white sneakers, black backpack), story spec 3.1.</li><li>Every change rebuilds only the preview model.</li><li>`StoryDirector.protagonist_opts()` returns the CharacterBuilder opts. They are used by:<ul><li>the FreeRoam player (`ThirdPersonController.character_opts`);</li><li>the story cinematics' `hero` actor;</li><li>the Phase W busted cutscene's hero in story mode;</li><li>the Stage 1 rider (sex, skin; helmet on);</li><li>the Extra-stage player model.</li></ul></li></ul> |
+| A2-D6 | **Main menu** (`scripts/MainMenu.gd`). <ul><li>Remove "▶ BẮT ĐẦU NGÀY MỚI", "📋 CHỌN MÀN", the "Nhật ký hành trình" panel and the [M] hub shortcut.</li><li>Add at the top:<ul><li>"▶ TIẾP TỤC – NGÀY N" (only with a valid save);</li><li>"✚ CỐT TRUYỆN MỚI: TOOL ĐEN". With a save present it asks "Ghi đè bản lưu Ngày N?".</li></ul></li><li>Keep "🌏 KHÁM PHÁ CAMPUS" (free play, no story), Hướng dẫn, Cài đặt, Thoát.</li><li>Settings gain a "Giảm hù dọa" checkbox (A2-D14).</li><li>Update the tests that referenced the removed buttons.</li><li>StageManager's Campaign Hub code may stay unreachable; deleting it is not required.</li></ul> |
+| A2-D7 | **Phone** ([P] in story free roam). <ul><li>A vice-styled panel on the right with three tabs:<ul><li>"Tin nhắn": thread per sender (Mr.T, Phúc, Anh Duy, Số lạ);</li><li>"Bằng chứng": E1-E7, locked slots show "???";</li><li>"Nhiệm vụ": day, objective, days left.</li></ul></li><li>A new text shows a toast top-right with the `phone_buzz` cue and an unread badge on the day chip.</li><li>While open, player movement and camera input are blocked (like the map); the game is not paused. [P] or [ESC] closes it.</li><li>Texts substitute `{name}`.</li></ul> |
+| A2-D8 | **The 3 a.m. call** (overlay above the HUD, `scripts/story/StoryCall.gd`). <ul><li>Black fade, then a phone screen "SỐ LẠ · 03:00" ringing (`phone_ring_3am`).</li><li>Answer with [E] or a click; it auto-answers after 6 s.</li><li>A distorted "voice": `whisper_bed` plus `static_burst`, with slow typed subtitles "…Mày… còn… N ngày…", then a hang-up tone and fade.</li><li>About 10 s; hold Esc to skip.</li><li>N = 7 after Day 0; the call is generic in N for later days.</li><li>No recorded or real voice.</li></ul> |
+| A2-D9 | **Meme and horror SFX** (`scripts/story/StoryAudio.gd`, class_name `StoryAudio`). <ul><li>Every cue of story spec section 7, synthesized with the frozen `CineAudio` statics:<ul><li>meme: `boom`, `sad_trombone`, `record_scratch`, `ba_dum_tss`, `bonk`, `dun_dun_duun`, `success_fanfare`, `toang_sting`;</li><li>horror: `heartbeat`, `breath`, `whisper_bed`, `violin_screech`, `music_box`, `metal_creak`, `sheep_bleat_distorted`, `phone_ring_3am`, `static_burst`.</li></ul></li><li>`slide_whistle` is reused from A1, not duplicated.</li><li>An owner file `user://sfx/<cue>.ogg|.mp3|.wav` overrides a cue (`CineAudio._load_file`).</li><li>Cues are built lazily and cached. `warm(cues)` builds a list on a WorkerThreadPool task when story free roam loads, so play never stalls the main thread for more than 16 ms.</li><li>`heartbeat`, `whisper_bed` and `music_box` loop.</li></ul> |
+| A2-D10 | **Day 0 cinematics** (A1 timelines in `scripts/cine/timelines/`, staged at real FreeRoam spots via `cine_stage`, fixed lengths, beat sheets in `docs/cinematics/<slot>.txt`, validator clean, synthesized default music per slot, owner override `user://music/<slot>`). The hero actor uses the protagonist opts; lines use `{name}`. <ul><li>`cine_d0_wake` (8.0 s, BE6 lobby, morning): the protagonist bursts out of the lobby with the alarm ringing on the phone, stops, looks around: "Tôi là ai, đây là đâu?". The phone buzzes with Phúc's text "Ê!!! Thi EOS 8h đó, 7h05 rồi!!!"; panic, runs off.</li><li>`cine_d0_exam` (18.0 s, campus courtyard outside the room 311 module, late morning):<ul><li>Mr.T: "Giỏi lắm em! Ảnh tai nghe này là bằng chứng rõ ràng." and the E1 photo card;</li><li>Phúc runs in late: "Ét o ét! Thi xong chưa?!";</li><li>for 1.5 s a sheep-masked figure stands in a corridor opening behind them, then is gone.</li></ul></li><li>`cine_d0_midnight` (22.0 s, BE6 lobby bench, night):<ul><li>the protagonist cannot sleep; heartbeat;</li><li>the backpack glows red from inside; whisper "Lọ… Thần…"; the lobby lights flicker;</li><li>a white face rises behind them (`violin_screech`) – it is Phúc in a white face mask slurping instant noodles: "Ủa, chưa ngủ hả?" (`ba_dum_tss`);</li><li>the protagonist pulls a pair of smart glasses that are not theirs out of the backpack (`dun_dun_duun`).</li></ul></li><li>`ai_intro` fallback (24.0 s): next morning:<ul><li>the phone shows the email "Phòng Khảo thí: Quyết định đình chỉ thi";</li><li>a huge red "TOANG!" stamp slams onto the letter (`toang_sting`, 2D overlay);</li><li>Mr.T texts "Thầy tin em. Tìm bằng chứng đi.";</li><li>a 7-day countdown flips to 7;</li><li>title card "TOOL ĐEN – 7 ngày minh oan".</li></ul></li><li>`ai_intro` video: if `user://video/ai_intro_m.ogv` (male) or `ai_intro_f.ogv` (female) exists, a full-screen VideoStreamPlayer plays it instead, with fades and hold-Esc skip.</li><li>Short replays (A1 recorder and replay, shared system):<ul><li>`seg_d0_race` in Stage 1: track the player bike and rider; mark when the finish line is crossed; 5 s replay on a story win before the result card;</li><li>`seg_d0_exam` in the Extra stage: track the protagonist and the last caught student; mark at the final confiscation; 4-6 s replay.</li></ul></li></ul> |
+| A2-D11 | **Story missions inside stages.** <ul><li>`StageManager.story_context` (empty outside the story) is set by StoryDirector before launching a stage beat.</li><li>Stage 1 reads it for the rider opts and the replay.</li><li>The Extra stage reads it for:<ul><li>the protagonist model replacing the proctor model;</li><li>a Mr.T NPC at the front desk;</li><li>the intro text "Mr.T nhờ {name} làm giám thị phụ – chụp bằng chứng giúp thầy";</li><li>the replay.</li></ul></li><li>Gameplay rules of both stages are unchanged.</li><li>`report_stage_result` forwards to `StoryDirector.on_stage_result` when a context is set. The story then:<ul><li>titles the card "QUA MÔN! Uy tín +" on a win and "TOANG!" on a fail (story spec 7);</li><li>replaces the card buttons: win shows "▶ TIẾP TỤC CỐT TRUYỆN" (back to story free roam at the beat's return spot, next beat); fail shows "↻ THỬ LẠI" (same stage, same context) and "🌏 VỀ THẾ GIỚI MỞ" (marker stays).</li></ul></li><li>Outside the story every stage behaves exactly as today.</li></ul> |
+| A2-D12 | **HUD.** <ul><li>Vice HUD: a day chip under the money, "NGÀY 0 · THI EOS", then "NGÀY 1 · CÒN 7 NGÀY".</li><li>The objective shows bottom centre above the hints for 6 s whenever it changes; it stays readable in the phone.</li><li>The classic style gets the same text in a plain label.</li><li>Both hide with the rest of the HUD during cinematics.</li></ul> |
+| A2-D13 | **Time of day** follows the story: <ul><li>`morning` for wake and race;</li><li>`morning` again for the exam end;</li><li>`sunset` after the exam until bed;</li><li>`night` for midnight;</li><li>`morning` on Day 1.</li></ul> |
+| A2-D14 | **"Giảm hù dọa"** (story spec S-D6). <ul><li>GameFX setting `reduce_scares` (bool, `user://settings.cfg`), toggled in the main-menu settings and the pause settings.</li><li>When on:<ul><li>the `violin_screech` scare and the light flicker are removed;</li><li>the 3 a.m. call has no shake or flash;</li><li>horror cues play 6 dB quieter.</li></ul></li></ul> |
+| A2-D15 | **Text rules.** <ul><li>All game text in Vietnamese, fictional names only (Mr.T, Phúc, Anh Duy).</li><li>The protagonist is addressed by `{name}` and "em" (Mr.T) or "mày" (Phúc), never by a gendered pronoun in narration.</li><li>No real person's name, face or voice.</li><li>No copyrighted song.</li></ul> |
+| A2-D16 | **Tests** (headless, `_check()` + quit pattern, `Engine.max_fps = 60` where timing matters). New:<ul><li>`test_story_director`: state, signals, save/load round trip, version guard, `evaluate_ending` truth table;</li><li>`test_character_creator`: rows, randomize, name rules, confirm stores opts, preview rebuild;</li><li>`test_story_audio`: all 17 new cues, lengths and loops, override file, warm without stalls;</li><li>`test_story_phone`: texts, unread, evidence slots, input block;</li><li>`test_story_call`;</li><li>`test_story_day0`: new story through Day 1 morning with stage results simulated through `report_stage_result`, cinematics stepped or skipped, autosaves, continue restores Day 1;</li><li>timeline validator coverage for the new slots.</li></ul>Updated: `test_main_menu`. Unchanged and green: all 55 current tests, smoke, and `test_mayhem_perf` (< 3 ms; the story layer must not add measurable per-frame cost). |
+
+### Amendment A2-D17 (owner 2026-10-24, story spec S-D15 and 8.4)
+
+Two mid-story cinematics join Day 0. Same rules as A2-D10: A1 timelines, fixed lengths, beat sheets, validator clean, synthesized default music, skippable.
+
+- **`cine_d0_brief`** (12.0 s, room 311 module courtyard, morning). It is the mission intro of `d0_exam`: it plays when the player presses [E] on the Phòng 311 marker, then the Extra stage starts.
+  - Mr.T: "{name}! Phòng 311 thiếu giám thị, em phụ thầy được không?"
+  - Then: "Thầy nghe đồn có tool tên 'Lọ Thần'. Thấy gì lạ thì chụp lại giúp thầy."
+  - The protagonist nods; a camera push-in on the room 311 door.
+- **`cine_day_start`** (9.0 s, one parameterized template, BE6 lobby, morning). It plays at `d1_start`, after `ai_intro`, and later days reuse it.
+  - The protagonist steps out of the lobby.
+  - A code-drawn calendar page "NGÀY N · CÒN M NGÀY" (2D card) tears off and falls.
+  - The phone buzzes with the day's first text. Day 1: Phúc "Ê, tao nghe chuyện rồi… tối nay gặp ở campus nhé.", so it does not repeat the Mr.T text from `ai_intro`.
+  - Lines and N / M come from StoryDirector.
+
+## 3. Music slots added (story spec 8.3)
+
+- `cine_d0_wake`: upbeat panic.
+- `cine_d0_exam`: smug groove that sours.
+- `cine_d0_midnight`: eerie, then deadpan.
+- `ai_intro`: ironic sweet oldie over disaster (already listed in the story spec).
+- `seg_d0_race` and `seg_d0_exam`: short stings for the replays.
+
+Each slot has a synthesized default. The owner's file goes in `user://music/<slot>.ogg|.mp3`; it stays local and is never committed or exported.
+
+## 4. Constraints carried over
+
+- Pure GDScript, Godot 4.7.2, no plugins.
+- No AI-generated images; UI art, icons and textures are drawn in code.
+- Owner audio and video files stay local (`user://music`, `user://sfx`, `user://video`).
+- Mixamo raw files stay in the git-ignored `res://assets/local/mixamo/`; cinematics fall back to the UAL / native / code tiers without them.
+- Never stage `.import` files.
+- No push without the owner's permission.

@@ -25,7 +25,8 @@ func build() -> void:
 	fade_out = 0.5
 	stage = {}
 	var police: bool = catcher == "police"
-	actor("hero", {"preset": "player", "seed": 2805}, "Bạn", Color("#F37021"))
+	# story mode (A2-D5): the busted hero is the protagonist; without a story the default roam player "Bạn"
+	actor("hero", StoryUtil.hero_opts({"preset": "player", "seed": 2805}), StoryUtil.hero_name() if StoryUtil.story_active() else "Bạn", Color("#F37021"))
 	actor("cop", {"preset": "cop", "seed": 32} if police else {"preset": "guard", "seed": 31}, "Cảnh sát" if police else "Bảo vệ", Color("#7FB2E5"))
 	hit("B1", 2.2, "medium", "cuffs click", {"r": 2.4})
 	key("hero", 0.0, HERO, 0.0)

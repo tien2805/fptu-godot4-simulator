@@ -34,7 +34,11 @@ const DUST_ALPHA: float = 0.28
 ## Rim centre height in CharacterBuilder._build_helmet's frame (head centre 0.12 + rim offset 0.01).
 const HELMET_RIM_Y: float = 0.13
 ## Prop kinds build_prop knows (timeline props and held props).
-const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", "helmet"]
+const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", "helmet",
+	# story Phase A2 (Day 0 cinematics): lobby bench, the protagonist's backpack (glows red inside via glow_at), the planted
+	# smart glasses, an instant-noodle cup, the E1 photo card, a lamp (opts "flicker": [[s0, s1], ...] story windows, see
+	# CinePlayer), a fluffy sheep mask and a white face mask (both held on the Head bone)
+	"bench", "backpack", "glasses", "noodles", "photo", "lamp", "sheep_mask", "face_mask"]
 
 var _serial: int = 0
 var _parts: Array[Dictionary] = []     # {node: CPUParticles3D, s0, life}
@@ -482,6 +486,22 @@ static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 			_build_phone(root)
 		"helmet":
 			_build_helmet(root, opts)
+		"bench":
+			_build_bench(root)
+		"backpack":
+			_build_backpack(root)
+		"glasses":
+			_build_glasses(root)
+		"noodles":
+			_build_noodles(root)
+		"photo":
+			_build_photo(root)
+		"lamp":
+			_build_lamp(root, opts)
+		"sheep_mask":
+			_build_sheep_mask(root)
+		"face_mask":
+			_build_face_mask(root)
 		_:
 			push_warning("CineFX.build_prop: unknown kind '%s'" % kind)
 	return root
@@ -734,6 +754,174 @@ static func _build_phone(root: Node3D) -> void:
 	ol.visible = false
 	root.add_child(ol)
 	root.set_meta("glow_light", ol)
+
+
+# ---------------------------------------------------------------------------
+# Story Phase A2 props (plain meshes, code colours only)
+# ---------------------------------------------------------------------------
+static func _sphere(parent: Node3D, nm: String, r: float, pos: Vector3, mat: Material, sc: Vector3 = Vector3.ONE) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.name = nm
+	var sm := SphereMesh.new()
+	sm.radius = r
+	sm.height = r * 2.0
+	sm.radial_segments = 12
+	sm.rings = 6
+	mi.mesh = sm
+	mi.material_override = mat
+	mi.position = pos
+	mi.scale = sc
+	parent.add_child(mi)
+	return mi
+
+
+static func _cyl(parent: Node3D, nm: String, r0: float, r1: float, h: float, pos: Vector3, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.name = nm
+	var cm := CylinderMesh.new()
+	cm.top_radius = r0
+	cm.bottom_radius = r1
+	cm.height = h
+	cm.radial_segments = 14
+	mi.mesh = cm
+	mi.material_override = mat
+	mi.position = pos
+	parent.add_child(mi)
+	return mi
+
+
+static func _glow_mat(col: Color, energy: float) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = col
+	m.emission_enabled = true
+	m.emission = col
+	m.emission_energy_multiplier = energy
+	m.set_meta("vice_done", true)
+	return m
+
+
+## Lobby bench 1.6 m: slatted seat 0.45 m high, back rest on +Z (sitters face -Z).
+static func _build_bench(root: Node3D) -> void:
+	var wood: StandardMaterial3D = _mat(Color("#B07A4A"), 0.8)
+	var metal: StandardMaterial3D = _mat(Color("#3C4048"), 0.4)
+	for i: int in 3:
+		_box(root, "Slat%d" % i, Vector3(1.6, 0.035, 0.12), Vector3(0.0, 0.44, -0.15 + 0.14 * i), wood)
+	for j: int in 2:
+		_box(root, "BackSlat%d" % j, Vector3(1.6, 0.1, 0.03), Vector3(0.0, 0.62 + 0.16 * j, 0.24), wood, Vector3(-0.15, 0.0, 0.0))
+	for sx: float in [-0.7, 0.7]:
+		_box(root, "Leg", Vector3(0.05, 0.44, 0.5), Vector3(sx, 0.22, 0.03), metal)
+
+
+## Black backpack; a red emissive seam + red light switched on by the prop's glow_at (the planted glasses inside).
+static func _build_backpack(root: Node3D) -> void:
+	var cloth: StandardMaterial3D = _mat(Color("#1E1E22"), 0.9)
+	_box(root, "Bag", Vector3(0.32, 0.42, 0.18), Vector3(0.0, 0.21, 0.0), cloth)
+	_box(root, "Pocket", Vector3(0.24, 0.18, 0.05), Vector3(0.0, 0.14, -0.11), _mat(Color("#2A2A30"), 0.9))
+	var seam := StandardMaterial3D.new()
+	seam.albedo_color = Color("#3A0A0A")
+	seam.emission = Color("#FF2030")
+	seam.emission_enabled = false
+	seam.set_meta("vice_done", true)
+	_box(root, "Seam", Vector3(0.26, 0.02, 0.02), Vector3(0.0, 0.42, -0.06), seam)
+	root.set_meta("screen_mat", seam)
+	var ol := OmniLight3D.new()
+	ol.name = "BagGlow"
+	ol.light_color = Color("#FF2030")
+	ol.light_energy = 2.2
+	ol.omni_range = 2.2
+	ol.position = Vector3(0.0, 0.5, -0.1)
+	ol.visible = false
+	root.add_child(ol)
+	root.set_meta("glow_light", ol)
+
+
+## Smart glasses: dark lenses, black frame, a tiny red LED on the temple.
+static func _build_glasses(root: Node3D) -> void:
+	var frame: StandardMaterial3D = _mat(Color("#101014"), 0.3)
+	var lens: StandardMaterial3D = _mat(Color("#203040"), 0.1)
+	for sx: float in [-0.035, 0.035]:
+		_box(root, "Lens", Vector3(0.05, 0.03, 0.006), Vector3(sx, 0.0, 0.0), lens)
+	_box(root, "Bridge", Vector3(0.14, 0.008, 0.008), Vector3(0.0, 0.016, 0.0), frame)
+	for sx2: float in [-0.068, 0.068]:
+		_box(root, "Temple", Vector3(0.006, 0.008, 0.12), Vector3(sx2, 0.012, 0.06), frame)
+	_box(root, "Led", Vector3(0.008, 0.008, 0.008), Vector3(0.072, 0.016, 0.02), _glow_mat(Color("#FF2030"), 3.0))
+
+
+## Instant-noodle cup with a red band and chopsticks.
+static func _build_noodles(root: Node3D) -> void:
+	_cyl(root, "Cup", 0.05, 0.038, 0.1, Vector3(0.0, 0.05, 0.0), _mat(Color("#F4F1EA"), 0.7))
+	_cyl(root, "Band", 0.049, 0.045, 0.03, Vector3(0.0, 0.07, 0.0), _mat(Color("#D7262E"), 0.6))
+	_cyl(root, "Noodles", 0.046, 0.046, 0.01, Vector3(0.0, 0.098, 0.0), _mat(Color("#E9C46A"), 0.8))
+	var stick: StandardMaterial3D = _mat(Color("#D9B98A"), 0.7)
+	for sx: float in [-0.008, 0.008]:
+		_box(root, "Chopstick", Vector3(0.005, 0.2, 0.005), Vector3(sx, 0.16, 0.01), stick, Vector3(0.25, 0.0, 0.0))
+
+
+## The E1 photo card: white print, dark photo of a hand with a glowing blue earbud.
+static func _build_photo(root: Node3D) -> void:
+	_box(root, "Card", Vector3(0.13, 0.004, 0.1), Vector3.ZERO, _mat(Color("#F7F7F2"), 0.6))
+	_box(root, "Print", Vector3(0.11, 0.002, 0.075), Vector3(0.0, 0.003, -0.005), _mat(Color("#262A36"), 0.5))
+	_sphere(root, "Earbud", 0.009, Vector3(0.015, 0.006, -0.01), _glow_mat(Color("#3FA9FF"), 2.5))
+
+
+## Lobby lamp post: pole, warm bulb, OmniLight. opts "flicker" windows drive set_lamp() from CinePlayer.
+static func _build_lamp(root: Node3D, opts: Dictionary) -> void:
+	_cyl(root, "Pole", 0.03, 0.04, 2.6, Vector3(0.0, 1.3, 0.0), _mat(Color("#2E3238"), 0.4))
+	var bulb: StandardMaterial3D = _glow_mat(Color("#FFD27A"), 2.5)
+	_sphere(root, "Bulb", 0.12, Vector3(0.0, 2.7, 0.0), bulb)
+	var ol := OmniLight3D.new()
+	ol.name = "LampLight"
+	ol.light_color = Color(opts.get("color", Color("#FFD9A0")))
+	ol.light_energy = float(opts.get("energy", 2.4))
+	ol.omni_range = float(opts.get("range", 7.0))
+	ol.position = Vector3(0.0, 2.6, 0.0)
+	root.add_child(ol)
+	root.set_meta("lamp_light", ol)
+	root.set_meta("lamp_bulb", bulb)
+
+
+## true unless story time s falls inside a flicker window and the deterministic stutter has the light off (seekable).
+static func lamp_on(s: float, windows: Array) -> bool:
+	for w: Variant in windows:
+		var a: Array = w
+		if s >= float(a[0]) and s < float(a[1]):
+			return int(floor(s * 17.0)) % 3 != 1 and int(floor(s * 5.0)) % 4 != 2
+	return true
+
+
+## Lamp on / off without switching shader variants (review A2-R3: toggling emission_enabled can hitch on the first flicker).
+static func set_lamp(prop: Node3D, on: bool) -> void:
+	var ol: OmniLight3D = prop.get_meta("lamp_light", null)
+	if ol:
+		ol.visible = on
+	var b: StandardMaterial3D = prop.get_meta("lamp_bulb", null)
+	if b:
+		b.emission_energy_multiplier = 2.5 if on else 0.0
+
+
+## Fluffy white sheep mask (Cừu Dolly's clones): wool puffs, dark muzzle, ears; centred on the head (Head bone + offset).
+static func _build_sheep_mask(root: Node3D) -> void:
+	var wool: StandardMaterial3D = _mat(Color("#F4F1EA"), 1.0)
+	var face: StandardMaterial3D = _mat(Color("#2B2622"), 0.7)
+	var puffs: Array[Vector3] = [Vector3(0, 0.1, 0), Vector3(-0.08, 0.07, 0.02), Vector3(0.08, 0.07, 0.02), Vector3(0, 0.05, 0.08),
+		Vector3(-0.06, 0.13, 0.05), Vector3(0.06, 0.13, 0.05), Vector3(0, 0.15, -0.03)]
+	for i: int in puffs.size():
+		_sphere(root, "Puff%d" % i, 0.085, puffs[i], wool)
+	_sphere(root, "Muzzle", 0.075, Vector3(0.0, -0.005, -0.09), face, Vector3(0.9, 1.35, 0.8))   # down over the chin
+	var eye: StandardMaterial3D = _glow_mat(Color("#FFFFFF"), 1.2)
+	for sx: float in [-0.028, 0.028]:
+		_sphere(root, "Eye", 0.012, Vector3(sx, 0.06, -0.15), eye)
+		_box(root, "Ear", Vector3(0.08, 0.025, 0.04), Vector3(sx * 4.0, 0.09, -0.02), face, Vector3(0.0, 0.0, signf(sx) * -0.5))
+
+
+## White face mask (Phúc's sheet mask): a pale oval in front of the face with eye and mouth holes.
+static func _build_face_mask(root: Node3D) -> void:
+	var white: StandardMaterial3D = _mat(Color("#FBFBF7"), 0.9)
+	_sphere(root, "Mask", 0.1, Vector3(0.0, 0.05, -0.1), white, Vector3(0.95, 1.25, 0.25))
+	var hole: StandardMaterial3D = _mat(Color("#1A1A1A"), 0.9)
+	for sx: float in [-0.035, 0.035]:
+		_sphere(root, "EyeHole", 0.016, Vector3(sx, 0.08, -0.126), hole, Vector3(1.4, 0.8, 0.4))
+	_sphere(root, "MouthHole", 0.014, Vector3(0.0, 0.0, -0.126), hole, Vector3(2.0, 0.7, 0.4))
 
 
 ## Light or darken a prop's screen (phone).
