@@ -13,7 +13,7 @@ extends Node3D
 const USE_RADIUS: float = 1.4
 const KINDS: Array[String] = ["locker", "stall", "desk"]
 ## Per kind: exit distance in front (m), peek camera local position, peek yaw (rad, local; 0 = looks out along -Z).
-const EXIT_DIST: Dictionary = {"locker": 0.85, "stall": 1.2, "desk": 1.0}
+const EXIT_DIST: Dictionary = {"locker": 0.85, "stall": 1.3, "desk": 1.0}
 const PEEK_POS: Dictionary = {"locker": Vector3(0.0, 1.55, -0.32), "stall": Vector3(0.0, 0.3, -0.9), "desk": Vector3(0.0, 0.2, 0.42)}
 const PEEK_YAW: Dictionary = {"locker": 0.0, "stall": 0.0, "desk": PI}
 const LOOK_YAW: float = deg_to_rad(45.0)
