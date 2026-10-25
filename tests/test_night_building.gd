@@ -193,6 +193,23 @@ func _alarm(lvl: NightBuilding) -> void:
 			if s2.rushing and s2.state == HorrorStalker.CHASE:
 				rushing += 1
 	_check(rushing == 4, "every stalker rushes the player (%d)" % rushing)
+	_check(lvl.stalkers[0].search_s == NightBuilding.ALARM_SEARCH_S, "during the alarm a lost player is searched for only %.0f s" % NightBuilding.ALARM_SEARCH_S)
+	# a retry during the alarm: a 3 s head start before they rush again
+	lvl.retry_from_checkpoint()
+	var early: int = 0
+	for i3: int in 150:
+		await physics_frame
+		for s4: HorrorStalker in lvl.stalkers:
+			early += int(s4.rushing)
+	var late: int = 0
+	var w2: int = 0
+	while late < 4 and w2 < 120:
+		await physics_frame
+		w2 += 1
+		late = 0
+		for s5: HorrorStalker in lvl.stalkers:
+			late += int(s5.rushing)
+	_check(early == 0 and late == 4, "retry during the alarm: no rush for 2.5 s, then all rush again after the 3 s head start (%d, %d)" % [early, late])
 	for s3: HorrorStalker in lvl.stalkers:
 		s3.frozen = true
 	lvl.kit.catch_enabled = true
@@ -307,7 +324,13 @@ func _reduced_level() -> void:
 		await process_frame
 		lo = minf(lo, (lr.map["corridor_lights"][0] as StandardMaterial3D).emission_energy_multiplier)
 	_check(lo >= SosLights.PULSE_LO - 0.01, "reduced: the corridor pulses slowly, never dark (min %.2f)" % lo)
+	var w: int = 0
+	while not (lr.siren.playing and lr.dolly.hum.playing) and w < 300:
+		await process_frame
+		w += 1
+	_check(lr.siren.playing and lr.dolly.hum.playing, "the siren and the hum play before release()")
 	lr.release()
+	_check(not lr.siren.playing and not lr.dolly.hum.playing and lr.state == "released", "release() stops the siren and the hum")
 	lr.queue_free()
 	await _frames(2)
 

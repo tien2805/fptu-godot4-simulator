@@ -555,14 +555,41 @@ func _breath(kit: HorrorKit, spot: HidingSpot, walker: HorrorStalker, player: Th
 	kit.hold_override = true
 	kit.update_breath(0.1)
 	_check(kit.breath_held, "let go and pressed again: holds")
+	# entering with Shift still down (the sprint in): no hold until a fresh press, and a moment before any hearing
+	kit.hold_override = false
+	kit.leave_hiding()
+	spot.reset_spot()
+	player.teleport(Vector3(0, 0, 0.2), 0.0)
+	kit.breath_left = HorrorKit.BREATH_MAX_S
+	kit.hold_override = true
+	_check(kit.hide_in(spot), "hides with Shift held")
+	for i3: int in 5:
+		kit.update_breath(1.0)
+	_check(not kit.breath_held and kit.gasps == 1 and is_equal_approx(kit.breath_left, HorrorKit.BREATH_MAX_S), "Shift held from the sprint in: no hold, no drain, no gasp (%.2f)" % kit.breath_left)
+	kit.hold_override = false
+	kit.update_breath(0.1)
+	kit.hold_override = true
+	kit.update_breath(0.1)
+	_check(kit.breath_held, "a fresh press holds")
+	_check(kit._hear_t <= 0.0, "the entry grace")
+	# a gasp far away (10 m) is not heard
+	walker.reset_at(spot.global_position + Vector3(10.0, 0, 0))
+	walker.set_physics_process(false)
+	kit.breath_left = 0.05
+	kit.update_breath(0.1)
+	_check(kit.gasps == 2 and kit.last_gasp == "empty" and walker.state != HorrorStalker.CHECK, "a gasp 10 m from a stalker is not heard (%s)" % walker.state)
+	kit.hold_override = false
+	kit.update_breath(0.1)
+	walker.set_physics_process(true)
 	# releasing right next to a stalker: a gasp, it checks the spot
+	kit.breath_left = HorrorKit.BREATH_MAX_S
 	walker.reset_at(spot.global_position + Vector3(1.5, 0, 0.6))
 	walker.set_physics_process(false)
 	kit.hold_override = true
 	kit.update_breath(0.1)
 	kit.hold_override = false
 	kit.update_breath(0.1)
-	_check(kit.gasps == 2 and kit.last_gasp == "release" and walker.state == HorrorStalker.CHECK and walker.check_spot == spot,
+	_check(kit.gasps == 3 and kit.last_gasp == "release" and walker.state == HorrorStalker.CHECK and walker.check_spot == spot,
 		"releasing within 2 m of a stalker: a gasp and it checks the spot (%s, %s)" % [kit.last_gasp, walker.state])
 	walker.set_physics_process(true)
 	kit.set_physics_process(true)
@@ -594,7 +621,9 @@ func _catch_scares() -> void:
 		beats.clear()
 		sd.played.clear()
 		var rot0: Vector3 = cam.rotation
+		var near0: float = cam.near
 		sd.play_catch_scare(kind)
+		_check(is_equal_approx(cam.near, ScareDirector.CATCH_NEAR), "%s: a close near plane while the face is there" % kind)
 		var ls: Dictionary = sd.last_scare
 		var cues: Array = ScareDirector.CATCH_CUES[kind]
 		_check(ls.get("kind") == "catch" and ls.get("spot") == kind and ls.get("face") == true and ls.get("soft") == false, "%s: a staged face scare (%s)" % [kind, str(ls)])
@@ -624,11 +653,23 @@ func _catch_scares() -> void:
 				_check(locs[0].y > 0.4 and absf(mid.y) < 0.12 and ups[locs.size() / 2] < -0.9, "desk: lowers from above into view, upside down (%.2f -> %.2f, up %.2f)" % [locs[0].y, mid.y, ups[locs.size() / 2]])
 				_check(beats.has("reveal"), "desk: the spot opens")
 			"locker":
-				_check(absf(locs[0].z) > 0.4 and absf(mid.z) < 0.3 and beats.has("reveal"), "locker: at the slats, then the yank and it pushes in (%.2f -> %.2f)" % [locs[0].z, mid.z])
+				_check(absf(locs[0].z) > 0.45 and absf(mid.z) < 0.36 and beats.has("reveal"), "locker: at the slats, then the yank and it pushes in (%.2f -> %.2f)" % [locs[0].z, mid.z])
 			"stall":
 				_check(tilts[locs.size() / 2] > 0.6 and locs[0].y < -0.4 and absf(mid.y) < 0.12, "stall: the camera looks up and the face rises over the partition (tilt %.2f, %.2f -> %.2f)" % [tilts[locs.size() / 2], locs[0].y, mid.y])
 			"open":
-				_check(absf(locs[0].z) > 2.0 and absf(locs[6].z) < 0.4 and not beats.has("reveal"), "open: the face lunges at the camera (%.2f -> %.2f)" % [locs[0].z, locs[6].z])
+				_check(absf(locs[0].z) > 2.0 and absf(locs[6].z) < 0.45 and not beats.has("reveal"), "open: the face lunges at the camera (%.2f -> %.2f)" % [locs[0].z, locs[6].z])
+		var closest: float = INF
+		for v2: Vector3 in locs:
+			closest = minf(closest, -v2.z)
+		_check(closest - 0.2 > ScareDirector.CATCH_NEAR and closest >= 0.3, "%s: the mask front never reaches the near plane (closest %.2f m)" % [kind, closest])
+		_check(is_equal_approx(cam.near, near0), "%s: the camera's near plane comes back (%.3f)" % [kind, cam.near])
+	sd.play_catch_scare("open", false)
+	_check(sd.last_scare.get("who") == "clone" and ((sd.face.get_node("Hood") as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.is_equal_approx(ScareDirector.CLONE_HAIR),
+		"a clone's catch shows a clone's face (dark hair under the mask)")
+	sd.play_catch_scare("open", true)
+	_check(sd.last_scare.get("who") == "dolly" and ((sd.face.get_node("Hood") as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.is_equal_approx(StoryCast.CREAM),
+		"Dolly's catch shows her cream wool hood")
+	sd.cancel_catch()
 	_trash.append(sd)
 	var red := ScareDirector.new()
 	red.auto_clock = false

@@ -8,6 +8,10 @@
 #   - the MEDIAN (stable against OS / GC spikes),
 #   - the 5 %-TRIMMED MEAN (the 6 lowest and 6 highest of 120 frames dropped), so the 10 Hz senses and re-routes count.
 # Plain means are printed too. Prints the numbers for PLAN.md.
+# Horror polish: a second window in the alarm phase (all 3 fuses placed: the SOS lights, the siren, every stalker rushing
+# the player, Dolly's hum, the heartbeat), timed on both the physics frame and the process frame (from the process_frame
+# signal to a tail node's _process: the SOS lights, the heartbeat and the hum run in _process). The alarm phase's physics +
+# process cost against the same baseline (with the SOS lights and the fake-outs off too) must also stay < 3 ms.
 # Run:  godot --headless --path . --script tests/test_horror_perf.gd
 extends SceneTree
 
@@ -22,6 +26,13 @@ class PhysTail extends Node:
 		on_tail.call()
 
 
+class ProcTail extends Node:
+	var on_tail: Callable
+
+	func _process(_d: float) -> void:
+		on_tail.call()
+
+
 var fails: Array[String] = []
 var frames: int = 0
 var phase: String = ""
@@ -30,9 +41,13 @@ var lvl: NightBuilding
 var timing: bool = false
 var _pt0: int = 0
 var samples: PackedInt32Array = PackedInt32Array()
+var psamples: PackedInt32Array = PackedInt32Array()
+var _pp0: int = 0
 var medians: Array[float] = []
 var means: Array[float] = []
 var trimmed: Array[float] = []
+var pmedians: Array[float] = []
+var ptrimmed: Array[float] = []
 var _wp: int = 0
 var _start_pos: Array[Vector3] = []
 
@@ -51,6 +66,12 @@ func _initialize() -> void:
 	tail.process_physics_priority = 1 << 30
 	tail.on_tail = _tail
 	root.add_child(tail)
+	var ptail := ProcTail.new()
+	ptail.name = "ProcTail"
+	ptail.process_priority = 1 << 30
+	ptail.on_tail = _ptail
+	root.add_child(ptail)
+	process_frame.connect(func() -> void: _pp0 = Time.get_ticks_usec())
 	lvl = (load("res://scenes/story/NightBuilding.tscn") as PackedScene).instantiate()
 	lvl.setup({"seed": 11, "catch_enabled": false, "auto_retry": false, "capture_mouse": false, "reduce_scares": false})
 	root.add_child(lvl)
@@ -61,6 +82,11 @@ func _initialize() -> void:
 func _tail() -> void:
 	if timing:
 		samples.append(Time.get_ticks_usec() - _pt0)
+
+
+func _ptail() -> void:
+	if timing and _pp0 > 0:
+		psamples.append(Time.get_ticks_usec() - _pp0)
 
 
 func _next(p: String) -> void:
@@ -89,6 +115,12 @@ func _close_window() -> void:
 	sorted.sort()
 	trimmed.append(trimmed_mean(sorted, 0.05))
 	medians.append(float(sorted[sorted.size() / 2]))
+	var ps: PackedInt32Array = psamples.duplicate()
+	if ps.is_empty():
+		ps.append(0)
+	ps.sort()
+	ptrimmed.append(trimmed_mean(ps, 0.05))
+	pmedians.append(float(ps[ps.size() / 2]))
 
 
 ## The bot: jog to the next corner of the ring corridor.
@@ -127,6 +159,7 @@ func _on_physics() -> void:
 		"horror":
 			if t == 1:
 				samples.clear()
+				psamples.clear()
 				timing = true
 			if t == WINDOW + 1:
 				_close_window()
@@ -139,25 +172,47 @@ func _on_physics() -> void:
 				print("  stalkers: %d of 4 moved, states %s; flashlight lit %s, battery %.2f" % [moved, str(st), str(lvl.flashlight.is_lit()), lvl.flashlight.battery])
 				_check(moved >= 3, "the stalkers patrol during the window (%d moved)" % moved)
 				_check(lvl.flashlight.is_lit(), "the flashlight is on during the window")
+				for k: int in 3:
+					lvl.collect_fuse(k)
+				lvl.place_fuses()
+				_check(lvl.alarm, "the alarm phase starts")
+				_next("alarm")
+		"alarm":
+			if t == 40:
+				samples.clear()
+				psamples.clear()
+				timing = true
+			if t == WINDOW + 40:
+				_close_window()
+				var rushing: int = 0
+				for s2: HorrorStalker in lvl.stalkers:
+					rushing += int(s2.rushing or s2.state == HorrorStalker.CHASE or s2.state == HorrorStalker.SEARCH)
+				print("  alarm: %d of 4 rushing / chasing / searching, SOS lit %s, energy %.2f" % [rushing, str(lvl.sos.lit), lvl.sos.energy])
+				_check(rushing >= 3 and lvl.sos.running, "the alarm runs during its window (%d rushing)" % rushing)
 				for n: Node in lvl.stalkers:
 					n.process_mode = Node.PROCESS_MODE_DISABLED
-				for n2: Node in [lvl.kit, lvl.scare, lvl.flashlight]:
+				for n2: Node in [lvl.kit, lvl.scare, lvl.flashlight, lvl.sos, lvl.fakeouts]:
 					n2.process_mode = Node.PROCESS_MODE_DISABLED
 				_next("base")
 		"base":
 			if t == 2:
 				samples.clear()
+				psamples.clear()
 				timing = true
 			if t == WINDOW + 2:
 				_close_window()
-				var cost_med: float = (medians[0] - medians[1]) / 1000.0
-				var cost_trim: float = (trimmed[0] - trimmed[1]) / 1000.0
-				print("  Night Building, 4 stalkers + flashlight + kit + scare director: %.3f ms per physics frame median, %.3f ms trimmed mean (median %.0f vs %.0f us; trimmed %.0f vs %.0f us; mean %.0f vs %.0f us)" % [cost_med, cost_trim, medians[0], medians[1], trimmed[0], trimmed[1], means[0], means[1]])
+				var cost_med: float = (medians[0] - medians[2]) / 1000.0
+				var cost_trim: float = (trimmed[0] - trimmed[2]) / 1000.0
+				print("  Night Building, 4 stalkers + flashlight + kit + scare director: %.3f ms per physics frame median, %.3f ms trimmed mean (median %.0f vs %.0f us; trimmed %.0f vs %.0f us; mean %.0f vs %.0f us)" % [cost_med, cost_trim, medians[0], medians[2], trimmed[0], trimmed[2], means[0], means[2]])
 				_check(cost_med < GATE_MS, "horror layer < 3 ms per physics frame, median (%.3f)" % cost_med)
 				_check(cost_trim < GATE_MS, "horror layer < 3 ms per physics frame, 5 %%-trimmed mean (%.3f)" % cost_trim)
+				var al_med: float = (medians[1] + pmedians[1] - medians[2] - pmedians[2]) / 1000.0
+				var al_trim: float = (trimmed[1] + ptrimmed[1] - trimmed[2] - ptrimmed[2]) / 1000.0
+				print("  alarm phase (SOS, siren, rush, hum, heartbeat), physics + process: %.3f ms median, %.3f ms trimmed mean (physics %.0f vs %.0f us, process %.0f vs %.0f us)" % [al_med, al_trim, medians[1], medians[2], pmedians[1], pmedians[2]])
+				_check(al_med < GATE_MS and al_trim < GATE_MS, "alarm phase < 3 ms per frame, physics + process (%.3f / %.3f)" % [al_med, al_trim])
 				_check(lvl.find_children("*", "GPUParticles3D", true, false).is_empty(), "no GPUParticles3D")
 				if fails.is_empty():
-					print("✅ SUCCESS: HORROR PERFORMANCE (%.3f / %.3f ms median / trimmed mean < 3 ms per physics frame)" % [cost_med, cost_trim])
+					print("✅ SUCCESS: HORROR PERFORMANCE (%.3f / %.3f ms median / trimmed mean < 3 ms per physics frame; alarm phase %.3f / %.3f ms physics + process)" % [cost_med, cost_trim, al_med, al_trim])
 					quit(0)
 				else:
 					print("❌ FAILED: %d issues" % fails.size())

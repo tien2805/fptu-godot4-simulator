@@ -7,9 +7,10 @@
 # Days 2-3 placeholder objectives, the calls' N, an A2 save at d1_locked resuming at d1_stakeout, side markers granted
 # once, beat flags, the horror result (E5 only with no catch).
 # Horror polish (H-D7): the free-roam night events (StoryNightEvents) on stub roam / story nodes: only at night from Day 1,
-# never during a mission, a cinematic, a busy beat or while wanted; the first one 45-90 s into the night, then at most one
-# per 3 minutes (mission time does not count); the clone only while riding; the "Số lạ" photo text once per day; the far
-# figure's vanish rule.
+# never during a mission, a cinematic, a busy beat, a police chase (stars, state still "free"), with the phone or the map
+# open; the first one 45-90 s into the night, then at most one per 3 minutes (mission time does not count, and nothing
+# comes right after a mission ends); the clone only while riding; the "Số lạ" photo text once per day; the far figure's
+# vanish rule.
 # Run:  godot --headless --path . --script tests/test_story_director.gd
 extends SceneTree
 
@@ -26,16 +27,26 @@ class FakeRoam extends Node3D:
 	var mounted: bool = false
 	var bike: Node3D = null
 	var wanted: Node = null
+	var map_overlay: Control = null
 
 
 class FakeStory extends Node:
 	var mission_node: Node = null
 	var busy: bool = false
 	var running: String = ""
+	var phone: FakePhone = null
+
+
+class FakePhone extends Node:
+	var open: bool = false
+
+	func is_open() -> bool:
+		return open
 
 
 class FakeWanted extends Node:
 	var state: String = "free"
+	var stars: int = 0
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -276,6 +287,13 @@ func _night_events() -> void:
 	var st := FakeStory.new()
 	var wd := FakeWanted.new()
 	fr.wanted = wd
+	var ph := FakePhone.new()
+	st.phone = ph
+	var mapc := Control.new()
+	mapc.visible = false
+	fr.map_overlay = mapc
+	root.add_child(ph)
+	root.add_child(mapc)
 	root.add_child(fr)
 	root.add_child(st)
 	root.add_child(wd)
@@ -301,9 +319,19 @@ func _night_events() -> void:
 	st.busy = true
 	_check(not ev.eligible(), "night events: never while a beat runs")
 	st.busy = false
-	wd.state = "chasing"
-	_check(not ev.eligible(), "night events: not while wanted")
+	wd.stars = 1   # a police chase: the state stays "free", the stars count
+	_check(not ev.eligible(), "night events: not during a police chase (1 star)")
+	wd.stars = 0
+	wd.state = "stamp"
+	_check(not ev.eligible(), "night events: not while busted")
 	wd.state = "free"
+	ph.open = true
+	_check(not ev.eligible(), "night events: not with the phone open")
+	ph.open = false
+	mapc.visible = true
+	_check(not ev.eligible(), "night events: not with the map open")
+	mapc.visible = false
+	_check(ev.eligible(), "night events: eligible again")
 	# cadence over 20 minutes of story night
 	var times: Array[float] = []
 	var t: float = 0.0
@@ -330,6 +358,16 @@ func _night_events() -> void:
 		ev.advance(0.5)
 		t += 0.5
 	_check(since_end < StoryNightEvents.GAP_S - 50.0 and (times.size() == n0 or ev.since < 50.0), "night events: mission time does not count towards the next one")
+	# nothing right after a mission or a cinematic ends, even when the 3 minutes were already up before it
+	ev.since = StoryNightEvents.GAP_S + 20.0
+	var n1: int = times.size()
+	fr.cine_player = blocker
+	ev.advance(0.5)
+	fr.cine_player = null
+	for i8: int in 50:
+		ev.advance(0.5)
+		t += 0.5
+	_check(times.size() == n1, "night events: none in the 25 s after a cinematic ends")
 	# picks: the clone only while riding, the photo once per day
 	var kinds: Dictionary = {}
 	for i4: int in 400:
@@ -362,7 +400,7 @@ func _night_events() -> void:
 	_check(StoryNightEvents.figure_should_vanish(24.0, 0.0, 1.0) and StoryNightEvents.figure_should_vanish(40.0, 0.7, 1.0)
 		and StoryNightEvents.figure_should_vanish(40.0, 0.0, 41.0) and not StoryNightEvents.figure_should_vanish(40.0, 0.2, 5.0),
 		"night events: the far figure goes within 25 m, when looked away from, or after 40 s")
-	for nd: Node in [ev, fr, st, wd, blocker]:
+	for nd: Node in [ev, fr, st, wd, blocker, ph, mapc]:
 		nd.free()
 	sd.call("reset_state")
 
