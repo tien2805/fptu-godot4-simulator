@@ -9,6 +9,7 @@ const BENCH := Vector3(0.0, 0.0, 1.2)
 const HERO := Vector3(0.55, 0.0, 0.1)
 const PHUC := Vector3(-0.5, 0.0, -0.35)
 const SEAT := Vector3(-0.3, 0.0, 1.18)
+const FRONT := Vector3(-0.3, 0.0, 0.65)   # in front of the seat slats (front edge z 0.99)
 
 
 func build() -> void:
@@ -33,13 +34,16 @@ func build() -> void:
 	expr("hero", 0.6, "talk")
 	expr("hero", 2.9, "open")
 	# Phúc turns away and sits down on the bench, head low
+	# walks to the front of the bench, stops, turns round, and slides back onto the seat inside the sit fade (cine_d0_midnight)
 	key("phuc", 0.0, PHUC, CineTimeline.face(PHUC, HERO))
 	key("phuc", 0.6, PHUC, 180.0)
-	key("phuc", 1.3, SEAT, 180.0, {"mode": "out"})
-	key("phuc", 1.75, SEAT, 0.0)
+	key("phuc", 1.6, FRONT, 180.0, {"mode": "linear"})
+	key("phuc", 1.95, FRONT, 0.0)
+	key("phuc", 2.35, SEAT, 0.0)
 	move("phuc", 0.0, "confess")
 	move("phuc", 0.6, "walk", {"fade": 0.2})
-	move("phuc", 1.5, "sit_bench", {"fade": 0.4})
+	move("phuc", 1.6, "idle", {"fade": 0.15})
+	move("phuc", 1.95, "sit_bench", {"fade": 0.4})
 	look("phuc", 2.0, 4.5, Vector3(-0.3, 0.2, -1.5))
 	expr("phuc", 0.0, "done")
 	sfx_at(3.0, "sad_trombone", -10.0)

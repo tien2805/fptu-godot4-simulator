@@ -6,7 +6,8 @@
 # server under The Beverly tower, 10.13.0.7); Linh has recorded everything on her phone. Deadpan bleat at the end.
 # No ramps (story = real). Music slot cine_d4: the owner's local file user://music/cine_d4.mp3 when present, else the
 # synthesized default (eerie).
-# Stage: explicit "at" in front of the lobby module of the front wing (plot u 85.5, v 9.5), stage -Z toward the building.
+# Stage: explicit "at" in front of the front wing (plot u 77.5, v 8.5: the nearest clear 9 x 9 box to the lobby module), a
+# carried lobby-front wall behind Dolly (opts "set": dropped with drop_set when staged at the real doors).
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline
 
@@ -25,16 +26,18 @@ func build() -> void:
 	mood = "eerie"
 	fade_in = 0.6
 	fade_out = 0.8
-	stage = {"landmark": "campus_main_gate", "at": CineTimeline.campus_at(Vector3(85.5, 0.0, 9.5)), "near": 26.0,
-		"size": Vector2(9.0, 9.0), "tod": "night", "yaw_deg": CineTimeline.campus_yaw(180.0), "fallback": "campus_parking_center",
+	stage = {"landmark": "campus_main_gate", "at": CineTimeline.campus_at(Vector3(77.5, 0.0, 8.5)), "near": 26.0,
+		"size": Vector2(9.0, 9.0), "tod": "night", "yaw_deg": 1.0, "fallback": "campus_parking_center",
 		"exposure": 1.5, "ambient": 1.8}
 	actor("hero", StoryCast.opts("hero"), StoryCast.speaker("hero"), StoryCast.color("hero"))
 	actor("linh", StoryCast.opts("linh"), StoryCast.speaker("linh"), StoryCast.color("linh"))
 	actor("dolly", StoryCast.opts("dolly"), StoryCast.speaker("dolly"), StoryCast.color("dolly"))
 	prop("lamp", "lamp", Vector3(-2.6, 0.0, -2.2), 0.0, {"energy": 2.2})
+	# the lobby front she is cornered against (carried: the stage box must be empty; drop_set leaves it out)
+	prop("wall", "lobby_wall", Vector3(0.0, 0.0, -3.45), 0.0, {"width": 7.0, "set": true})
 	# the two walk in and stop at arm's length from her
 	key("hero", 0.0, HERO_FROM, CineTimeline.face(HERO_FROM, HERO))
-	key("hero", 1.7, HERO, CineTimeline.face(HERO, DOLLY), {"mode": "out"})
+	key("hero", 1.7, HERO, CineTimeline.face(HERO, DOLLY), {"mode": "linear"})
 	move("hero", 0.0, "walk")
 	move("hero", 1.7, "fight_idle", {"fade": 0.25})
 	move("hero", 6.9, "idle", {"fade": 0.3})
@@ -45,7 +48,7 @@ func build() -> void:
 	expr("hero", 8.4, "open")
 	expr("hero", 16.4, "done")
 	key("linh", 0.0, LINH_FROM, CineTimeline.face(LINH_FROM, LINH))
-	key("linh", 1.9, LINH, CineTimeline.face(LINH, DOLLY), {"mode": "out"})
+	key("linh", 1.9, LINH, CineTimeline.face(LINH, DOLLY), {"mode": "linear"})
 	move("linh", 0.0, "walk")
 	move("linh", 1.9, "arms_crossed", {"fade": 0.25})
 	move("linh", 11.6, "hold_up", {"fade": 0.3})   # her phone, recording
@@ -78,8 +81,8 @@ func build() -> void:
 		{"pos": Vector3(-3.4, 1.7, 1.2), "look": Vector3(0.1, 1.1, -1.8), "fov": 50.0})
 	shot("S2", 3.6, "static", "close: Dolly pulls the sheep mask off",
 		{"pos": Vector3(0.35, 1.6, -1.9), "look": Vector3(0.0, 1.5, -3.0), "fov": 38.0, "hand": 0.15})
-	shot("S3", 6.9, "static", "two-shot from behind Dolly: the protagonist asks for the schedule",
-		{"pos": Vector3(1.3, 1.7, -4.3), "look": Vector3(-0.1, 1.35, -1.45), "fov": 44.0})
+	shot("S3", 6.9, "static", "side-on along the wall: the protagonist asks for the schedule, Dolly in profile",
+		{"pos": Vector3(2.5, 1.6, -2.9), "look": Vector3(-0.3, 1.4, -1.6), "fov": 46.0})
 	shot("S4", 8.4, "static", "close: Dolly spills the schedule and the server",
 		{"pos": Vector3(-0.4, 1.58, -1.9), "look": Vector3(0.0, 1.5, -3.0), "fov": 36.0, "hand": 0.12})
 	shot("S5", 16.2, "static", "medium: Linh, the phone recording, deadpan",

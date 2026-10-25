@@ -11,12 +11,14 @@ extends CineTimeline
 
 const SCOOTER := Vector3(-3.3, 0.0, -1.6)
 const SCOOTER_YAW: float = 160.0
-const C2_SIT := Vector3(-2.75, 0.0, -0.1)
+const C2_SIT := Vector3(-3.71, 0.0, -0.47)   # seg_d1_brawl's sit spot, back to the scooter's front wheel (_sc(1.2))
+const C2_YAW: float = 160.0
 const PHONE := Vector3(-0.55, 0.0, -0.1)
 const HERO_FROM := Vector3(1.6, 0.0, 1.4)
 const HERO := Vector3(-0.2, 0.0, 0.32)
-const PASS_FROM := Vector3(-6.3, 0.0, 7.0)
-const PASS_TO := Vector3(-6.3, 0.0, -9.0)
+const PASS_FROM := Vector3(-6.3, 0.0, 4.8)    # another courier rides past along the roadway, inside the 14 x 10 box
+const PASS_TO := Vector3(-6.3, 0.0, -4.8)
+const RIDER_UP := Vector3(0.0, 0.3, 0.3)        # on the seat (0.79 m, rear of the scooter, which faces -Z at yaw 0)
 
 
 func build() -> void:
@@ -33,12 +35,19 @@ func build() -> void:
 	actor("c2", StoryCast.opts("courier_do"), StoryCast.speaker("courier_do"), StoryCast.color("courier_do"))
 	prop("scooter", "scooter", SCOOTER, SCOOTER_YAW, {"headlight": true})
 	prop("phone", "phone", PHONE, 25.0, {"glow_at": 2.0, "hide_at": 2.55})
-	prop("passer", "scooter", PASS_FROM, 180.0, {"headlight": true, "show_at": 9.6, "hide_at": 12.4,
-		"path": [[9.6, PASS_FROM, Vector3(0.0, 180.0, 0.0)], [12.4, PASS_TO, Vector3(0.0, 180.0, 0.0)]]})
+	prop("passer", "scooter", PASS_FROM, 0.0, {"headlight": true, "show_at": 9.6, "hide_at": 12.4,
+		"path": [[9.6, PASS_FROM, Vector3.ZERO], [12.4, PASS_TO, Vector3.ZERO]]})
+	actor("rider", StoryCast.opts("courier_vang"), StoryCast.speaker("courier_vang"), StoryCast.color("courier_vang"))
+	key("rider", 9.6, PASS_FROM + RIDER_UP, 0.0)
+	key("rider", 12.4, PASS_TO + RIDER_UP, 0.0, {"mode": "linear"})
+	move("rider", 0.0, "ride")
+	show("rider", 0.0, false)
+	show("rider", 9.6, true)
+	show("rider", 12.4, false)
 	# the protagonist walks to the phone, picks it up (2.55), reads it with the phone held up
 	var y_ph: float = CineTimeline.face(HERO_FROM, PHONE)
 	key("hero", 0.0, HERO_FROM, y_ph)
-	key("hero", 1.9, HERO, y_ph, {"mode": "out"})
+	key("hero", 1.9, HERO, y_ph, {"mode": "linear"})
 	move("hero", 0.0, "walk")
 	move("hero", 1.9, "idle", {"fade": 0.2})
 	strike("hero", 2.55, "pickup", {"dur": 0.6})
@@ -62,7 +71,7 @@ func build() -> void:
 	key("hero", 18.0, HERO.lerp(gate, 0.45), CineTimeline.face(HERO, gate), {"mode": "linear"})
 	move("hero", 16.6, "walk", {"fade": 0.2})
 	# Mũ Đỏ dazed against the front wheel, stars, then a worried look
-	key("c2", 0.0, C2_SIT, CineTimeline.face(C2_SIT, HERO))
+	key("c2", 0.0, C2_SIT, C2_YAW)
 	move("c2", 0.0, "slumped")
 	look("c2", 1.6, 18.0, "hero")
 	expr("c2", 0.0, "done")
@@ -84,7 +93,7 @@ func build() -> void:
 	shot("S4", 12.4, "static", "low hero shot: the protagonist, the phone in hand",
 		{"pos": Vector3(-1.2, 0.75, -1.5), "look": Vector3(-0.2, 1.45, 0.32), "fov": 44.0})
 	shot("S5", 14.3, "static", "close: Mũ Đỏ, worried",
-		{"pos": Vector3(-1.9, 0.95, 0.75), "look": Vector3(-2.75, 0.85, -0.1), "fov": 40.0})
+		{"pos": Vector3(-4.05, 0.95, 0.47), "look": Vector3(-3.71, 0.8, -0.47), "fov": 40.0})
 	shot("S6", 16.4, "static", "wide: night road, the protagonist walks off toward the gate",
 		{"pos": Vector3(2.4, 1.9, 4.0), "look": Vector3(-1.6, 0.9, -0.6), "fov": 52.0})
 	card("screen", 4.0, 5.4, {"kind": "phone", "sender": "Sói Xám", "text": "Hàng đêm nay ở Nguyễn Xiển. 2h. Đừng trễ.", "time": "23:41"})

@@ -19,7 +19,7 @@
 #  22.0-25.0 tail at 1x: Dolly gone ("Bai bai!"), the protagonist winded among the wreckage ("…Lại chạy.")
 # No gore: the pot is empty and cold, knockouts, stars, groans. Ramps sit on a 120 bpm-ish grid (no onset data for the
 # owner's local track user://music/seg_d4_brawl.mp3: retime "r" values to its onsets when tuning by ear).
-# Stage: explicit "at" at the canteen (FPTUCampusBuilder.canteen_center), stage -Z toward D1, 14 x 10 m box
+# Stage: CineTimeline.canteen_stage (nearest clear spot to the canteen, courtyard side), 14 x 10 m box
 # (|x| <= 7, |z| <= 5); props: the serving counter (right), the drink crates (back left), two tables (out of the fight lanes).
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline
@@ -107,8 +107,9 @@ func build() -> void:
 	mood = "punchy"
 	fade_in = 0.5
 	fade_out = 0.5
-	stage = {"landmark": "campus_parking_center", "at": CineTimeline.campus_at(FPTUCampusBuilder.canteen_center()), "near": 24.0,
-		"size": Vector2(14.0, 10.0), "tod": "sunset", "yaw_deg": CineTimeline.campus_yaw(0.0), "exposure": 1.2, "ambient": 1.4}
+	stage = CineTimeline.canteen_stage(Vector2(14.0, 10.0), "sunset")
+	stage["exposure"] = 1.2
+	stage["ambient"] = 1.4
 	_cast()
 	_hits()
 	clock.length = length
@@ -127,8 +128,9 @@ func build() -> void:
 	s_chair = _sr(4.75)
 	s_pot = _sr(9.9)
 	sc = h5 + CRASH_DS
-	s_gone = _sr(23.2)
+	s_gone = _sr(22.2)   # hidden at the S13 -> S14 cut (no door in the wide tail)
 	_layout()
+	_masks()
 	_props()
 	_hero()
 	_c1()
@@ -145,6 +147,14 @@ func _cast() -> void:
 	actor("dolly", StoryCast.opts("dolly"), StoryCast.speaker("dolly"), StoryCast.color("dolly"))
 	for i: int in 3:
 		actor("c%d" % (i + 1), StoryCast.opts("clone_masked"), "Nhân bản %d" % (i + 1), StoryCast.color("clone_masked"))
+
+
+## Sheep masks on (continuity with cine_d4_stare): C1's comes off where the pot lands on his head (h4 + 0.03).
+func _masks() -> void:
+	var m: Dictionary = {"bone": "Head", "offset": Vector3(0.0, 0.06, 0.0)}
+	hold("c1", 0.0, h4 + 0.03, "sheep_mask", m)
+	for id: String in ["c2", "c3", "dolly"]:
+		hold(id, 0.0, story_end, "sheep_mask", m)
 
 
 ## Slow motion on the four best impacts, one dodge accent and the finisher swell (real times, {"r": ...}). Contact pairs
@@ -191,9 +201,13 @@ func _props() -> void:
 	prop("pot", "soup_pot", POT, 0.0, {"hide_at": s_pot})
 	prop("crates", "crate_stack", CRATES, 20.0, {"color": Color("#B03A2E")})
 	prop("chair", "chair", CHAIR, 200.0, {"hide_at": s_chair})
-	prop("table_a", "table", TABLE_A, 90.0)
-	prop("table_b", "table", TABLE_B, 0.0)
-	prop("tray_drop", "tray", P0 + Vector3(-0.55, 0.012, -0.2), 35.0, {"show_at": _sr(3.42), "food": false})
+	prop("table_a", "table", TABLE_A, 90.0, {"set": true})   # pure dressing (drop_set); counter, pot, crates are choreography
+	prop("table_b", "table", TABLE_B, 0.0, {"set": true})
+	# the tray leaves the right hand at 3.42 and clatters to the floor at his feet
+	var t_hand: Vector3 = P0 + Vector3(0.15, 1.05, -0.45)
+	var t_floor: Vector3 = P0 + Vector3(0.3, 0.012, -0.3)
+	prop("tray_drop", "tray", t_floor, 35.0, {"show_at": _sr(3.42), "food": false, "arc": 0.08,
+		"path": [[_sr(3.42), t_hand, Vector3(0.0, 0.0, 90.0)], [_sr(3.75), t_floor, Vector3(0.0, 35.0, 0.0)]]})
 
 
 ## Story times around the ramps are compressed, so every key and cue here is anchored on a REAL time through _sr().

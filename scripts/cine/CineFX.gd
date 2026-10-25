@@ -42,7 +42,9 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	# story Phase B (Days 1 and 4): Chú Bảy's shiba (StoryShiba, opts "anim"), canteen furniture and improvised weapons
 	# (table, stool, chair, tray, soup_pot, counter), Mr.T's laptop (screen glow via glow_at), the "THI HỘ BAO ĐẬU" flyer
 	# stand, and the night corridor set (walls, ceiling, tube lamps that flicker like "lamp": opts "flicker")
-	"shiba", "table", "stool", "chair", "tray", "soup_pot", "counter", "laptop", "flyer", "corridor"]
+	"shiba", "table", "stool", "chair", "tray", "soup_pot", "counter", "laptop", "flyer", "corridor",
+	# Dolly's tells as held props (cuff on Wrist.L, keychain on Hips) and a lobby front with glass doors (cine_d4)
+	"wool_cuff", "sheep_keychain", "lobby_wall"]
 
 var _serial: int = 0
 var _parts: Array[Dictionary] = []     # {node: CPUParticles3D, s0, life}
@@ -529,6 +531,12 @@ static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 			_build_flyer(root, opts)
 		"corridor":
 			_build_corridor(root, opts)
+		"wool_cuff":
+			_build_wool_cuff(root)
+		"sheep_keychain":
+			_build_sheep_keychain(root)
+		"lobby_wall":
+			_build_lobby_wall(root, opts)
 		_:
 			push_warning("CineFX.build_prop: unknown kind '%s'" % kind)
 	return root
@@ -1066,7 +1074,7 @@ static func _build_laptop(root: Node3D) -> void:
 	var lid := Node3D.new()
 	lid.name = "Lid"
 	lid.position = Vector3(0.0, 0.018, 0.11)
-	lid.rotation = Vector3(-deg_to_rad(15.0), 0.0, 0.0)
+	lid.rotation = Vector3(deg_to_rad(15.0), 0.0, 0.0)   # leans back, away from the user: ~105 degrees open
 	root.add_child(lid)
 	_box(lid, "Back", Vector3(0.32, 0.21, 0.01), Vector3(0.0, 0.105, 0.0), shell)
 	var sm := StandardMaterial3D.new()
@@ -1120,24 +1128,29 @@ static func _flyer_label(nm: String, text: String, size: int, col: Color, y: flo
 ## Night corridor set (a ground-floor campus corridor carried by the cinematic, so it plays on any flat stage spot): two
 ## walls at x = +-width / 2, a ceiling, a floor strip, classroom doors, an end wall with a green exit sign, and tube lamps
 ## along the ceiling (one shared tube material + an OmniLight each; set_lamp() switches them all). opts: "len" (m, along -Z
-## from z = +2), "width" (m), "lamps" (count), "energy", "flicker" (CinePlayer windows, as "lamp").
+## from z = "z0"), "z0" (default 2), "closed" (a wall at the +Z end too), "width" (m), "lamps" (count), "energy",
+## "flicker" / "dark" (CinePlayer windows, as "lamp").
 static func _build_corridor(root: Node3D, opts: Dictionary) -> void:
 	var ln: float = float(opts.get("len", 15.0))
 	var w: float = float(opts.get("width", 3.2))
 	var hgt: float = 3.0
-	var z0: float = 2.0
+	var z0: float = float(opts.get("z0", 2.0))
 	var zc: float = z0 - ln * 0.5
 	var wall: StandardMaterial3D = _mat(Color("#BFC6C2"), 0.85)
 	var dado: StandardMaterial3D = _mat(Color("#5E7F78"), 0.8)
 	for sx: float in [-1.0, 1.0]:
 		_box(root, "Wall", Vector3(0.12, hgt, ln), Vector3(sx * (w * 0.5 + 0.06), hgt * 0.5, zc), wall)
 		_box(root, "Dado", Vector3(0.02, 1.0, ln), Vector3(sx * (w * 0.5 - 0.005), 0.5, zc), dado)
-		for i: int in 3:
-			var dz: float = z0 - 2.5 - 4.2 * float(i) - (1.4 if sx > 0.0 else 0.0)
+		for i: int in maxi(int((ln - 1.6) / 4.2), 1):
+			var dz: float = z0 - 1.6 - 4.2 * float(i) - (1.4 if sx > 0.0 else 0.0)
+			if dz < z0 - ln + 0.6:
+				continue
 			_box(root, "Door", Vector3(0.03, 2.1, 0.95), Vector3(sx * (w * 0.5 - 0.01), 1.05, dz), _mat(Color("#6D4C33"), 0.7))
 	_box(root, "Ceiling", Vector3(w + 0.24, 0.1, ln), Vector3(0.0, hgt + 0.05, zc), _mat(Color("#D8DAD6"), 0.9))
 	_box(root, "Floor", Vector3(w, 0.012, ln), Vector3(0.0, 0.006, zc), _mat(Color("#8E9894"), 0.35))
 	_box(root, "EndWall", Vector3(w + 0.24, hgt, 0.12), Vector3(0.0, hgt * 0.5, z0 - ln - 0.06), wall)
+	if bool(opts.get("closed", false)):
+		_box(root, "BackWall", Vector3(w + 0.24, hgt, 0.12), Vector3(0.0, hgt * 0.5, z0 + 0.06), wall)
 	_box(root, "ExitSign", Vector3(0.6, 0.2, 0.04), Vector3(0.0, 2.6, z0 - ln + 0.02), _glow_mat(Color("#29C46A"), 2.0))
 	var lbl := Label3D.new()
 	lbl.name = "ExitText"
@@ -1164,3 +1177,38 @@ static func _build_corridor(root: Node3D, opts: Dictionary) -> void:
 		lights.append(ol)
 	root.set_meta("lamp_lights", lights)
 	root.set_meta("lamp_bulb", tube)
+
+
+## Dolly's cream wool cuff: a ring around the forearm (held on Wrist.L; its axis is the prop's Z, along the forearm).
+static func _build_wool_cuff(root: Node3D) -> void:
+	var cuff := MeshInstance3D.new()
+	cuff.name = "WoolCuff"
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.034
+	tm.outer_radius = 0.062
+	tm.rings = 12
+	tm.ring_segments = 6
+	cuff.mesh = tm
+	cuff.material_override = _mat(Color("#EADCBD"), 1.0)
+	cuff.rotation = Vector3(PI * 0.5, 0.0, 0.0)
+	root.add_child(cuff)
+
+
+## Dolly's sheep keychain: a ring, a woolly ball and a dark face, hanging below its origin (held on Hips).
+static func _build_sheep_keychain(root: Node3D) -> void:
+	_box(root, "Ring", Vector3(0.006, 0.04, 0.006), Vector3(0.0, -0.02, 0.0), _mat(Color("#C9C9C9"), 0.3))
+	_sphere(root, "Wool", 0.035, Vector3(0.0, -0.07, 0.0), _mat(Color("#F4F1EA"), 1.0))
+	_sphere(root, "Face", 0.018, Vector3(0.0, -0.065, -0.03), _mat(Color("#2B2622"), 0.7))
+
+
+## A lobby front: a wall section with two dark glass doors and a lit sign band (opts "width", default 7 m). Its face is
+## the prop's +Z side (the wall body lies behind z = 0), so placed behind actors standing at +Z of it, it faces them.
+static func _build_lobby_wall(root: Node3D, opts: Dictionary) -> void:
+	var w: float = float(opts.get("width", 7.0))
+	_box(root, "Wall", Vector3(w, 3.4, 0.25), Vector3(0.0, 1.7, -0.125), _mat(Color("#D9D2C6"), 0.85))
+	var glass: StandardMaterial3D = _mat(Color("#1C2833"), 0.15)
+	glass.metallic = 0.4
+	for sx: float in [-0.75, 0.75]:
+		_box(root, "Door", Vector3(1.3, 2.3, 0.04), Vector3(sx, 1.15, 0.02), glass)
+		_box(root, "Frame", Vector3(1.4, 0.06, 0.06), Vector3(sx, 2.33, 0.03), _mat(Color("#6E747C"), 0.4))
+	_box(root, "SignBand", Vector3(w * 0.6, 0.35, 0.05), Vector3(0.0, 2.85, 0.03), _glow_mat(Color("#F37021"), 1.2))

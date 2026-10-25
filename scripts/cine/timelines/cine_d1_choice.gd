@@ -49,9 +49,9 @@ func build() -> void:
 	move("hero", 6.3, "arms_crossed", {"fade": 0.25})
 	# Phúc walks up, then confesses with his head down
 	key("phuc", 0.0, PHUC_FROM, CineTimeline.face(PHUC_FROM, PHUC))
-	key("phuc", 2.0, PHUC, CineTimeline.face(PHUC_FROM, PHUC), {"mode": "out"})
+	key("phuc", 2.0, PHUC, CineTimeline.face(PHUC_FROM, PHUC), {"mode": "linear"})   # 3.9 m in 2 s: a hurried jog
 	key("phuc", 2.4, PHUC, y_ph)
-	move("phuc", 0.0, "walk")
+	move("phuc", 0.0, "jog")
 	move("phuc", 2.0, "confess", {"fade": 0.3})
 	move("phuc", 6.9, "talk", {"fade": 0.3})
 	move("phuc", 10.1, "confess", {"fade": 0.3})

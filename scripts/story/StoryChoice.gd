@@ -24,7 +24,7 @@ signal chosen(key: String, timed_out: bool)
 
 const TIMEOUT: float = 10.0
 const PICK_HOLD: float = 0.45
-const LINE_HOLD: float = 1.8
+const LINE_HOLD: float = 1.8          # minimum; a longer timeout line holds 0.06 s per character (line_hold())
 const BAR_W: float = 640.0
 const ORANGE := Color("#F37021")
 const RED := Color("#E8202E")
@@ -185,6 +185,11 @@ func _lbl(text: String, size: int, col: Color, wrap: bool) -> Label:
 	return l
 
 
+## Real seconds the timeout line stays up: at least LINE_HOLD, and 0.06 s per character.
+func line_hold() -> float:
+	return maxf(LINE_HOLD, 0.06 * float(StoryUtil.fmt(String(def.get("timeout_line", "Hết giờ!"))).length()))
+
+
 func remaining() -> float:
 	return maxf(TIMEOUT - t, 0.0)
 
@@ -218,7 +223,7 @@ func step(dt: float) -> void:
 				_close()
 		2:
 			_hold += dt
-			if _hold >= LINE_HOLD:
+			if _hold >= line_hold():
 				_close()
 	_refresh()
 

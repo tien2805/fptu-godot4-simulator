@@ -16,7 +16,11 @@ signal finished
 
 const IN_U: float = 0.12               # slide-in fraction of the card
 const OUT_U: float = 0.1               # fade-out fraction at the end
-const TEXT_W: float = 640.0
+const TEXT_W: float = 600.0
+## The band and text stay in the lower-left of the frame (x <= BAND_X1, y >= BAND_Y0, screen fractions) so the clones and
+## the pointed-at villain stay visible; the bottom letterbox bar starts at about y 0.87.
+const BAND_Y0: float = 0.6
+const BAND_X1: float = 0.55
 
 var data: Dictionary = {}
 var r0: float = 0.0
@@ -62,7 +66,7 @@ static func show_for(parent: Node, d: Dictionary, length: float = 2.6) -> StoryV
 
 
 func _ready() -> void:
-	layer = 112
+	layer = 108   # above the HUD and the screen cards, below the cinematic overlay (110: letterbox, subtitles, skip fade)
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build()
 	if standalone:
@@ -95,13 +99,13 @@ func _build() -> void:
 	box.add_theme_constant_override("separation", 2)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(box)
-	name_label = _lbl(String(data.get("name", "???")).to_upper(), 76, Color.WHITE, false)
+	name_label = _lbl(String(data.get("name", "???")).to_upper(), 60, Color.WHITE, false)
 	name_label.name = "Name"
 	box.add_child(name_label)
-	nick_label = _lbl(String(data.get("nick", "")), 34, col().lightened(0.35), false)
+	nick_label = _lbl(String(data.get("nick", "")), 30, col().lightened(0.35), false)
 	nick_label.name = "Nick"
 	box.add_child(nick_label)
-	joke_label = _lbl(String(data.get("joke", "")), 24, Color("#F4F1FF"), true)
+	joke_label = _lbl(String(data.get("joke", "")), 22, Color("#F4F1FF"), true)
 	joke_label.name = "Joke"
 	box.add_child(joke_label)
 	pointer = Node2D.new()
@@ -159,10 +163,10 @@ func update(r: float) -> void:
 	wash.color = Color(col().r, col().g, col().b, 0.38 * a)
 	var sl: float = float(st["slide"])
 	var off: float = (1.0 - sl) * -vs.x * 0.6
-	band.polygon = PackedVector2Array([Vector2(off, vs.y * 0.52), Vector2(off + vs.x * 0.78, vs.y * 0.44),
-		Vector2(off + vs.x * 0.86, vs.y * 0.80), Vector2(off, vs.y * 0.88)])
+	band.polygon = PackedVector2Array([Vector2(off, vs.y * (BAND_Y0 + 0.02)), Vector2(off + vs.x * BAND_X1, vs.y * BAND_Y0),
+		Vector2(off + vs.x * (BAND_X1 - 0.04), vs.y * 0.9), Vector2(off, vs.y * 0.9)])
 	band.color = Color(col().darkened(0.45).r, col().darkened(0.45).g, col().darkened(0.45).b, 0.92 * a)
-	box.position = Vector2(off + vs.x * 0.06, vs.y * 0.5)
+	box.position = Vector2(off + vs.x * 0.035, vs.y * (BAND_Y0 + 0.015))
 	box.modulate.a = a
 	var pv: float = float(st["pointer"])
 	pointer.visible = pv >= 0.0
@@ -184,6 +188,8 @@ func _process(_d: float) -> void:
 
 ## Standalone timing (gameplay or manual tests).
 func step(dt: float) -> void:
+	if _t >= dur:
+		return
 	_t += dt
 	update(_t)
 	if _t >= dur:
@@ -191,3 +197,9 @@ func step(dt: float) -> void:
 			get_tree().paused = _was_paused
 		finished.emit()
 		queue_free()
+
+
+func _exit_tree() -> void:
+	# freed mid-card (standalone): give the pause state back
+	if standalone and _t < dur and get_tree():
+		get_tree().paused = _was_paused

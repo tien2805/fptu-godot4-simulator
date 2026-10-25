@@ -164,6 +164,8 @@ const MOVES: Dictionary = {
 	"mask_on": {"dur": 0.9, "src": [{"t": "code", "a": "mask_on"}]},
 	"startled": {"dur": 0.7, "src": [{"t": "code", "a": "startled"}]},
 	"cornered": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "cornered"}]},
+	"ride": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "ride"}]},
+	"step_back": {"dur": 0.6, "src": [{"t": "code", "a": "step_back"}]},
 	"chair_smash": {"dur": 0.9, "hit_u": 0.5, "src": [{"t": "code", "a": "chair_smash", "hit": 0.5}]},
 }
 
@@ -757,4 +759,26 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 				"knee_r": Vector3(-0.1, 0.0, 0.0)}
 		"chair_smash":
 			return _kpose(SMASH_KEYS, u)
+		"step_back":  # one step back with the right foot, still carrying a tray (tray_hold arms)
+			var kb: float = sin(clampf(u, 0.0, 1.0) * PI)
+			var tb2: Dictionary = code_pose("tray_hold", 0.0)
+			tb2["thigh_r"] = Vector3(-0.45 * kb, 0.0, -0.06)
+			tb2["knee_r"] = Vector3(-0.35 * kb, 0.0, 0.0)
+			tb2["thigh_l"] = Vector3(0.12 * kb, 0.0, 0.06)
+			tb2["knee_l"] = Vector3(-0.1 * kb, 0.0, 0.0)
+			tb2["torso"] = Vector3(0.12 * kb, 0.0, 0.0)
+			return tb2
+		"ride":       # astride a scooter seat (key the root up to the seat), hands on the handlebar, feet on the board
+			var rd: Dictionary = code_pose("sit_bench", u)
+			rd["thigh_l"] = Vector3(1.3, 0.0, 0.12)
+			rd["thigh_r"] = Vector3(1.3, 0.0, -0.12)
+			rd["knee_l"] = Vector3(-1.1, 0.0, 0.0)
+			rd["knee_r"] = Vector3(-1.1, 0.0, 0.0)
+			rd["shoulder_l"] = Vector3(1.25, 0.0, -0.2)
+			rd["shoulder_r"] = Vector3(1.25, 0.0, 0.2)
+			rd["elbow_l"] = Vector3(0.45, 0.0, 0.0)
+			rd["elbow_r"] = Vector3(0.45, 0.0, 0.0)
+			rd["torso"] = Vector3(-0.15, 0.0, 0.0)
+			rd["head"] = Vector3(-0.1, 0.0, 0.0)
+			return rd
 	return {}

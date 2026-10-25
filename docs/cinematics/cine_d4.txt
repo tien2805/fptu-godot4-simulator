@@ -7,7 +7,7 @@
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    wide: night outside the lobby, Dolly cornered, the protagonist and Linh close in
 SHOT S2      3.600  static    close: Dolly pulls the sheep mask off
-SHOT S3      6.900  static    two-shot from behind Dolly: the protagonist asks for the schedule
+SHOT S3      6.900  static    side-on along the wall: the protagonist asks for the schedule, Dolly in profile
 SHOT S4      8.400  static    close: Dolly spills the schedule and the server
 SHOT S5     16.200  static    medium: Linh, the phone recording, deadpan
 #

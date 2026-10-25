@@ -22,6 +22,9 @@ var mood: String = "punchy"
 var fade_in: float = 0.5
 var fade_out: float = 0.5
 var letterbox: bool = true
+## {landmark, near, size, tod, yaw_deg, offset, fallback, at, exposure, ambient}; Phase B adds "drop_set": true (or
+## CinePlayer.setup / FreeRoam.play_cinematic opt "drop_set") to leave out the carried set dressing (props with opts
+## "set": true) when the scene is staged inside the real building or the Night Building.
 var stage: Dictionary = {}
 var clock: CineClock = CineClock.new()
 var actors: Dictionary = {}            # id -> {"opts", "name", "color"}
@@ -73,6 +76,15 @@ static func campus_at(local: Vector3) -> Vector2:
 ## Map yaw (degrees) of a campus-plot local yaw (degrees): stage yaw_deg for a direction given in plot coordinates.
 static func campus_yaw(local_yaw_deg: float) -> float:
 	return local_yaw_deg + FPTUCampusBuilder.REAL_ROT_Y_DEG
+
+
+## Stage of the Day 4 canteen slots (cine_d4_intro, cine_d4_stare, seg_d4_brawl share it for continuity): the canteen
+## hall itself has no clear box (columns, building meshes: FreeRoam.cine_clutter), so the nearest clear spot is used, on
+## the courtyard side in front of the canteen (map point measured with FreeRoam.cine_stage: ring 0 at yaw 271). The
+## scenes carry their own furniture; staged inside a real hall, pass "xf" and "drop_set" to play_cinematic.
+static func canteen_stage(size: Vector2, tod: String) -> Dictionary:
+	return {"landmark": "campus_parking_center", "at": Vector2(-31.17, -4.51), "near": 24.0, "size": size, "tod": tod,
+		"yaw_deg": 271.0}
 
 
 ## Yaw in degrees for an actor at `from` to face `to` (characters face -Z at yaw 0).
@@ -339,7 +351,8 @@ func beat_sheet() -> String:
 	L.append("# id   kind      real_hit  freeze_end  slowmo_from  slowmo_to  speed  story_s  what")
 	for row: Dictionary in clock.beat_rows():
 		L.append("%-4s %-9s %8.3f %11.3f %12.3f %10.3f %6.2f %8.3f  %s" % [String(row["name"]), String(row["preset"]), float(row["r_hit"]),
-			float(row["r_freeze_end"]), float(row["r_start"]), float(row["r_end"]), float(row["k"]), float(row["s"]), String(row["what"])])
+			float(row["r_freeze_end"]), float(row["r_start"]), float(row["r_end"]), 0.0 if String(row["preset"]) == "card" else float(row["k"]),
+			float(row["s"]), String(row["what"]) + (" (freeze frame)" if String(row["preset"]) == "card" else "")])
 	L.append("#")
 	L.append("# Shots (real start, rig, what)")
 	for sh: Dictionary in shots:

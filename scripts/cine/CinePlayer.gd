@@ -88,7 +88,12 @@ func setup(tl: CineTimeline, xf: Transform3D = Transform3D.IDENTITY, opts: Dicti
 		a.setup(tl.actors[id]["opts"])
 		a.display_name = String(tl.actors[id]["name"])
 		actors[id] = a
+	# Phase B: drop_set (setup opt, or tl.stage["drop_set"]) leaves out the carried set dressing (props with opts "set": true,
+	# e.g. the corridor walls) when the integration stages the scene inside the real building or the Night Building
+	var drop_set: bool = bool(opts.get("drop_set", tl.stage.get("drop_set", false)))
 	for pr: Dictionary in tl.props:
+		if drop_set and bool((pr["opts"] as Dictionary).get("set", false)):
+			continue
 		var pn: Node3D = CineFX.build_prop(String(pr["kind"]), pr["opts"])
 		pn.name = String(pr["id"])
 		pn.position = pr["pos"]
@@ -216,11 +221,19 @@ func _prepare_music(enabled: bool) -> void:
 		music_len = CineAudio.stream_length(st)
 		_music_ready = true
 		return
-	var hits: Array[Dictionary] = []
-	for row: Dictionary in _rows:
-		hits.append({"r": row["r_hit"], "preset": row["preset"], "freeze": row["freeze"], "r_start": row["r_start"], "r_end": row["r_end"]})
 	_box = [null]
-	_task = WorkerThreadPool.add_task(_synth_job(_box, timeline.length, hits, timeline.mood))
+	_task = WorkerThreadPool.add_task(_synth_job(_box, timeline.length, music_hits(_rows), timeline.mood))
+
+
+## Hit layout of the synthesized cue: every ramp row except "card" freezes (a villain card is silent in the music; the
+## timeline gives it its own sting), so no boom, tick, ducking or outro hit lands on or after a card.
+static func music_hits(rows: Array[Dictionary]) -> Array[Dictionary]:
+	var hits: Array[Dictionary] = []
+	for row: Dictionary in rows:
+		if String(row["preset"]) == "card":
+			continue
+		hits.append({"r": row["r_hit"], "preset": row["preset"], "freeze": row["freeze"], "r_start": row["r_start"], "r_end": row["r_end"]})
+	return hits
 
 
 ## Worker job: pure synthesis into the holder box; built in a static function so the lambda holds no reference to the node.

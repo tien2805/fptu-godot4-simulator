@@ -4,7 +4,7 @@
 # (2.0-7.6 s real) shows a courier in a helmet handing a box ("hàng") to a student in the D1 parking. He asks the
 # protagonist to stake out the parking tonight and photograph the handover. In the background Chú Bảy dozes on a stool with
 # his shiba Lu (foreshadowing the corridor bonk). No ramps (story = real). Music slot cine_d1_intro (synthesized default).
-# Stage: explicit "at" just inside the main gate (plot u 14, v 9), stage -Z toward the gate; landmark fallback.
+# Stage: explicit "at" just inside the main gate (plot u 12, v 11: the nearest clear 10 x 9 box, yaw 181); landmark fallback.
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline
 
@@ -23,8 +23,8 @@ func build() -> void:
 	mood = "eerie"
 	fade_in = 0.5
 	fade_out = 0.5
-	stage = {"landmark": "campus_main_gate", "at": CineTimeline.campus_at(Vector3(14.0, 0.0, 9.0)), "near": 30.0,
-		"size": Vector2(10.0, 9.0), "tod": "night", "yaw_deg": CineTimeline.campus_yaw(0.0), "fallback": "campus_parking_center",
+	stage = {"landmark": "campus_main_gate", "at": CineTimeline.campus_at(Vector3(12.0, 0.0, 11.0)), "near": 30.0,
+		"size": Vector2(10.0, 9.0), "tod": "night", "yaw_deg": 181.0, "fallback": "campus_parking_center",
 		"exposure": 1.5, "ambient": 1.8}
 	for id: String in ["hero", "mr_t", "chu_bay"]:
 		actor(id, StoryCast.opts(id), StoryCast.speaker(id), StoryCast.color(id))

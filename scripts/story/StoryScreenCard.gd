@@ -69,7 +69,7 @@ class ScreenDraw extends Control:
 		rng.seed = int(u * 240.0)
 		for i: int in 140:
 			draw_rect(Rect2(rng.randf() * s.x, rng.randf() * s.y, 2.0, 2.0), Color(0.8, 1.0, 0.85, 0.08))
-		# REC dot (blinks once a second)
+		# REC dot (blinks once a second) beside the steady "REC" label
 		if fmod(u * 12.0, 1.0) < 0.6:
 			draw_circle(Vector2(s.x - 92.0, 26.0), 8.0, Color("#FF3030"))
 
@@ -203,5 +203,3 @@ func update(r: float) -> void:
 	screen.queue_redraw()
 	if clock_label:
 		clock_label.text = clock_at(String(data.get("clock", "21:47:05")), maxf(r - r0, 0.0) * 1.0)
-	if rec_label:
-		rec_label.visible = fmod(float(st["u"]) * 12.0, 1.0) < 0.6

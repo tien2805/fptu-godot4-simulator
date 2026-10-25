@@ -145,7 +145,7 @@ static func attach_mask(body: Node3D) -> Node3D:
 	return m
 
 
-## Dolly's tells: a cream wool cuff on the left wrist and (keychain = true) a small sheep keychain at the right hip.
+## Dolly's tells: a cream wool cuff on the left wrist and (keychain = true) a small sheep keychain at the right front hip (x -0.16 in the Hips bone frame of the +Z-facing model: measured on the Wrist.R side).
 static func attach_tells(body: Node3D, keychain: bool = true) -> void:
 	var wool: StandardMaterial3D = CineFX._mat(CREAM, 1.0)
 	var hl: Node3D = CharacterBuilder.get_pivot(body, "hand_l")
