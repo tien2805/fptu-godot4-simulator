@@ -429,9 +429,10 @@ func _finish() -> void:
 ## Ends at once: the face and the black go, the camera comes back exactly.
 func stop() -> void:
 	if _cam != null and is_instance_valid(_cam):
-		_cam.rotation = _rot0
-		_cam.fov = _fov0
-		_cam.near = _near0
+		if playing:   # only a started face changed these (hit() alone only shakes the offsets)
+			_cam.rotation = _rot0
+			_cam.fov = _fov0
+			_cam.near = _near0
 		_cam.h_offset = _hoff0
 		_cam.v_offset = _voff0
 	playing = false
@@ -489,6 +490,21 @@ func _step_hit(delta: float) -> void:
 			if shake_t <= 0.0:
 				_cam.h_offset = _hoff0
 				_cam.v_offset = _voff0
+
+
+## Clears the screen hit at once (a cinematic skipped mid-scare): every overlay hidden, the camera offsets back.
+func clear_hit() -> void:
+	flash_frames = 0
+	red_frames = 0
+	aber = 0.0
+	vignette_a = 0.0
+	shake_t = 0.0
+	for c: CanvasItem in [_flash, _red, _aber, _vig, _black]:
+		if c != null:
+			c.visible = false
+	if _cam != null and is_instance_valid(_cam):
+		_cam.h_offset = _hoff0
+		_cam.v_offset = _voff0
 
 
 ## Overlays all hidden and no shake left (tests).

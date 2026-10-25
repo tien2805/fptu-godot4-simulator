@@ -1,11 +1,14 @@
 # File: res://scripts/cine/timelines/cine_d1_corridor.gd
 # cine_d1_corridor (7.500 s, spec B-D5 beat 6, B-D8 discovery beat): the scripted end of the Day 1 corridor horror beat.
 # A ground-floor campus corridor at night (the "corridor" set prop: walls, doors, tube lamps, exit sign), the protagonist
-# creeping forward; a sheep-masked figure stands still at the far end; the tubes stutter, go dark (3.0-3.5), come back:
-# the figure is gone; a distorted bleat; heartbeat. Then Chú Bảy's shiba Lu trots up from behind and bonks the protagonist's
+# creeping forward; a sheep-masked figure stands still at the far end; the tubes stutter, go dark (3.0-3.5); in the dark it
+# comes close, and as the tubes come back on (3.5) its face, now the scare mask, snaps at the camera (jump scare v2:
+# scare_hit, the 0.4 s duck inside the blackout, the screen hit, the FOV punch, the +8 dB sting, a 0.5 s twitch), then it
+# is gone (4.0); a distorted bleat; heartbeat. Then Chú Bảy's shiba Lu trots up from behind and bonks the protagonist's
 # calf (5.6): a startled hop, "Á!!!", and Chú Bảy calling the dog off-screen: the comic release.
-# "Giảm hù dọa" (A2-D14 / B-D3, read at build time): no stutter, no blackout, no camera punch, one heartbeat; the figure
-# leaves while the camera is on the protagonist's face, so it never pops out in view; the bleat plays at the reduced level.
+# "Giảm hù dọa" (A2-D14 / B-D3, read at build time): no stutter, no blackout, no snap (the scare mark is a soft sting), one
+# heartbeat; the figure leaves while the camera is on the protagonist's face, so it never pops out in view; the bleat plays
+# at the reduced level.
 # No ramps (story = real). Music slot cine_d1_corridor (owner file, else no music).
 # Stage: explicit "at" in the ring courtyard, the corridor's long axis along the courtyard; a 4.5 x 16 m flat spot is all
 # the set needs (it brings its own closed corridor, opts "set": true). Staged inside a real corridor (or the Night
@@ -16,6 +19,11 @@ extends CineTimeline
 const HERO_FROM := Vector3(0.1, 0.0, 1.5)
 const HERO := Vector3(0.1, 0.0, 0.35)
 const SHEEP := Vector3(-0.2, 0.0, -6.2)
+## Where the figure stands when the tubes come back (1.5 m in front of the S3 camera, right of the protagonist).
+const SHEEP_NEAR := Vector3(0.6, 0.0, -0.55)
+const S3_CAM := Vector3(0.3, 1.6, 0.9)
+const SCARE: float = 3.5
+const GONE: float = 4.0
 const DOG_FROM := Vector3(-0.9, 0.0, 2.65)    # just inside the closed +Z end, behind the S1 / S3 cameras
 const DOG_AT := Vector3(-0.05, 0.0, 1.16)     # the lunge brings the skull onto the calf surface (test: gap 0..0.05 m)
 ## The set (z +3.0 to -6.8, |x| <= 1.72) lies inside the stage box (4.5 x 16, |z| <= 8).
@@ -60,18 +68,31 @@ func build() -> void:
 	expr("hero", BONK, "surprised")
 	expr("hero", BONK + 1.2, "done")
 	look("hero", BONK + 1.1, 7.5, DOG_AT + Vector3(0.0, 0.3, 0.0))
-	# the figure: there until the blackout (or, calm, until the camera is on the face), then gone
+	# the figure: there until the blackout (calm: until the camera is on the face, then gone); scary: close in the dark, its
+	# scare-mask face snaps at the camera as the tubes come back, gone half a second later
 	key("sheep", 0.0, SHEEP, CineTimeline.face(SHEEP, HERO))
 	move("sheep", 0.0, "idle")
-	hold("sheep", 0.0, 7.5, "sheep_mask", {"bone": "Head", "offset": Vector3(0.0, 0.06, 0.0)})
-	show("sheep", 3.25, false)
+	if calm:
+		hold("sheep", 0.0, 7.5, "sheep_mask", {"bone": "Head", "offset": Vector3(0.0, 0.06, 0.0)})
+		show("sheep", 3.25, false)
+	else:
+		var near_yaw: float = CineTimeline.face(SHEEP_NEAR, Vector3(S3_CAM.x, 0.0, S3_CAM.z))
+		var back: Vector3 = (SHEEP_NEAR - Vector3(S3_CAM.x, 0.0, S3_CAM.z)).normalized()
+		hold("sheep", 0.0, 3.2, "sheep_mask", {"bone": "Head", "offset": Vector3(0.0, 0.06, 0.0)})
+		hold("sheep", 3.2, GONE, "scare_mask", {"bone": "Head", "offset": Vector3(0.0, 0.06, 0.0)})
+		key("sheep", 3.1, SHEEP, CineTimeline.face(SHEEP, HERO))
+		key("sheep", 3.2, SHEEP_NEAR + back * 0.45, near_yaw, {"mode": "linear"})   # moved up in the dark
+		key("sheep", SCARE - 0.02, SHEEP_NEAR + back * 0.45, near_yaw)
+		key("sheep", SCARE + 0.07, SHEEP_NEAR - back * 0.07, near_yaw, {"mode": "linear"})   # the snap, a little past
+		key("sheep", SCARE + 0.14, SHEEP_NEAR, near_yaw)
+		show("sheep", GONE, false)
 	sfx_at(0.4, "heartbeat", -6.0)
 	if not calm:
 		sfx_at(1.0, "fluoro_buzz", -8.0)
 		sfx_at(1.3, "heartbeat", -3.0)
 		sfx_at(2.2, "heartbeat", -1.0)
 		sfx_at(3.0, "fluoro_buzz", -6.0)
-		punch(3.5, "medium")
+	scare_hit(SCARE, {"twitch": "sheep", "hold": 0.5})
 	sfx_at(3.6, "sheep_bleat_distorted", -2.0)
 	sfx_at(4.6, "breath", -8.0)
 	sfx_at(BONK, "bonk", 0.0)

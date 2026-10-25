@@ -8,6 +8,9 @@
 # "hand"), overlay (letterbox, fades, subtitle at r, skip bar, debug), music gain. Ends at r = length (exact) or after a hold-Esc skip; emits finished(skipped).
 # PROCESS_MODE_ALWAYS: runs while the host pauses the tree.
 # setup opts: manual (step() drives the clock), debug, music (false = no music even with an owner file).
+# Jump scare v2: the timeline's scare_hit marks run through a CineScare child (duck of the music and the SFX pool, the
+# inhale, the screen hit, the FOV punch, the twitch of the hit's actor, the +8 dB sting); its overlay is freed and the
+# camera put back at the end, on a skip or when leaving the tree. "Giảm hù dọa" (read at setup): the soft variant.
 class_name CinePlayer
 extends Node3D
 
@@ -59,6 +62,10 @@ var choice_node: StoryChoice = null      # Phase B: open while the timeline's ch
 var choice_key: String = ""
 var choice_timed_out: bool = false
 var _choice_state: int = 0               # 0 not asked yet (or no choice), 1 open, 2 answered
+var scare: CineScare = null              # jump scare v2 marks (scare_hit), null without any
+var _scare_twitch: Array[String] = []    # actor id per scare hit ("" = none)
+var _sfx_db: PackedFloat32Array = PackedFloat32Array()   # each pool player's own level (the duck goes on top)
+var _fov_off: float = 0.0
 
 
 ## Build everything for tl at stage_xf. Returns the validation errors (empty = ready); an invalid timeline builds nothing.
@@ -136,6 +143,16 @@ func setup(tl: CineTimeline, xf: Transform3D = Transform3D.IDENTITY, opts: Dicti
 	_cam_rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["r_hit"]) < float(b["r_hit"]))
 	for sh: Dictionary in tl.shots:
 		_shot_r.append(tl.clock.real_at(float(sh["s"])))
+	_sfx_db.resize(_sfx.size())
+	if not tl.scare_hits.is_empty():
+		var hl: Array = []
+		for sh: Dictionary in tl.scare_hits:
+			var o: Dictionary = sh["opts"]
+			hl.append({"r": tl.clock.real_at(tl.story_time(sh["at"])), "twitch": String(o.get("twitch", "")), "hold": float(o.get("hold", CineScare.HOLD_S))})
+			_scare_twitch.append(String(o.get("twitch", "")))
+		scare = CineScare.new()
+		add_child(scare)
+		scare.setup(camera, hl, StoryUtil.reduce_scares())
 	_build_events()
 	_prepare_music(bool(opts.get("music", true)))
 	_seeking = true
@@ -253,12 +270,15 @@ func step(dt: float) -> void:
 		music.play()
 	var t0: int = Time.get_ticks_usec()
 	_skip_logic(dt)
+	var r_prev: float = r
 	var nr: float = minf(r + dt, timeline.length)
 	var at_choice: bool = choice_pending() and _skipping < 0.0 and nr >= float(timeline.choice_def["r"]) - 1e-9
 	if at_choice:
 		nr = float(timeline.choice_def["r"])
 	r = nr
 	_update(r)
+	if scare != null:
+		scare.step(r_prev, r, dt)
 	frame_ms_total += float(Time.get_ticks_usec() - t0) / 1000.0
 	frames += 1
 	if at_choice:
@@ -315,17 +335,28 @@ func _update(rr: float) -> void:
 	var speed: float = timeline.clock.speed_at(rr)
 	for a: CineActor in actors.values():
 		a.evaluate(s)
+	if scare != null:   # the hit's actor twitches through its hold (spin is re-keyed every frame)
+		for i: int in _scare_twitch.size():
+			var ta: CineActor = actors.get(_scare_twitch[i])
+			if ta != null and ta.spin != null:
+				ta.spin.rotation += scare.twitch_at(rr, i)
 	_update_props(s)
 	if not _seeking:
 		_fire_events(s)
 	fx.update(s, speed)
 	_update_camera(rr)
 	_update_overlay(rr, speed)
+	var duck: float = scare.duck_at(rr) if scare != null else 0.0
 	if music.stream:
 		var g: float = CineAudio.music_gain(rr, timeline.length, music_len)
 		if _skipping >= 0.0:
 			g *= clampf(1.0 - _skipping / SKIP_FADE, 0.0, 1.0)   # a skip fades the music with the picture
+		g *= 1.0 - duck   # a scare ducks it to silence just before the hit
 		music.volume_db = linear_to_db(maxf(g, 0.0001))
+	if scare != null:
+		var ddb: float = linear_to_db(maxf(1.0 - duck, 0.001))
+		for i2: int in _sfx.size():
+			_sfx[i2].volume_db = _sfx_db[i2] + ddb
 
 
 ## Props with "show_at" / "hide_at" (story s) are visible only in between (seekable, unlike the forward-only events).
@@ -386,6 +417,7 @@ func _play_sfx(cue: String, db: float) -> void:
 	_sfx_i = (_sfx_i + 1) % _sfx.size()
 	sp.stream = CineAudio.sfx(cue)
 	sp.volume_db = db + StoryAudio.cue_db(cue)   # horror cues -6 dB with "Giảm hù dọa" (A2-D14)
+	_sfx_db[_sfx.find(sp)] = sp.volume_db
 	sp.play()
 
 
@@ -443,7 +475,8 @@ func _update_camera(rr: float) -> void:
 		b = Basis(Vector3.UP, deg_to_rad(float(w["yaw"]))) * b
 		b = b * Basis.from_euler((hh["rot"] as Vector3) * (PI / 180.0))
 		camera.global_transform = Transform3D(b, pos_w + b * (hh["pos"] as Vector3))
-	camera.fov = float(c["fov"]) + float(w["fov"])
+	_fov_off = scare.fov_offset(rr) if scare != null else 0.0
+	camera.fov = float(c["fov"]) + float(w["fov"]) + _fov_off
 
 
 func _update_overlay(rr: float, speed: float) -> void:
@@ -494,6 +527,13 @@ func _finish(skipped: bool) -> void:
 	_done = true
 	_playing = false
 	music.stop()
+	if scare != null:   # a skip mid-scare: the overlay goes, the camera and the audio levels come back
+		scare.cleanup()
+		if camera != null:
+			camera.fov -= _fov_off
+		_fov_off = 0.0
+		for i: int in _sfx.size():
+			_sfx[i].volume_db = _sfx_db[i]
 	_set_flag(false)
 	finished.emit(skipped)
 

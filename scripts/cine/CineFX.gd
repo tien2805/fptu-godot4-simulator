@@ -39,6 +39,8 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	# smart glasses, an instant-noodle cup, the E1 photo card, a lamp (opts "flicker": [[s0, s1], ...] story windows, see
 	# CinePlayer), a fluffy sheep mask and a white face mask (both held on the Head bone)
 	"bench", "backpack", "glasses", "noodles", "photo", "lamp", "sheep_mask", "face_mask",
+	# jump scare v2: the creepier sheep mask of the scares (ScareFace.build_scare_mask), held on the Head bone
+	"scare_mask",
 	# story Phase B (Days 1 and 4): Chú Bảy's shiba (StoryShiba, opts "anim"), canteen furniture and improvised weapons
 	# (table, stool, chair, tray, soup_pot, counter), Mr.T's laptop (screen glow via glow_at), the "THI HỘ BAO ĐẬU" flyer
 	# stand, and the night corridor set (walls, ceiling, tube lamps that flicker like "lamp": opts "flicker")
@@ -506,6 +508,8 @@ static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 			_build_lamp(root, opts)
 		"sheep_mask":
 			_build_sheep_mask(root)
+		"scare_mask":
+			root.add_child(ScareFace.build_scare_mask())
 		"face_mask":
 			_build_face_mask(root)
 		"shiba":
