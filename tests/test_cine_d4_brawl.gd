@@ -272,6 +272,24 @@ func _weapons(pl: CinePlayer) -> void:
 		_check(pc.distance_to(c1.bone_world("Head")) < 0.35, "the pot is on C1's head")
 	pl.seek(24.5)
 	_check(not (pl.actors["dolly"] as CineActor).visible, "Dolly has escaped by the tail")
+	pl.seek(tl.clock.real_at(float(tl.get("s_gone"))) - 0.05)
+	_check((pl.actors["dolly"] as CineActor).visible, "Dolly is still seen running just before the S13 -> S14 cut")
+	var s14: float = tl.clock.real_at(float(tl.shots.filter(func(sh: Dictionary) -> bool: return sh["id"] == "S14")[0]["s"]))
+	pl.seek(s14 + 0.01)
+	_check(not (pl.actors["dolly"] as CineActor).visible, "Dolly is gone when the wide tail (S14) starts: no pop in view")
+	# sheep masks: on C1 until the pot replaces it, on C2, C3 and Dolly throughout
+	for e2: Array in [["c1", 2.6, true], ["c1", 13.0, false], ["c2", 5.9, true], ["c3", 8.4, true], ["dolly", 12.6, true], ["dolly", 1.0, true]]:
+		pl.seek(float(e2[1]))
+		var masked: bool = (pl.actors[String(e2[0])] as CineActor).holds.any(func(h: Dictionary) -> bool:
+			return String((h["node"] as Node3D).name).begins_with("SheepMask") and (h["att"] as Node3D).visible)
+		_check(masked == bool(e2[2]), "%s %s the sheep mask at r %.1f" % [String(e2[0]), "wears" if bool(e2[2]) else "no longer wears", float(e2[1])])
+	# drop_set: the pure dressing (tables) is left out, the choreography props stay
+	var pd := CinePlayer.new()
+	world.add_child(pd)
+	pd.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false, "drop_set": true})
+	_check(not pd.prop_nodes.has("table_a") and not pd.prop_nodes.has("table_b") and pd.prop_nodes.has("counter") and pd.prop_nodes.has("crates"),
+		"drop_set leaves out the carried tables and keeps the counter and crates")
+	pd.queue_free()
 
 
 func _initialize() -> void:
@@ -392,7 +410,8 @@ func _process(_d: float) -> bool:
 				print("  stage %-22s %s" % [slot, str(info)])
 				_check(xf is Transform3D, "%s: a clear %s m stage spot in FreeRoam" % [slot, str(t.stage.get("size"))])
 				if xf is Transform3D:
-					_check(String(info.get("landmark", "")) == "@at", "%s: staged at its explicit point (got %s)" % [slot, String(info.get("landmark", ""))])
+					_check(String(info.get("landmark", "")) == "@at" and float(info.get("ring", 99.0)) <= 4.0,
+						"%s: staged within 4 m of its explicit point (got %s, ring %s)" % [slot, String(info.get("landmark", "")), str(info.get("ring"))])
 			ended.clear()
 			fr.connect("cinematic_finished", func(slot: String, sk: bool) -> void: ended.append([slot, sk]))
 			var cp: Variant = fr.call("play_cinematic", tl, {})

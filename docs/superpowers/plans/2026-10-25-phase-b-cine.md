@@ -47,10 +47,10 @@ modify `CineTimeline.gd`, `CineClock.gd`, `CinePlayer.gd`, `CineShots.gd`, `Cine
 
 - `StoryChoice` (CanvasLayer 120, PROCESS_MODE_ALWAYS): `StoryChoice.open(parent, def)` pauses the tree (restores the old
   pause state on close), dims, shows the prompt, two option buttons and a 10 s countdown bar; mouse, 1 / 2, Left / Right
-  with Enter or Space; on timeout the `honest` option is taken and the comic `timeout_line` shows for 1.6 s. Signal
+  with Enter or Space; on timeout the `honest` option is taken and the comic `timeout_line` shows for `line_hold()` = max(1.8 s, 0.06 s per character). Signal
   `chosen(key, timed_out)`; `result`, `timed_out`; `pick(key)`, `step(dt)` when `manual`. `record` (default true) writes
   `StoryDirector.choices[id]`.
-- `StoryVillainCard` (CanvasLayer 112): colour wash, name, nickname, joke; an optional drawn pointer that first points at
+- `StoryVillainCard` (CanvasLayer 108, under the cinematic overlay; band and text in the lower left: y >= 0.6, x <= 0.55): colour wash, name, nickname, joke; an optional drawn pointer that first points at
   `point_wrong` (screen fraction) with `wrong_line`, then moves to `point_right`. `state_at(u)` pure; `update(r)` inside
   its real window; `StoryVillainCard.show_for(parent, data, dur)` for gameplay (pauses the tree, frees itself).
 - `StoryScreenCard` (CanvasLayer 106): code-drawn `cctv` frame (timestamp, REC dot, scanlines, a courier handing a box
@@ -69,7 +69,7 @@ option and records it, villain card state and layout width, the clock `card` pre
 ## Task 3 – Day 1 timelines
 
 Files: `scripts/cine/timelines/cine_d1_intro.gd` (14 s), `cine_d1_corridor.gd` (7.5 s, reduce-scares variant),
-`cine_d1_choice.gd` (12 s, choice at 10.6 s), `cine_d1_choice_cover.gd` (4 s), `cine_d1_choice_report.gd` (4.5 s),
+`cine_d1_choice.gd` (12 s, choice at 11.6 s), `cine_d1_choice_cover.gd` (4 s), `cine_d1_choice_report.gd` (4.5 s),
 `cine_d1.gd` (18 s); beat sheets `docs/cinematics/<slot>.txt`.
 
 Staging: explicit `at` computed from the campus plot (`CineTimeline.campus_at`), landmark fallback. Intro at the main gate,
@@ -77,8 +77,8 @@ corridor set dressing carried as a prop, choice and `cine_d1` at the west gate r
 
 ## Task 4 – Day 4 timelines
 
-Files: `cine_d4_intro.gd` (14 s), `cine_d4_stare.gd` (10 s, villain card 4.6–7.0), `cine_d4.gd` (18 s); beat sheets.
-Staging at the canteen (`FPTUCampusBuilder.canteen_center`), props for tables, stools, trays, counter and flyer.
+Files: `cine_d4_intro.gd` (14 s), `cine_d4_stare.gd` (10 s, villain card 3.7–7.0), `cine_d4.gd` (18 s); beat sheets.
+Staging at `CineTimeline.canteen_stage` (the nearest clear spot to the canteen: the hall is cluttered), props for tables, stools, trays, counter and flyer.
 
 ## Task 5 – seg_d4_brawl and its test
 
@@ -117,6 +117,13 @@ Details live in the header comments of `StoryCast.gd`, `StoryShiba.gd`, `StoryCh
 - **Screen card.** In a timeline: `card("screen", r, dur, {"kind": "cctv" | "phone", ...})`.
 - **Slots** (real length): `cine_d1_intro` 14.0, `cine_d1_corridor` 7.5 (reads "Giảm hù dọa" at build time),
   `cine_d1_choice` 12.0 (choice at 11.6), tails `cine_d1_choice_cover` 4.0 / `cine_d1_choice_report` 4.5, `cine_d1` 18.0,
-  `cine_d4_intro` 14.0, `cine_d4_stare` 10.0 (villain card 4.6–7.0), `seg_d4_brawl` 25.0, `cine_d4` 18.0.
-- **Staging.** Every slot carries an explicit `stage.at` (map point from the campus plot) and a landmark fallback;
-  StoryRoam may still override `at` / `yaw_deg` from its anchors as for Day 0.
+  `cine_d4_intro` 14.0, `cine_d4_stare` 10.0 (villain card 3.7–7.0), `seg_d4_brawl` 25.0, `cine_d4` 18.0.
+- **Staging.** Every slot carries an explicit `stage.at` (a map point measured with `FreeRoam.cine_stage`: ring 0, the test
+  asserts drift <= 4 m) and a landmark fallback. The canteen hall and the real lobby have no clear box, so the Day 4 slots
+  play on the courtyard side in front of the canteen (`CineTimeline.canteen_stage`) and in front of the front wing.
+  StoryRoam may override `at` / `yaw_deg`, or pass `play_cinematic(tl, {"xf": Transform3D})` from its beat anchors.
+- **Dropping the carried set.** `play_cinematic(tl, {"drop_set": true})` (a `CinePlayer.setup` opt) or
+  `tl.stage["drop_set"] = true` leaves out every prop with opts `"set": true`: pure set dressing that would double a real
+  building (the corridor walls of `cine_d1_corridor`, the lobby wall of `cine_d4`, the counter of `cine_d4_intro`, the two
+  dressing tables of `seg_d4_brawl`). Choreography props (the stare tables and trays, the brawl counter, pot and crates,
+  the shiba, benches, scooters) always stay. Use it when staging inside the real building or the Night Building.
