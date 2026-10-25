@@ -115,6 +115,10 @@ func _process(_d: float) -> bool:
 			if scares == null or scares.text != "Giảm hù dọa":
 				_fail("bảng cài đặt thiếu ô Giảm hù dọa (A2-D14)")
 				return true
+			var rnd: CheckButton = sp.find_child("RandomScaresCheck", true, false) as CheckButton
+			if rnd == null or rnd.text != "Hù dọa ngẫu nhiên":
+				_fail("bảng cài đặt thiếu ô Hù dọa ngẫu nhiên")
+				return true
 			if opt.item_count != 2 or opt.get_item_text(0) != "Vice City" or opt.get_item_text(1) != "Cổ điển":
 				_fail("OptionButton phong cách phải có 'Vice City' / 'Cổ điển'")
 				return true
@@ -184,6 +188,9 @@ func _process(_d: float) -> bool:
 				return true
 			if box.find_child("ReduceScaresCheck", true, false) == null:
 				_fail("menu tạm dừng thiếu ô Giảm hù dọa")
+				return true
+			if box.find_child("RandomScaresCheck", true, false) == null:
+				_fail("menu tạm dừng thiếu ô Hù dọa ngẫu nhiên")
 				return true
 			if not root.get_visible_rect().grow(1.0).encloses(r2):
 				_fail("thẻ tạm dừng tràn khỏi viewport khi mở cài đặt: %s" % str(r2))
