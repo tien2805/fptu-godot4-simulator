@@ -1,6 +1,6 @@
 # Story Phase B "Ngày 1 và Ngày 4": Design
 
-Date: 2026-10-25. Status: written by Claude from the approved story spec after the owner said "làm tiếp Phase B đi"; decisions taken without a separate review round, as in A2.
+Date: 2026-10-25. Status: implemented on branch `phase-b` (combat, horror and cine branches merged, then the Days 1 / 4 integration: plan `docs/superpowers/plans/2026-10-25-phase-b-integration.md`); full regression 71 tests + smoke green on AC power, perf `test_mayhem_perf` W1 2.00 / 1.95 ms, W2 2.01 / 2.00 ms, `test_combat_perf` 1.91 / 1.91 ms, `test_horror_perf` 0.075 / 0.071 ms (median / trimmed mean, < 3 ms). The canteen undercover is a story scene built from Stage 5, staged in FreeRoam in front of the canteen; the Day 1 corridor is a code-built corridor set in the courtyard (the real arcade is broken by link blocks); the Night Building runs as its own scene. Originally written by Claude from the approved story spec after the owner said "làm tiếp Phase B đi"; decisions taken without a separate review round, as in A2.
 
 Parents:
 - `docs/superpowers/specs/2026-10-22-story-tool-den-design.md`: story spec, sections 3, 4 (Days 1 and 4), 7, 8, 8.4 and 9.3 / 9.7.

@@ -37,17 +37,23 @@ Vật phẩm mua ở 7-Eleven (Màn 5) dùng được ở Màn 2 và 3. Kết qu
 Chọn **CỐT TRUYỆN** trong menu chính (đã có bản lưu thì game hỏi *"Ghi đè bản lưu Ngày N?"*).
 
 - **Tạo nhân vật:** chọn giới tính, tên (mặc định "Bạn", tối đa 16 ký tự), khuôn mặt, kiểu tóc, màu tóc, màu da; kéo chuột để xoay nhân vật, `Ngẫu nhiên` nếu lười. Đồng phục cố định: áo polo cam FPT, quần jeans, giày trắng, ba lô đen. Nhân vật này xuất hiện ở mọi nơi: thế giới mở, cinematic, Màn 1 và phòng thi 311.
-- **Ngày 0 (chơi trọn được):** tỉnh dậy trước sảnh BE6 → đua xe tới FPTU (Màn 1) → Mr.T nhờ phụ coi thi ở phòng 311, chụp bằng chứng (màn Extra) → về BE6 đi ngủ → nửa đêm có chuyện lạ → cuộc gọi 3 giờ sáng → sáng hôm sau… → tờ lịch "NGÀY 1 · CÒN 7 NGÀY". Ngày 1 trở đi sẽ có ở các bản cập nhật sau.
+- **Ngày 0 (chơi trọn được):** tỉnh dậy trước sảnh BE6 → đua xe tới FPTU (Màn 1) → Mr.T nhờ phụ coi thi ở phòng 311, chụp bằng chứng (màn Extra) → về BE6 đi ngủ → nửa đêm có chuyện lạ → cuộc gọi 3 giờ sáng → sáng hôm sau… → tờ lịch "NGÀY 1 · CÒN 7 NGÀY".
+- **Ngày 1 "Shipper bóng đêm" (ban đêm, trên bản đồ thật):** gặp Mr.T ở cổng chính → rình ở bãi xe D1 60 giây, đừng để hai bảo vệ và shipper thấy (bị thấy là rình lại từ đầu), đúng lúc giao hàng thì bấm `S` chụp ảnh → đuổi theo Mũ Đỏ qua sân trường, giữ khoảng cách dưới 25 m (coi chừng vỏ chuối) → đánh tay không với 3 shipper ("Gét gô!") → đi qua hành lang tầng trệt tối om… → (tùy chọn) mở tủ đồ bằng chìa khóa Mũ Đỏ đánh rơi để lấy bằng chứng E2 → Phúc thú nhận: **Lựa chọn 1** trong 10 giây (hết giờ thì game chọn giúp) → về BE6 ngủ, cuộc gọi "còn 6 ngày".
+- **Ngày 2 và 3** tạm là ngày trống ("sắp có trong bản cập nhật sau"): về BE6 ngủ để sang ngày tiếp.
+- **Ngày 4 "Cừu nhân bản":** Linh rủ ra căn tin nằm vùng: bưng khay đi chậm (chạy là rớt khay, bị nghi), tìm Cừu Dolly giữa 12 bản sao giống hệt nhau (nghe tiếng ngân nga hộp nhạc, vòng len màu kem ở cổ tay, móc khóa hình cừu), đứng trước mặt rồi bấm `E` để tố cáo; tố nhầm hay rớt khay thì thanh nghi ngờ tăng, đầy là **BỊ LỘ** → đánh các đợt nhân bản đeo mặt nạ cừu, Dolly bỏ chạy → đêm trong tòa nhà tối: tìm 3 cầu chì, lắp vào hộp điện ở phòng máy phát rồi chạy ra cửa sảnh; không bị bắt lần nào thì lấy được bằng chứng E5 → cuộc gọi "còn 3 ngày". Ngày 5 trở đi sẽ có ở các bản cập nhật sau.
+- **Thua nhiệm vụ** hiện "TOANG!" (căn tin là "BỊ LỘ") với nút **THỬ LẠI** (chơi lại từ điểm lưu của nhiệm vụ, cũng có thể bấm `Enter`) hoặc **VỀ THẾ GIỚI MỞ** (cột nhiệm vụ vẫn còn đó). Trong tòa nhà tối, bị bắt thì tự chơi lại từ cầu chì vừa lắp. Nhiệm vụ trong campus chỉ dùng tay không và đi bộ.
+- **Đánh tay không (Vovinam):** chuột trái combo 3 đòn · chuột phải đá tạt (phá thế đỡ) · giữ `Q` đỡ (đỡ đúng lúc là phản đòn) · `Space` lăn né khi có địch gần · `E` hạ gục địch đang choáng. Đòn nặng của địch nháy đỏ trước nửa giây: chỉ né được, không đỡ được.
+- **Tòa nhà tối:** `F` bật / tắt đèn pin (pin cạn dần, nhặt thêm pin) · `E` trốn vào tủ, buồng vệ sinh, gầm bàn rồi `E` để ra · `Ctrl` đi rón rén (chạy nước rút gây tiếng động).
 - **Nhiệm vụ** là cột sáng màu hồng (có chấm trên radar và bản đồ `M`), đứng vào rồi bấm `E`. Đang bị truy nã thì phải cắt đuôi trước. Dòng mục tiêu hiện ở giữa đáy màn hình; ngày hiện dưới ví tiền ("NGÀY 1 · CÒN 7 NGÀY").
 - **Điện thoại `P`:** tin nhắn của Mr.T, Phúc, Anh Duy, Số lạ; ô bằng chứng E1–E7 (chưa có thì hiện "???"); nhiệm vụ và số ngày còn lại. `P` hoặc `Esc` để đóng.
 - **Lưu và tiếp tục:** game tự lưu khi tạo nhân vật, sau mỗi nhiệm vụ thắng, khi sang ngày mới và khi về menu chính. Nút **TIẾP TỤC – NGÀY N** chỉ hiện khi có bản lưu.
 - **"Giảm hù dọa"** (Cài đặt ở menu chính hoặc menu tạm dừng): bỏ tiếng rít và đèn chớp, cuộc gọi 3 giờ sáng không rung / loé, âm thanh kinh dị nhỏ hơn 6 dB.
 - **File riêng của bạn (tùy chọn, chỉ trên máy bạn, không bao giờ commit hay đóng gói):** trong thư mục người dùng của game
-  - `music\<slot>.ogg` hoặc `.mp3` cho nhạc cinematic: `cine_d0_wake`, `cine_d0_brief`, `cine_d0_exam`, `cine_d0_midnight`, `ai_intro`, `cine_day_start`, `seg_d0_race`, `seg_d0_exam`;
+  - `music\<slot>.ogg` hoặc `.mp3` cho nhạc cinematic: `cine_d0_wake`, `cine_d0_brief`, `cine_d0_exam`, `cine_d0_midnight`, `ai_intro`, `cine_day_start`, `seg_d0_race`, `seg_d0_exam`, `cine_d1_intro`, `cine_d1_corridor`, `cine_d1_choice`, `cine_d1`, `seg_d1_chase`, `seg_d1_brawl`, `cine_d4_intro`, `cine_d4_stare`, `seg_d4_brawl`, `seg_d4_escape`, `cine_d4`;
   - `sfx\<tên>.ogg`, `.mp3` hoặc `.wav` thay âm meme / kinh dị: `boom`, `sad_trombone`, `record_scratch`, `ba_dum_tss`, `bonk`, `dun_dun_duun`, `success_fanfare`, `toang_sting`, `heartbeat`, `breath`, `whisper_bed`, `violin_screech`, `music_box`, `metal_creak`, `sheep_bleat_distorted`, `phone_ring_3am`, `static_burst`;
   - `video\ai_intro_m.ogv` (nhân vật nam) hoặc `video\ai_intro_f.ogv` (nữ): clip mở đầu tự làm, phát thay đoạn dựng trong game (đổi MP4 sang Ogg Theora: `ffmpeg -i in.mp4 -c:v libtheora -q:v 7 -c:a libvorbis -q:a 5 out.ogv`).
 
-Mọi nhân vật đều hư cấu (Mr.T, Phúc, Anh Duy…); không dùng tên, mặt hay giọng người thật, không dùng bài hát có bản quyền. Thời điểm các cú hù / câu thoại của từng cinematic nằm trong `docs/cinematics/<slot>.txt`.
+Mọi nhân vật đều hư cấu (Mr.T, Phúc, Anh Duy, Linh, Chú Bảy, Cừu Dolly…); không dùng tên, mặt hay giọng người thật, không dùng bài hát có bản quyền. Thời điểm các cú hù / câu thoại của từng cinematic nằm trong `docs/cinematics/<slot>.txt`.
 
 ## 🌏 Thế giới mở
 
@@ -88,6 +94,7 @@ Bản đồ thế giới mở dựng từ dữ liệu **OpenStreetMap** (© Open
 * **Màn 5:** `WASD` đi · `E` tương tác · đứng yên giữ `SPACE` cân khay · kéo thả món vào giỏ.
 * **Màn 6:** gõ chữ trên đạn · `TAB` đổi người · `ENTER` skill / gọi điện · `←/→` chọn khối code.
 * **Extra:** `WASD` đi tuần (theo hướng camera) · `C` CCTV · `S` chụp · `E` soi / lập biên bản.
+* **Cốt truyện (Ngày 1, 4):** đánh tay không: chuột trái combo · chuột phải đá tạt · giữ `Q` đỡ · `Space` lăn né · `E` hạ gục · `S` chụp ảnh khi rình · `E` tố cáo / lấy khay ở căn tin · tòa nhà tối: `F` đèn pin, `E` trốn / ra / nhặt / lắp cầu chì, `Ctrl` đi rón rén · thua nhiệm vụ: `Enter` thử lại.
 * **Thế giới mở:** `WASD` chạy bộ · `Shift` chạy nước rút (có thể lực) · `Ctrl` đi bộ · `Space` nhảy (trên xe vẫn là drift) · `Z/C` xoay camera · chuột nhìn · giữ chuột giữa: vòng vũ khí · lăn chuột: đổi vũ khí · chuột phải: ngắm · chuột trái: bắn · `R` nạp đạn · giữ `B`: vòng biểu cảm · `F` lên/xuống xe máy · `E` vào điểm nóng chơi màn · `T` đổi giờ · `M` bản đồ · `ESC` tạm dừng.
 
 ## 🛠️ Chạy từ mã nguồn / tự build
