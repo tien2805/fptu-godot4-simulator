@@ -6,6 +6,8 @@
 #     the level's own fail / retry);
 #   - records the player and the stalkers (CineReplayRecorder) and, on escaped(caught_count), lets the run go on
 #     StoryStage.REPLAY_AFTER s, then plays the short replay seg_d4_escape;
+#   - saves every catch at once (StoryDirector.note_horror_catch; a new run starts from the saved count, so quitting after
+#     a catch does not give E5 back) and stops the roam music;
 #   - reports StoryDirector.on_horror_result(caught_count): E5 only when the player was never caught, the beat completes
 #     (autosave), story free roam resumes at the lobby marker's return spot.
 # Esc opens the usual pause menu; leaving for the menu keeps the save at the marker (the beat restarts on Continue).
@@ -29,8 +31,10 @@ func _ready() -> void:
 	_opts = test_opts.duplicate()
 	night = NightBuilding.new()
 	night.name = "NightBuilding"
+	var sd: Node = StoryUtil.director()
+	var catches: int = int((sd.get("flags") as Dictionary).get("d4_catches", 0)) if sd and bool(sd.get("active")) else 0
 	var o: Dictionary = {"protagonist": StoryUtil.hero_opts({"preset": "player", "rigged": true, "seed": 2805, "name": "PlayerModel"}),
-		"seed": int(_opts.get("seed", randi()))}
+		"seed": int(_opts.get("seed", randi())), "caught_count": catches}
 	for k: Variant in _opts.keys():
 		if String(k) in ["manual_replay", "go_roam"]:
 			continue
@@ -38,6 +42,10 @@ func _ready() -> void:
 	night.setup(o)
 	add_child(night)
 	night.escaped.connect(_on_escaped)
+	night.caught.connect(_on_caught)
+	var fx: Node = get_node_or_null("/root/GameFX")
+	if fx and fx.has_method("music_stop"):
+		fx.call("music_stop", true)
 	_attach_recorder.call_deferred()
 
 
@@ -54,6 +62,13 @@ func _attach_recorder() -> void:
 	rec = StoryStage.make_recorder(self, nodes)
 	if night.hud:
 		night.hud.toast("Dolly chạy vào tòa nhà rồi tắt cầu dao. Bầy nhân bản đang lùng sục!", 4.0)
+
+
+## Every catch is saved at once (StoryDirector.note_horror_catch): quitting and continuing keeps the count (E5).
+func _on_caught() -> void:
+	var sd: Node = StoryUtil.director()
+	if sd and bool(sd.get("active")):
+		sd.call("note_horror_catch", night.caught_count)
 
 
 func _on_escaped(caught_count: int) -> void:

@@ -89,7 +89,7 @@ const BEATS: Dictionary = {
 		"win_line": "Mũ Đỏ đánh rơi một chiếc chìa khóa tủ đồ. Tủ ở sân trong, ghé mở thử không?",
 		"objective": "Ba shipper chặn đường! Hạ hết bọn nó bằng tay không"},
 	"d1_corridor": {"day": 1, "title": "Hành lang tối", "kind": "mission", "mission": "corridor", "anchor": "corridor",
-		"after": "cine_d1_corridor", "tod": "night", "next": "d1_choice",
+		"after": "cine_d1_corridor", "tod": "night", "next": "d1_choice", "side": [LOCKER_SIDE],
 		"objective": "Phúc hẹn ở sân trong. Đi qua hành lang tầng trệt: cột hồng ở sân trong, bấm [E]",
 		"texts": [["Phúc", "Tao đang ở sân trong, qua hành lang tầng trệt nha. Có chuyện muốn nói."]]},
 	"d1_choice": {"day": 1, "title": "Phúc thú nhận", "kind": "cine", "slot": "cine_d1_choice", "at": "", "anchor": "bench", "choice": "phuc",

@@ -7,7 +7,8 @@
 #     and a sheep keychain; walking up to a student shows what you notice about them.
 #   - The tray is the disguise: carried calmly it lowers the suspicion meter; sprinting drops it (+DROP_SUS) and without a
 #     tray the meter rises (NO_TRAY_SUS / s) until a new one is taken at the counter ([E] there).
-#   - [E] facing a student within ACCUSE_M accuses them: Dolly = done; anyone else = +WRONG_SUS ("Ủa…").
+#   - [E] facing a student within ACCUSE_M accuses them (the same radius shows their note and "[E] Tố cáo"): Dolly = done;
+#     anyone else = +WRONG_SUS ("Ủa…"). Dolly's seat is random (opts.seed fixes it for tests).
 #   - A full meter = "BỊ LỘ" (retry: the meter, the tray and the students reset, Dolly elsewhere).
 #   - Meme: "Mlem mlem" bubbles over the eaters.
 class_name MissionCanteen
@@ -20,8 +21,7 @@ const SEAT_DX: Array[float] = [-0.7, 0.7]
 const SEAT_DZ: float = 0.85
 const COUNTER := Vector3(-6.2, 0.0, 3.4)
 const START := Vector3(0.0, 0.0, 3.8)
-const ACCUSE_M: float = 2.0
-const NOTICE_M: float = 2.4
+const ACCUSE_M: float = 2.2
 const COUNTER_M: float = 2.2
 const HUM_M: float = 6.0
 const DROP_SUS: float = 20.0
@@ -129,7 +129,10 @@ func _find_spot() -> Transform3D:
 
 func _reset() -> void:
 	suspicion = 0.0
-	rng.seed = int(opts.get("seed", 404)) + retries * 7
+	rng.seed = (int(opts["seed"]) + retries * 7) if opts.has("seed") else randi()
+	for n: Node in props.get_children():
+		if n.has_meta("fallen"):
+			n.queue_free()   # the trays dropped before THỬ LẠI
 	dolly_index = rng.randi_range(0, CLONES - 1)
 	for c: Node3D in clones:
 		if is_instance_valid(c):
@@ -300,7 +303,7 @@ func _tick(dt: float) -> void:
 	if not has_tray and near_counter():
 		set_prompt("[E] Lấy khay mới")
 		return
-	var i: int = facing_clone(NOTICE_M)
+	var i: int = facing_clone(ACCUSE_M)
 	set_prompt("%s  [E] Tố cáo" % notes[i] if i >= 0 else "")
 
 

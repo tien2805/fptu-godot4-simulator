@@ -1,9 +1,11 @@
 # File: res://scripts/story/missions/MissionStakeout.gd
 # Day 1 stake-out (spec B-D5 beat 3): the real D1 parking at night (FPTUCampusBuilder.parking_center_local). Shipper Mũ
 # Đỏ waits in the lane with a buyer, two guards patrol the lane. Stay out of the three watchers' sight for DURATION s and
-# photograph the handover with [S] while it happens (WINDOW), the courier in frame within PHOTO_M (the Extra-stage idea).
+# photograph the handover with [E] while it happens (WINDOW), the courier in frame within PHOTO_M (the Extra-stage idea).
 # Seen (a 70° cone of SIGHT_M with a clear ray, or closer than NEAR_M) = "Bị phát hiện!", the stake-out restarts from the
 # start spot. The handover window over without a photo = fail ("TOANG!", retry). DURATION s with the photo = done.
+# The photo key is [E] (consumed; S is the walk-back key). The "too far" / "not in frame" lines show only during the
+# handover window; before it [E] does nothing.
 # Sight checks run at 10 Hz.
 class_name MissionStakeout
 extends StoryMission
@@ -26,9 +28,10 @@ const GUARD_B := [Vector3(104.0, 0.0, 105.6), Vector3(138.0, 0.0, 105.6)]
 const T_SEEN: String = "Bị phát hiện! Rình lại từ đầu."
 const T_MISSED: String = "Lỡ mất khoảnh khắc giao hàng rồi."
 const T_PHOTO: String = "Đã chụp! Ảnh giao hàng rõ mồn một."
-const T_NOT_YET: String = "Chưa giao hàng… chờ đúng lúc."
 const T_TOO_FAR: String = "Xa quá, ảnh mờ tịt. Lại gần hơn."
-const T_WINDOW: String = "ĐANG GIAO HÀNG! [S] Chụp ảnh"
+const T_NO_FRAME: String = "Quay camera về phía shipper rồi chụp."
+const T_WINDOW: String = "ĐANG GIAO HÀNG! [E] Chụp ảnh"
+const T_START: String = "Núp kín, đừng để bảo vệ thấy. Lúc giao hàng thì bấm [E] chụp ảnh."
 
 var courier: Node3D
 var buyer: Node3D
@@ -79,6 +82,7 @@ func _reset() -> void:
 	var s: Vector3 = campus(START)
 	teleport_player(free_spot(s), yaw_of(campus(HANDOVER) - s))
 	set_prompt("")
+	popup(T_START, 3.5, Color("#FFE66D"))
 	_check_t = CHECK_S
 
 
@@ -161,18 +165,16 @@ func spotted() -> void:
 	_reset()
 
 
-## [S]: photographs the courier when the handover is on, the courier in frame, close enough and in a clear line.
+## [E]: photographs the courier when the handover is on, the courier in frame, close enough and in a clear line. Outside
+## the window it does nothing (no line).
 func take_photo() -> bool:
-	if state != "running" or photo_taken:
-		return false
-	var cam: Camera3D = get_viewport().get_camera_3d()
-	var chest: Vector3 = courier.global_position + Vector3(0.0, 1.2, 0.0)
-	var in_frame: bool = cam != null and cam.is_position_in_frustum(chest)
-	if not in_frame:
+	if state != "running" or photo_taken or clock < WINDOW.x or clock > WINDOW.y:
 		return false
 	photo_tries += 1
-	if clock < WINDOW.x:
-		popup(T_NOT_YET, 1.6)
+	var cam: Camera3D = get_viewport().get_camera_3d()
+	var chest: Vector3 = courier.global_position + Vector3(0.0, 1.2, 0.0)
+	if cam == null or not cam.is_position_in_frustum(chest):
+		popup(T_NO_FRAME, 1.6)
 		return false
 	if flat(player.global_position, courier.global_position) > PHOTO_M:
 		popup(T_TOO_FAR, 1.6)
@@ -191,8 +193,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if state != "running" or not (event is InputEventKey):
 		return
 	var k: InputEventKey = event
-	if k.pressed and not k.echo and k.physical_keycode == KEY_S:
-		take_photo()   # S also walks back: never consumed
+	if k.pressed and not k.echo and k.physical_keycode == KEY_E:
+		take_photo()
+		get_viewport().set_input_as_handled()
 
 
 func _cleanup() -> void:

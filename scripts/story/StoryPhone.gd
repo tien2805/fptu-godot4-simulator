@@ -259,9 +259,16 @@ func _fill_messages() -> void:
 	director.call("mark_read", thread)
 	var col: Color = SENDER_COLORS.get(thread, Color.WHITE)
 	list.add_child(_label(thread, 18, col, true))
+	var last_day: int = -1
 	for m: Dictionary in director.get("texts"):
 		if String(m["from"]) != thread:
 			continue
+		var md: int = int(m.get("day", 0))
+		if md != last_day:
+			last_day = md   # day header between the days' messages (an old text never reads as today's)
+			var hdr: Label = _label("Ngày %d" % md, 14, Color("#FF7AC8"), true)
+			hdr.name = "DayHeader%d" % md
+			list.add_child(hdr)
 		var bubble := PanelContainer.new()
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color(col.r * 0.25, col.g * 0.2, col.b * 0.3, 0.95)
@@ -275,7 +282,6 @@ func _fill_messages() -> void:
 		bubble.add_theme_stylebox_override("panel", sb)
 		bubble.add_child(_label(String(m["text"]), 15, Color("#F4F1FF"), false))
 		list.add_child(bubble)
-		list.add_child(_label("Ngày %d" % int(m.get("day", 0)), 11, Color("#8F84A8"), false))
 
 
 ## Tab captions after the list is filled (the shown thread is read by then: no stale count).

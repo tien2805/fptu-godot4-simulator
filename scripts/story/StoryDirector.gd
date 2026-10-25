@@ -47,6 +47,8 @@ var last_nav: String = ""
 var saves: int = 0
 ## StoryRoam of the current free roam (weak): asked for the player's spot when leaving for the main menu.
 var _roam: WeakRef = null
+## from_dict moved an old save's step (StoryMissions.migrate); load_game saves the migrated state once.
+var migrated: bool = false
 var result_layer: CanvasLayer
 var result_title: Label
 var result_buttons: Dictionary = {}
@@ -158,7 +160,15 @@ func advance_day(to_day: int = -1) -> void:
 	if d == day:
 		return
 	day = d
+	_read_old_days()
 	day_changed.emit(day)
+
+
+## Texts of the previous days count as read: the badge only counts today's unread (an old text never reads as today's).
+func _read_old_days() -> void:
+	for m: Dictionary in texts:
+		if int(m.get("day", 0)) < day:
+			m["read"] = true
 
 
 func add_evidence(id: String) -> void:
@@ -242,9 +252,12 @@ func from_dict(d: Dictionary) -> void:
 	var sp: Variant = d.get("spawn", null)
 	spawn = sp if sp is Transform3D else null
 	active = bool(d.get("active", true))
+	_read_old_days()
+	migrated = false
 	var mig: String = StoryMissions.migrate(step)
 	if mig != step:
 		_resume_at(mig)
+		migrated = true   # load_game saves at once: the beat's texts are added once, not on every load
 
 
 ## An A2 save stopped at a day placeholder that is now playable: resume at its first beat (tod, objective, texts).
@@ -301,6 +314,8 @@ func load_game(path: String = "") -> bool:
 		return false
 	from_dict(d)
 	active = true
+	if migrated:
+		save_game(path)
 	return true
 
 
@@ -387,6 +402,9 @@ func _nav(where: String) -> void:
 		sm.call("go_to_roam")
 	elif where.begins_with("horror:") and is_inside_tree():
 		sm.set("roam_spawn", null)
+		var fx: Node = get_node_or_null("/root/GameFX")
+		if fx and fx.has_method("music_stop"):
+			fx.call("music_stop", true)   # the roam track does not play in the Night Building; FreeRoam restarts it on return
 		get_tree().paused = false
 		get_tree().change_scene_to_file(where.substr(7))
 	elif where.begins_with("stage:"):
@@ -579,6 +597,13 @@ func launch_horror_beat(id: String, win_xf: Variant = null, fail_xf: Variant = n
 	return true
 
 
+## A catch in the Night Building is saved at once (flags.d4_catches): quitting to the menu and continuing does not reset
+## the count, so E5 (never caught) cannot be save-scummed.
+func note_horror_catch(caught_count: int) -> void:
+	flags["d4_catches"] = maxi(caught_count, int(flags.get("d4_catches", 0)))
+	save_game()
+
+
 ## The horror scene reports the escape: E5 only when the player was never caught (B-D7), the beat completes (autosave),
 ## the return spot moves to win_xf, then story free roam. false when no horror beat is running.
 func on_horror_result(caught_count: int, go_roam: bool = true) -> bool:
@@ -587,6 +612,7 @@ func on_horror_result(caught_count: int, go_roam: bool = true) -> bool:
 	var b: Dictionary = beat()
 	if String(b.get("kind", "")) != "horror":
 		return false
+	caught_count = maxi(caught_count, int(flags.get("d4_catches", 0)))   # catches of earlier, abandoned runs count too
 	if caught_count == 0:
 		add_evidence("E5")
 	flags["d4_caught"] = caught_count

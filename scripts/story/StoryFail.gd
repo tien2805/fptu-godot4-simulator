@@ -105,9 +105,9 @@ func _close(retry: bool) -> void:
 	if not visible:
 		return
 	visible = false
+	if _mouse_was == Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED   # both ways: no recapture click (which would also throw a punch)
 	if retry:
-		if _mouse_was == Input.MOUSE_MODE_CAPTURED:
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		retry_pressed.emit()
 	else:
 		leave_pressed.emit()

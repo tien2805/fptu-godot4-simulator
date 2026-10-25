@@ -34,6 +34,8 @@ const WARM: Array[String] = ["phone_ring_3am", "whisper_bed", "static_burst", "h
 const AUDIO_WAIT_MAX: float = 3.0
 const BLOCKED_HINT: String = "Đang bị truy nã – cắt đuôi rồi hãy làm nhiệm vụ!"
 const ON_FOOT_HINT: String = "Nhiệm vụ này phải đi bộ, không gọi xe được"
+const MISSION_PHONE_HINT: String = "Đang làm nhiệm vụ, chưa xem điện thoại được"
+const WANTED_ABORT_HINT: String = "Bị truy nã giữa nhiệm vụ! Cắt đuôi rồi quay lại cột hồng"
 
 var roam: Node3D
 var director: Node
@@ -50,6 +52,9 @@ var ui: CanvasLayer
 var objective_panel: PanelContainer
 var objective_label: Label
 var day_label: Label
+## Owner playtest: the objective stays readable at all times as a small line under the day chip (classic style here,
+## ViceHUD.set_objective in the vice style); hidden with the story HUD during cinematics. The 6 s centre flash stays.
+var objective_line: Label
 var toast_panel: PanelContainer
 var toast_label: Label
 var phone: StoryPhone
@@ -326,6 +331,14 @@ func _build_ui() -> void:
 	day_label.offset_left = 26.0
 	day_label.offset_top = 92.0
 	ui.add_child(day_label)
+	objective_line = _label("", 14, Color("#FFE6F3"))
+	objective_line.name = "ObjectiveLine"
+	objective_line.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	objective_line.offset_left = 26.0
+	objective_line.offset_top = 116.0
+	objective_line.custom_minimum_size = Vector2(420.0, 0.0)
+	objective_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ui.add_child(objective_line)
 	toast_panel = PanelContainer.new()
 	toast_panel.name = "Toast"
 	toast_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -369,6 +382,11 @@ func _update_chip() -> void:
 		vh.set_day(text, unread)
 	day_label.text = text + (" ✉%d" % unread if unread > 0 else "")
 	day_label.visible = not ViceHUD.style_active()
+	var obj: String = String(director.get("objective"))
+	if vh:
+		vh.set_objective(obj)
+	objective_line.text = obj
+	objective_line.visible = not ViceHUD.style_active() and obj != ""
 
 
 func show_objective(text: String) -> void:
@@ -397,6 +415,7 @@ func toast(text: String, cue: String = "phone_buzz") -> void:
 
 func _on_objective(text: String) -> void:
 	show_objective(text)
+	_update_chip()
 
 
 func _on_text(msg: Dictionary) -> void:
@@ -742,6 +761,8 @@ func _free_mission() -> void:
 	mission_beat = {}
 
 
+## The beat completes (autosave) before its "after" cinematic: quitting during the cinematic never replays the fight or
+## the walk; Continue simply goes on without the cinematic. busy holds the next beat until the cinematic ends.
 func _on_mission_done(_info: Dictionary, b: Dictionary) -> void:
 	_free_mission()
 	if fail_ui:
@@ -752,6 +773,7 @@ func _on_mission_done(_info: Dictionary, b: Dictionary) -> void:
 		if cp != null:
 			running = String(b["id"])
 			roam.connect("cinematic_finished", _on_after_done.bind(b), CONNECT_ONE_SHOT)
+			director.call("complete_step", String(b["id"]))
 			return
 	busy = false
 	running = ""
@@ -762,7 +784,9 @@ func _on_after_done(_slot: String, _skipped: bool, b: Dictionary) -> void:
 	busy = false
 	running = ""
 	_free_cards()
-	_complete_mission(b)
+	if b.has("win_line"):
+		toast(String(b["win_line"]), "")
+	_run_t = 0.05   # the next beat (its step_changed came while busy)
 
 
 func _complete_mission(b: Dictionary) -> void:
@@ -900,6 +924,14 @@ func _process(delta: float) -> void:
 		return
 	_check_t = CHECK_S
 	_update_active()
+	if mission_node != null and _wanted_not_free():
+		abort_mission()   # defensive: a bust mid-mission would run the chore under the mission (markers come back)
+		roam.call("flash_hint", WANTED_ABORT_HINT)
+
+
+func _wanted_not_free() -> bool:
+	var w: Variant = roam.get("wanted")
+	return w != null and is_instance_valid(w) and String(w.get("state")) != "free"
 
 
 ## Story HUD visible only in plain free roam (A2-D12): hidden during cinematics (FreeRoam.cine_player), the call, the video.
@@ -938,6 +970,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif active_marker != "" and wanted_blocked():
 				get_viewport().set_input_as_handled()
 		KEY_P:
+			if mission_node != null:
+				roam.call("flash_hint", MISSION_PHONE_HINT)   # MeleeFight refuses [P] itself in a fight (it reads it first)
+				get_viewport().set_input_as_handled()
+				return
 			var map: Control = roam.get("map_overlay")
 			if not busy and roam.get("cine_player") == null and not (map and map.visible) and not bool(roam.get("mounted")):
 				phone.toggle()   # on foot only: the bike reads its keys directly (review A2-R2)

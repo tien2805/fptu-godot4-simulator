@@ -983,7 +983,7 @@ func toggle_bike() -> void:
 	if not mounted and combat and combat.fight_active:
 		flash_hint(CombatData.T_FIGHT_BIKE)   # Phase B: no bike in the middle of a fight (MeleeFight)
 		return
-	if not mounted and story_roam and story_roam.mission_node != null:
+	if not mounted and story_mission_active():
 		flash_hint(StoryRoam.ON_FOOT_HINT)   # Phase B story missions are on foot
 		return
 	if mounted:
@@ -1353,7 +1353,7 @@ func _build_mayhem() -> void:
 	add_child(emotes)
 	emotes.setup({"player": player, "weapons": weapons, "wheel": emote_wheel, "weapon_wheel": weapon_wheel,
 		"targets_fn": mayhem_targets, "fx": weapons.fx,
-		"blocked_fn": func() -> bool: return mayhem_blocked() or (combat != null and combat.fight_active)})   # Phase B: no emote mid-fight
+		"blocked_fn": func() -> bool: return mayhem_blocked() or (combat != null and combat.fight_active) or story_mission_active()})   # Phase B: no emote mid-fight / mission
 	# one wheel at a time; no weapon during an emote (spec section 9)
 	weapons.blocked_fn = func() -> bool: return mayhem_blocked() or emotes.active or emotes.pending >= 0 or emote_wheel.is_open()
 	# Phase B: the Vovinam moves replace the Phase W unarmed punch (pedestrians keep their Phase W reactions and heat)
@@ -1363,14 +1363,22 @@ func _build_mayhem() -> void:
 	combat.setup({"player": player, "weapons": weapons, "targets_fn": mayhem_targets, "blocked_fn": weapons.blocked_fn})
 
 
-## Everything weapons can hit: pedestrians of both tiers (officers join in Task 8).
+## Everything weapons can hit: pedestrians of both tiers (officers join in Task 8). Nothing during a Phase B story
+## mission (no heat, wanted or bust mid-mission; MeleeFight enemies come through PlayerCombat.add_enemy).
 func mayhem_targets() -> Array:
 	var out: Array = []
+	if story_mission_active():
+		return out
 	if pedestrians:
 		out.append_array(pedestrians.pedestrians())
 	if wanted:
 		out.append_array(wanted.officers())
 	return out
+
+
+## A Phase B story mission (stake-out, chase, brawl, corridor, canteen) is running.
+func story_mission_active() -> bool:
+	return story_roam != null and story_roam.mission_node != null
 
 
 ## Weapons and the wheel are off while riding (W-D9: on foot only), during a cinematic / replay (tree paused or
