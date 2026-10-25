@@ -5,9 +5,11 @@
 #   meme:   boom, sad_trombone, record_scratch, ba_dum_tss, bonk, dun_dun_duun, success_fanfare, toang_sting
 #   horror: heartbeat, breath, whisper_bed, violin_screech, music_box, metal_creak, sheep_bleat_distorted, phone_ring_3am,
 #           static_burst
-#   polish: dolly_hum, gasp, alarm_siren, cat_meow, bin_crash, locker_slam, rustle (horror polish H-D1 to H-D7: SFX only, not
+#   polish: dolly_hum, gasp, alarm_siren, cat_meow, bin_crash, locker_slam, rustle, door_knock, sniff (horror polish: SFX, not
 #           in CUES; they count as horror cues for "Giảm hù dọa" and take owner overrides like the others)
 # Owner override: user://sfx/<cue>.ogg | .mp3 | .wav (local only, never committed). LOOPS loop (owner files too).
+# Owner voice lines with no synthesized fallback: owner_stream(name) (user://sfx/<name>.ogg | .mp3 | .wav, else null), e.g.
+# Dolly's toilet monologue dolly_wc_full (DollyWC). owner_lines(prefix, n) lists prefix1..prefix<n> that exist.
 # The Night Building restarts "heartbeat" on every beat (ScareDirector, 70-160 BPM): its override must be a single lub-dub.
 # stream(cue) is main-thread only (static cache); synth(cue) is pure, so warm(cues) builds each cue on its own WorkerThreadPool
 # task and poll() / stream() adopt the results on the main thread (a long cue never stalls a frame: Phase W lesson).
@@ -24,7 +26,7 @@ const CUES: Array[String] = MEME + HORROR
 const EXTRA: Array[String] = ["call_hangup"]
 ## Horror polish SFX (spec H-D1 to H-D7): Dolly's hum, the gasp, the alarm siren, the fake-out cat and bin, the bursting
 ## locker, the stake-out rustle. Horror cues for the -6 dB rule.
-const POLISH: Array[String] = ["dolly_hum", "gasp", "alarm_siren", "cat_meow", "bin_crash", "locker_slam", "rustle"]
+const POLISH: Array[String] = ["dolly_hum", "gasp", "alarm_siren", "cat_meow", "bin_crash", "locker_slam", "rustle", "door_knock", "sniff"]
 const LOOPS: Array[String] = ["heartbeat", "whisper_bed", "music_box", "phone_ring_3am", "dolly_hum", "alarm_siren"]
 const REDUCED_DB: float = -6.0
 ## Expected lengths (s) [min, max] of the synthesized cues (tests).
@@ -34,13 +36,14 @@ const LENGTHS: Dictionary = {
 	"breath": [2.0, 3.0], "whisper_bed": [5.0, 8.0], "violin_screech": [0.9, 1.6], "music_box": [2.5, 4.0],
 	"metal_creak": [1.4, 2.4], "sheep_bleat_distorted": [0.9, 1.6], "phone_ring_3am": [2.5, 3.5], "static_burst": [0.6, 1.2],
 	"call_hangup": [1.0, 1.8], "dolly_hum": [3.5, 5.0], "gasp": [0.5, 1.0], "alarm_siren": [1.8, 2.6], "cat_meow": [0.5, 1.0],
-	"bin_crash": [0.8, 1.6], "locker_slam": [0.4, 1.0], "rustle": [1.0, 2.0],
+	"bin_crash": [0.8, 1.6], "locker_slam": [0.4, 1.0], "rustle": [1.0, 2.0], "door_knock": [0.5, 0.9], "sniff": [0.5, 1.0],
 }
 
 static var sfx_dir: String = "user://sfx/"
 static var _cache: Dictionary = {}
 static var _tasks: Dictionary = {}   # cue -> {"task": int, "box": [AudioStreamWAV or null]}
 static var warm_builds: int = 0
+static var _owner_cache: Dictionary = {}   # file path -> AudioStream
 
 
 static func is_cue(cue: String) -> bool:
@@ -63,6 +66,26 @@ static func override_file(cue: String) -> String:
 		if FileAccess.file_exists(p):
 			return p
 	return ""
+
+
+## An owner-only sound (no synthesized fallback): sfx_dir/<name>.ogg | .mp3 | .wav, or null. Cached by file path.
+static func owner_stream(name: String) -> AudioStream:
+	var f: String = override_file(name)
+	if f == "":
+		return null
+	if not _owner_cache.has(f):
+		_owner_cache[f] = _load_override(f)
+	return _owner_cache[f]
+
+
+## The owner files prefix1 .. prefix<count> that exist, in order (e.g. "dolly_wc_", 5).
+static func owner_lines(prefix: String, count: int) -> Array[AudioStream]:
+	var out: Array[AudioStream] = []
+	for i: int in range(1, count + 1):
+		var st: AudioStream = owner_stream("%s%d" % [prefix, i])
+		if st != null:
+			out.append(st)
+	return out
 
 
 ## The cue's stream (owner file, else synthesized; cached). Main thread only.
@@ -423,6 +446,20 @@ static func synth_samples(cue: String) -> PackedFloat32Array:
 			for k: int in 22:
 				CineAudio._paste(ru, CineAudio._noise(0.06, rng3.randf_range(0.15, 0.45), 30.0, 45 + k, 0.35), rng3.randf_range(0.0, 1.4), 1.0)
 			return ru
+		"door_knock":   # three knuckle knocks on a toilet stall door
+			var dk: PackedFloat32Array = _silence(0.7)
+			for k: int in 3:
+				CineAudio._paste(dk, CineAudio._mix([CineAudio._tone(0.12, 210.0, 160.0, 0.75, 30.0),
+					CineAudio._noise(0.03, 0.5, 120.0, 46 + k, 0.4)]), 0.18 * k, 1.0 - 0.12 * k)
+			return dk
+		"sniff":   # two quick, satisfied sniffs
+			var sn: PackedFloat32Array = _silence(0.75)
+			for k: int in 2:
+				var puff: PackedFloat32Array = CineAudio._noise(0.16, 0.5, 0.0, 50 + k, 0.7)
+				for i: int in puff.size():
+					puff[i] *= sin(PI * float(i) / puff.size())
+				CineAudio._paste(sn, puff, 0.05 + 0.24 * k, 1.0)
+			return sn
 		"call_hangup":   # three busy beeps after the line goes dead
 			var hu: PackedFloat32Array = _silence(1.4)
 			for k: int in 3:

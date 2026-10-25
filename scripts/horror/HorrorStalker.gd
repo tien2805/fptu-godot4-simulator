@@ -26,6 +26,10 @@
 #   investigate_spot(spot) (H-D4): heard breathing or a gasp from a hiding spot: CHECK it (catches if the player is inside).
 #   rush(p) (H-D5): the alarm: CHASE towards p without having seen the player (arriving without sight -> SEARCH as usual;
 #     `rushing` is true until it searches or patrols again). search_s: how long a SEARCH lasts (the alarm shortens it).
+#   Scripted (DollyWC, the toilet monologue): begin_script(spot) puts her in CHECK on that stall and the level moves her
+#     (script_target at script_speed, facing script_face); her senses still run: seeing the player out of the stall ends
+#     the script (CHASE). investigate_spot and rush are ignored while scripted. end_script(leave) hands her back (leave:
+#     back to the patrol and deaf to the player for DEAF_AFTER_S), catch_in_spot() opens the stall and catches.
 class_name HorrorStalker
 extends Node3D
 
@@ -64,6 +68,7 @@ const LOOK: Dictionary = {"preset": "student_m", "rigged": true, "seed": 4404, "
 const DOLLY_SPEED: float = 1.12
 const HUM_MAX_M: float = 32.0
 const HUM_DB: float = -2.0
+const DEAF_AFTER_S: float = 3.0
 
 var graph: HorrorNavGraph = null
 var senses: HorrorSenses = null
@@ -97,6 +102,13 @@ var hum_on: bool = false
 var rushing: bool = false
 ## SEARCH length (s); the Night Building's alarm shortens it.
 var search_s: float = SEARCH_S
+## Scripted by the level (DollyWC): where to walk, how fast, what to face; deaf_t: seconds she ignores the player's breath.
+var scripted: bool = false
+var script_target: Vector3 = Vector3.ZERO
+var script_speed: float = 1.9
+var script_face: Vector3 = Vector3(INF, 0.0, INF)
+var deaf_t: float = 0.0
+var _script_to: Vector3 = Vector3(INF, 0.0, INF)
 
 var _patrol_i: int = 0
 var _path: PackedVector3Array = PackedVector3Array()
@@ -354,7 +366,7 @@ func notice_hide(spot: Node3D) -> bool:
 ## Heard breathing or a gasp from `spot` (H-D4): goes to check it (catches the player if still inside). Returns true
 ## when it goes (not frozen, not already checking that spot).
 func investigate_spot(spot: Node3D) -> bool:
-	if frozen or senses == null or spot == null:
+	if frozen or senses == null or spot == null or scripted or deaf_t > 0.0:
 		return false
 	if state == CHECK and check_spot == spot:
 		return false
@@ -368,7 +380,7 @@ func investigate_spot(spot: Node3D) -> bool:
 ## The alarm (H-D5): runs towards p as if chasing (it has not seen the player: arriving without sight -> SEARCH).
 ## A stalker checking a spot or already seeing the player keeps doing that.
 func rush(p: Vector3) -> void:
-	if frozen or senses == null or state == CHECK or (state == CHASE and _sees_now):
+	if frozen or senses == null or scripted or state == CHECK or (state == CHASE and _sees_now):
 		return
 	rushing = true
 	last_known = Vector3(p.x, 0.0, p.z)
@@ -377,6 +389,47 @@ func rush(p: Vector3) -> void:
 		_set_state(CHASE)
 	_go(last_known)
 	_repath_t = REPATH_S
+
+
+## The level takes her over (DollyWC): CHECK on `spot`, standing until script_target is set. false when frozen.
+func begin_script(spot: Node3D) -> bool:
+	if frozen or senses == null:
+		return false
+	check_spot = spot
+	_set_state(CHECK)
+	scripted = true
+	script_target = global_position
+	script_face = Vector3(INF, 0.0, INF)
+	_script_to = Vector3(INF, 0.0, INF)
+	_path.clear()
+	_path_i = 0
+	return true
+
+
+## Hands her back: leave = back to the patrol, deaf to the player's breath for DEAF_AFTER_S.
+func end_script(leave: bool) -> void:
+	scripted = false
+	if leave:
+		deaf_t = DEAF_AFTER_S
+		_back_to_patrol()
+
+
+## The scripted catch: opens the stall and catches the player inside.
+func catch_in_spot() -> void:
+	scripted = false
+	if check_spot != null and is_instance_valid(check_spot) and check_spot.has_method("reveal"):
+		check_spot.call("reveal")
+	_catch()
+
+
+func _do_script(delta: float) -> void:
+	if script_target.distance_to(_script_to) > 0.2:
+		_script_to = script_target
+		_go(script_target)
+	if not _arrived():
+		_move(delta, script_speed)
+	elif script_face.x < INF:
+		_turn_toward(script_face - global_position, delta)
 
 
 func _spot_point() -> Vector3:
@@ -400,6 +453,15 @@ func step(delta: float) -> void:
 		_sense_acc -= SENSE_DT
 		sense()
 	speed_now = 0.0
+	deaf_t = maxf(0.0, deaf_t - delta)
+	if scripted:
+		if state == CHASE:
+			scripted = false   # she saw the player out of the stall: the script is over (the level notices)
+		else:
+			_do_script(delta)
+			_check_catch()
+			_set_anim_speed(speed_now)
+			return
 	match state:
 		PATROL:
 			_do_patrol(delta)
@@ -589,6 +651,8 @@ func reset_at(p: Vector3) -> void:
 	_caught = false
 	frozen = false
 	rushing = false
+	scripted = false
+	deaf_t = 0.0
 	check_spot = null
 	_since_seen = INF
 	_sees_now = false

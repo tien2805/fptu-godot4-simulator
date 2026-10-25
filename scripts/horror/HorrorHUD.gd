@@ -4,6 +4,7 @@
 # door or a desk panel), the caught and escaped cards. Plain Vietnamese text, no emoji or decorative symbols (owner rule
 # 2026-10-25). Code-built Controls only; no autoload identifiers (class_name script).
 # Hold breath (H-D4): while hidden a breath bar with the plain line "Giữ Shift: nín thở" (set_breath).
+# subtitle(text, secs): a spoken line (Dolly's), bottom centre above the prompt, in her colour.
 class_name HorrorHUD
 extends CanvasLayer
 
@@ -22,6 +23,8 @@ var fade: ColorRect
 var peek: Control
 var peek_kind: String = ""
 var breath_label: Label
+var subtitle_label: Label
+var _sub_t: float = 0.0
 var breath_bar: ProgressBar
 var _toast_t: float = 0.0
 var _fill: StyleBoxFlat
@@ -100,6 +103,10 @@ func _ready() -> void:
 	breath_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(breath_bar)
 	set_breath(1.0, false, false)
+	subtitle_label = _label("Subtitle", 28, Color("#F2D7A6"))
+	_place(subtitle_label, Control.PRESET_CENTER_BOTTOM, Rect2(-460, -250, 920, 40))
+	subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle_label.visible = false
 	set_fuses(0)
 	set_battery(1.0, false)
 
@@ -137,6 +144,15 @@ func set_battery(frac: float, on: bool) -> void:
 	battery_bar.value = pct
 	battery_label.text = "Pin đèn: %d%%%s" % [pct, "" if on else " (tắt)"]
 	_fill.bg_color = Color("#FF6B5E") if frac < 0.2 else Color("#9BE7A0")
+
+
+## A spoken line for `secs` s (plain text).
+func subtitle(t: String, secs: float = 2.0) -> void:
+	if subtitle_label == null:
+		return
+	subtitle_label.text = t
+	subtitle_label.visible = true
+	_sub_t = secs
 
 
 ## Breath bar while hidden: frac 0..1 left, shown (hidden in a spot), held (Shift down).
@@ -218,6 +234,10 @@ func show_escaped(caught_count: int) -> void:
 
 
 func _process(delta: float) -> void:
+	if _sub_t > 0.0:
+		_sub_t -= delta
+		if _sub_t <= 0.0:
+			subtitle_label.visible = false
 	if _toast_t > 0.0:
 		_toast_t -= delta
 		if _toast_t < 0.6:

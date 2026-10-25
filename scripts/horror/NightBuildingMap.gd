@@ -592,6 +592,7 @@ static func _build_toilet(root: Node3D, r: Dictionary, data: Dictionary) -> void
 		var out := Vector3(0.0, 0.0, -side)
 		var spot: HidingSpot = HidingSpot.make("stall", Transform3D(Basis(Vector3.UP, yaw_to(out)), room_pt(r, lx, 8.05)), hinge)
 		spot.name = "Hide_stall_%s_%d" % [r["id"], i]
+		spot.set_meta("room", String(r["id"]))   # the toilet block (Dolly's knock visit, once per block)
 		root.add_child(spot)
 		data["spots"].append(spot)
 		var nm: String = "stall%d" % i

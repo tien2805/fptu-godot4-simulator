@@ -46,6 +46,9 @@
 #   every stalker rushes the player (re-issued every RUSH_REPATH_S while the player is not hidden, held RUSH_HOLD_S after a
 #   retry; a stalker that loses the player searches only ALARM_SEARCH_S, so a hiding spot can still work), the lobby doors
 #   open: the final sprint (toasts point to the exit).
+#   wc: DollyWC                 Dolly's toilet monologue (owner request; Dolly only, only for a player hidden in a stall of
+#                               that block, every visit): wc.running while it plays (Dolly is scripted in
+#                               CHECK); the owner file user://sfx/dolly_wc_full, else subtitles only; see DollyWC.gd.
 # HUD: "Cầu chì: n/3", battery, objective, prompts "[E] Trốn", "[E] Ra", "[E] Nhặt cầu chì", "[E] Lắp cầu chì", "[E] Nhặt
 # pin", hint "[F] Đèn pin"; plain text without emoji or decorative symbols.
 class_name NightBuilding
@@ -71,7 +74,7 @@ const ALARM_SEARCH_S: float = 5.0
 const T_ALARM: String = "Có điện rồi! Báo động kêu, chúng đang tới. Chạy ra cửa sảnh theo biển LỐI THOÁT màu xanh!"
 const T_ALARM_HIDE: String = "Chúng đang lùng sục. Đợi chúng đi qua rồi chạy ra cửa sảnh!"
 const SIREN_DB: float = -14.0
-const POLISH_CUES: Array[String] = ["dolly_hum", "gasp", "alarm_siren", "cat_meow", "bin_crash", "locker_slam"]
+const POLISH_CUES: Array[String] = ["dolly_hum", "gasp", "alarm_siren", "cat_meow", "bin_crash", "locker_slam", "door_knock", "sniff"]
 
 var opts: Dictionary = {}
 var seed_val: int = 0
@@ -95,6 +98,7 @@ var dolly: HorrorStalker = null
 var sos: SosLights = null
 var fakeouts: HorrorFakeouts = null
 var siren: AudioStreamPlayer = null
+var wc: DollyWC = null
 var fuse_candidates: Array = []
 var active_fuses: Array[int] = []
 var fuse_state: Array[String] = []
@@ -143,6 +147,7 @@ func _rebuild() -> void:
 	sos = null
 	fakeouts = null
 	siren = null
+	wc = null
 	_rush_t = -1.0
 	_card_t = -1.0
 	_noise_queue.clear()
@@ -248,6 +253,12 @@ func build() -> void:
 	add_child(fakeouts)
 	fakeouts.setup(seed_val, scare, flashlight, player, hud)
 	fakeouts.noise.connect(_on_fake_noise)
+	if dolly != null:
+		wc = DollyWC.new()
+		add_child(wc)
+		wc.setup(self, dolly, kit, scare, hud)
+		if dolly.hum != null:
+			scare.register_duck(dolly.hum)
 	checkpoint_data = {"pos": st["pos"], "yaw": float(st["yaw"]), "battery": 1.0, "taken": _taken_flags()}
 	state = "play"
 	_refresh_hud()
@@ -485,6 +496,7 @@ func _start_alarm() -> void:
 	if AudioServer.get_bus_index("SFX") != -1:
 		siren.bus = "SFX"
 	add_child(siren)
+	scare.register_duck(siren)
 	_try_siren()
 	for s: HorrorStalker in stalkers:
 		s.search_s = ALARM_SEARCH_S
@@ -517,10 +529,12 @@ func _on_caught(catcher: HorrorStalker) -> void:
 		return
 	state = "caught"
 	caught_count += 1
+	if wc != null:
+		wc.abort()   # the monologue stops on any catch
 	kit.input_enabled = false
 	player.controls_enabled = false
 	scare.play_catch_scare(kit.hidden_spot.kind if kit.is_hidden() else "open", catcher == null or catcher.is_dolly)
-	_card_t = ScareDirector.CATCH_S   # the caught card after the staged scare
+	_card_t = scare.catch_total()   # the caught card after the staged scare (its duck included)
 	caught.emit()
 	if auto_retry:
 		_retry_t = RETRY_DELAY
@@ -531,6 +545,8 @@ func retry_from_checkpoint() -> void:
 		return
 	_retry_t = -1.0
 	_card_t = -1.0
+	if wc != null:
+		wc.abort()
 	scare.cancel_catch()
 	if kit.is_hidden():
 		kit.leave_hiding()
@@ -614,6 +630,8 @@ func _stop_sounds() -> void:
 		siren.stop()
 	if fakeouts != null:
 		fakeouts.enabled = false
+	if wc != null:
+		wc.abort()
 
 
 func _escape() -> void:
@@ -675,6 +693,9 @@ func _on_fake_noise(p: Vector3) -> void:
 
 # ---------------------------------------------------------------------------
 func _physics_process(delta: float) -> void:
+	if wc != null and state == "play":
+		wc.watch()
+		wc.tick(delta)
 	if alarm and _rush_t >= 0.0 and state == "play":
 		_rush_t -= delta
 		if _rush_t < 0.0:
