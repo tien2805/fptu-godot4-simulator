@@ -7,6 +7,10 @@
 #   p >= 0.55  lights out (BLACKOUT_S, frozen in place), lights back: the figure is gone, a distorted bleat;
 #   p >= 0.8   whisper and another stutter;
 #   the far end (p >= END_P) after MIN_S s: done (cine_d1_corridor follows: the shiba bonk).
+#   p >= 0.33  (scare events) a sheep face slams against the dark window on the left wall (ScareSlam: the duck, the snap,
+#              the loud sting, the screen hit), then drops away;
+#   p >= 0.6, after the blackout: turning round (over 150 degrees within 0.5 s) shows the figure 1.5 m away for 0.6 s
+#              ("behind you", the sting and the screen hit);
 #   p >= 0.4   (horror polish H-D7) a locker on the right wall bursts open and a sheep mask falls out (locker_slam), a
 #              fake-out within the ScareDirector's fake-out budget, before the blackout;
 # "Giảm hù dọa": no blackout (a slow dim), quieter cues, no stutter strobe (ScareDirector.reduce_scares); the locker opens
@@ -27,6 +31,12 @@ const BLACKOUT_S: float = 1.4
 const FIGURE_Z: float = -18.6
 const T_FEAR: String = "Chân run quá, không chạy nổi…"
 const LOCKER_P: float = 0.4
+const WINDOW_P: float = 0.33
+const WINDOW_Z: float = 6.0
+const BEHIND_P: float = 0.6
+const BEHIND_S: float = 0.6
+const TURN_DEG: float = 150.0
+const TURN_S: float = 0.5
 ## The locker stands on the right wall a little past the LOCKER_P point (local z).
 const LOCKER_Z: float = 0.6
 const LOCKER_D: float = 0.5
@@ -42,6 +52,10 @@ var progress: float = 0.0
 var events: Array[String] = []
 var locker_door: Node3D
 var mask_drop: Node3D
+var slam: ScareSlam
+var window_mesh: MeshInstance3D
+var _yaws: Array[Vector2] = []
+var _behind_t: float = -1.0
 const _MASK_IN := Vector3(0.0, 1.45, 0.0)
 var _blackout_t: float = -1.0
 
@@ -63,6 +77,7 @@ func _start() -> void:
 	figure.rotation.y = PI   # faces +Z: down the corridor at the player
 	figure.visible = false
 	_build_locker()
+	_build_window()
 	scare = ScareDirector.new()
 	scare.reduce_scares = StoryUtil.reduce_scares()
 	scare.player = player
@@ -87,6 +102,36 @@ func _find_spot() -> Transform3D:
 			return st
 	var p: Vector3 = player.global_position if player else Vector3.ZERO
 	return Transform3D(Basis(Vector3.UP, player.facing_yaw() if player else 0.0), p + Vector3(0.0, 0.0, 0.0))
+
+
+## A dark window in the left wall (the face slams against it from outside) and the slam scare.
+func _build_window() -> void:
+	window_mesh = MeshInstance3D.new()
+	window_mesh.name = "DarkWindow"
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.03, 0.9, 1.3)
+	window_mesh.mesh = bm
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color("#0D1420")
+	m.emission_enabled = true
+	m.emission = Color("#1E2E4A")
+	m.emission_energy_multiplier = 0.25
+	window_mesh.material_override = m
+	set_root.add_child(window_mesh)
+	window_mesh.position = Vector3(-WIDTH_M * 0.5 + 0.02, 1.6, WINDOW_Z)
+	slam = ScareSlam.new()
+	add_child(slam)
+
+
+## The camera turned more than TURN_DEG within TURN_S (player yaw samples on the mission clock).
+func turned_around() -> bool:
+	if _yaws.size() < 2:
+		return false
+	var now: float = _yaws.back().y
+	for v: Vector2 in _yaws:
+		if absf(wrapf(now - v.y, -PI, PI)) > deg_to_rad(TURN_DEG):
+			return true
+	return false
 
 
 ## A grey corridor locker on the right wall (collision included) with a door on a hinge and a sheep mask inside.
@@ -186,6 +231,10 @@ func _reset() -> void:
 	_blackout_t = -1.0
 	figure.visible = false
 	_close_locker()
+	if slam:
+		slam.stop()
+	_yaws.clear()
+	_behind_t = -1.0
 	_set_lights(true)
 	teleport_player(xf * Vector3(0.1, 0.0, START_Z), _yaw_down())
 	player.combat_speed_cap = WALK_CAP
@@ -233,6 +282,28 @@ func _tick(dt: float) -> void:
 	if progress >= 0.25 and not "figure" in events:
 		events.append("figure")
 		figure.visible = true
+	if progress >= WINDOW_P and not "window" in events:
+		events.append("window")
+		slam.start(scare, xf * Vector3(-WIDTH_M * 0.5 + 0.1, 1.6, WINDOW_Z), xf.basis * Vector3(-1.0, 0.0, 0.0), player.global_position, 1.6)
+	_yaws.append(Vector2(clock, player.yaw))
+	while not _yaws.is_empty() and clock - _yaws[0].x > TURN_S:
+		_yaws.remove_at(0)
+	if _behind_t > 0.0:
+		_behind_t -= dt
+		if _behind_t <= 0.0:
+			figure.visible = false
+	if progress >= BEHIND_P and "gone" in events and not "behind" in events and turned_around():
+		events.append("behind")
+		if scare.reduce_scares:
+			scare.play_cue("metal_creak", -8.0)
+		else:
+			var f := Vector3(-sin(player.yaw), 0.0, -cos(player.yaw))
+			figure.global_position = player.global_position + f * 1.5
+			figure.rotation.y = player.yaw + PI   # faces the player
+			figure.visible = true
+			_behind_t = BEHIND_S
+			scare.loud_sting()
+			scare.screen_hit()
 	if progress >= LOCKER_P and not "locker" in events and not "blackout" in events and scare.try_fake_out("locker"):
 		events.append("locker")
 		burst_locker()
@@ -261,6 +332,8 @@ func _tick(dt: float) -> void:
 
 
 func _cleanup() -> void:
+	if slam and is_instance_valid(slam):
+		slam.stop()
 	if scare and is_instance_valid(scare):
 		scare.stop_all()
 	if set_root and is_instance_valid(set_root):
