@@ -101,6 +101,8 @@ var wanted: WantedDirector
 var classic_stars: ViceStars
 var emote_wheel: EmoteWheel
 var emotes: EmoteDirector
+## Phase B unarmed Vovinam combat (scripts/combat/): owns Tay không, HP, the combat HUD; MeleeFight registers enemies.
+var combat: PlayerCombat
 ## Story mode (spec A2-D4): StoryDirector.active when the scene loads. No stage hotspots, no [T]; the story layer (markers,
 ## objective, phone, call, beat runner) lives in the StoryRoam child, scripts/story/.
 var story_mode: bool = false
@@ -978,6 +980,9 @@ func toggle_bike() -> void:
 	if wanted and wanted.state != "free":
 		flash_hint(HINT_SERVICE_BIKE)   # Phase W: không lấy xe khi đang bị bắt / lao động công ích
 		return
+	if not mounted and combat and combat.fight_active:
+		flash_hint(CombatData.T_FIGHT_BIKE)   # Phase B: no bike in the middle of a fight (MeleeFight)
+		return
 	if mounted:
 		dismount_bike()
 	else:
@@ -1344,9 +1349,15 @@ func _build_mayhem() -> void:
 	emotes.name = "Emotes"
 	add_child(emotes)
 	emotes.setup({"player": player, "weapons": weapons, "wheel": emote_wheel, "weapon_wheel": weapon_wheel,
-		"targets_fn": mayhem_targets, "fx": weapons.fx, "blocked_fn": mayhem_blocked})
+		"targets_fn": mayhem_targets, "fx": weapons.fx,
+		"blocked_fn": func() -> bool: return mayhem_blocked() or (combat != null and combat.fight_active)})   # Phase B: no emote mid-fight
 	# one wheel at a time; no weapon during an emote (spec section 9)
 	weapons.blocked_fn = func() -> bool: return mayhem_blocked() or emotes.active or emotes.pending >= 0 or emote_wheel.is_open()
+	# Phase B: the Vovinam moves replace the Phase W unarmed punch (pedestrians keep their Phase W reactions and heat)
+	combat = PlayerCombat.new()
+	combat.name = "Combat"
+	add_child(combat)
+	combat.setup({"player": player, "weapons": weapons, "targets_fn": mayhem_targets, "blocked_fn": weapons.blocked_fn})
 
 
 ## Everything weapons can hit: pedestrians of both tiers (officers join in Task 8).
