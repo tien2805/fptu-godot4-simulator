@@ -101,6 +101,22 @@ timeout default, villain card width, corridor reduce-scares variant. Run: the ne
 
 ---
 
-## API for the integration agent (filled in as built)
+## API for the integration agent (as built)
 
-See the header comments of `StoryCast.gd`, `StoryChoice.gd`, `StoryVillainCard.gd`, `StoryScreenCard.gd` and each timeline.
+Details live in the header comments of `StoryCast.gd`, `StoryShiba.gd`, `StoryChoice.gd`, `StoryVillainCard.gd`,
+`StoryScreenCard.gd` and each timeline.
+
+- **Cast.** `StoryCast.opts(id, extra)`, `StoryCast.build(id, extra)`, `speaker(id)`, `color(id)`, `masked(id)`,
+  `attach_mask(body)`, `attach_tells(body, keychain)`. Ids: `hero`, `mr_t`, `phuc`, `linh`, `chu_bay`, `clone`,
+  `clone_masked`, `dolly_disguised`, `dolly_unmasked`, `dolly`, `courier_vang`, `courier_do`, `courier_xanh`, `shiba`.
+- **Shiba.** `StoryShiba.new()`; `play("idle" | "walk" | "bonk")`; `BONK_HIT` 0.32 s, `BONK_DUR` 0.75 s; `nose_world()`.
+- **Choice.** `StoryChoice.open(parent, def)` → signal `chosen(key, timed_out)`; writes `StoryDirector.choices[id]`.
+  Inside a timeline: `choice(r, def)`; `CinePlayer.choice_made(id, key, timed_out)` fires before `finished`.
+- **Villain card.** In a timeline: `villain(name, r, dur, data)` (freeze + card). In gameplay:
+  `StoryVillainCard.show_for(parent, data, dur)` → signal `finished`.
+- **Screen card.** In a timeline: `card("screen", r, dur, {"kind": "cctv" | "phone", ...})`.
+- **Slots** (real length): `cine_d1_intro` 14.0, `cine_d1_corridor` 7.5 (reads "Giảm hù dọa" at build time),
+  `cine_d1_choice` 12.0 (choice at 11.6), tails `cine_d1_choice_cover` 4.0 / `cine_d1_choice_report` 4.5, `cine_d1` 18.0,
+  `cine_d4_intro` 14.0, `cine_d4_stare` 10.0 (villain card 4.6–7.0), `seg_d4_brawl` 25.0, `cine_d4` 18.0.
+- **Staging.** Every slot carries an explicit `stage.at` (map point from the campus plot) and a landmark fallback;
+  StoryRoam may still override `at` / `yaw_deg` from its anchors as for Day 0.
