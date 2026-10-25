@@ -2,8 +2,8 @@
 # Pacing and sound of a horror level (spec B-D3):
 # - jump scares: a budget of 1-2 per mission (`budget`, default MAX_JUMP), at least MIN_GAP_S apart on the mission clock;
 #   try_jump_scare() is called at the level's scripted moments and only fires within the budget. A full scare = a white
-#   flash, violin_screech + sheep_bleat_distorted, a camera shake and the masked `figure` 1.1 m in front of the camera for
-#   0.6 s. The catch scare (play_catch_scare) always plays and does not count.
+#   flash, violin_screech + sheep_bleat_distorted, a camera shake and the masked `figure` standing 1.1 m in front of the
+#   camera for 0.6 s (process off while hidden). The catch scare (play_catch_scare) always plays and does not count.
 # - "Giảm hù dọa" (A2-D14; `reduce_scares`, from the GameFX setting or the level's override): every scare becomes a soft
 #   sting (metal_creak and a dark vignette: no flash, no screech, no shake, no figure), horror cues play 6 dB quieter
 #   (cue_db), flicker events become a slow dim instead of a strobe.
@@ -168,8 +168,11 @@ func _show_figure() -> void:
 	f.y = 0.0
 	f = f.normalized() if f.length_squared() > 1e-6 else Vector3.FORWARD
 	var p: Vector3 = cam.global_position + f * 1.1
-	figure.global_position = Vector3(p.x, cam.global_position.y - 1.55, p.z)
+	# stands on the floor (the player's feet), whatever the camera height (third-person 2.2 m, peek 0.2-1.55 m)
+	var floor_y: float = player.global_position.y if player != null and is_instance_valid(player) and player.is_inside_tree() else cam.global_position.y - 1.55
+	figure.global_position = Vector3(p.x, floor_y, p.z)
 	figure.rotation.y = atan2(f.x, f.z)   # faces the camera (-Z towards it)
+	figure.process_mode = Node.PROCESS_MODE_INHERIT
 	figure.visible = true
 	_figure_t = FIGURE_S
 
@@ -327,3 +330,4 @@ func _process(delta: float) -> void:
 		_figure_t -= delta
 		if _figure_t <= 0.0 and figure != null and is_instance_valid(figure):
 			figure.visible = false
+			figure.process_mode = Node.PROCESS_MODE_DISABLED   # no animation while unseen

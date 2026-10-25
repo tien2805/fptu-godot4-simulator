@@ -217,6 +217,11 @@ func _states() -> void:
 	_check(st.state == HorrorStalker.PATROL and absf(t - HorrorStalker.SEARCH_S) < 0.2, "back on patrol after a 15 s search (%.2f s, %s)" % [t, st.state])
 	var want: Array[String] = ["SUSPICIOUS", "CHASE", "SEARCH", "PATROL"]
 	_check(st.state_log == want, "state flow patrol -> suspicious -> chase -> search -> patrol (%s)" % str(st.state_log))
+	# searches never stand on a hiding spot's way out
+	var nw: int = g.id_of("x7")
+	g.set_no_wander(nw)
+	_check(g.nodes_within(g.pos(nw), 1.0).has(nw) and not g.nodes_within(g.pos(nw), 1.0, true).has(nw), "no-wander nodes are skipped by searches, kept for routes")
+	_check(g.path_ids(g.id_of("x0"), g.id_of("x12")).size() == 13 and g.path_ids(g.id_of("z0"), g.id_of("x0")).size() == 13, "heap Dijkstra finds the shortest node paths")
 	# patrol actually walks the loop
 	var p0: Vector3 = st.global_position
 	for i: int in 180:
@@ -251,6 +256,13 @@ func _catch() -> void:
 	s.hidden = true
 	st.step(1.0 / 60.0)
 	_check(got[0] == 1, "never catches a hidden player it did not see enter")
+	s.hidden = false
+	s.grace = 0.5
+	st.step(1.0 / 60.0)
+	_check(got[0] == 1, "no catch during the grace after leaving a spot")
+	s.grace = 0.0
+	st.step(1.0 / 60.0)
+	_check(got[0] == 2, "catches once the grace is over")
 	_trash.append(st)
 
 
@@ -460,6 +472,45 @@ func _hiding() -> void:
 	_check(passed, "the walker passed right by the spot")
 	_check(_caught_by == null and walker.state != HorrorStalker.CHECK, "and never checked it (%s)" % walker.state)
 	kit.leave_hiding()
+	_check(absf(kit.senses.grace - HorrorKit.LEAVE_GRACE_S) < 0.05, "leaving a spot gives %.2f s of catch grace" % HorrorKit.LEAVE_GRACE_S)
+	await _wall_catch()
 	for nd: Node in [walker, kit, sd, fl, player, spot, floor_body]:
 		nd.queue_free()
 	await _frames(2)
+
+
+## Real physics rays (no los_fn): no catch through a 0.2 m wall, nor from a stalker whose origin is inside the wall.
+func _wall_catch() -> void:
+	var wall := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(0.2, 3.0, 6.0)
+	cs.shape = bs
+	wall.add_child(cs)
+	wall.position = Vector3(50.0, 1.5, 0.0)
+	root.add_child(wall)
+	await _frames(2)
+	var s := HorrorSenses.new()
+	var st := HorrorStalker.new()
+	st.build_model = false
+	st.auto_update = false
+	root.add_child(st)
+	st.senses = s
+	var got: Array[int] = [0]
+	st.caught_player.connect(func(_x: HorrorStalker) -> void: got[0] += 1)
+	st.global_position = Vector3(49.4, 0, 0)
+	st.face(Vector3(1, 0, 0))
+	s.pos = Vector3(50.5, 0, 0)
+	st.step(1.0 / 60.0)
+	_check(got[0] == 0 and not st.can_see(), "real ray: no sight or catch through a wall at 1.1 m")
+	st.global_position = Vector3(50.0, 0, 0)
+	s.pos = Vector3(50.9, 0, 0)
+	st.step(1.0 / 60.0)
+	_check(got[0] == 0, "real ray: no catch from a stalker standing inside the wall")
+	st.global_position = Vector3(50.6, 0, 0)
+	s.pos = Vector3(51.5, 0, 0)
+	st.step(1.0 / 60.0)
+	_check(got[0] == 1, "real ray: catches on the same side of the wall")
+	st.queue_free()
+	wall.queue_free()
+	await _frames(1)

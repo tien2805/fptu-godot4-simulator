@@ -9,12 +9,14 @@
 # States:
 #   PATROL      walks its waypoint loop, pausing at each waypoint;
 #   SUSPICIOUS  heard a noise: turns to it (0.6 s), walks there, looks around 3 s, back to PATROL;
-#   CHASE       saw the player: runs straight at the player while in sight (within 10 m), else to the last known spot;
-#               arriving there without sight -> SEARCH;
+#   CHASE       saw the player: runs straight to where the latest sight check saw it while that check saw it with a
+#               clear floor line (within 10 m), else routes to the last known spot; arriving there without sight -> SEARCH;
 #   SEARCH      wanders the nodes within 10 m of the last known spot for 15 s, then PATROL;
 #   CHECK       saw the player enter a hiding spot (notice_hide): runs to it and checks it: caught if the player is still
 #               inside; only this stalker can find a hidden player.
-# Catch: within 1.2 m of a visible player with a clear ray -> caught_player(self), then frozen until reset_at().
+# Catch: within 1.2 m of a visible player with a clear ray (hit_from_inside: never from inside a wall) and no catch grace
+# (HorrorSenses.grace, just after leaving a hiding spot) -> caught_player(self), then frozen until reset_at().
+# SEARCH wanders the graph's wander nodes only (never the waypoints on a hiding spot's exit point).
 # Per physics frame: one movement step and a distance check; rays only at 10 Hz or within catch range; no allocation
 # except when it re-routes (at most every 0.5 s).
 class_name HorrorStalker
@@ -87,6 +89,8 @@ var _search_t: float = 0.0
 var _arrived_t: float = -1.0
 var _route_to: Vector3 = Vector3(INF, 0.0, INF)
 var _caught: bool = false
+var _sees_now: bool = false
+var _direct_ok: bool = false
 var _animator: Node = null
 
 
@@ -157,7 +161,13 @@ func _los(from: Vector3, to: Vector3) -> bool:
 		return true
 	var q := PhysicsRayQueryParameters3D.create(from, to, WORLD_MASK)
 	q.collide_with_areas = false
+	q.hit_from_inside = true   # an origin inside a wall box never sees (or catches) through it
 	return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
+
+
+## Physics space for graph routing and walk checks (null with a los_fn mock or outside the tree: everything is clear).
+func _space() -> PhysicsDirectSpaceState3D:
+	return get_world_3d().direct_space_state if is_inside_tree() and not los_fn.is_valid() else null
 
 
 func _flat_to_player() -> Vector3:
@@ -196,16 +206,24 @@ func sense() -> void:
 	if can_see():
 		_since_seen = 0.0
 		last_known = senses.pos
-		if state != CHASE and state != CHECK:
+		_sees_now = true
+		# straight run only when the floor line is clear too (sight goes over desks, legs do not)
+		_direct_ok = HorrorNavGraph.clear(_space(), global_position, senses.pos)
+		if state == CHECK:
+			check_spot = null   # it sees the player, who has already left the spot
+		if state != CHASE:
 			_set_state(CHASE)
 			_repath_t = 0.0
 		return
+	_sees_now = false
+	_direct_ok = false
 	if can_hear():
 		_on_noise(senses.pos)
 
 
 ## A noise from the level (a slammed door, the generator starting): reacts as if it heard the player there.
 func hear_at(p: Vector3) -> void:
+	_repath_t = 0.0   # a level event always re-routes, even right after another noise
 	_on_noise(p)
 
 
@@ -329,8 +347,11 @@ func _do_suspicious(delta: float) -> void:
 
 
 func _do_chase(delta: float) -> void:
-	var to: Vector3 = _flat_to_player()
-	if _since_seen < 0.25 and not senses.hidden and to.length() < DIRECT_CHASE_R:
+	# straight at the player only while the latest sight check saw it with a clear floor line, and only towards the
+	# position that check saw (never the live position between checks: no corner cutting through door jambs)
+	var to: Vector3 = last_known - global_position
+	to.y = 0.0
+	if _sees_now and _direct_ok and not senses.hidden and to.length() < DIRECT_CHASE_R:
 		var d: float = to.length()
 		if d > 0.05:
 			var stp: float = minf(float(SPEEDS[CHASE]) * delta, d)
@@ -361,7 +382,7 @@ func _do_search(delta: float) -> void:
 		return
 	if _arrived():
 		_wait = SEARCH_PAUSE_S
-		var near: PackedInt32Array = graph.nodes_within(last_known, SEARCH_RADIUS) if graph != null else PackedInt32Array()
+		var near: PackedInt32Array = graph.nodes_within(last_known, SEARCH_RADIUS, true) if graph != null else PackedInt32Array()
 		if near.is_empty():
 			_path.clear()
 		else:
@@ -379,18 +400,18 @@ func _do_check(delta: float) -> void:
 	var d: Vector3 = target - global_position
 	d.y = 0.0
 	if d.length() <= CATCH_R:
-		if senses.hidden and senses.spot == check_spot:
+		if senses.hidden and senses.spot == check_spot and catch_enabled:
 			if check_spot != null and check_spot.has_method("reveal"):
 				check_spot.call("reveal")
 			_catch()
-		else:
+		else:   # the player left (or catching is off): search from here
 			check_spot = null
 			last_known = global_position
 			_set_state(SEARCH)
 
 
 func _check_catch() -> void:
-	if not catch_enabled or _caught or senses == null or senses.hidden:
+	if not catch_enabled or _caught or senses == null or senses.hidden or senses.grace > 0.0:
 		return
 	var d: Vector3 = senses.pos - global_position
 	if absf(d.y) > 1.5 or Vector2(d.x, d.z).length() > CATCH_R:
@@ -456,6 +477,8 @@ func reset_at(p: Vector3) -> void:
 	frozen = false
 	check_spot = null
 	_since_seen = INF
+	_sees_now = false
+	_direct_ok = false
 	_wait = 0.5
 	_sus_turn = 0.0
 	_path.clear()
@@ -482,8 +505,7 @@ func _go(target: Vector3) -> void:
 	if graph == null:
 		_path = PackedVector3Array([Vector3(target.x, 0.0, target.z)])
 	else:
-		var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state if is_inside_tree() and not los_fn.is_valid() else null
-		_path = graph.route(global_position if is_inside_tree() else position, target, space)
+		_path = graph.route(global_position if is_inside_tree() else position, target, _space())
 	_path_i = 0
 
 

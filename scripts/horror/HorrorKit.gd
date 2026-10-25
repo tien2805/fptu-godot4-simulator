@@ -11,7 +11,8 @@
 # Mouse motion while hidden turns the peek camera.
 # hide_in(spot): every stalker that sees the player now gets notice_hide(spot) (it will check the spot), then the player
 # disappears (process off, invisible, flashlight off), the spot's peek camera becomes current, breath starts.
-# leave_hiding(): the player is back at the spot's exit point facing out, with its own camera.
+# leave_hiding(): the player is back at the spot's exit point facing out, with its own camera, and LEAVE_GRACE_S of catch
+# grace. While hidden a left click recaptures the mouse (the process-disabled player cannot).
 class_name HorrorKit
 extends Node
 
@@ -24,6 +25,8 @@ const NOISE_WALK: float = 3.0
 const PLAYER_LAYER: int = 2
 const SLOW_DT: float = 0.1
 const MOUSE_SENS: float = 0.0022
+## Catch grace after leaving a hiding spot (s): stepping out next to an unseen stalker is not an instant catch.
+const LEAVE_GRACE_S: float = 0.75
 
 var player: ThirdPersonController = null
 var flashlight: HorrorFlashlight = null
@@ -142,6 +145,7 @@ func nearest_spot(p: Vector3) -> HidingSpot:
 
 
 func _physics_process(delta: float) -> void:
+	senses.grace = maxf(0.0, senses.grace - delta)
 	update_senses()
 	_slow += delta
 	if _slow >= SLOW_DT:
@@ -182,8 +186,7 @@ func hide_in(spot: HidingSpot) -> bool:
 	if flashlight != null:
 		flashlight.set_on(false)
 	spot.peek_reset()
-	spot.peek_cam.make_current()
-	spot.swing()
+	spot.peek_cam.make_current()   # no door swing on the way in: the peek camera sits just outside the door
 	update_senses()
 	if scare != null:
 		scare.set_hidden(true)
@@ -205,6 +208,7 @@ func leave_hiding() -> bool:
 		player.camera.make_current()
 	if not spot.revealed:
 		spot.swing()
+	senses.grace = LEAVE_GRACE_S
 	update_senses()
 	if scare != null:
 		scare.set_hidden(false)
@@ -259,3 +263,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and hidden_spot != null and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var mm: InputEventMouseMotion = event
 		hidden_spot.peek_look(-mm.relative.x * MOUSE_SENS, -mm.relative.y * MOUSE_SENS)
+	elif event is InputEventMouseButton and hidden_spot != null:
+		# the player node is process-disabled while hidden: recapture the mouse here (after a pause menu freed it)
+		var mb: InputEventMouseButton = event
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE 				and player != null and player.capture_on_click:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
