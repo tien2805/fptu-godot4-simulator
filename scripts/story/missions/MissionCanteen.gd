@@ -288,6 +288,10 @@ func _tick(dt: float) -> void:
 		var k: int = rng.randi_range(0, clones.size() - 1)
 		if k != dolly_index:
 			_bubble(clones[k], "Mlem mlem")
+	if hum and not hum.playing and int(clock * 2.0) != int((clock - dt) * 2.0) and StoryAudio.ready_for(["music_box"]):
+		hum.stream = StoryAudio.stream("music_box")   # warmed on a worker thread at the start: plays once it is ready
+		hum.volume_db = -6.0
+		hum.play()
 	if _bubble_t > 0.0:
 		_bubble_t -= dt
 		if _bubble_t <= 0.0:
