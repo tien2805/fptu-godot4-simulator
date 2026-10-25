@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://story_night_escape"]
+
+[ext_resource type="Script" path="res://scripts/story/StoryNightEscape.gd" id="1_escape"]
+
+[node name="StoryNightEscape" type="Node3D"]
+script = ExtResource("1_escape")

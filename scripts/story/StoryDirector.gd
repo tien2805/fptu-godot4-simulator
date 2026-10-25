@@ -6,6 +6,9 @@
 # Flow: new_story() -> d0_wake ... ; complete_step(id) grants the beat's evidence, enters the next beat (its tod, objective,
 # texts; a "day" beat advances the day and passes straight on) and autosaves. Stage beats: launch_stage_beat() sets
 # StageManager.story_context and starts the stage; StageManager.report_stage_result forwards to on_stage_result().
+# Phase B: horror beats run the Night Building as its own scene (launch_horror_beat -> on_horror_result: E5 only when the
+# player was never caught); side markers grant their evidence once (grant_side); a beat's "flag" is set when it completes;
+# old saves at dN_locked of a day that is now playable resume at the day's first beat (StoryMissions.migrate).
 extends Node
 
 const GameFXScript: Script = preload("res://scripts/GameFX.gd")
@@ -44,6 +47,8 @@ var last_nav: String = ""
 var saves: int = 0
 ## StoryRoam of the current free roam (weak): asked for the player's spot when leaving for the main menu.
 var _roam: WeakRef = null
+## from_dict moved an old save's step (StoryMissions.migrate); load_game saves the migrated state once.
+var migrated: bool = false
 var result_layer: CanvasLayer
 var result_title: Label
 var result_buttons: Dictionary = {}
@@ -120,6 +125,8 @@ func complete_step(id: String) -> bool:
 	var b: Dictionary = StoryMissions.beat(id)
 	if b.has("evidence"):
 		add_evidence(String(b["evidence"]))
+	if b.has("flag"):
+		flags[String(b["flag"])] = true
 	var nxt: String = String(b.get("next", ""))
 	if nxt != "":
 		_enter(nxt)
@@ -153,7 +160,15 @@ func advance_day(to_day: int = -1) -> void:
 	if d == day:
 		return
 	day = d
+	_read_old_days()
 	day_changed.emit(day)
+
+
+## Texts of the previous days count as read: the badge only counts today's unread (an old text never reads as today's).
+func _read_old_days() -> void:
+	for m: Dictionary in texts:
+		if int(m.get("day", 0)) < day:
+			m["read"] = true
 
 
 func add_evidence(id: String) -> void:
@@ -237,6 +252,26 @@ func from_dict(d: Dictionary) -> void:
 	var sp: Variant = d.get("spawn", null)
 	spawn = sp if sp is Transform3D else null
 	active = bool(d.get("active", true))
+	_read_old_days()
+	migrated = false
+	var mig: String = StoryMissions.migrate(step)
+	if mig != step:
+		_resume_at(mig)
+		migrated = true   # load_game saves at once: the beat's texts are added once, not on every load
+
+
+## An A2 save stopped at a day placeholder that is now playable: resume at its first beat (tod, objective, texts).
+func _resume_at(id: String) -> void:
+	var b: Dictionary = StoryMissions.beat(id)
+	if b.is_empty():
+		return
+	step = id
+	if b.has("tod"):
+		tod = String(b["tod"])
+	for t: Array in b.get("texts", []):
+		add_text(String(t[0]), String(t[1]))
+	if b.has("objective"):
+		objective = fmt(String(b["objective"]))
 
 
 func save_game(path: String = "") -> bool:
@@ -279,6 +314,8 @@ func load_game(path: String = "") -> bool:
 		return false
 	from_dict(d)
 	active = true
+	if migrated:
+		save_game(path)
 	return true
 
 
@@ -310,6 +347,8 @@ static func evaluate_ending(state: Dictionary) -> String:
 # Navigation
 # ---------------------------------------------------------------------------
 func _sm() -> Node:
+	if not is_inside_tree():
+		return null
 	return get_node_or_null("/root/StageManager")
 
 
@@ -361,6 +400,13 @@ func _nav(where: String) -> void:
 		return
 	if where == "roam":
 		sm.call("go_to_roam")
+	elif where.begins_with("horror:") and is_inside_tree():
+		sm.set("roam_spawn", null)
+		var fx: Node = get_node_or_null("/root/GameFX")
+		if fx and fx.has_method("music_stop"):
+			fx.call("music_stop", true)   # the roam track does not play in the Night Building; FreeRoam restarts it on return
+		get_tree().paused = false
+		get_tree().change_scene_to_file(where.substr(7))
 	elif where.begins_with("stage:"):
 		sm.call("start_stage_from_roam", int(where.get_slice(":", 1)), sm.get("roam_spawn"))
 	elif where == "creator" and is_inside_tree():
@@ -505,6 +551,77 @@ func retry_stage() -> void:
 func back_to_roam() -> void:
 	hide_result()
 	enter_roam()
+
+
+# ---------------------------------------------------------------------------
+# Phase B: side markers, choices, the horror scene
+# ---------------------------------------------------------------------------
+## Side marker of a beat (StoryMissions "side"): grants its evidence and marks it done, once. false when its flag is
+## missing or it was already taken.
+func grant_side(side: Dictionary) -> bool:
+	var sid: String = String(side.get("id", ""))
+	if sid == "" or bool(flags.get(sid, false)) or not side_available(side):
+		return false
+	flags[sid] = true
+	if side.has("evidence"):
+		add_evidence(String(side["evidence"]))
+	save_game()
+	return true
+
+
+## true while a side marker can be used (its "need" flag is set and it was not taken yet).
+func side_available(side: Dictionary) -> bool:
+	var need: String = String(side.get("need", ""))
+	return not bool(flags.get(String(side.get("id", "")), false)) and (need == "" or bool(flags.get(need, false)))
+
+
+## The recorded answer of choice `id` ("" when not asked yet).
+func choice_of(id: String) -> String:
+	return String(choices.get(id, ""))
+
+
+## Starts the horror beat `id` (the Night Building scene). win_xf / fail_xf as launch_stage_beat: the save resumes at
+## fail_xf (beside the marker) until the escape.
+func launch_horror_beat(id: String, win_xf: Variant = null, fail_xf: Variant = null) -> bool:
+	var b: Dictionary = StoryMissions.beat(id)
+	if id != step or String(b.get("kind", "")) != "horror":
+		return false
+	if fail_xf is Transform3D:
+		spawn = fail_xf
+	var sm: Node = _sm()
+	if sm:
+		sm.set("story_context", {"beat": id, "horror": true, "replay": String(b.get("replay", "")), "win_xf": win_xf,
+			"fail_xf": fail_xf})
+	save_game()
+	_nav("horror:" + String(b.get("scene", StoryMissions.HORROR_SCENE)))
+	return true
+
+
+## A catch in the Night Building is saved at once (flags.d4_catches): quitting to the menu and continuing does not reset
+## the count, so E5 (never caught) cannot be save-scummed.
+func note_horror_catch(caught_count: int) -> void:
+	flags["d4_catches"] = maxi(caught_count, int(flags.get("d4_catches", 0)))
+	save_game()
+
+
+## The horror scene reports the escape: E5 only when the player was never caught (B-D7), the beat completes (autosave),
+## the return spot moves to win_xf, then story free roam. false when no horror beat is running.
+func on_horror_result(caught_count: int, go_roam: bool = true) -> bool:
+	var sm: Node = _sm()
+	var ctx: Dictionary = sm.get("story_context") if sm else {}
+	var b: Dictionary = beat()
+	if String(b.get("kind", "")) != "horror":
+		return false
+	caught_count = maxi(caught_count, int(flags.get("d4_catches", 0)))   # catches of earlier, abandoned runs count too
+	if caught_count == 0:
+		add_evidence("E5")
+	flags["d4_caught"] = caught_count
+	if ctx.get("win_xf") is Transform3D:
+		spawn = ctx["win_xf"]
+	complete_step(step)
+	if go_roam:
+		enter_roam()
+	return true
 
 
 ## Main menu: story start goes through the character creator.

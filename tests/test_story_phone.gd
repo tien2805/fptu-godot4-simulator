@@ -80,9 +80,17 @@ func _run() -> void:
 	phone.set_tab(2)
 	var mt: String = _texts(phone)
 	_check(mt.contains("NGÀY 0 · THI EOS") and mt.contains(String(sd.get("objective"))), "missions tab: day chip + objective")
+	sd.call("add_text", "Số lạ", "Lần nữa.")
 	sd.call("advance_day", 1)
 	phone.refresh()
 	_check(_texts(phone).contains("Còn 7 ngày"), "missions tab shows the days left on Day 1")
+	_check(int(sd.call("unread_count")) == 0, "a new day marks the old days' texts read (the badge counts today's only)")
+	sd.call("add_text", "Phúc", "Hôm nay gặp nha.")
+	_check(int(sd.call("unread_count")) == 1, "today's new text is the only unread one")
+	phone.set_tab(0)
+	phone.select_thread("Phúc")
+	_check(phone.find_child("DayHeader0", true, false) != null and phone.find_child("DayHeader1", true, false) != null, "the thread shows day headers (Ngày 0, Ngày 1)")
+	phone.set_tab(2)
 	var esc := InputEventKey.new()
 	esc.physical_keycode = KEY_ESCAPE
 	esc.pressed = true

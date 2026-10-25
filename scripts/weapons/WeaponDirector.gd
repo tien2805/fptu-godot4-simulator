@@ -14,6 +14,8 @@
 # The hand prop's visibility is owned here (_apply_held_vis): hidden while the dép is in flight and while any reason in
 # held_hide is set (the emote, community service). After the mouse is captured or a block / the wheel ends, the fire button
 # must be released once before it fires (the capturing click never shoots).
+# Phase B: with an unarmed_owner (scripts/combat/PlayerCombat) the Tay không slot belongs to it: no Phase W punch and no
+# right-mouse aim while unarmed (the owner reads the mouse); without one the Phase W punch below is unchanged.
 class_name WeaponDirector
 extends Node3D
 
@@ -78,6 +80,7 @@ var loa_heat_acc: float = 0.0            # seconds of loa blasting toward the ne
 var held_hide: Dictionary = {}           # reason -> true: the hand prop is hidden ("emote", "service")
 var _need_release: bool = true           # the fire button must be up once before an edge counts
 var _was_captured: bool = false
+var unarmed_owner: Object = null         # Phase B PlayerCombat: owns the unarmed slot (moves, aim off)
 
 
 func _ready() -> void:
@@ -177,7 +180,8 @@ func _physics_process(delta: float) -> void:
 			_refresh_hud()
 	var blocked: bool = is_blocked() or not player.visible
 	var wheel_open: bool = wheel != null and wheel.is_open()
-	aiming = not blocked and not wheel_open and _aim_input() and not player.is_knocked_down()
+	var own: bool = unarmed_owner != null and current == WeaponData.Slot.UNARMED
+	aiming = not own and not blocked and not wheel_open and _aim_input() and not player.is_knocked_down()
 	player.aiming = aiming
 	if hud:
 		hud.set_aim(aiming, 4.0 if aiming else 14.0)
@@ -196,7 +200,7 @@ func _physics_process(delta: float) -> void:
 	_tick_held(delta, fire)
 	if not blocked and _reload_input():
 		start_reload()
-	if fire and (edge or bool(WeaponData.SLOTS[current]["auto"])) and cooldown <= 0.0001 and reload_left <= 0.0:
+	if not own and fire and (edge or bool(WeaponData.SLOTS[current]["auto"])) and cooldown <= 0.0001 and reload_left <= 0.0:
 		try_fire()
 	_tick_pending()
 	_apply_held_vis()

@@ -5,8 +5,9 @@
 # map pin), [E] blocked while wanted, [E] -> story_context -> report_stage_result fail (TOANG!, retry keeps the context)
 # then win (autosave, next beat) -> exam marker -> win: E1 -> exam-end cinematic -> sunset, bed marker -> bed -> midnight
 # cinematic at night -> the 3 a.m. call -> ai_intro fallback with its cards (no owner video) -> Day 1 morning, chip
-# "NGÀY 1 · CÒN 7 NGÀY", locked Day-1 objective, autosave -> leaving for the menu saves the player's spot -> Continue
-# restores Day 1 and a second FreeRoam spawns there with no cinematic -> free play (no story) has no story layer.
+# "NGÀY 1 · CÒN 7 NGÀY", then Phase B's Day 1 (night, the main-gate marker), autosave -> leaving for the menu saves the
+# player's spot -> Continue restores Day 1 and a second FreeRoam spawns there with no cinematic -> free play (no story)
+# has no story layer. Day 1 itself is tested by test_story_day1.
 # Run:  godot --headless --path . --script tests/test_story_day0.gd
 extends SceneTree
 
@@ -240,11 +241,11 @@ func _process(_d: float) -> bool:
 		11:
 			if frames < 5:
 				return false
-			_check(int(sd.get("day")) == 1 and String(sd.get("step")) == "d1_locked", "Day 1, locked placeholder")
-			_check(String(fr.get("tod_preset")) == "morning", "Day 1 morning")
+			_check(int(sd.get("day")) == 1 and String(sd.get("step")) == "d1_stakeout", "Day 1: the stake-out beat (Phase B)")
+			_check(String(fr.get("tod_preset")) == "night", "Day 1's mission is at night")
 			var chip: String = String(sd.call("day_chip_text"))
 			_check(chip == "NGÀY 1 · CÒN 7 NGÀY" and sr.day_label.text.begins_with(chip), "Day 1 chip: %s" % sr.day_label.text)
-			_check(String(sd.get("objective")) == "Ngày 1: Shipper bóng đêm – sắp có trong bản cập nhật sau" and sr.markers.is_empty(), "locked objective, no marker")
+			_check(String(sd.get("objective")).contains("cổng chính") and sr.markers.has("d1_stakeout") and sr.markers.size() == 1, "Day 1 objective and its main-gate marker")
 			_check(int((sd.call("read_save", TMP) as Dictionary).get("day", -1)) == 1, "Day 1 autosaved")
 			var mr: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Thầy tin em. Tìm bằng chứng đi.")
 			var ph: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Ê, tao nghe chuyện rồi… tối nay gặp ở campus nhé." and int(m["day"]) == 1)
@@ -268,7 +269,7 @@ func _process(_d: float) -> bool:
 			if frames < 3:
 				return false
 			sd.call("reset_state")
-			_check(bool(sd.call("continue_story")) and int(sd.get("day")) == 1 and String(sd.get("step")) == "d1_locked" and bool(sd.get("active")), "Continue restores Day 1")
+			_check(bool(sd.call("continue_story")) and int(sd.get("day")) == 1 and String(sd.get("step")) == "d1_stakeout" and bool(sd.get("active")), "Continue restores Day 1")
 			_check(String(sd.get("last_nav")) == "roam" and sm.get("roam_spawn") is Transform3D, "Continue enters free roam at the saved spot")
 			_roam()
 			phase = 13
@@ -279,7 +280,7 @@ func _process(_d: float) -> bool:
 			_check(bool(fr.get("story_mode")) and fr.get("cine_player") == null, "second FreeRoam: story mode, no cinematic on Day 1")
 			var p: Vector3 = fr.call("roam_position")
 			_check(Vector2(p.x, p.z).distance_to(Vector2(saved_spawn.origin.x, saved_spawn.origin.z)) < 9.0, "spawned at the saved spot (%s vs %s)" % [str(p), str(saved_spawn.origin)])
-			_check(String(fr.get("tod_preset")) == "morning" and sr.day_label.text.begins_with("NGÀY 1 · CÒN 7 NGÀY"), "Day 1 morning chip after Continue")
+			_check(String(fr.get("tod_preset")) == "night" and sr.day_label.text.begins_with("NGÀY 1 · CÒN 7 NGÀY"), "Day 1 chip after Continue (night)")
 			sd.call("on_leave_to_menu")
 			fr.queue_free()
 			phase = 14

@@ -10,8 +10,16 @@
 extends SceneTree
 
 const SLOTS: Dictionary = {"cine_d0_wake": 8.0, "cine_d0_exam": 18.0, "cine_d0_midnight": 22.0, "ai_intro": 24.0,
-	"cine_d0_brief": 12.0, "cine_day_start": 9.0}   # A2-D17: mission intro + day start
+	"cine_d0_brief": 12.0, "cine_day_start": 9.0,   # A2-D17: mission intro + day start
+	# Phase B (B-D8 / B-D10): Day 1 and Day 4 intros, discovery beats, the choice scene and its tails, end cinematics, the brawl
+	"cine_d1_intro": 14.0, "cine_d1_corridor": 7.5, "cine_d1_choice": 12.0, "cine_d1_choice_cover": 4.0,
+	"cine_d1_choice_report": 4.5, "cine_d1": 18.0, "cine_d4_intro": 14.0, "cine_d4_stare": 10.0, "seg_d4_brawl": 25.0, "cine_d4": 18.0}
+## Phase B slots whose shots are checked for an actor hidden behind another (the brawl has its own test).
+const B_DIALOGUE: Array[String] = ["cine_d1_intro", "cine_d1_corridor", "cine_d1_choice", "cine_d1_choice_cover", "cine_d1_choice_report",
+	"cine_d1", "cine_d4_intro", "cine_d4_stare", "cine_d4"]
 const BANNED: Array[String] = ["anh ấy", "cô ấy", "cậu ấy", "chàng", "nàng", " hắn", "anh ta", "cô ta"]
+## Punctuation allowed above U+2000 in UI / subtitle text (owner rule B-D11: no emoji or decorative symbols).
+const ALLOWED_SYMBOLS: Array[int] = [0x2013, 0x2014, 0x2018, 0x2019, 0x201C, 0x201D, 0x2026]
 const VID_DIR: String = "user://test_story_video/"
 var fails: Array[String] = []
 var frames: int = 0
@@ -41,10 +49,23 @@ func _process(_d: float) -> bool:
 	_play_all()
 	_cards()
 	_video()
+	_phase_b_lines()
+	_corridor_calm()
+	_cast()
+	_shiba()
+	_choice_overlay()
+	_choice_in_cinematic()
+	_villain_card()
+	_screen_card()
+	_occlusion()
+	_fix_round()
+	# the same shots with a male (taller, spiky-haired) protagonist
+	sd.call("new_story", {"female": false, "name": "Minh", "hair_style": "spiky", "variant": 0, "skin": 1, "hair_color": 0})
+	_occlusion()
 	sd.call("reset_state")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_story_cines.cfg"))
 	if fails.is_empty():
-		print("✅ SUCCESS: STORY CINEMATICS (6 Day-0 slots valid + in sync, reduce scares, playback, intro cards, video pick)")
+		print("✅ SUCCESS: STORY CINEMATICS (16 Day-0 + Phase B slots valid + in sync, reduce scares, playback, cards, video, cast, shiba, choice, villain card, screen card, occlusion)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())
@@ -73,6 +94,19 @@ func _timelines() -> void:
 			_check(not line.contains("{name}"), "%s: {name} formatted in '%s'" % [s, String(sb["text"])])
 			for w: String in BANNED:
 				_check(not line.contains(w), "%s: no gendered pronoun '%s' in '%s'" % [s, w, String(sb["text"])])
+			_check(_plain(String(sb["text"])), "%s: no emoji / decorative symbol in '%s'" % [s, String(sb["text"])])
+		for sb7: int in range(1, tl.subs.size()):
+			var a7: Dictionary = tl.subs[sb7 - 1]
+			_check(float(tl.subs[sb7]["r"]) >= float(a7["r"]) + float(a7["dur"]) - 1e-6, "%s: subtitle '%s' does not overlap the one before" % [s, String(tl.subs[sb7]["text"])])
+		for cd: Dictionary in tl.cards:
+			for v: Variant in (cd["data"] as Dictionary).values():
+				if v is String:
+					_check(_plain(String(v)) and not BANNED.any(func(w: String) -> bool: return String(v).to_lower().contains(w)), "%s: card text '%s' is plain" % [s, String(v)])
+		if not tl.choice_def.is_empty():
+			var ct: String = String(tl.choice_def.get("prompt", "")) + String(tl.choice_def.get("timeout_line", ""))
+			for o: Dictionary in tl.choice_def["options"]:
+				ct += String(o["label"])
+			_check(_plain(ct), "%s: choice texts are plain" % s)
 		for e: Dictionary in tl.sfx:
 			_check(CineAudio.SFX_CUES.has(String(e["cue"])) or StoryAudio.is_cue(String(e["cue"])), "%s: cue %s exists" % [s, String(e["cue"])])
 	var ex: CineTimeline = CineTimeline.load_slot("cine_d0_exam")
@@ -156,8 +190,14 @@ func _play_all() -> void:
 		p.finished.connect(func(sk: bool) -> void: done.append(sk))
 		p.start()
 		var n: int = 0
+		var held: int = 0
 		var flick_seen: Dictionary = {}
-		while done.is_empty() and n < int(tl.length * 60.0) + 30:
+		while done.is_empty() and n < int(tl.length * 60.0) + 30 + held:
+			if p.choice_node != null:
+				held += 1
+				p.choice_node.pick("report")   # the choice scene: a pick (the timeout default has its own check)
+				p.step(1.0 / 60.0)
+				continue
 			p.step(1.0 / 60.0)
 			n += 1
 			if s == "cine_d0_midnight" and p.prop_nodes.has("lamp"):
@@ -169,6 +209,41 @@ func _play_all() -> void:
 			p.seek(6.25)
 			var on1: bool = ((p.prop_nodes["lamp"] as Node3D).get_meta("lamp_light") as OmniLight3D).visible
 			_check(on1 == CineFX.lamp_on(p.s, [[6.2, 7.4], [8.1, 8.7], [9.5, 10.1]]) and CineFX.lamp_on(3.0, [[6.2, 7.4]]), "lamp flicker is a pure function of story time (seek)")
+		if s == "cine_d4_stare":
+			p.seek(5.5)
+			var s_in: float = p.s
+			var card: CanvasLayer = p.card_nodes[0] if not p.card_nodes.is_empty() else null
+			_check(card is StoryVillainCard and bool((card as StoryVillainCard).last_state.get("shown", false)) and tl.clock.speed_at(5.5) == 0.0,
+				"stare: the villain card shows over a freeze frame at 5.5 s")
+			p.seek(6.8)
+			_check(absf(p.s - s_in) < 1e-6, "stare: story time stands still through the card")
+			p.seek(8.0)
+			_check(card != null and not bool((card as StoryVillainCard).last_state.get("shown", true)), "stare: the card is gone at 8.0 s")
+		if s == "cine_d1_intro" or s == "cine_d1":
+			var sc: CanvasLayer = p.card_nodes[0] if not p.card_nodes.is_empty() else null
+			p.seek(5.0)
+			_check(sc is StoryScreenCard and bool((sc as StoryScreenCard).last_state.get("shown", false)), "%s: the screen card shows at 5.0 s" % s)
+			p.seek(13.0)
+			_check(sc != null and not bool((sc as StoryScreenCard).last_state.get("shown", true)), "%s: the screen card is gone at 13.0 s" % s)
+		if s == "cine_d1_corridor":
+			var dog: StoryShiba = (p.prop_nodes["dog"] as Node3D).get_meta("shiba")
+			p.seek(5.0)
+			var n0: Vector3 = dog.nose_world()
+			p.seek(5.6)
+			var n1: Vector3 = dog.nose_world()
+			var hero_calf: Vector3 = (p.actors["hero"] as CineActor).bone_world("LowerLeg.R")
+			print("  corridor bonk: nose moved %.2f m, %.2f m from the protagonist's calf (xz)" % [n0.distance_to(n1), Vector2(n1.x, n1.z).distance_to(Vector2(hero_calf.x, hero_calf.z))])
+			# a real surface contact: the dog's head boxes meet the leg capsules (gap 0..0.05 m) and never sink in
+			p.seek(5.6)
+			var g_hit: float = _bonk_gap(p, dog)
+			var g_min: float = INF
+			var rr2: float = 5.3
+			while rr2 <= 6.2:
+				p.seek(rr2)
+				g_min = minf(g_min, _bonk_gap(p, dog))
+				rr2 += 1.0 / 60.0
+			print("  corridor bonk: head-to-leg surface gap %.3f m at the hit, smallest %.3f m" % [g_hit, g_min])
+			_check(g_hit >= -0.005 and g_hit <= 0.05 and g_min >= -0.02, "corridor: the bonk lands on the calf surface (gap %.3f at the hit, min %.3f)" % [g_hit, g_min])
 		p.queue_free()
 	world.queue_free()
 
@@ -236,3 +311,438 @@ func _video() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(VID_DIR + "ai_intro_f.ogv"))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(VID_DIR))
 	StoryVideo.video_dir = StoryVideo.VIDEO_DIR
+
+
+# ---------------------------------------------------------------------------
+# Phase B (spec B-D8 / B-D9 / B-D10)
+# ---------------------------------------------------------------------------
+## No emoji / decorative symbol: every code point above U+2000 must be plain punctuation (dashes, quotes, the ellipsis).
+func _plain(t: String) -> bool:
+	for i: int in t.length():
+		var c: int = t.unicode_at(i)
+		if c >= 0x2000 and not ALLOWED_SYMBOLS.has(c):
+			return false
+	return true
+
+
+func _said(slot: String) -> String:
+	var tl: CineTimeline = CineTimeline.load_slot(slot)
+	var out: String = ""
+	for sb: Dictionary in tl.subs:
+		out += String(sb["text"]) + "|"
+	return out
+
+
+func _phase_b_lines() -> void:
+	var d1i: CineTimeline = CineTimeline.load_slot("cine_d1_intro")
+	_check(_said("cine_d1_intro").contains("Camera bãi xe D1") and d1i.cards.size() == 1 and String(d1i.cards[0]["data"]["kind"]) == "cctv",
+		"d1 intro: Mr.T replays the D1 parking CCTV (screen card)")
+	var d1: CineTimeline = CineTimeline.load_slot("cine_d1")
+	_check(String(d1.cards[0]["data"]["sender"]) == "Sói Xám" and String(d1.cards[0]["data"]["text"]).contains("Nguyễn Xiển")
+		and d1.sfx.filter(func(e: Dictionary) -> bool: return String(e["cue"]) == "engine_roar").size() >= 2,
+		"cine_d1: the courier's phone says 'Sói Xám: hàng đêm nay ở Nguyễn Xiển', engines roar")
+	var ch: CineTimeline = CineTimeline.load_slot("cine_d1_choice")
+	var labels: Array = (ch.choice_def["options"] as Array).map(func(o: Dictionary) -> String: return String(o["label"]))
+	_check(String(ch.choice_def["id"]) == "phuc" and labels == ["Che giấu cho Phúc", "Báo Mr.T"] and String(ch.choice_def["honest"]) == "cover"
+		and float(ch.choice_def["r"]) <= ch.length, "choice 1: Che giấu cho Phúc / Báo Mr.T, honest default = cover")
+	_check(_said("cine_d1_choice").contains("Tao mua tool rồi") and _said("cine_d1_choice_cover").contains("Hai tô")
+		and _said("cine_d1_choice_report").contains("Alo, thầy ạ"), "Phúc confesses; both branch tails exist")
+	var d4i: CineTimeline = CineTimeline.load_slot("cine_d4_intro")
+	_check(d4i.props.any(func(pr: Dictionary) -> bool: return String(pr["kind"]) == "flyer") and d4i.actors.has("linh") and d4i.actors.has("phuc")
+		and _said("cine_d4_intro").contains("Phúc!!!"), "d4 intro: Linh's plan and the flyer gag with Phúc")
+	var st: CineTimeline = CineTimeline.load_slot("cine_d4_stare")
+	var vc: Dictionary = st.cards[0]["data"]
+	_check(String(vc["name"]) == "Cừu Dolly" and String(vc["nick"]) == "trùm thi hộ" and String(vc["wrong_line"]) == "…à nhầm, con kia",
+		"stare: villain card Cừu Dolly - trùm thi hộ, '…à nhầm, con kia'")
+	_check(_said("cine_d4").contains("10.13.0.7") and _said("cine_d4").contains("Thứ Năm"), "cine_d4: Dolly spills the schedule and the server")
+	for s: String in SLOTS.keys():
+		if s.begins_with("cine_d1") or s.begins_with("cine_d4") or s == "seg_d4_brawl":
+			var tl: CineTimeline = CineTimeline.load_slot(s)
+			_check(tl.stage.get("at") is Vector2 and tl.stage.has("landmark"), "%s: staged at an explicit map point with a landmark fallback" % s)
+			var dlg: Array = tl.subs.filter(func(sb: Dictionary) -> bool: return String(sb["speaker"]) == "hero")
+			for sb2: Dictionary in dlg:
+				_check(not String(sb2["text"]).contains("{name}"), "%s: {name} formatted" % s)
+	var flyer: Node3D = CineFX.build_prop("flyer")
+	var head: Label3D = flyer.find_child("Headline", true, false) as Label3D
+	_check(head != null and head.text == "THI HỘ\nBAO ĐẬU", "the flyer prop reads THI HỘ BAO ĐẬU")
+	flyer.free()
+
+
+## "Giảm hù dọa" on the corridor beat: no stutter, no blackout, no punch, no buzz; the figure leaves off-screen.
+func _corridor_calm() -> void:
+	var was: bool = bool(fx.get("reduce_scares"))
+	fx.set("reduce_scares", false)
+	var scary: CineTimeline = CineTimeline.load_slot("cine_d1_corridor")
+	fx.set("reduce_scares", true)
+	var calm: CineTimeline = CineTimeline.load_slot("cine_d1_corridor")
+	fx.set("reduce_scares", was)
+	var cs: Dictionary = scary.props.filter(func(p: Dictionary) -> bool: return p["id"] == "corridor")[0]["opts"]
+	var cc: Dictionary = calm.props.filter(func(p: Dictionary) -> bool: return p["id"] == "corridor")[0]["opts"]
+	_check(not (cs["flicker"] as Array).is_empty() and not (cs["dark"] as Array).is_empty() and not scary.punches.is_empty()
+		and _cues_of(scary).has("fluoro_buzz"), "corridor: stutter, blackout, punch and tube buzz by default")
+	_check((cc["flicker"] as Array).is_empty() and (cc["dark"] as Array).is_empty() and calm.punches.is_empty() and not _cues_of(calm).has("fluoro_buzz"),
+		"corridor, Giảm hù dọa: no stutter, no blackout, no punch, no buzz")
+	_check(calm.validate().is_empty() and _cues_of(calm).has("bonk") and _cues_of(calm).has("sheep_bleat_distorted"), "the calm corridor still validates, keeps the bleat and the bonk")
+	var gone: float = calm.cues.filter(func(c: Dictionary) -> bool: return c["type"] == "show" and c["actor"] == "sheep" and not bool(c["on"]))[0]["s"]
+	var s3: Dictionary = calm.shots.filter(func(sh: Dictionary) -> bool: return sh["id"] == "S3")[0]
+	_check(float(s3["s"]) > gone, "calm: the corridor view comes back only after the figure has gone (no pop in view)")
+
+
+func _cast() -> void:
+	for id: String in StoryCast.IDS:
+		var o: Dictionary = StoryCast.opts(id)
+		_check(id == "shiba" or not o.is_empty(), "cast %s has opts" % id)
+		var b: Node3D = StoryCast.build(id)
+		_check(b != null, "cast %s builds" % id)
+		if b == null:
+			continue
+		if id == "shiba":
+			_check(b is StoryShiba, "shiba builds a StoryShiba")
+		else:
+			_check(bool(b.get_meta("rigged", false)), "cast %s is a rigged body" % id)
+			_check(b.has_meta("sheep_mask") == StoryCast.masked(id), "cast %s: sheep mask %s" % [id, str(StoryCast.masked(id))])
+		if id == "dolly_disguised":
+			_check(b.has_meta("wool_cuff") and b.has_meta("sheep_keychain"), "Dolly in disguise has her tells (cuff, keychain)")
+		b.free()
+	_check(StoryCast.opts("clone") == StoryCast.opts("clone", {"seed": 9}) and StoryCast.opts("clone") == StoryCast.opts("dolly_disguised"),
+		"one identical clone look (seed pinned), Dolly in disguise wears it too")
+	var dl: Dictionary = StoryCast.opts("dolly")
+	_check((dl["shirt_color"] as Color).is_equal_approx(StoryCast.CREAM), "Dolly's cream wool cardigan")
+	var li: Dictionary = StoryCast.opts("linh")
+	_check(String(li["preset"]) == "student_f" and String(li["hair_style"]) == "ponytail" and bool(li["glasses"]), "Linh: student_f, ponytail, glasses")
+	_check(String(StoryCast.opts("chu_bay")["preset"]) == "guard", "Chú Bảy: guard preset (cap)")
+	var hc: Array = ["courier_vang", "courier_do", "courier_xanh"].map(func(i: String) -> String: return (StoryCast.opts(i)["helmet_color"] as Color).to_html(false))
+	_check(hc == ["f1c40f", "e74c3c", "3498db"], "couriers Mũ Vàng / Mũ Đỏ / Mũ Xanh helmets (%s)" % str(hc))
+	_check(StoryCast.speaker("chu_bay") == "Chú Bảy" and StoryCast.speaker("dolly") == "Cừu Dolly" and StoryCast.speaker("hero") == "Minh Thư",
+		"cast speaker names")
+
+
+func _shiba() -> void:
+	var dog := StoryShiba.new()
+	root.add_child(dog)
+	dog.pose("bonk", 0.0)
+	var z0: float = dog.to_local(dog.nose_world()).z
+	dog.pose("bonk", StoryShiba.BONK_HIT)
+	var z1: float = dog.to_local(dog.nose_world()).z
+	dog.pose("bonk", StoryShiba.BONK_DUR)
+	var z2: float = dog.to_local(dog.nose_world()).z
+	_check(z0 - z1 > 0.15 and absf(z2 - z0) < 0.03, "shiba bonk: the head lunges forward at BONK_HIT (%.2f m) and comes back" % (z0 - z1))
+	dog.pose("walk", 0.1)
+	var l0: float = dog.legs[0].rotation.x
+	dog.pose("walk", 0.1 + StoryShiba.WALK_PERIOD * 0.5)
+	_check(absf(l0 - dog.legs[0].rotation.x) > 0.5, "shiba walk: the legs swing")
+	dog.cine_eval(1.0 + StoryShiba.BONK_HIT, {"anim": [[0.0, "walk"], [1.0, "bonk"]]})
+	_check(dog.body.position.z < -0.15, "shiba cine_eval plays the keyed motion (bonk at its hit)")
+	dog.queue_free()
+
+
+func _choice_def() -> Dictionary:
+	return (CineTimeline.load_slot("cine_d1_choice").choice_def as Dictionary).duplicate(true)
+
+
+## The overlay alone: freezes the tree, keyboard pick, layout widths, pause state restored.
+func _choice_overlay() -> void:
+	paused = false
+	var got: Array = []
+	var c: StoryChoice = StoryChoice.open(root, _choice_def(), true)
+	c.chosen.connect(func(k: String, t: bool) -> void: got.append([k, t]))
+	_check(paused, "StoryChoice freezes the frame (tree paused)")
+	_check(c.prompt_label.get_combined_minimum_size().x >= 700.0 and c.buttons.size() == 2
+		and c.buttons.all(func(b: Button) -> bool: return b.get_combined_minimum_size().x >= 330.0)
+		and c.title_label.get_combined_minimum_size().x > 100.0 and c.hint_label.get_combined_minimum_size().x > 200.0,
+		"choice layout: prompt, buttons and hints keep their width (no one-letter lines)")
+	_check(c.buttons[0].text == "Che giấu cho Phúc" and c.buttons[1].text == "Báo Mr.T" and _plain(c.prompt_label.text + c.hint_label.text),
+		"choice buttons read the two options in plain text")
+	var ev := InputEventKey.new()
+	ev.physical_keycode = KEY_2
+	ev.pressed = true
+	c._input(ev)
+	_check(c.result == "report" and not c.timed_out, "key 2 picks 'Báo Mr.T'")
+	c.step(StoryChoice.PICK_HOLD + 0.05)
+	_check(got == [["report", false]] and not paused, "the pick is emitted after the highlight and the pause state comes back (%s)" % str(got))
+	# mouse: a button press picks too
+	var got2: Array = []
+	var c2: StoryChoice = StoryChoice.open(root, _choice_def(), true)
+	c2.chosen.connect(func(k: String, t: bool) -> void: got2.append([k, t]))
+	c2.buttons[0].pressed.emit()
+	c2.step(1.0)
+	_check(got2 == [["cover", false]], "clicking the first button picks 'Che giấu cho Phúc'")
+	# timeout: the honest option with the comic line, recorded in StoryDirector.choices
+	(sd.get("choices") as Dictionary)["phuc"] = ""
+	var got3: Array = []
+	var c3: StoryChoice = StoryChoice.open(root, _choice_def(), true)
+	c3.chosen.connect(func(k: String, t: bool) -> void: got3.append([k, t]))
+	for i: int in 600:
+		c3.step(1.0 / 60.0)
+	_check(c3.result == "cover" and c3.timed_out and c3.line_label.visible and c3.line_label.text.contains("Phúc"), "timeout after 10 s takes the honest option with the comic line")
+	_check(got3.is_empty(), "the comic line holds before the overlay closes")
+	c3.step(c3.line_hold() + 0.05)
+	_check(got3 == [["cover", true]] and String((sd.get("choices") as Dictionary)["phuc"]) == "cover" and not paused,
+		"timeout default recorded: StoryDirector.choices.phuc = cover")
+
+
+## Inside the cinematic: the clock holds at the choice time, the music pauses, choice_made fires, then it plays on to 12 s.
+func _choice_in_cinematic() -> void:
+	(sd.get("choices") as Dictionary)["phuc"] = ""
+	var world := Node3D.new()
+	root.add_child(world)
+	var tl: CineTimeline = CineTimeline.load_slot("cine_d1_choice")
+	var p := CinePlayer.new()
+	world.add_child(p)
+	p.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false})
+	var made: Array = []
+	var done: Array = []
+	p.choice_made.connect(func(id: String, k: String, t: bool) -> void: made.append([id, k, t]))
+	p.finished.connect(func(sk: bool) -> void: done.append(sk))
+	p.start()
+	var n: int = 0
+	var held: int = 0
+	var r_at_open: float = -1.0
+	while done.is_empty() and n < 2000:
+		p.step(1.0 / 60.0)
+		n += 1
+		if p.choice_node != null:
+			held += 1
+			if r_at_open < 0.0:
+				r_at_open = p.r
+	_check(absf(r_at_open - float(tl.choice_def["r"])) < 1e-6, "the frame holds at the choice time %.3f (%.3f)" % [float(tl.choice_def["r"]), r_at_open])
+	_check(made == [["phuc", "cover", true]] and done == [false] and absf(p.r - tl.length) < 1e-6, "no answer: choice_made(phuc, cover, timed out), then the cinematic ends at 12 s (%s)" % str(made))
+	var want_held: int = int(round((StoryChoice.TIMEOUT + maxf(StoryChoice.LINE_HOLD, 0.06 * String(tl.choice_def["timeout_line"]).length())) * 60.0))
+	_check(absi(held - want_held) <= 2 and absi((n - held) - 720) <= 2, "held %d steps for the choice (~%d), %d steps of cinematic" % [held, want_held, n - held])
+	# skipped before the choice: it is still asked, then finished(true)
+	var p2 := CinePlayer.new()
+	world.add_child(p2)
+	p2.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false})
+	var made2: Array = []
+	var done2: Array = []
+	p2.choice_made.connect(func(id: String, k: String, t: bool) -> void: made2.append(k))
+	p2.finished.connect(func(sk: bool) -> void: done2.append(sk))
+	p2.start()
+	p2.force_skip_hold = true
+	var m: int = 0
+	while done2.is_empty() and m < 400:
+		p2.step(1.0 / 60.0)
+		if p2.choice_node != null:
+			p2.choice_node.pick(1)
+		m += 1
+	_check(made2 == ["report"] and done2 == [true], "a skip before the choice still asks it, then finishes skipped (%s, %s)" % [str(made2), str(done2)])
+	world.queue_free()
+	paused = false
+
+
+func _villain_card() -> void:
+	var st: CineTimeline = CineTimeline.load_slot("cine_d4_stare")
+	var cd: Dictionary = st.cards[0]
+	var data: Dictionary = cd["data"]
+	var pw: Vector2 = data["point_wrong"]
+	var pr: Vector2 = data["point_right"]
+	_check(pw.x > 0.05 and pw.x < 0.95 and pr.x > 0.05 and pr.x < 0.95 and pw.y > 0.05 and pr.y < 0.9 and pw.x < pr.x,
+		"the arrow points inside the frame, at the wrong clone (left) then at Dolly (%s -> %s)" % [str(pw), str(pr)])
+	var a: Dictionary = StoryVillainCard.state_at(0.3, true, 0.45)
+	var b: Dictionary = StoryVillainCard.state_at(0.8, true, 0.45)
+	_check(float(a["pointer"]) == 0.0 and bool(a["wrong_line"]) and float(b["pointer"]) == 1.0 and not bool(b["wrong_line"]),
+		"pointer at the wrong clone first with '…à nhầm, con kia', then on Dolly")
+	_check(not bool(StoryVillainCard.state_at(-0.1, true)["shown"]) and not bool(StoryVillainCard.state_at(1.0, true)["shown"]), "card only inside its window")
+	var vc := StoryVillainCard.new()
+	vc.data = data
+	vc.r0 = float(cd["r"])
+	vc.dur = float(cd["dur"])
+	root.add_child(vc)
+	vc.update(vc.r0 + vc.dur * 0.5)
+	_check(vc.name_label.text == "CỪU DOLLY" and vc.name_label.get_combined_minimum_size().x > 300.0 and vc.nick_label.get_combined_minimum_size().x > 150.0
+		and vc.joke_label.get_combined_minimum_size().x >= 600.0 and vc.wrong_label.get_combined_minimum_size().x > 150.0,
+		"villain card layout keeps its width: name %.0f, nick %.0f, joke %.0f px" % [vc.name_label.get_combined_minimum_size().x,
+		vc.nick_label.get_combined_minimum_size().x, vc.joke_label.get_combined_minimum_size().x])
+	_check(vc.wash.visible and vc.wash.color.a > 0.2 and vc.box.visible, "colour wash and text shown mid-card")
+	vc.queue_free()
+	# gameplay: show_for pauses, then frees itself and gives the pause back
+	paused = false
+	var fin: Array = []
+	var g := StoryVillainCard.show_for(root, data, 1.0)
+	g.manual = true
+	g.finished.connect(func() -> void: fin.append(true))
+	_check(paused, "show_for freezes the game")
+	g.step(1.1)
+	_check(fin == [true] and not paused, "show_for ends, unpauses")
+
+
+func _screen_card() -> void:
+	_check(StoryScreenCard.clock_at("21:47:05", 75.4) == "21:48:20" and StoryScreenCard.clock_at("23:59:50", 15.0) == "00:00:05", "CCTV clock runs on")
+	var st: Dictionary = StoryScreenCard.state_at(3.0, 2.0, 4.0)
+	_check(bool(st["shown"]) and is_equal_approx(float(st["u"]), 0.25) and not bool(StoryScreenCard.state_at(6.5, 2.0, 4.0)["shown"]), "screen card window")
+	for kind: String in ["cctv", "phone"]:
+		var sc := StoryScreenCard.new()
+		sc.data = {"kind": kind, "sender": "Sói Xám", "text": "Hàng đêm nay ở Nguyễn Xiển. 2h. Đừng trễ.", "time": "23:41"}
+		sc.r0 = 1.0
+		sc.dur = 4.0
+		root.add_child(sc)
+		sc.update(2.5)
+		_check(sc.frame.visible and sc.screen.get_combined_minimum_size().x >= 300.0, "%s card shows" % kind)
+		if kind == "phone":
+			_check(sc.text_label.get_combined_minimum_size().x >= 250.0 and sc.sender_label.text == "Sói Xám", "phone card: message keeps its width")
+		else:
+			_check(sc.head_label.text.contains("BÃI XE D1") and sc.clock_label.text != "", "cctv card: camera name and clock")
+		sc.update(9.0)
+		_check(not sc.frame.visible, "%s card hidden after its window" % kind)
+		sc.queue_free()
+
+
+## No actor hidden behind another in any shot: at the middle of every shot, the line from the camera to each visible
+## actor's head (in frame) must not pass within OCCLUDE_R of a nearer actor's head or chest.
+const OCCLUDE_R: float = 0.2
+
+
+func _occlusion() -> void:
+	var world := Node3D.new()
+	root.add_child(world)
+	for s: String in B_DIALOGUE:
+		var tl: CineTimeline = CineTimeline.load_slot(s)
+		var p := CinePlayer.new()
+		world.add_child(p)
+		p.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false})
+		for i: int in tl.shots.size():
+			var r0: float = tl.clock.real_at(float(tl.shots[i]["s"]))
+			var r1: float = tl.clock.real_at(float(tl.shots[i + 1]["s"])) if i + 1 < tl.shots.size() else tl.length
+			for rr: float in [lerpf(r0, r1, 0.3), lerpf(r0, r1, 0.7)]:
+				p.seek(rr)
+				var cam: Vector3 = p.camera.global_position
+				var fwd: Vector3 = -p.camera.global_transform.basis.z
+				var bad: String = ""
+				var extras: Variant = tl.get("extras")   # background extras may be covered (they still count as occluders)
+				for ida: String in p.actors.keys():
+					var a: CineActor = p.actors[ida]
+					if not a.visible or (extras is Array and (extras as Array).has(ida)):
+						continue
+					var ha: Vector3 = a.bone_world("Head")
+					var d: Vector3 = ha - cam
+					if d.normalized().dot(fwd) < cos(deg_to_rad(p.camera.fov * 0.5 * 1.6)):
+						continue   # out of frame
+					for idb: String in p.actors.keys():
+						var b: CineActor = p.actors[idb]
+						if idb == ida or not b.visible:
+							continue
+						for bone: String in ["Head", "Chest"]:
+							var q: Vector3 = b.bone_world(bone)
+							var t: float = (q - cam).dot(d) / d.length_squared()
+							if t <= 0.05 or t >= 0.92:
+								continue   # behind the camera, or not nearer than the target
+							if (cam + d * t).distance_to(q) < OCCLUDE_R:
+								bad = "%s's %s hides %s's face" % [idb, bone, ida]
+				_check(bad == "", "%s shot %s at r %.2f: %s" % [s, String(tl.shots[i]["id"]), rr, bad])
+		p.queue_free()
+	world.queue_free()
+
+
+const Bodies = preload("res://tests/support/cine_bodies.gd")
+
+
+## Surface gap from the shiba's head boxes (skull, cheeks, snout, nose) to the protagonist's leg capsules.
+func _bonk_gap(p: CinePlayer, dog: StoryShiba) -> float:
+	var boxes: Array = []
+	for n: String in ["Skull", "Cheeks", "Snout", "Nose"]:
+		var mi: MeshInstance3D = dog.head.find_child(n, false, false) as MeshInstance3D
+		var ab: AABB = mi.mesh.get_aabb()
+		var gx: Transform3D = mi.global_transform
+		boxes.append([n, Transform3D(gx.basis.orthonormalized(), gx * ab.get_center()), ab.size * gx.basis.get_scale() * 0.5])
+	var legs: Array = Bodies.capsules(p.actors["hero"]).filter(func(c: Array) -> bool: return String(c[0]).begins_with("shin") or String(c[0]).begins_with("thigh"))
+	return float(Bodies.gap_boxes(legs, boxes)["g"])
+
+
+## Fix-round checks (review B-cine): sets inside their stage boxes, drop_set, a silent card in the music, Dolly's tells,
+## the card band clear of the clones, reading time of the card and of the timeout line, choice_made before finished,
+## record: false.
+func _fix_round() -> void:
+	# the corridor set and the sheep sit inside the 4.5 x 16 stage box; the set is closed at both ends
+	var co: CineTimeline = CineTimeline.load_slot("cine_d1_corridor")
+	var half: Vector2 = (co.stage["size"] as Vector2) * 0.5
+	var set_node: Node3D = CineFX.build_prop("corridor", co.props.filter(func(pr: Dictionary) -> bool: return pr["id"] == "corridor")[0]["opts"])
+	var worst: float = -INF
+	for n: Node in set_node.find_children("*", "MeshInstance3D", true, false):
+		var mi: MeshInstance3D = n
+		var ab: AABB = mi.transform * mi.mesh.get_aabb()
+		worst = maxf(worst, maxf(absf(ab.position.x), absf(ab.end.x)) - half.x)
+		worst = maxf(worst, maxf(absf(ab.position.z), absf(ab.end.z)) - half.y)
+	_check(worst <= 0.0 and set_node.find_child("BackWall", true, false) != null, "corridor set inside its stage box (margin %.2f m), closed at +Z" % -worst)
+	set_node.free()
+	var sheep_at: Vector3 = co.cues.filter(func(c: Dictionary) -> bool: return c["type"] == "key" and c["actor"] == "sheep")[0]["pos"]
+	_check(absf(sheep_at.z) < half.y - 0.5, "the sheep figure stands inside the stage box (z %.1f)" % sheep_at.z)
+	var s5: Dictionary = co.shots.filter(func(sh: Dictionary) -> bool: return sh["id"] == "S5")[0]
+	_check(absf(((s5["params"] as Dictionary)["pos"] as Vector3).x) < 1.5, "corridor S5 camera inside the walls")
+	# drop_set leaves the carried corridor out (setup opt or stage flag)
+	var world := Node3D.new()
+	root.add_child(world)
+	var pc := CinePlayer.new()
+	world.add_child(pc)
+	_check(pc.setup(co, Transform3D.IDENTITY, {"manual": true, "music": false, "drop_set": true}).is_empty() and not pc.prop_nodes.has("corridor")
+		and pc.prop_nodes.has("dog"), "drop_set: the corridor walls are left out, the dog stays")
+	var co2: CineTimeline = CineTimeline.load_slot("cine_d1_corridor")
+	co2.stage["drop_set"] = true
+	var pc2 := CinePlayer.new()
+	world.add_child(pc2)
+	pc2.setup(co2, Transform3D.IDENTITY, {"manual": true, "music": false})
+	_check(not pc2.prop_nodes.has("corridor"), "the stage flag drop_set does the same")
+	var d4: CineTimeline = CineTimeline.load_slot("cine_d4")
+	var pc3 := CinePlayer.new()
+	world.add_child(pc3)
+	pc3.setup(d4, Transform3D.IDENTITY, {"manual": true, "music": false})
+	_check(pc3.prop_nodes.has("wall") and (d4.props.filter(func(pr: Dictionary) -> bool: return pr["id"] == "wall")[0]["pos"] as Vector3).z < -3.2,
+		"cine_d4: a lobby wall stands behind Dolly")
+	# the villain card freeze is silent in the music
+	var st: CineTimeline = CineTimeline.load_slot("cine_d4_stare")
+	_check(CinePlayer.music_hits(st.clock.beat_rows()).is_empty(), "the card freeze is left out of the music hit layout")
+	# Dolly's tells on the cinematic Dolly; the protagonist does not single her out before the card
+	var tells: Array = st.cues.filter(func(c: Dictionary) -> bool: return c["type"] == "hold" and c["actor"] == "dolly" and String(c["kind"]) in ["wool_cuff", "sheep_keychain"])
+	_check(tells.size() == 2, "cine_d4_stare: the real Dolly shows the cuff and the keychain")
+	var pre: Array = st.cues.filter(func(c: Dictionary) -> bool: return c["type"] == "look" and c["actor"] == "hero" and float(c["s"]) < st.story_time("V1") - 1e-6)
+	_check(pre.all(func(c: Dictionary) -> bool: return not (c["target"] is Vector3) or absf((c["target"] as Vector3).x) < 0.3), "the protagonist does not single out Dolly before the card")
+	# reading time: the card (name + nick + joke) and the timeout line at >= 0.06 s per character
+	var cd: Dictionary = st.cards[0]
+	var dd: Dictionary = cd["data"]
+	var chars: int = String(dd["name"]).length() + String(dd["nick"]).length() + String(dd["joke"]).length()
+	_check(float(cd["dur"]) >= 0.06 * chars - 1e-6, "villain card %.1f s for %d characters" % [float(cd["dur"]), chars])
+	var cdef: Dictionary = _choice_def()
+	var ch := StoryChoice.open(root, cdef, true)
+	_check(ch.line_hold() >= 0.06 * String(cdef["timeout_line"]).length() - 1e-6, "timeout line holds %.2f s (>= 0.06 s per character)" % ch.line_hold())
+	ch.queue_free()
+	paused = false
+	# the band and the text stay in the lower left, clear of the clones and of Dolly, above the letterbox
+	var vc := StoryVillainCard.new()
+	vc.data = dd
+	vc.r0 = 0.0
+	vc.dur = float(cd["dur"])
+	root.add_child(vc)
+	vc.update(vc.dur * 0.5)
+	var vs: Vector2 = vc._vp()
+	var bx: float = 0.0
+	var by: float = 1e9
+	for pt: Vector2 in vc.band.polygon:
+		bx = maxf(bx, pt.x)
+		by = minf(by, pt.y)
+	var tr: Rect2 = Rect2(vc.box.position, vc.box.get_combined_minimum_size())
+	print("  card band right %.2f, top %.2f; text x %.2f-%.2f, y %.2f-%.2f (screen fractions)" % [bx / vs.x, by / vs.y, tr.position.x / vs.x,
+		tr.end.x / vs.x, tr.position.y / vs.y, tr.end.y / vs.y])
+	_check(bx <= 0.56 * vs.x and by >= 0.59 * vs.y and tr.end.x <= 0.56 * vs.x and tr.position.y >= 0.59 * vs.y and tr.end.y <= 0.875 * vs.y,
+		"villain card band and text stay below y 0.6, left of x 0.55, above the letterbox")
+	_check(vc.layer < 110, "villain card under the cinematic overlay (it fades with a skip)")
+	vc.queue_free()
+	# choice_made comes before finished; record: false leaves StoryDirector.choices alone
+	(sd.get("choices") as Dictionary)["phuc"] = "untouched"
+	var tl: CineTimeline = CineTimeline.load_slot("cine_d1_choice")
+	tl.choice_def["record"] = false
+	var p := CinePlayer.new()
+	world.add_child(p)
+	p.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false})
+	var order: Array = []
+	p.choice_made.connect(func(_i: String, k: String, _t: bool) -> void: order.append("choice:" + k))
+	p.finished.connect(func(_sk: bool) -> void: order.append("finished"))
+	p.start()
+	var n2: int = 0
+	while order.size() < 2 and n2 < 1600:
+		p.step(1.0 / 60.0)
+		if p.choice_node != null:
+			p.choice_node.pick(0)
+		n2 += 1
+	_check(order == ["choice:cover", "finished"], "choice_made fires before finished (%s)" % str(order))
+	_check(String((sd.get("choices") as Dictionary)["phuc"]) == "untouched", "record: false leaves StoryDirector.choices alone")
+	world.queue_free()
+	paused = false

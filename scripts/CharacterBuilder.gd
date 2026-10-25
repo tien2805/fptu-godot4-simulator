@@ -85,7 +85,8 @@ const BONE_OF: Dictionary = {"hips": "Hips", "torso": "Torso", "head": "Head", "
 	"hand_l": "Wrist.L", "hand_r": "Wrist.R", "thigh_l": "UpperLeg.L", "thigh_r": "UpperLeg.R", "knee_l": "LowerLeg.L", "knee_r": "LowerLeg.R"}
 ## clip của ta → animation có sẵn trong gói (các clip khác dựng bằng xoay xương từ bảng clip của Animator)
 const PACK_CLIP: Dictionary = {"wave": "Wave", "punch": "Punch_Right", "kick": "Kick_Right", "flinch": "HitRecieve", "roll": "Roll",
-	"interact": "Interact", "lie": "Death", "chop": "Sword_Slash", "stumble": "HitRecieve", "knockdown": "Death"}
+	"interact": "Interact", "lie": "Death", "chop": "Sword_Slash", "stumble": "HitRecieve", "knockdown": "Death",
+	"punch_l": "Punch_Left", "kick_l": "Kick_Left", "hit_b": "HitRecieve_2"}   # Phase B combat (scripts/combat/)
 ## Clip gói giữ khung cuối tới khi có clip khác (không tự hết giờ).
 const HOLD_CLIPS: Array[String] = ["lie", "knockdown"]
 ## Tốc độ phát ngược Death cho "getup" (Death ~1.3 s -> đứng dậy ~0.9 s).

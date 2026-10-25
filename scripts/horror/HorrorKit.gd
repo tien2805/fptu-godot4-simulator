@@ -1,0 +1,270 @@
+# File: res://scripts/horror/HorrorKit.gd
+# The horror layer of one level (spec B-D3), composed by the level (Night Building, later horror beats):
+#   player (ThirdPersonController built by the level; put on collision layer 2 so stalker rays see only the world), the
+#   flashlight, the shared HorrorSenses, the stalkers, the hiding spots, the ScareDirector.
+# Each physics frame: senses <- player (position, lit, noise radius, hidden spot); catch reports. At 10 Hz: the nearest
+# stalker distance -> ScareDirector.set_threat (heartbeat, whisper) and the [E] prompt.
+# Noise radius (hearing, metres): sprint 10, jog 6 (not in the spec: between walk and sprint), walk on Ctrl 3, still 0,
+# hidden 0.
+# Keys (physical, in _unhandled_input): [F] flashlight (not while hidden); [E] leave the spot while hidden, else the level's
+# interact_hook (a Callable returning true when it used the key: fuses, pickups), else hide in the nearest usable spot.
+# Mouse motion while hidden turns the peek camera.
+# hide_in(spot): every stalker that sees the player now gets notice_hide(spot) (it will check the spot), then the player
+# disappears (process off, invisible, flashlight off), the spot's peek camera becomes current, breath starts.
+# leave_hiding(): the player is back at the spot's exit point facing out, with its own camera, and LEAVE_GRACE_S of catch
+# grace. While hidden a left click recaptures the mouse (the process-disabled player cannot).
+class_name HorrorKit
+extends Node
+
+signal caught(stalker: HorrorStalker)
+signal hide_changed(spot: HidingSpot)
+
+const NOISE_SPRINT: float = 10.0
+const NOISE_JOG: float = 6.0
+const NOISE_WALK: float = 3.0
+const PLAYER_LAYER: int = 2
+const SLOW_DT: float = 0.1
+const MOUSE_SENS: float = 0.0022
+## Catch grace after leaving a hiding spot (s): stepping out next to an unseen stalker is not an instant catch.
+const LEAVE_GRACE_S: float = 0.75
+
+var player: ThirdPersonController = null
+var flashlight: HorrorFlashlight = null
+var scare: ScareDirector = null
+var graph: HorrorNavGraph = null
+var senses := HorrorSenses.new()
+var stalkers: Array[HorrorStalker] = []
+var spots: Array[HidingSpot] = []
+var hidden_spot: HidingSpot = null
+var catch_enabled: bool = true:
+	set(v):
+		catch_enabled = v
+		for s: HorrorStalker in stalkers:
+			s.catch_enabled = v
+## false: keys are ignored (cutscene, caught, escaped).
+var input_enabled: bool = true
+## Level's [E] handler: () -> bool (true = used).
+var interact_hook: Callable = Callable()
+## Level's prompt: () -> String ("" = none); wins over the hide prompt when not empty.
+var prompt_hook: Callable = Callable()
+var prompt: String = ""
+var nearest_dist: float = INF
+var _slow: float = 0.0
+
+
+func _init() -> void:
+	name = "HorrorKit"
+	process_physics_priority = -10   # senses before the stalkers move
+
+
+func setup(p: ThirdPersonController, fl: HorrorFlashlight, sd: ScareDirector, g: HorrorNavGraph) -> void:
+	player = p
+	flashlight = fl
+	scare = sd
+	graph = g
+	if player != null:
+		player.collision_layer = PLAYER_LAYER
+		player.collision_mask = 1
+	if flashlight != null and player != null:
+		flashlight.anchor = player
+		flashlight.aim = player.camera
+	if scare != null:
+		scare.player = player
+		if flashlight != null:
+			flashlight.gentle = scare.reduce_scares
+
+
+func add_stalker(s: HorrorStalker) -> void:
+	stalkers.append(s)
+	s.senses = senses
+	s.catch_enabled = catch_enabled
+	if not s.caught_player.is_connected(_on_caught):
+		s.caught_player.connect(_on_caught)
+
+
+func add_spot(spot: HidingSpot) -> void:
+	spots.append(spot)
+
+
+func is_hidden() -> bool:
+	return hidden_spot != null
+
+
+## Hearing radius of the player's current movement (m).
+func player_noise() -> float:
+	if player == null or hidden_spot != null:
+		return 0.0
+	var v: float = player.horizontal_speed
+	if v < 0.3:
+		return 0.0
+	if player.is_sprinting and v > ThirdPersonController.JOG_SPEED + 0.3:
+		return NOISE_SPRINT
+	if v <= ThirdPersonController.WALK_SPEED + 0.35:
+		return NOISE_WALK
+	return NOISE_JOG
+
+
+## Player feet (or the spot's exit point while hidden).
+func player_position() -> Vector3:
+	if hidden_spot != null:
+		return hidden_spot.exit_point()
+	return player.global_position if player != null and player.is_inside_tree() else Vector3.ZERO
+
+
+func update_senses() -> void:
+	senses.pos = player_position()
+	senses.hidden = hidden_spot != null
+	senses.spot = hidden_spot
+	senses.lit = flashlight != null and flashlight.is_lit() and hidden_spot == null
+	senses.noise = player_noise()
+
+
+func nearest_stalker_dist() -> float:
+	var best: float = INF
+	var p: Vector3 = senses.pos
+	for s: HorrorStalker in stalkers:
+		if not s.is_inside_tree() or s.process_mode == Node.PROCESS_MODE_DISABLED:
+			continue
+		var d: Vector3 = s.global_position - p
+		best = minf(best, Vector2(d.x, d.z).length())
+	return best
+
+
+## The usable hiding spot nearest to p, or null.
+func nearest_spot(p: Vector3) -> HidingSpot:
+	var best: HidingSpot = null
+	var bd: float = INF
+	for s: HidingSpot in spots:
+		if s.occupied or not s.can_use(p):
+			continue
+		var d: float = s.exit_point().distance_squared_to(p)
+		if d < bd:
+			bd = d
+			best = s
+	return best
+
+
+func _physics_process(delta: float) -> void:
+	senses.grace = maxf(0.0, senses.grace - delta)
+	update_senses()
+	_slow += delta
+	if _slow >= SLOW_DT:
+		_slow = 0.0
+		nearest_dist = nearest_stalker_dist()
+		if scare != null:
+			scare.set_threat(nearest_dist, hidden_spot != null)
+		prompt = prompt_text()
+
+
+## The current [E] / [F] prompt: hidden "[E] Ra", the level's prompt, a usable spot "[E] Trốn", else "".
+func prompt_text() -> String:
+	if hidden_spot != null:
+		return "[E] Ra"
+	if prompt_hook.is_valid():
+		var t: String = String(prompt_hook.call())
+		if t != "":
+			return t
+	if player != null and nearest_spot(player.global_position) != null:
+		return "[E] Trốn"
+	return ""
+
+
+## Hides the player in `spot` (must be within its USE_RADIUS). Returns true when hidden.
+func hide_in(spot: HidingSpot) -> bool:
+	if spot == null or hidden_spot != null or spot.occupied or player == null:
+		return false
+	if not spot.can_use(player.global_position):
+		return false
+	update_senses()
+	for s: HorrorStalker in stalkers:
+		s.notice_hide(spot)
+	hidden_spot = spot
+	spot.occupied = true
+	player.velocity = Vector3.ZERO
+	player.visible = false
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	if flashlight != null:
+		flashlight.set_on(false)
+	spot.peek_reset()
+	spot.peek_cam.make_current()   # no door swing on the way in: the peek camera sits just outside the door
+	update_senses()
+	if scare != null:
+		scare.set_hidden(true)
+	hide_changed.emit(spot)
+	return true
+
+
+## Back out of the current spot. Returns true when the player was hidden.
+func leave_hiding() -> bool:
+	if hidden_spot == null:
+		return false
+	var spot: HidingSpot = hidden_spot
+	hidden_spot = null
+	spot.occupied = false
+	player.process_mode = Node.PROCESS_MODE_INHERIT
+	player.visible = true
+	player.teleport(spot.exit_point(), spot.exit_yaw())
+	if player.camera != null:
+		player.camera.make_current()
+	if not spot.revealed:
+		spot.swing()
+	senses.grace = LEAVE_GRACE_S
+	update_senses()
+	if scare != null:
+		scare.set_hidden(false)
+	hide_changed.emit(null)
+	return true
+
+
+## [E]: leave, the level's hook, or hide. Returns true when something happened.
+func interact() -> bool:
+	if hidden_spot != null:
+		return leave_hiding()
+	if interact_hook.is_valid() and bool(interact_hook.call()):
+		return true
+	if player != null:
+		var s: HidingSpot = nearest_spot(player.global_position)
+		if s != null:
+			return hide_in(s)
+	return false
+
+
+func toggle_flashlight() -> bool:
+	if flashlight == null or hidden_spot != null:
+		return false
+	return flashlight.toggle()
+
+
+func _on_caught(s: HorrorStalker) -> void:
+	for o: HorrorStalker in stalkers:
+		o.frozen = true
+	caught.emit(s)
+
+
+## Freezes or unfreezes every stalker (cutscenes, the end).
+func set_frozen(on: bool) -> void:
+	for s: HorrorStalker in stalkers:
+		s.frozen = on
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not input_enabled:
+		return
+	if event is InputEventKey:
+		var k: InputEventKey = event
+		if not k.pressed or k.echo:
+			return
+		if k.physical_keycode == KEY_F:
+			toggle_flashlight()
+			get_viewport().set_input_as_handled()
+		elif k.physical_keycode == KEY_E:
+			interact()
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion and hidden_spot != null and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		var mm: InputEventMouseMotion = event
+		hidden_spot.peek_look(-mm.relative.x * MOUSE_SENS, -mm.relative.y * MOUSE_SENS)
+	elif event is InputEventMouseButton and hidden_spot != null:
+		# the player node is process-disabled while hidden: recapture the mouse here (after a pause menu freed it)
+		var mb: InputEventMouseButton = event
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE 				and player != null and player.capture_on_click:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

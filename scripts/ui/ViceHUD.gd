@@ -61,6 +61,8 @@ var stars: ViceStars
 var stars_label: Label
 ## Story day chip under the money (spec A2-D12): "NGÀY 0 · THI EOS", "NGÀY 1 · CÒN 7 NGÀY" (+ " ✉N" unread texts).
 var day_label: Label
+## Story objective line under the day chip (owner playtest: always visible in story free roam).
+var objective_label: Label
 var area_label: Label
 var vehicle_label: Label
 
@@ -180,6 +182,12 @@ func _build() -> void:
 	day_label.name = "DayChip"
 	day_label.visible = false
 	col.add_child(day_label)
+	objective_label = _hud_label("", 15, Color("#FFE6F3"), Color("#2A0E3A"), 4, _italic(0.3, 0.15), align)
+	objective_label.name = "ObjectiveLine"
+	objective_label.custom_minimum_size = Vector2(380.0, 0.0)
+	objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	objective_label.visible = false
+	col.add_child(objective_label)
 	stars = ViceStars.new()
 	stars.name = "Stars"
 	stars.align_right = right
@@ -226,6 +234,12 @@ func set_clock(text: String) -> void:
 
 
 ## Story day chip (A2-D12); "" hides it. unread > 0 adds an envelope badge.
+## The story objective under the day chip ("" hides it).
+func set_objective(text: String) -> void:
+	objective_label.text = text
+	objective_label.visible = text != ""
+
+
 func set_day(text: String, unread: int = 0) -> void:
 	day_label.text = text + (" ✉%d" % unread if unread > 0 and text != "" else "")
 	day_label.visible = text != ""

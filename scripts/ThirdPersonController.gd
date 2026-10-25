@@ -20,6 +20,9 @@
 # Phase W: aiming (WeaponDirector sets `aiming` from the right mouse button) eases the camera over the right shoulder
 # (AIM_DISTANCE behind, AIM_SIDE right, FOV AIM_FOV), turns the body with the camera and caps the speed at AIM_SPEED;
 # knock_down() is the comic fall of a rocket blast / an officer's tackle (SPLAT, never hurts); shake() for explosions.
+# Phase B (scripts/combat/PlayerCombat): combat_speed_cap caps the ground speed while attacking / blocking; jump_filter is
+# asked on each jump press (true = the press became a dodge-roll, no jump); dodge_roll() is the LAND_ROLL state with its own
+# duration and speed.
 class_name ThirdPersonController
 extends CharacterBody3D
 
@@ -106,6 +109,10 @@ var landings: Array[String] = []
 ## Phase W: right mouse held (WeaponDirector); aim_blend eases 0..1 over AIM_EASE_S.
 var aiming: bool = false
 var aim_blend: float = 0.0
+## Phase B: ground speed cap set by PlayerCombat (INF = none) and the jump-press filter (-> bool, true = consumed).
+var combat_speed_cap: float = INF
+var jump_filter: Callable
+var _roll_time: float = ROLL_TIME
 var _exhausted: bool = false
 var _stamina_wait: float = 0.0
 var _state_t: float = 0.0
@@ -275,7 +282,8 @@ func _physics_process(delta: float) -> void:
 	var want_sprint: bool = sprint_override or (controls_enabled and _pressed("sprint"))
 	var want_walk: bool = walk_override or (controls_enabled and _pressed("walk"))
 	if jump_override or (controls_enabled and InputMap.has_action("jump") and Input.is_action_just_pressed("jump")):
-		_jump_buffer_t = JUMP_BUFFER
+		if not (jump_filter.is_valid() and bool(jump_filter.call())):
+			_jump_buffer_t = JUMP_BUFFER
 	jump_override = false
 	if controls_enabled:
 		if Input.is_physical_key_pressed(ORBIT_LEFT_KEY):
@@ -350,6 +358,7 @@ func _ground(delta: float, move: Vector3, want_sprint: bool, want_walk: bool) ->
 		speed *= 0.5
 	if aiming:
 		speed = minf(speed, AIM_SPEED)
+	speed = minf(speed, combat_speed_cap)
 	if has_input:
 		var accel: float = ACCEL_SPRINT if is_sprinting else ACCEL_JOG
 		velocity.x = move_toward(velocity.x, move.x * speed, accel * delta)
@@ -428,6 +437,7 @@ func _land(drop: float) -> void:
 		_play("land_soft", SOFT_LAND_TIME)
 	elif drop < ROLL_LAND_MAX:
 		move_state = "LAND_ROLL"
+		_roll_time = ROLL_TIME
 		var fwd: Vector3 = facing_dir()
 		var sp: float = maxf(horizontal_speed * ROLL_KEEP, 2.5)
 		velocity.x = fwd.x * sp
@@ -454,8 +464,25 @@ func _roll(delta: float, move: Vector3) -> void:
 	velocity.z = fwd.z * sp
 	velocity.y = minf(velocity.y, 0.0) if is_on_floor() else velocity.y - GRAVITY * delta
 	move_and_slide()
-	if _state_t >= ROLL_TIME:
+	if _state_t >= _roll_time:
 		move_state = "GROUND"
+
+
+## Phase B dodge-roll (PlayerCombat): roll along dir (flat; zero = backwards) at `speed` m/s for `secs`, body turned to it.
+## Same LAND_ROLL state as a landing roll (steered by the input, slowing down), just shorter.
+func dodge_roll(dir: Vector3, secs: float, speed: float) -> void:
+	var d := Vector3(dir.x, 0.0, dir.z)
+	d = d.normalized() if d.length_squared() > 1e-6 else -facing_dir()
+	move_state = "LAND_ROLL"
+	_state_t = 0.0
+	_roll_time = secs
+	_jump_buffer_t = 0.0
+	_air_clip = ""
+	is_sprinting = false
+	velocity = Vector3(d.x * speed, minf(velocity.y, 0.0), d.z * speed)
+	if model:
+		model.rotation.y = atan2(-d.x, -d.z)
+	_play("roll", secs)
 
 
 ## Ngã sóng soài: khoá điều khiển SPLAT_TIME, rồi đứng dậy (getup) GETUP_TIME.
