@@ -78,15 +78,19 @@ Level API (also at the top of `NightBuilding.gd`):
 - `setup(opts)`: `protagonist` (CharacterBuilder opts, default `StoryUtil.hero_opts()` or the roam player), `seed` (int;
   fuse and battery spots, patrol phases; random when standalone), `reduce_scares` (bool override, default the GameFX
   setting), `auto_retry` (default true: retry 2.5 s after a catch), `stalkers` (default 4), `jump_budget` (default 2),
-  `catch_enabled` (default true). Call before or right after adding the scene; a later call rebuilds.
+  `catch_enabled` (default true), `capture_mouse` (default true), `caught_count` (starting count, default 0). Call before
+  or right after adding the scene; a later call rebuilds and keeps `caught_count` (E5 = never caught).
 - Signals `escaped(caught_count)`, `caught`, `fuse_placed(n)`, `checkpoint`.
-- `retry_from_checkpoint()`; state `fuses_placed`, `fuses_carried`, `caught_count`, `doors_unlocked`, `state`
-  (play | caught | escaped), `player`, `kit`, `stalkers`, `scare`, `flashlight`, `hud`, `fuse_candidates`, `active_fuses`.
+- `retry_from_checkpoint()` (ignored once escaped or released); `release()`: clean exit for the story (stalkers frozen,
+  sounds and keys off, out of any hiding spot, mouse freed, this level's camera cleared: make the story camera current
+  after it). The story's own [E] handler (StoryRoam KEY_E) must be off while the level runs.
+- State `fuses_placed`, `fuses_carried`, `caught_count`, `doors_unlocked`, `state` (play | caught | escaped | released), `player`, `kit`, `stalkers`, `scare`, `flashlight`, `hud`, `fuse_candidates`, `active_fuses`.
 - Rules: 3 fuses in a random 3 of 6 candidates (one per classroom); placing each one at the fuse box saves a checkpoint;
   3 battery pickups (random 3 of 6 candidates, +60 % each); 4 stalkers; the lobby doors unlock at 3 fuses (the generator
   noise draws every stalker towards the generator room); walking out through the doors emits `escaped`. A retry puts the
-  player at the checkpoint, returns carried fuses to their spots, keeps placed fuses, battery at least 25 %, and puts each
-  stalker at its patrol waypoint farthest from the checkpoint.
+  player at the checkpoint, returns carried fuses and the batteries taken since the checkpoint to their spots, keeps
+  placed fuses, restores the checkpoint's charge (at least 25 %), and puts each stalker at its patrol waypoint farthest
+  from the checkpoint. Leaving a hiding spot gives 0.75 s of catch grace; searches never stop on a spot's exit waypoint.
 - HUD: "Cầu chì: n/3", battery bar, objective, prompts "[E] Trốn", "[E] Ra", "[E] Nhặt cầu chì", "[E] Lắp cầu chì",
   "[E] Nhặt pin", hint "[F] Đèn pin"; plain text.
 

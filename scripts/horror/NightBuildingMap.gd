@@ -545,6 +545,9 @@ static func _build_classroom(root: Node3D, r: Dictionary, data: Dictionary) -> v
 		["back_l" if fx < 0.0 else "back_r", "fuse"], ["back_l", "behind"], ["behind", "desk"]])
 	_link(data, String(r["id"]) + "_cor", String(r["id"]) + "_door_in")
 	var g: HorrorNavGraph = data["graph"]
+	# the desk node is the desk's way out (and the desk peek camera looks the other way): never a search stop
+	g.set_no_wander(g.id_of(String(r["id"]) + "_desk"))
+	g.set_no_wander(g.id_of(String(r["id"]) + "_behind"))
 	data["fuse_candidates"].append({"room": r["id"], "pos": room_pt(r, fx, 8.5, 0.86), "reach": room_pt(r, fx, 7.6),
 		"node": g.id_of(String(r["id"]) + "_fuse")})
 	if r["id"] == "C3" or r["id"] == "C6":
@@ -591,7 +594,8 @@ static func _build_toilet(root: Node3D, r: Dictionary, data: Dictionary) -> void
 		root.add_child(spot)
 		data["spots"].append(spot)
 		var nm: String = "stall%d" % i
-		_node(data, String(r["id"]) + "_" + nm, room_pt(r, lx, 6.75))
+		var sid: int = _node(data, String(r["id"]) + "_" + nm, room_pt(r, lx, 6.75))
+		g.set_no_wander(sid)   # on the stall's way out: routes pass, searches never stand here
 		if prev_front != "":
 			_link(data, String(r["id"]) + "_" + prev_front, String(r["id"]) + "_" + nm)
 		prev_front = nm

@@ -8,7 +8,9 @@
 #   doors: the locked glass doors stop the player;
 #   fuses: pick up, place at the box -> fuse_placed(n) and checkpoint; a catch -> caught; retry_from_checkpoint puts the
 #          player at the box, carried fuses back on their spots, placed ones stay, stalkers away from the checkpoint;
-#          3 fuses unlock the doors; walking out emits escaped(caught_count).
+#          3 fuses unlock the doors; walking out emits escaped(caught_count);
+#   also: battery pickup and its restore on retry, the 25 % battery floor, a catch while hidden then retry, retry ignored
+#          after the escape, a clean run emitting escaped(0), release(), caught_count kept across a rebuild, route cost.
 # Run:  godot --headless --path . --script tests/test_night_building.gd
 extends SceneTree
 
@@ -59,6 +61,7 @@ func _run() -> void:
 	await _escape(lvl)
 	lvl.queue_free()
 	await _frames(2)
+	await _clean_run()
 	if fails.is_empty():
 		print("✅ SUCCESS: NIGHT BUILDING (build, random reachable fuses, fuse box checkpoints, catch and retry, doors, escape)")
 		quit(0)
@@ -191,6 +194,15 @@ func _reachable(lvl: NightBuilding) -> void:
 	_check(bad_spots.is_empty(), "every hiding spot has a free exit point on the graph (%s)" % str(bad_spots))
 	var st: Vector3 = (lvl.map["start"] as Dictionary)["pos"]
 	_check(bool(free_at.call(st)), "the start is free")
+	# routing cost (re-routes happen at most every 0.5 s per stalker; all 4 can coincide at the unlock)
+	var t_us: int = Time.get_ticks_usec()
+	var nr: int = 0
+	for a: int in range(0, g.size(), 4):
+		g.route(g.pos(a), g.pos((a * 37 + 11) % g.size()), space)
+		nr += 1
+	var per: float = float(Time.get_ticks_usec() - t_us) / 1000.0 / float(nr)
+	print("  route(): %.3f ms each over %d routes" % [per, nr])
+	_check(per < 1.0, "a route costs under 1 ms (%.3f)" % per)
 
 
 func _seeds() -> void:
@@ -238,10 +250,17 @@ func _fuses(lvl: NightBuilding) -> void:
 	_check(not lvl.fuse_items[k0].visible, "the fuse leaves its spot")
 	await _goto(lvl, lvl.fuse_box["pos"])
 	_check(lvl.kit.prompt == "[E] Lắp cầu chì", "prompt [E] Lắp cầu chì at the box (%s)" % lvl.kit.prompt)
+	lvl.flashlight.battery = 0.05   # nearly empty when the checkpoint is saved
 	_check(lvl.interact(), "[E] places it")
 	_check(lvl.fuses_placed == 1 and lvl.fuses_carried == 0 and placed_log == [1] and checkpoints == 1, "fuse_placed(1) and a checkpoint (%s, %d)" % [str(placed_log), checkpoints])
 	_check(lvl.hud.fuse_label.text == "Cầu chì: 1/3", "HUD fuses 1/3")
 	_check((lvl.checkpoint_data["pos"] as Vector3).distance_to(lvl.fuse_box["pos"]) < 0.01, "the checkpoint is at the fuse box")
+	# a battery picked up after the checkpoint
+	var bat: Dictionary = lvl.batteries[0]
+	await _goto(lvl, bat["reach"])
+	_check(lvl.kit.prompt == "[E] Nhặt pin", "prompt [E] Nhặt pin at a battery (%s)" % lvl.kit.prompt)
+	_check(lvl.interact() and bool(bat["taken"]) and not (bat["node"] as Node3D).visible, "[E] picks the battery up")
+	_check(absf(lvl.flashlight.battery - 0.65) < 0.01, "a battery adds 60 %% (%.2f)" % lvl.flashlight.battery)
 	# carry the second fuse, then get caught
 	var c1: Dictionary = lvl.fuse_candidates[lvl.active_fuses[1]]
 	await _goto(lvl, c1["reach"])
@@ -263,6 +282,8 @@ func _fuses(lvl: NightBuilding) -> void:
 	_check(lvl.player.global_position.distance_to(lvl.fuse_box["pos"]) < 0.4, "retry: back at the fuse box checkpoint (%s)" % str(lvl.player.global_position))
 	_check(lvl.fuses_carried == 0 and lvl.fuse_state[1] == "spot" and lvl.fuse_items[1].visible, "retry: the carried fuse is back on its spot")
 	_check(lvl.fuses_placed == 1 and lvl.fuse_state[0] == "placed", "retry: the placed fuse stays")
+	_check(absf(lvl.flashlight.battery - NightBuilding.RETRY_MIN_BATTERY) < 0.001, "retry: the charge goes back to the checkpoint's, floored at 25 %% (%.2f)" % lvl.flashlight.battery)
+	_check(not bool(lvl.batteries[0]["taken"]) and (lvl.batteries[0]["node"] as Node3D).visible, "retry: the battery picked up after the checkpoint is back on its spot")
 	var near: int = 0
 	for s: HorrorStalker in lvl.stalkers:
 		if s.frozen or s.global_position.distance_to(lvl.fuse_box["pos"]) < 8.0:
@@ -270,6 +291,7 @@ func _fuses(lvl: NightBuilding) -> void:
 	_check(near == 0, "retry: every stalker patrols away from the checkpoint")
 	for s2: HorrorStalker in lvl.stalkers:
 		s2.frozen = true
+	await _hidden_catch(lvl)
 	# the other two fuses
 	for k: int in [1, 2]:
 		await _goto(lvl, (lvl.fuse_candidates[lvl.active_fuses[k]] as Dictionary)["reach"])
@@ -294,4 +316,72 @@ func _escape(lvl: NightBuilding) -> void:
 		await physics_frame
 		n += 1
 	p.input_override = null
-	_check(escaped_with == 1 and lvl.state == "escaped", "walking out through the open doors emits escaped(caught_count = 1) (%d, %s)" % [escaped_with, lvl.state])
+	_check(escaped_with == 2 and lvl.state == "escaped", "walking out through the open doors emits escaped(caught_count = 2) (%d, %s)" % [escaped_with, lvl.state])
+	lvl.retry_from_checkpoint()
+	_check(lvl.state == "escaped", "retry_from_checkpoint is ignored after the escape")
+
+
+## Caught while hidden (a stalker saw the player enter a locker), then retry: out of the spot, own camera, spot reset.
+func _hidden_catch(lvl: NightBuilding) -> void:
+	var spot: HidingSpot = null
+	for s: HidingSpot in lvl.kit.spots:
+		if s.name == "Hide_locker_0_0":
+			spot = s
+	var ep: Vector3 = spot.exit_point()
+	await _goto(lvl, ep)
+	var hunter: HorrorStalker = lvl.stalkers[1]
+	hunter.reset_at(Vector3(ep.x, 0.0, ep.z + 6.0))
+	hunter.face(Vector3(0, 0, -1))
+	await _frames(3)
+	_check(lvl.kit.hide_in(spot) and hunter.state == HorrorStalker.CHECK, "hides in view of a stalker, which goes to check (%s)" % hunter.state)
+	var n: int = 0
+	while lvl.state == "play" and n < 240:
+		await physics_frame
+		n += 1
+	_check(lvl.state == "caught" and lvl.caught_count == 2 and spot.revealed, "caught in the locker (%s, %d)" % [lvl.state, lvl.caught_count])
+	lvl.retry_from_checkpoint()
+	await _frames(3)
+	var p: ThirdPersonController = lvl.player
+	_check(lvl.state == "play" and not lvl.kit.is_hidden() and p.visible and p.process_mode != Node.PROCESS_MODE_DISABLED, "retry after a hidden catch: the player is out and playing")
+	_check(root.get_viewport().get_camera_3d() == p.camera and lvl.hud.peek_kind == "", "retry after a hidden catch: own camera, no peek overlay")
+	_check(not spot.occupied and not spot.revealed, "retry after a hidden catch: the spot is closed and free again")
+	_check(p.global_position.distance_to(lvl.fuse_box["pos"]) < 0.4, "retry after a hidden catch: at the checkpoint")
+	for s2: HorrorStalker in lvl.stalkers:
+		s2.frozen = true
+
+
+## A clean run with stalkers off: 3 fuses, out through the doors -> escaped(0); release() frees the mouse and the camera.
+func _clean_run() -> void:
+	var l3: NightBuilding = (load("res://scenes/story/NightBuilding.tscn") as PackedScene).instantiate()
+	l3.setup({"seed": 5, "stalkers": 0, "auto_retry": false, "capture_mouse": false})
+	root.add_child(l3)
+	l3.build()
+	var esc: Array[int] = [-1]
+	l3.escaped.connect(func(c: int) -> void: esc[0] = c)
+	await _frames(2)
+	for k: int in 3:
+		l3.collect_fuse(k)
+	l3.player.teleport(l3.fuse_box["pos"], 0.0)
+	l3.place_fuses()
+	_check(l3.doors_unlocked and l3.fuses_placed == 3, "clean run: 3 fuses unlock the doors")
+	await _frames(100)
+	l3.player.teleport(Vector3(0.0, 0.0, 24.5), PI)
+	l3.player.yaw = PI
+	l3.player.input_override = Vector2(0, -1)
+	var n: int = 0
+	while esc[0] == -1 and n < 240:
+		await physics_frame
+		n += 1
+	_check(esc[0] == 0, "never caught: escaped(0) (%d)" % esc[0])
+	l3.release()
+	var cam: Camera3D = root.get_viewport().get_camera_3d()
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and (cam == null or not l3.is_ancestor_of(cam)), "release() frees the mouse and the level's camera")
+	_check(l3.state == "escaped" and not l3.kit.input_enabled, "release() keeps the escaped state and ignores keys")
+	# caught_count survives a rebuild (E5 tracking)
+	l3.caught_count = 2
+	l3.setup({"seed": 6, "stalkers": 0, "auto_retry": false, "capture_mouse": false})
+	_check(l3.caught_count == 2 and l3.state == "play", "caught_count survives a setup() rebuild (%d)" % l3.caught_count)
+	l3.release()
+	_check(l3.state == "released", "release() during play sets released")
+	l3.queue_free()
+	await _frames(2)

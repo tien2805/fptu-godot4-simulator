@@ -14,15 +14,22 @@
 #     opts.jump_budget: int          jump scares in this mission, 1..2 (default 2)
 #     opts.catch_enabled: bool       default true (perf test / debugging: false)
 #     opts.capture_mouse: bool       capture the mouse on click (default true; tests false)
+#     opts.caught_count: int         starting catch count (default 0); caught_count is kept across a setup() rebuild, so E5
+#                                    (never caught) can be read from escaped(caught_count) even if the story rebuilds
 #   signals
 #     escaped(caught_count: int)     walked out through the open doors (E5 is earned when caught_count == 0)
 #     caught                         a stalker caught the player (the catch scare plays)
 #     fuse_placed(n: int)            n fuses in the box (1..3)
 #     checkpoint                     a checkpoint was saved (after every fuse placed)
 #   retry_from_checkpoint()      player back at the last checkpoint (start, or the fuse box): carried fuses go back to their
-#                                spots, placed ones stay, battery at least 25 %, each stalker on its waypoint farthest from
-#                                the checkpoint, patrolling.
-#   state: "play" | "caught" | "escaped"; fuses_placed, fuses_carried, caught_count, doors_unlocked, player, kit, stalkers,
+#                                spots, placed ones stay, batteries taken after the checkpoint go back, the charge returns to
+#                                the checkpoint's (at least 25 %), each stalker on its waypoint farthest from the checkpoint,
+#                                patrolling. Ignored once escaped or released.
+#   release()                    clean exit: freezes stalkers, stops sounds and keys, leaves a hiding spot, frees the mouse
+#                                and clears this level's current camera (make the story camera current afterwards).
+#   The story's own [E] handler (StoryRoam's KEY_E) must be off while the level runs: the level reads E and F itself
+#   (physical keys, _unhandled_input, marked handled).
+#   state: "play" | "caught" | "escaped" | "released"; fuses_placed, fuses_carried, caught_count, doors_unlocked, player, kit, stalkers,
 #   scare, flashlight, hud, graph, fuse_candidates (6 {room, pos, reach, node}), active_fuses (3 candidate indices),
 #   fuse_state ("spot" | "carried" | "placed" per active fuse), fuse_box {pos, yaw, slots}.
 #   Keys: [F] flashlight, [E] hide / leave / pick up / place fuses (HorrorKit + interact hook), WASD, Shift, Ctrl.
@@ -76,6 +83,7 @@ var _built: bool = false
 var _retry_t: float = -1.0
 var _hud_t: float = 0.0
 var _anim_t: float = 0.0
+var _noise_queue: Array[HorrorStalker] = []
 
 
 func _ready() -> void:
@@ -85,6 +93,8 @@ func _ready() -> void:
 
 func setup(o: Dictionary) -> void:
 	opts = o.duplicate()
+	if opts.has("caught_count"):
+		caught_count = int(opts["caught_count"])
 	if _built:
 		_rebuild()
 
@@ -100,8 +110,8 @@ func _rebuild() -> void:
 	batteries.clear()
 	fuses_placed = 0
 	fuses_carried = 0
-	caught_count = 0
-	doors_unlocked = false
+	doors_unlocked = false   # caught_count survives a rebuild (E5 needs every catch of the mission)
+	_noise_queue.clear()
 	_retry_t = -1.0
 	_built = false
 	build()
@@ -165,6 +175,7 @@ func build() -> void:
 	figure.frozen = true
 	add_child(figure)
 	figure.visible = false
+	figure.process_mode = Node.PROCESS_MODE_DISABLED   # no animation until a scare shows it
 	scare.figure = figure
 	# fuses and batteries
 	fuse_candidates = map["fuse_candidates"]
@@ -189,7 +200,7 @@ func build() -> void:
 		batteries.append({"node": bn, "pos": c["pos"], "reach": c["reach"], "room": c["room"], "taken": false})
 	hud = HorrorHUD.new()
 	add_child(hud)
-	checkpoint_data = {"pos": st["pos"], "yaw": float(st["yaw"]), "battery": 1.0}
+	checkpoint_data = {"pos": st["pos"], "yaw": float(st["yaw"]), "battery": 1.0, "taken": _taken_flags()}
 	state = "play"
 	_refresh_hud()
 	hud.toast("Cửa sảnh bị khóa. Tìm 3 cầu chì trong các phòng học rồi lắp vào hộp điện ở phòng máy phát.", 6.0)
@@ -378,8 +389,15 @@ func place_fuses() -> void:
 
 
 func _save_checkpoint() -> void:
-	checkpoint_data = {"pos": fuse_box["pos"], "yaw": float(fuse_box["yaw"]), "battery": flashlight.battery}
+	checkpoint_data = {"pos": fuse_box["pos"], "yaw": float(fuse_box["yaw"]), "battery": flashlight.battery, "taken": _taken_flags()}
 	checkpoint.emit()
+
+
+func _taken_flags() -> Array[bool]:
+	var out: Array[bool] = []
+	for b: Dictionary in batteries:
+		out.append(bool(b["taken"]))
+	return out
 
 
 func _unlock_doors() -> void:
@@ -399,8 +417,9 @@ func _unlock_doors() -> void:
 	ll.text = "MỞ"
 	ll.modulate = Color("#7CFFB2")
 	# the generator roars: every stalker heads for the generator room, the corridor lights stutter
+	_noise_queue.clear()
 	for s: HorrorStalker in stalkers:
-		s.hear_at(fuse_box["pos"])
+		_noise_queue.append(s)   # one re-route per physics frame (no 4-route hitch)
 	scare.flicker_near(player.global_position)
 	scare.try_jump_scare()
 	hud.toast("Có điện rồi! Cửa sảnh đã mở. Chạy ra ngoài!", 4.0)
@@ -424,7 +443,7 @@ func _on_caught(_s: HorrorStalker) -> void:
 
 
 func retry_from_checkpoint() -> void:
-	if not _built:
+	if not _built or state == "escaped" or state == "released":
 		return
 	_retry_t = -1.0
 	if kit.is_hidden():
@@ -436,8 +455,15 @@ func retry_from_checkpoint() -> void:
 			fuse_state[k] = "spot"
 			fuse_items[k].visible = true
 	fuses_carried = 0
+	# batteries picked up after the checkpoint go back on their spots, the charge back to the checkpoint's (at least 25 %)
+	var taken: Array = checkpoint_data.get("taken", [])
+	for k: int in batteries.size():
+		var was: bool = k < taken.size() and bool(taken[k])
+		batteries[k]["taken"] = was
+		(batteries[k]["node"] as Node3D).visible = not was
 	flashlight.set_on(false)
 	flashlight.battery = maxf(float(checkpoint_data.get("battery", 1.0)), RETRY_MIN_BATTERY)
+	_noise_queue.clear()
 	var cp: Vector3 = checkpoint_data["pos"]
 	player.process_mode = Node.PROCESS_MODE_INHERIT
 	player.visible = true
@@ -464,6 +490,29 @@ func _far_waypoint(s: HorrorStalker, p: Vector3) -> Vector3:
 			bd = d
 			best = q
 	return best
+
+
+## Clean exit for the story: stops the level (stalkers frozen, sounds off, keys ignored), leaves any hiding spot, frees
+## the mouse and drops this level's camera so the caller's camera can take over (make yours current after this).
+## Safe in any state; state becomes "released" unless it is "escaped".
+func release() -> void:
+	if not _built:
+		return
+	_retry_t = -1.0
+	_noise_queue.clear()
+	if kit.is_hidden():
+		kit.leave_hiding()
+	kit.input_enabled = false
+	kit.set_frozen(true)
+	player.controls_enabled = false
+	player.capture_on_click = false
+	flashlight.set_on(false)
+	scare.stop_all()
+	if state != "escaped":
+		state = "released"
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	for cam: Node in find_children("*", "Camera3D", true, false):
+		(cam as Camera3D).clear_current(false)
 
 
 func _escape() -> void:
@@ -502,6 +551,10 @@ func _on_hide_changed(spot: HidingSpot) -> void:
 
 # ---------------------------------------------------------------------------
 func _physics_process(_delta: float) -> void:
+	if not _noise_queue.is_empty():
+		var s: HorrorStalker = _noise_queue.pop_front()
+		if is_instance_valid(s) and state == "play":
+			s.hear_at(fuse_box["pos"])
 	if state == "play" and doors_unlocked and player != null and not kit.is_hidden():
 		var p: Vector3 = player.global_position
 		if p.z > NightBuildingMap.EXIT_Z and absf(p.x) < 8.0:
