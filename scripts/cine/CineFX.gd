@@ -38,7 +38,11 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	# story Phase A2 (Day 0 cinematics): lobby bench, the protagonist's backpack (glows red inside via glow_at), the planted
 	# smart glasses, an instant-noodle cup, the E1 photo card, a lamp (opts "flicker": [[s0, s1], ...] story windows, see
 	# CinePlayer), a fluffy sheep mask and a white face mask (both held on the Head bone)
-	"bench", "backpack", "glasses", "noodles", "photo", "lamp", "sheep_mask", "face_mask"]
+	"bench", "backpack", "glasses", "noodles", "photo", "lamp", "sheep_mask", "face_mask",
+	# story Phase B (Days 1 and 4): Chú Bảy's shiba (StoryShiba, opts "anim"), canteen furniture and improvised weapons
+	# (table, stool, chair, tray, soup_pot, counter), Mr.T's laptop (screen glow via glow_at), the "THI HỘ BAO ĐẬU" flyer
+	# stand, and the night corridor set (walls, ceiling, tube lamps that flicker like "lamp": opts "flicker")
+	"shiba", "table", "stool", "chair", "tray", "soup_pot", "counter", "laptop", "flyer", "corridor"]
 
 var _serial: int = 0
 var _parts: Array[Dictionary] = []     # {node: CPUParticles3D, s0, life}
@@ -502,6 +506,29 @@ static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 			_build_sheep_mask(root)
 		"face_mask":
 			_build_face_mask(root)
+		"shiba":
+			var dog := StoryShiba.new()
+			dog.name = "Dog"
+			root.add_child(dog)
+			root.set_meta("shiba", dog)
+		"table":
+			_build_table(root, opts)
+		"stool":
+			_build_stool(root, opts)
+		"chair":
+			_build_chair(root, opts)
+		"tray":
+			_build_tray(root, opts)
+		"soup_pot":
+			_build_soup_pot(root)
+		"counter":
+			_build_counter(root, opts)
+		"laptop":
+			_build_laptop(root)
+		"flyer":
+			_build_flyer(root, opts)
+		"corridor":
+			_build_corridor(root, opts)
 		_:
 			push_warning("CineFX.build_prop: unknown kind '%s'" % kind)
 	return root
@@ -889,11 +916,22 @@ static func lamp_on(s: float, windows: Array) -> bool:
 	return true
 
 
+## true when story time s lies inside one of the [s0, s1) windows (Phase B lamp blackouts: prop opts "dark").
+static func in_windows(s: float, windows: Array) -> bool:
+	for w: Variant in windows:
+		var a: Array = w
+		if s >= float(a[0]) and s < float(a[1]):
+			return true
+	return false
+
+
 ## Lamp on / off without switching shader variants (review A2-R3: toggling emission_enabled can hitch on the first flicker).
 static func set_lamp(prop: Node3D, on: bool) -> void:
-	var ol: OmniLight3D = prop.get_meta("lamp_light", null)
+	var ol: OmniLight3D = prop.get_meta("lamp_light") if prop.has_meta("lamp_light") else null   # (a null default errors)
 	if ol:
 		ol.visible = on
+	for l: OmniLight3D in prop.get_meta("lamp_lights", []):
+		l.visible = on
 	var b: StandardMaterial3D = prop.get_meta("lamp_bulb", null)
 	if b:
 		b.emission_energy_multiplier = 2.5 if on else 0.0
@@ -934,3 +972,195 @@ static func set_prop_glow(prop: Node3D, on: bool) -> void:
 	var ol: OmniLight3D = prop.get_meta("glow_light", null)
 	if ol:
 		ol.visible = on
+
+
+# ---------------------------------------------------------------------------
+# Story Phase B props (plain meshes, code colours only; origin on the ground, front toward -Z)
+# ---------------------------------------------------------------------------
+## Breakable furniture: the pieces go in the "crates" metas so crate_break() hides them and throws planks.
+static func _breakable(root: Node3D, pieces: Array[Node3D], planks: int, col: Color) -> void:
+	root.set_meta("crates", pieces)
+	root.set_meta("planks", planks)
+	root.set_meta("crate_color", col)
+
+
+## Canteen table 1.4 x 0.8 m, top at 0.75 m: laminate top, steel legs. opts "color" (top).
+static func _build_table(root: Node3D, opts: Dictionary) -> void:
+	var top_col: Color = opts.get("color", Color("#D9CFBE"))
+	var piece := Node3D.new()
+	piece.name = "TablePiece"
+	root.add_child(piece)
+	_box(piece, "Top", Vector3(1.4, 0.04, 0.8), Vector3(0.0, 0.73, 0.0), _mat(top_col, 0.6))
+	var steel: StandardMaterial3D = _mat(Color("#8C939C"), 0.35)
+	for sx: float in [-0.62, 0.62]:
+		for sz: float in [-0.32, 0.32]:
+			_box(piece, "Leg", Vector3(0.04, 0.71, 0.04), Vector3(sx, 0.355, sz), steel)
+	_breakable(root, [piece], 8, top_col.darkened(0.2))
+
+
+## Round canteen stool, seat at 0.45 m (sit_bench height).
+static func _build_stool(root: Node3D, opts: Dictionary) -> void:
+	var col: Color = opts.get("color", Color("#C0392B"))
+	_cyl(root, "Seat", 0.17, 0.17, 0.04, Vector3(0.0, 0.43, 0.0), _mat(col, 0.5))
+	_cyl(root, "Post", 0.025, 0.025, 0.41, Vector3(0.0, 0.205, 0.0), _mat(Color("#8C939C"), 0.35))
+	_cyl(root, "Foot", 0.14, 0.16, 0.02, Vector3(0.0, 0.01, 0.0), _mat(Color("#6E747C"), 0.4))
+
+
+## Plastic canteen chair (seat 0.45 m, back rest on +Z); breakable. opts "held": origin at the seat centre (the hands grip
+## the seat when it is held two-handed).
+static func _build_chair(root: Node3D, opts: Dictionary) -> void:
+	var col: Color = opts.get("color", Color("#2E86C1"))
+	var plastic: StandardMaterial3D = _mat(col, 0.45)
+	var piece := Node3D.new()
+	piece.name = "ChairPiece"
+	root.add_child(piece)
+	if bool(opts.get("held", false)):
+		piece.position = Vector3(0.0, -0.45, 0.0)
+	_box(piece, "Seat", Vector3(0.44, 0.04, 0.42), Vector3(0.0, 0.45, 0.0), plastic)
+	_box(piece, "Back", Vector3(0.44, 0.4, 0.04), Vector3(0.0, 0.68, 0.2), plastic, Vector3(-0.12, 0.0, 0.0))
+	for sx: float in [-0.19, 0.19]:
+		for sz: float in [-0.18, 0.18]:
+			_box(piece, "Leg", Vector3(0.035, 0.45, 0.035), Vector3(sx, 0.225, sz), plastic)
+	_breakable(root, [piece], 9, col)
+
+
+## Steel canteen tray 0.42 x 0.3 m (origin at its centre) with optional food (opts "food": rice bowl, soup cup, chopsticks).
+static func _build_tray(root: Node3D, opts: Dictionary) -> void:
+	var steel: StandardMaterial3D = _mat(Color("#B8BEC6"), 0.25)
+	steel.metallic = 0.6
+	_box(root, "Plate", Vector3(0.42, 0.012, 0.3), Vector3.ZERO, steel)
+	for sz: float in [-0.145, 0.145]:
+		_box(root, "Rim", Vector3(0.42, 0.025, 0.012), Vector3(0.0, 0.01, sz), steel)
+	for sx: float in [-0.205, 0.205]:
+		_box(root, "Rim", Vector3(0.012, 0.025, 0.3), Vector3(sx, 0.01, 0.0), steel)
+	if bool(opts.get("food", false)):
+		_cyl(root, "Bowl", 0.06, 0.04, 0.05, Vector3(-0.1, 0.03, 0.02), _mat(Color("#F4F1EA"), 0.6))
+		_sphere(root, "Rice", 0.05, Vector3(-0.1, 0.055, 0.02), _mat(Color("#FBFAF5"), 0.9), Vector3(1.0, 0.45, 1.0))
+		_cyl(root, "Soup", 0.05, 0.045, 0.045, Vector3(0.1, 0.03, -0.03), _mat(Color("#E9C46A"), 0.5))
+		_box(root, "Sticks", Vector3(0.24, 0.006, 0.012), Vector3(0.02, 0.012, 0.11), _mat(Color("#D9B98A"), 0.7))
+
+
+## Empty steel soup pot (cold and empty: no burns, no gore), two side handles; origin at the bottom centre.
+static func _build_soup_pot(root: Node3D) -> void:
+	var steel: StandardMaterial3D = _mat(Color("#A9B0B8"), 0.3)
+	steel.metallic = 0.7
+	_cyl(root, "Pot", 0.17, 0.16, 0.24, Vector3(0.0, 0.12, 0.0), steel)
+	_cyl(root, "Lip", 0.18, 0.18, 0.02, Vector3(0.0, 0.24, 0.0), steel)
+	for sx: float in [-0.2, 0.2]:
+		_box(root, "Handle", Vector3(0.05, 0.025, 0.08), Vector3(sx, 0.2, 0.0), _mat(Color("#2B2B2B"), 0.5))
+
+
+## Serving counter: a long steel-front box with a laminate top (length opts "len", default 2.4 m), 0.95 m high.
+static func _build_counter(root: Node3D, opts: Dictionary) -> void:
+	var ln: float = float(opts.get("len", 2.4))
+	_box(root, "Front", Vector3(ln, 0.9, 0.65), Vector3(0.0, 0.45, 0.0), _mat(Color("#9AA3AD"), 0.35))
+	_box(root, "Top", Vector3(ln + 0.06, 0.05, 0.72), Vector3(0.0, 0.925, 0.0), _mat(Color("#E8E2D6"), 0.6))
+	_box(root, "Band", Vector3(ln + 0.01, 0.12, 0.01), Vector3(0.0, 0.7, -0.33), _mat(Color("#F37021"), 0.6))
+
+
+## Open laptop (base 0.32 x 0.22 m, screen hinged at the back, ~105 degrees); the screen glows through glow_at.
+static func _build_laptop(root: Node3D) -> void:
+	var shell: StandardMaterial3D = _mat(Color("#2C2F36"), 0.35)
+	_box(root, "Base", Vector3(0.32, 0.018, 0.22), Vector3(0.0, 0.009, 0.0), shell)
+	_box(root, "Keys", Vector3(0.28, 0.004, 0.12), Vector3(0.0, 0.019, -0.02), _mat(Color("#15171C"), 0.6))
+	var lid := Node3D.new()
+	lid.name = "Lid"
+	lid.position = Vector3(0.0, 0.018, 0.11)
+	lid.rotation = Vector3(-deg_to_rad(15.0), 0.0, 0.0)
+	root.add_child(lid)
+	_box(lid, "Back", Vector3(0.32, 0.21, 0.01), Vector3(0.0, 0.105, 0.0), shell)
+	var sm := StandardMaterial3D.new()
+	sm.albedo_color = Color("#0B1A12")
+	sm.roughness = 0.2
+	sm.emission = Color("#9CFFB8")
+	sm.emission_enabled = false
+	sm.set_meta("vice_done", true)
+	_box(lid, "Screen", Vector3(0.29, 0.18, 0.002), Vector3(0.0, 0.105, -0.006), sm)
+	root.set_meta("screen_mat", sm)
+	var ol := OmniLight3D.new()
+	ol.name = "ScreenGlow"
+	ol.light_color = Color("#9CFFB8")
+	ol.light_energy = 0.8
+	ol.omni_range = 1.6
+	ol.position = Vector3(0.0, 0.2, -0.15)
+	ol.visible = false
+	root.add_child(ol)
+	root.set_meta("glow_light", ol)
+
+
+## A-board stand with a printed flyer; opts "text" (default "THI HỘ / BAO ĐẬU"), "sub" (small print). Faces -Z.
+static func _build_flyer(root: Node3D, opts: Dictionary) -> void:
+	var wood: StandardMaterial3D = _mat(Color("#6B4F35"), 0.8)
+	for sx: float in [-0.3, 0.3]:
+		_box(root, "Post", Vector3(0.04, 1.3, 0.04), Vector3(sx, 0.65, 0.05), wood, Vector3(0.12, 0.0, 0.0))
+	_box(root, "Board", Vector3(0.66, 0.9, 0.025), Vector3(0.0, 0.95, 0.0), _mat(Color("#2B2F36"), 0.7), Vector3(0.12, 0.0, 0.0))
+	var paper := Node3D.new()
+	paper.name = "Paper"
+	paper.position = Vector3(0.0, 0.95, -0.016)
+	paper.rotation = Vector3(0.12, 0.0, 0.0)
+	root.add_child(paper)
+	_box(paper, "Sheet", Vector3(0.56, 0.78, 0.004), Vector3.ZERO, _mat(Color("#FFE45C"), 0.8))
+	paper.add_child(_flyer_label("Headline", String(opts.get("text", "THI HỘ\nBAO ĐẬU")), 64, Color("#C0172B"), 0.14))
+	paper.add_child(_flyer_label("Sub", String(opts.get("sub", "Không đậu hoàn tiền\nLiên hệ: Cừu")), 30, Color("#1A1A1A"), -0.2))
+
+
+static func _flyer_label(nm: String, text: String, size: int, col: Color, y: float) -> Label3D:
+	var l := Label3D.new()
+	l.name = nm
+	l.text = text
+	l.font_size = size
+	l.pixel_size = 0.0022
+	l.outline_size = 0
+	l.modulate = col
+	l.position = Vector3(0.0, y, -0.004)
+	l.rotation_degrees.y = 180.0   # read from the -Z side (Label3D faces +Z)
+	return l
+
+
+## Night corridor set (a ground-floor campus corridor carried by the cinematic, so it plays on any flat stage spot): two
+## walls at x = +-width / 2, a ceiling, a floor strip, classroom doors, an end wall with a green exit sign, and tube lamps
+## along the ceiling (one shared tube material + an OmniLight each; set_lamp() switches them all). opts: "len" (m, along -Z
+## from z = +2), "width" (m), "lamps" (count), "energy", "flicker" (CinePlayer windows, as "lamp").
+static func _build_corridor(root: Node3D, opts: Dictionary) -> void:
+	var ln: float = float(opts.get("len", 15.0))
+	var w: float = float(opts.get("width", 3.2))
+	var hgt: float = 3.0
+	var z0: float = 2.0
+	var zc: float = z0 - ln * 0.5
+	var wall: StandardMaterial3D = _mat(Color("#BFC6C2"), 0.85)
+	var dado: StandardMaterial3D = _mat(Color("#5E7F78"), 0.8)
+	for sx: float in [-1.0, 1.0]:
+		_box(root, "Wall", Vector3(0.12, hgt, ln), Vector3(sx * (w * 0.5 + 0.06), hgt * 0.5, zc), wall)
+		_box(root, "Dado", Vector3(0.02, 1.0, ln), Vector3(sx * (w * 0.5 - 0.005), 0.5, zc), dado)
+		for i: int in 3:
+			var dz: float = z0 - 2.5 - 4.2 * float(i) - (1.4 if sx > 0.0 else 0.0)
+			_box(root, "Door", Vector3(0.03, 2.1, 0.95), Vector3(sx * (w * 0.5 - 0.01), 1.05, dz), _mat(Color("#6D4C33"), 0.7))
+	_box(root, "Ceiling", Vector3(w + 0.24, 0.1, ln), Vector3(0.0, hgt + 0.05, zc), _mat(Color("#D8DAD6"), 0.9))
+	_box(root, "Floor", Vector3(w, 0.012, ln), Vector3(0.0, 0.006, zc), _mat(Color("#8E9894"), 0.35))
+	_box(root, "EndWall", Vector3(w + 0.24, hgt, 0.12), Vector3(0.0, hgt * 0.5, z0 - ln - 0.06), wall)
+	_box(root, "ExitSign", Vector3(0.6, 0.2, 0.04), Vector3(0.0, 2.6, z0 - ln + 0.02), _glow_mat(Color("#29C46A"), 2.0))
+	var lbl := Label3D.new()
+	lbl.name = "ExitText"
+	lbl.text = "LỐI THOÁT"
+	lbl.font_size = 40
+	lbl.pixel_size = 0.0035
+	lbl.outline_size = 0
+	lbl.modulate = Color("#F4FFF6")
+	lbl.position = Vector3(0.0, 2.6, z0 - ln + 0.05)
+	root.add_child(lbl)
+	var tube: StandardMaterial3D = _glow_mat(Color("#E9F6FF"), 2.5)
+	var lights: Array[OmniLight3D] = []
+	var n: int = int(opts.get("lamps", 4))
+	for j: int in n:
+		var lz: float = z0 - 1.2 - (ln - 2.4) * float(j) / maxf(float(n - 1), 1.0)
+		_box(root, "Tube%d" % j, Vector3(0.12, 0.05, 1.2), Vector3(0.0, hgt - 0.03, lz), tube)
+		var ol := OmniLight3D.new()
+		ol.name = "TubeLight%d" % j
+		ol.light_color = Color("#DDEEFF")
+		ol.light_energy = float(opts.get("energy", 1.6))
+		ol.omni_range = 5.5
+		ol.position = Vector3(0.0, hgt - 0.3, lz)
+		root.add_child(ol)
+		lights.append(ol)
+	root.set_meta("lamp_lights", lights)
+	root.set_meta("lamp_bulb", tube)

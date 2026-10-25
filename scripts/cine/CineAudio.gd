@@ -14,7 +14,9 @@ const SFX_DIR: String = "user://sfx/"
 const SR: int = 22050
 const FADE_OUT: float = 0.5
 const SFX_CUES: Array[String] = ["impact_light", "impact_medium", "impact_heavy", "whoosh_down", "freeze_tick", "crate_smash",
-	"body_fall", "slide_whistle", "groan", "phone_buzz", "engine_roar", "neck_crack", "helmet_clonk"]
+	"body_fall", "slide_whistle", "groan", "phone_buzz", "engine_roar", "neck_crack", "helmet_clonk",
+	# story Phase B: canteen brawl and Day 1 / Day 4 discovery beats
+	"tray_clang", "pot_clonk", "chair_smash", "burp", "fluoro_buzz"]
 const MOODS: Dictionary = {
 	"punchy": {"bpm": 118.0, "root": 55.0, "minor": true},
 	"heavy": {"bpm": 96.0, "root": 49.0, "minor": true},
@@ -246,6 +248,35 @@ static func _synth_sfx(cue: String) -> AudioStreamWAV:
 			c1.append_array(pause)
 			c1.append_array(c2)
 			return _to_wav(c1)
+		"tray_clang":   # thin steel tray: bright ringing partials over a short noise hit
+			return _to_wav(_mix([_tone(0.6, 1320.0, 1290.0, 0.32, 5.0), _tone(0.6, 2210.0, 2170.0, 0.18, 6.5), _tone(0.5, 3480.0, 3420.0, 0.1, 9.0),
+				_noise(0.06, 0.5, 70.0, 12, 0.2)]))
+		"pot_clonk":    # empty steel pot on a head: low hollow bong with a long ring
+			return _to_wav(_mix([_tone(0.9, 330.0, 318.0, 0.5, 3.5), _tone(0.9, 787.0, 770.0, 0.22, 4.5), _tone(0.3, 140.0, 90.0, 0.35, 14.0),
+				_noise(0.05, 0.4, 70.0, 13, 0.3)]))
+		"chair_smash":  # plastic chair cracking apart: cracks over a dull body hit
+			return _to_wav(_mix([_noise(0.35, 0.75, 10.0, 14, 0.1), _tone(0.18, 260.0, 150.0, 0.35, 16.0), _tone(0.25, 95.0, 60.0, 0.45, 10.0)]))
+		"burp":         # a long comic burp: a low wobbling voice with a rough edge
+			var bn: int = int(0.75 * SR)
+			var bb := PackedFloat32Array()
+			bb.resize(bn)
+			var ph: float = 0.0
+			for i: int in bn:
+				var tt: float = float(i) / SR
+				var f: float = 92.0 + 18.0 * sin(tt * 23.0) - 30.0 * tt
+				ph += TAU * f / SR
+				var env: float = smoothstep(0.0, 0.05, tt) * (1.0 - smoothstep(0.55, 0.75, tt))
+				bb[i] = (sin(ph) + 0.45 * sin(ph * 2.0) + 0.25 * signf(sin(ph * 3.0))) * 0.3 * env
+			return _to_wav(_mix([bb, _noise(0.75, 0.06, 2.0, 15, 0.7)]))
+		"fluoro_buzz":  # a tube lamp stuttering: mains buzz chopped on and off
+			var fn: int = int(0.8 * SR)
+			var fb := PackedFloat32Array()
+			fb.resize(fn)
+			for i: int in fn:
+				var tt2: float = float(i) / SR
+				var gate: float = 1.0 if fmod(tt2 * 13.0, 1.0) < 0.55 and fmod(tt2 * 3.0, 1.0) < 0.8 else 0.0
+				fb[i] = (sin(TAU * 100.0 * tt2) * 0.3 + sin(TAU * 200.0 * tt2) * 0.15 + sin(TAU * 300.0 * tt2) * 0.08) * gate
+			return _to_wav(fb)
 		"helmet_clonk": # hollow plastic shell knock
 			return _to_wav(_mix([_tone(0.22, 520.0, 430.0, 0.55, 18.0), _tone(0.22, 1180.0, 1010.0, 0.2, 24.0), _noise(0.05, 0.45, 60.0, 10, 0.3)]))
 	return _to_wav(_tone(0.08, 800.0, 800.0, 0.4, 20.0))
