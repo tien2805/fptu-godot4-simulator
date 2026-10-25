@@ -78,7 +78,7 @@ Files: `scripts/story/missions/MissionStakeout.gd`, `MissionChase.gd`, `MissionF
 `MissionCanteen.gd`; `scripts/story/StoryNightEscape.gd`, `scenes/story/StoryNightEscape.tscn`.
 
 - Stake-out (parking lane, `parking_center_local`): 2 guards patrol, the courier and a buyer wait; 60 s; sight cones
-  (70°, 12 m, a clear ray) on all three; seen = "Bị phát hiện!", restart; handover window 34-48 s, [S] with the courier in
+  (70°, 12 m, a clear ray) on all three; seen = "Bị phát hiện!", restart; handover window 34-48 s, [E] (consumed; S walks back) with the courier in
   frame and within 20 m takes the photo; the run ends at 60 s (fail "TOANG!" without the photo).
 - Chase: Mũ Đỏ runs a 230 m path (parking lane → west lane → west gate), rubber-band speed 3.6-5.6 m/s, pauses to taunt
   when far; 25 m leash with a 2.5 s grace (fail "TOANG!"); banana slip at 55 % (`slide_whistle`, mark "blow"); the run

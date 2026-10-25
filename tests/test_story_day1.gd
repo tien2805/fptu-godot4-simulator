@@ -9,7 +9,11 @@
 # timed out (the honest "cover", recorded) -> the cover tail -> cine_d1 -> bed -> the call N = 6 -> Day 2 morning -> the
 # Day 2 placeholder (sleepable). Then Continue from the autosave taken after the brawl (corridor marker, no mission
 # started by itself, night, key flag kept) and the choice recorded once (a set choice skips the scene: the report tail).
-# Missions run on manual clocks (StoryRoam.mission_opts), cinematics / calls / replays are stepped.
+# Missions run on manual clocks (StoryRoam.mission_opts), cinematics / calls / replays are stepped. FreeRoam runs with
+# mayhem on (weapons, wanted, combat; crowd off). Real key events (Input.parse_input_event) press [E] at the gate marker,
+# take the photo and restart the chase at its marker. Review round: VỀ THẾ GIỚI MỞ after a lost chase (marker back,
+# weapons unlocked, speed cap restored, no fists on pedestrians mid-mission), Continue at d1_chase / d1_brawl (marker,
+# nothing starts by itself), the locker marker already at the corridor step.
 # Run:  godot --headless --path . --script tests/test_story_day1.gd
 extends SceneTree
 
@@ -27,6 +31,17 @@ var sr: StoryRoam
 var m: StoryMission
 var mark: Dictionary = {}
 var total: int = 0
+var auto_ids: Array = ["d1_chase", "d1_brawl"]
+
+
+## A real key press + release through Input (reaches _input / _unhandled_input like a player's key).
+func _key(code: Key) -> void:
+	for down: bool in [true, false]:
+		var ev := InputEventKey.new()
+		ev.physical_keycode = code
+		ev.keycode = code
+		ev.pressed = down
+		Input.parse_input_event(ev)
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -53,7 +68,6 @@ func _initialize() -> void:
 func _roam() -> void:
 	fr = (load("res://scenes/FreeRoam.tscn") as PackedScene).instantiate()
 	fr.set("crowd_enabled", false)
-	fr.set("mayhem_enabled", false)
 	root.add_child(fr)
 	sr = fr.get("story_roam")
 	if sr:
@@ -130,17 +144,34 @@ func _process(_d: float) -> bool:
 			_check(String(sd.get("step")) == "d1_stakeout" and String(fr.get("tod_preset")) == "night", "d1_stakeout at night")
 			_check(sr.markers.has("d1_stakeout") and sr.mission_node == null, "the main-gate marker, no mission yet")
 			_check(int(sd.call("unread_count", "Mr.T")) >= 1, "Mr.T's text about the main gate")
+			var vh: ViceHUD = fr.get("vice_hud")
+			var obj_line: String = vh.objective_label.text if ViceHUD.style_active() and vh else sr.objective_line.text
+			_check(obj_line == String(sd.get("objective")) and obj_line.contains("cổng chính"), "the objective stays as a line under the day chip: %s" % obj_line)
+			var old_unread: Array = (sd.get("texts") as Array).filter(func(t: Dictionary) -> bool: return int(t["day"]) == 0 and not bool(t["read"]))
+			_check(old_unread.is_empty(), "Day 0 texts are read on Day 1 (no stale 'Thi EOS 8h' among the unread)")
+			var w0: Variant = fr.get("wanted")
 			var w := WantedDirector.new()
 			w.stars = 1
 			fr.set("wanted", w)
 			_check(not sr.start_marker("d1_stakeout"), "the marker is blocked while wanted")
-			fr.set("wanted", null)
+			fr.set("wanted", w0)
 			w.free()
 			sr.phone.open()
 			_check(not sr.start_marker("d1_stakeout"), "the marker is blocked with the phone open")
 			sr.phone.close()
-			_check(sr.start_marker("d1_stakeout") and fr.get("cine_player") != null, "[E] at the gate plays the mission intro")
-			_check(_finish_cine() == "cine_d1_intro", "cine_d1_intro")
+			var mp: Vector2 = sr.marker_pos["d1_stakeout"]
+			_player().teleport(Vector3(mp.x, 0.3, mp.y), 0.0)
+			_next(30)
+		30:
+			if frames < 15:
+				return false
+			_check(sr.active_marker == "d1_stakeout", "standing in the gate marker")
+			_key(KEY_E)
+			_next(31)
+		31:
+			if not _cine_started("cine_d1_intro after a real [E]", 30):
+				return false
+			_check(_finish_cine() == "cine_d1_intro", "a real [E] at the gate plays cine_d1_intro")
 			_next(3)
 		3:
 			if frames < 2:
@@ -168,7 +199,8 @@ func _process(_d: float) -> bool:
 			sr.fail_ui.press_retry()
 			_check(so.state == "running" and so.clock < 0.01 and not sr.fail_ui.visible, "THỬ LẠI restarts the stake-out")
 			_advance(10.0)
-			_check(not so.take_photo() and not so.photo_taken, "a photo before the handover is refused")
+			_check(not so.take_photo() and not so.photo_taken and not so.popup_label.visible, "[E] before the handover does nothing (no line)")
+			_check(MissionStakeout.T_WINDOW.contains("[E]") and not MissionStakeout.T_WINDOW.contains("[S]"), "the photo key is [E]")
 			while so.clock < 35.0 and so.state == "running":
 				so.advance(0.1)
 			for gd: Dictionary in so._g:
@@ -178,10 +210,16 @@ func _process(_d: float) -> bool:
 			so.advance(0.1)
 			var spot: Vector3 = so.campus(Vector3(106.0, 0.0, 103.5))
 			_player().teleport(spot, MissionStakeout.yaw_of(so.courier.global_position - spot))
-			_check(so.box.visible and so.hud_prompt.text.contains("[S]"), "the handover is on: the package and the [S] prompt")
-			_check(so.take_photo() and so.photo_taken, "the photo in the window, the courier in frame (16 m)")
+			_check(so.box.visible and so.hud_prompt.text.contains("[E]"), "the handover is on: the package and the [E] prompt")
+			_key(KEY_E)
+			_next(32)
+		32:
+			if frames < 2:
+				return false
+			var so2: MissionStakeout = m as MissionStakeout
+			_check(so2.photo_taken, "a real [E] takes the photo in the window, the courier in frame (16 m)")
 			_advance(30.0)
-			_check(so.state == "done", "60 s with the photo: done (%s, %.1f s)" % [so.state, so.clock])
+			_check(so2.state == "done", "60 s with the photo: done (%s, %.1f s)" % [so2.state, so2.clock])
 			_next(4)
 		4:
 			if sr.mission_node == null or not (sr.mission_node is MissionChase):
@@ -197,8 +235,29 @@ func _process(_d: float) -> bool:
 			_player().teleport(ch.courier.global_position + Vector3(40.0, 0.0, 0.0), 0.0)
 			_advance(3.0, 0.25)
 			_check(ch.state == "failed" and sr.fail_ui.visible and sr.fail_ui.title_label.text == "TOANG!", "farther than 25 m for 2.5 s: TOANG!")
-			sr.fail_ui.press_retry()
-			_check(ch.state == "running" and ch.s < 0.01, "retry: the chase from the start")
+			_check(bool(fr.call("story_mission_active")) and fr.call("mayhem_targets").is_empty(), "no fists, heat or wanted on pedestrians mid-mission")
+			_check((fr.get("weapons") as WeaponDirector).locked, "the weapon wheel is locked during the mission")
+			sr.fail_ui.press_leave()
+			_check(sr.mission_node == null and sr.markers.has("d1_chase") and not sr.fail_ui.visible, "VỀ THẾ GIỚI MỞ: the chase marker comes back, no mission")
+			_check(not (fr.get("weapons") as WeaponDirector).locked and is_inf(_player().combat_speed_cap) and _player().controls_enabled, "weapons unlocked, speed cap restored")
+			_check(String(sd.get("step")) == "d1_chase" and not bool(fr.call("story_mission_active")), "the beat stays d1_chase, no mission running")
+			var cpos: Vector2 = sr.marker_pos["d1_chase"]
+			_player().teleport(Vector3(cpos.x, 0.3, cpos.y), 0.0)
+			_next(33)
+		33:
+			if frames < 15:
+				return false
+			_check(sr.active_marker == "d1_chase", "standing in the chase marker")
+			_key(KEY_E)
+			_next(34)
+		34:
+			if frames < 2:
+				return false
+			_check(sr.mission_node is MissionChase and (sr.mission_node as MissionChase).s < 0.01, "a real [E] at the marker restarts the chase")
+			m = sr.mission_node
+			if not (m is MissionChase):
+				phase = 999
+				return false
 			_next(5)
 		5:
 			var ch2: MissionChase = m as MissionChase if is_instance_valid(m) else null
@@ -270,6 +329,7 @@ func _process(_d: float) -> bool:
 				return false
 			_check(String(sd.get("step")) == "d1_corridor" and bool((sd.get("flags") as Dictionary).get("d1_key", false)), "d1_corridor; Mũ Đỏ's key flag")
 			_check(sr.markers.has("d1_corridor") and sr.mission_node == null, "the corridor waits at its marker")
+			_check(sr.markers.has("d1_locker"), "the locker marker is there right after the brawl (the E2 hint is true)")
 			_check(int((sd.call("read_save", TMP) as Dictionary).get("flags", {}).get("d1_key", 0)) == 1 or bool((sd.call("read_save", TMP) as Dictionary).get("flags", {}).get("d1_key", false)), "autosaved after the brawl")
 			DirAccess.copy_absolute(ProjectSettings.globalize_path(TMP), ProjectSettings.globalize_path(SNAP))
 			_check(sr.start_marker("d1_corridor") and sr.mission_node is MissionCorridor, "[E]: the corridor walk")
@@ -393,8 +453,33 @@ func _process(_d: float) -> bool:
 			var cp2: CinePlayer = fr.get("cine_player")
 			_check(cp2.timeline.slot == "cine_d1_choice_report" and String(sd.get("step")) == "d1_choice_tail", "the choice scene is skipped: the report tail plays")
 			_finish_cine()
+			_next(40)
+		40:
+			# Continue at the auto beats: the marker, nothing starts by itself
+			if frames < 3:
+				return false
+			var auto_id: String = String(auto_ids[0])
+			sd.call("set_step", auto_id)
+			sd.call("on_leave_to_menu")
 			fr.queue_free()
-			return _end()
+			_next(41)
+		41:
+			if frames < 3:
+				return false
+			sd.call("reset_state")
+			_check(bool(sd.call("continue_story")) and String(sd.get("step")) == String(auto_ids[0]), "Continue restores %s" % String(auto_ids[0]))
+			_roam()
+			_next(42)
+		42:
+			if frames < 45:
+				return false
+			var aid: String = String(auto_ids[0])
+			_check(sr.markers.has(aid) and sr.mission_node == null and fr.get("cine_player") == null, "Continue at %s: its marker, nothing starts by itself" % aid)
+			auto_ids.remove_at(0)
+			if auto_ids.is_empty():
+				fr.queue_free()
+				return _end()
+			_next(40)
 	return false
 
 

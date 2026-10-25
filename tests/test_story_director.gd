@@ -146,6 +146,9 @@ func _state() -> void:
 	_check(int(sd.get("day")) == 1 and counts["day"] == day0 + 1 and String(sd.get("step")) == "d1_morning", "d0_intro -> Day 1 -> d1_morning (cine_day_start, A2-D17)")
 	_check(String(StoryMissions.beat("d1_morning")["slot"]) == "cine_day_start" and String(StoryMissions.beat("d0_exam")["intro"]) == "cine_d0_brief", "A2-D17 beats: day start + mission intro")
 	_check(String(sd.call("day_chip_text")) == "NGÀY 1 · CÒN 7 NGÀY" and int(sd.call("days_left")) == 7, "Day 1 chip: CÒN 7 NGÀY")
+	var old_unread: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return int(m["day"]) < 1 and not bool(m["read"]))
+	var today: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return int(m["day"]) == 1 and not bool(m["read"]))
+	_check(old_unread.is_empty() and int(sd.call("unread_count")) == today.size() and today.size() >= 1, "a new day: the old days' texts are read, the badge counts today's (%d)" % int(sd.call("unread_count")))
 	_check(String(sd.get("tod")) == "morning", "Day 1 morning")
 	sd.call("complete_step", "d1_morning")
 	_check(String(sd.get("step")) == "d1_stakeout" and String(sd.get("tod")) == "night", "d1_morning -> d1_stakeout at night")
@@ -167,6 +170,8 @@ func _phase_b() -> void:
 	_check(bool(sd.call("load_game")), "an A2 save at d1_locked loads")
 	_check(String(sd.get("step")) == "d1_stakeout" and String(sd.get("tod")) == "night" and String(sd.get("objective")).contains("cổng chính")
 		and sd.call("has_evidence", "E1"), "the old save resumes at d1_stakeout (night, its objective, evidence kept)")
+	var mt_n: int = (sd.get("texts") as Array).size()
+	_check(mt_n == 1 and bool(sd.call("load_game")) and (sd.get("texts") as Array).size() == 1, "the migrated save gets the beat's text once (saved at load)")
 	# side marker (E2) once, only with the key
 	var side: Dictionary = StoryMissions.LOCKER_SIDE
 	_check(not bool(sd.call("side_available", side)) and not bool(sd.call("grant_side", side)), "the locker needs Mũ Đỏ's key")
@@ -177,12 +182,18 @@ func _phase_b() -> void:
 	_check(not bool(sd.call("grant_side", side)) and not bool(sd.call("side_available", side)), "the locker is used once")
 	# horror result: E5 only with no catch
 	sd.set("step", "d4_escape")
-	_check(not bool(sd.call("on_horror_result", 0, false)) or true, "horror result call")
+	_check(bool(sd.call("on_horror_result", 0, false)), "on_horror_result handles the current horror beat")
 	_check(sd.call("has_evidence", "E5") and String(sd.get("step")) == "d4_end", "escaped without a catch: E5, d4_end")
 	(sd.get("evidence") as Array).erase("E5")
 	sd.set("step", "d4_escape")
 	sd.call("on_horror_result", 2, false)
 	_check(not sd.call("has_evidence", "E5") and String(sd.get("step")) == "d4_end" and int((sd.get("flags") as Dictionary).get("d4_caught", -1)) == 2, "caught twice: no E5")
+	# anti save-scum: a catch saved in an abandoned run still counts in the next run
+	sd.set("step", "d4_escape")
+	sd.call("note_horror_catch", 1)
+	_check(int((sd.call("read_save", TMP) as Dictionary).get("flags", {}).get("d4_catches", 0)) == 1, "a catch is saved at once")
+	sd.call("on_horror_result", 0, false)
+	_check(not sd.call("has_evidence", "E5"), "a clean run after a saved catch: still no E5")
 	sd.set("step", "d1_corridor")
 	_check(not bool(sd.call("on_horror_result", 0, false)), "on_horror_result is ignored outside a horror beat")
 	_check(not bool(sd.call("launch_horror_beat", "d4_escape")), "launch_horror_beat only for the current horror beat")

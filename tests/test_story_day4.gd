@@ -7,7 +7,8 @@
 # counter, "BỊ LỘ" -> THỬ LẠI (Dolly elsewhere), the right accusation) -> cine_d4_stare -> the clone waves + Dolly, who
 # flees -> seg_d4_brawl -> the lobby marker -> the night escape scene (caught once: no E5; a clean run: E5) with the
 # seg_d4_escape replay -> cine_d4 -> bed -> the call N = 3 -> Day 5 morning -> the Day 5 placeholder. Then Continue from
-# the autosave taken after the brawl (the lobby marker at night, nothing starts by itself).
+# the autosave taken after the brawl (the lobby marker at night, nothing starts by itself) and at d4_brawl (the canteen
+# marker, the fight does not start by itself). The night escape's catches are saved at once (no E5 by quitting).
 # Run:  godot --headless --path . --script tests/test_story_day4.gd
 extends SceneTree
 
@@ -289,6 +290,8 @@ func _process(_d: float) -> bool:
 			if not mark.has("run2"):
 				_check(esc.result_caught == 1 and not sd.call("has_evidence", "E5") and String(sd.get("step")) == "d4_end", "escaped after a catch: no E5, d4_end")
 				_check(String(sd.get("last_nav")) == "roam", "back to story free roam")
+				_check(int((sd.get("flags") as Dictionary).get("d4_catches", 0)) == 1, "the catch was saved at once (anti save-scum)")
+				(sd.get("flags") as Dictionary).erase("d4_catches")   # a fresh playthrough of the night for the clean run
 				mark["run2"] = true
 				esc.queue_free()
 				sd.call("set_step", "d4_escape")
@@ -349,6 +352,21 @@ func _process(_d: float) -> bool:
 			if frames < 40:
 				return false
 			_check(sr.markers.has("d4_escape") and sr.mission_node == null and fr.get("cine_player") == null and String(fr.get("tod_preset")) == "night", "after Continue: the lobby marker at night, nothing starts by itself")
+			sd.call("set_step", "d4_brawl")
+			sd.call("on_leave_to_menu")
+			fr.queue_free()
+			_next(23)
+		23:
+			if frames < 3:
+				return false
+			sd.call("reset_state")
+			_check(bool(sd.call("continue_story")) and String(sd.get("step")) == "d4_brawl", "Continue restores d4_brawl")
+			_roam()
+			_next(24)
+		24:
+			if frames < 45:
+				return false
+			_check(sr.markers.has("d4_brawl") and sr.mission_node == null and fr.get("cine_player") == null, "Continue at d4_brawl: its canteen marker, the fight does not start by itself")
 			fr.queue_free()
 			return _end()
 	return false
