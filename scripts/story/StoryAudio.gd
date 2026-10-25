@@ -8,6 +8,7 @@
 #   polish: dolly_hum, gasp, alarm_siren, cat_meow, bin_crash, locker_slam, rustle (horror polish H-D1 to H-D7: SFX only, not
 #           in CUES; they count as horror cues for "Giảm hù dọa" and take owner overrides like the others)
 # Owner override: user://sfx/<cue>.ogg | .mp3 | .wav (local only, never committed). LOOPS loop (owner files too).
+# The Night Building restarts "heartbeat" on every beat (ScareDirector, 70-160 BPM): its override must be a single lub-dub.
 # stream(cue) is main-thread only (static cache); synth(cue) is pure, so warm(cues) builds each cue on its own WorkerThreadPool
 # task and poll() / stream() adopt the results on the main thread (a long cue never stalls a frame: Phase W lesson).
 # cue_db(cue): extra gain, -6 dB for horror cues while "Giảm hù dọa" is on (A2-D14).

@@ -1,6 +1,7 @@
 # File: res://scripts/story/StoryNightEvents.gd
 # Night scares in story free roam (spec H-D7): StoryRoam adds one as its child. From Day 1 on, at night (FreeRoam's time of
-# day "night"), never during a mission, a cinematic, a call / video / beat run or while wanted, at most one event every
+# day "night"), never during a mission, a cinematic, a call / video / beat run, while wanted (stars or a busted / service
+# state), with the story phone open or with the map open, at most one event every
 # GAP_S (3 min; through a ScareDirector's fake-out budget with fake_gap_s = GAP_S), seeded picks:
 #   figure  a sheep-masked figure stands still under a lamp post 42-58 m ahead in view; it vanishes when the player comes
 #           within VANISH_M (25 m), when it has been out of view for UNSEEN_S, or after FIGURE_MAX_S;
@@ -8,6 +9,9 @@
 #           toast come from StoryRoam), at most once per story day (flag night_photo_d<day>);
 #   clone   rarely (CLONE_W), only while riding: a masked clone sprints across the road in the bike's headlight.
 # "Giảm hù dọa": no sting on the figure or the clone, quieter cues (ScareDirector.reduce_scares).
+# Distances and spawns go by _focus(): the bike while riding (the player node stays parked where they got on), else the
+# player. Coming back from something that blocked them (a mission, a cinematic, daylight), the next event is at least
+# REENTRY_S away. The figure's lamp post and the headlight clone stand on free spots only.
 # Cost: a check every CHECK_S, the figure's view test at 10 Hz while it stands. Nothing persists but the photo flag/text.
 # Tests: advance(dt) with auto_tick false; dry_run records the picked events in `fired` without spawning anything.
 class_name StoryNightEvents
@@ -25,6 +29,7 @@ const FIGURE_DIST: Array[float] = [50.0, 44.0, 56.0, 48.0]
 const CLONE_W: float = 0.2
 const CLONE_SPEED: float = 7.0
 const CLONE_S: float = 2.2
+const REENTRY_S: float = 30.0
 const PHOTO_FROM: String = "Số lạ"
 const PHOTO_TEXT: String = "[Ảnh chụp từ sau lưng bạn] Đẹp đấy {name}."
 
@@ -48,6 +53,7 @@ var _view_t: float = 0.0
 var _seen_once: bool = false
 var _cross_dir: Vector3 = Vector3.ZERO
 var _cross_t: float = 0.0
+var _was_eligible: bool = true
 
 
 func _init() -> void:
@@ -63,6 +69,7 @@ func setup(r: Node, s: Node, d: Node = null, seed_val: int = -1) -> void:
 	rng.seed = seed_val if seed_val >= 0 else randi()
 	since = GAP_S - rng.randf_range(FIRST_S.x, FIRST_S.y)
 	scare = ScareDirector.new()
+	scare.auto_clock = false   # advance() drives its clock
 	scare.loops_enabled = false
 	scare.flicker_enabled = false
 	scare.fake_budget = 1 << 20
@@ -81,7 +88,13 @@ func eligible() -> bool:
 		if story.get("mission_node") != null or bool(story.get("busy")) or String(story.get("running")) != "":
 			return false
 	var w: Variant = roam.get("wanted")
-	if w != null and is_instance_valid(w) and String((w as Object).get("state")) != "free":
+	if w != null and is_instance_valid(w) and (String((w as Object).get("state")) != "free" or int((w as Object).get("stars")) > 0):
+		return false
+	var ph: Variant = story.get("phone") if story != null else null
+	if ph != null and is_instance_valid(ph) and (ph as Object).has_method("is_open") and bool((ph as Object).call("is_open")):
+		return false
+	var mo: Variant = roam.get("map_overlay")
+	if mo != null and is_instance_valid(mo) and bool((mo as Object).get("visible")):
 		return false
 	return true
 
@@ -92,7 +105,11 @@ func advance(dt: float) -> void:
 	_update_crossing(dt)
 	if not eligible():
 		_clear()   # a mission, a cinematic, daylight: nothing stays out there
+		_was_eligible = false
 		return
+	if not _was_eligible:
+		_was_eligible = true
+		since = minf(since, GAP_S - REENTRY_S)   # never right after a mission or a cinematic ends
 	since += dt
 	_check_t -= dt
 	if _check_t > 0.0:
@@ -148,6 +165,22 @@ func _player() -> Node3D:
 	return roam.get("player") as Node3D if roam != null else null
 
 
+## Where the player is now: the bike while riding (the player node stays where they got on), else the player.
+func _focus() -> Node3D:
+	if roam != null and bool(roam.get("mounted")):
+		var b: Node3D = roam.get("bike") as Node3D
+		if b != null and b.is_inside_tree():
+			return b
+	return _player()
+
+
+## A free spot at p (FreeRoam.free_spot_at) or null; p itself without a roam that can tell.
+func _free_at(p: Vector3) -> Variant:
+	if roam != null and roam.has_method("free_spot_at"):
+		return roam.call("free_spot_at", p, p.y)
+	return p
+
+
 func _camera() -> Camera3D:
 	return roam.get_viewport().get_camera_3d() if roam != null and roam.is_inside_tree() else null
 
@@ -162,7 +195,7 @@ static func figure_should_vanish(dist: float, unseen_s: float, alive_s: float) -
 
 func _spawn_figure() -> bool:
 	var cam: Camera3D = _camera()
-	var p: Node3D = _player()
+	var p: Node3D = _focus()
 	if cam == null or p == null:
 		return false
 	var fwd: Vector3 = -cam.global_transform.basis.z
@@ -189,10 +222,14 @@ func _spawn_figure() -> bool:
 			figure.add_child(body)
 			CharacterBuilder.set_speed(body, 0.0)
 		figure.rotation.y = atan2(p.global_position.x - at.x, p.global_position.z - at.z) + PI   # faces the player (-Z)
-		var lamp := Node3D.new()
-		lamp.name = "Lamp"
-		figure.add_child(lamp)
-		PropBuilder.build_lamp_post(lamp, Vector3(1.3, 0.0, 0.0), 6.5, false, PI)
+		for side: float in [1.3, -1.3]:   # the lamp post on a free spot beside the figure (no lamp when neither side is free)
+			var lp: Vector3 = figure.global_transform * Vector3(side, 0.0, 0.0)
+			if _free_at(lp) is Vector3:
+				var lamp := Node3D.new()
+				lamp.name = "Lamp"
+				figure.add_child(lamp)
+				PropBuilder.build_lamp_post(lamp, Vector3(side, 0.0, 0.0), 6.5, false, PI if side > 0.0 else 0.0)
+				break
 		_light_pool(figure)
 		_figure_t = 0.0
 		_unseen_t = 0.0
@@ -241,7 +278,7 @@ func _update_figure(dt: float) -> void:
 	if _view_t > 0.0:
 		return
 	_view_t = 0.1
-	var p: Node3D = _player()
+	var p: Node3D = _focus()
 	var cam: Camera3D = _camera()
 	var dist: float = INF
 	if p != null:
@@ -271,8 +308,15 @@ func _spawn_crossing() -> bool:
 	fwd = fwd.normalized()
 	var side: float = -1.0 if rng.randf() < 0.5 else 1.0
 	var right: Vector3 = fwd.cross(Vector3.UP).normalized()
-	var at: Vector3 = bike.global_position + fwd * 16.0 + right * side * 6.0
-	at.y = bike.global_position.y - 0.4
+	var found: Variant = null
+	for sd: float in [side, -side]:   # starts on a free spot at the roadside, else nothing
+		found = _free_at(bike.global_position + fwd * 16.0 + right * sd * 6.0)
+		if found is Vector3:
+			side = sd
+			break
+	if not (found is Vector3):
+		return false
+	var at: Vector3 = found
 	crossing = Node3D.new()
 	crossing.name = "NightClone"
 	roam.add_child(crossing)

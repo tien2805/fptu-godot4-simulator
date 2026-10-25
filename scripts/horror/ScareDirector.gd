@@ -8,7 +8,9 @@
 #   "desk" the face lowers upside down from above into the gap under the desk; "locker" the face at the slats, then the
 #   door is yanked (catch_beat("reveal")) and the face pushes in; "stall" the camera tilts up and the face rises over the
 #   partition; "open" the face lunges at the camera. A sting per spot (CATCH_CUES), a flash and a shake at the hit.
-#   catch_beat(name): "face" (start), "reveal" (the level clears its peek overlay), "end".
+#   catch_beat(name): "face" (start), "reveal" (the level clears its peek overlay), "end". The face is Dolly's (cream wool
+#   hood) or, when a clone made the catch (by_dolly = false), a clone's (dark hair). The camera's near plane drops to
+#   CATCH_NEAR while it plays (restored after), and the face stops at least 0.32 m away, so the mask never clips.
 # - fake-outs (H-D6, H-D7): their own budget (fake_budget, default FAKE_MAX, at least fake_gap_s apart): try_fake_out(kind)
 #   then fake_sting() (a short sting; a soft one with "Giảm hù dọa").
 # - "Giảm hù dọa" (A2-D14; `reduce_scares`, from the GameFX setting or the level's override): every scare becomes a soft
@@ -17,7 +19,8 @@
 #   heartbeat is capped at BPM_REDUCED_MAX.
 # - heartbeat (H-D3): continuous while the nearest hunter is within HEART_FAR (14 m): heart_bpm_for(dist) = 70 BPM at 14 m
 #   up to 160 BPM within 2 m, each beat scheduled on its own (heart_beats counts them), louder as the hunter nears (+3 dB
-#   while hidden); while hidden every beat pulses a dark red screen edge (edge_a).
+#   while hidden); while hidden every beat pulses a dark red screen edge (edge_a). Each beat restarts the cue, so an owner
+#   override user://sfx/heartbeat.(ogg|mp3|wav) must hold a single lub-dub (a longer file is cut off at every beat).
 # - loops: breath while hidden (silent while the breath is held: breath_held), whisper_bed always on, swelling near
 #   stalkers. loops_enabled = false (other scenes) keeps every loop and the heartbeat off.
 # - flicker events: every 18-34 s (seeded) the emissive light groups within FLICKER_R of the player stutter for 1.6 s
@@ -43,6 +46,8 @@ const BPM_REDUCED_MAX: float = 110.0
 const EDGE_PEAK: float = 0.55
 const HIDDEN_DB: float = 3.0
 const CATCH_S: float = 1.2
+const CATCH_NEAR: float = 0.01
+const CLONE_HAIR := Color("#2B211C")
 const CATCH_KINDS: Array[String] = ["desk", "locker", "stall", "open"]
 ## Sting per spot: [cue at the start, cue at the hit].
 const CATCH_CUES: Dictionary = {"desk": ["metal_creak", "violin_screech"], "locker": ["sheep_bleat_distorted", "locker_slam"],
@@ -118,6 +123,10 @@ var _figure_t: float = 0.0
 var _heart_phase: float = 1.0
 var _catch_cam: Camera3D = null
 var _catch_cam_rot: Vector3 = Vector3.ZERO
+var _catch_cam_near: float = 0.05
+var _near_set: bool = false
+var _hood_wool: StandardMaterial3D
+var _hood_hair: StandardMaterial3D
 var _catch_hit: bool = false
 var _catch_revealed: bool = false
 var _groups: Array[Dictionary] = []   # {pos: Vector3, mat: StandardMaterial3D, energy: float}
@@ -212,9 +221,10 @@ func try_jump_scare() -> bool:
 	return true
 
 
-## The catch scare: always plays, outside the budget. spot_kind "desk" | "locker" | "stall" | "open" (H-D2: Dolly's face
-## staged relative to the camera); "" = the plain figure scare. Reduced: a soft sting and a fade to dark, no face.
-func play_catch_scare(spot_kind: String = "open") -> void:
+## The catch scare: always plays, outside the budget. spot_kind "desk" | "locker" | "stall" | "open" (H-D2: the catcher's
+## face staged relative to the camera: Dolly's, or a clone's when by_dolly is false); "" = the plain figure scare.
+## Reduced: a soft sting and a fade to dark, no face.
+func play_catch_scare(spot_kind: String = "open", by_dolly: bool = true) -> void:
 	if spot_kind == "":
 		_scare("catch")
 		return
@@ -227,18 +237,24 @@ func play_catch_scare(spot_kind: String = "open") -> void:
 	_catch_revealed = false
 	_catch_cam = get_viewport().get_camera_3d() if is_inside_tree() and get_viewport() != null else null
 	_catch_cam_rot = _catch_cam.rotation if _catch_cam != null else Vector3.ZERO
+	var who: String = "dolly" if by_dolly else "clone"
 	if reduce_scares:
-		last_scare = {"kind": "catch", "spot": k, "soft": true, "flash": false, "screech": false, "shake": false, "figure": false,
-			"face": false, "fade": true, "upside_down": false, "cues": ["metal_creak"]}
+		last_scare = {"kind": "catch", "spot": k, "who": who, "soft": true, "flash": false, "screech": false, "shake": false,
+			"figure": false, "face": false, "fade": true, "upside_down": false, "cues": ["metal_creak"]}
 		play_cue("metal_creak", -8.0)
 	else:
 		var cues: Array = CATCH_CUES[k]
-		last_scare = {"kind": "catch", "spot": k, "soft": false, "flash": true, "shake": true, "figure": false, "face": true,
-			"fade": false, "upside_down": k == "desk", "cues": cues.duplicate(),
+		last_scare = {"kind": "catch", "spot": k, "who": who, "soft": false, "flash": true, "shake": true, "figure": false,
+			"face": true, "fade": false, "upside_down": k == "desk", "cues": cues.duplicate(),
 			"screech": cues.has("violin_screech") or cues.has("sheep_bleat_distorted")}
 		play_cue(String(cues[0]), -4.0)
 		_ensure_face()
+		(face.get_node("Hood") as MeshInstance3D).material_override = _hood_wool if by_dolly else _hood_hair
 		face.visible = true
+		if _catch_cam != null:
+			_catch_cam_near = _catch_cam.near
+			_catch_cam.near = CATCH_NEAR
+			_near_set = true
 		_place_face(0.0)
 	catch_beat.emit("face")
 	scared.emit(last_scare)
@@ -255,7 +271,7 @@ static func face_offset(kind: String, u: float) -> Dictionary:
 				"roll": PI, "tilt": 0.0}
 		"locker":   # at the slats, then pushes in when the door is yanked
 			e = _ease_out(clampf((u - 0.4) / 0.15, 0.0, 1.0))
-			return {"fwd": lerpf(0.45, 0.22, e), "up": 0.0, "right": 0.03 * sin(u * 40.0) * (1.0 - e), "roll": 0.0, "tilt": 0.0}
+			return {"fwd": lerpf(0.5, 0.32, e), "up": 0.0, "right": 0.03 * sin(u * 40.0) * (1.0 - e), "roll": 0.0, "tilt": 0.0}
 		"stall":   # the camera looks up at the partition top, the face rises over it
 			var tilt: float = lerpf(0.0, 0.75, _ease_out(clampf(u / 0.25, 0.0, 1.0)))
 			e = _ease_out(clampf((u - 0.25) / 0.3, 0.0, 1.0))
@@ -263,7 +279,7 @@ static func face_offset(kind: String, u: float) -> Dictionary:
 		_:   # "open": lunges at the camera
 			e = clampf(u / 0.25, 0.0, 1.0)
 			e = e * e
-			return {"fwd": lerpf(2.3, 0.28, e), "up": -0.04, "right": 0.0, "roll": 0.0, "tilt": 0.0}
+			return {"fwd": lerpf(2.3, 0.4, e), "up": -0.04, "right": 0.0, "roll": 0.0, "tilt": 0.0}
 
 
 static func _ease_out(x: float) -> float:
@@ -281,8 +297,9 @@ func _ensure_face() -> void:
 	mask.name = "Mask"
 	mask.scale = Vector3.ONE * 1.25
 	face.add_child(mask)
-	var wool: StandardMaterial3D = CineFX._mat(Color("#EADCBD"), 1.0)
-	CineFX._sphere(face, "Hood", 0.17, Vector3(0.0, 0.03, 0.08), wool, Vector3(1.0, 1.1, 0.9))
+	_hood_wool = CineFX._mat(Color("#EADCBD"), 1.0)
+	_hood_hair = CineFX._mat(CLONE_HAIR, 0.8)
+	CineFX._sphere(face, "Hood", 0.17, Vector3(0.0, 0.03, 0.08), _hood_wool, Vector3(1.0, 1.1, 0.9))
 	CineFX._box(face, "Neck", Vector3(0.12, 0.22, 0.1), Vector3(0.0, -0.22, 0.05), CineFX._mat(Color("#2A2624"), 0.9))
 	face.visible = false
 
@@ -326,6 +343,9 @@ func tick_catch(delta: float) -> void:
 func _end_catch() -> void:
 	if catch_t >= 0.0 and _catch_cam != null and is_instance_valid(_catch_cam):
 		_catch_cam.rotation = _catch_cam_rot
+		if _near_set:
+			_catch_cam.near = _catch_cam_near
+	_near_set = false
 	catch_t = -1.0
 	_catch_cam = null
 	if face != null and is_instance_valid(face):

@@ -16,8 +16,11 @@
 # Hold breath (H-D4): while hidden, holding Shift holds the breath: breath_left (BREATH_MAX_S = 6 s) drains 1 s per s and
 # refills 1 s per s once released. A stalker within BREATH_HEAR_R (3 m) of the spot for BREATH_HEAR_S hears the breathing
 # unless it is held and investigates the spot. Running out, or releasing while a stalker is within GASP_NEAR_R (2 m), is a
-# loud gasp (StoryAudio "gasp"): the nearest stalker within GASP_HEAR_R investigates the spot (caught if still inside).
-# After running out, Shift must be let go before holding again. hold_override (tests) replaces the key.
+# loud gasp (StoryAudio "gasp"): the nearest stalker investigates the spot (caught if still inside) when it is within
+# GASP_HEAR_R (8 m) and its graph route to the spot is at most GASP_ROUTE_M (no hearing through a wall into the next room).
+# Holding needs a fresh press: Shift already down when entering (the sprint in) or after running out must be let go
+# first; entering also gives HEAR_ENTER_GRACE s more before a stalker can hear the breathing. hold_override (tests)
+# replaces the key.
 class_name HorrorKit
 extends Node
 
@@ -38,7 +41,9 @@ const BREATH_MAX_S: float = 6.0
 const BREATH_HEAR_R: float = 3.0
 const BREATH_HEAR_S: float = 0.5
 const GASP_NEAR_R: float = 2.0
-const GASP_HEAR_R: float = 12.0
+const GASP_HEAR_R: float = 8.0
+const GASP_ROUTE_M: float = 12.0
+const HEAR_ENTER_GRACE: float = 0.5
 
 var player: ThirdPersonController = null
 var flashlight: HorrorFlashlight = null
@@ -71,6 +76,8 @@ var hold_override: Variant = null
 var _slow: float = 0.0
 var _need_release: bool = false
 var _hear_t: float = 0.0
+var _near_s: HorrorStalker = null
+var _near_d: float = INF
 
 
 func _init() -> void:
@@ -188,21 +195,34 @@ func _hold_input() -> bool:
 	return input_enabled and Input.is_physical_key_pressed(KEY_SHIFT)
 
 
-## The stalker nearest to the hidden spot (flat) and its distance, or [null, INF].
-func _nearest_to_spot() -> Array:
-	var best: HorrorStalker = null
-	var bd: float = INF
+## The stalker nearest to the hidden spot (flat) into _near_s / _near_d (null / INF when none). No allocation.
+func _nearest_to_spot() -> void:
+	_near_s = null
+	_near_d = INF
 	if hidden_spot == null:
-		return [best, bd]
+		return
 	var p: Vector3 = hidden_spot.global_position
 	for s: HorrorStalker in stalkers:
 		if s.frozen or not s.is_inside_tree() or s.process_mode == Node.PROCESS_MODE_DISABLED:
 			continue
 		var d: float = Vector2(s.global_position.x - p.x, s.global_position.z - p.z).length()
-		if d < bd:
-			bd = d
-			best = s
-	return [best, bd]
+		if d < _near_d:
+			_near_d = d
+			_near_s = s
+
+
+## Walking distance from a to b on the level graph (flat distance without a graph). Only on a gasp (it allocates).
+func route_len(a: Vector3, b: Vector3) -> float:
+	if graph == null:
+		return Vector2(b.x - a.x, b.z - a.z).length()
+	var space: PhysicsDirectSpaceState3D = player.get_world_3d().direct_space_state if player != null and player.is_inside_tree() else null
+	var pts: PackedVector3Array = graph.route(a, b, space)
+	var total: float = 0.0
+	var prev: Vector3 = a
+	for q: Vector3 in pts:
+		total += Vector2(q.x - prev.x, q.z - prev.z).length()
+		prev = q
+	return total
 
 
 ## Breath while hidden (every physics frame; tests call it directly). Out of hiding the breath refills.
@@ -227,9 +247,9 @@ func update_breath(delta: float) -> void:
 			_need_release = true
 	else:
 		breath_left = minf(BREATH_MAX_S, breath_left + delta)
-	var near: Array = _nearest_to_spot()
-	var ns: HorrorStalker = near[0]
-	var nd: float = float(near[1])
+	_nearest_to_spot()
+	var ns: HorrorStalker = _near_s
+	var nd: float = _near_d
 	if ran_out:
 		_gasp("empty", ns, nd)
 	elif breath_held and not holding and nd <= GASP_NEAR_R:
@@ -245,7 +265,7 @@ func update_breath(delta: float) -> void:
 			if ns.investigate_spot(hidden_spot):
 				breath_heard.emit(ns)
 	else:
-		_hear_t = 0.0
+		_hear_t = minf(_hear_t + delta, 0.0)   # the entry grace burns off; a hearing in progress resets
 
 
 func _gasp(reason: String, ns: HorrorStalker, nd: float) -> void:
@@ -253,7 +273,7 @@ func _gasp(reason: String, ns: HorrorStalker, nd: float) -> void:
 	last_gasp = reason
 	if scare != null:
 		scare.play_cue("gasp", -2.0)
-	if ns != null and nd <= GASP_HEAR_R:
+	if ns != null and nd <= GASP_HEAR_R and route_len(ns.global_position, hidden_spot.exit_point()) <= GASP_ROUTE_M:
 		ns.investigate_spot(hidden_spot)
 	gasped.emit(reason)
 
@@ -283,7 +303,8 @@ func hide_in(spot: HidingSpot) -> bool:
 	hidden_spot = spot
 	spot.occupied = true
 	breath_held = false
-	_hear_t = 0.0
+	_need_release = _hold_input()   # Shift still down from the sprint in: holding needs a fresh press
+	_hear_t = -HEAR_ENTER_GRACE
 	player.velocity = Vector3.ZERO
 	player.visible = false
 	player.process_mode = Node.PROCESS_MODE_DISABLED
