@@ -11,7 +11,8 @@
 # Classrooms: three long desk rows in two blocks around a central aisle, a teacher's desk (under-desk hiding spot) in front
 # of the whiteboard, a back cabinet (fuse candidate). Toilets: 4 stalls (hiding spots), a sink counter (battery candidate).
 # Lights: emissive only (emergency fixtures, exit sign, fuse slots, the lock panel); the flashlight is the level's only
-# light node. Each corridor side and each room is one emissive group (own material) the ScareDirector can flicker.
+# light node. Each corridor side and each room is one emissive group (own material) the ScareDirector can flicker; the 4
+# corridor materials are listed again in "corridor_lights" (they flash SOS after the third fuse).
 # Materials: the shared campus set (FPTUCampusBuilder.make_materials: terrazzo, lab floor, wall paint, desk, glass...) plus
 # local flat / emissive materials; no image files beyond the existing campus textures.
 # build(parent) returns the data the level needs (see the dictionary at the end of build()). Pure static, no autoloads.
@@ -183,7 +184,7 @@ static func build(parent: Node3D) -> Dictionary:
 	root.add_child(_world)
 	var data: Dictionary = {
 		"root": root, "graph": HorrorNavGraph.new(), "spots": [], "fuse_candidates": [], "battery_candidates": [],
-		"light_groups": [], "rooms": [], "locker_banks": 0, "patrols": [], "exit_z": EXIT_Z,
+		"light_groups": [], "corridor_lights": [], "rooms": [], "locker_banks": 0, "patrols": [], "exit_z": EXIT_Z,
 		"start": {"pos": Vector3(0.0, 0.0, 23.5), "yaw": 0.0},
 	}
 	_build_env(root)
@@ -591,6 +592,7 @@ static func _build_toilet(root: Node3D, r: Dictionary, data: Dictionary) -> void
 		var out := Vector3(0.0, 0.0, -side)
 		var spot: HidingSpot = HidingSpot.make("stall", Transform3D(Basis(Vector3.UP, yaw_to(out)), room_pt(r, lx, 8.05)), hinge)
 		spot.name = "Hide_stall_%s_%d" % [r["id"], i]
+		spot.set_meta("room", String(r["id"]))   # the toilet block (Dolly's knock visit, once per block)
 		root.add_child(spot)
 		data["spots"].append(spot)
 		var nm: String = "stall%d" % i
@@ -721,7 +723,8 @@ static func _build_lockers(root: Node3D, data: Dictionary) -> void:
 		data["locker_banks"] = int(data["locker_banks"]) + 1
 
 
-## Emissive emergency fixtures on the corridor ceiling, one light group per side.
+## Emissive emergency fixtures on the corridor ceiling, one light group per side; their 4 materials are also listed in
+## "corridor_lights" (the SOS lights after the third fuse, H-D5).
 static func _build_corridor_lights(root: Node3D, data: Dictionary) -> void:
 	var col := Color("#D8FFE6")
 	for sz: float in [-1.0, 1.0]:
@@ -731,11 +734,13 @@ static func _build_corridor_lights(root: Node3D, data: Dictionary) -> void:
 			_box(root, Vector3(x, H - 0.04, sz * CL_Z), Vector3(0.6, 0.07, 0.2), gm)
 			x += 9.0
 		data["light_groups"].append({"pos": Vector3(0.0, 0.0, sz * CL_Z), "mat": gm, "energy": 1.1})
+		data["corridor_lights"].append(gm)
 	for sx: float in [-1.0, 1.0]:
 		var gm2: StandardMaterial3D = _glow(col, 1.1)
 		for z: float in [-9.0, 0.0, 9.0]:
 			_box(root, Vector3(sx * CL_X, H - 0.04, z), Vector3(0.2, 0.07, 0.6), gm2)
 		data["light_groups"].append({"pos": Vector3(sx * CL_X, 0.0, 0.0), "mat": gm2, "energy": 1.1})
+		data["corridor_lights"].append(gm2)
 	# exit sign at the lobby opening, seen from the corridor
 	var em: StandardMaterial3D = _glow(Color("#2ECC71"), 2.0)
 	_box(root, Vector3(0.0, 3.0, COR_Z - 0.2), Vector3(1.4, 0.32, 0.06), em)

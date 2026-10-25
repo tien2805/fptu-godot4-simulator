@@ -7,7 +7,10 @@
 #   p >= 0.55  lights out (BLACKOUT_S, frozen in place), lights back: the figure is gone, a distorted bleat;
 #   p >= 0.8   whisper and another stutter;
 #   the far end (p >= END_P) after MIN_S s: done (cine_d1_corridor follows: the shiba bonk).
-# "Giảm hù dọa": no blackout (a slow dim), quieter cues, no stutter strobe (ScareDirector.reduce_scares).
+#   p >= 0.4   (horror polish H-D7) a locker on the right wall bursts open and a sheep mask falls out (locker_slam), a
+#              fake-out within the ScareDirector's fake-out budget, before the blackout;
+# "Giảm hù dọa": no blackout (a slow dim), quieter cues, no stutter strobe (ScareDirector.reduce_scares); the locker opens
+# slower, a soft sting.
 # No fail state: a discovery walk (the beat's retry is not needed).
 class_name MissionCorridor
 extends StoryMission
@@ -23,6 +26,10 @@ const WALK_CAP: float = 2.0
 const BLACKOUT_S: float = 1.4
 const FIGURE_Z: float = -18.6
 const T_FEAR: String = "Chân run quá, không chạy nổi…"
+const LOCKER_P: float = 0.4
+## The locker stands on the right wall a little past the LOCKER_P point (local z).
+const LOCKER_Z: float = 0.6
+const LOCKER_D: float = 0.5
 
 var set_root: Node3D
 var corridor: Node3D
@@ -33,6 +40,9 @@ var lights: Array = []
 var tube: StandardMaterial3D
 var progress: float = 0.0
 var events: Array[String] = []
+var locker_door: Node3D
+var mask_drop: Node3D
+const _MASK_IN := Vector3(0.0, 1.45, 0.0)
 var _blackout_t: float = -1.0
 
 
@@ -52,6 +62,7 @@ func _start() -> void:
 	figure.position = Vector3(-0.2, 0.0, FIGURE_Z)
 	figure.rotation.y = PI   # faces +Z: down the corridor at the player
 	figure.visible = false
+	_build_locker()
 	scare = ScareDirector.new()
 	scare.reduce_scares = StoryUtil.reduce_scares()
 	scare.player = player
@@ -59,7 +70,7 @@ func _start() -> void:
 	add_child(scare)
 	if tube:
 		scare.register_light_groups([{"pos": xf * Vector3(0.0, HEIGHT_M, Z0 - LEN_M * 0.5), "mat": tube, "energy": tube.emission_energy_multiplier}])
-	StoryAudio.warm(["sheep_bleat_distorted", "whisper_bed", "metal_creak", "heartbeat"])
+	StoryAudio.warm(["sheep_bleat_distorted", "whisper_bed", "metal_creak", "heartbeat", "locker_slam"])
 	_reset()
 
 
@@ -76,6 +87,79 @@ func _find_spot() -> Transform3D:
 			return st
 	var p: Vector3 = player.global_position if player else Vector3.ZERO
 	return Transform3D(Basis(Vector3.UP, player.facing_yaw() if player else 0.0), p + Vector3(0.0, 0.0, 0.0))
+
+
+## A grey corridor locker on the right wall (collision included) with a door on a hinge and a sheep mask inside.
+func _build_locker() -> void:
+	var x: float = WIDTH_M * 0.5 - LOCKER_D * 0.5
+	var root := Node3D.new()
+	root.name = "BurstLocker"
+	set_root.add_child(root)
+	root.position = Vector3(x, 0.0, LOCKER_Z)
+	var body_m := StandardMaterial3D.new()
+	body_m.albedo_color = Color("#5C6F82")
+	body_m.metallic = 0.5
+	body_m.roughness = 0.45
+	var shell := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(LOCKER_D, 1.9, 0.6)
+	shell.mesh = bm
+	shell.material_override = body_m
+	shell.position = Vector3(0.0, 0.95, 0.0)
+	root.add_child(shell)
+	var col := StaticBody3D.new()
+	col.name = "LockerCollision"
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(LOCKER_D, 1.9, 0.6)
+	cs.shape = bs
+	cs.position = Vector3(0.0, 0.95, 0.0)
+	col.add_child(cs)
+	root.add_child(col)
+	locker_door = Node3D.new()
+	locker_door.name = "LockerDoor"
+	locker_door.position = Vector3(-LOCKER_D * 0.5 - 0.02, 0.0, 0.29)   # hinge on the near edge: the door swings out towards the player
+	root.add_child(locker_door)
+	var leaf := MeshInstance3D.new()
+	var lm := BoxMesh.new()
+	lm.size = Vector3(0.03, 1.8, 0.56)
+	leaf.mesh = lm
+	var door_m := StandardMaterial3D.new()
+	door_m.albedo_color = Color("#6E8499")
+	door_m.metallic = 0.5
+	leaf.material_override = door_m
+	leaf.position = Vector3(0.0, 0.95, -0.28)
+	locker_door.add_child(leaf)
+	mask_drop = CineFX.build_prop("sheep_mask")
+	mask_drop.name = "FallingMask"
+	root.add_child(mask_drop)
+	_close_locker()
+
+
+func _close_locker() -> void:
+	if locker_door:
+		locker_door.rotation = Vector3.ZERO
+	if mask_drop:
+		mask_drop.position = _MASK_IN
+		mask_drop.rotation = Vector3(0.0, PI * 0.5, 0.0)   # faces out of the locker (-X, into the corridor)
+
+
+## The locker bursts open, the mask tumbles out onto the floor (H-D7).
+func burst_locker() -> void:
+	var slow: bool = scare != null and scare.reduce_scares
+	scare.play_cue("locker_slam", -2.0)
+	if not slow:
+		scare.fake_sting(-14.0)
+	if not is_inside_tree():
+		locker_door.rotation.y = 1.9
+		mask_drop.position = Vector3(-0.85, 0.08, -0.2)
+		return
+	var tw: Tween = create_tween()
+	tw.tween_property(locker_door, "rotation:y", 1.9, 0.45 if slow else 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var tm: Tween = create_tween()
+	tm.set_parallel(true)
+	tm.tween_property(mask_drop, "position", Vector3(-0.85, 0.08, -0.2), 0.55).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	tm.tween_property(mask_drop, "rotation", Vector3(-PI * 0.5, -PI * 0.2, 0.4), 0.55)
 
 
 func _add_collision() -> void:
@@ -101,6 +185,7 @@ func _reset() -> void:
 	events.clear()
 	_blackout_t = -1.0
 	figure.visible = false
+	_close_locker()
 	_set_lights(true)
 	teleport_player(xf * Vector3(0.1, 0.0, START_Z), _yaw_down())
 	player.combat_speed_cap = WALK_CAP
@@ -148,6 +233,9 @@ func _tick(dt: float) -> void:
 	if progress >= 0.25 and not "figure" in events:
 		events.append("figure")
 		figure.visible = true
+	if progress >= LOCKER_P and not "locker" in events and not "blackout" in events and scare.try_fake_out("locker"):
+		events.append("locker")
+		burst_locker()
 	if progress >= 0.55 and clock >= 12.0 and not "blackout" in events:
 		events.append("blackout")
 		if scare.reduce_scares:

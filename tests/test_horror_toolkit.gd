@@ -9,6 +9,19 @@
 #           refused); a stalker that saw the player enter checks the spot and catches, one that did not walks past it;
 #   scare director: budget 2 and the 60 s gap, the catch scare outside the budget, budget 1, "Giảm hù dọa" (soft sting:
 #           no flash, no screech; horror cues -6 dB; flicker becomes a dim).
+# Horror polish (H-D1 to H-D6):
+#   staged catch scares per spot (desk upside down from above, locker slats then the yank, stall over the partition, open
+#           lunge), camera-relative, 1.2 s, their stings; the reduced variants (soft sting and a fade, no face, no screech);
+#   heartbeat: the BPM curve (70 at 14 m to 160 within 2 m, off beyond), the reduced cap of 110, beats over time, louder
+#           near, the screen-edge pulse only while hidden;
+#   hold breath: drain and refill, a passing stalker hears unheld breathing and checks the spot, held breath lets it pass,
+#           a gasp when the breath runs out and when it is released next to a stalker;
+#   SOS: the Morse timing pattern (6.8 s loop), the lights following it in red, the reduced slow pulse;
+#   fake-outs: their own budget (2, 20 s apart), the soft sting when reduced;
+#   Dolly: her look, speed and the positional hum loop (6 dB quieter when reduced);
+#   duck and sting: before every catch / jump scare face the loops, the registered players and the Music bus duck to
+#           silence, then the layered sting plays +6 dB on its own limited Sting bus, and the levels come back; reduced:
+#           no duck, no boost, the soft sting at the normal level.
 # Run:  godot --headless --path . --script tests/test_horror_toolkit.gd
 extends SceneTree
 
@@ -36,13 +49,19 @@ func _run() -> void:
 	_states()
 	_catch()
 	_scares()
+	_heartbeat()
+	_sos()
+	_fakeout_budget()
+	await _catch_scares()
+	_duck_sting()
+	await _dolly()
 	await _hiding()
 	for n: Node in _trash:
 		if is_instance_valid(n):
 			n.queue_free()
 	await _frames(2)
 	if fails.is_empty():
-		print("✅ SUCCESS: HORROR TOOLKIT (flashlight, senses, states, catch, hiding, scare budget, reduced scares)")
+		print("✅ SUCCESS: HORROR TOOLKIT (flashlight, senses, states, catch, hiding, scare budget, reduced scares, catch scares per spot, heartbeat, hold breath, SOS, fake-outs, Dolly)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())
@@ -274,7 +293,8 @@ func _scares() -> void:
 	_check(sd.budget == 2, "default budget of 2 jump scares")
 	sd.clock = 0.0
 	_check(sd.try_jump_scare(), "first jump scare plays")
-	_check(sd.last_scare.get("flash") == true and sd.last_scare.get("screech") == true and sd.played.has("violin_screech"), "full scare: flash and screech")
+	sd.step(ScareDirector.DUCK_S + 0.05)
+	_check(sd.last_scare.get("flash") == true and sd.last_scare.get("screech") == true and sd.played.has("violin_screech"), "full scare: flash and screech (after the duck)")
 	sd.clock = 30.0
 	_check(not sd.try_jump_scare(), "no second scare 30 s later (60 s gap)")
 	sd.clock = 61.0
@@ -465,18 +485,438 @@ func _hiding() -> void:
 	_caught_by = null
 	_check(kit.hide_in(spot) and walker.state != HorrorStalker.CHECK, "hides unseen")
 	var passed: bool = false
+	var held_any: bool = false
 	for i: int in 600:
+		# the player holds the breath while the walker is close (as a player watching through the vents would)
+		kit.hold_override = walker.global_position.distance_to(spot.global_position) < HorrorKit.BREATH_HEAR_R + 0.6
+		held_any = held_any or kit.breath_held
 		await physics_frame
 		if walker.global_position.distance_to(Vector3.ZERO) < 1.0:
 			passed = true
+	kit.hold_override = false
 	_check(passed, "the walker passed right by the spot")
+	_check(held_any and kit.gasps == 0, "the breath was held while it passed, no gasp (%d)" % kit.gasps)
 	_check(_caught_by == null and walker.state != HorrorStalker.CHECK, "and never checked it (%s)" % walker.state)
 	kit.leave_hiding()
 	_check(absf(kit.senses.grace - HorrorKit.LEAVE_GRACE_S) < 0.05, "leaving a spot gives %.2f s of catch grace" % HorrorKit.LEAVE_GRACE_S)
+	await _breath(kit, spot, walker, player)
 	await _wall_catch()
+	kit.hold_override = null
 	for nd: Node in [walker, kit, sd, fl, player, spot, floor_body]:
 		nd.queue_free()
 	await _frames(2)
+
+
+## Hold breath (H-D4) with the real kit: unheld breathing heard by a passing stalker (it checks and catches), the 6 s bar,
+## a gasp on running out and on releasing next to a stalker.
+func _breath(kit: HorrorKit, spot: HidingSpot, walker: HorrorStalker, player: ThirdPersonController) -> void:
+	await _frames(50)   # past the catch grace
+	# not holding: the walker passing by hears the breathing and checks the spot
+	spot.reset_spot()
+	walker.reset_at(Vector3(8, 0, 0))
+	walker.face(Vector3(1, 0, 0))
+	player.teleport(Vector3(0, 0, 0.2), 0.0)
+	await _frames(2)
+	var heard: Array[HorrorStalker] = []
+	var cb := func(s: HorrorStalker) -> void: heard.append(s)
+	kit.breath_heard.connect(cb)
+	_caught_by = null
+	kit.hold_override = false
+	_check(kit.hide_in(spot) and walker.state != HorrorStalker.CHECK, "hides unseen again, not holding the breath")
+	var n: int = 0
+	while _caught_by == null and n < 600:
+		await physics_frame
+		n += 1
+	_check(heard.size() == 1 and heard[0] == walker, "the walker hears the breathing within 3 m (%d)" % heard.size())
+	_check(_caught_by == walker and spot.revealed, "it checks the spot and catches the player (%d frames)" % n)
+	kit.breath_heard.disconnect(cb)
+	kit.leave_hiding()
+	spot.reset_spot()
+	# the bar: 6 s, drains and refills 1 s per s (direct steps; no stalker near)
+	walker.reset_at(Vector3(-8, 0, 0))
+	walker.frozen = true
+	player.teleport(Vector3(0, 0, 0.2), 0.0)
+	await _frames(50)
+	kit.breath_left = HorrorKit.BREATH_MAX_S
+	_check(kit.hide_in(spot), "hides for the breath bar")
+	kit.set_physics_process(false)   # steps by hand below
+	kit.hold_override = true
+	for i: int in 3:
+		kit.update_breath(1.0)
+	_check(kit.breath_held and absf(kit.breath_left - 3.0) < 0.01, "holding: 3 s used of 6 (%.2f)" % kit.breath_left)
+	_check(sd_breath_silent(kit), "the breath loop is silent while held")
+	kit.hold_override = false
+	kit.update_breath(1.0)
+	_check(not kit.breath_held and absf(kit.breath_left - 4.0) < 0.01 and kit.gasps == 0, "released far from any stalker: refills 1 s per s, no gasp (%.2f)" % kit.breath_left)
+	kit.hold_override = true
+	for i2: int in 5:
+		kit.update_breath(1.0)
+	_check(kit.gasps == 1 and kit.last_gasp == "empty" and not kit.breath_held, "running out of breath is a gasp (%d, %s)" % [kit.gasps, kit.last_gasp])
+	_check(kit.scare.played.has("gasp"), "the gasp cue plays")
+	kit.update_breath(1.0)
+	_check(not kit.breath_held and kit.breath_left > 0.5, "Shift still down after running out: no hold until it is let go")
+	kit.hold_override = false
+	kit.update_breath(0.1)
+	kit.hold_override = true
+	kit.update_breath(0.1)
+	_check(kit.breath_held, "let go and pressed again: holds")
+	# entering with Shift still down (the sprint in): no hold until a fresh press, and a moment before any hearing
+	kit.hold_override = false
+	kit.leave_hiding()
+	spot.reset_spot()
+	player.teleport(Vector3(0, 0, 0.2), 0.0)
+	kit.breath_left = HorrorKit.BREATH_MAX_S
+	kit.hold_override = true
+	_check(kit.hide_in(spot), "hides with Shift held")
+	for i3: int in 5:
+		kit.update_breath(1.0)
+	_check(not kit.breath_held and kit.gasps == 1 and is_equal_approx(kit.breath_left, HorrorKit.BREATH_MAX_S), "Shift held from the sprint in: no hold, no drain, no gasp (%.2f)" % kit.breath_left)
+	kit.hold_override = false
+	kit.update_breath(0.1)
+	kit.hold_override = true
+	kit.update_breath(0.1)
+	_check(kit.breath_held, "a fresh press holds")
+	_check(kit._hear_t <= 0.0, "the entry grace")
+	# a gasp far away (10 m) is not heard
+	walker.reset_at(spot.global_position + Vector3(10.0, 0, 0))
+	walker.set_physics_process(false)
+	kit.breath_left = 0.05
+	kit.update_breath(0.1)
+	_check(kit.gasps == 2 and kit.last_gasp == "empty" and walker.state != HorrorStalker.CHECK, "a gasp 10 m from a stalker is not heard (%s)" % walker.state)
+	kit.hold_override = false
+	kit.update_breath(0.1)
+	walker.set_physics_process(true)
+	# releasing right next to a stalker: a gasp, it checks the spot
+	kit.breath_left = HorrorKit.BREATH_MAX_S
+	walker.reset_at(spot.global_position + Vector3(1.5, 0, 0.6))
+	walker.set_physics_process(false)
+	kit.hold_override = true
+	kit.update_breath(0.1)
+	kit.hold_override = false
+	kit.update_breath(0.1)
+	_check(kit.gasps == 3 and kit.last_gasp == "release" and walker.state == HorrorStalker.CHECK and walker.check_spot == spot,
+		"releasing within 2 m of a stalker: a gasp and it checks the spot (%s, %s)" % [kit.last_gasp, walker.state])
+	walker.set_physics_process(true)
+	kit.set_physics_process(true)
+	kit.hold_override = false
+	kit.leave_hiding()
+	spot.reset_spot()
+	walker.reset_at(Vector3(8, 0, 0))
+
+
+func sd_breath_silent(kit: HorrorKit) -> bool:
+	return kit.scare.breath_held and kit.scare.breath_on
+
+
+## Staged catch scares per spot (H-D2) with a test camera turned away from the axes (camera-relative staging).
+func _catch_scares() -> void:
+	var cam := Camera3D.new()
+	root.add_child(cam)
+	cam.global_position = Vector3(200, 1.5, 200)
+	cam.rotation = Vector3(-0.1, 0.7, 0.0)
+	cam.make_current()
+	var sd := ScareDirector.new()
+	sd.auto_clock = false
+	root.add_child(sd)
+	await _frames(1)
+	sd.set_process(false)   # stepped by hand
+	var beats: Array[String] = []
+	sd.catch_beat.connect(func(b: String) -> void: beats.append(b))
+	for kind: String in ScareDirector.CATCH_KINDS:
+		beats.clear()
+		sd.played.clear()
+		var rot0: Vector3 = cam.rotation
+		var near0: float = cam.near
+		sd.play_catch_scare(kind)
+		_check(is_equal_approx(cam.near, ScareDirector.CATCH_NEAR), "%s: a close near plane while the face is there" % kind)
+		var ls: Dictionary = sd.last_scare
+		var cues: Array = ScareDirector.CATCH_CUES[kind]
+		_check(ls.get("kind") == "catch" and ls.get("spot") == kind and ls.get("face") == true and ls.get("soft") == false, "%s: a staged face scare (%s)" % [kind, str(ls)])
+		_check(ls.get("upside_down") == (kind == "desk"), "%s: upside down only under the desk" % kind)
+		_check(not sd.face.visible and sd.is_catch_playing() and beats == ["duck"] and not sd.played.has(String(cues[0])), "%s: the duck first, no face or sting yet" % kind)
+		var locs: Array[Vector3] = []
+		var tilts: Array[float] = []
+		var ups: Array[float] = []
+		var t: float = 0.0
+		while sd.is_catch_playing() and t < 3.0:
+			if sd.catch_t >= 0.0:
+				locs.append(cam.global_transform.affine_inverse() * sd.face.global_position)
+				tilts.append(cam.rotation.x - rot0.x)
+				ups.append((cam.global_transform.basis.inverse() * sd.face.global_transform.basis.y).y)
+			sd.step(0.05)
+			t += 0.05
+		_check(absf(t - ScareDirector.CATCH_S - ScareDirector.DUCK_S) < 0.11, "%s: lasts %.2f s (duck + staged face)" % [kind, t])
+		_check(not sd.face.visible and beats.has("face") and beats.back() == "end", "%s: the face goes at the end (%s)" % [kind, str(beats)])
+		_check(sd.played.has(String(cues[0])) and sd.played.has(String(cues[1])) and sd.last_sting.get("cues") == cues, "%s: the layered sting %s" % [kind, str(cues)])
+		_check(cam.rotation.is_equal_approx(rot0), "%s: the camera's own rotation comes back" % kind)
+		var in_front: bool = true
+		for v: Vector3 in locs:
+			in_front = in_front and v.z < -0.1
+		_check(in_front, "%s: the face stays in front of the camera" % kind)
+		var mid: Vector3 = locs[locs.size() / 2]
+		match kind:
+			"desk":
+				_check(locs[0].y > 0.4 and absf(mid.y) < 0.12 and ups[locs.size() / 2] < -0.9, "desk: lowers from above into view, upside down (%.2f -> %.2f, up %.2f)" % [locs[0].y, mid.y, ups[locs.size() / 2]])
+				_check(beats.has("reveal"), "desk: the spot opens")
+			"locker":
+				_check(absf(locs[0].z) > 0.45 and absf(mid.z) < 0.36 and beats.has("reveal"), "locker: at the slats, then the yank and it pushes in (%.2f -> %.2f)" % [locs[0].z, mid.z])
+			"stall":
+				_check(tilts[locs.size() / 2] > 0.6 and locs[0].y < -0.4 and absf(mid.y) < 0.12, "stall: the camera looks up and the face rises over the partition (tilt %.2f, %.2f -> %.2f)" % [tilts[locs.size() / 2], locs[0].y, mid.y])
+			"open":
+				_check(absf(locs[0].z) > 2.0 and absf(locs[6].z) < 0.45 and not beats.has("reveal"), "open: the face lunges at the camera (%.2f -> %.2f)" % [locs[0].z, locs[6].z])
+		var closest: float = INF
+		for v2: Vector3 in locs:
+			closest = minf(closest, -v2.z)
+		_check(closest - 0.2 > ScareDirector.CATCH_NEAR and closest >= 0.3, "%s: the mask front never reaches the near plane (closest %.2f m)" % [kind, closest])
+		_check(is_equal_approx(cam.near, near0), "%s: the camera's near plane comes back (%.3f)" % [kind, cam.near])
+	sd.play_catch_scare("open", false)
+	_check(sd.last_scare.get("who") == "clone" and ((sd.face.get_node("Hood") as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.is_equal_approx(ScareDirector.CLONE_HAIR),
+		"a clone's catch shows a clone's face (dark hair under the mask)")
+	sd.play_catch_scare("open", true)
+	_check(sd.last_scare.get("who") == "dolly" and ((sd.face.get_node("Hood") as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.is_equal_approx(StoryCast.CREAM),
+		"Dolly's catch shows her cream wool hood")
+	sd.cancel_catch()
+	_trash.append(sd)
+	var red := ScareDirector.new()
+	red.auto_clock = false
+	red.reduce_scares = true
+	root.add_child(red)
+	await _frames(1)
+	red.set_process(false)
+	for kind2: String in ScareDirector.CATCH_KINDS:
+		red.played.clear()
+		red.play_catch_scare(kind2)
+		var l2: Dictionary = red.last_scare
+		_check(l2.get("soft") == true and l2.get("face") == false and l2.get("screech") == false and l2.get("shake") == false and l2.get("fade") == true,
+			"reduced %s: a soft sting and a fade, no face, no screech (%s)" % [kind2, str(l2)])
+		for k3: int in 12:
+			red.tick_catch(0.05)
+		_check(red._veil_a > 0.7 and (red.face == null or not red.face.visible), "reduced %s: fades to dark (%.2f)" % [kind2, red._veil_a])
+		for k4: int in 14:
+			red.tick_catch(0.05)
+		_check(red.played == ["metal_creak"], "reduced %s: only the soft sting (%s)" % [kind2, str(red.played)])
+	_trash.append(red)
+	cam.queue_free()
+	await _frames(1)
+
+
+## Duck and sting (owner request): the other audio ducks to silence before the face, the sting is +6 dB on the Sting bus.
+func _duck_sting() -> void:
+	if AudioServer.get_bus_index("Music") == -1:
+		AudioServer.add_bus()
+		AudioServer.set_bus_name(AudioServer.bus_count - 1, "Music")
+	var mi: int = AudioServer.get_bus_index("Music")
+	AudioServer.set_bus_volume_db(mi, -3.0)
+	var hum := AudioStreamPlayer.new()
+	hum.volume_db = -4.0
+	root.add_child(hum)
+	var sd := ScareDirector.new()
+	sd.auto_clock = false
+	root.add_child(sd)
+	sd.set_process(false)
+	sd.register_duck(hum)
+	_check(sd.sting_bus() == ScareDirector.STING_BUS and AudioServer.get_bus_index(ScareDirector.STING_BUS) != -1
+		and AudioServer.get_bus_effect_count(AudioServer.get_bus_index(ScareDirector.STING_BUS)) >= 1, "sting: its own bus with a limiter")
+	sd.play_catch_scare("stall")
+	var t: float = 0.0
+	var duck_at_sting: float = -1.0
+	var hum_at_sting: float = 0.0
+	var music_at_sting: float = 0.0
+	var sting_t: float = -1.0
+	while sd.is_catch_playing() and t < 3.0:
+		sd.step(0.02)
+		t += 0.02
+		if sting_t < 0.0 and not sd.last_sting.is_empty():
+			sting_t = t
+			duck_at_sting = sd.duck_level
+			hum_at_sting = hum.volume_db
+			music_at_sting = AudioServer.get_bus_volume_db(mi)
+	print("  sting at %.2f s: duck %.2f, hum %.1f dB, music %.1f dB, sting %.1f dB" % [sting_t, duck_at_sting, hum_at_sting, music_at_sting, sd.sting_volume_db(0)])
+	_check(sting_t >= ScareDirector.DUCK_S - 0.01, "sting: only after the %.1f s duck (%.2f s)" % [ScareDirector.DUCK_S, sting_t])
+	_check(duck_at_sting >= 0.95 and hum_at_sting < -50.0 and music_at_sting < -50.0, "sting: the hum and the music are ducked to silence when it hits")
+	_check(absf(sd.sting_volume_db(0) - ScareDirector.STING_BOOST_DB) < 0.01 and float(sd.last_sting["db"]) > 0.0, "sting: +6 dB above the normal SFX level")
+	for i: int in 40:
+		sd.step(0.02)
+	_check(sd.duck_level == 0.0 and is_equal_approx(hum.volume_db, -4.0) and is_equal_approx(AudioServer.get_bus_volume_db(mi), -3.0), "sting: the levels come back after the scare")
+	sd.played.clear()
+	sd.last_sting = {}
+	sd.clock = 0.0
+	sd.try_jump_scare()
+	sd.step(ScareDirector.DUCK_S * 0.5)
+	_check(sd.last_sting.is_empty() and sd.duck_level > 0.3, "jump scare: ducking, nothing seen or heard yet")
+	sd.step(ScareDirector.DUCK_S * 0.5 + 0.02)
+	_check(sd.last_sting.get("cues") == ScareDirector.JUMP_CUES, "jump scare: the layered sting after the duck")
+	for j: int in 80:
+		sd.step(0.02)
+	_check(sd.duck_level == 0.0 and is_equal_approx(hum.volume_db, -4.0), "jump scare: the levels come back")
+	_trash.append(sd)
+	var red := ScareDirector.new()
+	red.auto_clock = false
+	red.reduce_scares = true
+	root.add_child(red)
+	red.set_process(false)
+	red.register_duck(hum)
+	var max_duck: float = 0.0
+	red.play_catch_scare("stall")
+	while red.is_catch_playing():
+		red.step(0.02)
+		max_duck = maxf(max_duck, red.duck_level)
+	red.try_jump_scare()
+	red.step(0.5)
+	_check(max_duck == 0.0 and red.last_sting.is_empty() and is_equal_approx(hum.volume_db, -4.0) and not red.played.has("violin_screech")
+		and red.played.has("metal_creak"), "reduced: no duck, no boost, the soft sting (%s)" % str(red.played))
+	_trash.append(red)
+	_trash.append(hum)
+
+
+## Heartbeat (H-D3): the BPM curve, beats over time, louder near, the edge pulse while hidden, the reduced cap.
+func _heartbeat() -> void:
+	_check(ScareDirector.heart_bpm_for(15.0) == 0.0 and ScareDirector.heart_bpm_for(40.0) == 0.0, "no heartbeat beyond 14 m")
+	_check(is_equal_approx(ScareDirector.heart_bpm_for(14.0), 70.0) and is_equal_approx(ScareDirector.heart_bpm_for(8.0), 115.0)
+		and is_equal_approx(ScareDirector.heart_bpm_for(2.0), 160.0) and is_equal_approx(ScareDirector.heart_bpm_for(0.5), 160.0),
+		"70 BPM at 14 m, 115 at 8 m, 160 within 2 m")
+	var mono: bool = true
+	var prev: float = 0.0
+	for i: int in 25:
+		var b: float = ScareDirector.heart_bpm_for(14.0 - 0.5 * i)
+		mono = mono and b >= prev
+		prev = b
+	_check(mono, "the heartbeat speeds up steadily as the hunter nears")
+	_check(is_equal_approx(ScareDirector.heart_bpm_for(2.0, true), 110.0) and is_equal_approx(ScareDirector.heart_bpm_for(14.0, true), 70.0), "reduced: capped at 110 BPM")
+	var sd := ScareDirector.new()
+	sd.auto_clock = false
+	root.add_child(sd)
+	sd.set_process(false)
+	sd.set_threat(14.0, false)
+	for i2: int in 600:
+		sd.tick_heart(1.0 / 60.0)
+	var slow: int = sd.heart_beats
+	sd.heart_beats = 0
+	sd.set_threat(1.5, false)
+	for i3: int in 600:
+		sd.tick_heart(1.0 / 60.0)
+	var fast: int = sd.heart_beats
+	print("  heartbeat: %d beats in 10 s at 14 m, %d within 2 m" % [slow, fast])
+	_check(slow >= 11 and slow <= 13 and fast >= 26 and fast <= 28, "beats in 10 s: about 70 BPM far, 160 BPM near (%d, %d)" % [slow, fast])
+	sd.set_threat(12.0, false)
+	var far_db: float = sd.heart_db()
+	sd.set_threat(2.0, false)
+	_check(sd.heart_db() > far_db + 15.0, "louder near (%.1f vs %.1f dB)" % [sd.heart_db(), far_db])
+	sd.edge_a = 0.0
+	for i4: int in 60:
+		sd.tick_heart(1.0 / 60.0)
+	_check(sd.edge_a == 0.0, "no edge pulse in the open")
+	sd.set_threat(3.0, true)
+	var peak: float = 0.0
+	for i5: int in 60:
+		sd.tick_heart(1.0 / 60.0)
+		peak = maxf(peak, sd.edge_a)
+	_check(peak > 0.3 and peak <= ScareDirector.EDGE_PEAK, "a screen-edge pulse on the beats while hidden (%.2f)" % peak)
+	sd.set_threat(30.0, true)
+	var b0: int = sd.heart_beats
+	for i6: int in 120:
+		sd.tick_heart(1.0 / 60.0)
+	_check(sd.heart_beats == b0 and sd.heart_db() < -79.0, "silent once the hunter leaves 14 m")
+	sd.reduce_scares = true
+	sd.set_threat(1.0, true)
+	_check(is_equal_approx(sd.heart_bpm, 110.0), "reduced: 110 BPM at most (%.0f)" % sd.heart_bpm)
+	_trash.append(sd)
+
+
+## SOS (H-D5): dot 0.2, dash 0.6, gap 0.2, letter gap 0.6, word gap 1.4, looping; the lights follow in red; reduced pulse.
+func _sos() -> void:
+	_check(is_equal_approx(SosLights.period(), 6.8), "one SOS loop is 6.8 s (%.2f)" % SosLights.period())
+	var ons: int = 0
+	var on_time: float = 0.0
+	for seg: Array in SosLights.pattern():
+		if bool(seg[0]):
+			ons += 1
+			on_time += float(seg[1])
+	_check(ons == 9 and is_equal_approx(on_time, 3.0), "9 flashes: 6 dots and 3 dashes (%d, %.2f s lit)" % [ons, on_time])
+	var want: Dictionary = {0.1: true, 0.3: false, 0.5: true, 0.9: true, 1.1: false, 1.5: false, 1.7: true, 2.3: false, 2.5: true,
+		3.3: true, 3.9: false, 4.5: true, 4.7: false, 5.3: true, 5.5: false, 6.7: false, 6.85: true, 8.5: true}
+	var bad: Array[String] = []
+	for tt: float in want.keys():
+		if SosLights.is_on_at(tt) != bool(want[tt]):
+			bad.append(str(tt))
+	_check(bad.is_empty(), "S O S timing: dots, dashes, gaps, the word gap and the loop (wrong at %s)" % str(bad))
+	var m1 := StandardMaterial3D.new()
+	var m2 := StandardMaterial3D.new()
+	var sos := SosLights.new()
+	sos.auto_tick = false
+	root.add_child(sos)
+	sos.start([m1, m2], false)
+	_check(m1.emission.is_equal_approx(SosLights.RED) and m2.albedo_color.is_equal_approx(SosLights.RED) and m1.emission_enabled, "the lights turn red")
+	var follow: bool = true
+	var tt2: float = 0.0
+	for i: int in 420:
+		sos.tick(1.0 / 60.0)
+		tt2 += 1.0 / 60.0
+		var on: bool = SosLights.is_on_at(sos.t)
+		follow = follow and absf(m1.emission_energy_multiplier - (SosLights.ON_ENERGY if on else SosLights.OFF_ENERGY)) < 0.001
+	_check(follow, "the emissive energy follows the pattern frame by frame")
+	sos.start([m1], true)
+	var lo: float = 99.0
+	var jump: float = 0.0
+	var last: float = m1.emission_energy_multiplier
+	for i2: int in 420:
+		sos.tick(1.0 / 60.0)
+		lo = minf(lo, m1.emission_energy_multiplier)
+		jump = maxf(jump, absf(m1.emission_energy_multiplier - last))
+		last = m1.emission_energy_multiplier
+	_check(lo >= SosLights.PULSE_LO - 0.001 and jump < 0.05, "reduced: a slow red pulse, never dark, no strobe (min %.2f, step %.3f)" % [lo, jump])
+	_trash.append(sos)
+
+
+## Fake-out budget (H-D6): 2 per run, 20 s apart, outside the jump-scare budget; the soft sting when reduced.
+func _fakeout_budget() -> void:
+	var sd := ScareDirector.new()
+	sd.auto_clock = false
+	root.add_child(sd)
+	sd.clock = 0.0
+	_check(sd.try_fake_out("coat") and sd.fake_count == 1 and sd.jump_count == 0, "a fake-out plays and leaves the jump-scare budget alone")
+	sd.clock = 10.0
+	_check(not sd.try_fake_out("cat"), "not a second one 10 s later")
+	sd.clock = 25.0
+	_check(sd.try_fake_out("cat") and sd.fake_count == 2, "the second after 20 s")
+	sd.clock = 200.0
+	_check(not sd.try_fake_out("coat") and not sd.can_fake_out(), "at most 2 per run")
+	_check(sd.fake_sting() == "violin_screech", "a short sting")
+	sd.reduce_scares = true
+	_check(sd.fake_sting() == "metal_creak", "reduced: a soft sting")
+	_trash.append(sd)
+
+
+## Dolly as a hunter (H-D1): her look, a little faster, the positional hum loop.
+func _dolly() -> void:
+	var d := HorrorStalker.new()
+	d.make_dolly(false)
+	d.auto_update = false
+	root.add_child(d)
+	d.global_position = Vector3(-200, 0, -200)
+	_check(d.is_dolly and d.model != null and d.mask != null, "Dolly: a masked body")
+	_check((d.look.get("shirt_color") as Color).is_equal_approx(StoryCast.CREAM), "Dolly: the cream cardigan of StoryCast dolly")
+	_check(d.model.has_meta("wool_cuff") or not d.model.find_children("WoolCuff", "", true, false).is_empty(), "Dolly: her wool cuff")
+	_check(is_equal_approx(d.speed_of(HorrorStalker.CHASE), 4.6 * HorrorStalker.DOLLY_SPEED) and d.speed_of(HorrorStalker.PATROL) > 1.4, "Dolly: a little faster than the clones")
+	_check(d.hum is AudioStreamPlayer3D and d.hum.max_distance >= 30.0, "Dolly: a positional hum (%s)" % str(d.hum))
+	var n: int = 0
+	while (d.hum == null or not d.hum.playing) and n < 600:
+		await process_frame
+		n += 1
+	_check(d.hum.playing and d.hum.stream is AudioStreamWAV and (d.hum.stream as AudioStreamWAV).loop_mode == AudioStreamWAV.LOOP_FORWARD, "Dolly: the music-box hum loops (%d frames)" % n)
+	d.set_hum(false)
+	_check(not d.hum.playing, "the hum stops")
+	var r := HorrorStalker.new()
+	r.build_model = false
+	r.make_dolly(true)
+	root.add_child(r)
+	_check(is_equal_approx(r.hum.volume_db, d.hum.volume_db - 6.0), "reduced: the hum is 6 dB quieter")
+	var c := HorrorStalker.new()
+	c.build_model = false
+	root.add_child(c)
+	_check(not c.is_dolly and c.hum == null and c.speed_of(HorrorStalker.CHASE) == 4.6, "the clones: no hum, the usual speed")
+	for x: Node in [d, r, c]:
+		_trash.append(x)
 
 
 ## Real physics rays (no los_fn): no catch through a 0.2 m wall, nor from a stalker whose origin is inside the wall.

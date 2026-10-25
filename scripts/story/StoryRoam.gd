@@ -16,6 +16,7 @@
 # "after" cinematics on a win, "auto" beats started right after the previous one when entered live (a marker otherwise:
 # Continue, VỀ THẾ GIỚI MỞ, wanted). Phase B anchors: campus_gate, chase_start, west_gate, corridor, locker, bench,
 # canteen, lobby (campus-plot spots, map points for the cine stages).
+# Horror polish (H-D7): a StoryNightEvents child runs the night scares of free roam (night_events).
 class_name StoryRoam
 extends Node
 
@@ -78,6 +79,8 @@ var fail_ui: StoryFail
 var mission_opts: Dictionary = {}
 var side_info: Dictionary = {}
 var entered_live: bool = false
+## Horror polish H-D7: the night scares of story free roam (StoryNightEvents).
+var night_events: StoryNightEvents = null
 const MISSION_SCRIPTS: Dictionary = {"stakeout": "res://scripts/story/missions/MissionStakeout.gd",
 	"chase": "res://scripts/story/missions/MissionChase.gd", "corridor": "res://scripts/story/missions/MissionCorridor.gd",
 	"canteen": "res://scripts/story/missions/MissionCanteen.gd", "fight": "res://scripts/story/missions/MissionFight.gd"}
@@ -95,6 +98,9 @@ func setup(r: Node3D) -> void:
 		director.call("register_roam", self)
 	_compute_anchors()
 	_build_ui()
+	night_events = StoryNightEvents.new()
+	add_child(night_events)
+	night_events.setup(roam, self, director)
 	if director:
 		director.connect("objective_changed", _on_objective)
 		director.connect("text_received", _on_text)

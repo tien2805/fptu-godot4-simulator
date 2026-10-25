@@ -19,6 +19,17 @@
 # SEARCH wanders the graph's wander nodes only (never the waypoints on a hiding spot's exit point).
 # Per physics frame: one movement step and a distance check; rays only at 10 Hz or within catch range; no allocation
 # except when it re-routes (at most every 0.5 s).
+# Horror polish:
+#   make_dolly() (H-D1, call before adding to the tree): Cừu Dolly's look (StoryCast "dolly": cream cardigan and cuff, the
+#     sheep mask), speed_mult DOLLY_SPEED, and a positional music-box hum loop (StoryAudio "dolly_hum" on an
+#     AudioStreamPlayer3D, HUM_MAX_M range, -6 dB with "Giảm hù dọa"); set_hum(on).
+#   investigate_spot(spot) (H-D4): heard breathing or a gasp from a hiding spot: CHECK it (catches if the player is inside).
+#   rush(p) (H-D5): the alarm: CHASE towards p without having seen the player (arriving without sight -> SEARCH as usual;
+#     `rushing` is true until it searches or patrols again). search_s: how long a SEARCH lasts (the alarm shortens it).
+#   Scripted (DollyWC, the toilet monologue): begin_script(spot) puts her in CHECK on that stall and the level moves her
+#     (script_target at script_speed, facing script_face); her senses still run: seeing the player out of the stall ends
+#     the script (CHASE). investigate_spot and rush are ignored while scripted. end_script(leave) hands her back (leave:
+#     back to the patrol and deaf to the player for DEAF_AFTER_S), catch_in_spot() opens the stall and catches.
 class_name HorrorStalker
 extends Node3D
 
@@ -53,6 +64,11 @@ const WORLD_MASK: int = 1
 ## The clone look (identical for every stalker): student body, no backpack, the sheep mask on top.
 const LOOK: Dictionary = {"preset": "student_m", "rigged": true, "seed": 4404, "female": false, "backpack": false,
 	"glasses": false, "name": "Clone"}
+## Dolly is a little faster than the clones (H-D1).
+const DOLLY_SPEED: float = 1.12
+const HUM_MAX_M: float = 32.0
+const HUM_DB: float = -2.0
+const DEAF_AFTER_S: float = 3.0
 
 var graph: HorrorNavGraph = null
 var senses: HorrorSenses = null
@@ -75,6 +91,24 @@ var mask: Node3D = null
 var yaw: float = 0.0
 var speed_now: float = 0.0
 var rng := RandomNumberGenerator.new()
+## Movement speed factor (Dolly DOLLY_SPEED).
+var speed_mult: float = 1.0
+var is_dolly: bool = false
+## Dolly's hum (null for the clones) and its "Giảm hù dọa" setting.
+var hum: AudioStreamPlayer3D = null
+var hum_reduced: bool = false
+var hum_on: bool = false
+## Rushing at the alarm (rush()); cleared on SEARCH, PATROL and reset_at.
+var rushing: bool = false
+## SEARCH length (s); the Night Building's alarm shortens it.
+var search_s: float = SEARCH_S
+## Scripted by the level (DollyWC): where to walk, how fast, what to face; deaf_t: seconds she ignores the player's breath.
+var scripted: bool = false
+var script_target: Vector3 = Vector3.ZERO
+var script_speed: float = 1.9
+var script_face: Vector3 = Vector3(INF, 0.0, INF)
+var deaf_t: float = 0.0
+var _script_to: Vector3 = Vector3(INF, 0.0, INF)
 
 var _patrol_i: int = 0
 var _path: PackedVector3Array = PackedVector3Array()
@@ -97,12 +131,73 @@ var _animator: Node = null
 func _ready() -> void:
 	if build_model and model == null:
 		_build_model()
+	if is_dolly and hum == null:
+		_build_hum()
+	set_process(is_dolly)
+
+
+## Turns this stalker into Cừu Dolly (before it enters the tree): her look, a little faster, the hum.
+func make_dolly(reduced: bool = false) -> void:
+	is_dolly = true
+	speed_mult = DOLLY_SPEED
+	hum_reduced = reduced
+	var o: Dictionary = StoryCast.opts("dolly")
+	o["rigged"] = true
+	o["name"] = "Dolly"
+	look = o
+	if is_inside_tree() and hum == null:
+		_build_hum()
+
+
+func _build_hum() -> void:
+	hum = AudioStreamPlayer3D.new()
+	hum.name = "DollyHum"
+	hum.position = Vector3(0.0, 1.5, 0.0)
+	hum.max_distance = HUM_MAX_M
+	hum.unit_size = 4.0
+	hum.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+	hum.volume_db = hum_volume_db()
+	if AudioServer.get_bus_index("SFX") != -1:
+		hum.bus = "SFX"
+	add_child(hum)
+	StoryAudio.warm(["dolly_hum"])
+	set_hum(true)
+
+
+## Hum level before distance attenuation (dB): -6 dB with "Giảm hù dọa".
+func hum_volume_db() -> float:
+	return HUM_DB + (StoryAudio.REDUCED_DB if hum_reduced else 0.0)
+
+
+## Starts or stops the hum (it starts once the cue is synthesized).
+func set_hum(on: bool) -> void:
+	hum_on = on
+	if hum == null:
+		return
+	if not on:
+		hum.stop()
+	elif StoryAudio.ready_for(["dolly_hum"]):
+		if hum.stream == null:
+			hum.stream = StoryAudio.stream("dolly_hum")
+		if not hum.playing:
+			hum.play()
+
+
+func _process(_delta: float) -> void:
+	if hum != null and hum_on and not hum.playing:
+		set_hum(true)   # waits for the warm task, then loops
+
+
+func speed_of(st: String) -> float:
+	return float(SPEEDS[st]) * speed_mult
 
 
 func _build_model() -> void:
 	model = CharacterBuilder.build(look)
 	model.name = "Model"
 	add_child(model)
+	if is_dolly:
+		StoryCast.attach_tells(model, false)   # her cream wool cuff
 	_animator = CharacterBuilder.get_animator(model)
 	mask = CineFX.build_prop("sheep_mask")
 	mask.name = "SheepMask"
@@ -268,6 +363,75 @@ func notice_hide(spot: Node3D) -> bool:
 	return true
 
 
+## Heard breathing or a gasp from `spot` (H-D4): goes to check it (catches the player if still inside). Returns true
+## when it goes (not frozen, not already checking that spot).
+func investigate_spot(spot: Node3D) -> bool:
+	if frozen or senses == null or spot == null or scripted or deaf_t > 0.0:
+		return false
+	if state == CHECK and check_spot == spot:
+		return false
+	check_spot = spot
+	_set_state(CHECK)
+	_go(_spot_point())
+	_repath_t = 1.0
+	return true
+
+
+## The alarm (H-D5): runs towards p as if chasing (it has not seen the player: arriving without sight -> SEARCH).
+## A stalker checking a spot or already seeing the player keeps doing that.
+func rush(p: Vector3) -> void:
+	if frozen or senses == null or scripted or state == CHECK or (state == CHASE and _sees_now):
+		return
+	rushing = true
+	last_known = Vector3(p.x, 0.0, p.z)
+	_since_seen = maxf(_since_seen, 1.0)
+	if state != CHASE:
+		_set_state(CHASE)
+	_go(last_known)
+	_repath_t = REPATH_S
+
+
+## The level takes her over (DollyWC): CHECK on `spot`, standing until script_target is set. false when frozen.
+func begin_script(spot: Node3D) -> bool:
+	if frozen or senses == null:
+		return false
+	check_spot = spot
+	_set_state(CHECK)
+	scripted = true
+	script_target = global_position
+	script_face = Vector3(INF, 0.0, INF)
+	_script_to = Vector3(INF, 0.0, INF)
+	_path.clear()
+	_path_i = 0
+	return true
+
+
+## Hands her back: leave = back to the patrol, deaf to the player's breath for DEAF_AFTER_S.
+func end_script(leave: bool) -> void:
+	scripted = false
+	if leave:
+		deaf_t = DEAF_AFTER_S
+		_back_to_patrol()
+
+
+## The scripted catch: opens the stall and catches the player inside.
+func catch_in_spot() -> void:
+	scripted = false
+	if check_spot != null and is_instance_valid(check_spot) and check_spot.has_method("reveal"):
+		check_spot.call("reveal")
+	_catch()
+
+
+func _do_script(delta: float) -> void:
+	if script_target.distance_to(_script_to) > 0.2:
+		_script_to = script_target
+		_go(script_target)
+	if not _arrived():
+		_move(delta, script_speed)
+	elif script_face.x < INF:
+		_turn_toward(script_face - global_position, delta)
+
+
 func _spot_point() -> Vector3:
 	if check_spot != null and is_instance_valid(check_spot) and check_spot.has_method("exit_point"):
 		return check_spot.call("exit_point")
@@ -289,6 +453,15 @@ func step(delta: float) -> void:
 		_sense_acc -= SENSE_DT
 		sense()
 	speed_now = 0.0
+	deaf_t = maxf(0.0, deaf_t - delta)
+	if scripted:
+		if state == CHASE:
+			scripted = false   # she saw the player out of the stall: the script is over (the level notices)
+		else:
+			_do_script(delta)
+			_check_catch()
+			_set_anim_speed(speed_now)
+			return
 	match state:
 		PATROL:
 			_do_patrol(delta)
@@ -318,7 +491,7 @@ func _do_patrol(delta: float) -> void:
 		_wait = PATROL_PAUSE_S
 		_advance_patrol()
 		return
-	_move(delta, float(SPEEDS[PATROL]))
+	_move(delta, speed_of(PATROL))
 
 
 func _advance_patrol() -> void:
@@ -337,7 +510,7 @@ func _do_suspicious(delta: float) -> void:
 			_repath_t = REPATH_S
 		return
 	if not _arrived():
-		_move(delta, float(SPEEDS[SUSPICIOUS]))
+		_move(delta, speed_of(SUSPICIOUS))
 		return
 	if _arrived_t < 0.0:
 		_arrived_t = _state_t
@@ -354,10 +527,10 @@ func _do_chase(delta: float) -> void:
 	if _sees_now and _direct_ok and not senses.hidden and to.length() < DIRECT_CHASE_R:
 		var d: float = to.length()
 		if d > 0.05:
-			var stp: float = minf(float(SPEEDS[CHASE]) * delta, d)
+			var stp: float = minf(speed_of(CHASE) * delta, d)
 			global_position += to / d * stp
 			_turn_toward(to, delta)
-			speed_now = float(SPEEDS[CHASE])
+			speed_now = speed_of(CHASE)
 		_path.clear()
 		_path_i = 0
 		return
@@ -368,12 +541,12 @@ func _do_chase(delta: float) -> void:
 		if _since_seen > 0.3:
 			_set_state(SEARCH)
 		return
-	_move(delta, float(SPEEDS[CHASE]))
+	_move(delta, speed_of(CHASE))
 
 
 func _do_search(delta: float) -> void:
 	_search_t += delta
-	if _search_t >= SEARCH_S:
+	if _search_t >= search_s:
 		_back_to_patrol()
 		return
 	if _wait > 0.0:
@@ -388,7 +561,7 @@ func _do_search(delta: float) -> void:
 		else:
 			_go(graph.pos(near[rng.randi_range(0, near.size() - 1)]))
 		return
-	_move(delta, float(SPEEDS[SEARCH]))
+	_move(delta, speed_of(SEARCH))
 
 
 func _do_check(delta: float) -> void:
@@ -396,7 +569,7 @@ func _do_check(delta: float) -> void:
 	if _repath_t <= 0.0:
 		_go(target)
 		_repath_t = 1.0
-	_move(delta, float(SPEEDS[CHECK]))
+	_move(delta, speed_of(CHECK))
 	var d: Vector3 = target - global_position
 	d.y = 0.0
 	if d.length() <= CATCH_R:
@@ -455,6 +628,8 @@ func _set_state(s: String) -> void:
 	var old: String = state
 	state = s
 	_state_t = 0.0
+	if s == SEARCH or s == PATROL:
+		rushing = false
 	_arrived_t = -1.0
 	if s == SEARCH:
 		_search_t = 0.0
@@ -475,6 +650,9 @@ func reset_at(p: Vector3) -> void:
 		position = Vector3(p.x, 0.0, p.z)
 	_caught = false
 	frozen = false
+	rushing = false
+	scripted = false
+	deaf_t = 0.0
 	check_spot = null
 	_since_seen = INF
 	_sees_now = false

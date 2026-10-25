@@ -3,10 +3,13 @@
 # "[F] Đèn pin", short toasts, the peek overlay while hidden (locker vent slats, a dark band above the gap under a stall
 # door or a desk panel), the caught and escaped cards. Plain Vietnamese text, no emoji or decorative symbols (owner rule
 # 2026-10-25). Code-built Controls only; no autoload identifiers (class_name script).
+# Hold breath (H-D4): while hidden a breath bar with the plain line "Giữ Shift: nín thở" (set_breath).
+# subtitle(text, secs): a spoken line (Dolly's), bottom centre above the prompt, in her colour.
 class_name HorrorHUD
 extends CanvasLayer
 
 const HINT: String = "[F] Đèn pin    [Ctrl] Đi rón rén    [Shift] Chạy"
+const BREATH_HINT: String = "Giữ Shift: nín thở"
 
 var fuse_label: Label
 var battery_label: Label
@@ -19,8 +22,13 @@ var card_label: Label
 var fade: ColorRect
 var peek: Control
 var peek_kind: String = ""
+var breath_label: Label
+var subtitle_label: Label
+var _sub_t: float = 0.0
+var breath_bar: ProgressBar
 var _toast_t: float = 0.0
 var _fill: StyleBoxFlat
+var _breath_fill: StyleBoxFlat
 
 
 func _init() -> void:
@@ -76,6 +84,29 @@ func _ready() -> void:
 	_place(card_label, Control.PRESET_CENTER, Rect2(-500, -60, 1000, 160))
 	card_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	card_label.visible = false
+	breath_label = _label("BreathHint", 22, Color("#DDEBFF"))
+	_place(breath_label, Control.PRESET_CENTER_BOTTOM, Rect2(-200, -196, 400, 30))
+	breath_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	breath_label.text = BREATH_HINT
+	breath_bar = ProgressBar.new()
+	breath_bar.name = "BreathBar"
+	breath_bar.show_percentage = false
+	breath_bar.min_value = 0.0
+	breath_bar.max_value = 100.0
+	_place(breath_bar, Control.PRESET_CENTER_BOTTOM, Rect2(-130, -162, 260, 12))
+	var bbg := StyleBoxFlat.new()
+	bbg.bg_color = Color(0.05, 0.06, 0.08, 0.8)
+	_breath_fill = StyleBoxFlat.new()
+	_breath_fill.bg_color = Color("#9CC9FF")
+	breath_bar.add_theme_stylebox_override("background", bbg)
+	breath_bar.add_theme_stylebox_override("fill", _breath_fill)
+	breath_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(breath_bar)
+	set_breath(1.0, false, false)
+	subtitle_label = _label("Subtitle", 28, Color("#F2D7A6"))
+	_place(subtitle_label, Control.PRESET_CENTER_BOTTOM, Rect2(-460, -250, 920, 40))
+	subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle_label.visible = false
 	set_fuses(0)
 	set_battery(1.0, false)
 
@@ -113,6 +144,25 @@ func set_battery(frac: float, on: bool) -> void:
 	battery_bar.value = pct
 	battery_label.text = "Pin đèn: %d%%%s" % [pct, "" if on else " (tắt)"]
 	_fill.bg_color = Color("#FF6B5E") if frac < 0.2 else Color("#9BE7A0")
+
+
+## A spoken line for `secs` s (plain text).
+func subtitle(t: String, secs: float = 2.0) -> void:
+	if subtitle_label == null:
+		return
+	subtitle_label.text = t
+	subtitle_label.visible = true
+	_sub_t = secs
+
+
+## Breath bar while hidden: frac 0..1 left, shown (hidden in a spot), held (Shift down).
+func set_breath(frac: float, shown: bool, held: bool) -> void:
+	if breath_bar == null:
+		return
+	breath_bar.visible = shown
+	breath_label.visible = shown
+	breath_bar.value = clampf(frac, 0.0, 1.0) * 100.0
+	_breath_fill.bg_color = Color("#FF6B5E") if frac < 0.25 else (Color("#FFFFFF") if held else Color("#9CC9FF"))
 
 
 func set_prompt(t: String) -> void:
@@ -184,6 +234,10 @@ func show_escaped(caught_count: int) -> void:
 
 
 func _process(delta: float) -> void:
+	if _sub_t > 0.0:
+		_sub_t -= delta
+		if _sub_t <= 0.0:
+			subtitle_label.visible = false
 	if _toast_t > 0.0:
 		_toast_t -= delta
 		if _toast_t < 0.6:

@@ -72,7 +72,7 @@ func _warm() -> void:
 
 
 func _cues() -> void:
-	for cue: String in StoryAudio.CUES + StoryAudio.EXTRA:
+	for cue: String in StoryAudio.CUES + StoryAudio.EXTRA + StoryAudio.POLISH:
 		var st: AudioStream = StoryAudio.stream(cue)
 		_check(st is AudioStreamWAV, "%s is a WAV stream" % cue)
 		if not (st is AudioStreamWAV):
@@ -95,7 +95,9 @@ func _cues() -> void:
 		and absf(once.get_length() - StoryAudio.stream("heartbeat").get_length()) < 0.001, "CineAudio.sfx() serves a one-shot copy of a looping story cue")
 	_check(CineAudio.sfx("bonk") == StoryAudio.stream("bonk"), "CineAudio.sfx() serves the story cue")
 	_check(CineAudio.sfx("impact_light") is AudioStreamWAV, "A1 cues unchanged")
-	for cue2: String in ["heartbeat", "whisper_bed", "music_box"]:
+	for cue3: String in StoryAudio.POLISH:
+		_check(StoryAudio.is_cue(cue3) and StoryAudio.is_horror(cue3) and not StoryAudio.CUES.has(cue3), "%s is a polish horror SFX (not an owner cue)" % cue3)
+	for cue2: String in ["heartbeat", "whisper_bed", "music_box", "dolly_hum", "alarm_siren"]:
 		_check(cue2 in StoryAudio.LOOPS, "%s loops (A2-D9)" % cue2)
 
 

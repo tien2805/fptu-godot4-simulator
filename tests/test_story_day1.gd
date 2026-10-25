@@ -14,6 +14,8 @@
 # take the photo and restart the chase at its marker. Review round: VỀ THẾ GIỚI MỞ after a lost chase (marker back,
 # weapons unlocked, speed cap restored, no fists on pedestrians mid-mission), Continue at d1_chase / d1_brawl (marker,
 # nothing starts by itself), the locker marker already at the corridor step.
+# Horror polish (H-D7): the stake-out's rustle and the shiba Lu fake-out (once per mission, not again after a restart);
+# the corridor locker bursting open with the sheep mask before the blackout.
 # Run:  godot --headless --path . --script tests/test_story_day1.gd
 extends SceneTree
 
@@ -204,6 +206,8 @@ func _process(_d: float) -> bool:
 				so.advance(0.1)
 				guard_n += 1
 			_check(so.state == "failed" and sr.fail_ui != null and sr.fail_ui.visible and sr.fail_ui.title_label.text == "TOANG!", "the handover missed: TOANG! (%s)" % so.state)
+			_check(so.lu_shown and so.lu_state == "gone" and so.cues_played.has("rustle") and so.scare.fake_count == 1 and so.shiba == null,
+				"a rustle behind, then Lu trots up and off: the stake-out fake-out (%s, %s)" % [so.lu_state, str(so.cues_played)])
 			sr.fail_ui.press_retry()
 			_check(so.state == "running" and so.clock < 0.01 and not sr.fail_ui.visible, "THỬ LẠI restarts the stake-out")
 			_advance(10.0)
@@ -228,6 +232,7 @@ func _process(_d: float) -> bool:
 			_check(so2.photo_taken, "a real [E] takes the photo in the window, the courier in frame (16 m)")
 			_advance(30.0)
 			_check(so2.state == "done", "60 s with the photo: done (%s, %.1f s)" % [so2.state, so2.clock])
+			_check(so2.scare.fake_count == 1 and so2.cues_played.count("rustle") == 1, "Lu comes once per mission, not again after THỬ LẠI")
 			_next(4)
 		4:
 			if sr.mission_node == null or not (sr.mission_node is MissionChase):
@@ -352,6 +357,10 @@ func _process(_d: float) -> bool:
 			_corridor_to(mc, 0.3)
 			_check(mc.figure.visible, "the figure stands at the far end")
 			_advance(12.0)
+			_corridor_to(mc, 0.45)
+			_check(mc.events.has("locker") and not mc.events.has("blackout") and mc.scare.played.has("locker_slam") and mc.scare.fake_count == 1,
+				"mid-walk a locker bursts open (%s)" % str(mc.events))
+			_check(mc.mask_drop != null and mc.locker_door != null, "the sheep mask falls out of it")
 			_corridor_to(mc, 0.6)
 			_check(mc.events.has("blackout") and not _player().controls_enabled, "lights out, frozen")
 			_advance(1.6)

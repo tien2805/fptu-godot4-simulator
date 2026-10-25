@@ -5,7 +5,12 @@
 #   meme:   boom, sad_trombone, record_scratch, ba_dum_tss, bonk, dun_dun_duun, success_fanfare, toang_sting
 #   horror: heartbeat, breath, whisper_bed, violin_screech, music_box, metal_creak, sheep_bleat_distorted, phone_ring_3am,
 #           static_burst
+#   polish: dolly_hum, gasp, alarm_siren, cat_meow, bin_crash, locker_slam, rustle, door_knock, sniff (horror polish: SFX, not
+#           in CUES; they count as horror cues for "Giảm hù dọa" and take owner overrides like the others)
 # Owner override: user://sfx/<cue>.ogg | .mp3 | .wav (local only, never committed). LOOPS loop (owner files too).
+# Owner voice lines with no synthesized fallback: owner_stream(name) (user://sfx/<name>.ogg | .mp3 | .wav, else null), e.g.
+# Dolly's toilet monologue dolly_wc_full (DollyWC). owner_lines(prefix, n) lists prefix1..prefix<n> that exist.
+# The Night Building restarts "heartbeat" on every beat (ScareDirector, 70-160 BPM): its override must be a single lub-dub.
 # stream(cue) is main-thread only (static cache); synth(cue) is pure, so warm(cues) builds each cue on its own WorkerThreadPool
 # task and poll() / stream() adopt the results on the main thread (a long cue never stalls a frame: Phase W lesson).
 # cue_db(cue): extra gain, -6 dB for horror cues while "Giảm hù dọa" is on (A2-D14).
@@ -19,7 +24,10 @@ const HORROR: Array[String] = ["heartbeat", "breath", "whisper_bed", "violin_scr
 const CUES: Array[String] = MEME + HORROR
 ## Extra cues used by the story UI only (not owner-facing).
 const EXTRA: Array[String] = ["call_hangup"]
-const LOOPS: Array[String] = ["heartbeat", "whisper_bed", "music_box", "phone_ring_3am"]
+## Horror polish SFX (spec H-D1 to H-D7): Dolly's hum, the gasp, the alarm siren, the fake-out cat and bin, the bursting
+## locker, the stake-out rustle. Horror cues for the -6 dB rule.
+const POLISH: Array[String] = ["dolly_hum", "gasp", "alarm_siren", "cat_meow", "bin_crash", "locker_slam", "rustle", "door_knock", "sniff"]
+const LOOPS: Array[String] = ["heartbeat", "whisper_bed", "music_box", "phone_ring_3am", "dolly_hum", "alarm_siren"]
 const REDUCED_DB: float = -6.0
 ## Expected lengths (s) [min, max] of the synthesized cues (tests).
 const LENGTHS: Dictionary = {
@@ -27,21 +35,23 @@ const LENGTHS: Dictionary = {
 	"dun_dun_duun": [2.2, 3.4], "success_fanfare": [1.4, 2.4], "toang_sting": [1.2, 2.2], "heartbeat": [0.8, 1.2],
 	"breath": [2.0, 3.0], "whisper_bed": [5.0, 8.0], "violin_screech": [0.9, 1.6], "music_box": [2.5, 4.0],
 	"metal_creak": [1.4, 2.4], "sheep_bleat_distorted": [0.9, 1.6], "phone_ring_3am": [2.5, 3.5], "static_burst": [0.6, 1.2],
-	"call_hangup": [1.0, 1.8],
+	"call_hangup": [1.0, 1.8], "dolly_hum": [3.5, 5.0], "gasp": [0.5, 1.0], "alarm_siren": [1.8, 2.6], "cat_meow": [0.5, 1.0],
+	"bin_crash": [0.8, 1.6], "locker_slam": [0.4, 1.0], "rustle": [1.0, 2.0], "door_knock": [0.5, 0.9], "sniff": [0.5, 1.0],
 }
 
 static var sfx_dir: String = "user://sfx/"
 static var _cache: Dictionary = {}
 static var _tasks: Dictionary = {}   # cue -> {"task": int, "box": [AudioStreamWAV or null]}
 static var warm_builds: int = 0
+static var _owner_cache: Dictionary = {}   # file path -> AudioStream
 
 
 static func is_cue(cue: String) -> bool:
-	return cue in CUES or cue in EXTRA
+	return cue in CUES or cue in EXTRA or cue in POLISH
 
 
 static func is_horror(cue: String) -> bool:
-	return cue in HORROR
+	return cue in HORROR or cue in POLISH
 
 
 ## Extra volume (dB) of a cue: horror cues -6 dB while "Giảm hù dọa" is on.
@@ -56,6 +66,26 @@ static func override_file(cue: String) -> String:
 		if FileAccess.file_exists(p):
 			return p
 	return ""
+
+
+## An owner-only sound (no synthesized fallback): sfx_dir/<name>.ogg | .mp3 | .wav, or null. Cached by file path.
+static func owner_stream(name: String) -> AudioStream:
+	var f: String = override_file(name)
+	if f == "":
+		return null
+	if not _owner_cache.has(f):
+		_owner_cache[f] = _load_override(f)
+	return _owner_cache[f]
+
+
+## The owner files prefix1 .. prefix<count> that exist, in order (e.g. "dolly_wc_", 5).
+static func owner_lines(prefix: String, count: int) -> Array[AudioStream]:
+	var out: Array[AudioStream] = []
+	for i: int in range(1, count + 1):
+		var st: AudioStream = owner_stream("%s%d" % [prefix, i])
+		if st != null:
+			out.append(st)
+	return out
 
 
 ## The cue's stream (owner file, else synthesized; cached). Main thread only.
@@ -362,6 +392,74 @@ static func synth_samples(cue: String) -> PackedFloat32Array:
 			for k: int in 14:
 				CineAudio._paste(st, CineAudio._noise(0.012, 0.9, 200.0, 37 + k, 0.0), rng2.randf_range(0.0, 0.85), 1.0)
 			return _fade_tail(st, 0.15)
+		"dolly_hum":   # Dolly humming an original six-note music-box figure through closed lips (loops: 4.2 s, ends quiet)
+			var dh: PackedFloat32Array = _silence(4.2)
+			var hum: Array[float] = [7.0, 3.0, 5.0, 2.0, 3.0, -2.0]
+			var lens: Array[float] = [0.55, 0.55, 0.55, 0.55, 0.7, 0.9]
+			var at: float = 0.05
+			for k: int in hum.size():
+				var f: float = _note(hum[k], 329.63)
+				var v: PackedFloat32Array = CineAudio._mix([_voice(lens[k], f, f * 0.995, 0.16, 3, 5.0, 0.012, 0.08, 0.22),
+					CineAudio._tone(lens[k], f * 0.5, f * 0.5, 0.05, 1.5)])
+				CineAudio._paste(dh, v, at, 1.0)
+				at += lens[k] + 0.02
+			return _fade_tail(dh, 0.2)
+		"gasp":   # a sharp, ragged in-breath after holding it too long
+			var gp: PackedFloat32Array = CineAudio._noise(0.7, 0.55, 0.0, 41, 0.6)
+			for i: int in gp.size():
+				var u: float = float(i) / gp.size()
+				gp[i] *= minf(1.0, u * 12.0) * pow(1.0 - u, 1.6) * (0.8 + 0.2 * sin(TAU * 31.0 * u))
+			return gp
+		"alarm_siren":   # building alarm: a two-second rising and falling wail (loops)
+			var n2: int = int(2.2 * SR)
+			var al := PackedFloat32Array()
+			al.resize(n2)
+			var ph2: float = 0.0
+			for i: int in n2:
+				var t2: float = float(i) / SR
+				var f2: float = 620.0 + 380.0 * (0.5 - 0.5 * cos(TAU * t2 / 2.2))
+				ph2 += TAU * f2 / SR
+				al[i] = (sin(ph2) + 0.35 * signf(sin(ph2 * 2.0))) * 0.2
+			return al
+		"cat_meow":   # a startled "mrrow": a voiced glide up and down
+			var cm: PackedFloat32Array = _voice(0.7, 520.0, 760.0, 0.24, 5, 9.0, 0.03, 0.05, 0.3)
+			for i: int in cm.size():
+				var u2: float = float(i) / cm.size()
+				cm[i] *= 0.6 + 0.4 * sin(PI * u2)
+			CineAudio._paste(cm, _voice(0.35, 780.0, 480.0, 0.2, 5, 9.0, 0.03, 0.02, 0.2), 0.35, 1.0)
+			return cm
+		"bin_crash":   # a metal bin hitting the floor and rolling
+			var bc: PackedFloat32Array = CineAudio._mix([CineAudio._noise(0.5, 0.75, 9.0, 42, 0.2), CineAudio._tone(0.6, 410.0, 380.0, 0.35, 7.0),
+				CineAudio._tone(0.6, 655.0, 610.0, 0.25, 9.0)])
+			var roll: PackedFloat32Array = _silence(1.3)
+			CineAudio._paste(roll, bc, 0.0, 1.0)
+			for k: int in 5:
+				CineAudio._paste(roll, CineAudio._tone(0.12, 380.0 - 20.0 * k, 360.0 - 20.0 * k, 0.18 - 0.03 * k, 18.0), 0.45 + 0.15 * k, 1.0)
+			return roll
+		"locker_slam":   # a locker door banging open against the next one
+			return _fade_tail(CineAudio._mix([CineAudio._noise(0.6, 0.8, 14.0, 43, 0.3), CineAudio._tone(0.6, 170.0, 120.0, 0.7, 10.0),
+				CineAudio._tone(0.5, 980.0, 900.0, 0.18, 12.0)]), 0.1)
+		"rustle":   # leaves and dry branches pushed aside behind you
+			var ru: PackedFloat32Array = _silence(1.5)
+			var rng3 := RandomNumberGenerator.new()
+			rng3.seed = 44
+			for k: int in 22:
+				CineAudio._paste(ru, CineAudio._noise(0.06, rng3.randf_range(0.15, 0.45), 30.0, 45 + k, 0.35), rng3.randf_range(0.0, 1.4), 1.0)
+			return ru
+		"door_knock":   # three knuckle knocks on a toilet stall door
+			var dk: PackedFloat32Array = _silence(0.7)
+			for k: int in 3:
+				CineAudio._paste(dk, CineAudio._mix([CineAudio._tone(0.12, 210.0, 160.0, 0.75, 30.0),
+					CineAudio._noise(0.03, 0.5, 120.0, 46 + k, 0.4)]), 0.18 * k, 1.0 - 0.12 * k)
+			return dk
+		"sniff":   # two quick, satisfied sniffs
+			var sn: PackedFloat32Array = _silence(0.75)
+			for k: int in 2:
+				var puff: PackedFloat32Array = CineAudio._noise(0.16, 0.5, 0.0, 50 + k, 0.7)
+				for i: int in puff.size():
+					puff[i] *= sin(PI * float(i) / puff.size())
+				CineAudio._paste(sn, puff, 0.05 + 0.24 * k, 1.0)
+			return sn
 		"call_hangup":   # three busy beeps after the line goes dead
 			var hu: PackedFloat32Array = _silence(1.4)
 			for k: int in 3:

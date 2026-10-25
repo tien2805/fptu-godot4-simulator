@@ -6,6 +6,11 @@
 # Phase B: every beat valid for its kind (mission / fight / horror fields, slots that exist), the Days 1-5 chain, the
 # Days 2-3 placeholder objectives, the calls' N, an A2 save at d1_locked resuming at d1_stakeout, side markers granted
 # once, beat flags, the horror result (E5 only with no catch).
+# Horror polish (H-D7): the free-roam night events (StoryNightEvents) on stub roam / story nodes: only at night from Day 1,
+# never during a mission, a cinematic, a busy beat, a police chase (stars, state still "free"), with the phone or the map
+# open; the first one 45-90 s into the night, then at most one per 3 minutes (mission time does not count, and nothing
+# comes right after a mission ends); the clone only while riding; the "Số lạ" photo text once per day; the far figure's
+# vanish rule.
 # Run:  godot --headless --path . --script tests/test_story_director.gd
 extends SceneTree
 
@@ -13,6 +18,35 @@ const TMP: String = "user://test_story_director_save.cfg"
 var fails: Array[String] = []
 var sd: Node
 var counts: Dictionary = {"day": 0, "evidence": 0, "objective": 0, "text": 0, "step": 0}
+
+
+class FakeRoam extends Node3D:
+	var player: Node3D = null
+	var tod_preset: String = "night"
+	var cine_player: Node = null
+	var mounted: bool = false
+	var bike: Node3D = null
+	var wanted: Node = null
+	var map_overlay: Control = null
+
+
+class FakeStory extends Node:
+	var mission_node: Node = null
+	var busy: bool = false
+	var running: String = ""
+	var phone: FakePhone = null
+
+
+class FakePhone extends Node:
+	var open: bool = false
+
+	func is_open() -> bool:
+		return open
+
+
+class FakeWanted extends Node:
+	var state: String = "free"
+	var stars: int = 0
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -40,6 +74,7 @@ func _initialize() -> void:
 	_phase_b()
 	_guard()
 	_endings()
+	_night_events()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))
 	if fails.is_empty():
 		print("✅ SUCCESS: STORY DIRECTOR (state, signals, story chain to Day 5, Phase B beats, save/load, migration, version guard, endings)")
@@ -241,6 +276,133 @@ func _guard() -> void:
 	_check(Array(sd3.get("evidence")) == ["E1", "E7"], "from_dict filters unknown and duplicate evidence")
 	sd3.free()
 	_check(sd.call("read_save", "user://story_save.cfg") is Dictionary, "default path readable without crashing")
+
+
+func _night_events() -> void:
+	sd.call("reset_state")
+	sd.set("active", true)
+	sd.set("day", 1)
+	sd.set("protagonist", {"name": "Tùng"})
+	var fr := FakeRoam.new()
+	var st := FakeStory.new()
+	var wd := FakeWanted.new()
+	fr.wanted = wd
+	var ph := FakePhone.new()
+	st.phone = ph
+	var mapc := Control.new()
+	mapc.visible = false
+	fr.map_overlay = mapc
+	root.add_child(ph)
+	root.add_child(mapc)
+	root.add_child(fr)
+	root.add_child(st)
+	root.add_child(wd)
+	var ev := StoryNightEvents.new()
+	ev.auto_tick = false
+	ev.dry_run = true
+	root.add_child(ev)
+	ev.setup(fr, st, sd, 1234)
+	_check(ev.eligible(), "night events: story night free roam on Day 1 is eligible")
+	sd.set("day", 0)
+	_check(not ev.eligible(), "night events: not on Day 0")
+	sd.set("day", 1)
+	fr.tod_preset = "morning"
+	_check(not ev.eligible(), "night events: not by day")
+	fr.tod_preset = "night"
+	var blocker := Node.new()
+	st.mission_node = blocker
+	_check(not ev.eligible(), "night events: never during a mission")
+	st.mission_node = null
+	fr.cine_player = blocker
+	_check(not ev.eligible(), "night events: never during a cinematic")
+	fr.cine_player = null
+	st.busy = true
+	_check(not ev.eligible(), "night events: never while a beat runs")
+	st.busy = false
+	wd.stars = 1   # a police chase: the state stays "free", the stars count
+	_check(not ev.eligible(), "night events: not during a police chase (1 star)")
+	wd.stars = 0
+	wd.state = "stamp"
+	_check(not ev.eligible(), "night events: not while busted")
+	wd.state = "free"
+	ph.open = true
+	_check(not ev.eligible(), "night events: not with the phone open")
+	ph.open = false
+	mapc.visible = true
+	_check(not ev.eligible(), "night events: not with the map open")
+	mapc.visible = false
+	_check(ev.eligible(), "night events: eligible again")
+	# cadence over 20 minutes of story night
+	var times: Array[float] = []
+	var t: float = 0.0
+	ev.event_fired.connect(func(_k: String) -> void: times.append(ev.scare.clock))   # lambdas capture t by value
+	while t < 1200.0:
+		ev.advance(0.5)
+		t += 0.5
+	var min_gap: float = INF
+	for i: int in range(1, times.size()):
+		min_gap = minf(min_gap, times[i] - times[i - 1])
+	print("  night events over 20 min: %d at %s" % [times.size(), str(times)])
+	_check(not times.is_empty() and times[0] >= StoryNightEvents.FIRST_S.x and times[0] <= StoryNightEvents.FIRST_S.y + 1.0, "night events: the first one 45-90 s into the night (%s)" % str(times.slice(0, 1)))
+	_check(times.size() >= 5 and times.size() <= 7 and min_gap >= StoryNightEvents.GAP_S, "night events: at most one per 3 minutes (%d, min gap %.0f s)" % [times.size(), min_gap])
+	# a mission: nothing fires and its time does not count
+	var n0: int = times.size()
+	st.mission_node = blocker
+	for i2: int in 1200:
+		ev.advance(0.5)
+		t += 0.5
+	_check(times.size() == n0, "night events: none during a 10 min mission")
+	st.mission_node = null
+	var since_end: float = ev.since
+	for i3: int in 100:
+		ev.advance(0.5)
+		t += 0.5
+	_check(since_end < StoryNightEvents.GAP_S - 50.0 and (times.size() == n0 or ev.since < 50.0), "night events: mission time does not count towards the next one")
+	# nothing right after a mission or a cinematic ends, even when the 3 minutes were already up before it
+	ev.since = StoryNightEvents.GAP_S + 20.0
+	var n1: int = times.size()
+	fr.cine_player = blocker
+	ev.advance(0.5)
+	fr.cine_player = null
+	for i8: int in 50:
+		ev.advance(0.5)
+		t += 0.5
+	_check(times.size() == n1, "night events: none in the 25 s after a cinematic ends")
+	# picks: the clone only while riding, the photo once per day
+	var kinds: Dictionary = {}
+	for i4: int in 400:
+		kinds[ev.pick()] = true
+	_check(not kinds.has("clone") and kinds.has("figure") and kinds.has("photo"), "night events: on foot a figure or the photo, never the clone (%s)" % str(kinds.keys()))
+	fr.mounted = true
+	var clones: int = 0
+	for i5: int in 400:
+		clones += int(ev.pick() == "clone")
+	_check(clones > 30 and clones < 140, "night events: riding, now and then the clone in the headlight (%d of 400)" % clones)
+	fr.mounted = false
+	var texts0: int = (sd.get("texts") as Array).size()
+	_check(ev._start("photo"), "night events: the photo text")
+	var msgs: Array = sd.get("texts")
+	_check(msgs.size() == texts0 + 1 and String(msgs.back()["from"]) == StoryNightEvents.PHOTO_FROM and String(msgs.back()["text"]).contains("Đẹp đấy Tùng."),
+		"night events: Số lạ texts \"Đẹp đấy {name}.\" (%s)" % str(msgs.back()))
+	var photo_again: bool = false
+	for i6: int in 300:
+		photo_again = photo_again or ev.pick() == "photo"
+	_check(not photo_again, "night events: the photo only once per day")
+	sd.set("day", 2)
+	var photo_d2: bool = false
+	for i7: int in 300:
+		photo_d2 = photo_d2 or ev.pick() == "photo"
+	_check(photo_d2, "night events: again on another day")
+	var plain: bool = true
+	for c: int in StoryNightEvents.PHOTO_TEXT.length():
+		plain = plain and StoryNightEvents.PHOTO_TEXT.unicode_at(c) < 0x2000
+	_check(plain, "night events: plain text")
+	_check(StoryNightEvents.figure_should_vanish(24.0, 0.0, 1.0) and StoryNightEvents.figure_should_vanish(40.0, 0.7, 1.0)
+		and StoryNightEvents.figure_should_vanish(40.0, 0.0, 41.0) and not StoryNightEvents.figure_should_vanish(40.0, 0.2, 5.0),
+		"night events: the far figure goes within 25 m, when looked away from, or after 40 s")
+	for nd: Node in [ev, fr, st, wd, blocker, ph, mapc]:
+		nd.free()
+	sd.call("reset_state")
 
 
 func _endings() -> void:
