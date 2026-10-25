@@ -1,0 +1,213 @@
+# File: res://scripts/combat/CombatHUD.gd
+# Combat HUD of the Phase B unarmed combat (B-D1), owned by PlayerCombat (which shows it while a fight runs or the player's
+# HP is below full, and hides it while blocked: bike, map, cinematic). Code-drawn, plain text (no emoji or decorative
+# symbols; the key glyph only in the "[E] Hạ gục" control hint), vice and classic styles like WeaponHUD:
+#   - top centre: the player's HP bar with "Máu" and the number (blinks below 25 %), the control hint under it during a
+#     fight;
+#   - over each enemy's head (world-anchored, within 30 m, in front of the camera): its label, an HP bar and a thinner
+#     stagger bar; a small lock marker over the soft-lock target; a pulsing red ring during a telegraph (0.5 s before an
+#     unblockable heavy); "[E] Hạ gục" over the dazed enemy the finisher would take;
+#   - centre popups (popup(text, colour)): "PHẢN ĐÒN", "HẠ GỤC", "PHÁ THẾ THỦ", a fight's start line, the force-unarmed line.
+# State for tests (computed in _process, not in _draw): finisher_shown, telegraph_shown, popup_text, popup_left.
+class_name CombatHUD
+extends CanvasLayer
+
+const GameFXScript: Script = preload("res://scripts/GameFX.gd")
+const INK := Color("#1B0F33")
+const VICE_ACCENT := Color("#3FF2FF")
+const CLASSIC_ACCENT := Color("#F37021")
+const VICE_HP := Color("#FF3B7A")
+const CLASSIC_HP := Color("#E74C3C")
+const STAGGER_COL := Color("#FFC93C")
+const GOLD := Color("#FFE14D")
+const WARN := Color("#FF8A3D")
+const TELEGRAPH := Color(1.0, 0.12, 0.1)
+const BAR_SIZE := Vector2(440.0, 58.0)
+const BAR_TOP: float = 18.0
+const ENEMY_BAR_W: float = 70.0
+const ENEMY_MAX_M: float = 30.0
+const HEAD_Y: float = 2.05
+const POPUP_S: float = 1.0
+
+var combat: PlayerCombat
+var bar: Control
+var world: Control
+var popup_label: Label
+var popup_text: String = ""
+var popup_left: float = 0.0
+var finisher_shown: bool = false
+var finisher_node: Node3D = null
+var telegraph_shown: int = 0
+var popups: int = 0
+
+
+func _ready() -> void:
+	layer = 1
+	var w := WorldLayer.new()
+	w.name = "CombatWorld"
+	w.hud = self
+	w.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	w.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(w)
+	world = w
+	var b := HPBar.new()
+	b.name = "CombatHP"
+	b.hud = self
+	b.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	b.offset_left = -BAR_SIZE.x * 0.5
+	b.offset_right = BAR_SIZE.x * 0.5
+	b.offset_top = BAR_TOP
+	b.offset_bottom = BAR_TOP + BAR_SIZE.y
+	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(b)
+	bar = b
+	popup_label = Label.new()
+	popup_label.name = "CombatPopup"
+	popup_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	popup_label.offset_left = -360.0
+	popup_label.offset_right = 360.0
+	popup_label.offset_top = -190.0
+	popup_label.offset_bottom = -130.0
+	popup_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	popup_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	popup_label.add_theme_font_size_override("font_size", 40)
+	popup_label.add_theme_color_override("font_outline_color", INK)
+	popup_label.add_theme_constant_override("outline_size", 10)
+	popup_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	popup_label.visible = false
+	add_child(popup_label)
+	visible = false
+
+
+static func vice() -> bool:
+	return ViceHUD.style_active()
+
+
+static func accent() -> Color:
+	return VICE_ACCENT if vice() else CLASSIC_ACCENT
+
+
+static func hp_color() -> Color:
+	return VICE_HP if vice() else CLASSIC_HP
+
+
+static func font() -> Font:
+	return GameFXScript.vice_font(0.6, 0.22) if vice() else ThemeDB.fallback_font
+
+
+## A short centre popup (default colour: the style accent).
+func popup(text: String, col: Color = Color(0.0, 0.0, 0.0, 0.0)) -> void:
+	popup_text = text
+	popup_left = POPUP_S
+	popups += 1
+	popup_label.text = text
+	popup_label.add_theme_font_override("font", font())
+	popup_label.add_theme_color_override("font_color", col if col.a > 0.0 else accent())
+	popup_label.visible = true
+	popup_label.modulate.a = 1.0
+	popup_label.scale = Vector2.ONE
+
+
+func _process(delta: float) -> void:
+	if popup_left > 0.0:
+		popup_left -= delta
+		var u: float = clampf(1.0 - popup_left / POPUP_S, 0.0, 1.0)
+		popup_label.modulate.a = clampf(popup_left / 0.3, 0.0, 1.0)
+		popup_label.pivot_offset = popup_label.size * 0.5
+		popup_label.scale = Vector2.ONE * (1.0 + 0.25 * maxf(0.0, 1.0 - u * 6.0))
+		if popup_left <= 0.0:
+			popup_label.visible = false
+	if combat == null:
+		return
+	finisher_node = combat.finisher_target()
+	finisher_shown = visible and finisher_node != null and combat.state != PlayerCombat.St.FINISHER
+	telegraph_shown = 0
+	for e: Variant in combat.enemies:
+		if is_instance_valid(e) and bool((e as Object).get("flash_on")):
+			telegraph_shown += 1
+	if visible:
+		bar.queue_redraw()
+		world.queue_redraw()
+
+
+## The player's HP bar: "Máu", the bar, the number.
+class HPBar extends Control:
+	var hud: CombatHUD
+
+	func _draw() -> void:
+		var c: PlayerCombat = hud.combat
+		if c == null:
+			return
+		var f: Font = CombatHUD.font()
+		var acc: Color = CombatHUD.accent()
+		var k: float = clampf(c.hp / maxf(c.max_hp, 1.0), 0.0, 1.0)
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.03, 0.02, 0.08, 0.55))
+		draw_rect(Rect2(Vector2.ZERO, size), Color(acc, 0.8), false, 2.0)
+		_text(f, Vector2(12.0, 29.0), CombatData.T_HP, 18, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 60.0)
+		var r := Rect2(Vector2(70.0, 14.0), Vector2(size.x - 70.0 - 58.0, 16.0))
+		draw_rect(r, Color(0.0, 0.0, 0.0, 0.6))
+		var col: Color = CombatHUD.hp_color()
+		if k < 0.25 and fmod(float(Time.get_ticks_msec()) / 1000.0, 0.5) < 0.25:
+			col = col.lightened(0.45)
+		draw_rect(Rect2(r.position, Vector2(r.size.x * k, r.size.y)), col)
+		draw_rect(r, Color(1.0, 1.0, 1.0, 0.5), false, 1.0)
+		_text(f, Vector2(size.x - 52.0, 29.0), "%d" % int(ceil(c.hp)), 18, acc, HORIZONTAL_ALIGNMENT_RIGHT, 44.0)
+		if c.fight_active:
+			_text(ThemeDB.fallback_font, Vector2(12.0, 49.0), CombatData.T_CONTROLS, 11, Color(0.85, 0.85, 0.9), HORIZONTAL_ALIGNMENT_CENTER, size.x - 24.0)
+
+	func _text(f: Font, pos: Vector2, s: String, sz: int, col: Color, align: HorizontalAlignment, w: float) -> void:
+		draw_string_outline(f, pos, s, align, w, sz, 4, CombatHUD.INK)
+		draw_string(f, pos, s, align, w, sz, col)
+
+
+## World-anchored enemy widgets (bars, label, lock marker, telegraph ring, finisher prompt).
+class WorldLayer extends Control:
+	var hud: CombatHUD
+
+	func _draw() -> void:
+		var c: PlayerCombat = hud.combat
+		if c == null or c.enemies.is_empty():
+			return
+		var vp: Viewport = get_viewport()
+		var cam: Camera3D = vp.get_camera_3d() if vp else null
+		if cam == null:
+			return
+		var f: Font = CombatHUD.font()
+		var acc: Color = CombatHUD.accent()
+		var t: float = float(Time.get_ticks_msec()) / 1000.0
+		for v: Variant in c.enemies:
+			if not is_instance_valid(v):
+				continue
+			var e: Node3D = v
+			if not e.is_inside_tree() or not e.visible:
+				continue
+			var head: Vector3 = e.global_position + Vector3(0.0, CombatHUD.HEAD_Y, 0.0)
+			if cam.is_position_behind(head) or cam.global_position.distance_to(head) > CombatHUD.ENEMY_MAX_M:
+				continue
+			var sp: Vector2 = cam.unproject_position(head)
+			var hostile: bool = bool(e.call("is_hostile"))
+			if bool(e.get("flash_on")):
+				var r: float = 22.0 + 6.0 * sin(t * 30.0)
+				var ring_at: Vector2 = cam.unproject_position(e.global_position + Vector3(0.0, 1.55, 0.0))
+				draw_arc(ring_at, r + 2.0, 0.0, TAU, 32, CombatHUD.INK, 6.0, true)
+				draw_arc(ring_at, r, 0.0, TAU, 32, CombatHUD.TELEGRAPH, 4.0, true)
+			if hostile:
+				var w: float = CombatHUD.ENEMY_BAR_W
+				var x0: float = sp.x - w * 0.5
+				var hp_k: float = clampf(float(e.get("hp")) / maxf(float(e.get("max_hp")), 1.0), 0.0, 1.0)
+				var st_k: float = clampf(float(e.get("stagger")) / maxf(float(e.get("stagger_max")), 1.0), 0.0, 1.0)
+				draw_rect(Rect2(x0 - 1.0, sp.y - 1.0, w + 2.0, 11.0), CombatHUD.INK)
+				draw_rect(Rect2(x0, sp.y, w * hp_k, 6.0), CombatHUD.hp_color())
+				draw_rect(Rect2(x0, sp.y + 7.0, w * st_k, 3.0), CombatHUD.STAGGER_COL)
+				var lbl: String = String(e.get("label"))
+				if lbl != "":
+					draw_string_outline(f, Vector2(x0 - 40.0, sp.y - 6.0), lbl, HORIZONTAL_ALIGNMENT_CENTER, w + 80.0, 14, 4, CombatHUD.INK)
+					draw_string(f, Vector2(x0 - 40.0, sp.y - 6.0), lbl, HORIZONTAL_ALIGNMENT_CENTER, w + 80.0, 14, Color.WHITE)
+				if e == c.lock:
+					var y: float = sp.y - (24.0 if lbl != "" else 8.0)
+					var tri := PackedVector2Array([Vector2(sp.x - 7.0, y - 9.0), Vector2(sp.x + 7.0, y - 9.0), Vector2(sp.x, y)])
+					draw_colored_polygon(tri, acc)
+			if e == hud.finisher_node and hud.finisher_shown:
+				var p: Vector2 = Vector2(sp.x - 80.0, sp.y + 30.0)
+				draw_string_outline(f, p, CombatData.T_FINISHER_PROMPT, HORIZONTAL_ALIGNMENT_CENTER, 160.0, 18, 5, CombatHUD.INK)
+				draw_string(f, p, CombatData.T_FINISHER_PROMPT, HORIZONTAL_ALIGNMENT_CENTER, 160.0, 18, CombatHUD.GOLD)
