@@ -473,7 +473,22 @@ func _escape() -> void:
 	player.controls_enabled = false
 	scare.stop_all()
 	hud.show_escaped(caught_count)
+	if is_standalone():
+		hud.set_objective("Nhấn R để chơi lại.")
 	escaped.emit(caught_count)
+
+
+## Standalone (the level is the current scene, no story running): [R] after the escape plays again.
+func _unhandled_input(event: InputEvent) -> void:
+	if state != "escaped" or not (event is InputEventKey):
+		return
+	var k: InputEventKey = event
+	if k.pressed and not k.echo and k.physical_keycode == KEY_R and is_standalone():
+		get_tree().reload_current_scene()
+
+
+func is_standalone() -> bool:
+	return is_inside_tree() and get_tree().current_scene == self and not StoryUtil.story_active()
 
 
 func _on_stalker_state(_old: String, new_state: String) -> void:

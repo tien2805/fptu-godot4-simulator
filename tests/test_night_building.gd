@@ -102,6 +102,12 @@ func _build_checks(lvl: NightBuilding) -> void:
 		if s.model != null and s.mask != null and s.state == HorrorStalker.PATROL:
 			masked += 1
 	_check(masked == 4, "4 masked clones on patrol (%d)" % masked)
+	var s0: HorrorStalker = lvl.stalkers[0]
+	var mp: Vector3 = s0.mask.global_position
+	var muzzle: Node3D = s0.mask.get_node_or_null("Muzzle")
+	var flat: float = Vector2(mp.x - s0.global_position.x, mp.z - s0.global_position.z).length()
+	_check(mp.y > s0.global_position.y + 1.35 and mp.y < s0.global_position.y + 1.95 and flat < 0.35, "the sheep mask sits on the head (%.2f m up, %.2f m off)" % [mp.y - s0.global_position.y, flat])
+	_check(muzzle != null and (muzzle.global_position - mp).dot(s0.forward()) > 0.02, "the mask faces forward")
 	var lights: Array[Node] = lvl.find_children("*", "Light3D", true, false)
 	_check(lights.size() == 1 and lights[0] == lvl.flashlight.light, "the flashlight is the only light node (%d)" % lights.size())
 	_check(not lvl.find_children("*", "WorldEnvironment", true, false).is_empty(), "night environment")
