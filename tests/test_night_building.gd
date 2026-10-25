@@ -17,6 +17,12 @@
 #          (red), the siren, every stalker rushing the player; 1-2 seeded fake-outs (both kinds over the seeds); the coat
 #          only when the flashlight catches it (sting, then the line), the cat's noise heard within 18 m, the fake-out
 #          budget and gap; a reduced-scares level (quiet hum, slow SOS pulse, a soft catch without a face).
+# Dolly's toilet monologue (DollyWC, run at Engine.time_scale 4): an empty block or a visible player = nothing; unseen +
+#          breath held = the time table's knocks (2.6 / 6.7 / 12.7 s on two stalls then the player's) and subtitles, she
+#          sniffs and leaves at 17.8 s; it plays again on a second visit and after a retry (no limit); a retry stops it;
+#          breath released at the stall = the stall catch only after the monologue, the loud sting at the head pop; seen =
+#          catch even held; only Dolly (a clone catches at once); no file = subtitles only; with a file the voice plays
+#          from Dolly and release() stops it.
 # Run:  godot --headless --path . --script tests/test_night_building.gd
 extends SceneTree
 
@@ -73,8 +79,9 @@ func _run() -> void:
 	await _clean_run()
 	await _fakeouts()
 	await _reduced_level()
+	await _dolly_wc()
 	if fails.is_empty():
-		print("✅ SUCCESS: NIGHT BUILDING (build, random reachable fuses, fuse box checkpoints, catch and retry, doors, escape, Dolly, catch scares, breath bar, SOS alarm and rush, fake-outs, reduced scares)")
+		print("✅ SUCCESS: NIGHT BUILDING (build, random reachable fuses, fuse box checkpoints, catch and retry, doors, escape, Dolly, catch scares, breath bar, SOS alarm and rush, fake-outs, reduced scares, Dolly's toilet monologue)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())
@@ -335,6 +342,257 @@ func _reduced_level() -> void:
 	await _frames(2)
 
 
+# ---------------------------------------------------------------------------
+# Dolly's toilet monologue
+# ---------------------------------------------------------------------------
+const WC_SUBS: Array[String] = ["Alô?", "Đang đi ỉa đấy à?", "Alô... tao biết mày đang ỉa mà.", "Thơm phết đấy."]
+
+
+func _wc_level(sd: int, dir: String) -> NightBuilding:
+	StoryAudio.sfx_dir = dir
+	var l: NightBuilding = (load("res://scenes/story/NightBuilding.tscn") as PackedScene).instantiate()
+	l.setup({"seed": sd, "auto_retry": false, "capture_mouse": false, "reduce_scares": false})
+	root.add_child(l)
+	l.build()
+	StoryAudio.sfx_dir = "user://sfx/"
+	await _frames(3)
+	for st: HorrorStalker in l.stalkers:
+		st.reset_at(l.graph.pos(l.graph.id_of("GEN_mid")) + Vector3(randf_range(-2.0, 2.0), 0.0, 0.0))
+		st.frozen = true
+	return l
+
+
+func _stall(l: NightBuilding, block: String, i: int) -> HidingSpot:
+	for sp: HidingSpot in l.kit.spots:
+		if sp.name == "Hide_stall_%s_%d" % [block, i]:
+			return sp
+	return null
+
+
+func _hide(l: NightBuilding, sp: HidingSpot) -> bool:
+	l.player.teleport(sp.exit_point(), sp.exit_yaw())
+	await _frames(3)
+	return l.kit.hide_in(sp)
+
+
+func _send(st: HorrorStalker, l: NightBuilding, node: String) -> void:
+	st.reset_at(l.graph.pos(l.graph.id_of(node)))
+	st.frozen = false
+
+
+static func _log_has(l: NightBuilding, prefix: String) -> int:
+	var n: int = 0
+	for e: String in l.wc.log:
+		n += int(e.begins_with(prefix))
+	return n
+
+
+static func _log_t(e: String) -> float:
+	return float(e.get_slice("@", 1))
+
+
+## Runs the monologue (game time) with the breath held from `hold_from` s (INF = never); returns when it ends.
+## info: door_d (Dolly to the player's door at the third knock), caught_before (a catch before the outcome mark).
+func _wc_run(l: NightBuilding, sp: HidingSpot, hold_from: float) -> Dictionary:
+	var info: Dictionary = {"door_d": INF, "caught_before": false}
+	var knocks: int = 0
+	var n: int = 0
+	while l.wc.outcome == "" and n < 2400:
+		var near: bool = l.dolly.global_position.distance_to(sp.global_position) < 3.5
+		l.kit.hold_override = (l.wc.running and l.wc.t >= hold_from) or (not l.wc.running and l.wc.log.size() > 0 and near)
+		await physics_frame
+		n += 1
+		if l.state == "caught" and l.wc.outcome == "":
+			info["caught_before"] = true
+		var k: int = _log_has(l, "knock:")
+		if k == 3 and knocks < 3:
+			info["door_d"] = Vector2(l.dolly.global_position.x - sp.exit_point().x, l.dolly.global_position.z - sp.exit_point().z).length()
+		knocks = k
+	return info
+
+
+## Waits (physics frames) until Dolly's monologue starts; true when it did.
+func _wc_wait_start(l: NightBuilding, cap: int = 240) -> bool:
+	var n: int = 0
+	while not l.wc.running and n < cap:
+		await physics_frame
+		n += 1
+	return l.wc.running
+
+
+func _dolly_wc() -> void:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://test_wc_none/"))
+	Engine.time_scale = 4.0
+	var la: NightBuilding = await _wc_level(5, "user://test_wc_none/")
+	_check(la.wc != null and la.wc.stream == null, "WC: no monologue file in the test folder: subtitles only")
+	var d: HorrorStalker = la.dolly
+	la.kit.catch_enabled = false
+	# an empty block: nothing; a visible player in the block: nothing either
+	_send(d, la, "WCB_mid")
+	await _frames(60)
+	_check(la.wc.log.is_empty() and la.wc.visits == 0 and not d.scripted, "WC: Dolly passing an empty toilet block does nothing")
+	la.player.teleport(la.graph.pos(la.graph.id_of("WCB_sink")), 0.0)
+	await _frames(60)
+	_check(la.wc.log.is_empty() and la.wc.visits == 0, "WC: a player in the toilet room but not hidden: no monologue")
+	d.reset_at(la.graph.pos(la.graph.id_of("GEN_mid")))
+	d.frozen = true
+	la.kit.catch_enabled = true
+	# unseen, breath held at the stall: the time table, then she leaves
+	var sb: HidingSpot = _stall(la, "WCB", 1)
+	_check(await _hide(la, sb), "WC: hides in a stall of toilet block B unseen")
+	la.kit.hold_override = false
+	_send(d, la, "WCB_mid")
+	var gasps0: int = la.kit.gasps
+	var info: Dictionary = await _wc_run(la, sb, DollyWC.table_time("player_knock") - 0.1)
+	var lg: Array[String] = la.wc.log.duplicate()
+	print("  WC log: %s" % str(lg))
+	_check(not lg.is_empty() and lg[0].begins_with("start:unseen:WCB"), "WC: her patrol into block B starts the monologue (unseen)")
+	var ks: Array[String] = []
+	var subs: Array[String] = []
+	for e: String in lg:
+		if e.begins_with("knock:"):
+			ks.append(e)
+		elif e.begins_with("sub:"):
+			subs.append(e.get_slice("@", 0).substr(4))
+	var marks: Array[float] = DollyWC.knock_marks()
+	var timed: bool = ks.size() == 3
+	for i: int in mini(3, ks.size()):
+		timed = timed and absf(_log_t(ks[i]) - marks[i]) < 0.15
+	_check(timed, "WC: the time table drives the knocks at 2.6, 6.7 and 12.7 s (%s)" % str(ks))
+	_check(ks.size() == 3 and ks[2].contains(String(sb.name)) and not ks[0].contains(String(sb.name)) and not ks[1].contains(String(sb.name)),
+		"WC: two other stalls first, the player's stall last")
+	_check(float(info["door_d"]) < 1.6, "WC: she is at the player's door at 12.7 s (%.2f m)" % float(info["door_d"]))
+	_check(subs == WC_SUBS, "WC: the subtitles in order (%s)" % str(subs))
+	_check(la.wc.outcome == "leave" and lg.back().begins_with("outcome:leave") and absf(_log_t(lg.back()) - 17.8) < 0.15, "WC: breath held, she leaves at 17.8 s (%s)" % la.wc.outcome)
+	_check(la.state == "play" and not d.scripted and d.state == HorrorStalker.PATROL and la.kit.gasps == gasps0 and la.scare.played.has("sniff"),
+		"WC: she sniffs and walks away, the player is safe (%s, %s)" % [la.state, d.state])
+	_check(la.wc.voice == null, "WC: no file, no voice")
+	for k2: int in 40:
+		la.kit.hold_override = d.global_position.distance_to(sb.global_position) < 3.5
+		await physics_frame
+	la.kit.hold_override = false
+	# no limit: she leaves the block and comes back: the monologue again
+	d.reset_at(la.graph.pos(la.graph.id_of("GEN_mid")))
+	await _frames(4)
+	_send(d, la, "WCB_mid")
+	_check(await _wc_wait_start(la) and la.wc.visits == 2 and _log_has(la, "start:") == 2, "WC: a second visit plays the monologue again (%d)" % la.wc.visits)
+	# a retry stops it cleanly, and after the retry it plays again
+	var w: int = 0
+	while la.wc.t < 4.0 and w < 400:
+		la.kit.hold_override = false
+		await physics_frame
+		w += 1
+	_check(la.wc.running and la.hud.subtitle_label.visible, "WC: the monologue is running")
+	la.retry_from_checkpoint()
+	await _frames(2)
+	_check(not la.wc.running and la.wc.outcome == "abort" and not d.scripted and not la.hud.subtitle_label.visible, "WC: a retry stops the monologue cleanly")
+	for st0: HorrorStalker in la.stalkers:
+		st0.frozen = true
+	_check(await _hide(la, sb), "WC: hides in block B again after the retry")
+	_send(d, la, "WCB_mid")
+	_check(await _wc_wait_start(la) and la.wc.visits == 3, "WC: after a retry it plays again (%d)" % la.wc.visits)
+	la.wc.abort()
+	d.reset_at(la.graph.pos(la.graph.id_of("GEN_mid")))
+	d.frozen = true
+	la.kit.leave_hiding()
+	await _frames(15)
+	# breath not held at the stall: caught, but only after the monologue's last line, with the head pop and the sting
+	var sa: HidingSpot = _stall(la, "WCA", 0)
+	_check(await _hide(la, sa), "WC: hides in a stall of toilet block A unseen")
+	la.kit.hold_override = false
+	_send(d, la, "WCA_mid")
+	_check(await _wc_wait_start(la), "WC: her patrol into block A starts it")
+	var info2: Dictionary = await _wc_run(la, sa, INF)
+	_check(la.wc.outcome == "catch" and la.state == "caught" and la.scare.last_scare.get("spot") == "stall" and sa.revealed,
+		"WC: breath not held at the stall: the stall catch scare (%s, %s)" % [la.wc.outcome, la.state])
+	_check(not bool(info2["caught_before"]) and absf(_log_t(la.wc.log.back()) - 17.8) < 0.15, "WC: the catch comes only after the monologue ends (%s)" % la.wc.log.back())
+	var w3: int = 0
+	while la.scare.last_sting.is_empty() and w3 < 240:
+		await physics_frame
+		w3 += 1
+	var hit_t: float = float(ScareDirector.CATCH_HIT["stall"]) * ScareDirector.CATCH_S
+	_check(not la.scare.last_sting.is_empty() and la.scare.last_sting["cues"] == ScareDirector.CATCH_CUES["stall"] and absf(float(la.scare.last_sting["at"]) - hit_t) < 0.1,
+		"WC: the loud sting fires as the head pops up over the partition (%s)" % str(la.scare.last_sting))
+	la.release()
+	la.queue_free()
+	await _frames(2)
+
+	# seen -> catch even with the breath held
+	var lb: NightBuilding = await _wc_level(6, "user://test_wc_none/")
+	var db: HorrorStalker = lb.dolly
+	var ss: HidingSpot = _stall(lb, "WCA", 2)
+	var ex: Vector3 = ss.exit_point()
+	var out: Vector3 = (ex - ss.global_position)
+	out.y = 0.0
+	db.reset_at(ex + out.normalized() * 4.0)
+	db.face(-out)
+	lb.player.teleport(ex, ss.exit_yaw())
+	await _frames(3)
+	db.frozen = false
+	_check(lb.kit.hide_in(ss) and db.state == HorrorStalker.CHECK, "WC: Dolly sees the player go into the stall")
+	await _frames(2)
+	_check(lb.wc.running and lb.wc.seen and lb.wc.log[0].begins_with("start:seen:WCA"), "WC: the seen path starts the monologue (%s)" % str(lb.wc.log))
+	lb.kit.hold_override = false
+	var info3: Dictionary = await _wc_run(lb, ss, DollyWC.table_time("player_knock") - 0.1)
+	_check(lb.wc.outcome == "catch" and lb.state == "caught" and _log_has(lb, "knock:") == 3 and not bool(info3["caught_before"]),
+		"WC: seen, she knocks her way there and catches at the end even with the breath held (%s)" % lb.wc.outcome)
+	lb.release()
+	lb.queue_free()
+	await _frames(2)
+
+	# only Dolly: a clone in a toilet block or catching at a stall never starts it
+	var lc: NightBuilding = await _wc_level(7, "user://test_wc_none/")
+	var clone: HorrorStalker = null
+	for st3: HorrorStalker in lc.stalkers:
+		if not st3.is_dolly:
+			clone = st3
+	var sc: HidingSpot = _stall(lc, "WCB", 0)
+	_check(await _hide(lc, sc), "WC: hides in block B (clone case)")
+	_send(clone, lc, "WCB_mid")
+	await _frames(60)
+	_check(lc.wc.log.is_empty() and not clone.scripted, "WC: a clone walking into the block says nothing")
+	lc.kit.leave_hiding()
+	clone.reset_at(lc.graph.pos(lc.graph.id_of("GEN_mid")))
+	clone.frozen = true
+	await _frames(15)
+	var sc2: HidingSpot = _stall(lc, "WCA", 1)
+	var ex2: Vector3 = sc2.exit_point()
+	var out2: Vector3 = ex2 - sc2.global_position
+	out2.y = 0.0
+	clone.reset_at(ex2 + out2.normalized() * 4.0)
+	clone.face(-out2)
+	lc.player.teleport(ex2, sc2.exit_yaw())
+	await _frames(3)
+	_check(lc.kit.hide_in(sc2) and clone.state == HorrorStalker.CHECK, "WC: a clone sees the player go in")
+	var n2: int = 0
+	while lc.state == "play" and n2 < 240:
+		await physics_frame
+		n2 += 1
+	_check(lc.state == "caught" and lc.wc.log.is_empty() and lc.scare.last_scare.get("who") == "clone", "WC: the clone catches at once, no monologue (%d frames)" % n2)
+	lc.release()
+	lc.queue_free()
+	await _frames(2)
+
+	# with the monologue file: Dolly's voice plays from her, release() stops it
+	var dir: String = "user://test_wc_sfx/"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
+	StoryAudio.synth("whisper_bed").save_to_wav(dir + "dolly_wc_full.wav")
+	var ld: NightBuilding = await _wc_level(8, dir)
+	_check(ld.wc.stream != null, "WC: the monologue file is found")
+	var sdd: HidingSpot = _stall(ld, "WCB", 2)
+	_check(await _hide(ld, sdd), "WC: hides in block B (file case)")
+	ld.kit.hold_override = false
+	_send(ld.dolly, ld, "WCB_mid")
+	_check(await _wc_wait_start(ld) and ld.wc.voice != null and ld.wc.voice.playing and ld.wc.voice.get_parent() == ld.dolly, "WC: the monologue plays from Dolly (positional)")
+	_check(not ld.dolly.hum.playing, "WC: the hum pauses while she talks")
+	ld.release()
+	_check(not ld.wc.voice.playing and not ld.wc.running, "WC: release() stops the monologue")
+	ld.queue_free()
+	await _frames(2)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(dir + "dolly_wc_full.wav"))
+	Engine.time_scale = 1.0
+
+
 func _prompt_check(lvl: NightBuilding) -> void:
 	var spot: HidingSpot = null
 	for s: HidingSpot in lvl.kit.spots:
@@ -492,8 +750,8 @@ func _fuses(lvl: NightBuilding) -> void:
 	_check(lvl.scare.scares_played >= 1 and not lvl.player.controls_enabled, "the catch scare plays and controls lock")
 	_check(lvl.scare.last_scare.get("spot") == "open" and lvl.scare.last_scare.get("face") == true and lvl.scare.is_catch_playing(), "caught in the open: the face lunges (%s)" % str(lvl.scare.last_scare.get("spot")))
 	_check(not lvl.hud.card_label.visible, "the caught card waits for the scare")
-	await _frames(80)
-	_check(lvl.hud.card_label.visible and lvl.hud.card_label.text == "BỊ BẮT!" and not lvl.scare.is_catch_playing(), "the caught card after the 1.2 s scare")
+	await _frames(110)
+	_check(lvl.hud.card_label.visible and lvl.hud.card_label.text == "BỊ BẮT!" and not lvl.scare.is_catch_playing(), "the caught card after the scare (duck + 1.2 s)")
 	lvl.retry_from_checkpoint()
 	await _frames(3)
 	_check(lvl.state == "play" and lvl.player.controls_enabled, "retry: playing again")
@@ -562,7 +820,7 @@ func _hidden_catch(lvl: NightBuilding) -> void:
 		n += 1
 	_check(lvl.state == "caught" and lvl.caught_count == 2 and spot.revealed, "caught in the locker (%s, %d)" % [lvl.state, lvl.caught_count])
 	_check(lvl.scare.last_scare.get("spot") == "locker" and lvl.hud.peek_kind == "locker", "the locker scare: the face at the slats first")
-	await _frames(80)
+	await _frames(110)
 	_check(lvl.hud.peek_kind == "" and lvl.hud.card_label.visible, "the door yanked: the slats go, then the caught card")
 	lvl.retry_from_checkpoint()
 	await _frames(3)

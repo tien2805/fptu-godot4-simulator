@@ -18,7 +18,10 @@
 #           a gasp when the breath runs out and when it is released next to a stalker;
 #   SOS: the Morse timing pattern (6.8 s loop), the lights following it in red, the reduced slow pulse;
 #   fake-outs: their own budget (2, 20 s apart), the soft sting when reduced;
-#   Dolly: her look, speed and the positional hum loop (6 dB quieter when reduced).
+#   Dolly: her look, speed and the positional hum loop (6 dB quieter when reduced);
+#   duck and sting: before every catch / jump scare face the loops, the registered players and the Music bus duck to
+#           silence, then the layered sting plays +6 dB on its own limited Sting bus, and the levels come back; reduced:
+#           no duck, no boost, the soft sting at the normal level.
 # Run:  godot --headless --path . --script tests/test_horror_toolkit.gd
 extends SceneTree
 
@@ -50,6 +53,7 @@ func _run() -> void:
 	_sos()
 	_fakeout_budget()
 	await _catch_scares()
+	_duck_sting()
 	await _dolly()
 	await _hiding()
 	for n: Node in _trash:
@@ -289,7 +293,8 @@ func _scares() -> void:
 	_check(sd.budget == 2, "default budget of 2 jump scares")
 	sd.clock = 0.0
 	_check(sd.try_jump_scare(), "first jump scare plays")
-	_check(sd.last_scare.get("flash") == true and sd.last_scare.get("screech") == true and sd.played.has("violin_screech"), "full scare: flash and screech")
+	sd.step(ScareDirector.DUCK_S + 0.05)
+	_check(sd.last_scare.get("flash") == true and sd.last_scare.get("screech") == true and sd.played.has("violin_screech"), "full scare: flash and screech (after the duck)")
 	sd.clock = 30.0
 	_check(not sd.try_jump_scare(), "no second scare 30 s later (60 s gap)")
 	sd.clock = 61.0
@@ -628,20 +633,21 @@ func _catch_scares() -> void:
 		var cues: Array = ScareDirector.CATCH_CUES[kind]
 		_check(ls.get("kind") == "catch" and ls.get("spot") == kind and ls.get("face") == true and ls.get("soft") == false, "%s: a staged face scare (%s)" % [kind, str(ls)])
 		_check(ls.get("upside_down") == (kind == "desk"), "%s: upside down only under the desk" % kind)
-		_check(sd.played.has(String(cues[0])) and sd.face.visible and sd.is_catch_playing(), "%s: the first sting and the face" % kind)
+		_check(not sd.face.visible and sd.is_catch_playing() and beats == ["duck"] and not sd.played.has(String(cues[0])), "%s: the duck first, no face or sting yet" % kind)
 		var locs: Array[Vector3] = []
 		var tilts: Array[float] = []
 		var ups: Array[float] = []
 		var t: float = 0.0
 		while sd.is_catch_playing() and t < 3.0:
-			locs.append(cam.global_transform.affine_inverse() * sd.face.global_position)
-			tilts.append(cam.rotation.x - rot0.x)
-			ups.append((cam.global_transform.basis.inverse() * sd.face.global_transform.basis.y).y)
-			sd.tick_catch(0.05)
+			if sd.catch_t >= 0.0:
+				locs.append(cam.global_transform.affine_inverse() * sd.face.global_position)
+				tilts.append(cam.rotation.x - rot0.x)
+				ups.append((cam.global_transform.basis.inverse() * sd.face.global_transform.basis.y).y)
+			sd.step(0.05)
 			t += 0.05
-		_check(absf(t - ScareDirector.CATCH_S) < 0.11, "%s: lasts %.2f s" % [kind, t])
+		_check(absf(t - ScareDirector.CATCH_S - ScareDirector.DUCK_S) < 0.11, "%s: lasts %.2f s (duck + staged face)" % [kind, t])
 		_check(not sd.face.visible and beats.has("face") and beats.back() == "end", "%s: the face goes at the end (%s)" % [kind, str(beats)])
-		_check(sd.played.has(String(cues[1])), "%s: the hit sting %s" % [kind, String(cues[1])])
+		_check(sd.played.has(String(cues[0])) and sd.played.has(String(cues[1])) and sd.last_sting.get("cues") == cues, "%s: the layered sting %s" % [kind, str(cues)])
 		_check(cam.rotation.is_equal_approx(rot0), "%s: the camera's own rotation comes back" % kind)
 		var in_front: bool = true
 		for v: Vector3 in locs:
@@ -692,6 +698,75 @@ func _catch_scares() -> void:
 	_trash.append(red)
 	cam.queue_free()
 	await _frames(1)
+
+
+## Duck and sting (owner request): the other audio ducks to silence before the face, the sting is +6 dB on the Sting bus.
+func _duck_sting() -> void:
+	if AudioServer.get_bus_index("Music") == -1:
+		AudioServer.add_bus()
+		AudioServer.set_bus_name(AudioServer.bus_count - 1, "Music")
+	var mi: int = AudioServer.get_bus_index("Music")
+	AudioServer.set_bus_volume_db(mi, -3.0)
+	var hum := AudioStreamPlayer.new()
+	hum.volume_db = -4.0
+	root.add_child(hum)
+	var sd := ScareDirector.new()
+	sd.auto_clock = false
+	root.add_child(sd)
+	sd.set_process(false)
+	sd.register_duck(hum)
+	_check(sd.sting_bus() == ScareDirector.STING_BUS and AudioServer.get_bus_index(ScareDirector.STING_BUS) != -1
+		and AudioServer.get_bus_effect_count(AudioServer.get_bus_index(ScareDirector.STING_BUS)) >= 1, "sting: its own bus with a limiter")
+	sd.play_catch_scare("stall")
+	var t: float = 0.0
+	var duck_at_sting: float = -1.0
+	var hum_at_sting: float = 0.0
+	var music_at_sting: float = 0.0
+	var sting_t: float = -1.0
+	while sd.is_catch_playing() and t < 3.0:
+		sd.step(0.02)
+		t += 0.02
+		if sting_t < 0.0 and not sd.last_sting.is_empty():
+			sting_t = t
+			duck_at_sting = sd.duck_level
+			hum_at_sting = hum.volume_db
+			music_at_sting = AudioServer.get_bus_volume_db(mi)
+	print("  sting at %.2f s: duck %.2f, hum %.1f dB, music %.1f dB, sting %.1f dB" % [sting_t, duck_at_sting, hum_at_sting, music_at_sting, sd.sting_volume_db(0)])
+	_check(sting_t >= ScareDirector.DUCK_S - 0.01, "sting: only after the %.1f s duck (%.2f s)" % [ScareDirector.DUCK_S, sting_t])
+	_check(duck_at_sting >= 0.95 and hum_at_sting < -50.0 and music_at_sting < -50.0, "sting: the hum and the music are ducked to silence when it hits")
+	_check(absf(sd.sting_volume_db(0) - ScareDirector.STING_BOOST_DB) < 0.01 and float(sd.last_sting["db"]) > 0.0, "sting: +6 dB above the normal SFX level")
+	for i: int in 40:
+		sd.step(0.02)
+	_check(sd.duck_level == 0.0 and is_equal_approx(hum.volume_db, -4.0) and is_equal_approx(AudioServer.get_bus_volume_db(mi), -3.0), "sting: the levels come back after the scare")
+	sd.played.clear()
+	sd.last_sting = {}
+	sd.clock = 0.0
+	sd.try_jump_scare()
+	sd.step(ScareDirector.DUCK_S * 0.5)
+	_check(sd.last_sting.is_empty() and sd.duck_level > 0.3, "jump scare: ducking, nothing seen or heard yet")
+	sd.step(ScareDirector.DUCK_S * 0.5 + 0.02)
+	_check(sd.last_sting.get("cues") == ScareDirector.JUMP_CUES, "jump scare: the layered sting after the duck")
+	for j: int in 80:
+		sd.step(0.02)
+	_check(sd.duck_level == 0.0 and is_equal_approx(hum.volume_db, -4.0), "jump scare: the levels come back")
+	_trash.append(sd)
+	var red := ScareDirector.new()
+	red.auto_clock = false
+	red.reduce_scares = true
+	root.add_child(red)
+	red.set_process(false)
+	red.register_duck(hum)
+	var max_duck: float = 0.0
+	red.play_catch_scare("stall")
+	while red.is_catch_playing():
+		red.step(0.02)
+		max_duck = maxf(max_duck, red.duck_level)
+	red.try_jump_scare()
+	red.step(0.5)
+	_check(max_duck == 0.0 and red.last_sting.is_empty() and is_equal_approx(hum.volume_db, -4.0) and not red.played.has("violin_screech")
+		and red.played.has("metal_creak"), "reduced: no duck, no boost, the soft sting (%s)" % str(red.played))
+	_trash.append(red)
+	_trash.append(hum)
 
 
 ## Heartbeat (H-D3): the BPM curve, beats over time, louder near, the edge pulse while hidden, the reduced cap.
