@@ -11,6 +11,12 @@
 #          3 fuses unlock the doors; walking out emits escaped(caught_count);
 #   also: battery pickup and its restore on retry, the 25 % battery floor, a catch while hidden then retry, retry ignored
 #          after the escape, a clean run emitting escaped(0), release(), caught_count kept across a rebuild, route cost.
+# Horror polish (H-D1 to H-D6): one of the four stalkers is Dolly (her look, faster, the hum playing and stopping at the
+#          end); the staged catch scare per spot (open, locker) with the caught card after it and the peek overlay cleared;
+#          the breath bar while hidden; the third fuse: alarm flag and signal, the corridor lights handed to the SOS lights
+#          (red), the siren, every stalker rushing the player; 1-2 seeded fake-outs (both kinds over the seeds); the coat
+#          only when the flashlight catches it (sting, then the line), the cat's noise heard within 18 m, the fake-out
+#          budget and gap; a reduced-scares level (quiet hum, slow SOS pulse, a soft catch without a face).
 # Run:  godot --headless --path . --script tests/test_night_building.gd
 extends SceneTree
 
@@ -19,6 +25,7 @@ var placed_log: Array[int] = []
 var checkpoints: int = 0
 var caught_n: int = 0
 var escaped_with: int = -1
+var alarms: int = 0
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -50,7 +57,9 @@ func _run() -> void:
 	lvl.checkpoint.connect(func() -> void: checkpoints += 1)
 	lvl.caught.connect(func() -> void: caught_n += 1)
 	lvl.escaped.connect(func(c: int) -> void: escaped_with = c)
+	lvl.alarm_started.connect(func() -> void: alarms += 1)
 	_build_checks(lvl)
+	await _polish_build(lvl)
 	for s: HorrorStalker in lvl.stalkers:
 		s.frozen = true   # the scripted checks below must not be interrupted by a patrol
 	await _prompt_check(lvl)
@@ -62,8 +71,10 @@ func _run() -> void:
 	lvl.queue_free()
 	await _frames(2)
 	await _clean_run()
+	await _fakeouts()
+	await _reduced_level()
 	if fails.is_empty():
-		print("✅ SUCCESS: NIGHT BUILDING (build, random reachable fuses, fuse box checkpoints, catch and retry, doors, escape)")
+		print("✅ SUCCESS: NIGHT BUILDING (build, random reachable fuses, fuse box checkpoints, catch and retry, doors, escape, Dolly, catch scares, breath bar, SOS alarm and rush, fake-outs, reduced scares)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())
@@ -127,6 +138,178 @@ func _build_checks(lvl: NightBuilding) -> void:
 	_check(lvl.hud.fuse_label.text == "Cầu chì: 0/3", "HUD fuses 0/3 (%s)" % lvl.hud.fuse_label.text)
 	_check(lvl.hud.hint_label.text.begins_with("[F] Đèn pin"), "HUD hint [F] Đèn pin (%s)" % lvl.hud.hint_label.text)
 	_check(lvl.hud.battery_label.text.begins_with("Pin đèn: 100%"), "HUD battery (%s)" % lvl.hud.battery_label.text)
+
+
+## Dolly among the four, her hum; the fake-outs; no breath bar in the open.
+func _polish_build(lvl: NightBuilding) -> void:
+	var dollies: int = 0
+	for s: HorrorStalker in lvl.stalkers:
+		dollies += int(s.is_dolly)
+	_check(dollies == 1 and lvl.dolly != null and lvl.dolly.is_dolly and lvl.stalkers.has(lvl.dolly), "one of the four stalkers is Dolly")
+	_check(lvl.dolly.mask != null and (lvl.dolly.look.get("shirt_color") as Color).is_equal_approx(StoryCast.CREAM), "Dolly: masked, in her cream cardigan")
+	_check(lvl.dolly.speed_of(HorrorStalker.CHASE) > lvl.stalkers[(lvl.stalkers.find(lvl.dolly) + 1) % 4].speed_of(HorrorStalker.CHASE), "Dolly is faster than a clone")
+	var n: int = 0
+	while not lvl.dolly.hum.playing and n < 600:
+		await process_frame
+		n += 1
+	_check(lvl.dolly.hum.playing and lvl.dolly.hum is AudioStreamPlayer3D, "Dolly hums (positional, %d frames to warm)" % n)
+	_check(lvl.fakeouts != null and lvl.fakeouts.items.size() >= 1 and lvl.fakeouts.items.size() <= 2, "1-2 fake-outs placed (%d)" % lvl.fakeouts.items.size())
+	_check(not lvl.hud.breath_bar.visible, "no breath bar in the open")
+	_check(not lvl.alarm and lvl.sos == null, "no alarm before the fuses")
+
+
+## The third fuse (H-D5): alarm, SOS lights, siren, the rush.
+func _alarm(lvl: NightBuilding) -> void:
+	_check(lvl.alarm and alarms == 1, "the third fuse raises the alarm (alarm_started x%d)" % alarms)
+	var mats: Array = lvl.map["corridor_lights"]
+	_check(mats.size() == 4 and lvl.sos != null and lvl.sos.running and lvl.sos.mats.size() == 4, "the 4 corridor light groups flash SOS")
+	var red: bool = true
+	for m: StandardMaterial3D in mats:
+		red = red and m.emission.is_equal_approx(SosLights.RED)
+	_check(red, "the corridor lights are red")
+	_check(lvl.scare.light_group_count() == (lvl.map["light_groups"] as Array).size() - 4, "the corridor groups left the flicker (%d)" % lvl.scare.light_group_count())
+	var n: int = 0
+	while not lvl.siren.playing and n < 600:
+		await process_frame
+		n += 1
+	_check(lvl.siren.playing, "the alarm siren loops")
+	var seen_on: bool = false
+	var seen_off: bool = false
+	for i: int in 160:
+		await process_frame
+		seen_on = seen_on or (mats[0] as StandardMaterial3D).emission_energy_multiplier > 2.0
+		seen_off = seen_off or (mats[0] as StandardMaterial3D).emission_energy_multiplier < 0.2
+	_check(seen_on and seen_off, "the corridor flashes on and off")
+	lvl.kit.catch_enabled = false
+	for s: HorrorStalker in lvl.stalkers:
+		s.frozen = false
+	var rushing: int = 0
+	var w: int = 0
+	while rushing < 4 and w < 150:
+		await physics_frame
+		w += 1
+		rushing = 0
+		for s2: HorrorStalker in lvl.stalkers:
+			if s2.rushing and s2.state == HorrorStalker.CHASE:
+				rushing += 1
+	_check(rushing == 4, "every stalker rushes the player (%d)" % rushing)
+	for s3: HorrorStalker in lvl.stalkers:
+		s3.frozen = true
+	lvl.kit.catch_enabled = true
+
+
+## The fake-outs on a level with both (coat and cat): the coat needs the flashlight, the cat's noise, the budget and gap.
+func _fakeouts() -> void:
+	var lv: NightBuilding = null
+	for sd: int in range(20, 60):
+		var t: NightBuilding = (load("res://scenes/story/NightBuilding.tscn") as PackedScene).instantiate()
+		t.setup({"seed": sd, "auto_retry": false, "capture_mouse": false, "reduce_scares": false})
+		root.add_child(t)
+		t.build()
+		if t.fakeouts.kinds().size() == 2:
+			lv = t
+			break
+		root.remove_child(t)
+		t.queue_free()
+	_check(lv != null, "a seed with both fake-outs")
+	if lv == null:
+		return
+	await _frames(3)
+	for s: HorrorStalker in lv.stalkers:
+		s.frozen = true
+	var fo: HorrorFakeouts = lv.fakeouts
+	var ci: int = fo.kinds().find("coat")
+	var ki: int = fo.kinds().find("cat")
+	var coat: Dictionary = fo.items[ci]
+	var cat: Dictionary = fo.items[ki]
+	# the coat: a test camera 5 m in front of it, looking at its chest
+	var cpos: Vector3 = coat["pos"]
+	var facing: Vector3 = -(coat["node"] as Node3D).global_transform.basis.z
+	var eye: Vector3 = cpos + facing * 5.0 + Vector3(0.0, 1.6, 0.0)
+	var cam := Camera3D.new()
+	lv.add_child(cam)
+	cam.global_position = eye
+	cam.look_at(cpos + Vector3(0.0, 1.3, 0.0))
+	cam.make_current()
+	lv.player.teleport(Vector3(eye.x, 0.0, eye.z), 0.0)
+	lv.flashlight.aim = cam
+	lv.flashlight.set_on(false)
+	await _frames(15)
+	_check(not bool(coat["fired"]) and not fo.coat_lit(cpos), "the coat stays a coat in the dark")
+	lv.flashlight.battery = 1.0
+	lv.flashlight.set_on(true)
+	await _frames(15)
+	_check(bool(coat["fired"]) and lv.scare.fake_count == 1 and lv.scare.played.has("violin_screech"), "the flashlight catches the coat: a short sting")
+	await _frames(70)
+	_check(lv.hud.toast_label.text == HorrorFakeouts.COAT_LINE and lv.hud.toast_label.text.contains("cái áo khoác"), "then the line (%s)" % lv.hud.toast_label.text)
+	_check(_plain_text(lv.hud.toast_label.text), "the line is plain text")
+	# the cat: one stalker 10 m away (hears it), one far (does not)
+	var kpos: Vector3 = cat["pos"]
+	var near_s: HorrorStalker = lv.stalkers[0]
+	var far_s: HorrorStalker = lv.stalkers[1]
+	var line: Vector3 = Vector3(kpos.x, 0.0, signf(kpos.z) * NightBuildingMap.CL_Z) if absf(kpos.z) > 17.0 else Vector3(signf(kpos.x) * NightBuildingMap.CL_X, 0.0, kpos.z)
+	near_s.reset_at(line + (cat["along"] as Vector3) * -8.0)
+	near_s.frozen = true
+	far_s.reset_at(Vector3(-kpos.x, 0.0, -kpos.z))
+	far_s.frozen = true
+	var far_noise: Vector3 = far_s.noise_pos
+	lv.player.teleport(kpos + (Vector3(0.0, 0.0, -signf(kpos.z)) if absf(kpos.z) > 17.0 else Vector3(-signf(kpos.x), 0.0, 0.0)) * 1.2 + (cat["along"] as Vector3) * 3.0, 0.0)
+	await _frames(15)
+	_check(not bool(cat["fired"]), "the cat waits for the 20 s gap after the coat")
+	lv.scare.clock += 25.0
+	await _frames(15)
+	_check(bool(cat["fired"]) and lv.scare.fake_count == 2 and lv.scare.played.has("bin_crash") and lv.scare.played.has("cat_meow"), "the cat knocks the bin over and meows")
+	await _frames(6)
+	var nd: float = NightBuilding._flat_dist(near_s.global_position, kpos)
+	_check(nd > HorrorFakeouts.CAT_NOISE_R or Vector2(near_s.noise_pos.x - kpos.x, near_s.noise_pos.z - kpos.z).length() < 0.01, "a stalker %.1f m away hears the bin" % nd)
+	_check(far_s.noise_pos.is_equal_approx(far_noise), "a far stalker does not")
+	_check(not lv.scare.can_fake_out(), "the fake-out budget is spent (2 per run)")
+	await _frames(130)
+	_check(not (cat["cat"] as Node3D).visible, "the cat ran off")
+	lv.release()
+	lv.queue_free()
+	await _frames(2)
+
+
+static func _plain_text(t: String) -> bool:
+	for i: int in t.length():
+		if t.unicode_at(i) >= 0x2000:
+			return false
+	return true
+
+
+## "Giảm hù dọa" level: a quiet hum, a soft catch without a face, the slow SOS pulse.
+func _reduced_level() -> void:
+	var lr: NightBuilding = (load("res://scenes/story/NightBuilding.tscn") as PackedScene).instantiate()
+	lr.setup({"seed": 9, "auto_retry": false, "capture_mouse": false, "reduce_scares": true})
+	root.add_child(lr)
+	lr.build()
+	await _frames(3)
+	for s: HorrorStalker in lr.stalkers:
+		s.frozen = true
+	_check(lr.dolly != null and lr.dolly.hum_reduced and is_equal_approx(lr.dolly.hum.volume_db, HorrorStalker.HUM_DB - 6.0), "reduced: the hum is 6 dB quieter")
+	var hunter: HorrorStalker = lr.stalkers[0]
+	var pp: Vector3 = lr.player.global_position
+	hunter.reset_at(pp + Vector3(0.0, 0.0, -0.9))
+	var n: int = 0
+	while lr.state == "play" and n < 60:
+		await physics_frame
+		n += 1
+	_check(lr.state == "caught" and lr.scare.last_scare.get("soft") == true and lr.scare.last_scare.get("face") == false, "reduced: a soft catch, no face")
+	lr.retry_from_checkpoint()
+	for k: int in 3:
+		lr.collect_fuse(k)
+	lr.player.teleport(lr.fuse_box["pos"], 0.0)
+	lr.place_fuses()
+	_check(lr.alarm and lr.sos.reduce_scares, "reduced: the alarm still rings")
+	var lo: float = 99.0
+	for i: int in 120:
+		await process_frame
+		lo = minf(lo, (lr.map["corridor_lights"][0] as StandardMaterial3D).emission_energy_multiplier)
+	_check(lo >= SosLights.PULSE_LO - 0.01, "reduced: the corridor pulses slowly, never dark (min %.2f)" % lo)
+	lr.release()
+	lr.queue_free()
+	await _frames(2)
 
 
 func _prompt_check(lvl: NightBuilding) -> void:
@@ -207,6 +390,9 @@ func _reachable(lvl: NightBuilding) -> void:
 
 func _seeds() -> void:
 	var sets: Dictionary = {}
+	var fake_counts: Dictionary = {}
+	var fake_kinds: Dictionary = {}
+	var dolly_at: Dictionary = {}
 	for sd: int in [1, 2, 3, 4, 5, 6]:
 		var l2: NightBuilding = (load("res://scenes/story/NightBuilding.tscn") as PackedScene).instantiate()
 		l2.setup({"seed": sd, "stalkers": 0, "auto_retry": false, "capture_mouse": false})
@@ -215,11 +401,17 @@ func _seeds() -> void:
 		var a: Array = l2.active_fuses.duplicate()
 		a.sort()
 		sets[str(a)] = true
+		fake_counts[l2.fakeouts.items.size()] = true
+		for k: String in l2.fakeouts.kinds():
+			fake_kinds[k] = true
 		root.remove_child(l2)
 		l2.queue_free()
 		await _frames(1)
 	print("  fuse sets over 6 seeds: %s" % str(sets.keys()))
 	_check(sets.size() >= 3, "the fuse spots change with the seed (%d different sets)" % sets.size())
+	print("  fake-outs over 6 seeds: counts %s, kinds %s" % [str(fake_counts.keys()), str(fake_kinds.keys())])
+	_check(fake_counts.has(1) and fake_counts.has(2) and fake_counts.size() == 2, "1 or 2 fake-outs per run, both happen over the seeds (%s)" % str(fake_counts.keys()))
+	_check(fake_kinds.has("coat") and fake_kinds.has("cat"), "both fake-out kinds over the seeds (%s)" % str(fake_kinds.keys()))
 
 
 func _locked_doors(lvl: NightBuilding) -> void:
@@ -275,7 +467,10 @@ func _fuses(lvl: NightBuilding) -> void:
 		n += 1
 	_check(lvl.state == "caught" and caught_n == 1 and lvl.caught_count == 1, "a stalker within 1.2 m catches the player (%s, %d)" % [lvl.state, caught_n])
 	_check(lvl.scare.scares_played >= 1 and not lvl.player.controls_enabled, "the catch scare plays and controls lock")
-	await _frames(5)
+	_check(lvl.scare.last_scare.get("spot") == "open" and lvl.scare.last_scare.get("face") == true and lvl.scare.is_catch_playing(), "caught in the open: the face lunges (%s)" % str(lvl.scare.last_scare.get("spot")))
+	_check(not lvl.hud.card_label.visible, "the caught card waits for the scare")
+	await _frames(80)
+	_check(lvl.hud.card_label.visible and lvl.hud.card_label.text == "BỊ BẮT!" and not lvl.scare.is_catch_playing(), "the caught card after the 1.2 s scare")
 	lvl.retry_from_checkpoint()
 	await _frames(3)
 	_check(lvl.state == "play" and lvl.player.controls_enabled, "retry: playing again")
@@ -303,6 +498,7 @@ func _fuses(lvl: NightBuilding) -> void:
 	_check(placed_log == [1, 2, 3] and checkpoints == 3, "fuse_placed 1, 2, 3 and a checkpoint each (%s, %d)" % [str(placed_log), checkpoints])
 	_check(lvl.doors_unlocked and ((lvl.map["doors"] as Dictionary)["shape"] as CollisionShape3D).disabled, "3 fuses unlock the lobby doors")
 	_check(lvl.hud.fuse_label.text == "Cầu chì: 3/3", "HUD fuses 3/3")
+	await _alarm(lvl)
 
 
 func _escape(lvl: NightBuilding) -> void:
@@ -317,6 +513,7 @@ func _escape(lvl: NightBuilding) -> void:
 		n += 1
 	p.input_override = null
 	_check(escaped_with == 2 and lvl.state == "escaped", "walking out through the open doors emits escaped(caught_count = 2) (%d, %s)" % [escaped_with, lvl.state])
+	_check(not lvl.siren.playing and not lvl.dolly.hum.playing and not lvl.dolly.hum_on, "out: the siren and the hum stop")
 	lvl.retry_from_checkpoint()
 	_check(lvl.state == "escaped", "retry_from_checkpoint is ignored after the escape")
 
@@ -334,11 +531,16 @@ func _hidden_catch(lvl: NightBuilding) -> void:
 	hunter.face(Vector3(0, 0, -1))
 	await _frames(3)
 	_check(lvl.kit.hide_in(spot) and hunter.state == HorrorStalker.CHECK, "hides in view of a stalker, which goes to check (%s)" % hunter.state)
+	await _frames(8)
+	_check(lvl.hud.breath_bar.visible and lvl.hud.breath_label.visible and lvl.hud.breath_label.text == "Giữ Shift: nín thở", "the breath bar and its plain hint while hidden")
 	var n: int = 0
 	while lvl.state == "play" and n < 240:
 		await physics_frame
 		n += 1
 	_check(lvl.state == "caught" and lvl.caught_count == 2 and spot.revealed, "caught in the locker (%s, %d)" % [lvl.state, lvl.caught_count])
+	_check(lvl.scare.last_scare.get("spot") == "locker" and lvl.hud.peek_kind == "locker", "the locker scare: the face at the slats first")
+	await _frames(80)
+	_check(lvl.hud.peek_kind == "" and lvl.hud.card_label.visible, "the door yanked: the slats go, then the caught card")
 	lvl.retry_from_checkpoint()
 	await _frames(3)
 	var p: ThirdPersonController = lvl.player
