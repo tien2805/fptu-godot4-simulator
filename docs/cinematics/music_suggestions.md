@@ -1,6 +1,6 @@
 # Nhạc và âm thanh cho cinematic: bài đã chọn và gợi ý
 
-Cập nhật: 2026-10-25.
+Cập nhật: 2026-10-25 (thêm bảng mọi slot nhạc; game không còn nhạc tạo bằng code).
 
 Gu chung là kiểu phim *Nobody*: nhạc cũ, vui, đặt ngược với cảnh hành động hoặc thảm họa.
 
@@ -19,10 +19,81 @@ Gu chung là kiểu phim *Nobody*: nhạc cũ, vui, đặt ngược với cảnh
   - Nhạc đặt ở `music\<tên cảnh>.ogg` hoặc `.mp3`, ví dụ `music\seg_d0_race.mp3`.
   - Âm thanh đặt ở `sfx\<tên âm>.ogg`, `.mp3` hoặc `.wav`, ví dụ `sfx\bonk.ogg`.
   - Video intro tự tạo đặt ở `video\ai_intro_m.ogv` (nam) hoặc `video\ai_intro_f.ogv` (nữ).
-- Không có file thì game phát nhạc và âm thanh tự tạo bằng code.
+- Không có file nhạc thì chỗ đó **im lặng**: game không còn nhạc tạo bằng code ("tuyệt đối không xài nhạc code nữa"). Thiếu file âm thanh hiệu ứng thì game vẫn dùng âm tự tạo.
 - File dài hơn cảnh sẽ mờ dần trong 0,5 s cuối.
 - **Các file này chỉ nằm trên máy, không bao giờ commit lên git hay đưa vào bản phát hành.**
 - Bỏ cả bài vào thư mục Downloads là Claude có thể dò nhịp và cắt đúng đoạn hay nhất cho từng cảnh. Độ dài và các nhịp đánh của mỗi cảnh nằm trong `docs/cinematics/<tên cảnh>.txt`.
+
+## Toàn bộ chỗ đặt nhạc (slot)
+
+Mỗi dòng là một file `music\<slot>.ogg` hoặc `music\<slot>.mp3`. Nhạc nền (menu, thế giới mở, màn chơi, nhiệm vụ, đêm) tự lặp lại và chuyển bài mờ dần 1,2 s; nhạc cảnh và replay phát một lần.
+
+**Nhạc nền, màn chơi và nhiệm vụ**
+
+| Slot | Phát khi | Bài | Bài thay thế |
+|---|---|---|---|
+| `menu` | menu chính, tạo nhân vật | *Nightcall*, Kavinsky | |
+| `roam_day` | thế giới mở ban ngày, đi bộ hay chạy xe (sáng, trưa, chiều, hoàng hôn) | *Take On Me*, a-ha | *Self Control*, Laura Branigan |
+| `roam_night` | thế giới mở ban đêm, đi bộ hay chạy xe | *Resonance*, HOME | *Midnight City*, M83 |
+| `stage1_race` | Màn 1 đua xe | *Running in the 90s*, Max Coveri | |
+| `stage2_parking` | Màn 2 bãi xe | *Gonna Fly Now* (nhạc Rocky), Bill Conti | |
+| `stage3_classroom` | Màn 3 lớp học | *Clair de Lune*, Debussy | |
+| `stage4_vovinam` | Màn 4 Vovinam (trống võ đường vẫn đánh từng phách 85/110/135 BPM, nhạc nằm bên dưới) | *Kung Fu Fighting*, Carl Douglas | |
+| `stage5_canteen` | Màn 5 căn tin | *Flight of the Bumblebee*, Rimsky-Korsakov | |
+| `stage6_capstone` | Màn 6 boss capstone | *Harder, Better, Faster, Stronger*, Daft Punk | |
+| `stage_extra_exam` | Màn phụ thi cuối kỳ | *Mission: Impossible Theme*, Lalo Schifrin | |
+| `mission_stakeout` | nhiệm vụ rình bãi xe (Ngày 1) | *Secret Agent Man*, Johnny Rivers | |
+| `mission_chase` | nhiệm vụ đuổi theo Mũ Đỏ (Ngày 1) | *Chase*, Giorgio Moroder | |
+| `mission_fight` | trận tay không Ngày 1 và Ngày 4 | *Holding Out for a Hero*, Bonnie Tyler | |
+| `mission_canteen` | nằm vùng căn tin (Ngày 4) | *Careless Whisper*, George Michael | |
+| `mission_corridor` | hành lang tối (Ngày 1) | *Tubular Bells* (đoạn mở đầu), Mike Oldfield | |
+
+Độ căng (tốc độ Màn 1, máu boss Màn 6) chỉ làm nhạc to hơn và sáng hơn (bớt lọc trầm), không đổi bài.
+
+**Tòa nhà đêm (Ngày 4 và chạy riêng màn Night Building)**
+
+| Slot | Phát khi | Bài |
+|---|---|---|
+| `night_stealth` | chưa con cừu nào nghi ngờ | *Stranger Things* (nhạc chủ đề), Kyle Dixon & Michael Stein |
+| `night_tense` | có con nghi ngờ hoặc đang lùng sục | *It Follows* (Title), Disasterpeace |
+| `night_chase` | có con đang đuổi | *Halloween Theme*, John Carpenter |
+| `night_escape` | đủ 3 cầu chì, cửa sảnh mở, chạy ra | *Turbo Killer*, Carpenter Brut |
+
+Lúc trốn trong tủ hay gầm bàn, nhạc tắt dần chỉ còn tim đập và tiếng thở. Mỗi bài nhớ chỗ đang phát: quay lại trạng thái cũ thì bài phát tiếp từ chỗ đó.
+
+**Cảnh phim (cinematic)**
+
+| Slot | Bài |
+|---|---|
+| `ai_intro` | *The End of the World*, Skeeter Davis |
+| `cine_d0_wake` | *Wake Me Up Before You Go-Go*, Wham! |
+| `cine_d0_brief` | *Peter Gunn Theme*, Henry Mancini |
+| `cine_d0_exam` | *I Got You (I Feel Good)*, James Brown |
+| `cine_d0_midnight` | *Mr. Sandman*, The Chordettes |
+| `cine_day_start` | *Good Morning* (*Singin' in the Rain*) |
+| `cine_d1_intro` | *The X-Files Theme*, Mark Snow |
+| `cine_d1_corridor` | *The Murder* (Psycho), Bernard Herrmann |
+| `cine_d1_choice` | *Mad World*, Gary Jules |
+| `cine_d1_choice_cover` (đuôi lựa chọn: che cho Phúc, "…Hai tô.") | *With a Little Help from My Friends*, Joe Cocker |
+| `cine_d1_choice_report` (đuôi lựa chọn: báo cáo Phúc) | *The Sound of Silence*, Simon & Garfunkel |
+| `cine_d1` | *Green Onions*, Booker T. & the M.G.'s |
+| `cine_d4_intro` | *Stayin' Alive*, Bee Gees |
+| `cine_d4_stare` | *The Lonely Shepherd*, Gheorghe Zamfir |
+| `cine_d4` | *Every Breath You Take*, The Police |
+| `seg_d1_brawl` | *I've Gotta Be Me* |
+| `seg_d4_brawl` | *Ain't That a Kick in the Head*, Dean Martin |
+| `wanted_busted` (bị bắt khi bị truy nã) | *Bad Boys*, Inner Circle |
+
+**Replay ngắn**
+
+| Slot | Bài |
+|---|---|
+| `seg_d0_race` | *Deja Vu*, Dave Rodgers |
+| `seg_d0_exam` | *Bad to the Bone* (riff) |
+| `seg_d1_chase` | *Yakety Sax* |
+| `seg_d4_escape` | *Ghostbusters* |
+
+Không có nhạc riêng (chỉ âm thanh hiệu ứng): cuộc gọi 3 giờ sáng (nhạc chuông, tiếng thì thầm), lao động công ích, thẻ giới thiệu, thẻ ngày. Loa kẹo kéo là vũ khí: file `sfx\loa_keo_keo` của bạn.
 
 ## Đã chốt
 

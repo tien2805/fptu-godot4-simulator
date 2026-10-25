@@ -4,7 +4,7 @@
 # Quyết định đình chỉ thi", a huge red "TOANG!" stamp slamming onto it (toang_sting here at its slam time), Mr.T's text
 # "Thầy tin em. Tìm bằng chứng đi.", a 7-day countdown flipping to 7, the title card "TOOL ĐEN – 7 ngày minh oan".
 # When the owner's video user://video/ai_intro_m.ogv / ai_intro_f.ogv exists, StoryVideo plays it instead (StoryRoam).
-# Music slot ai_intro (owner file user://music/ai_intro.ogg|.mp3, else a synthesized cue). No ramps (story = real).
+# Music slot ai_intro (owner file user://music/ai_intro.ogg|.mp3, else no music). No ramps (story = real).
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline
 

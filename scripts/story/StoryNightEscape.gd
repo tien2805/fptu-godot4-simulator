@@ -43,6 +43,7 @@ func _ready() -> void:
 	add_child(night)
 	night.escaped.connect(_on_escaped)
 	night.caught.connect(_on_caught)
+	add_child(NightMusic.for_level(night))   # H-D9: the owner's night tracks follow stealth / tense / chase / hidden / escape
 	var fx: Node = get_node_or_null("/root/GameFX")
 	if fx and fx.has_method("music_stop"):
 		fx.call("music_stop", true)

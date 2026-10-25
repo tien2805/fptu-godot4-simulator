@@ -5,8 +5,8 @@
 # camera and the pause; length clamps to 4-6 s; hold-Esc skips; no footage -> no replay. Plan review corrections: the
 # replays run at frame 185 (>= 1 s of footage after the mark, so the impact sits at 55 % = 2.75 s) and the expected impact
 # is also computed from replay_clock (M6); the real-time loop advances by the full dt (M5); a replay removed mid-play
-# clears cinematic_active and the pause (Minor 3); the sting is cached by (length, r_hit) (Minor 8).
-# Independent of user://music (no slot is passed, so the synthesized sting is always used).
+# clears cinematic_active and the pause (Minor 3). H-D8: no synthesized sting: without a slot (or without the owner's file)
+# the replay is silent. Independent of user://music (no slot is passed; the slot case uses a name with no file).
 # Run:  godot --headless --path . --script tests/test_cine_replay.gd
 extends SceneTree
 
@@ -149,19 +149,21 @@ func _run_replays() -> void:
 	_check(not paused, "and the game is not paused")
 	rp3.queue_free()
 	empty.queue_free()
-	# sting cached by (length, r_hit) (Minor 8)
-	_check(CineReplay.sting(5.0, 2.75) == CineReplay.sting(5.0, 2.75), "replay sting is cached by (length, r_hit)")
+	# H-D8: no synthesized sting; no slot -> silent, a slot without an owner file -> silent
+	var probe := CineReplay.new()
+	_check(probe.has_method("start") and not probe.has_method("sting"), "CineReplay has no synthesized sting any more")
+	probe.free()
 	var rp_a := CineReplay.new()
 	world.add_child(rp_a)
-	rp_a.start(rec, {"length": 4.0, "manual": true})
-	var st_a: AudioStream = rp_a.music.stream
+	_check(rp_a.start(rec, {"length": 4.0, "manual": true}), "a replay without a slot still plays")
+	_check(rp_a.music.stream == null and not rp_a.music.playing, "no slot -> the replay is silent (no code music)")
 	rp_a.force_skip_hold = true
 	for i: int in 60:
 		rp_a.step(1.0 / 60.0)
 	var rp_b := CineReplay.new()
 	world.add_child(rp_b)
-	rp_b.start(rec, {"length": 4.0, "manual": true})
-	_check(st_a != null and rp_b.music.stream == st_a, "a second replay of the same length reuses the sting")
+	rp_b.start(rec, {"length": 4.0, "manual": true, "slot": "hd8_no_such_replay_slot"})
+	_check(rp_b.music.stream == null and not rp_b.music.playing, "a slot with no owner file -> silent")
 	# real-time loop: full dt, no clamp (M5) - a 300 ms hitch advances r by >= 0.29 s
 	rp_b.manual = false
 	rp_b._last_us = Time.get_ticks_usec()

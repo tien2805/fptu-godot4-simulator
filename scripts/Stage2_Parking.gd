@@ -158,7 +158,7 @@ func _ready() -> void:
 		marker_pad.material_override = pad_mat
 	GameFX.disable_button_focus(hud)
 	GameFX.upgrade_scene_visuals(self, "morning")
-	GameFX.music_play("parking", 0.35)
+	GameFX.music_play("stage2_parking", 0.35)
 
 	mission_label.text = "RẼ PHẢI VÀO CỔNG BÃI XE D1 (BÊN PHẢI) → DỪNG TRƯỚC BARIE, BẤM [E] QUÉT THẺ DÂY CAM!"
 	_say("07:26 AM! VỀ TỚI ĐƯỜNG D1 – FPTU BÊN PHẢI, HUTECH BÊN TRÁI. CỔNG BÃI XE NGAY PHÍA TRƯỚC. [H] CÒI · [S] LÙI", GameFX.FPT_YELLOW, 4.5)

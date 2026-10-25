@@ -1,11 +1,10 @@
 # File: res://scripts/cine/CineAudio.gd
-# Cinematic audio (spec A1-D13, A1-D14). Music slots: user://music/<slot>.ogg, then .mp3 (owner files, outside the project:
-# never committed or exported); without a file a cue is synthesized offline to the exact real length with accents on the
-# timeline's real impact times. A longer file fades to silence over the last 0.5 s (music_gain). SFX: user://sfx/<cue>.ogg
-# overrides, otherwise the synthesized A1 cues below. Synthesis pastes short precomputed voice tables into one buffer so a
-# 25 s cue costs about a million sample adds.
-# Threading: synth_cue / synth_sting and the helpers they call are pure (no scene tree, no nodes, no shared mutable state), so
-# CinePlayer may run them on a WorkerThreadPool task. sfx() keeps a static cache and is main-thread only.
+# Cinematic audio (spec A1-D13, A1-D14, H-D8). Music slots: user://music/<slot>.ogg, then .mp3 (owner files, outside the
+# project: never committed or exported); without a file the cinematic plays without music (no code music, H-D8). A longer
+# file fades to silence over the last 0.5 s (music_gain). SFX: user://sfx/<cue>.ogg overrides, otherwise the synthesized A1
+# cues below (sound effects, not music). Synthesis pastes short precomputed voice tables into one buffer.
+# Threading: the voice helpers (_tone, _noise, _paste, _mix, _to_wav) are pure (no scene tree, no shared mutable state).
+# sfx() keeps a static cache and is main-thread only.
 class_name CineAudio
 extends RefCounted
 
@@ -17,12 +16,6 @@ const SFX_CUES: Array[String] = ["impact_light", "impact_medium", "impact_heavy"
 	"body_fall", "slide_whistle", "groan", "phone_buzz", "engine_roar", "neck_crack", "helmet_clonk",
 	# story Phase B: canteen brawl and Day 1 / Day 4 discovery beats
 	"tray_clang", "pot_clonk", "chair_smash", "burp", "fluoro_buzz"]
-const MOODS: Dictionary = {
-	"punchy": {"bpm": 118.0, "root": 55.0, "minor": true},
-	"heavy": {"bpm": 96.0, "root": 49.0, "minor": true},
-	"playful": {"bpm": 124.0, "root": 65.4, "minor": false},
-	"eerie": {"bpm": 84.0, "root": 46.2, "minor": true},
-}
 static var _sfx_cache: Dictionary = {}
 
 
@@ -117,68 +110,6 @@ static func _to_wav(buf: PackedFloat32Array) -> AudioStreamWAV:
 	w.stereo = false
 	w.data = data
 	return w
-
-
-static func _in_windows(t: float, hits: Array[Dictionary]) -> bool:
-	for h: Dictionary in hits:
-		if t >= float(h.get("r_start", h["r"])) and t <= float(h.get("r_end", h["r"])):
-			return true
-	return false
-
-
-## Default cue for a slot: tempo grid (kick + bass + hats, ducked to 40 % inside slow-motion windows), 0.3 s riser before
-## heavy/finisher impacts, a boom + noise burst on every impact, a tick on every freeze, an outro hit when the 1x tail starts,
-## FADE_OUT at the end. Exactly `length` seconds.
-static func synth_cue(length: float, hits: Array[Dictionary], mood: String = "punchy") -> AudioStreamWAV:
-	var m: Dictionary = MOODS.get(mood, MOODS["punchy"])
-	var buf := PackedFloat32Array()
-	buf.resize(int(round(length * SR)))
-	var beat: float = 60.0 / float(m["bpm"])
-	var kick: PackedFloat32Array = _tone(0.22, 120.0, 45.0, 0.55, 14.0)
-	var hat: PackedFloat32Array = _noise(0.03, 0.12, 90.0, 7, 0.0)
-	var degrees: Array[int] = [0, 0, 3 if bool(m["minor"]) else 4, 5, 7, 5, 3 if bool(m["minor"]) else 4, 0]
-	var bass: Dictionary = {}
-	for d: int in degrees:
-		if not bass.has(d):
-			bass[d] = _tone(beat * 0.45, float(m["root"]) * pow(2.0, d / 12.0), float(m["root"]) * pow(2.0, d / 12.0), 0.22, 3.0)
-	var t: float = 0.0
-	var step: int = 0
-	while t < length:
-		var g: float = 0.4 if _in_windows(t, hits) else 1.0
-		if step % 2 == 0:
-			_paste(buf, kick, t, g)
-		_paste(buf, bass[degrees[(step >> 1) % degrees.size()]], t, g)
-		_paste(buf, hat, t + beat * 0.25, g * 0.8)
-		t += beat * 0.5
-		step += 1
-	var boom: PackedFloat32Array = _tone(0.6, 90.0, 40.0, 0.9, 6.0)
-	var burst: PackedFloat32Array = _noise(0.12, 0.6, 30.0, 11, 0.2)
-	var tick: PackedFloat32Array = _tone(0.05, 2400.0, 2200.0, 0.35, 60.0)
-	var riser: PackedFloat32Array = _noise(0.3, 0.25, -6.0, 13, 0.6)
-	var last_end: float = 0.0
-	for h: Dictionary in hits:
-		var r: float = h["r"]
-		var pre: String = h.get("preset", "medium")
-		var g2: float = {"light": 0.45, "medium": 0.7, "heavy": 1.0, "finisher": 1.0, "accent": 0.3}.get(pre, 0.7)
-		if pre == "heavy" or pre == "finisher":
-			_paste(buf, riser, r - 0.3, 1.0)
-		_paste(buf, boom, r, g2)
-		_paste(buf, burst, r, g2)
-		if float(h.get("freeze", 0.0)) > 0.0:
-			_paste(buf, tick, r, 1.0)
-		last_end = maxf(last_end, float(h.get("r_end", r)))
-	if last_end > 0.0 and last_end < length - 0.2:
-		_paste(buf, boom, last_end, 0.6)
-	var nf: int = mini(int(FADE_OUT * SR), buf.size())
-	for i: int in nf:
-		buf[buf.size() - 1 - i] *= float(i) / float(nf)
-	return _to_wav(buf)
-
-
-## Short replay sting: the cue's voices for `length` s with one heavy impact at r_hit.
-static func synth_sting(length: float, r_hit: float) -> AudioStreamWAV:
-	var hits: Array[Dictionary] = [{"r": r_hit, "preset": "heavy", "freeze": 0.18, "r_start": r_hit - 0.45, "r_end": r_hit + 1.28}]
-	return synth_cue(length, hits, "punchy")
 
 
 ## A1 SFX cue: user://sfx/<cue>.ogg if present, else synthesized (cached).

@@ -6,7 +6,7 @@
 # calf (5.6): a startled hop, "Á!!!", and Chú Bảy calling the dog off-screen: the comic release.
 # "Giảm hù dọa" (A2-D14 / B-D3, read at build time): no stutter, no blackout, no camera punch, one heartbeat; the figure
 # leaves while the camera is on the protagonist's face, so it never pops out in view; the bleat plays at the reduced level.
-# No ramps (story = real). Music slot cine_d1_corridor (synthesized default, mood eerie).
+# No ramps (story = real). Music slot cine_d1_corridor (owner file, else no music).
 # Stage: explicit "at" in the ring courtyard, the corridor's long axis along the courtyard; a 4.5 x 16 m flat spot is all
 # the set needs (it brings its own closed corridor, opts "set": true). Staged inside a real corridor (or the Night
 # Building), pass stage "drop_set": true / play_cinematic opt "drop_set" so the carried walls are left out.

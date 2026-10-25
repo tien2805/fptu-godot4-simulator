@@ -6,7 +6,7 @@
 # points at the wrong clone first with "…à nhầm, con kia" and swings to the real Dolly (the clone with the cream wool cuff
 # and the sheep keychain). Tail at 1x: the clones stand, Dolly points, "Bắt lấy!" - the brawl starts.
 # The arrow targets are projected from shot S4's static camera at build time (16:9 screen fractions).
-# Music slot cine_d4_stare (synthesized default, mood eerie).
+# Music slot cine_d4_stare (owner file, else no music).
 # Stage: CineTimeline.canteen_stage (the nearest clear spot to the canteen, courtyard side; the hall itself is cluttered).
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline

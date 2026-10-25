@@ -4,7 +4,7 @@
 # dropped phone, which lights up: StoryScreenCard "phone" (4.0-9.4 s real) shows the notification "Sói Xám: Hàng đêm nay ở
 # Nguyễn Xiển. 2h. Đừng trễ."; the protagonist reads it aloud; engines roar down the road and a headlight sweeps past
 # (another courier); "Tối nay vui rồi đây." No ramps (story = real).
-# Music slot cine_d1: the owner's local file user://music/cine_d1.mp3 when present, else the synthesized default (punchy).
+# Music slot cine_d1: the owner's local file user://music/cine_d1.mp3 when present, else no music.
 # Stage: the west gate road edge (seg_d1_brawl's dict) with an explicit "at" at the gate (plot u 181, v 0).
 # Stage frame: X right (+X toward the gate), -Z forward along the road, ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline

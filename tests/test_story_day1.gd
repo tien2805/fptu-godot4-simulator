@@ -50,6 +50,13 @@ func _check(ok: bool, msg: String) -> void:
 		print("  ✗ ", msg)
 
 
+## H-D8: the slot the GameFX MusicDirector is on ("" without GameFX).
+func _music_slot() -> String:
+	var fx: Node = root.get_node_or_null("GameFX")
+	var md: Node = fx.get("music") if fx else null
+	return String(md.get("slot")) if md else ""
+
+
 func _initialize() -> void:
 	print("--- TEST STORY DAY 1 (end to end) ---")
 	Engine.max_fps = 60
@@ -178,6 +185,7 @@ func _process(_d: float) -> bool:
 				return false
 			m = sr.mission_node
 			_check(m is MissionStakeout and m.state == "running", "the stake-out runs after the intro")
+			_check(_music_slot() == "mission_stakeout", "the stake-out plays mission_stakeout (%s)" % _music_slot())
 			if not (m is MissionStakeout):
 				phase = 999
 				return false
@@ -231,6 +239,7 @@ func _process(_d: float) -> bool:
 			m = sr.mission_node
 			var ch: MissionChase = m
 			_check(ch.length_m > 280.0 and ch.length_m < 360.0, "the chase path is %.0f m" % ch.length_m)
+			_check(_music_slot() == "mission_chase", "the chase plays mission_chase (%s)" % _music_slot())
 			# lost him: TOANG!
 			_player().teleport(ch.courier.global_position + Vector3(40.0, 0.0, 0.0), 0.0)
 			_advance(3.0, 0.25)
@@ -239,6 +248,7 @@ func _process(_d: float) -> bool:
 			_check((fr.get("weapons") as WeaponDirector).locked, "the weapon wheel is locked during the mission")
 			sr.fail_ui.press_leave()
 			_check(sr.mission_node == null and sr.markers.has("d1_chase") and not sr.fail_ui.visible, "VỀ THẾ GIỚI MỞ: the chase marker comes back, no mission")
+			_check(_music_slot() == "roam_night", "back in free roam at night: roam_night (%s)" % _music_slot())
 			_check(not (fr.get("weapons") as WeaponDirector).locked and is_inf(_player().combat_speed_cap) and _player().controls_enabled, "weapons unlocked, speed cap restored")
 			_check(String(sd.get("step")) == "d1_chase" and not bool(fr.call("story_mission_active")), "the beat stays d1_chase, no mission running")
 			var cpos: Vector2 = sr.marker_pos["d1_chase"]
