@@ -15,7 +15,8 @@
 # weapons unlocked, speed cap restored, no fists on pedestrians mid-mission), Continue at d1_chase / d1_brawl (marker,
 # nothing starts by itself), the locker marker already at the corridor step.
 # Horror polish (H-D7): the stake-out's rustle and the shiba Lu fake-out (once per mission, not again after a restart);
-# the corridor locker bursting open with the sheep mask before the blackout.
+# the corridor locker bursting open with the sheep mask before the blackout. Scare events: the window slam at a third of
+# the walk, the figure behind the player when they turn round after the blackout.
 # Run:  godot --headless --path . --script tests/test_story_day1.gd
 extends SceneTree
 
@@ -356,6 +357,8 @@ func _process(_d: float) -> bool:
 			_check(mc.events.has("flicker") and mc.scare.flicker_events >= 1, "the tubes stutter")
 			_corridor_to(mc, 0.3)
 			_check(mc.figure.visible, "the figure stands at the far end")
+			_corridor_to(mc, 0.35)
+			_check(mc.events.has("window") and mc.slam.playing, "a sheep face slams against the dark window (%s)" % str(mc.events))
 			_advance(12.0)
 			_corridor_to(mc, 0.45)
 			_check(mc.events.has("locker") and not mc.events.has("blackout") and mc.scare.played.has("locker_slam") and mc.scare.fake_count == 1,
@@ -367,6 +370,13 @@ func _process(_d: float) -> bool:
 			_check(mc.events.has("gone") and not mc.figure.visible and _player().controls_enabled and mc.scare.played.has("sheep_bleat_distorted"), "lights back: the figure is gone, a distorted bleat")
 			_corridor_to(mc, 0.85)
 			_check(mc.events.has("whisper"), "whisper and a stutter")
+			_player().yaw = _player().yaw + PI   # turns round
+			mc.advance(0.1)
+			_check(mc.events.has("behind") and mc.figure.visible and MissionCorridor.flat(mc.figure.global_position, _player().global_position) < 1.7,
+				"turning round: the figure right behind (%s)" % str(mc.events))
+			_player().yaw = _player().yaw + PI
+			_advance(0.8)
+			_check(not mc.figure.visible, "and it is gone")
 			_corridor_to(mc, 0.95)
 			_check(mc.state == "running" and mc.clock < MissionCorridor.MIN_S, "not over before 30 s (%.1f s)" % mc.clock)
 			_advance(MissionCorridor.MIN_S)

@@ -24,6 +24,10 @@
 #          catch even held; the clones too (seen and unseen, one at a time, the others cannot cut it short, a clone's
 #          face at its catch); no file = subtitles only; with a file the voice plays from the performer and release()
 #          stops it.
+# Scare events (NightScares): the never-during rules (chase, hidden, catch, WC, alarm); the window slam, the locker lunge,
+#          the flashlight cut, the ceiling drop, the mirror, behind you and the TV each under its condition, once per run,
+#          figures cleaned up; the 38 s gap and the 5-per-run budget; a retry keeps them fired; the atmosphere every
+#          20-40 s; the phone ring as a noise the hunters hear, stopped after 2 s or by [P]; the reduced soft variant.
 # Run:  godot --headless --path . --script tests/test_night_building.gd
 extends SceneTree
 
@@ -56,7 +60,7 @@ func _run() -> void:
 	await process_frame
 	var t0: int = Time.get_ticks_msec()
 	var lvl: NightBuilding = (load("res://scenes/story/NightBuilding.tscn") as PackedScene).instantiate()
-	lvl.setup({"seed": 7, "auto_retry": false, "capture_mouse": false, "reduce_scares": false})
+	lvl.setup({"scare_events": false, "seed": 7, "auto_retry": false, "capture_mouse": false, "reduce_scares": false})
 	root.add_child(lvl)
 	await _frames(3)
 	print("  built in %.0f ms (level build %.0f ms)" % [float(Time.get_ticks_msec() - t0), lvl.build_ms])
@@ -81,8 +85,9 @@ func _run() -> void:
 	await _fakeouts()
 	await _reduced_level()
 	await _dolly_wc()
+	await _scare_events()
 	if fails.is_empty():
-		print("✅ SUCCESS: NIGHT BUILDING (build, random reachable fuses, fuse box checkpoints, catch and retry, doors, escape, Dolly, catch scares, breath bar, SOS alarm and rush, fake-outs, reduced scares, Dolly's toilet monologue)")
+		print("✅ SUCCESS: NIGHT BUILDING (build, random reachable fuses, fuse box checkpoints, catch and retry, doors, escape, Dolly, catch scares, breath bar, SOS alarm and rush, fake-outs, reduced scares, Dolly's toilet monologue, scare events)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())
@@ -228,7 +233,7 @@ func _fakeouts() -> void:
 	var lv: NightBuilding = null
 	for sd: int in range(20, 60):
 		var t: NightBuilding = (load("res://scenes/story/NightBuilding.tscn") as PackedScene).instantiate()
-		t.setup({"seed": sd, "auto_retry": false, "capture_mouse": false, "reduce_scares": false})
+		t.setup({"scare_events": false, "seed": sd, "auto_retry": false, "capture_mouse": false, "reduce_scares": false})
 		root.add_child(t)
 		t.build()
 		if t.fakeouts.kinds().size() == 2:
@@ -306,7 +311,7 @@ static func _plain_text(t: String) -> bool:
 ## "Giảm hù dọa" level: a quiet hum, a soft catch without a face, the slow SOS pulse.
 func _reduced_level() -> void:
 	var lr: NightBuilding = (load("res://scenes/story/NightBuilding.tscn") as PackedScene).instantiate()
-	lr.setup({"seed": 9, "auto_retry": false, "capture_mouse": false, "reduce_scares": true})
+	lr.setup({"scare_events": false, "seed": 9, "auto_retry": false, "capture_mouse": false, "reduce_scares": true})
 	root.add_child(lr)
 	lr.build()
 	await _frames(3)
@@ -352,7 +357,7 @@ const WC_SUBS: Array[String] = ["Alô?", "Đang đi ỉa đấy à?", "Alô... t
 func _wc_level(sd: int, dir: String) -> NightBuilding:
 	StoryAudio.sfx_dir = dir
 	var l: NightBuilding = (load("res://scenes/story/NightBuilding.tscn") as PackedScene).instantiate()
-	l.setup({"seed": sd, "auto_retry": false, "capture_mouse": false, "reduce_scares": false})
+	l.setup({"scare_events": false, "seed": sd, "auto_retry": false, "capture_mouse": false, "reduce_scares": false})
 	root.add_child(l)
 	l.build()
 	StoryAudio.sfx_dir = "user://sfx/"
@@ -609,6 +614,252 @@ func _dolly_wc() -> void:
 	Engine.time_scale = 1.0
 
 
+# ---------------------------------------------------------------------------
+# Scare events across the Night Building (NightScares)
+# ---------------------------------------------------------------------------
+func _ns_level(sd: int, reduced: bool = false) -> NightBuilding:
+	var l: NightBuilding = (load("res://scenes/story/NightBuilding.tscn") as PackedScene).instantiate()
+	l.setup({"scare_events": true, "seed": sd, "auto_retry": false, "capture_mouse": false, "reduce_scares": reduced})
+	root.add_child(l)
+	l.build()
+	await _frames(3)
+	l.scare.auto_clock = false
+	l.scare.clock = 100.0
+	l.night_scares.atmo_next_t = 1.0e9
+	l.fakeouts.enabled = false   # a fake-out would push the atmosphere back (it counts as one)
+	for st: HorrorStalker in l.stalkers:
+		st.reset_at(l.graph.pos(l.graph.id_of("GEN_mid")))
+		st.frozen = true
+	return l
+
+
+func _ns_go(l: NightBuilding, p: Vector3, yaw: float = 0.0) -> void:
+	l.player.teleport(p, yaw)
+	l.player.yaw = yaw
+
+
+## Waits until `kind` is in the log (true) or `cap` physics frames pass.
+func _ns_wait(l: NightBuilding, kind: String, cap: int = 90) -> bool:
+	var n: int = 0
+	while n < cap:
+		for e: String in l.night_scares.log:
+			if e.begins_with(kind + "@"):
+				return true
+		await physics_frame
+		n += 1
+	return false
+
+
+## Waits until the running event is over; returns the frames it took.
+func _ns_finish(l: NightBuilding, cap: int = 300) -> int:
+	var n: int = 0
+	while l.night_scares.active != "" and n < cap:
+		await physics_frame
+		n += 1
+	return n
+
+
+func _scare_events() -> void:
+	var l: NightBuilding = await _ns_level(12)
+	var ns: NightScares = l.night_scares
+	_check(ns.events.size() == 7 and ns.figure != null and not ns.figure.visible, "scare events: 7 seeded face events, the pooled figure hidden")
+	# the rules: never during a chase, hidden, a catch, the WC monologue, the alarm
+	var s0: HorrorStalker = l.stalkers[0]
+	s0._set_state(HorrorStalker.CHASE)
+	_check(ns.blocked() and not ns.trigger("screen"), "scare events: none during a chase")
+	s0._set_state(HorrorStalker.PATROL)
+	l.scare.play_catch_scare("open")
+	_check(ns.blocked(), "scare events: none during a catch scare")
+	l.scare.cancel_catch()
+	l.wc.running = true
+	_check(ns.blocked(), "scare events: none during the WC monologue")
+	l.wc.running = false
+	l.alarm = true
+	_check(ns.blocked(), "scare events: none during the alarm sprint")
+	l.alarm = false
+	var hide_spot: HidingSpot = _stall(l, "WCA", 3)
+	l.player.teleport(hide_spot.exit_point(), hide_spot.exit_yaw())
+	await _frames(3)
+	l.kit.hide_in(hide_spot)
+	_check(ns.blocked(), "scare events: none while hidden")
+	l.kit.leave_hiding()
+	await _frames(50)
+	_check(not ns.blocked() and ns.log.is_empty(), "scare events: free again, nothing fired yet")
+	# window slam: passing the window
+	var ew: Dictionary = ns.events["window_slam"]
+	_ns_go(l, ew["near"])
+	_check(await _ns_wait(l, "window_slam"), "window slam: fires as the player passes the window")
+	var seen_face: bool = false
+	var n: int = 0
+	while ns.active != "" and n < 200:
+		seen_face = seen_face or ns.slam.face.visible
+		await physics_frame
+		n += 1
+	_check(seen_face and not ns.slam.face.visible and l.scare.last_sting.get("cues", []).size() == 3, "window slam: the face slams on the glass with the sting, then drops away")
+	_ns_go(l, l.graph.pos(l.graph.id_of("GEN_mid")))
+	await _frames(10)
+	_ns_go(l, ew["near"])
+	await _frames(20)
+	_check(_log_count(ns, "window_slam") == 1, "window slam: once per run")
+	# the gap: the locker lunge waits FACE_GAP_S
+	var el: Dictionary = ns.events["locker_lunge"]
+	var ls: HidingSpot = el["spot"]
+	_ns_go(l, ls.exit_point(), ls.exit_yaw())
+	await _frames(20)
+	_check(_log_count(ns, "locker_lunge") == 0, "scare events: the next face scare waits %.0f s" % NightScares.FACE_GAP_S)
+	l.scare.clock += NightScares.FACE_GAP_S + 1.0
+	_check(await _ns_wait(l, "locker_lunge"), "locker lunge: fires next to the locker after the gap")
+	var lunged: bool = false
+	n = 0
+	while ns.active != "" and n < 200:
+		lunged = lunged or l.scare._face_fx.playing
+		await physics_frame
+		n += 1
+	_check(lunged and not ls.revealed and l.state == "play", "locker lunge: a face lunges out, the door slams again, no catch")
+	# flashlight cut
+	l.scare.clock += NightScares.FACE_GAP_S + 1.0
+	var ef: Dictionary = ns.events["flash_cut"]
+	l.flashlight.battery = 1.0
+	l.flashlight.set_on(true)
+	_ns_go(l, ef["pos"])
+	_check(await _ns_wait(l, "flash_cut"), "flashlight cut: fires in its corridor with the light on")
+	await _frames(2)
+	_check(not l.flashlight.on, "flashlight cut: the light dies")
+	var fig_lit: bool = false
+	n = 0
+	while ns.active != "" and n < 200:
+		fig_lit = fig_lit or (ns.figure.visible and l.flashlight.on)
+		await physics_frame
+		n += 1
+	_check(fig_lit and not ns.figure.visible and l.flashlight.on, "flashlight cut: back on with a clone right in front, then gone")
+	# ceiling drop
+	l.scare.clock += NightScares.FACE_GAP_S + 1.0
+	var er: Dictionary = NightBuildingMap.room_by_id(String((ns.events["ceiling_drop"] as Dictionary)["room"]))
+	_ns_go(l, NightBuildingMap.room_pt(er, 0.0, 4.0), 0.0)
+	l.flashlight.set_on(true)
+	_check(await _ns_wait(l, "ceiling_drop", 150), "ceiling drop: in its classroom with the flashlight on")
+	var upside: bool = false
+	n = 0
+	while ns.active != "" and n < 200:
+		upside = upside or (ns.figure.visible and absf(absf(ns.figure.rotation.z) - PI) < 0.01)
+		await physics_frame
+		n += 1
+	_check(upside and not ns.figure.visible, "ceiling drop: a figure hangs upside down in the beam, then pulls back up")
+	# mirror
+	l.scare.clock += NightScares.FACE_GAP_S + 1.0
+	var mp: Vector3 = (ns.events["mirror"] as Dictionary)["pos"]
+	_ns_go(l, Vector3(mp.x, 0.0, mp.z - 2.4), PI)   # the toilets are on the south side: facing +Z
+	_check(await _ns_wait(l, "mirror", 60), "mirror: facing the toilet mirror")
+	var in_mirror: bool = false
+	for i: int in 40:
+		in_mirror = in_mirror or ns.mirror_fig.visible
+		await physics_frame
+	l.player.yaw = 0.0   # turns round
+	await _ns_finish(l)
+	_check(in_mirror and not ns.mirror_fig.visible, "mirror: a sheep behind the player in it; turned round, nothing there")
+	# the budget: 5 face scares per run
+	l.scare.clock += NightScares.FACE_GAP_S + 1.0
+	var es: Dictionary = NightBuildingMap.room_by_id(String((ns.events["screen"] as Dictionary)["room"]))
+	_ns_go(l, NightBuildingMap.room_pt(es, 0.0, 4.0), 0.0)
+	await _frames(30)
+	_check(ns.face_count == NightScares.FACE_MAX and _log_count(ns, "screen") == 0, "scare events: at most %d face scares per run" % NightScares.FACE_MAX)
+	# a retry does not bring them back, the atmosphere goes on
+	l.retry_from_checkpoint()
+	await _frames(2)
+	_check(bool((ns.events["window_slam"] as Dictionary)["fired"]) and ns.active == "" and not ns.figure.visible, "scare events: a retry keeps them fired")
+	for st2: HorrorStalker in l.stalkers:
+		st2.frozen = true
+	_ns_go(l, Vector3(-31.5, 0.0, 4.0))
+	await _frames(3)
+	ns.atmo_next_t = l.scare.clock
+	await _frames(12)
+	var atmo: int = 0
+	for e: String in ns.log:
+		atmo += int(e.begins_with("atmo:"))
+	_check(atmo == 1 and ns.atmo_next_t - l.scare.clock >= NightScares.ATMO_GAP.x and ns.atmo_next_t - l.scare.clock <= NightScares.ATMO_GAP.y,
+		"atmosphere: one event, the next 20-40 s later (%s)" % str(ns.log.back()))
+	# the phone: a noise the hunters hear; it stops after 2 s or on [P]
+	ns.stop_phone()
+	var hearer: HorrorStalker = l.stalkers[1]
+	hearer.reset_at(l.player.global_position + Vector3(0.0, 0.0, 8.0))
+	hearer.frozen = true
+	var deaf: HorrorStalker = l.stalkers[2]
+	deaf.reset_at(l.graph.pos(l.graph.id_of("E_mid")))
+	deaf.frozen = true
+	var far0: Vector3 = deaf.noise_pos
+	_check(ns.fire_atmo("phone") == "phone" and ns.phone_ringing, "the phone rings")
+	await _frames(8)
+	_check(_flat(hearer.noise_pos, l.player.global_position) < 0.5 and deaf.noise_pos.is_equal_approx(far0), "the ringing is a noise the hunters within 14 m hear")
+	await _frames(130)
+	_check(not ns.phone_ringing, "the phone stops after 2 s")
+	ns.fire_atmo("phone")
+	var ev := InputEventKey.new()
+	ev.physical_keycode = KEY_P
+	ev.keycode = KEY_P
+	ev.pressed = true
+	l._unhandled_input(ev)
+	_check(not ns.phone_ringing, "[P] stops the ringing")
+	l.release()
+	l.queue_free()
+	await _frames(2)
+
+	# behind you, the TV
+	var l2: NightBuilding = await _ns_level(13)
+	var ns2: NightScares = l2.night_scares
+	_ns_go(l2, Vector3(-31.5, 0.0, -4.0), 0.0)
+	await _frames(10)
+	l2.player.yaw = PI   # turns the camera round
+	_check(await _ns_wait(l2, "behind_you", 30), "behind you: turning round in a dark corridor")
+	var behind: bool = false
+	var fd: float = INF
+	for i2: int in 6:
+		if ns2.figure.visible:
+			behind = true
+			fd = _flat(ns2.figure.global_position, l2.player.global_position)
+		await physics_frame
+	var nf: int = await _ns_finish(l2)
+	_check(behind and absf(fd - 1.5) < 0.2 and not ns2.figure.visible and nf < 50, "behind you: a figure 1.5 m away, gone after 0.6 s (%.2f m)" % fd)
+	l2.scare.clock += NightScares.FACE_GAP_S + 1.0
+	var es2: Dictionary = NightBuildingMap.room_by_id(String((ns2.events["screen"] as Dictionary)["room"]))
+	_ns_go(l2, NightBuildingMap.room_pt(es2, 0.0, 4.0), 0.0)
+	_check(await _ns_wait(l2, "screen", 60), "TV: walking into its classroom")
+	var lit_tv: bool = false
+	n = 0
+	while ns2.active != "" and n < 200:
+		lit_tv = lit_tv or ns2.screen_mat.emission_energy_multiplier > 1.0
+		await physics_frame
+		n += 1
+	_check(lit_tv and ns2.screen_mat.emission_energy_multiplier == 0.0 and l2.scare.played.has("static_burst"), "TV: on by itself with a static sheep face, then off")
+	l2.release()
+	l2.queue_free()
+	await _frames(2)
+
+	# "Giảm hù dọa": a soft sound only
+	var l3: NightBuilding = await _ns_level(14, true)
+	var ns3: NightScares = l3.night_scares
+	_ns_go(l3, (ns3.events["window_slam"] as Dictionary)["near"])
+	_check(await _ns_wait(l3, "window_slam"), "reduced: the event still happens")
+	var any_face: bool = false
+	for i3: int in 90:
+		any_face = any_face or ns3.slam.face.visible or ns3.figure.visible or l3.scare._face_fx.playing
+		await physics_frame
+	_check(not any_face and l3.scare.last_sting.is_empty() and l3.scare.played.has("metal_creak"), "reduced: no face, snap, flash or boom: a soft sound")
+	l3.release()
+	l3.queue_free()
+	await _frames(2)
+
+
+static func _log_count(ns: NightScares, kind: String) -> int:
+	var c: int = 0
+	for e: String in ns.log:
+		c += int(e.begins_with(kind + "@"))
+	return c
+
+
+static func _flat(a: Vector3, b: Vector3) -> float:
+	return Vector2(a.x - b.x, a.z - b.z).length()
+
+
 func _prompt_check(lvl: NightBuilding) -> void:
 	var spot: HidingSpot = null
 	for s: HidingSpot in lvl.kit.spots:
@@ -692,7 +943,7 @@ func _seeds() -> void:
 	var dolly_at: Dictionary = {}
 	for sd: int in [1, 2, 3, 4, 5, 6]:
 		var l2: NightBuilding = (load("res://scenes/story/NightBuilding.tscn") as PackedScene).instantiate()
-		l2.setup({"seed": sd, "stalkers": 0, "auto_retry": false, "capture_mouse": false})
+		l2.setup({"scare_events": false, "seed": sd, "stalkers": 0, "auto_retry": false, "capture_mouse": false})
 		root.add_child(l2)
 		l2.build()
 		var a: Array = l2.active_fuses.duplicate()
@@ -852,7 +1103,7 @@ func _hidden_catch(lvl: NightBuilding) -> void:
 ## A clean run with stalkers off: 3 fuses, out through the doors -> escaped(0); release() frees the mouse and the camera.
 func _clean_run() -> void:
 	var l3: NightBuilding = (load("res://scenes/story/NightBuilding.tscn") as PackedScene).instantiate()
-	l3.setup({"seed": 5, "stalkers": 0, "auto_retry": false, "capture_mouse": false})
+	l3.setup({"scare_events": false, "seed": 5, "stalkers": 0, "auto_retry": false, "capture_mouse": false})
 	root.add_child(l3)
 	l3.build()
 	var esc: Array[int] = [-1]
@@ -878,7 +1129,7 @@ func _clean_run() -> void:
 	_check(l3.state == "escaped" and not l3.kit.input_enabled, "release() keeps the escaped state and ignores keys")
 	# caught_count survives a rebuild (E5 tracking)
 	l3.caught_count = 2
-	l3.setup({"seed": 6, "stalkers": 0, "auto_retry": false, "capture_mouse": false})
+	l3.setup({"scare_events": false, "seed": 6, "stalkers": 0, "auto_retry": false, "capture_mouse": false})
 	_check(l3.caught_count == 2 and l3.state == "play", "caught_count survives a setup() rebuild (%d)" % l3.caught_count)
 	l3.release()
 	_check(l3.state == "released", "release() during play sets released")
