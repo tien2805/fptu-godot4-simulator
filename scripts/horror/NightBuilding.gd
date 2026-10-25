@@ -46,6 +46,9 @@
 #   every stalker rushes the player (re-issued every RUSH_REPATH_S while the player is not hidden, held RUSH_HOLD_S after a
 #   retry; a stalker that loses the player searches only ALARM_SEARCH_S, so a hiding spot can still work), the lobby doors
 #   open: the final sprint (toasts point to the exit).
+#   night_scares: NightScares   scripted scare events across the floor (window slam, ceiling drop, locker lunge, flashlight
+#                               cut, behind you, mirror, TV; atmosphere: door slam, bell, PA whisper, the phone ringing:
+#                               a noise the hunters hear, [P] stops it); opts.scare_events: bool (default true; tests off)
 #   wc: DollyWC                 the toilet monologue (owner request; any of the four hunters, the first that comes for a
 #                               player hidden in a stall of that block, one at a time, every visit): wc.running while it
 #                               plays, wc.performer the hunter (scripted in CHECK; the others cannot check that stall
@@ -100,6 +103,7 @@ var sos: SosLights = null
 var fakeouts: HorrorFakeouts = null
 var siren: AudioStreamPlayer = null
 var wc: DollyWC = null
+var night_scares: NightScares = null
 var fuse_candidates: Array = []
 var active_fuses: Array[int] = []
 var fuse_state: Array[String] = []
@@ -149,6 +153,7 @@ func _rebuild() -> void:
 	fakeouts = null
 	siren = null
 	wc = null
+	night_scares = null
 	_rush_t = -1.0
 	_card_t = -1.0
 	_noise_queue.clear()
@@ -254,6 +259,11 @@ func build() -> void:
 	add_child(fakeouts)
 	fakeouts.setup(seed_val, scare, flashlight, player, hud)
 	fakeouts.noise.connect(_on_fake_noise)
+	night_scares = NightScares.new()
+	add_child(night_scares)
+	night_scares.setup(self, seed_val)
+	night_scares.enabled = bool(opts.get("scare_events", true))
+	fakeouts.fired.connect(night_scares.on_fakeout)
 	if not stalkers.is_empty():
 		wc = DollyWC.new()
 		add_child(wc)
@@ -532,6 +542,8 @@ func _on_caught(catcher: HorrorStalker) -> void:
 	caught_count += 1
 	if wc != null:
 		wc.abort()   # the monologue stops on any catch
+	if night_scares != null:
+		night_scares.cancel()
 	kit.input_enabled = false
 	player.controls_enabled = false
 	scare.play_catch_scare(kit.hidden_spot.kind if kit.is_hidden() else "open", catcher == null or catcher.is_dolly)
@@ -548,6 +560,8 @@ func retry_from_checkpoint() -> void:
 	_card_t = -1.0
 	if wc != null:
 		wc.abort()
+	if night_scares != null:
+		night_scares.cancel()
 	scare.cancel_catch()
 	if kit.is_hidden():
 		kit.leave_hiding()
@@ -633,6 +647,9 @@ func _stop_sounds() -> void:
 		fakeouts.enabled = false
 	if wc != null:
 		wc.abort()
+	if night_scares != null:
+		night_scares.cancel()
+		night_scares.enabled = false
 
 
 func _escape() -> void:
@@ -650,9 +667,15 @@ func _escape() -> void:
 
 ## Standalone (the level is the current scene, no story running): [R] after the escape plays again.
 func _unhandled_input(event: InputEvent) -> void:
-	if state != "escaped" or not (event is InputEventKey):
+	if not (event is InputEventKey):
 		return
 	var k: InputEventKey = event
+	if state == "play" and k.pressed and not k.echo and k.physical_keycode == KEY_P and night_scares != null and night_scares.phone_ringing:
+		night_scares.stop_phone()   # [P]: the ringing phone goes quiet
+		get_viewport().set_input_as_handled()
+		return
+	if state != "escaped":
+		return
 	if k.pressed and not k.echo and k.physical_keycode == KEY_R and is_standalone():
 		get_tree().reload_current_scene()
 
@@ -681,6 +704,15 @@ func _on_catch_beat(beat: String) -> void:
 func _on_gasp(reason: String) -> void:
 	if state == "play" and reason == "empty":
 		hud.toast("Hết hơi!", 1.5)
+
+
+## A noise at p (the phone ringing): the stalkers within r hear it (one re-route per physics frame).
+func noise_at(p: Vector3, r: float) -> void:
+	if state != "play":
+		return
+	for s: HorrorStalker in stalkers:
+		if _flat_dist(s.global_position, p) <= r:
+			_noise_queue.append({"s": s, "pos": p, "rush": false})
 
 
 ## The fake-out cat knocked a bin over: the stalkers within its noise radius hear it.

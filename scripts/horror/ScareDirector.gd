@@ -149,6 +149,7 @@ var _face_fx: ScareFace = null
 var _pending: Dictionary = {}
 var _face_mode: String = ""
 var _next_double: bool = false
+var _event_duck: bool = false
 var _groups: Array[Dictionary] = []   # {pos: Vector3, mat: StandardMaterial3D, energy: float}
 var _flick: Array[Dictionary] = []    # {mat, energy, t}
 var _next_flicker: float = 0.0
@@ -435,11 +436,36 @@ func _scare(kind: String) -> void:
 	scared.emit(last_scare)
 
 
+## Scare events (the level's own face scares: ScareSlam, the ceiling drop...) duck the other audio while on.
+func event_duck(on: bool) -> void:
+	_event_duck = on and not reduce_scares
+
+
+## The loud layered sting for a scare event (+8 dB, the sub boom); the soft sting when reduced.
+func loud_sting(cues: Array = JUMP_CUES) -> void:
+	if reduce_scares:
+		play_cue("metal_creak", -8.0)
+	else:
+		_sting(cues)
+
+
+## The v2 screen hit (white frame, red frames, vignette, RGB-split overlay, shake) for a scare event; nothing when reduced.
+func screen_hit() -> void:
+	if reduce_scares or _face_fx == null:
+		return
+	_face_fx.hit(get_viewport().get_camera_3d() if is_inside_tree() and get_viewport() != null else null)
+
+
+## A face scare or a scare event is on (the level's scare events wait for it).
+func scare_busy() -> bool:
+	return _catch_on or not _pending.is_empty() or (_face_fx != null and _face_fx.playing) or _event_duck
+
+
 ## Whether the scares want the other audio ducked now.
 func _duck_wanted() -> bool:
 	if reduce_scares:
 		return false
-	return (_catch_on and catch_t < 0.0) or not _pending.is_empty() or _face_fx.playing
+	return (_catch_on and catch_t < 0.0) or not _pending.is_empty() or _face_fx.playing or _event_duck
 
 
 ## Extra gain (dB) of ducked audio now: 0 normal, about -60 at full duck.
