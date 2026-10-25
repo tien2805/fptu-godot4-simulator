@@ -2,18 +2,25 @@
 # Headless test of the Phase B unarmed Vovinam combat (spec 2026-10-25-story-phase-b-days-1-4-design.md, B-D1 / B-D2,
 # B-D12 test_melee_combat):
 #   A (arena, PlayerCombat without weapons) light combo jab -> cross -> elbow and its reset after 0.5 s; a block stops a
-#     light hit and the heavy kick breaks it (a second heavy knocks the staggered enemy down); a normal block (no damage, no
-#     counter) and a perfect block ("PHẢN ĐÒN" counter-strike); Space near a hostile dodge-rolls (no jump, invulnerable for
-#     0.35 s, an enemy hit is dodged) and jumps when nobody is within 6 m; the stagger meter dazes for 2.5 s, "[E] Hạ gục"
-#     shows, the finisher knocks out with 0.3 s of slow motion and the time scale comes back to 1.0; a telegraph flashes red
-#     for 0.5 s and its heavy goes through the block (damage, knocked down); a MeleeFight of 5 clones never has more than 2
-#     attackers; the player at 0 HP -> `lost` (enemies stand down); retry() from the wave-2 checkpoint.
+#     light hit and the heavy kick breaks it (a second heavy knocks the staggered enemy down); a light attack winds up in its
+#     own pose 0.35-0.45 s before the impact; a normal block (no damage, no counter), a perfect block ("PHẢN ĐÒN"
+#     counter-strike) and a mashed Q tap that does not renew the window; Space near a hostile dodge-rolls (no jump,
+#     invulnerable for 0.35 s, an enemy hit is dodged) and jumps when nobody is within 6 m; the stagger meter dazes for
+#     2.5 s, "[E] Hạ gục" shows, a real E press (consumed) starts the finisher, it knocks out with 0.3 s of slow motion and
+#     the time scale comes back to 1.0; a real pause ends the slow motion and hides the HUD; a held enemy is let go after
+#     1.5 s and on revive(); a fallen enemy is put back at its spawn; a wall stops an enemy's hit; a telegraph flashes red
+#     for 0.5 s and its heavy goes through the block; attacks from behind the camera get an amber / red edge marker; a
+#     MeleeFight of 5 clones (no god mode, the player hitting back) never has more than 2 attackers and gives the token back
+#     when an attacker is hit; the player at 0 HP -> `lost` (enemies stand down, no longer hostile); stop() and freeing the
+#     fight revive a downed player; retry() from the wave-2 checkpoint resets the knockout count.
 #   B (arena with a WeaponDirector) the director's punch and right-mouse aim are off while unarmed (owned by the combat), the
 #     pistol still aims; the unarmed combo stumbles, stumbles and knocks out a pedestrian (+1 heat), the heavy kick knocks
-#     one out; force unarmed equips Tay không, locks the wheel and scroll and shows "Nhiệm vụ này chỉ dùng tay không";
-#     Dolly flees at 30 % HP and her fleeing wins the fight.
+#     one out; a weapon switch mid-move cancels the hit; force unarmed equips Tay không, locks the wheel and scroll and shows
+#     "Nhiệm vụ này chỉ dùng tay không"; Dolly flees at 30 % HP (direct hits, and through finisher -> knockdown -> get up)
+#     and her fleeing wins the fight.
 #   C (FreeRoam with the crowd) the combat is wired (WeaponDirector owner, jump filter, hidden HUD); the unarmed combo knocks
-#     out a real pedestrian (+1 heat); a MeleeFight built from the roam shows the HUD, its start line and locks the wheel.
+#     out a real pedestrian (+1 heat); a MeleeFight built from the roam takes the player off the bike, shows the HUD (vice
+#     and classic) and its start line, locks the wheel, refuses [F], [P] and [B] with hints; after it [F] works again.
 # Counts physics frames (Engine.max_fps = 60).
 # Run:  godot --headless --path . --script tests/test_melee_combat.gd
 extends SceneTree
@@ -71,7 +78,13 @@ func _data_checks() -> void:
 	for a: String in ["courier", "clone", "dolly"]:
 		_check(CombatData.ARCHETYPES.has(a), "archetype %s exists" % a)
 	_check(is_equal_approx(float(CombatData.ARCHETYPES["dolly"]["flee_at"]), 0.3), "Dolly flees at 30 %")
-	for s: String in [CombatData.T_HP, CombatData.T_COUNTER, CombatData.T_FINISHER_PROMPT, CombatData.T_FINISHED, CombatData.T_GUARD_BREAK, CombatData.T_UNARMED_ONLY, CombatData.T_CONTROLS]:
+	var hit_t: float = float(CombatData.ENEMY_LIGHT["hit"])
+	for a2: String in CombatData.ARCHETYPES.keys():
+		var lead: float = float(CombatData.ARCHETYPES[a2]["windup"]) + hit_t
+		_check(lead >= 0.35 - 1e-4 and lead <= 0.45 + 1e-4, "%s: light attack tell %.2f s before the impact (0.35-0.45)" % [a2, lead])
+	_check(CombatData.CHAIN_WINDUP + hit_t >= 0.35 - 1e-4, "a chained punch still winds up %.2f s ahead" % (CombatData.CHAIN_WINDUP + hit_t))
+	_check(CombatData.pose("jab_windup_r", 0.0) != CombatData.pose("guard", 0.0) and CombatData.pose("jab_windup_l", 0.0).has("shoulder_l"), "the light wind-up pose differs from the guard (both sides)")
+	for s: String in [CombatData.T_HP, CombatData.T_COUNTER, CombatData.T_FINISHER_PROMPT, CombatData.T_FINISHED, CombatData.T_GUARD_BREAK, CombatData.T_UNARMED_ONLY, CombatData.T_CONTROLS, CombatData.T_FIGHT_BIKE, CombatData.T_FIGHT_PHONE, CombatData.T_FIGHT_EMOTE]:
 		_check(_plain(s), "plain text without emoji or decorative symbols: '%s'" % s)
 	_check(CombatData.T_UNARMED_ONLY == "Nhiệm vụ này chỉ dùng tay không" and CombatData.T_COUNTER == "PHẢN ĐÒN" and CombatData.T_FINISHER_PROMPT == "[E] Hạ gục", "the spec's texts")
 
@@ -142,6 +155,15 @@ static func _arm_raised(body: Node3D, s: String) -> bool:
 	return (CharacterBuilder._bone_global_now(sk, wr).origin - CharacterBuilder._bone_global_now(sk, up).origin).y > 0.05
 
 
+## A real key press / release through Input (dispatched to _input / _unhandled_input on the next frame).
+static func _key(code: Key, down: bool) -> void:
+	var ev := InputEventKey.new()
+	ev.physical_keycode = code
+	ev.keycode = code
+	ev.pressed = down
+	Input.parse_input_event(ev)
+
+
 func _kinds(kinds: Array) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for s: Dictionary in combat.strikes:
@@ -170,6 +192,10 @@ func _on_physics() -> void:
 		_next("combo")
 		return
 	var t: int = frames - t0
+	if frames == 9000:
+		_check(false, "watchdog: stuck in phase %s (%s)" % [phase, str(mark)])
+		_finish()
+		return
 	match phase:
 		"combo":
 			_combo(t)
@@ -181,6 +207,8 @@ func _on_physics() -> void:
 			_dodge(t)
 		"daze":
 			_daze(t)
+		"misc":
+			_misc(t)
 		"telegraph":
 			_telegraph(t)
 		"cap":
@@ -270,6 +298,12 @@ func _block(t: int) -> void:
 	if t == 20:
 		e.force_attack("light")
 		mark["n"] = e.results.size()
+		mark["w0"] = t
+	if t == 26:
+		_check(e.st == MeleeEnemy.St.WINDUP and e.pose.pose_name.begins_with("jab_windup") and e.pose.weight > 0.5, "a light attack winds up in its own pose, not the guard (%s, %s %.2f)" % [e.state_name(), e.pose.pose_name, e.pose.weight])
+	if mark.has("w0") and not mark.has("lead") and e.results.size() > int(mark["n"]):
+		mark["lead"] = t - int(mark["w0"])
+		_check(int(mark["lead"]) >= 21 and int(mark["lead"]) <= 29, "the light attack's tell starts 0.35-0.45 s before the impact (%d frames)" % int(mark["lead"]))
 	if t == 80:
 		_check(e.results.size() == int(mark["n"]) + 1 and e.results.back() == "blocked", "a held block stops the enemy's light hit (%s)" % str(e.results))
 		_check(is_equal_approx(combat.hp, 100.0) and combat.state != PlayerCombat.St.COUNTER and combat.hud.popups == int(mark["popups"]), "no damage, no counter for a block held early")
@@ -288,10 +322,29 @@ func _block(t: int) -> void:
 		_check(combat.hud.popup_text == CombatData.T_COUNTER and countered_n == 1, "the 'PHẢN ĐÒN' counter-strike pops (%s)" % combat.hud.popup_text)
 		_check(e.st == MeleeEnemy.St.STAGGER and is_equal_approx(e.hp, float(mark["hp2"]) - 12.0), "the counter staggers the attacker (%s, hp %.1f)" % [e.state_name(), e.hp])
 		_check(is_equal_approx(combat.hp, 100.0), "no damage on a perfect block")
+		combat.block_override = false
+	# anti-mash: a Q tap just before the hit (released one frame) does not renew the perfect window
+	if mark.has("done") and not mark.has("m_forced") and e.st == MeleeEnemy.St.HOLD:
+		mark["m_forced"] = true
+		mark["n3"] = e.results.size()
+		e.force_attack("light")
+	if mark.has("m_forced") and not mark.has("m_press") and e.st == MeleeEnemy.St.WINDUP:
+		mark["m_press"] = true
+		combat.block_override = true             # armed here, ~0.4 s before the hit (outside the 0.2 s window)
+	if mark.has("m_press") and not mark.has("m_up") and e.st == MeleeEnemy.St.ATTACK and e.st_t >= 0.03:
+		mark["m_up"] = t
+		combat.block_override = false
+	if mark.has("m_up") and not mark.has("m_tap") and t == int(mark["m_up"]) + 1:
+		mark["m_tap"] = true
+		combat.block_override = true             # pressed again ~0.12 s before the hit, one frame after the release
+	if mark.has("m_tap") and not mark.has("m_done") and e.results.size() > int(mark["n3"]):
+		mark["m_done"] = true
+		_check(e.results.back() == "blocked" and countered_n == 1, "a mashed Q tap only blocks: no second counter (%s)" % e.results.back())
 		combat.block_override = null
 		_next("dodge")
-	if t == 400:
-		_check(false, "the perfect-block test never resolved")
+	if t == 600:
+		_check(false, "the block tests never resolved (%s)" % str(mark))
+		combat.block_override = null
 		_next("dodge")
 
 
@@ -358,9 +411,12 @@ func _daze(t: int) -> void:
 		mark["d2"] = t
 	if mark.has("d2") and t == int(mark["d2"]) + 3:
 		_check(combat.finisher_target() == e2 and combat.hud.visible and combat.hud.finisher_shown, "'[E] Hạ gục' shows over the dazed enemy in reach")
-		combat.finisher_override = true
+		_key(KEY_E, true)                        # a real key event through the viewport
 	if mark.has("d2") and t == int(mark["d2"]) + 4:
+		_key(KEY_E, false)
+	if mark.has("d2") and t == int(mark["d2"]) + 6:
 		_check(combat.state == PlayerCombat.St.FINISHER and e2.st == MeleeEnemy.St.HELD, "E starts the takedown finisher (%s)" % e2.state_name())
+		_check(combat.e_consumed == 1, "the finisher's E press is consumed (no marker / call gets it)")
 	if mark.has("d2") and not mark.has("ko") and e2.st == MeleeEnemy.St.KO:
 		mark["ko"] = t
 		_check(combat.slowmo_active() and is_equal_approx(Engine.time_scale, CombatData.SLOWMO_SCALE), "slow motion at the finisher's impact (time scale %.2f)" % Engine.time_scale)
@@ -372,23 +428,62 @@ func _daze(t: int) -> void:
 	if mark.has("slow_end") and t == int(mark["slow_end"]) + 60:
 		_check(combat.state == PlayerCombat.St.IDLE, "the finisher ends")
 		combat._slowmo()
-		combat.notification(Node.NOTIFICATION_PAUSED)
+		paused = true                            # a real pause, as FreeRoam's cinematic does
+	if mark.has("slow_end") and t == int(mark["slow_end"]) + 61:
 		_check(is_equal_approx(Engine.time_scale, 1.0) and RadialWheel.scale_owner == null, "a pause (cinematic) ends the slow motion at once")
+		_check(not combat.hud.visible, "the combat HUD hides while the tree is paused")
+		paused = false
+	if mark.has("slow_end") and t == int(mark["slow_end"]) + 64:
+		_check(combat.hud.visible, "the combat HUD is back after the pause")
 		_drop(e2)
 		_reset_player()
-		e = _enemy("courier", Vector3(0.0, 0.0, -1.2))
-		combat.block_override = true
-		_next("telegraph")
+		e2 = _enemy("clone", Vector3(0.0, 0.0, -1.3))
+		_next("misc")
 	if t == 900:
 		_check(false, "the daze / finisher test never finished (%s)" % str(mark))
 		Engine.time_scale = 1.0
 		_next("telegraph")
 
 
+## Held-finisher timeout and release, the fallen-enemy respawn, the line-of-sight check of enemy hits.
+func _misc(t: int) -> void:
+	if t == 2:
+		e2.stagger = e2.stagger_max - 1.0
+		_check(e2.take_strike({"dmg": 1.0, "stagger": 5.0, "from": player.global_position}) == "daze", "test setup: dazed")
+		_check(e2.take_finisher_start(combat) and e2.st == MeleeEnemy.St.HELD, "test setup: held for a finisher")
+	if t == 2 + 95:
+		_check(e2.st == MeleeEnemy.St.HOLD and e2.stagger == 0.0, "an enemy held for a finisher that never lands is let go after 1.5 s (%s)" % e2.state_name())
+		e2.stagger = e2.stagger_max - 1.0
+		e2.take_strike({"dmg": 1.0, "stagger": 5.0, "from": player.global_position})
+		combat.finisher_override = true
+	if t == 2 + 97:
+		_check(combat.state == PlayerCombat.St.FINISHER and e2.st == MeleeEnemy.St.HELD, "test setup: a finisher on its way")
+		combat.revive()                          # retry / revive before the impact
+		_check(e2.st != MeleeEnemy.St.HELD and combat.state == PlayerCombat.St.IDLE, "revive() lets the held enemy go (%s)" % e2.state_name())
+	if t == 120:
+		Engine.time_scale = 1.0
+		e2.global_position = Vector3(0.0, -6.0, -1.3)   # under the floor: it falls
+	if t == 120 + 90:
+		_check(e2.respawns == 1 and e2.global_position.y > -0.5 and e2.global_position.distance_to(e2.home) < 1.0, "a fallen enemy is put back at its spawn point (y %.1f, respawns %d)" % [e2.global_position.y, e2.respawns])
+		mark["wall"] = World.wall(arena, Vector3(0.0, 1.0, -0.65), Vector3(3.0, 2.0, 0.1))
+		_place(e2, Vector3(0.0, 0.0, -1.2))
+	if t == 120 + 100:
+		mark["n"] = e2.results.size()
+		e2.force_attack("light")
+	if t == 120 + 160:
+		_check(e2.results.size() == int(mark["n"]) + 1 and e2.results.back() == "miss" and is_equal_approx(combat.hp, 100.0), "a wall between them: the enemy's hit does not land (%s)" % str(e2.results.back()))
+		(mark["wall"] as Node).queue_free()
+		_drop(e2)
+		_reset_player()
+		e = _enemy("courier", Vector3(0.0, 0.0, -1.2))
+		combat.block_override = true
+		_next("telegraph")
+
+
 func _telegraph(t: int) -> void:
 	if t == 20:
 		e.force_attack("heavy")
-	if e.st == MeleeEnemy.St.TELEGRAPH:
+	if not mark.has("hit") and e.st == MeleeEnemy.St.TELEGRAPH:
 		if not mark.has("tg0"):
 			mark["tg0"] = t
 		if t == int(mark["tg0"]) + 10:
@@ -397,6 +492,7 @@ func _telegraph(t: int) -> void:
 				lit = lit and (mi as MeshInstance3D).material_overlay != null
 			_check(lit, "the telegraph flashes the enemy red")
 			_check(combat.hud.telegraph_shown >= 1, "the HUD marks the telegraph")
+			_check(combat.hud.edge_markers == 0, "an attacker on screen gets no edge marker (%d)" % combat.hud.edge_markers)
 	if mark.has("tg0") and not mark.has("tg1") and e.st == MeleeEnemy.St.ATTACK:
 		mark["tg1"] = t
 		var n: int = t - int(mark["tg0"])
@@ -411,7 +507,24 @@ func _telegraph(t: int) -> void:
 		combat.block_override = null
 		_drop(e)
 		_reset_player()
-		combat.god = true
+		combat.fight_active = true                # edge markers below, then the 5-clone fight
+		e2 = _enemy("clone", Vector3(0.0, 0.0, 5.5))   # behind the camera (3.2 m behind the player)
+		e2.force_attack("light")
+	if mark.has("hit") and t == int(mark["hit"]) + 16:
+		_check(e2.st == MeleeEnemy.St.WINDUP and combat.hud.edge_markers == 1 and combat.hud.edge_kind[0] == 1, "a light attack from behind the camera: an amber edge marker (%d)" % combat.hud.edge_markers)
+		if combat.hud.edge_markers == 1:
+			_check(combat.hud.edge_pos[0].y > combat.hud.get_viewport().get_visible_rect().size.y * 0.5, "the marker sits on the bottom edge, toward the attacker behind")
+	if mark.has("hit") and t > int(mark["hit"]) + 16 and not mark.has("edge_h") and e2.st == MeleeEnemy.St.HOLD:
+		mark["edge_h"] = t
+		e2.force_attack("heavy")
+	if mark.has("edge_h") and t == int(mark["edge_h"]) + 10:
+		_check(e2.st == MeleeEnemy.St.TELEGRAPH and combat.hud.edge_markers == 1 and combat.hud.edge_kind[0] == 2, "a heavy from behind the camera: a red edge marker")
+	if mark.has("edge_h") and t == int(mark["edge_h"]) + 60:
+		_check(combat.hud.edge_markers == 0, "no marker once the attack is over")
+		_drop(e2)
+		combat.fight_active = false
+		combat.max_hp = 100000.0                 # not god mode: hits land and hurt, the player just lasts 10 s
+		combat.hp = 100000.0
 		fight = MeleeFight.new()
 		fight.name = "Fight"
 		arena.add_child(fight)
@@ -419,46 +532,77 @@ func _telegraph(t: int) -> void:
 		var w: Array = []
 		for i: int in 5:
 			var a: float = TAU * float(i) / 5.0
-			w.append({"archetype": "clone", "at": Vector3(sin(a), 0.0, cos(a)) * 5.0})
+			w.append({"archetype": "clone", "at": Vector3(sin(a), 0.0, cos(a)) * 5.0, "opts": {"hp_scale": 4.0}})
 		fight.add_wave(w)
 		fight.lost.connect(func() -> void: lost_n += 1)
 		fight.start()
 		_next("cap")
-	if t == 300:
-		_check(false, "the telegraph test never finished")
+	if t == 500:
+		_check(false, "the telegraph / edge marker test never finished (%s)" % str(mark))
 		_next("cap")
 
 
 func _cap(t: int) -> void:
 	max_att = maxi(max_att, fight.attackers())
+	if fight.holders.size() != fight.attackers():
+		mark["tok_bad"] = "%d holders vs %d attackers at %d" % [fight.holders.size(), fight.attackers(), t]
+	for n: Variant in fight.enemies:
+		var m: MeleeEnemy = n
+		var id: int = m.get_instance_id()
+		if bool(mark.get(id, false)) and (m.st == MeleeEnemy.St.STAGGER or m.st == MeleeEnemy.St.DAZE or m.st == MeleeEnemy.St.KNOCKDOWN or m.st == MeleeEnemy.St.KO):
+			mark["interrupts"] = int(mark.get("interrupts", 0)) + 1
+		mark[id] = m.is_attacking()
+	if t % 12 == 0:                              # the player fights back at whoever is coming at him: attackers hit mid-attack
+		var tgt: MeleeEnemy = null
+		var bd: float = 2.5
+		for n3: Variant in fight.enemies:
+			var m3: MeleeEnemy = n3
+			var d3: float = WeaponMath.flat(m3.global_position, player.global_position)
+			if m3.is_attacking() and d3 < bd:
+				bd = d3
+				tgt = m3
+		if tgt != null:
+			var to: Vector3 = tgt.global_position - player.global_position
+			player.model.rotation.y = atan2(-to.x, -to.z)
+			combat.light_override = true
+		elif t % 120 == 60:
+			combat.heavy_override = true
 	if t == 600:
 		var total: int = 0
-		for n: Variant in fight.enemies:
-			total += (n as MeleeEnemy).attacks
+		for n2: Variant in fight.enemies:
+			total += (n2 as MeleeEnemy).attacks
 		_check(max_att <= 2, "at most 2 of 5 enemies attack at once (max %d)" % max_att)
 		_check(max_att == 2, "two attackers do happen together (max %d)" % max_att)
-		_check(total >= 4, "the clones keep attacking (%d attacks in 10 s)" % total)
+		_check(not mark.has("tok_bad"), "every token is released when its attacker stops attacking (%s)" % str(mark.get("tok_bad", "ok")))
+		_check(int(mark.get("interrupts", 0)) >= 1, "attackers hit mid-attack give their token back (%d interrupts)" % int(mark.get("interrupts", 0)))
+		_check(total >= 4 and combat.hp < combat.max_hp, "the clones keep attacking and hurting (%d attacks, hp %.0f)" % [total, combat.hp])
 		_check(fight.state == "running" and fight.enemies.size() == 5 and combat.hud.visible, "the fight runs with its HUD")
-		combat.god = false
+		combat.max_hp = 100.0
 		combat.hp = 5.0
 		combat.since_damage = 0.0
 		_next("down")
 
 
 func _down(t: int) -> void:
-	if fight.state == "lost" and not mark.has("lost"):
+	if not mark.has("lost") and fight.state == "lost":
 		mark["lost"] = t
 		_check(lost_n == 1 and combat.is_down(), "the player at 0 HP is down and the fight is lost")
 	if mark.has("lost") and t == int(mark["lost"]) + 30:
 		var idle: bool = true
+		var hostile: int = 0
 		for n: Variant in fight.enemies:
 			var m: MeleeEnemy = n
 			idle = idle and (m.st == MeleeEnemy.St.IDLE or m.is_defeated())
+			hostile += 1 if m.is_hostile() else 0
 		_check(idle and fight.attackers() == 0, "after the loss the enemies stand down")
+		_check(hostile == 0 and combat.lock_target() == null, "stood-down enemies are no longer hostile (%d)" % hostile)
 		_check(lost_n == 1, "lost fires once")
-		fight.stop()
+		fight.stop()                             # the story skips the retry
+		_check(not combat.is_down() and combat.hp >= 1.0 and combat.enemies.is_empty(), "stop() after a loss revives the player and drops the enemies")
 		fight.queue_free()
-		_reset_player()
+	if mark.has("lost") and t == int(mark["lost"]) + 33:
+		_check(is_inf(player.combat_speed_cap) and not combat.try_dodge(), "after stop() the player moves and jumps freely again")
+		player.teleport(Vector3.ZERO, 0.0)
 		lost_n = 0
 		fight = MeleeFight.new()
 		fight.name = "Fight2"
@@ -502,10 +646,15 @@ func _retry(t: int) -> void:
 		_check(full, "the wave's enemies are fresh")
 		_check(is_equal_approx(combat.hp, 100.0) and not combat.is_down(), "the player is back with full HP")
 		_check(player.global_position.distance_to(mark["cp"]) < 0.1, "the player is back at the checkpoint spot")
+		_check(fight.ko_total == 0, "retry() resets the knockout count")
 	if mark.has("w1") and t == int(mark["w1"]) + 20:
 		_check(fight.state == "running" and not player.is_knocked_down(), "the fight goes on after the retry")
-		fight.stop()
-		_check(not combat.fight_active and fight.enemies.is_empty(), "stop() clears the fight")
+		combat.receive_attack(fight.enemies[0], {"damage": 999.0})
+	if mark.has("w1") and t == int(mark["w1"]) + 22:
+		_check(fight.state == "lost" and combat.is_down(), "test setup: down again")
+		fight.queue_free()                       # freed instead of retried
+	if mark.has("w1") and t == int(mark["w1"]) + 24:
+		_check(not combat.is_down() and not combat.fight_active and combat.enemies.is_empty(), "freeing a lost fight revives the player and drops its enemies from the combat")
 		_check(arena.find_children("*", "GPUParticles3D", true, false).is_empty(), "no GPUParticles3D")
 		_check(is_equal_approx(Engine.time_scale, 1.0), "Engine.time_scale is 1.0")
 		_start_b()
@@ -583,6 +732,19 @@ func _part_b(t: int) -> void:
 		_check(player.aiming, "with the pistol the right mouse aims again")
 		dir.aim_override = false
 		dir.equip(WeaponData.Slot.UNARMED)
+		var p4: Pedestrian = World.ped(arena, Vector3(-0.4, 0.0, -1.1), 53, player)
+		people.append(p4)
+		mark["p4"] = p4
+		mark["n_strikes"] = combat.strikes.size()
+		combat.light_override = true
+	if t == 172:
+		dir.equip(WeaponData.Slot.PISTOL)        # switched in mid-jab
+	if t == 176:
+		var p4b: Pedestrian = mark["p4"]
+		_check(combat.state == PlayerCombat.St.IDLE and combat.strikes.size() == int(mark["n_strikes"]) and p4b.state == Pedestrian.State.IDLE, "a weapon switch mid-move cancels the pending hit")
+		dir.equip(WeaponData.Slot.UNARMED)
+		people.erase(p4b)
+		p4b.queue_free()
 	if t == 180:
 		fight = MeleeFight.new()
 		fight.name = "FightB"
@@ -626,6 +788,46 @@ func _part_b(t: int) -> void:
 		_check(d2.st == MeleeEnemy.St.FLED and not d2.visible and fled_n == 1, "after 3 s she is gone (%s)" % d2.state_name())
 		_check(d2.global_position.distance_to(mark["d_pos"]) > 6.0, "she ran away (%.1f m)" % d2.global_position.distance_to(mark["d_pos"]))
 		_check(won_n == 1 and fight.state == "won", "her flight wins the fight")
+		player.teleport(Vector3.ZERO, 0.0)
+		combat.revive()
+		won_n = 0
+		fight = MeleeFight.new()
+		fight.name = "FightDolly2"
+		arena.add_child(fight)
+		fight.setup({"player": player, "combat": combat, "weapons": dir, "force_unarmed": false})
+		fight.add_wave([{"archetype": "dolly", "at": Vector3(0.0, 0.0, -1.3), "opts": {"ai": false, "label": "Cừu Dolly"}}])
+		fight.won.connect(func() -> void: won_n += 1)
+		fight.start()
+		var d3: MeleeEnemy = fight.enemies[0]
+		d3.hp = 60.0                             # above her 45 HP flee line
+		d3.stagger = d3.stagger_max - 1.0
+		mark["dolly2"] = t
+	if mark.has("dolly2"):
+		_dolly_finisher(t - int(mark["dolly2"]))
+
+
+## Dolly through the finisher: a jab dazes her, the finisher (no knockout for her) takes 35 HP and knocks her down; under
+## 30 % she gets up and flees, which wins the fight.
+func _dolly_finisher(u: int) -> void:
+	var d: MeleeEnemy = fight.enemies[0]
+	if u == 2:
+		combat.light_override = true
+	if u > 2 and not mark.has("df_daze") and d.st == MeleeEnemy.St.DAZE:
+		mark["df_daze"] = u
+		combat.finisher_override = true
+	if mark.has("df_daze") and not mark.has("df_down") and d.st == MeleeEnemy.St.KNOCKDOWN:
+		mark["df_down"] = u
+		_check(is_equal_approx(d.hp, 60.0 - 8.0 - CombatData.FINISHER_DMG) and d.is_hostile(), "the finisher does not knock Dolly out: 35 HP and a knockdown (hp %.1f)" % d.hp)
+	if mark.has("df_down") and not mark.has("df_flee") and d.st == MeleeEnemy.St.FLEE:
+		mark["df_flee"] = u
+		var n: int = u - int(mark["df_down"])
+		_check(n >= 132 and n <= 146, "under 30 %% she gets up and flees (%d frames: 2.1 s down, the first 18 frames in the finisher's slow motion)" % n)
+	if mark.has("df_flee") and not mark.has("df_won") and won_n == 1:
+		mark["df_won"] = u
+		_check(d.st == MeleeEnemy.St.FLED and fight.state == "won", "her flight after the finisher wins the fight")
+		_start_c()
+	if u == 700 and not mark.has("df_won"):
+		_check(false, "the Dolly finisher path never finished (%s, %s)" % [d.state_name(), str(mark)])
 		_start_c()
 
 
@@ -681,7 +883,10 @@ func _part_c(t: int) -> void:
 				p3.global_position += Vector3(0.0, 0.0, 6.0)
 	if t == 250 or t == 278 or t == 306:
 		rc.light_override = true
+	if t == 336:
+		roam.call("mount_bike")
 	if t == 340:
+		_check(bool(roam.get("mounted")), "test setup: riding before the fight")
 		_check(ped.state == Pedestrian.State.KNOCKED_OUT, "in FreeRoam the unarmed combo still knocks out a pedestrian (state %d)" % ped.state)
 		_check(heat.size() == 1 and is_equal_approx(heat[0], WeaponData.HEAT_KO_UNARMED), "+1 heat to the wanted level (%s)" % str(heat))
 		fight = MeleeFight.new()
@@ -692,14 +897,29 @@ func _part_c(t: int) -> void:
 		fight.start()
 		_check(fight.combat == rc and wd.locked and wd.current == WeaponData.Slot.UNARMED, "a fight built from the roam uses its combat and locks the wheel")
 		_check(rc.hud.popup_text == "Gét gô!", "the start line pops")
+		_check(not bool(roam.get("mounted")) and pl.visible, "start() takes the player off the bike")
+		roam.call("toggle_bike")
+		_check(not bool(roam.get("mounted")) and String(roam.get("_hint_flash")) == CombatData.T_FIGHT_BIKE, "[F] is refused during the fight, with a hint")
+		_key(KEY_P, true)
+		_key(KEY_B, true)
 		root.get_node("GameFX").set("art_style", "classic")   # the HUD draws in the classic style for two frames
 		rc.hud.popup(CombatData.T_COUNTER, CombatHUD.GOLD)
+	if t == 341:
+		_key(KEY_P, false)
+		_key(KEY_B, false)
 	if t == 343:
+		var ew: EmoteWheel = roam.get("emote_wheel")
+		var em: EmoteDirector = roam.get("emotes")
+		_check(fight.refusals == 2 and String(roam.get("_hint_flash")) == CombatData.T_FIGHT_EMOTE, "[P] and [B] are refused during the fight, with a hint (%d)" % fight.refusals)
+		_check(not ew.is_open() and not em.play(0), "the emote wheel and emotes are blocked during the fight")
 		_check(rc.hud.visible and rc.fight_active, "the combat HUD shows in the roam fight")
 		_check(not CombatHUD.vice() and CombatHUD.accent() == CombatHUD.CLASSIC_ACCENT, "classic style: FPT orange accent")
 		root.get_node("GameFX").set("art_style", "vice")
 		fight.stop()
 		_check(not wd.locked and not rc.fight_active, "stop() frees the wheel")
+		roam.call("toggle_bike")
+		_check(bool(roam.get("mounted")), "after the fight [F] works again")
+		roam.call("toggle_bike")
 	if t == 350:
 		_finish()
 

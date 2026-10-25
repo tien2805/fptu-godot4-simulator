@@ -153,6 +153,7 @@ func _on_physics() -> void:
 				_check(fight.attackers() <= 2 and fight.max_attackers_seen <= 2, "never more than 2 attackers (max %d)" % fight.max_attackers_seen)
 				fight.process_mode = Node.PROCESS_MODE_DISABLED
 				combat.process_mode = Node.PROCESS_MODE_DISABLED
+				combat.pose.process_mode = Node.PROCESS_MODE_DISABLED   # the player's pose layer lives on the body
 				_next("b1")
 		"b1":
 			if t == 2:
