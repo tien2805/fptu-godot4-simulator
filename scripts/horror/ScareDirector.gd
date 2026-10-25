@@ -11,6 +11,12 @@
 #   catch_beat(name): "face" (start), "reveal" (the level clears its peek overlay), "end". The face is Dolly's (cream wool
 #   hood) or, when a clone made the catch (by_dolly = false), a clone's (dark hair). The camera's near plane drops to
 #   CATCH_NEAR while it plays (restored after), and the face stops at least 0.32 m away, so the mask never clips.
+# - duck and sting (owner request, every catch and scripted jump scare): DUCK_S before the face / figure appears the other
+#   audio ducks toward silence (this director's loops, the players the level registers with register_duck: Dolly's hum,
+#   her monologue, the siren; and the "Music" bus), then the sting hits loud and sudden: two cues layered (CATCH_CUES /
+#   JUMP_CUES) at STING_BOOST_DB above the normal SFX level on their own "Sting" bus (created when missing, following the
+#   SFX bus volume, with a hard limiter so the boost never clips the master); the levels come back over RESTORE_S after
+#   the scare. "Giảm hù dọa": no duck, no boost, the soft sting at the normal level. step(delta) advances all of it (tests).
 # - fake-outs (H-D6, H-D7): their own budget (fake_budget, default FAKE_MAX, at least fake_gap_s apart): try_fake_out(kind)
 #   then fake_sting() (a short sting; a soft one with "Giảm hù dọa").
 # - "Giảm hù dọa" (A2-D14; `reduce_scares`, from the GameFX setting or the level's override): every scare becomes a soft
@@ -46,14 +52,19 @@ const BPM_REDUCED_MAX: float = 110.0
 const EDGE_PEAK: float = 0.55
 const HIDDEN_DB: float = 3.0
 const CATCH_S: float = 1.2
+const DUCK_S: float = 0.4
+const RESTORE_S: float = 0.5
+const STING_BOOST_DB: float = 6.0
+const STING_BUS: String = "Sting"
+const JUMP_CUES: Array[String] = ["violin_screech", "sheep_bleat_distorted"]
 const CATCH_NEAR: float = 0.01
 const CLONE_HAIR := Color("#2B211C")
 const CATCH_KINDS: Array[String] = ["desk", "locker", "stall", "open"]
-## Sting per spot: [cue at the start, cue at the hit].
-const CATCH_CUES: Dictionary = {"desk": ["metal_creak", "violin_screech"], "locker": ["sheep_bleat_distorted", "locker_slam"],
-	"stall": ["static_burst", "violin_screech"], "open": ["violin_screech", "sheep_bleat_distorted"]}
-## When the face hits (fraction of CATCH_S) and when the spot is opened (catch_beat "reveal"; -1 = none).
-const CATCH_HIT: Dictionary = {"desk": 0.3, "locker": 0.45, "stall": 0.55, "open": 0.25}
+## The layered sting per spot, played together at the hit (loud, on the Sting bus).
+const CATCH_CUES: Dictionary = {"desk": ["violin_screech", "sheep_bleat_distorted"], "locker": ["violin_screech", "static_burst"],
+	"stall": ["violin_screech", "sheep_bleat_distorted"], "open": ["violin_screech", "static_burst"]}
+## When the face hits (fraction of CATCH_S: the sting) and when the spot is opened (catch_beat "reveal"; -1 = none).
+const CATCH_HIT: Dictionary = {"desk": 0.3, "locker": 0.45, "stall": 0.4, "open": 0.25}
 const CATCH_REVEAL: Dictionary = {"desk": 0.12, "locker": 0.4, "stall": 0.1, "open": -1.0}
 const FAKE_MAX: int = 2
 const FAKE_GAP_S: float = 20.0
@@ -105,6 +116,9 @@ var last_fake: String = ""
 var catch_kind: String = ""
 var catch_t: float = -1.0
 var face: Node3D = null
+## Duck now (0 = normal, 1 = silent) and the last loud sting {cues, db, bus, at (catch time or clock)}.
+var duck_level: float = 0.0
+var last_sting: Dictionary = {}
 var rng := RandomNumberGenerator.new()
 
 var _heart: AudioStreamPlayer
@@ -125,6 +139,12 @@ var _catch_cam: Camera3D = null
 var _catch_cam_rot: Vector3 = Vector3.ZERO
 var _catch_cam_near: float = 0.05
 var _near_set: bool = false
+var _catch_on: bool = false
+var _jump_t: float = -1.0
+var _duck_players: Array[Node] = []
+var _duck_base: Dictionary = {}      # instance id -> volume_db at the duck start
+var _music_base: float = INF
+var _stings: Array[AudioStreamPlayer] = []
 var _hood_wool: StandardMaterial3D
 var _hood_hair: StandardMaterial3D
 var _catch_hit: bool = false
@@ -144,6 +164,10 @@ func _ready() -> void:
 	_whisper = _make_player("Whisper")
 	for i: int in 4:
 		_pool.append(_make_player("Sfx%d" % i))
+	for j: int in 2:
+		var sp: AudioStreamPlayer = _make_player("Sting%d" % j)
+		sp.bus = ensure_sting_bus()
+		_stings.append(sp)
 	_layer = CanvasLayer.new()
 	_layer.name = "ScareLayer"
 	_layer.layer = 30
@@ -198,6 +222,55 @@ func _edge_rect() -> TextureRect:
 	return r
 
 
+## The "Sting" bus (created when missing): sends to Master, a hard limiter so the +6 dB boost never clips.
+static func ensure_sting_bus() -> String:
+	if AudioServer.get_bus_index(STING_BUS) == -1:
+		AudioServer.add_bus()
+		var i: int = AudioServer.bus_count - 1
+		AudioServer.set_bus_name(i, STING_BUS)
+		AudioServer.set_bus_send(i, "Master")
+		var lim := AudioEffectHardLimiter.new()
+		lim.ceiling_db = -0.3
+		AudioServer.add_bus_effect(i, lim)
+	return STING_BUS
+
+
+## A player (AudioStreamPlayer / 3D) the scares duck too (Dolly's hum, her monologue, the siren).
+func register_duck(p: Node) -> void:
+	if p != null and not _duck_players.has(p):
+		_duck_players.append(p)
+
+
+## The loud sudden sting: the cues layered on the Sting bus at STING_BOOST_DB above their normal level.
+func _sting(cues: Array) -> void:
+	var sfx: int = AudioServer.get_bus_index("SFX")
+	var si: int = AudioServer.get_bus_index(STING_BUS)
+	if sfx != -1 and si != -1:
+		AudioServer.set_bus_volume_db(si, AudioServer.get_bus_volume_db(sfx))   # the user's SFX volume, plus the boost
+	var top: float = -80.0
+	for i: int in cues.size():
+		var cue: String = String(cues[i])
+		var db: float = STING_BOOST_DB + (-3.0 if i > 0 else 0.0)
+		top = maxf(top, db)
+		played.append(cue)
+		if i < _stings.size():
+			_stings[i].volume_db = db
+			if StoryAudio.ready_for([cue]):
+				_stings[i].stream = StoryAudio.stream_once(cue)
+				_stings[i].play()
+	if played.size() > PLAYED_MAX:
+		played = played.slice(played.size() - PLAYED_MAX)
+	last_sting = {"cues": cues.duplicate(), "db": top, "bus": STING_BUS, "at": catch_t if _catch_on else clock}
+
+
+func sting_volume_db(i: int = 0) -> float:
+	return _stings[i].volume_db if i < _stings.size() else -80.0
+
+
+func sting_bus() -> String:
+	return _stings[0].bus if not _stings.is_empty() else ""
+
+
 ## Seed of the flicker timing.
 func set_seed(s: int) -> void:
 	rng.seed = s
@@ -221,6 +294,11 @@ func try_jump_scare() -> bool:
 	return true
 
 
+## Seconds from a full catch scare's start to its end (the duck, then the staged face).
+func catch_total() -> float:
+	return CATCH_S + (0.0 if reduce_scares else DUCK_S)
+
+
 ## The catch scare: always plays, outside the budget. spot_kind "desk" | "locker" | "stall" | "open" (H-D2: the catcher's
 ## face staged relative to the camera: Dolly's, or a clone's when by_dolly is false); "" = the plain figure scare.
 ## Reduced: a soft sting and a fade to dark, no face.
@@ -232,7 +310,8 @@ func play_catch_scare(spot_kind: String = "open", by_dolly: bool = true) -> void
 	scares_played += 1
 	_end_catch()
 	catch_kind = k
-	catch_t = 0.0
+	_catch_on = true
+	catch_t = 0.0 if reduce_scares else -DUCK_S   # the duck first, the face after it
 	_catch_hit = false
 	_catch_revealed = false
 	_catch_cam = get_viewport().get_camera_3d() if is_inside_tree() and get_viewport() != null else null
@@ -247,16 +326,15 @@ func play_catch_scare(spot_kind: String = "open", by_dolly: bool = true) -> void
 		last_scare = {"kind": "catch", "spot": k, "who": who, "soft": false, "flash": true, "shake": true, "figure": false,
 			"face": true, "fade": false, "upside_down": k == "desk", "cues": cues.duplicate(),
 			"screech": cues.has("violin_screech") or cues.has("sheep_bleat_distorted")}
-		play_cue(String(cues[0]), -4.0)
 		_ensure_face()
 		(face.get_node("Hood") as MeshInstance3D).material_override = _hood_wool if by_dolly else _hood_hair
-		face.visible = true
+		face.visible = false   # after the duck
 		if _catch_cam != null:
 			_catch_cam_near = _catch_cam.near
 			_catch_cam.near = CATCH_NEAR
 			_near_set = true
 		_place_face(0.0)
-	catch_beat.emit("face")
+	catch_beat.emit("duck" if not reduce_scares else "face")
 	scared.emit(last_scare)
 
 
@@ -272,9 +350,9 @@ static func face_offset(kind: String, u: float) -> Dictionary:
 		"locker":   # at the slats, then pushes in when the door is yanked
 			e = _ease_out(clampf((u - 0.4) / 0.15, 0.0, 1.0))
 			return {"fwd": lerpf(0.5, 0.32, e), "up": 0.0, "right": 0.03 * sin(u * 40.0) * (1.0 - e), "roll": 0.0, "tilt": 0.0}
-		"stall":   # the camera looks up at the partition top, the face rises over it
-			var tilt: float = lerpf(0.0, 0.75, _ease_out(clampf(u / 0.25, 0.0, 1.0)))
-			e = _ease_out(clampf((u - 0.25) / 0.3, 0.0, 1.0))
+		"stall":   # the camera looks up at the partition top, the head pops up over it
+			var tilt: float = lerpf(0.0, 0.75, _ease_out(clampf(u / 0.2, 0.0, 1.0)))
+			e = _ease_out(clampf((u - 0.2) / 0.2, 0.0, 1.0))
 			return {"fwd": lerpf(0.65, 0.4, e), "up": lerpf(-0.6, 0.04, e), "right": 0.0, "roll": 0.0, "tilt": tilt}
 		_:   # "open": lunges at the camera
 			e = clampf(u / 0.25, 0.0, 1.0)
@@ -315,22 +393,36 @@ func _place_face(u: float) -> void:
 	face.global_transform = Transform3D(b * Basis(Vector3(0.0, 0.0, 1.0), float(o["roll"])) * Basis(Vector3.UP, PI), pos)
 
 
-## Advances the staged catch (from _process; tests call it directly).
+## Advances the staged catch, a pending jump scare and the duck (from _process; tests call it directly).
+func step(delta: float) -> void:
+	tick_catch(delta)
+	_tick_jump(delta)
+	_update_duck(delta)
+
+
 func tick_catch(delta: float) -> void:
-	if catch_t < 0.0:
+	if not _catch_on:
 		return
+	var was: float = catch_t
 	catch_t += delta
+	if catch_t < 0.0:
+		return   # ducking: the face comes after it
+	if was < 0.0 and not reduce_scares:
+		face.visible = true
+		catch_beat.emit("face")
 	var u: float = clampf(catch_t / CATCH_S, 0.0, 1.0)
 	var rv: float = float(CATCH_REVEAL[catch_kind])
 	if not _catch_revealed and rv >= 0.0 and u >= rv:
 		_catch_revealed = true
+		if catch_kind == "locker" and not reduce_scares:
+			play_cue("locker_slam", -2.0)   # the door yanked open
 		catch_beat.emit("reveal")
 	if reduce_scares:
 		_veil_a = maxf(_veil_a, minf(0.85, catch_t / 0.6 * 0.85))
 	else:
 		if not _catch_hit and u >= float(CATCH_HIT[catch_kind]):
 			_catch_hit = true
-			play_cue(String((CATCH_CUES[catch_kind] as Array)[1]), 0.0)
+			_sting(CATCH_CUES[catch_kind])
 			_flash_a = 0.6
 			if player != null and is_instance_valid(player) and player.has_method("shake"):
 				player.call("shake", 0.8)
@@ -341,11 +433,12 @@ func tick_catch(delta: float) -> void:
 
 
 func _end_catch() -> void:
-	if catch_t >= 0.0 and _catch_cam != null and is_instance_valid(_catch_cam):
+	if _catch_on and _catch_cam != null and is_instance_valid(_catch_cam):
 		_catch_cam.rotation = _catch_cam_rot
 		if _near_set:
 			_catch_cam.near = _catch_cam_near
 	_near_set = false
+	_catch_on = false
 	catch_t = -1.0
 	_catch_cam = null
 	if face != null and is_instance_valid(face):
@@ -353,7 +446,7 @@ func _end_catch() -> void:
 
 
 func is_catch_playing() -> bool:
-	return catch_t >= 0.0
+	return _catch_on
 
 
 ## Ends a staged catch early (retry): the face goes, the camera's pitch comes back.
@@ -369,14 +462,63 @@ func _scare(kind: String) -> void:
 		_veil_a = 0.45
 	else:
 		last_scare = {"kind": kind, "soft": false, "flash": true, "screech": true, "shake": true, "figure": figure != null,
-			"cues": ["violin_screech", "sheep_bleat_distorted"]}
-		play_cue("violin_screech", 0.0)
-		play_cue("sheep_bleat_distorted", -3.0)
-		_flash_a = 0.85
-		if player != null and is_instance_valid(player) and player.has_method("shake"):
-			player.call("shake", 0.8)
-		_show_figure()
+			"cues": JUMP_CUES.duplicate()}
+		_jump_t = DUCK_S   # the duck first; the flash, the figure and the sting after it
 	scared.emit(last_scare)
+
+
+func _tick_jump(delta: float) -> void:
+	if _jump_t < 0.0:
+		return
+	_jump_t -= delta
+	if _jump_t > 0.0:
+		return
+	_jump_t = -1.0
+	_sting(JUMP_CUES)
+	_flash_a = 0.85
+	if player != null and is_instance_valid(player) and player.has_method("shake"):
+		player.call("shake", 0.8)
+	_show_figure()
+
+
+## Whether the scares want the other audio ducked now.
+func _duck_wanted() -> bool:
+	if reduce_scares:
+		return false
+	return _catch_on or _jump_t >= 0.0 or _figure_t > 0.0
+
+
+## Extra gain (dB) of ducked audio now: 0 normal, about -60 at full duck.
+func duck_db() -> float:
+	return linear_to_db(maxf(1.0 - duck_level, 0.001))
+
+
+func _update_duck(delta: float) -> void:
+	var want: bool = _duck_wanted()
+	var before: float = duck_level
+	if want:
+		duck_level = minf(1.0, duck_level + delta / DUCK_S)
+	else:
+		duck_level = maxf(0.0, duck_level - delta / RESTORE_S)
+	if duck_level <= 0.0 and before <= 0.0:
+		return
+	if before <= 0.0 and duck_level > 0.0:   # the duck starts: remember the levels to come back to
+		_duck_base.clear()
+		for p: Node in _duck_players:
+			if is_instance_valid(p):
+				_duck_base[p.get_instance_id()] = float(p.get("volume_db"))
+		var mb: int = AudioServer.get_bus_index("Music")
+		_music_base = AudioServer.get_bus_volume_db(mb) if mb != -1 else INF
+	var g: float = duck_db() if duck_level > 0.0 else 0.0
+	for p2: Node in _duck_players:
+		if is_instance_valid(p2) and _duck_base.has(p2.get_instance_id()):
+			p2.set("volume_db", float(_duck_base[p2.get_instance_id()]) + g)
+	var mb2: int = AudioServer.get_bus_index("Music")
+	if mb2 != -1 and _music_base < INF:
+		AudioServer.set_bus_volume_db(mb2, _music_base + g)
+	if duck_level <= 0.0:   # back to normal: exact levels
+		_duck_base.clear()
+		_music_base = INF
 
 
 func _show_figure() -> void:
@@ -489,7 +631,7 @@ func tick_heart(delta: float) -> void:
 		edge_a = EDGE_PEAK * (0.45 + 0.55 * heart_k) * (0.5 if reduce_scares else 1.0)
 	if _heart != null and StoryAudio.ready_for(["heartbeat"]):
 		_heart.stream = StoryAudio.stream_once("heartbeat")
-		_heart.volume_db = heart_db()
+		_heart.volume_db = heart_db() + duck_db()
 		_heart.play()
 
 
@@ -512,10 +654,10 @@ func _update_loops() -> void:
 		_breath.stream = br
 	if _heart.playing and heart_bpm <= 0.0:
 		_heart.stop()
-	_whisper.volume_db = whisper_db()
+	_whisper.volume_db = whisper_db() + duck_db()
 	if not _whisper.playing:
 		_whisper.play()
-	_breath.volume_db = breath_db()
+	_breath.volume_db = breath_db() + duck_db()
 	var breathing: bool = breath_on and not breath_held
 	if breathing and not _breath.playing:
 		_breath.play()
@@ -535,6 +677,18 @@ func stop_all() -> void:
 	if _edge != null:
 		_edge.modulate.a = 0.0
 	_end_catch()
+	_jump_t = -1.0
+	_figure_t = 0.0
+	duck_level = 0.0
+	_update_duck(0.0)   # levels back exactly
+	for p: Node in _duck_players:
+		if is_instance_valid(p) and _duck_base.has(p.get_instance_id()):
+			p.set("volume_db", float(_duck_base[p.get_instance_id()]))
+	var mb: int = AudioServer.get_bus_index("Music")
+	if mb != -1 and _music_base < INF:
+		AudioServer.set_bus_volume_db(mb, _music_base)
+	_duck_base.clear()
+	_music_base = INF
 	set_process(false)
 
 
@@ -609,7 +763,7 @@ func _process(delta: float) -> void:
 		var c: Vector3 = player.global_position if player != null and is_instance_valid(player) and player.is_inside_tree() else Vector3.ZERO
 		flicker_near(c)
 	_update_flicker(delta)
-	tick_catch(delta)
+	step(delta)
 	if loops_enabled:
 		tick_heart(delta)
 		_update_loops()
