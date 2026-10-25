@@ -13,8 +13,8 @@
 # disappears (process off, invisible, flashlight off), the spot's peek camera becomes current, breath starts.
 # leave_hiding(): the player is back at the spot's exit point facing out, with its own camera, and LEAVE_GRACE_S of catch
 # grace. While hidden a left click recaptures the mouse (the process-disabled player cannot).
-# Hold breath (H-D4): while hidden, holding Shift holds the breath: breath_left (BREATH_MAX_S = 6 s) drains 1 s per s and
-# refills 1 s per s once released. A stalker within BREATH_HEAR_R (3 m) of the spot for BREATH_HEAR_S hears the breathing
+# Hold breath (H-D4): while hidden, holding Shift holds the breath: breath_left (BREATH_MAX_S = 15 s, owner: 6 s was too short) drains 1 s per s and
+# refills BREATH_REFILL_PER_S (2 s per s) once released. A stalker within BREATH_HEAR_R (3 m) of the spot for BREATH_HEAR_S hears the breathing
 # unless it is held and investigates the spot. Running out, or releasing while a stalker is within GASP_NEAR_R (2 m), is a
 # loud gasp (StoryAudio "gasp"): the nearest stalker investigates the spot (caught if still inside) when it is within
 # GASP_HEAR_R (8 m) and its graph route to the spot is at most GASP_ROUTE_M (no hearing through a wall into the next room).
@@ -37,7 +37,9 @@ const SLOW_DT: float = 0.1
 const MOUSE_SENS: float = 0.0022
 ## Catch grace after leaving a hiding spot (s): stepping out next to an unseen stalker is not an instant catch.
 const LEAVE_GRACE_S: float = 0.75
-const BREATH_MAX_S: float = 6.0
+const BREATH_MAX_S: float = 15.0
+## Breath regained per second once released (or out of hiding).
+const BREATH_REFILL_PER_S: float = 2.0
 const BREATH_HEAR_R: float = 3.0
 const BREATH_HEAR_S: float = 0.5
 const GASP_NEAR_R: float = 2.0
@@ -231,7 +233,7 @@ func update_breath(delta: float) -> void:
 		breath_held = false
 		_hear_t = 0.0
 		_need_release = false
-		breath_left = minf(BREATH_MAX_S, breath_left + delta)
+		breath_left = minf(BREATH_MAX_S, breath_left + delta * BREATH_REFILL_PER_S)
 		return
 	var want: bool = _hold_input()
 	if _need_release and not want:
@@ -246,7 +248,7 @@ func update_breath(delta: float) -> void:
 			holding = false
 			_need_release = true
 	else:
-		breath_left = minf(BREATH_MAX_S, breath_left + delta)
+		breath_left = minf(BREATH_MAX_S, breath_left + delta * BREATH_REFILL_PER_S)
 	_nearest_to_spot()
 	var ns: HorrorStalker = _near_s
 	var nd: float = _near_d
