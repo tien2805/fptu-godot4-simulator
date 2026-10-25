@@ -34,6 +34,17 @@
 #   fuse_state ("spot" | "carried" | "placed" per active fuse), fuse_box {pos, yaw, slots}.
 #   Keys: [F] flashlight, [E] hide / leave / pick up / place fuses (HorrorKit + interact hook), WASD, Shift, Ctrl.
 #   The scene must stay at the world origin (stalkers walk the level-local waypoint graph in global coordinates).
+# HORROR POLISH (spec H-D1 to H-D6; names the music side may read, all kept stable):
+#   dolly: HorrorStalker        the stalker that is Cừu Dolly (seeded one of the four; StoryCast "dolly" look, DOLLY_SPEED,
+#                               a positional music-box hum loop); null with 0 stalkers
+#   alarm: bool                 true from the third fuse on (with doors_unlocked); signal alarm_started emitted once
+#   kit.breath_held: bool       the player holds the breath in a hiding spot (Shift); kit.is_hidden(), kit.hidden_spot
+#   stalkers[i].state           PATROL | SUSPICIOUS | CHASE | SEARCH | CHECK (stalkers[i].rushing: running at the alarm)
+#   fakeouts: HorrorFakeouts    the run's 1-2 seeded fake-outs (coat, cat)
+#   Catch: the staged per-spot catch scare (ScareDirector.play_catch_scare(spot kind or "open")), the caught card after it.
+#   Third fuse: the corridor lights flash SOS in red (SosLights, a slow pulse with "Giảm hù dọa"), the alarm_siren loop,
+#   every stalker rushes the player (re-issued every RUSH_REPATH_S while the player is not hidden, held RUSH_HOLD_S after a
+#   retry), the lobby doors open: the final sprint.
 # HUD: "Cầu chì: n/3", battery, objective, prompts "[E] Trốn", "[E] Ra", "[E] Nhặt cầu chì", "[E] Lắp cầu chì", "[E] Nhặt
 # pin", hint "[F] Đèn pin"; plain text without emoji or decorative symbols.
 class_name NightBuilding
@@ -43,6 +54,7 @@ signal escaped(caught_count: int)
 signal caught
 signal fuse_placed(n: int)
 signal checkpoint
+signal alarm_started
 
 const FUSES_NEEDED: int = 3
 const BATTERIES: int = 3
@@ -52,6 +64,10 @@ const RETRY_MIN_BATTERY: float = 0.25
 const MAX_STALKERS: int = 4
 const PLAYER_DEFAULT: Dictionary = {"preset": "player", "rigged": true, "seed": 2805, "name": "PlayerModel"}
 const HUD_DT: float = 0.1
+const RUSH_REPATH_S: float = 1.5
+const RUSH_HOLD_S: float = 3.0
+const SIREN_DB: float = -14.0
+const POLISH_CUES: Array[String] = ["dolly_hum", "gasp", "alarm_siren", "cat_meow", "bin_crash", "locker_slam"]
 
 var opts: Dictionary = {}
 var seed_val: int = 0
@@ -60,6 +76,7 @@ var fuses_placed: int = 0
 var fuses_carried: int = 0
 var caught_count: int = 0
 var doors_unlocked: bool = false
+var alarm: bool = false
 var auto_retry: bool = true
 var map: Dictionary = {}
 var graph: HorrorNavGraph = null
@@ -70,6 +87,10 @@ var flashlight: HorrorFlashlight = null
 var hud: HorrorHUD = null
 var stalkers: Array[HorrorStalker] = []
 var figure: HorrorStalker = null
+var dolly: HorrorStalker = null
+var sos: SosLights = null
+var fakeouts: HorrorFakeouts = null
+var siren: AudioStreamPlayer = null
 var fuse_candidates: Array = []
 var active_fuses: Array[int] = []
 var fuse_state: Array[String] = []
@@ -83,7 +104,9 @@ var _built: bool = false
 var _retry_t: float = -1.0
 var _hud_t: float = 0.0
 var _anim_t: float = 0.0
-var _noise_queue: Array[HorrorStalker] = []
+var _noise_queue: Array = []   # [{s: HorrorStalker, pos: Vector3, rush: bool}], one per physics frame
+var _rush_t: float = -1.0
+var _card_t: float = -1.0
 
 
 func _ready() -> void:
@@ -111,6 +134,13 @@ func _rebuild() -> void:
 	fuses_placed = 0
 	fuses_carried = 0
 	doors_unlocked = false   # caught_count survives a rebuild (E5 needs every catch of the mission)
+	alarm = false
+	dolly = null
+	sos = null
+	fakeouts = null
+	siren = null
+	_rush_t = -1.0
+	_card_t = -1.0
 	_noise_queue.clear()
 	_retry_t = -1.0
 	_built = false
@@ -146,6 +176,8 @@ func build() -> void:
 	add_child(scare)
 	scare.set_seed(seed_val)
 	scare.register_light_groups(map["light_groups"])
+	scare.catch_beat.connect(_on_catch_beat)
+	StoryAudio.warm(POLISH_CUES)
 	kit = HorrorKit.new()
 	add_child(kit)
 	kit.setup(player, flashlight, scare, graph)
@@ -156,12 +188,20 @@ func build() -> void:
 		kit.add_spot(s)
 	kit.caught.connect(_on_caught)
 	kit.hide_changed.connect(_on_hide_changed)
+	kit.gasped.connect(_on_gasp)
 	# stalkers and the jump-scare figure
 	var n: int = clampi(int(opts.get("stalkers", MAX_STALKERS)), 0, MAX_STALKERS)
 	var patrols: Array = map["patrols"]
+	var pick := RandomNumberGenerator.new()   # own draw: the level's rng sequence stays as before
+	pick.seed = seed_val * 31 + 5
+	var dolly_i: int = pick.randi_range(0, n - 1) if n > 0 else -1
 	for i: int in n:
 		var sk := HorrorStalker.new()
 		sk.name = "Stalker%d" % i
+		if i == dolly_i:
+			sk.make_dolly(scare.reduce_scares)
+			sk.name = "Dolly"
+			dolly = sk
 		add_child(sk)
 		sk.setup(graph, kit.senses, patrols[i % patrols.size()], 0, seed_val + 31 * i)
 		sk.reset_at(graph.pos((patrols[i % patrols.size()] as PackedInt32Array)[0]))
@@ -200,6 +240,10 @@ func build() -> void:
 		batteries.append({"node": bn, "pos": c["pos"], "reach": c["reach"], "room": c["room"], "taken": false})
 	hud = HorrorHUD.new()
 	add_child(hud)
+	fakeouts = HorrorFakeouts.new()
+	add_child(fakeouts)
+	fakeouts.setup(seed_val, scare, flashlight, player, hud)
+	fakeouts.noise.connect(_on_fake_noise)
 	checkpoint_data = {"pos": st["pos"], "yaw": float(st["yaw"]), "battery": 1.0, "taken": _taken_flags()}
 	state = "play"
 	_refresh_hud()
@@ -416,13 +460,47 @@ func _unlock_doors() -> void:
 	var ll: Label3D = d["lock_label"]
 	ll.text = "MỞ"
 	ll.modulate = Color("#7CFFB2")
-	# the generator roars: every stalker heads for the generator room, the corridor lights stutter
-	_noise_queue.clear()
-	for s: HorrorStalker in stalkers:
-		_noise_queue.append(s)   # one re-route per physics frame (no 4-route hitch)
-	scare.flicker_near(player.global_position)
+	_start_alarm()
+	scare.flicker_near(player.global_position)   # the rooms around stutter (the corridor is the SOS lights' now)
 	scare.try_jump_scare()
-	hud.toast("Có điện rồi! Cửa sảnh đã mở. Chạy ra ngoài!", 4.0)
+	hud.toast("Có điện rồi! Cửa sảnh đã mở. Báo động kêu, chúng đang tới. Chạy ra ngoài!", 4.0)
+
+
+## The third fuse (H-D5): SOS on the corridor lights, the siren, every stalker rushes the player.
+func _start_alarm() -> void:
+	if alarm:
+		return
+	alarm = true
+	var mats: Array = map.get("corridor_lights", [])
+	scare.drop_light_groups(mats)
+	sos = SosLights.new()
+	add_child(sos)
+	sos.start(mats, scare.reduce_scares)
+	siren = AudioStreamPlayer.new()
+	siren.name = "AlarmSiren"
+	if AudioServer.get_bus_index("SFX") != -1:
+		siren.bus = "SFX"
+	add_child(siren)
+	_try_siren()
+	_noise_queue.clear()
+	_rush_t = 0.0
+	alarm_started.emit()
+
+
+func _try_siren() -> void:
+	if siren == null or siren.playing or not alarm or state in ["escaped", "released"]:
+		return
+	if not StoryAudio.ready_for(["alarm_siren"]):
+		return
+	siren.stream = StoryAudio.stream("alarm_siren")
+	siren.volume_db = SIREN_DB + scare.cue_db("alarm_siren")
+	siren.play()
+
+
+## Queues every stalker to rush the player (one re-route per physics frame: no 4-route hitch).
+func _queue_rush() -> void:
+	for s: HorrorStalker in stalkers:
+		_noise_queue.append({"s": s, "pos": Vector3.ZERO, "rush": true})
 
 
 # ---------------------------------------------------------------------------
@@ -435,8 +513,8 @@ func _on_caught(_s: HorrorStalker) -> void:
 	caught_count += 1
 	kit.input_enabled = false
 	player.controls_enabled = false
-	scare.play_catch_scare()
-	hud.show_caught(true)
+	scare.play_catch_scare(kit.hidden_spot.kind if kit.is_hidden() else "open")
+	_card_t = ScareDirector.CATCH_S   # the caught card after the staged scare
 	caught.emit()
 	if auto_retry:
 		_retry_t = RETRY_DELAY
@@ -446,6 +524,8 @@ func retry_from_checkpoint() -> void:
 	if not _built or state == "escaped" or state == "released":
 		return
 	_retry_t = -1.0
+	_card_t = -1.0
+	scare.cancel_catch()
 	if kit.is_hidden():
 		kit.leave_hiding()
 	for s: Variant in map["spots"]:
@@ -474,6 +554,8 @@ func retry_from_checkpoint() -> void:
 		s.reset_at(_far_waypoint(s, cp))
 	kit.set_frozen(false)
 	kit.input_enabled = true
+	if alarm:
+		_rush_t = RUSH_HOLD_S   # a head start before they rush again
 	state = "play"
 	hud.show_caught(false)
 	_refresh_hud()
@@ -508,11 +590,24 @@ func release() -> void:
 	player.capture_on_click = false
 	flashlight.set_on(false)
 	scare.stop_all()
+	_stop_sounds()
 	if state != "escaped":
 		state = "released"
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	for cam: Node in find_children("*", "Camera3D", true, false):
 		(cam as Camera3D).clear_current(false)
+
+
+## Dolly's hum, the siren and the fake-outs stop (escape, release).
+func _stop_sounds() -> void:
+	_card_t = -1.0
+	_rush_t = -1.0
+	if dolly != null and is_instance_valid(dolly):
+		dolly.set_hum(false)
+	if siren != null:
+		siren.stop()
+	if fakeouts != null:
+		fakeouts.enabled = false
 
 
 func _escape() -> void:
@@ -521,6 +616,7 @@ func _escape() -> void:
 	kit.input_enabled = false
 	player.controls_enabled = false
 	scare.stop_all()
+	_stop_sounds()
 	hud.show_escaped(caught_count)
 	if is_standalone():
 		hud.set_objective("Nhấn R để chơi lại.")
@@ -549,12 +645,42 @@ func _on_hide_changed(spot: HidingSpot) -> void:
 	hud.set_peek(spot.kind if spot != null else "")
 
 
+## The staged catch opens the spot: the peek overlay (slats, the dark band) goes.
+func _on_catch_beat(beat: String) -> void:
+	if beat == "reveal":
+		hud.set_peek("")
+
+
+func _on_gasp(reason: String) -> void:
+	if state == "play" and reason == "empty":
+		hud.toast("Hết hơi!", 1.5)
+
+
+## The fake-out cat knocked a bin over: the stalkers within its noise radius hear it.
+func _on_fake_noise(p: Vector3) -> void:
+	if state != "play":
+		return
+	for s: HorrorStalker in stalkers:
+		if _flat_dist(s.global_position, p) <= HorrorFakeouts.CAT_NOISE_R:
+			_noise_queue.append({"s": s, "pos": p, "rush": false})
+
+
 # ---------------------------------------------------------------------------
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	if alarm and _rush_t >= 0.0 and state == "play":
+		_rush_t -= delta
+		if _rush_t < 0.0:
+			_rush_t = RUSH_REPATH_S
+			if not kit.is_hidden():   # they converge on the player, not on a spot they did not see
+				_queue_rush()
 	if not _noise_queue.is_empty():
-		var s: HorrorStalker = _noise_queue.pop_front()
+		var q: Dictionary = _noise_queue.pop_front()
+		var s: HorrorStalker = q["s"]
 		if is_instance_valid(s) and state == "play":
-			s.hear_at(fuse_box["pos"])
+			if bool(q["rush"]):
+				s.rush(kit.player_position())
+			else:
+				s.hear_at(q["pos"])
 	if state == "play" and doors_unlocked and player != null and not kit.is_hidden():
 		var p: Vector3 = player.global_position
 		if p.z > NightBuildingMap.EXIT_Z and absf(p.x) < 8.0:
@@ -568,6 +694,12 @@ func _process(delta: float) -> void:
 		_retry_t -= delta
 		if _retry_t <= 0.0:
 			retry_from_checkpoint()
+	if _card_t > 0.0:
+		_card_t -= delta
+		if _card_t <= 0.0 and state == "caught":
+			hud.show_caught(true)
+	if alarm and siren != null and not siren.playing:
+		_try_siren()
 	_anim_t += delta
 	for k: int in fuse_items.size():
 		if fuse_items[k].visible:
@@ -577,6 +709,7 @@ func _process(delta: float) -> void:
 		_hud_t = 0.0
 		hud.set_battery(flashlight.battery, flashlight.on)
 		hud.set_prompt(kit.prompt if state == "play" else "")
+		hud.set_breath(kit.breath_frac(), kit.is_hidden() and state == "play", kit.breath_held)
 
 
 func _refresh_hud() -> void:
