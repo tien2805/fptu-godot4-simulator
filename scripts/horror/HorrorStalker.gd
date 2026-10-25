@@ -108,6 +108,8 @@ var script_target: Vector3 = Vector3.ZERO
 var script_speed: float = 1.9
 var script_face: Vector3 = Vector3(INF, 0.0, INF)
 var deaf_t: float = 0.0
+## A stall another hunter is performing the toilet monologue at: this one may not check it (or catch in it) until cleared.
+var blocked_spot: Node3D = null
 var _script_to: Vector3 = Vector3(INF, 0.0, INF)
 
 var _patrol_i: int = 0
@@ -354,7 +356,7 @@ func notice_hide(spot: Node3D) -> bool:
 	if frozen or senses == null:
 		return false
 	var saw: bool = can_see() or (state == CHASE and _since_seen <= SAW_GRACE_S)
-	if not saw:
+	if not saw or spot == blocked_spot:
 		return false
 	check_spot = spot
 	_set_state(CHECK)
@@ -366,7 +368,7 @@ func notice_hide(spot: Node3D) -> bool:
 ## Heard breathing or a gasp from `spot` (H-D4): goes to check it (catches the player if still inside). Returns true
 ## when it goes (not frozen, not already checking that spot).
 func investigate_spot(spot: Node3D) -> bool:
-	if frozen or senses == null or spot == null or scripted or deaf_t > 0.0:
+	if frozen or senses == null or spot == null or scripted or deaf_t > 0.0 or spot == blocked_spot:
 		return false
 	if state == CHECK and check_spot == spot:
 		return false
@@ -573,6 +575,8 @@ func _do_check(delta: float) -> void:
 	var d: Vector3 = target - global_position
 	d.y = 0.0
 	if d.length() <= CATCH_R:
+		if check_spot != null and check_spot == blocked_spot:
+			return   # another hunter is at this stall's door: wait for its outcome
 		if senses.hidden and senses.spot == check_spot and catch_enabled:
 			if check_spot != null and check_spot.has_method("reveal"):
 				check_spot.call("reveal")
@@ -652,7 +656,7 @@ func reset_at(p: Vector3) -> void:
 	frozen = false
 	rushing = false
 	scripted = false
-	deaf_t = 0.0
+	deaf_t = 0.0   # blocked_spot stays: the level's WC monologue clears it at its outcome (a retry aborts it first)
 	check_spot = null
 	_since_seen = INF
 	_sees_now = false

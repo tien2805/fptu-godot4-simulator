@@ -46,9 +46,10 @@
 #   every stalker rushes the player (re-issued every RUSH_REPATH_S while the player is not hidden, held RUSH_HOLD_S after a
 #   retry; a stalker that loses the player searches only ALARM_SEARCH_S, so a hiding spot can still work), the lobby doors
 #   open: the final sprint (toasts point to the exit).
-#   wc: DollyWC                 Dolly's toilet monologue (owner request; Dolly only, only for a player hidden in a stall of
-#                               that block, every visit): wc.running while it plays (Dolly is scripted in
-#                               CHECK); the owner file user://sfx/dolly_wc_full, else subtitles only; see DollyWC.gd.
+#   wc: DollyWC                 the toilet monologue (owner request; any of the four hunters, the first that comes for a
+#                               player hidden in a stall of that block, one at a time, every visit): wc.running while it
+#                               plays, wc.performer the hunter (scripted in CHECK; the others cannot check that stall
+#                               until the outcome); the owner file user://sfx/dolly_wc_full, else subtitles only.
 # HUD: "Cầu chì: n/3", battery, objective, prompts "[E] Trốn", "[E] Ra", "[E] Nhặt cầu chì", "[E] Lắp cầu chì", "[E] Nhặt
 # pin", hint "[F] Đèn pin"; plain text without emoji or decorative symbols.
 class_name NightBuilding
@@ -253,12 +254,12 @@ func build() -> void:
 	add_child(fakeouts)
 	fakeouts.setup(seed_val, scare, flashlight, player, hud)
 	fakeouts.noise.connect(_on_fake_noise)
-	if dolly != null:
+	if not stalkers.is_empty():
 		wc = DollyWC.new()
 		add_child(wc)
-		wc.setup(self, dolly, kit, scare, hud)
-		if dolly.hum != null:
-			scare.register_duck(dolly.hum)
+		wc.setup(self, stalkers, kit, scare, hud)
+	if dolly != null and dolly.hum != null:
+		scare.register_duck(dolly.hum)
 	checkpoint_data = {"pos": st["pos"], "yaw": float(st["yaw"]), "battery": 1.0, "taken": _taken_flags()}
 	state = "play"
 	_refresh_hud()

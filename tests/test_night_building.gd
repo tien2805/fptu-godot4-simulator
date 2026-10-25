@@ -21,8 +21,9 @@
 #          breath held = the time table's knocks (2.6 / 6.7 / 12.7 s on two stalls then the player's) and subtitles, she
 #          sniffs and leaves at 17.8 s; it plays again on a second visit and after a retry (no limit); a retry stops it;
 #          breath released at the stall = the stall catch only after the monologue, the loud sting at the head pop; seen =
-#          catch even held; only Dolly (a clone catches at once); no file = subtitles only; with a file the voice plays
-#          from Dolly and release() stops it.
+#          catch even held; the clones too (seen and unseen, one at a time, the others cannot cut it short, a clone's
+#          face at its catch); no file = subtitles only; with a file the voice plays from the performer and release()
+#          stops it.
 # Run:  godot --headless --path . --script tests/test_night_building.gd
 extends SceneTree
 
@@ -398,7 +399,8 @@ func _wc_run(l: NightBuilding, sp: HidingSpot, hold_from: float) -> Dictionary:
 	var knocks: int = 0
 	var n: int = 0
 	while l.wc.outcome == "" and n < 2400:
-		var near: bool = l.dolly.global_position.distance_to(sp.global_position) < 3.5
+		var who: HorrorStalker = l.wc.performer if l.wc.performer != null else l.dolly
+		var near: bool = who.global_position.distance_to(sp.global_position) < 3.5
 		l.kit.hold_override = (l.wc.running and l.wc.t >= hold_from) or (not l.wc.running and l.wc.log.size() > 0 and near)
 		await physics_frame
 		n += 1
@@ -406,7 +408,7 @@ func _wc_run(l: NightBuilding, sp: HidingSpot, hold_from: float) -> Dictionary:
 			info["caught_before"] = true
 		var k: int = _log_has(l, "knock:")
 		if k == 3 and knocks < 3:
-			info["door_d"] = Vector2(l.dolly.global_position.x - sp.exit_point().x, l.dolly.global_position.z - sp.exit_point().z).length()
+			info["door_d"] = Vector2(who.global_position.x - sp.exit_point().x, who.global_position.z - sp.exit_point().z).length()
 		knocks = k
 	return info
 
@@ -540,21 +542,35 @@ func _dolly_wc() -> void:
 	lb.queue_free()
 	await _frames(2)
 
-	# only Dolly: a clone in a toilet block or catching at a stall never starts it
+	# the clones too: a clone walks into the block (unseen), only one monologue at a time, nobody else interrupts it
 	var lc: NightBuilding = await _wc_level(7, "user://test_wc_none/")
 	var clone: HorrorStalker = null
 	for st3: HorrorStalker in lc.stalkers:
-		if not st3.is_dolly:
+		if not st3.is_dolly and clone == null:
 			clone = st3
+	var dc: HorrorStalker = lc.dolly
 	var sc: HidingSpot = _stall(lc, "WCB", 0)
 	_check(await _hide(lc, sc), "WC: hides in block B (clone case)")
+	lc.kit.hold_override = false
 	_send(clone, lc, "WCB_mid")
-	await _frames(60)
-	_check(lc.wc.log.is_empty() and not clone.scripted, "WC: a clone walking into the block says nothing")
+	_check(await _wc_wait_start(lc) and lc.wc.performer == clone and lc.wc.log[0].begins_with("start:unseen:WCB"), "WC: a clone walking into the block performs it (unseen)")
+	_send(dc, lc, "WCB_mid")
+	await _frames(40)
+	_check(lc.wc.visits == 1 and lc.wc.performer == clone and not dc.scripted, "WC: only one monologue at a time (Dolly in the block too)")
+	_check(dc.blocked_spot == sc and not dc.investigate_spot(sc), "WC: the other hunters cannot check that stall meanwhile")
+	var info4: Dictionary = await _wc_run(lc, sc, DollyWC.table_time("player_knock") - 0.1)
+	_check(lc.wc.outcome == "leave" and lc.state == "play" and not bool(info4["caught_before"]), "WC: nobody interrupts before the outcome; breath held, the clone leaves (%s)" % lc.wc.outcome)
+	_check(dc.blocked_spot == null and clone.blocked_spot == null, "WC: the stall is free to check again after the outcome")
+	for k3: int in 60:
+		lc.kit.hold_override = clone.global_position.distance_to(sc.global_position) < 3.5 or dc.global_position.distance_to(sc.global_position) < 3.5
+		await physics_frame
+	lc.kit.hold_override = false
+	for st4: HorrorStalker in lc.stalkers:
+		st4.reset_at(lc.graph.pos(lc.graph.id_of("GEN_mid")))
+		st4.frozen = true
 	lc.kit.leave_hiding()
-	clone.reset_at(lc.graph.pos(lc.graph.id_of("GEN_mid")))
-	clone.frozen = true
 	await _frames(15)
+	# the seen path with a clone: it knocks its way there and catches at the end with a clone's face
 	var sc2: HidingSpot = _stall(lc, "WCA", 1)
 	var ex2: Vector3 = sc2.exit_point()
 	var out2: Vector3 = ex2 - sc2.global_position
@@ -564,11 +580,11 @@ func _dolly_wc() -> void:
 	lc.player.teleport(ex2, sc2.exit_yaw())
 	await _frames(3)
 	_check(lc.kit.hide_in(sc2) and clone.state == HorrorStalker.CHECK, "WC: a clone sees the player go in")
-	var n2: int = 0
-	while lc.state == "play" and n2 < 240:
-		await physics_frame
-		n2 += 1
-	_check(lc.state == "caught" and lc.wc.log.is_empty() and lc.scare.last_scare.get("who") == "clone", "WC: the clone catches at once, no monologue (%d frames)" % n2)
+	await _frames(2)
+	_check(lc.wc.running and lc.wc.seen and lc.wc.performer == clone, "WC: the seen path with a clone starts the monologue")
+	var info5: Dictionary = await _wc_run(lc, sc2, DollyWC.table_time("player_knock") - 0.1)
+	_check(lc.wc.outcome == "catch" and lc.state == "caught" and not bool(info5["caught_before"]) and lc.scare.last_scare.get("who") == "clone",
+		"WC: the clone catches at the end with a clone's face (%s, %s)" % [lc.wc.outcome, str(lc.scare.last_scare.get("who"))])
 	lc.release()
 	lc.queue_free()
 	await _frames(2)
@@ -583,7 +599,7 @@ func _dolly_wc() -> void:
 	_check(await _hide(ld, sdd), "WC: hides in block B (file case)")
 	ld.kit.hold_override = false
 	_send(ld.dolly, ld, "WCB_mid")
-	_check(await _wc_wait_start(ld) and ld.wc.voice != null and ld.wc.voice.playing and ld.wc.voice.get_parent() == ld.dolly, "WC: the monologue plays from Dolly (positional)")
+	_check(await _wc_wait_start(ld) and ld.wc.voice != null and ld.wc.voice.playing and ld.wc.voice.get_parent() == ld.wc.performer, "WC: the monologue plays from the performer (positional)")
 	_check(not ld.dolly.hum.playing, "WC: the hum pauses while she talks")
 	ld.release()
 	_check(not ld.wc.voice.playing and not ld.wc.running, "WC: release() stops the monologue")
