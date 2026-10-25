@@ -51,6 +51,7 @@ func _process(_d: float) -> bool:
 	_video()
 	_phase_b_lines()
 	_corridor_calm()
+	_scare_hits()
 	_cast()
 	_shiba()
 	_choice_overlay()
@@ -165,11 +166,11 @@ func _reduce() -> void:
 	fx.set("reduce_scares", true)
 	var calm: CineTimeline = CineTimeline.load_slot("cine_d0_midnight")
 	fx.set("reduce_scares", was)
-	_check(_cues_of(scary).has("violin_screech") and not scary.punches.is_empty(), "midnight: violin screech + punch by default")
+	_check(scary.scare_hits.size() == 1 and absf(scary.story_time(scary.scare_hits[0]["at"]) - 10.0) < 1e-6 and scary.punches.is_empty(), "midnight: the v2 scare hit at 10.0 (the old punch is gone)")
 	var lamp_s: Dictionary = scary.props.filter(func(p: Dictionary) -> bool: return p["id"] == "lamp")[0]
 	var lamp_c: Dictionary = calm.props.filter(func(p: Dictionary) -> bool: return p["id"] == "lamp")[0]
 	_check(not (lamp_s["opts"]["flicker"] as Array).is_empty(), "midnight: the lamp flickers by default")
-	_check(not _cues_of(calm).has("violin_screech") and calm.punches.is_empty() and (lamp_c["opts"]["flicker"] as Array).is_empty(), "Giảm hù dọa: no screech, no punch, no flicker")
+	_check(not _cues_of(calm).has("violin_screech") and calm.punches.is_empty() and (lamp_c["opts"]["flicker"] as Array).is_empty(), "Giảm hù dọa: no screech, no punch, no flicker (the scare mark plays soft)")
 	_check(calm.validate().is_empty() and _cues_of(calm).has("ba_dum_tss") and _cues_of(calm).has("dun_dun_duun"), "the calm variant still validates and keeps the jokes")
 
 
@@ -378,14 +379,124 @@ func _corridor_calm() -> void:
 	fx.set("reduce_scares", was)
 	var cs: Dictionary = scary.props.filter(func(p: Dictionary) -> bool: return p["id"] == "corridor")[0]["opts"]
 	var cc: Dictionary = calm.props.filter(func(p: Dictionary) -> bool: return p["id"] == "corridor")[0]["opts"]
-	_check(not (cs["flicker"] as Array).is_empty() and not (cs["dark"] as Array).is_empty() and not scary.punches.is_empty()
-		and _cues_of(scary).has("fluoro_buzz"), "corridor: stutter, blackout, punch and tube buzz by default")
+	_check(not (cs["flicker"] as Array).is_empty() and not (cs["dark"] as Array).is_empty() and scary.scare_hits.size() == 1
+		and _cues_of(scary).has("fluoro_buzz"), "corridor: stutter, blackout, the v2 scare hit and tube buzz by default")
 	_check((cc["flicker"] as Array).is_empty() and (cc["dark"] as Array).is_empty() and calm.punches.is_empty() and not _cues_of(calm).has("fluoro_buzz"),
 		"corridor, Giảm hù dọa: no stutter, no blackout, no punch, no buzz")
 	_check(calm.validate().is_empty() and _cues_of(calm).has("bonk") and _cues_of(calm).has("sheep_bleat_distorted"), "the calm corridor still validates, keeps the bleat and the bonk")
 	var gone: float = calm.cues.filter(func(c: Dictionary) -> bool: return c["type"] == "show" and c["actor"] == "sheep" and not bool(c["on"]))[0]["s"]
 	var s3: Dictionary = calm.shots.filter(func(sh: Dictionary) -> bool: return sh["id"] == "S3")[0]
 	_check(float(s3["s"]) > gone, "calm: the corridor view comes back only after the figure has gone (no pop in view)")
+
+
+## Jump scare v2 in the cinematics (CineScare): the mark, the duck then the +8 dB sting, the inhale, the flash / red frames /
+## overlay and their cleanup, the FOV punch and the twitch, everything back after the end and after a skip mid-scare; the
+## reduced soft variant.
+func _scare_hits() -> void:
+	var was: bool = bool(fx.get("reduce_scares"))
+	fx.set("reduce_scares", false)
+	var world := Node3D.new()
+	world.name = "ScareWorld"
+	root.add_child(world)
+	var tl: CineTimeline = CineTimeline.load_slot("cine_d0_midnight")
+	var p := CinePlayer.new()
+	world.add_child(p)
+	_check(p.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false}).is_empty() and p.scare != null, "scare: the midnight player has its CineScare")
+	var rh: float = tl.clock.real_at(10.0)
+	p.start()
+	p.seek(rh - 0.6)
+	var sc: CineScare = p.scare
+	var duck_before: float = -1.0
+	var inhale_before: bool = false
+	var hit_r: float = -1.0
+	var ov_hit: Dictionary = {}
+	var ov1: Dictionary = {}
+	var ov2: Dictionary = {}
+	var ov3: Dictionary = {}
+	var fov_min: float = 999.0
+	var base_fov: float = 46.0
+	var twitched: bool = false
+	var k: int = 0
+	var phuc: CineActor = p.actors["phuc"]
+	while p.r < rh + 1.5:
+		var before: int = sc.fired.size()
+		p.step(1.0 / 60.0)
+		if before == 0 and sc.fired.size() == 1:
+			hit_r = sc.fired[0]
+			duck_before = sc.duck_at(hit_r - 0.01)
+			inhale_before = sc.played.has("gasp") and sc.played.find("gasp") < sc.played.find("violin_screech")
+			ov_hit = sc.face_fx.overlay_visible()
+			k = 1
+		elif k >= 1 and k <= 3:
+			if k == 1:
+				ov1 = sc.face_fx.overlay_visible()
+			elif k == 2:
+				ov2 = sc.face_fx.overlay_visible()
+			else:
+				ov3 = sc.face_fx.overlay_visible()
+			k += 1
+		if hit_r > 0.0 and p.r < hit_r + 0.5:
+			fov_min = minf(fov_min, p.camera.fov)
+			twitched = twitched or not phuc.spin.rotation.is_zero_approx()
+	_check(absf(hit_r - rh) < 0.02, "scare: the hit fires at its mark (%.3f vs %.3f)" % [hit_r, rh])
+	_check(duck_before > 0.9 and inhale_before, "scare: the music and SFX duck to silence before it, a sharp inhale just before (%.2f)" % duck_before)
+	_check(sc.last_sting.get("cues", []).has("sub_boom") and is_equal_approx(sc.sting_volume_db(0), ScareDirector.STING_BOOST_DB)
+		and is_equal_approx(sc.sting_volume_db(2), ScareDirector.STING_BOOST_DB), "scare: then the +8 dB layered sting with the sub boom (%s)" % str(sc.last_sting))
+	_check(ov_hit.get("flash", false) and ov_hit.get("aber", false) and ov1.get("red", false) and ov2.get("red", false) and not ov3.get("red", true),
+		"scare: one white frame, two red frames, the overlay on (%s %s %s %s)" % [str(ov_hit), str(ov1), str(ov2), str(ov3)])
+	_check(fov_min < base_fov - 12.0 and twitched, "scare: the FOV punches in (%.1f) and Phúc's face twitches through the hold" % fov_min)
+	_check(sc.screen_idle() and is_equal_approx(p.camera.fov, base_fov) and p.camera.h_offset == 0.0 and p.camera.v_offset == 0.0 and phuc.spin.rotation.is_zero_approx(),
+		"scare: the overlay, the shake, the FOV punch and the twitch are over a second later")
+	_check(absf(sc.duck_at(p.r)) < 0.01, "scare: the audio levels are back")
+	p.queue_free()
+	# a skip in the middle of the scare: the overlay is freed, the camera comes back
+	var tl2: CineTimeline = CineTimeline.load_slot("cine_d1_corridor")
+	var p2 := CinePlayer.new()
+	world.add_child(p2)
+	p2.setup(tl2, Transform3D.IDENTITY, {"manual": true, "music": false})
+	var rh2: float = tl2.clock.real_at(3.5)
+	var done: Array = []
+	p2.finished.connect(func(sk: bool) -> void: done.append(sk))
+	p2.start()
+	p2.seek(rh2 - 0.5)
+	while p2.r < rh2 + 0.05:
+		p2.step(1.0 / 60.0)
+	var sheep: CineActor = p2.actors["sheep"]
+	_check(p2.scare.fired.size() == 1 and p2.camera.fov < 40.0 - 3.0, "corridor: the scare hits as the tubes come back (fov %.1f)" % p2.camera.fov)
+	_check(Vector2(sheep.position.x - 0.3, sheep.position.z - 0.9).length() < 2.2, "corridor: the figure is right in front of the camera")
+	var held_scare: bool = false
+	for h: Dictionary in tl2.cues:
+		if h["type"] == "hold" and h["actor"] == "sheep" and String(h["kind"]) == "scare_mask":
+			held_scare = float(h["s"]) <= 3.5 and float(h["s1"]) >= 3.9
+	_check(held_scare, "corridor: the scare mask on the figure through the scare")
+	p2._skipping = 0.0   # the skip fade starts now: it ends 0.25 s later, in the middle of the punch and the shake
+	var n: int = 0
+	while done.is_empty() and n < 200:
+		p2.step(1.0 / 60.0)
+		n += 1
+	_check(done == [true] and p2.scare.layer == null and p2.scare.screen_idle() and p2.camera.h_offset == 0.0 and p2.camera.v_offset == 0.0
+		and absf(p2.camera.fov - 40.0) < 0.5 and p2._fov_off == 0.0, "skip mid-scare: the overlay is freed, the camera offsets and FOV come back (fov %.1f)" % p2.camera.fov)
+	p2.queue_free()
+	# "Giảm hù dọa": the soft variant
+	fx.set("reduce_scares", true)
+	var tl3: CineTimeline = CineTimeline.load_slot("cine_d0_midnight")
+	var p3 := CinePlayer.new()
+	world.add_child(p3)
+	p3.setup(tl3, Transform3D.IDENTITY, {"manual": true, "music": false})
+	p3.start()
+	p3.seek(tl3.clock.real_at(10.0) - 0.6)
+	var max_duck: float = 0.0
+	var fov_lo: float = 999.0
+	while p3.r < tl3.clock.real_at(10.0) + 1.0:
+		p3.step(1.0 / 60.0)
+		max_duck = maxf(max_duck, p3.scare.duck_at(p3.r))
+		fov_lo = minf(fov_lo, p3.camera.fov)
+	_check(p3.scare.soft and p3.scare.fired.size() == 1 and max_duck == 0.0 and p3.scare.face_fx == null and p3.scare.last_sting.is_empty()
+		and p3.scare.played == ["metal_creak"] and fov_lo >= 46.0 - 0.01 and p3.camera.h_offset == 0.0,
+		"reduced: a soft sting only, no duck, flash, overlay, shake, FOV punch or boom (%s)" % str(p3.scare.played))
+	p3.queue_free()
+	world.queue_free()
+	fx.set("reduce_scares", was)
 
 
 func _cast() -> void:

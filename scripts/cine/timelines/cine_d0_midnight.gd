@@ -1,9 +1,11 @@
 # File: res://scripts/cine/timelines/cine_d0_midnight.gd
 # cine_d0_midnight (22.000 s, spec A2-D10, story spec Day 0 horror beat): night, the bench outside the BE6 lobby. The
 # protagonist cannot sleep (heartbeat, breath); the backpack starts glowing red from inside, a whisper "Lọ… Thần…", the
-# lobby lamp flickers; a white face rises behind the bench (violin screech + camera punch) – it is Phúc in a sheet mask
-# slurping instant noodles: "Ủa, chưa ngủ hả?" (ba-dum-tss); then the protagonist pulls a pair of smart glasses that are not
-# theirs out of the backpack (dun dun duun). "Giảm hù dọa" (A2-D14, read at build time): no screech, no punch, no flicker.
+# lobby lamp flickers; a white face SNAPS up behind the bench at 10.0 (jump scare v2: scare_hit, the 0.4 s duck, the
+# inhale, the screen hit, the FOV punch, the +8 dB sting; the face twitches for the 0.5 s hold) – it is Phúc in a sheet
+# mask slurping instant noodles: "Ủa, chưa ngủ hả?" (ba-dum-tss); then the protagonist pulls a pair of smart glasses that
+# are not theirs out of the backpack (dun dun duun). "Giảm hù dọa" (A2-D14, read at build time): no flicker, Phúc rises
+# slowly as before, the scare mark plays its soft variant (a soft sting only).
 # No ramps (story = real). Stage: StoryRoam sets "at" (the BE6 spawn) and "yaw_deg"; fallback near be6_center. Night with
 # exposure x1.5 / ambient x2 so faces stay readable.
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
@@ -13,6 +15,7 @@ const SEAT := Vector3(-0.25, 0.0, -0.02)     # in front of the seat: sit_bench d
 const BAG := Vector3(0.45, 0.455, -0.02)
 const PHUC_LOW := Vector3(0.05, -1.1, 0.45)  # hidden right behind the bench back
 const PHUC_UP := Vector3(0.05, 0.0, 0.45)
+const SCARE: float = 10.0
 const LAMP := Vector3(1.9, 0.0, 0.9)
 
 var calm: bool = false
@@ -52,7 +55,12 @@ func build() -> void:
 	# Phúc rises behind the bench in a white sheet mask, slurping noodles
 	key("phuc", 0.0, PHUC_LOW, 0.0)
 	key("phuc", 9.0, PHUC_LOW, 0.0)
-	key("phuc", 10.0, PHUC_UP, 0.0, {"mode": "out"})
+	if calm:
+		key("phuc", SCARE, PHUC_UP, 0.0, {"mode": "out"})
+	else:   # the snap: up in about 0.1 s with a small overshoot at the hit
+		key("phuc", SCARE - 0.04, PHUC_LOW, 0.0)
+		key("phuc", SCARE + 0.06, PHUC_UP + Vector3(0.0, 0.07, -0.05), 0.0, {"mode": "linear"})
+		key("phuc", SCARE + 0.14, PHUC_UP, 0.0)
 	show("phuc", 0.0, false)
 	show("phuc", 9.0, true)
 	move("phuc", 0.0, "idle")
@@ -67,9 +75,7 @@ func build() -> void:
 	sfx_at(5.9, "whisper_bed", -3.0)
 	sfx_at(9.0, "heartbeat", 0.0)
 	sfx_at(9.55, "heartbeat", 1.0)
-	if not calm:
-		sfx_at(10.0, "violin_screech", -3.0)
-		punch(10.0, "heavy")
+	scare_hit(SCARE, {"twitch": "phuc", "hold": 0.5})
 	sfx_at(12.4, "ba_dum_tss", -3.0)
 	sfx_at(16.0, "dun_dun_duun", -2.0)
 	shot("S1", 0.0, "static", "wide: the bench at night", {"pos": Vector3(3.4, 1.6, -3.8), "look": Vector3(0.0, 0.8, 0.3), "fov": 50.0})

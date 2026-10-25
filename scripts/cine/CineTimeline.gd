@@ -35,6 +35,7 @@ var sfx: Array[Dictionary] = []        # {"at", "cue", "db"}
 var fx: Array[Dictionary] = []         # {"at", "kind", "where", "params"}
 var props: Array[Dictionary] = []      # {"id", "kind", "pos", "yaw", "opts"}
 var punches: Array[Dictionary] = []    # {"at", "preset"}: camera punch-in / whip on a non-ramp hit
+var scare_hits: Array[Dictionary] = [] # {"at", "opts"}: jump scare v2 marks (CineScare): duck before, hit at, twitch
 var cards: Array[Dictionary] = []      # {"kind", "r", "dur", "data"}: 2D card layers on REAL time (Phase B)
 var choice_def: Dictionary = {}        # {"r", "id", "prompt", "options", "honest", "timeout_line", ...}: StoryChoice (Phase B)
 var _last_yaw: Dictionary = {}         # actor -> last keyed yaw (keeps yaw continuous)
@@ -153,6 +154,14 @@ func part(actor_id: String, s: float, part_name: String, on: bool) -> void:
 ## Camera punch-in (FOV) and whip-pan on a hit without a slow-motion ramp; preset sets the strength (CineShots.WHIP_DEG keys).
 func punch(at: Variant, preset: String = "medium") -> void:
 	punches.append({"at": at, "preset": preset})
+
+
+## Jump scare v2 at story time `at` (CinePlayer's CineScare): the music and the other SFX duck over the 0.4 s before it, a
+## sharp inhale, then at the hit the screen hit (white frame, red frames, RGB-split + noise overlay, red vignette, shake),
+## the FOV punch-in and the +8 dB layered sting with the sub boom; opts "twitch": an actor that twitches through the
+## "hold" (default 0.5 s). The face itself is the timeline's own actor, snapped in by its keys. "Giảm hù dọa": a soft sting.
+func scare_hit(at: Variant, opts: Dictionary = {}) -> void:
+	scare_hits.append({"at": at, "opts": opts})
 
 
 ## A 2D card layer on REAL time [r, r + dur): kind "villain" (StoryVillainCard data) or "screen" (StoryScreenCard data).
@@ -288,6 +297,15 @@ func validate() -> PackedStringArray:
 			err.append("punch at %s is outside the story" % str(pu["at"]))
 		if not CineShots.WHIP_DEG.has(String(pu["preset"])):
 			err.append("punch at %s: unknown preset %s" % [str(pu["at"]), String(pu["preset"])])
+	for sh3: Dictionary in scare_hits:
+		var sst: float = story_time(sh3["at"])
+		if sst < 0.0 or sst > story_end + 1e-6:
+			err.append("scare_hit at %s is outside the story" % str(sh3["at"]))
+		elif clock.real_at(sst) < CineScare.DUCK_S - 1e-6:
+			err.append("scare_hit at %s leaves no room for the %.1f s duck before it" % [str(sh3["at"]), CineScare.DUCK_S])
+		var tw: String = String((sh3["opts"] as Dictionary).get("twitch", ""))
+		if tw != "" and not actors.has(tw):
+			err.append("scare_hit at %s: twitch actor %s unknown" % [str(sh3["at"]), tw])
 	for pr2: Dictionary in props:
 		if not CineFX.PROP_KINDS.has(String(pr2["kind"])):
 			err.append("prop %s: unknown kind %s" % [String(pr2["id"]), String(pr2["kind"])])
@@ -364,6 +382,12 @@ func beat_sheet() -> String:
 		if String(sb["tr"]) != "":
 			line += "  /  " + String(sb["tr"])
 		L.append(line)
+	if not scare_hits.is_empty():
+		L.append("#")
+		L.append("# Jump scares v2 (real hit, duck from, twitching actor)")
+		for sh4: Dictionary in scare_hits:
+			var rh: float = clock.real_at(story_time(sh4["at"]))
+			L.append("SCARE %8.3f  duck %6.3f  %s" % [rh, rh - CineScare.DUCK_S, String((sh4["opts"] as Dictionary).get("twitch", "-"))])
 	if not cards.is_empty():
 		L.append("#")
 		L.append("# Cards (real start - end, kind: what)")

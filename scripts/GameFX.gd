@@ -69,6 +69,8 @@ var trails_enabled: bool = true
 ## "Giảm hù dọa" (story spec S-D6, A2-D14; story/reduce_scares): no violin screech / light flicker, the 3 a.m. call without
 ## shake or flash, horror cues 6 dB quieter (StoryAudio.cue_db).
 var reduce_scares: bool = false
+## "Hù dọa ngẫu nhiên" (story/random_scares, default on): RandomScares in free roam, story mode (Day 1 on) and free play.
+var random_scares: bool = true
 ## Âm lượng tuyến tính 0..1 theo bus (lưu trong settings.cfg)
 const AUDIO_BUSES: Array[String] = ["Master", "Music", "SFX", "UI"]
 var volumes: Dictionary = {"Master": 1.0, "Music": 0.8, "SFX": 1.0, "UI": 0.9}
@@ -84,6 +86,7 @@ func load_settings() -> void:
 		art_style = st if st in ART_STYLES else "vice"
 		trails_enabled = bool(cfg.get_value("video", "trails", true))
 		reduce_scares = bool(cfg.get_value("story", "reduce_scares", false))
+		random_scares = bool(cfg.get_value("story", "random_scares", true))
 		for b: String in AUDIO_BUSES:
 			volumes[b] = clampf(float(cfg.get_value("audio", "vol_" + b.to_lower(), volumes[b])), 0.0, 1.0)
 	_apply_global_quality()
@@ -98,6 +101,7 @@ func save_settings() -> void:
 	cfg.set_value("video", "art_style", art_style)
 	cfg.set_value("video", "trails", trails_enabled)
 	cfg.set_value("story", "reduce_scares", reduce_scares)
+	cfg.set_value("story", "random_scares", random_scares)
 	for b: String in AUDIO_BUSES:
 		cfg.set_value("audio", "vol_" + b.to_lower(), float(volumes[b]))
 	cfg.save(SETTINGS_PATH)
@@ -246,10 +250,14 @@ func sync_style_settings(root: Node) -> void:
 	var scares: CheckButton = root.find_child("ReduceScaresCheck", true, false) as CheckButton
 	if scares:
 		scares.set_pressed_no_signal(reduce_scares)
+	var rnd: CheckButton = root.find_child("RandomScaresCheck", true, false) as CheckButton
+	if rnd:
+		rnd.set_pressed_no_signal(random_scares)
 
 
-## Story settings (main-menu settings and the pause settings): CheckButton "Giảm hù dọa" (ReduceScaresCheck). compact: the
-## check joins the ArtStyleRow built by build_style_settings (the pause card must stay inside 720 px), no hint label.
+## Story settings (main-menu settings and the pause settings): CheckButtons "Giảm hù dọa" (ReduceScaresCheck) and "Hù dọa
+## ngẫu nhiên" (RandomScaresCheck, random free-roam scares in both modes). compact: the checks join the ArtStyleRow built by
+## build_style_settings (the pause card must stay inside 720 px), no hint label.
 func build_story_settings(parent: Control, compact: bool = false) -> void:
 	var row: HBoxContainer = parent.find_child("ArtStyleRow", false, false) as HBoxContainer if compact else null
 	if row == null:
@@ -265,6 +273,16 @@ func build_story_settings(parent: Control, compact: bool = false) -> void:
 	scares.add_theme_font_size_override("font_size", 15)
 	scares.set_pressed_no_signal(reduce_scares)
 	row.add_child(scares)
+	var rnd := CheckButton.new()
+	rnd.name = "RandomScaresCheck"
+	rnd.text = "Hù dọa ngẫu nhiên"
+	rnd.tooltip_text = "Thế giới mở (cốt truyện và khám phá campus): thỉnh thoảng có cảnh hù bất ngờ"
+	rnd.add_theme_font_size_override("font_size", 15)
+	rnd.set_pressed_no_signal(random_scares)
+	row.add_child(rnd)
+	rnd.toggled.connect(func(on: bool) -> void:
+		set_random_scares(on)
+		play_ui("tick", -10.0, 1.3))
 	if not compact:
 		var hint: Label = make_label("(cốt truyện: bớt cảnh hù, âm thanh kinh dị nhỏ hơn)", 12, Color("#95A5A6"), HORIZONTAL_ALIGNMENT_LEFT)
 		hint.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -272,6 +290,12 @@ func build_story_settings(parent: Control, compact: bool = false) -> void:
 	scares.toggled.connect(func(on: bool) -> void:
 		set_reduce_scares(on)
 		play_ui("tick", -10.0, 1.3))
+
+
+func set_random_scares(on: bool, persist: bool = true) -> void:
+	random_scares = on
+	if persist:
+		save_settings()
 
 
 func set_reduce_scares(on: bool, persist: bool = true) -> void:

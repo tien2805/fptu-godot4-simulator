@@ -279,6 +279,8 @@ func _guard() -> void:
 
 
 func _night_events() -> void:
+	RandomScares.shared_gap_s = 0.0   # the fake clock does not move the wall clock the shared gap runs on (tested at the end)
+	RandomScares.last_any_msec = -100000000
 	sd.call("reset_state")
 	sd.set("active", true)
 	sd.set("day", 1)
@@ -400,6 +402,18 @@ func _night_events() -> void:
 	_check(StoryNightEvents.figure_should_vanish(24.0, 0.0, 1.0) and StoryNightEvents.figure_should_vanish(40.0, 0.7, 1.0)
 		and StoryNightEvents.figure_should_vanish(40.0, 0.0, 41.0) and not StoryNightEvents.figure_should_vanish(40.0, 0.2, 5.0),
 		"night events: the far figure goes within 25 m, when looked away from, or after 40 s")
+	# a random scare just now: no night event on top of it (the shared gap)
+	RandomScares.shared_gap_s = RandomScares.SHARED_GAP_S
+	sd.set("day", 1)
+	(sd.get("flags") as Dictionary).clear()
+	ev.since = StoryNightEvents.GAP_S + 5.0
+	ev.scare.last_fake_t = -INF
+	RandomScares.mark_shared()
+	var n2: int = times.size()
+	for i9: int in 10:
+		ev.advance(0.5)
+	_check(times.size() == n2, "night events: none right after a random scare (they do not stack)")
+	RandomScares.last_any_msec = -100000000
 	for nd: Node in [ev, fr, st, wd, blocker, ph, mapc]:
 		nd.free()
 	sd.call("reset_state")
