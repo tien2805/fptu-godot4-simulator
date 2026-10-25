@@ -2,7 +2,7 @@
 # Story missions inside stages (spec A2-D11): helpers the stages call when StageManager.story_context names them.
 # Short replays (A2-D10, A1-D18 shared system): a CineReplayRecorder tracks the stage's actors from the start; at the
 # winning moment the stage marks "blow", lets the action run REPLAY_AFTER s, then plays a CineReplay (4-6 s, the beat's
-# replay music slot: owner file user://music/<slot> or the synthesized sting) before reporting the result.
+# replay music slot: owner file user://music/<slot>, else silent) before reporting the result.
 # Outside the story nothing here runs and the stages behave exactly as before.
 class_name StoryStage
 extends RefCounted

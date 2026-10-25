@@ -6,7 +6,7 @@
 # on timeout the honest option is taken: "Che giấu cho Phúc" (the loyal one), with a comic line. The answer goes to
 # StoryDirector.choices.phuc and CinePlayer.choice_made("phuc", key, timed_out); the integration then plays the branch tail
 # cine_d1_choice_cover or cine_d1_choice_report (same stage, same positions: CHOICE_STAGE / the constants below).
-# No ramps (story = real). Music slot cine_d1_choice (synthesized default, mood eerie).
+# No ramps (story = real). Music slot cine_d1_choice (owner file, else no music).
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline
 

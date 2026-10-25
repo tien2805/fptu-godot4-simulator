@@ -4,7 +4,7 @@
 # table behind), so they carry trays like customers and spot the real one. Then the "distracted boyfriend" situation,
 # re-staged with our own cast only: Phúc, tray in hand next to Linh, turns right round to stare at a yellow "THI HỘ BAO
 # ĐẬU" flyer on a stand while Linh glares at him (record scratch), "Phúc!!!" / "Tao… chỉ đọc thôi mà!" (ba-dum-tss), and
-# Linh snaps everyone back to work. No ramps (story = real). Music slot cine_d4_intro (synthesized default, playful).
+# Linh snaps everyone back to work. No ramps (story = real). Music slot cine_d4_intro (owner file, else no music).
 # Stage: CineTimeline.canteen_stage (the nearest clear spot to the canteen, courtyard side; the hall itself is cluttered).
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline

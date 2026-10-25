@@ -2,6 +2,8 @@
 # Test headless Màn 4: bot đánh ~85% nốt đúng nhịp, cố tình miss 3 nốt liên tiếp một lần để kiểm tra
 # hít đất, rồi thực hiện chuỗi finisher 5 bước (có 1 lần cố tình sai bước 3 để kiểm tra ngã + làm lại).
 # Kỳ vọng: không lỗi script, kết thúc THẮNG ("ĐIỂM 10").
+# H-D8 (không còn nhạc code): mỗi vòng có lưới trống đúng BPM của vòng (2 tiếng đếm vào + 1 tiếng mỗi nốt, trùng thời điểm
+# nốt), trống thật sự được đánh, nhạc nền là slot của chủ game stage4_vovinam (có file thì phát, không thì im lặng).
 # Chạy:  godot --headless --path . --script tests/test_stage4_vovinam.gd
 extends SceneTree
 
@@ -15,6 +17,8 @@ var alt_next: int = KEY_LEFT
 var forced_fail_done: bool = false
 var w_pressed: bool = false
 var last_state: int = -1
+var drum_grids: Dictionary = {}   # "round|first drum" -> true (each round's grid checked once)
+var drum_fails: Array[String] = []
 const MAX_FRAMES: int = 60 * 60 * 4
 
 func _initialize() -> void:
@@ -41,7 +45,36 @@ func _press_w(down: bool) -> void:
 	ev.pressed = down
 	Input.parse_input_event(ev)
 
+## H-D8: the round's drum grid follows its BPM and lands on every note.
+func _check_drums() -> void:
+	var dts: PackedFloat32Array = stage.get("drum_times")
+	var notes: Array = stage.get("notes")
+	if dts.is_empty() or notes.is_empty():
+		return
+	var ri: int = stage.get("round_idx")
+	var key: String = "%d|%.3f" % [ri, dts[0]]
+	if drum_grids.has(key):
+		return
+	drum_grids[key] = true
+	var bpm: float = float((stage.get("ROUNDS") as Array)[ri]["bpm"])
+	var beat: float = 60.0 / bpm
+	if dts.size() != notes.size() + 2:
+		drum_fails.append("round %d: %d drums for %d notes (want notes + 2 count-in)" % [ri + 1, dts.size(), notes.size()])
+	for i: int in range(1, dts.size()):
+		if absf(dts[i] - dts[i - 1] - beat) > 1e-3:
+			drum_fails.append("round %d: drum %d is %.3f s after the last, want %.3f (%d BPM)" % [ri + 1, i, dts[i] - dts[i - 1], beat, int(bpm)])
+			break
+	for n: Dictionary in notes:
+		var on_beat: bool = false
+		for t: float in dts:
+			on_beat = on_beat or absf(t - float(n["time"])) < 1e-3
+		if not on_beat:
+			drum_fails.append("round %d: a note at %.3f has no drum" % [ri + 1, float(n["time"])])
+			break
+	print("  round %d drum grid: %d hits at %d BPM" % [ri + 1, dts.size(), int(bpm)])
+
 func _bot_rhythm() -> void:
+	_check_drums()
 	var song_time: float = stage.get("song_time")
 	var notes: Array = stage.get("notes")
 	for n: Dictionary in notes:
@@ -104,7 +137,15 @@ func _process(_delta: float) -> bool:
 		var title: String = (stage.get("modal_title") as Label).text
 		print("  Kết thúc sau %d frame: %s" % [frames, title])
 		print("  perfect=%d good=%d miss=%d pushups=%d fin_fails=%d score=%d" % [stage.get("perfects"), stage.get("goods"), stage.get("misses"), stage.get("pushups_done"), stage.get("fin_fails"), stage.get("score")])
-		if title.begins_with("ĐIỂM 10") and int(stage.get("pushups_done")) >= 1 and int(stage.get("fin_fails")) >= 1:
+		var md: Node = (root.get_node("GameFX") as Node).get("music")
+		if md == null or String(md.get("slot")) != "stage4_vovinam":
+			drum_fails.append("the stage music slot is %s, want stage4_vovinam" % (String(md.get("slot")) if md else "none"))
+		if int(stage.get("drums_played")) < 30 or drum_grids.size() < 3:
+			drum_fails.append("only %d drum hits over %d rounds" % [int(stage.get("drums_played")), drum_grids.size()])
+		for f: String in drum_fails:
+			print("  ✗ ", f)
+		print("  drums played %d over %d round grids" % [int(stage.get("drums_played")), drum_grids.size()])
+		if drum_fails.is_empty() and title.begins_with("ĐIỂM 10") and int(stage.get("pushups_done")) >= 1 and int(stage.get("fin_fails")) >= 1:
 			print("✅ SUCCESS: RHYTHM + PUSHUP + FINISHER CHAIN ALL EXERCISED, STAGE WON")
 			quit(0)
 		else:

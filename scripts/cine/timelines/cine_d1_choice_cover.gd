@@ -1,7 +1,7 @@
 # File: res://scripts/cine/timelines/cine_d1_choice_cover.gd
 # cine_d1_choice_cover (4.000 s, spec B-D8 choice scene, branch tail of cine_d1_choice for choice 1 = "cover"): same
 # courtyard bench, same places. Phúc throws both arms up in relief, "Mày là nhất! Tao nợ mày một tô mì!", and the
-# protagonist ups the price, "…Hai tô." (ba-dum-tss). No ramps. Music slot cine_d1_choice_cover (synthesized, playful).
+# protagonist ups the price, "…Hai tô." (ba-dum-tss). No ramps. Music slot cine_d1_choice_cover (owner file, else no music).
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline
 

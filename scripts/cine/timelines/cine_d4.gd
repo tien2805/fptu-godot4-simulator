@@ -4,8 +4,8 @@
 # by the protagonist and Linh; she pulls the sheep mask off (the same face as every clone), gives up and spills the proxy
 # schedule (Thursday, second shift, rooms 311 and 402, twelve clones sitting the exams) and where the answers come from (a
 # server under The Beverly tower, 10.13.0.7); Linh has recorded everything on her phone. Deadpan bleat at the end.
-# No ramps (story = real). Music slot cine_d4: the owner's local file user://music/cine_d4.mp3 when present, else the
-# synthesized default (eerie).
+# No ramps (story = real). Music slot cine_d4: the owner's local file user://music/cine_d4.mp3 when present, else
+# no music.
 # Stage: explicit "at" in front of the front wing (plot u 77.5, v 8.5: the nearest clear 9 x 9 box to the lobby module), a
 # carried lobby-front wall behind Dolly (opts "set": dropped with drop_set when staged at the real doors).
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.

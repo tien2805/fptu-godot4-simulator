@@ -648,7 +648,7 @@ func _bonk_gap(p: CinePlayer, dog: StoryShiba) -> float:
 	return float(Bodies.gap_boxes(legs, boxes)["g"])
 
 
-## Fix-round checks (review B-cine): sets inside their stage boxes, drop_set, a silent card in the music, Dolly's tells,
+## Fix-round checks (review B-cine): sets inside their stage boxes, drop_set, the card freeze row (no code music, H-D8), Dolly's tells,
 ## the card band clear of the clones, reading time of the card and of the timeout line, choice_made before finished,
 ## record: false.
 func _fix_round() -> void:
@@ -687,9 +687,12 @@ func _fix_round() -> void:
 	pc3.setup(d4, Transform3D.IDENTITY, {"manual": true, "music": false})
 	_check(pc3.prop_nodes.has("wall") and (d4.props.filter(func(pr: Dictionary) -> bool: return pr["id"] == "wall")[0]["pos"] as Vector3).z < -3.2,
 		"cine_d4: a lobby wall stands behind Dolly")
-	# the villain card freeze is silent in the music
+	# H-D8: no synthesized cue any more, so no music hit layout either; the villain card freeze stays a ramp row
 	var st: CineTimeline = CineTimeline.load_slot("cine_d4_stare")
-	_check(CinePlayer.music_hits(st.clock.beat_rows()).is_empty(), "the card freeze is left out of the music hit layout")
+	var probe := CinePlayer.new()
+	_check(probe.has_method("setup") and not probe.has_method("music_hits"), "CinePlayer has no synthesized-cue hit layout (no code music)")
+	probe.free()
+	_check(st.clock.beat_rows().any(func(row: Dictionary) -> bool: return String(row["preset"]) == "card"), "cine_d4_stare keeps its card freeze row")
 	# Dolly's tells on the cinematic Dolly; the protagonist does not single her out before the card
 	var tells: Array = st.cues.filter(func(c: Dictionary) -> bool: return c["type"] == "hold" and c["actor"] == "dolly" and String(c["kind"]) in ["wool_cuff", "sheep_keychain"])
 	_check(tells.size() == 2, "cine_d4_stare: the real Dolly shows the cuff and the keychain")

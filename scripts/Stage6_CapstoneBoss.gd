@@ -121,7 +121,7 @@ func _ready() -> void:
 
 	StageManager.typing_mode = true
 	GameFX.upgrade_scene_visuals(self, "night")
-	GameFX.music_play("capstone", 0.3)
+	GameFX.music_play("stage6_capstone", 0.3)
 	_log("23:57:30 – QUÁI VẬT DEADLINE XUẤT HIỆN! GÕ TÊN LỖI ĐỂ BẮN HẠ. [TAB] ĐỔI NGƯỜI · [ENTER] SKILL")
 	_update_boss_ui()
 

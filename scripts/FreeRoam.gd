@@ -207,9 +207,7 @@ func _ready() -> void:
 	var sm: Node = get_node_or_null("/root/StageManager")
 	if sm:
 		sm.set("hub_key_blocked", true)
-	var fx: Node = get_node_or_null("/root/GameFX")
-	if fx and fx.has_method("music_play"):
-		fx.music_play("menu", 0.15)
+	roam_music()
 	print("FreeRoam: world built in %d ms" % build_ms)
 
 
@@ -930,9 +928,7 @@ func mount_bike() -> void:
 	active_hotspot = null
 	if vice_hud:
 		vice_hud.show_vehicle("Xe máy")
-	var fx: Node = get_node_or_null("/root/GameFX")
-	if fx and fx.has_method("music_play"):
-		fx.music_play("ride", 0.3)
+	roam_music()
 
 
 ## Chỗ xuống xe: bên phải rồi bên trái xe, cách DISMOUNT_OFFSETS m; phải có sàn (không phải mặt nước) và capsule
@@ -970,9 +966,7 @@ func dismount_bike() -> bool:
 	player.camera.make_current()
 	if vice_hud:
 		vice_hud.hide_vehicle()
-	var fx: Node = get_node_or_null("/root/GameFX")
-	if fx and fx.has_method("music_play"):
-		fx.music_play("menu", 0.15)
+	roam_music()
 	return true
 
 
@@ -1088,6 +1082,23 @@ func set_time_of_day(preset: String) -> void:
 		# giờ của ViceHUD = phần "HH:MM" cuối tên preset ("Buổi sáng 07:30" -> "07:30")
 		var tod_name: String = String(TOD_NAMES.get(key, ""))
 		vice_hud.set_clock(tod_name.right(5) if tod_name.length() >= 5 else "")
+	# đang phát nhạc thế giới mở thì đổi theo giờ (roam_day <-> roam_night); nhạc nhiệm vụ / cinematic thì để yên
+	var md: Node = _music_director()
+	if md and float(md.get("target_gain")) > 0.0 and String(md.get("slot")).begins_with("roam_"):
+		roam_music()
+
+
+## Nhạc thế giới mở (spec H-D8): file của chủ game roam_day / roam_night theo giờ (đêm = roam_night, còn lại kể cả hoàng
+## hôn = roam_day), đi bộ hay chạy xe cùng một bài (trên xe tension cao hơn: to và sáng hơn). Không có file = im lặng.
+func roam_music() -> void:
+	var fx: Node = get_node_or_null("/root/GameFX")
+	if fx and fx.has_method("music_play"):
+		fx.call("music_play", MusicDirector.roam_slot(tod_preset), 0.3 if mounted else 0.15)
+
+
+func _music_director() -> Node:
+	var fx: Node = get_node_or_null("/root/GameFX")
+	return fx.get("music") if fx else null
 
 
 func cycle_time_of_day() -> void:
@@ -1725,14 +1736,7 @@ func _restore_after_cine(skipped: bool, slot: String) -> void:
 		(cam as Camera3D).make_current()   # camera trước cinematic (camera xe khi đang cưỡi)
 	elif player and player.camera:
 		player.camera.make_current()
-	var fx: Node = get_node_or_null("/root/GameFX")
-	if fx and fx.has_method("music_play"):
-		# dừng hẳn rồi phát lại: music_play cùng kiểu nhạc lúc nhạc còn đang fade-out sẽ bị bỏ qua và nhạc tắt luôn
-		fx.call("music_stop", false)
-		if mounted:
-			fx.call("music_play", "ride", 0.3)
-		else:
-			fx.call("music_play", "menu", 0.15)
+	roam_music()
 	if cine_player:
 		cine_player.queue_free()
 	cine_player = null

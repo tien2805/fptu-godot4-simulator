@@ -81,6 +81,9 @@ var entered_live: bool = false
 const MISSION_SCRIPTS: Dictionary = {"stakeout": "res://scripts/story/missions/MissionStakeout.gd",
 	"chase": "res://scripts/story/missions/MissionChase.gd", "corridor": "res://scripts/story/missions/MissionCorridor.gd",
 	"canteen": "res://scripts/story/missions/MissionCanteen.gd", "fight": "res://scripts/story/missions/MissionFight.gd"}
+## H-D8: owner music slot per mission (both fights, Day 1 and Day 4, share mission_fight).
+const MISSION_MUSIC: Dictionary = {"stakeout": "mission_stakeout", "chase": "mission_chase", "corridor": "mission_corridor",
+	"canteen": "mission_canteen", "fight": "mission_fight"}
 const MARKER_KINDS: Array[String] = ["stage", "bed", "mission", "fight", "horror", "cine"]
 
 
@@ -667,16 +670,23 @@ func _on_video_done(_skipped: bool, b: Dictionary) -> void:
 	director.call("complete_step", String(b["id"]))
 
 
-## Roam music off under the owner's clip, back to the roam style after (FreeRoam.play_cinematic does the same for cinematics).
+## Roam music off under the owner's clip, back to the roam slot after (FreeRoam.play_cinematic does the same for cinematics).
 func _music(on: bool) -> void:
-	var fx: Node = get_node_or_null("/root/GameFX")
-	if fx == null or not fx.has_method("music_play"):
-		return
 	if on:
-		fx.call("music_stop", false)
-		fx.call("music_play", "ride" if bool(roam.get("mounted")) else "menu", 0.15)
-	else:
+		if roam.has_method("roam_music"):
+			roam.call("roam_music")
+		return
+	var fx: Node = get_node_or_null("/root/GameFX")
+	if fx and fx.has_method("music_stop"):
 		fx.call("music_stop", true)
+
+
+## H-D8: the story mission's owner track (MISSION_MUSIC) while the mission runs; no file = silence.
+func _mission_music(b: Dictionary) -> void:
+	var key: String = "fight" if String(b.get("kind", "")) == "fight" else String(b.get("mission", ""))
+	var fx: Node = get_node_or_null("/root/GameFX")
+	if fx and fx.has_method("music_play") and MISSION_MUSIC.has(key):
+		fx.call("music_play", String(MISSION_MUSIC[key]), 0.5)
 
 
 ## Pauses the game for the call / the owner's video and hides the roam HUD; unpausing restores each node's own visibility.
@@ -727,6 +737,7 @@ func start_mission(b: Dictionary) -> bool:
 	m.done.connect(_on_mission_done.bind(b), CONNECT_ONE_SHOT)
 	m.failed.connect(_on_mission_failed)
 	m.begin()
+	_mission_music(b)
 	return true
 
 
@@ -752,6 +763,7 @@ func _clear_markers() -> void:
 
 
 func _free_mission() -> void:
+	var had: bool = mission_node != null
 	if mission_node and is_instance_valid(mission_node):
 		if mission_node.state in ["running", "failed"]:
 			mission_node.abort()
@@ -759,6 +771,8 @@ func _free_mission() -> void:
 			mission_node.queue_free()
 	mission_node = null
 	mission_beat = {}
+	if had:
+		_music(true)   # back to the roam track (an "after" cinematic then stops it and FreeRoam restores it)
 
 
 ## The beat completes (autosave) before its "after" cinematic: quitting during the cinematic never replays the fight or

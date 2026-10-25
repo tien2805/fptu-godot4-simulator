@@ -149,7 +149,7 @@ func _ready() -> void:
 		b.focus_mode = Control.FOCUS_NONE
 
 	GameFX.upgrade_scene_visuals(self, "midday_open")
-	GameFX.music_play("canteen", 0.35)
+	GameFX.music_play("stage5_canteen", 0.35)
 	mission_label.text = "11:30 – GIỜ CƠM TRƯA! TỚI QUẦY CÔ CĂN TIN (BÊN TRÁI) BẤM [E] LẤY KHAY CƠM"
 	_say("[WASD] DI CHUYỂN · [E] LẤY KHAY / GIAO BÀN · ĐỨNG YÊN GIỮ [SPACE] ĐỂ CÂN KHAY", GameFX.FPT_YELLOW)
 
