@@ -22,7 +22,10 @@ const PRESETS: Dictionary = {
 	"heavy":    {"k": 0.25, "freeze": 0.18, "ri": 0.15, "hp": 0.30, "hq": 0.80, "ro": 0.30},
 	"finisher": {"k": 0.25, "freeze": 0.20, "ri": 0.20, "hp": 0.45, "hq": 1.00, "ro": 0.35},
 	"accent":   {"k": 0.30, "freeze": 0.00, "ri": 0.12, "hp": 0.25, "hq": 0.35, "ro": 0.25},
+	# Phase B: a villain-card freeze frame (story time stops for `freeze` real seconds, no speed ramp, no strike)
+	"card":     {"k": 0.30, "freeze": 2.00, "ri": 0.00, "hp": 0.00, "hq": 0.00, "ro": 0.00},
 }
+const CARD_FREEZE: Vector2 = Vector2(1.0, 4.0)   # allowed freeze of a "card" ramp (real s)
 const TOL: float = 0.0005          # real-length tolerance (s)
 const TAIL_MIN: float = 3.0        # last seconds at base speed (A1-D8)
 const TAIL_MAX: float = 4.0
@@ -225,9 +228,12 @@ func validate() -> PackedStringArray:
 			err.append("%s: impact at real %.3f would need a gap < 0" % [nm, float(p["r"])])
 		if float(p["s0"]) < prev_s1 - 1e-6:
 			err.append("%s: ramp starts at story %.4f before %s ends at %.4f" % [nm, float(p["s0"]), prev_name, prev_s1])
-		if fr > 0.0 and (k < 0.25 - 1e-6 or k > 0.40 + 1e-6):
+		if String(p["preset"]) == "card":
+			if fr < CARD_FREEZE.x - 1e-6 or fr > CARD_FREEZE.y + 1e-6:
+				err.append("%s: card freeze %.3f s outside %.1f-%.1f" % [nm, fr, CARD_FREEZE.x, CARD_FREEZE.y])
+		elif fr > 0.0 and (k < 0.25 - 1e-6 or k > 0.40 + 1e-6):
 			err.append("%s: impact speed %.3f outside 0.25-0.40" % [nm, k])
-		if fr > 0.0 and (fr < 0.10 - 1e-6 or fr > 0.20 + 1e-6):
+		if String(p["preset"]) != "card" and fr > 0.0 and (fr < 0.10 - 1e-6 or fr > 0.20 + 1e-6):
 			err.append("%s: freeze %.3f s outside 0.10-0.20" % [nm, fr])
 		if fr <= 0.0 and (k < 0.2 - 1e-6 or k > 0.6 + 1e-6):
 			err.append("%s: accent speed %.3f outside 0.20-0.60" % [nm, k])
