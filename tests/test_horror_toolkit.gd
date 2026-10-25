@@ -608,74 +608,139 @@ func sd_breath_silent(kit: HorrorKit) -> bool:
 	return kit.scare.breath_held and kit.scare.breath_on
 
 
-## Staged catch scares per spot (H-D2) with a test camera turned away from the axes (camera-relative staging).
+## Catch scares v2 per spot (H-D2 + jump scare v2) with a test camera turned away from the axes (camera-relative): the
+## duck, the inhale, the snap in about 0.1 s, the face filling 70-85 % of the screen height, the FOV punch, the twitch only
+## while held, the screen hit (white frame, 2 red frames, vignette, overlay) and its cleanup, the black cut, the +8 dB
+## layered sting with the sub boom; the double-scare rate on a fixed seed; the reduced variant has none of it.
 func _catch_scares() -> void:
 	var cam := Camera3D.new()
 	root.add_child(cam)
 	cam.global_position = Vector3(200, 1.5, 200)
 	cam.rotation = Vector3(-0.1, 0.7, 0.0)
+	cam.fov = 62.0
+	cam.near = 0.05
 	cam.make_current()
 	var sd := ScareDirector.new()
 	sd.auto_clock = false
 	root.add_child(sd)
 	await _frames(1)
 	sd.set_process(false)   # stepped by hand
+	sd.set_seed(99)
+	var fx: ScareFace = sd._face_fx
 	var beats: Array[String] = []
 	sd.catch_beat.connect(func(b: String) -> void: beats.append(b))
 	for kind: String in ScareDirector.CATCH_KINDS:
 		beats.clear()
 		sd.played.clear()
+		sd.last_sting = {}
 		var rot0: Vector3 = cam.rotation
-		var near0: float = cam.near
 		sd.play_catch_scare(kind)
-		_check(is_equal_approx(cam.near, ScareDirector.CATCH_NEAR), "%s: a close near plane while the face is there" % kind)
 		var ls: Dictionary = sd.last_scare
-		var cues: Array = ScareDirector.CATCH_CUES[kind]
-		_check(ls.get("kind") == "catch" and ls.get("spot") == kind and ls.get("face") == true and ls.get("soft") == false, "%s: a staged face scare (%s)" % [kind, str(ls)])
-		_check(ls.get("upside_down") == (kind == "desk"), "%s: upside down only under the desk" % kind)
-		_check(not sd.face.visible and sd.is_catch_playing() and beats == ["duck"] and not sd.played.has(String(cues[0])), "%s: the duck first, no face or sting yet" % kind)
-		var locs: Array[Vector3] = []
-		var tilts: Array[float] = []
-		var ups: Array[float] = []
+		_check(ls.get("kind") == "catch" and ls.get("spot") == kind and ls.get("face") == true and ls.get("soft") == false, "%s: a face scare (%s)" % [kind, str(ls)])
+		_check(not sd.face.visible and beats == ["duck"], "%s: the duck first, no face yet" % kind)
 		var t: float = 0.0
-		while sd.is_catch_playing() and t < 3.0:
-			if sd.catch_t >= 0.0:
-				locs.append(cam.global_transform.affine_inverse() * sd.face.global_position)
-				tilts.append(cam.rotation.x - rot0.x)
+		while sd.catch_t < 0.0 and t < 1.0:
+			sd.step(0.02)
+			t += 0.02
+		_check(absf(t - ScareDirector.DUCK_S) < 0.03 and sd.face.visible and sd.played.has("gasp"), "%s: the face after the %.1f s duck, a sharp breath before it (%.2f)" % [kind, ScareDirector.DUCK_S, t])
+		var ov: Dictionary = fx.overlay_visible()
+		_check(ov["flash"] and ov["aber"] and ov["vignette"], "%s: the hit frame is white, the overlay and the vignette on" % kind)
+		sd.step(1.0 / 60.0)
+		var ov1: Dictionary = fx.overlay_visible()
+		sd.step(1.0 / 60.0)
+		var ov2: Dictionary = fx.overlay_visible()
+		sd.step(1.0 / 60.0)
+		var ov3: Dictionary = fx.overlay_visible()
+		_check(not ov1["flash"] and ov1["red"] and ov2["red"] and not ov3["red"] and not ov3["flash"], "%s: then 2 red frames" % kind)
+		var cues: Array = (ScareDirector.CATCH_CUES[kind] as Array).duplicate()
+		cues.append(ScareDirector.STING_BOOM)
+		_check(sd.last_sting.get("cues") == cues and is_equal_approx(float(sd.last_sting["db"]), ScareDirector.STING_BOOST_DB)
+			and is_equal_approx(float(sd.last_sting["pitch"]), ScareDirector.SCREAM_PITCH) and is_equal_approx(sd.sting_volume_db(2), ScareDirector.STING_BOOST_DB),
+			"%s: the +8 dB sting, layered with the sub boom, the screech pitched down (%s)" % [kind, str(sd.last_sting)])
+		var fov_min: float = cam.fov
+		# snap: at its final pose by about 0.1 s
+		while fx.t < ScareFace.SNAP_S + 0.02:
+			sd.step(0.01)
+			fov_min = minf(fov_min, cam.fov)
+		var d_final: float = ScareFace.final_distance(fx.face_h, 62.0)
+		var loc: Vector3 = cam.global_transform.affine_inverse() * sd.face.global_position
+		_check(absf(-loc.z - d_final) < d_final * 0.08 and absf(loc.x) < 0.05, "%s: snapped to its final pose in about 0.1 s (%.3f m vs %.3f)" % [kind, -loc.z, d_final])
+		_check(fov_min < 62.0 - ScareFace.FOV_PUNCH + 1.0, "%s: the FOV punches in by about 15 degrees (%.1f)" % [kind, fov_min])
+		_check(-loc.z - 0.2 > ScareDirector.CATCH_NEAR and cam.near <= ScareDirector.CATCH_NEAR + 0.001, "%s: the mask never reaches the near plane" % kind)
+		var covs: Array[float] = []
+		var twitch_hold: int = 0
+		var basis_prev: Basis = sd.face.global_transform.basis
+		var ups: Array[float] = []
+		var tilt_max: float = 0.0
+		while fx.is_holding():
+			sd.step(0.01)
+			if fx.is_holding():
+				covs.append(fx.coverage())
 				ups.append((cam.global_transform.basis.inverse() * sd.face.global_transform.basis.y).y)
-			sd.step(0.05)
-			t += 0.05
-		_check(absf(t - ScareDirector.CATCH_S - ScareDirector.DUCK_S) < 0.11, "%s: lasts %.2f s (duck + staged face)" % [kind, t])
-		_check(not sd.face.visible and beats.has("face") and beats.back() == "end", "%s: the face goes at the end (%s)" % [kind, str(beats)])
-		_check(sd.played.has(String(cues[0])) and sd.played.has(String(cues[1])) and sd.last_sting.get("cues") == cues, "%s: the layered sting %s" % [kind, str(cues)])
-		_check(cam.rotation.is_equal_approx(rot0), "%s: the camera's own rotation comes back" % kind)
-		var in_front: bool = true
-		for v: Vector3 in locs:
-			in_front = in_front and v.z < -0.1
-		_check(in_front, "%s: the face stays in front of the camera" % kind)
-		var mid: Vector3 = locs[locs.size() / 2]
-		match kind:
-			"desk":
-				_check(locs[0].y > 0.4 and absf(mid.y) < 0.12 and ups[locs.size() / 2] < -0.9, "desk: lowers from above into view, upside down (%.2f -> %.2f, up %.2f)" % [locs[0].y, mid.y, ups[locs.size() / 2]])
-				_check(beats.has("reveal"), "desk: the spot opens")
-			"locker":
-				_check(absf(locs[0].z) > 0.45 and absf(mid.z) < 0.36 and beats.has("reveal"), "locker: at the slats, then the yank and it pushes in (%.2f -> %.2f)" % [locs[0].z, mid.z])
-			"stall":
-				_check(tilts[locs.size() / 2] > 0.6 and locs[0].y < -0.4 and absf(mid.y) < 0.12, "stall: the camera looks up and the face rises over the partition (tilt %.2f, %.2f -> %.2f)" % [tilts[locs.size() / 2], locs[0].y, mid.y])
-			"open":
-				_check(absf(locs[0].z) > 2.0 and absf(locs[6].z) < 0.45 and not beats.has("reveal"), "open: the face lunges at the camera (%.2f -> %.2f)" % [locs[0].z, locs[6].z])
-		var closest: float = INF
-		for v2: Vector3 in locs:
-			closest = minf(closest, -v2.z)
-		_check(closest - 0.2 > ScareDirector.CATCH_NEAR and closest >= 0.3, "%s: the mask front never reaches the near plane (closest %.2f m)" % [kind, closest])
-		_check(is_equal_approx(cam.near, near0), "%s: the camera's near plane comes back (%.3f)" % [kind, cam.near])
+				tilt_max = maxf(tilt_max, cam.rotation.x - rot0.x)
+				if not sd.face.global_transform.basis.is_equal_approx(basis_prev):
+					twitch_hold += 1
+				basis_prev = sd.face.global_transform.basis
+		var cov_end: float = covs.back() if not covs.is_empty() else 0.0
+		var cov_peak: float = covs.max() if not covs.is_empty() else 0.0
+		_check(cov_end >= 0.7 and cov_end <= 0.85 and cov_peak > cov_end, "%s: the face fills about 78 %% of the screen height at its final pose, more while punched in (%.2f, peak %.2f)" % [kind, cov_end, cov_peak])
+		_check(twitch_hold >= 8, "%s: the head twitches while held (%d changes)" % [kind, twitch_hold])
+		if kind == "desk":
+			ups.sort()
+			_check(ups[ups.size() / 2] < -0.75, "desk: upside down (%.2f)" % ups[ups.size() / 2])
+		if kind == "stall":
+			_check(tilt_max > 0.6, "stall: the camera looks up at the partition top (%.2f)" % tilt_max)
+		_check(beats.has("reveal") == (kind != "open"), "%s: the spot opens with the snap (%s)" % [kind, str(beats)])
+		# the cut to black (no twitch: the face is gone)
+		sd.step(0.02)
+		_check(fx.overlay_visible()["black"] and not sd.face.visible and fx.twitch_now() == Vector3.ZERO, "%s: a hard cut to black after the hold" % kind)
+		while sd.is_catch_playing():
+			sd.step(0.02)
+		_check(beats.back() == "end" and not sd.face.visible, "%s: the end (%s)" % [kind, str(beats)])
+		_check(cam.rotation.is_equal_approx(rot0) and is_equal_approx(cam.fov, 62.0) and is_equal_approx(cam.near, 0.05)
+			and cam.h_offset == 0.0 and cam.v_offset == 0.0, "%s: the camera's rotation, FOV, near plane and offsets come back" % kind)
+		for k5: int in 40:
+			sd.step(0.02)
+		_check(fx.screen_idle(), "%s: the overlays are all off afterwards %s" % [kind, str(fx.overlay_visible())])
 	sd.play_catch_scare("open", false)
-	_check(sd.last_scare.get("who") == "clone" and ((sd.face.get_node("Hood") as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.is_equal_approx(ScareDirector.CLONE_HAIR),
+	_check(sd.last_scare.get("who") == "clone" and ((sd.face.get_node("Hood") as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.is_equal_approx(ScareDirector.CLONE_HAIR) == false,
+		"a clone's catch is flagged as a clone's")
+	sd.step(ScareDirector.DUCK_S + 0.02)
+	_check(((sd.face.get_node("Hood") as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.is_equal_approx(ScareFace.CLONE_HAIR),
 		"a clone's catch shows a clone's face (dark hair under the mask)")
-	sd.play_catch_scare("open", true)
-	_check(sd.last_scare.get("who") == "dolly" and ((sd.face.get_node("Hood") as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.is_equal_approx(StoryCast.CREAM),
-		"Dolly's catch shows her cream wool hood")
 	sd.cancel_catch()
+	sd.play_catch_scare("open", true)
+	sd.step(ScareDirector.DUCK_S + 0.02)
+	_check(sd.last_scare.get("who") == "dolly" and ((sd.face.get_node("Hood") as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.is_equal_approx(ScareFace.CREAM.darkened(0.25)),
+		"Dolly's catch shows her (dirty) cream wool hood")
+	sd.cancel_catch()
+	_check(sd.face.get_node_or_null("ScareMask/Pupil") != null and sd.face.get_node_or_null("ScareMask/Mouth") != null
+		and ((sd.face.get_node("ScareMask/Pupil") as MeshInstance3D).material_override as StandardMaterial3D).emission_enabled,
+		"the scare mask: hollow eyes with glowing red pupils, an open mouth gap")
+	# the double scare: about 20 % of catches, a fixed seed
+	var dbl: int = 0
+	sd.set_seed(4242)
+	for i: int in 300:
+		sd.play_catch_scare("open")
+		dbl += int(sd.last_scare.get("double") == true)
+		sd.cancel_catch()
+	print("  double scares: %d of 300" % dbl)
+	_check(dbl >= 40 and dbl <= 80, "about 20 %% of catches get the double scare (%d of 300)" % dbl)
+	sd.set_seed(7)
+	var found: bool = false
+	for i2: int in 40:
+		sd.play_catch_scare("open")
+		if sd.last_scare.get("double") == true:
+			found = true
+			break
+		sd.cancel_catch()
+	var dbeats: Array[String] = []
+	fx.beat.connect(func(b: String) -> void: dbeats.append(b))
+	var tt: float = 0.0
+	while sd.is_catch_playing() and tt < 3.0:
+		sd.step(0.01)
+		tt += 0.01
+	_check(found and dbeats.has("double") and absf(tt - sd.catch_total()) < 0.05, "the double scare: the face flashes once more after the black (%s, %.2f s)" % [str(dbeats), tt])
 	_trash.append(sd)
 	var red := ScareDirector.new()
 	red.auto_clock = false
@@ -687,14 +752,16 @@ func _catch_scares() -> void:
 		red.played.clear()
 		red.play_catch_scare(kind2)
 		var l2: Dictionary = red.last_scare
-		_check(l2.get("soft") == true and l2.get("face") == false and l2.get("screech") == false and l2.get("shake") == false and l2.get("fade") == true,
-			"reduced %s: a soft sting and a fade, no face, no screech (%s)" % [kind2, str(l2)])
-		for k3: int in 12:
-			red.tick_catch(0.05)
-		_check(red._veil_a > 0.7 and (red.face == null or not red.face.visible), "reduced %s: fades to dark (%.2f)" % [kind2, red._veil_a])
-		for k4: int in 14:
-			red.tick_catch(0.05)
-		_check(red.played == ["metal_creak"], "reduced %s: only the soft sting (%s)" % [kind2, str(red.played)])
+		_check(l2.get("soft") == true and l2.get("face") == false and l2.get("screech") == false and l2.get("shake") == false and l2.get("fade") == true and l2.get("double") == false,
+			"reduced %s: a soft sting and a fade, no face, no screech, no double (%s)" % [kind2, str(l2)])
+		var any_overlay: bool = false
+		for k3: int in 30:
+			red.step(0.05)
+			var o2: Dictionary = red._face_fx.overlay_visible()
+			any_overlay = any_overlay or o2["flash"] or o2["red"] or o2["aber"] or o2["vignette"] or o2["black"]
+		_check(red._veil_a > 0.5 and (red.face == null or not red.face.visible) and not any_overlay and is_equal_approx(cam.fov, 62.0) and cam.h_offset == 0.0,
+			"reduced %s: fades to dark, no flash, overlay, FOV punch or shake" % kind2)
+		_check(red.played == ["metal_creak"] and red.last_sting.is_empty(), "reduced %s: only the soft sting, no boom (%s)" % [kind2, str(red.played)])
 	_trash.append(red)
 	cam.queue_free()
 	await _frames(1)
@@ -734,7 +801,7 @@ func _duck_sting() -> void:
 	print("  sting at %.2f s: duck %.2f, hum %.1f dB, music %.1f dB, sting %.1f dB" % [sting_t, duck_at_sting, hum_at_sting, music_at_sting, sd.sting_volume_db(0)])
 	_check(sting_t >= ScareDirector.DUCK_S - 0.01, "sting: only after the %.1f s duck (%.2f s)" % [ScareDirector.DUCK_S, sting_t])
 	_check(duck_at_sting >= 0.95 and hum_at_sting < -50.0 and music_at_sting < -50.0, "sting: the hum and the music are ducked to silence when it hits")
-	_check(absf(sd.sting_volume_db(0) - ScareDirector.STING_BOOST_DB) < 0.01 and float(sd.last_sting["db"]) > 0.0, "sting: +6 dB above the normal SFX level")
+	_check(absf(sd.sting_volume_db(0) - ScareDirector.STING_BOOST_DB) < 0.01 and float(sd.last_sting["db"]) > 0.0, "sting: +8 dB above the normal SFX level")
 	for i: int in 40:
 		sd.step(0.02)
 	_check(sd.duck_level == 0.0 and is_equal_approx(hum.volume_db, -4.0) and is_equal_approx(AudioServer.get_bus_volume_db(mi), -3.0), "sting: the levels come back after the scare")
@@ -745,7 +812,7 @@ func _duck_sting() -> void:
 	sd.step(ScareDirector.DUCK_S * 0.5)
 	_check(sd.last_sting.is_empty() and sd.duck_level > 0.3, "jump scare: ducking, nothing seen or heard yet")
 	sd.step(ScareDirector.DUCK_S * 0.5 + 0.02)
-	_check(sd.last_sting.get("cues") == ScareDirector.JUMP_CUES, "jump scare: the layered sting after the duck")
+	_check((sd.last_sting.get("cues", []) as Array).slice(0, 2) == ScareDirector.JUMP_CUES, "jump scare: the layered sting after the duck")
 	for j: int in 80:
 		sd.step(0.02)
 	_check(sd.duck_level == 0.0 and is_equal_approx(hum.volume_db, -4.0), "jump scare: the levels come back")

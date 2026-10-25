@@ -512,8 +512,8 @@ func _dolly_wc() -> void:
 	while la.scare.last_sting.is_empty() and w3 < 240:
 		await physics_frame
 		w3 += 1
-	var hit_t: float = float(ScareDirector.CATCH_HIT["stall"]) * ScareDirector.CATCH_S
-	_check(not la.scare.last_sting.is_empty() and la.scare.last_sting["cues"] == ScareDirector.CATCH_CUES["stall"] and absf(float(la.scare.last_sting["at"]) - hit_t) < 0.1,
+	var hit_t: float = 0.0   # the sting fires with the snap, right after the duck
+	_check(not la.scare.last_sting.is_empty() and (la.scare.last_sting["cues"] as Array).slice(0, 2) == ScareDirector.CATCH_CUES["stall"] and absf(float(la.scare.last_sting["at"]) - hit_t) < 0.1,
 		"WC: the loud sting fires as the head pops up over the partition (%s)" % str(la.scare.last_sting))
 	la.release()
 	la.queue_free()

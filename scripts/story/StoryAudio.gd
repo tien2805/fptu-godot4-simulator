@@ -5,7 +5,7 @@
 #   meme:   boom, sad_trombone, record_scratch, ba_dum_tss, bonk, dun_dun_duun, success_fanfare, toang_sting
 #   horror: heartbeat, breath, whisper_bed, violin_screech, music_box, metal_creak, sheep_bleat_distorted, phone_ring_3am,
 #           static_burst
-#   polish: dolly_hum, gasp, alarm_siren, cat_meow, bin_crash, locker_slam, rustle, door_knock, sniff (horror polish: SFX, not
+#   polish: dolly_hum, gasp, alarm_siren, cat_meow, bin_crash, locker_slam, rustle, door_knock, sniff, sub_boom (SFX, not
 #           in CUES; they count as horror cues for "Giảm hù dọa" and take owner overrides like the others)
 # Owner override: user://sfx/<cue>.ogg | .mp3 | .wav (local only, never committed). LOOPS loop (owner files too).
 # Owner voice lines with no synthesized fallback: owner_stream(name) (user://sfx/<name>.ogg | .mp3 | .wav, else null), e.g.
@@ -26,7 +26,7 @@ const CUES: Array[String] = MEME + HORROR
 const EXTRA: Array[String] = ["call_hangup"]
 ## Horror polish SFX (spec H-D1 to H-D7): Dolly's hum, the gasp, the alarm siren, the fake-out cat and bin, the bursting
 ## locker, the stake-out rustle. Horror cues for the -6 dB rule.
-const POLISH: Array[String] = ["dolly_hum", "gasp", "alarm_siren", "cat_meow", "bin_crash", "locker_slam", "rustle", "door_knock", "sniff"]
+const POLISH: Array[String] = ["dolly_hum", "gasp", "alarm_siren", "cat_meow", "bin_crash", "locker_slam", "rustle", "door_knock", "sniff", "sub_boom"]
 const LOOPS: Array[String] = ["heartbeat", "whisper_bed", "music_box", "phone_ring_3am", "dolly_hum", "alarm_siren"]
 const REDUCED_DB: float = -6.0
 ## Expected lengths (s) [min, max] of the synthesized cues (tests).
@@ -36,7 +36,7 @@ const LENGTHS: Dictionary = {
 	"breath": [2.0, 3.0], "whisper_bed": [5.0, 8.0], "violin_screech": [0.9, 1.6], "music_box": [2.5, 4.0],
 	"metal_creak": [1.4, 2.4], "sheep_bleat_distorted": [0.9, 1.6], "phone_ring_3am": [2.5, 3.5], "static_burst": [0.6, 1.2],
 	"call_hangup": [1.0, 1.8], "dolly_hum": [3.5, 5.0], "gasp": [0.5, 1.0], "alarm_siren": [1.8, 2.6], "cat_meow": [0.5, 1.0],
-	"bin_crash": [0.8, 1.6], "locker_slam": [0.4, 1.0], "rustle": [1.0, 2.0], "door_knock": [0.5, 0.9], "sniff": [0.5, 1.0],
+	"bin_crash": [0.8, 1.6], "locker_slam": [0.4, 1.0], "rustle": [1.0, 2.0], "door_knock": [0.5, 0.9], "sniff": [0.5, 1.0], "sub_boom": [0.6, 1.2],
 }
 
 static var sfx_dir: String = "user://sfx/"
@@ -452,6 +452,8 @@ static func synth_samples(cue: String) -> PackedFloat32Array:
 				CineAudio._paste(dk, CineAudio._mix([CineAudio._tone(0.12, 210.0, 160.0, 0.75, 30.0),
 					CineAudio._noise(0.03, 0.5, 120.0, 46 + k, 0.4)]), 0.18 * k, 1.0 - 0.12 * k)
 			return dk
+		"sub_boom":   # a low thump under the scare sting (60 Hz falling to 40 Hz)
+			return _fade_tail(CineAudio._mix([CineAudio._tone(0.9, 60.0, 40.0, 1.0, 4.5), CineAudio._noise(0.06, 0.4, 50.0, 52, 0.9)]), 0.2)
 		"sniff":   # two quick, satisfied sniffs
 			var sn: PackedFloat32Array = _silence(0.75)
 			for k: int in 2:
