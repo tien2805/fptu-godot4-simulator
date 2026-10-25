@@ -24,7 +24,8 @@
 #     sheep mask), speed_mult DOLLY_SPEED, and a positional music-box hum loop (StoryAudio "dolly_hum" on an
 #     AudioStreamPlayer3D, HUM_MAX_M range, -6 dB with "Giảm hù dọa"); set_hum(on).
 #   investigate_spot(spot) (H-D4): heard breathing or a gasp from a hiding spot: CHECK it (catches if the player is inside).
-#   rush(p) (H-D5): the alarm: CHASE towards p without having seen the player (arriving without sight -> SEARCH as usual).
+#   rush(p) (H-D5): the alarm: CHASE towards p without having seen the player (arriving without sight -> SEARCH as usual;
+#     `rushing` is true until it searches or patrols again). search_s: how long a SEARCH lasts (the alarm shortens it).
 class_name HorrorStalker
 extends Node3D
 
@@ -92,8 +93,10 @@ var is_dolly: bool = false
 var hum: AudioStreamPlayer3D = null
 var hum_reduced: bool = false
 var hum_on: bool = false
-## Rushing at the alarm (rush()); cleared by reset_at.
+## Rushing at the alarm (rush()); cleared on SEARCH, PATROL and reset_at.
 var rushing: bool = false
+## SEARCH length (s); the Night Building's alarm shortens it.
+var search_s: float = SEARCH_S
 
 var _patrol_i: int = 0
 var _path: PackedVector3Array = PackedVector3Array()
@@ -481,7 +484,7 @@ func _do_chase(delta: float) -> void:
 
 func _do_search(delta: float) -> void:
 	_search_t += delta
-	if _search_t >= SEARCH_S:
+	if _search_t >= search_s:
 		_back_to_patrol()
 		return
 	if _wait > 0.0:
@@ -563,6 +566,8 @@ func _set_state(s: String) -> void:
 	var old: String = state
 	state = s
 	_state_t = 0.0
+	if s == SEARCH or s == PATROL:
+		rushing = false
 	_arrived_t = -1.0
 	if s == SEARCH:
 		_search_t = 0.0

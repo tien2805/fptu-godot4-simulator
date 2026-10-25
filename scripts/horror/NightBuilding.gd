@@ -44,7 +44,8 @@
 #   Catch: the staged per-spot catch scare (ScareDirector.play_catch_scare(spot kind or "open")), the caught card after it.
 #   Third fuse: the corridor lights flash SOS in red (SosLights, a slow pulse with "Giảm hù dọa"), the alarm_siren loop,
 #   every stalker rushes the player (re-issued every RUSH_REPATH_S while the player is not hidden, held RUSH_HOLD_S after a
-#   retry), the lobby doors open: the final sprint.
+#   retry; a stalker that loses the player searches only ALARM_SEARCH_S, so a hiding spot can still work), the lobby doors
+#   open: the final sprint (toasts point to the exit).
 # HUD: "Cầu chì: n/3", battery, objective, prompts "[E] Trốn", "[E] Ra", "[E] Nhặt cầu chì", "[E] Lắp cầu chì", "[E] Nhặt
 # pin", hint "[F] Đèn pin"; plain text without emoji or decorative symbols.
 class_name NightBuilding
@@ -66,6 +67,9 @@ const PLAYER_DEFAULT: Dictionary = {"preset": "player", "rigged": true, "seed": 
 const HUD_DT: float = 0.1
 const RUSH_REPATH_S: float = 1.5
 const RUSH_HOLD_S: float = 3.0
+const ALARM_SEARCH_S: float = 5.0
+const T_ALARM: String = "Có điện rồi! Báo động kêu, chúng đang tới. Chạy ra cửa sảnh theo biển LỐI THOÁT màu xanh!"
+const T_ALARM_HIDE: String = "Chúng đang lùng sục. Đợi chúng đi qua rồi chạy ra cửa sảnh!"
 const SIREN_DB: float = -14.0
 const POLISH_CUES: Array[String] = ["dolly_hum", "gasp", "alarm_siren", "cat_meow", "bin_crash", "locker_slam"]
 
@@ -463,7 +467,7 @@ func _unlock_doors() -> void:
 	_start_alarm()
 	scare.flicker_near(player.global_position)   # the rooms around stutter (the corridor is the SOS lights' now)
 	scare.try_jump_scare()
-	hud.toast("Có điện rồi! Cửa sảnh đã mở. Báo động kêu, chúng đang tới. Chạy ra ngoài!", 4.0)
+	hud.toast(T_ALARM, 4.0)
 
 
 ## The third fuse (H-D5): SOS on the corridor lights, the siren, every stalker rushes the player.
@@ -482,6 +486,8 @@ func _start_alarm() -> void:
 		siren.bus = "SFX"
 	add_child(siren)
 	_try_siren()
+	for s: HorrorStalker in stalkers:
+		s.search_s = ALARM_SEARCH_S
 	_noise_queue.clear()
 	_rush_t = 0.0
 	alarm_started.emit()
@@ -506,14 +512,14 @@ func _queue_rush() -> void:
 # ---------------------------------------------------------------------------
 # Catch, retry, escape
 # ---------------------------------------------------------------------------
-func _on_caught(_s: HorrorStalker) -> void:
+func _on_caught(catcher: HorrorStalker) -> void:
 	if state != "play":
 		return
 	state = "caught"
 	caught_count += 1
 	kit.input_enabled = false
 	player.controls_enabled = false
-	scare.play_catch_scare(kit.hidden_spot.kind if kit.is_hidden() else "open")
+	scare.play_catch_scare(kit.hidden_spot.kind if kit.is_hidden() else "open", catcher == null or catcher.is_dolly)
 	_card_t = ScareDirector.CATCH_S   # the caught card after the staged scare
 	caught.emit()
 	if auto_retry:
@@ -643,6 +649,8 @@ func _on_stalker_state(_old: String, new_state: String) -> void:
 
 func _on_hide_changed(spot: HidingSpot) -> void:
 	hud.set_peek(spot.kind if spot != null else "")
+	if spot != null and alarm and state == "play":
+		hud.toast(T_ALARM_HIDE, 3.0)
 
 
 ## The staged catch opens the spot: the peek overlay (slats, the dark band) goes.
@@ -678,7 +686,8 @@ func _physics_process(delta: float) -> void:
 		var s: HorrorStalker = q["s"]
 		if is_instance_valid(s) and state == "play":
 			if bool(q["rush"]):
-				s.rush(kit.player_position())
+				if not kit.is_hidden():   # queued before the player hid: never sends them to the spot
+					s.rush(kit.player_position())
 			else:
 				s.hear_at(q["pos"])
 	if state == "play" and doors_unlocked and player != null and not kit.is_hidden():

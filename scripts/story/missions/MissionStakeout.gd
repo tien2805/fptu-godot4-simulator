@@ -58,6 +58,7 @@ var shiba: StoryShiba
 var lu_state: String = ""
 var lu_shown: bool = false
 var _lu_t: float = 0.0
+var _lu_home: Vector3 = Vector3.ZERO
 
 
 func _start() -> void:
@@ -141,19 +142,25 @@ func _tick_lu(dt: float) -> void:
 				lu_state = "leave"
 				_lu_t = LU_LEAVE
 				shiba.play("walk")
-				shiba.rotation.y = shiba.rotation.y + PI
-		"leave":
+				shiba.rotation.y = yaw_of(_lu_home - shiba.global_position)
+		"leave":   # back the way it came (a free spot), then gone
 			_lu_t -= dt
-			shiba.global_position += fwd_of(shiba) * 2.2 * dt
-			if _lu_t <= 0.0:
+			var home: Vector3 = _lu_home - shiba.global_position
+			home.y = 0.0
+			if home.length() > 0.1:
+				shiba.global_position += home.normalized() * minf(2.2 * dt, home.length())
+			if _lu_t <= 0.0 or home.length() <= 0.1:
 				_lu_gone()
 
 
 func _lu_appear() -> void:
 	var yaw: float = player.facing_yaw() if player.has_method("facing_yaw") else player.rotation.y
 	var back := Vector3(sin(yaw), 0.0, cos(yaw))   # behind the player (characters face -Z at their yaw)
-	var p: Vector3 = player.global_position + back * LU_BEHIND_M
+	var p: Vector3 = free_spot(player.global_position + back * LU_BEHIND_M, 2)   # never inside a hedge or a wall
+	if not clear_line(player.global_position + Vector3(0.0, 0.5, 0.0), p + Vector3(0.0, 0.3, 0.0)):
+		p = free_spot(player.global_position + back * 1.4, 1)
 	p.y = ground_y(p)
+	_lu_home = p
 	shiba = StoryCast.build("shiba") as StoryShiba
 	add_child(shiba)
 	shiba.global_position = p

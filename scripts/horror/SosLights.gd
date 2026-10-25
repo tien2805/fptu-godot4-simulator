@@ -21,6 +21,9 @@ const PULSE_S: float = 3.0
 const PULSE_LO: float = 0.6
 const PULSE_HI: float = 2.0
 
+static var _pattern: Array = []
+static var _period: float = -1.0
+
 var mats: Array[StandardMaterial3D] = []
 var reduce_scares: bool = false
 var t: float = 0.0
@@ -35,8 +38,10 @@ func _init() -> void:
 	name = "SosLights"
 
 
-## Segments of one loop: [[on: bool, seconds], ...] (S, letter gap, O, letter gap, S, word gap).
+## Segments of one loop: [[on: bool, seconds], ...] (S, letter gap, O, letter gap, S, word gap). Built once.
 static func pattern() -> Array:
+	if not _pattern.is_empty():
+		return _pattern
 	var out: Array = []
 	var letters: Array = [[DOT, DOT, DOT], [DASH, DASH, DASH], [DOT, DOT, DOT]]
 	for li: int in letters.size():
@@ -46,13 +51,17 @@ static func pattern() -> Array:
 			if mi < marks.size() - 1:
 				out.append([false, GAP])
 		out.append([false, LETTER_GAP if li < letters.size() - 1 else WORD_GAP])
+	_pattern = out
 	return out
 
 
 static func period() -> float:
+	if _period > 0.0:
+		return _period
 	var s: float = 0.0
 	for seg: Array in pattern():
 		s += float(seg[1])
+	_period = s
 	return s
 
 
