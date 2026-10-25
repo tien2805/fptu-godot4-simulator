@@ -543,13 +543,13 @@ func _breath(kit: HorrorKit, spot: HidingSpot, walker: HorrorStalker, player: Th
 	kit.hold_override = true
 	for i: int in 3:
 		kit.update_breath(1.0)
-	_check(kit.breath_held and absf(kit.breath_left - 3.0) < 0.01, "holding: 3 s used of 6 (%.2f)" % kit.breath_left)
+	_check(kit.breath_held and absf(kit.breath_left - (HorrorKit.BREATH_MAX_S - 3.0)) < 0.01, "holding: 3 s used (%.2f)" % kit.breath_left)
 	_check(sd_breath_silent(kit), "the breath loop is silent while held")
 	kit.hold_override = false
 	kit.update_breath(1.0)
-	_check(not kit.breath_held and absf(kit.breath_left - 4.0) < 0.01 and kit.gasps == 0, "released far from any stalker: refills 1 s per s, no gasp (%.2f)" % kit.breath_left)
+	_check(not kit.breath_held and absf(kit.breath_left - (HorrorKit.BREATH_MAX_S - 3.0 + HorrorKit.BREATH_REFILL_PER_S)) < 0.01 and kit.gasps == 0, "released far from any stalker: refills BREATH_REFILL_PER_S per s, no gasp (%.2f)" % kit.breath_left)
 	kit.hold_override = true
-	for i2: int in 5:
+	for i2: int in int(ceilf(kit.breath_left)) + 1:   # hold until the bar is empty
 		kit.update_breath(1.0)
 	_check(kit.gasps == 1 and kit.last_gasp == "empty" and not kit.breath_held, "running out of breath is a gasp (%d, %s)" % [kit.gasps, kit.last_gasp])
 	_check(kit.scare.played.has("gasp"), "the gasp cue plays")

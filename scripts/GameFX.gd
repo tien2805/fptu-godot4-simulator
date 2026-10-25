@@ -413,10 +413,11 @@ static func _trails() -> bool:
 
 var music: MusicDirector
 
-## Nhạc nền thủ tục theo màn: style thuộc MusicDirector.STYLES (menu, ride, parking, classroom, vovinam, canteen, capstone, exam)
-func music_play(style: String, tension: float = 0.35) -> void:
+## Nhạc nền = file của chủ game user://music/<slot>.ogg|.mp3 (không có file thì im lặng; không tổng hợp nhạc bằng code).
+## Slot: MusicDirector.SLOTS (menu, roam_day, roam_night, stage1_race... stage_extra_exam, mission_*); crossfade 1.2 s.
+func music_play(slot: String, tension: float = 0.35) -> void:
 	if music:
-		music.play(style)
+		music.play(slot)
 		music.set_tension(tension)
 
 func music_tension(v: float) -> void:
@@ -666,7 +667,7 @@ func load_wav(res_path: String, is_loop: bool = false) -> AudioStreamWAV:
 	return stream
 
 ## Phát SFX theo tên trong ngân hàng tổng hợp ("tick","hit","miss","pop","heart",
-## "error","success","whoosh","shutter","growl","ring","beep","thud","cash","alarm")
+## "error","success","whoosh","shutter","growl","ring","beep","thud","drum","cash","alarm")
 ## hoặc theo đường dẫn res:// tới file WAV.
 func play_sfx(name_or_path: String, volume_db: float = 0.0, pitch: float = 1.0) -> void:
 	var stream: AudioStream = null
@@ -719,6 +720,17 @@ func _synth(name: String) -> AudioStreamWAV:
 		"thud":
 			_tone(out, sr, 110.0, 0.16, 0.8, 14.0)
 			_noise(out, sr, rng, 0.05, 0.3, 50.0, true)
+		"drum":   # trống võ đường (Màn 4 đánh nhịp, không phải nhạc): mọi lớp cộng từ mẫu 0 nên tiếng gõ rơi đúng phách
+			var dn: int = int(0.2 * sr)
+			out.resize(dn)
+			var ph1: float = 0.0
+			var ph2: float = 0.0
+			for i: int in dn:
+				var t: float = float(i) / float(sr)
+				ph1 += TAU * (200.0 * exp(-t * 18.0) + 140.0) / float(sr)   # thân trống 340 -> 140 Hz (nghe rõ trên loa laptop)
+				ph2 += TAU * 80.0 / float(sr)                                 # lớp trầm
+				var click: float = rng.randf_range(-1.0, 1.0) * exp(-t * 400.0)   # tiếng dùi chạm mặt trống, t = 0
+				out[i] = clampf(sin(ph1) * 0.7 * exp(-t * 22.0) + sin(ph2) * 0.35 * exp(-t * 14.0) + click * 0.45, -1.0, 1.0)
 		"miss":
 			_tone(out, sr, 190.0, 0.18, 0.5, 10.0)
 			_tone(out, sr, 150.0, 0.18, 0.5, 10.0, true)

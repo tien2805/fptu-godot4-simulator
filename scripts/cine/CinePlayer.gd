@@ -1,15 +1,13 @@
 # File: res://scripts/cine/CinePlayer.gd
 # Plays one CineTimeline (spec section 9): builds the actors (real game models) under a stage node placed at stage_xf, the
 # props, a Camera3D, the overlay, the FX node (under the stage: CineFX works in its own local space = stage space) and the
-# audio players; music (owner file or synthesized cue built on a worker thread) starts on the first frame; every frame:
+# audio players; music (the owner's slot file, none = no music, H-D8) starts on the first frame; every frame:
 # r (REAL, from Time.get_ticks_usec or step(dt), never Engine.time_scale, never clamped) -> s = clock.story_at(r) -> actors,
 # story-time events (SFX, FX, prop glow), prop visibility (opts show_at / hide_at, a pure function of s), FX speed, camera
 # (shot at real progress + whip / punch-in of ramps and timeline punches + handheld noise in story time when the shot has
 # "hand"), overlay (letterbox, fades, subtitle at r, skip bar, debug), music gain. Ends at r = length (exact) or after a hold-Esc skip; emits finished(skipped).
 # PROCESS_MODE_ALWAYS: runs while the host pauses the tree.
-# Threading (plan review B1): the cue worker only writes into a holder box ([null]) through a lambda built in a static
-# function (no reference to this node); _poll_music reads the box; _exit_tree / PREDELETE wait for the task, so freeing the
-# player mid-synthesis is safe. setup opts: manual (step() drives the clock), debug, music (false = no cue at all).
+# setup opts: manual (step() drives the clock), debug, music (false = no music even with an owner file).
 class_name CinePlayer
 extends Node3D
 
@@ -49,9 +47,6 @@ var _rows: Array[Dictionary] = []
 var _cam_rows: Array[Dictionary] = []    # ramp rows + timeline punches (camera whip / FOV punch)
 var _beats := PackedFloat32Array()
 var _shot_r := PackedFloat32Array()      # real start of each shot
-var _task: int = -1
-var _box: Array = [null]                 # the worker writes the synthesized cue here (B1)
-var _music_ready: bool = false
 var _playing: bool = false
 var _done: bool = false
 var _seeking: bool = false
@@ -211,52 +206,21 @@ func _build_events() -> void:
 			CineAudio.sfx(String(ev["cue"]))
 
 
+## The owner's slot file (user://music/<music_slot>.ogg|.mp3) or no music at all (H-D8: no code music).
 func _prepare_music(enabled: bool) -> void:
+	music.stream = null
+	music_len = 0.0
 	if not enabled:
-		_music_ready = true
 		return
 	var st: AudioStream = CineAudio.load_music(timeline.music_slot if timeline.music_slot != "" else timeline.slot)
 	if st:
 		music.stream = st
 		music_len = CineAudio.stream_length(st)
-		_music_ready = true
-		return
-	_box = [null]
-	_task = WorkerThreadPool.add_task(_synth_job(_box, timeline.length, music_hits(_rows), timeline.mood))
 
 
-## Hit layout of the synthesized cue: every ramp row except "card" freezes (a villain card is silent in the music; the
-## timeline gives it its own sting), so no boom, tick, ducking or outro hit lands on or after a card.
-static func music_hits(rows: Array[Dictionary]) -> Array[Dictionary]:
-	var hits: Array[Dictionary] = []
-	for row: Dictionary in rows:
-		if String(row["preset"]) == "card":
-			continue
-		hits.append({"r": row["r_hit"], "preset": row["preset"], "freeze": row["freeze"], "r_start": row["r_start"], "r_end": row["r_end"]})
-	return hits
-
-
-## Worker job: pure synthesis into the holder box; built in a static function so the lambda holds no reference to the node.
-static func _synth_job(box: Array, length: float, hits: Array[Dictionary], mood: String) -> Callable:
-	return func() -> void: box[0] = CineAudio.synth_cue(length, hits, mood)
-
-
+## Always true once set up (kept for the hosts that wait on it: nothing is built in the background any more).
 func is_ready() -> bool:
-	_poll_music()
-	return _music_ready
-
-
-func _poll_music() -> void:
-	if _task >= 0 and WorkerThreadPool.is_task_completed(_task):
-		_take_cue()
-
-
-func _take_cue() -> void:
-	WorkerThreadPool.wait_for_task_completion(_task)
-	_task = -1
-	music.stream = _box[0]
-	music_len = timeline.length
-	_music_ready = true
+	return timeline != null
 
 
 func start() -> void:
@@ -273,11 +237,6 @@ func _process(_d: float) -> void:
 	var now: int = Time.get_ticks_usec()
 	var dt: float = float(now - _last_us) / 1e6
 	_last_us = now
-	if not _music_ready:
-		_poll_music()
-		if not _music_ready:
-			r = 0.0          # fade-in hold: the screen stays black until the cue is ready
-			return
 	step(dt)                 # full real dt, no clamp (plan review M5): real length and music sync hold through hitches
 
 
@@ -285,10 +244,6 @@ func _process(_d: float) -> void:
 func step(dt: float) -> void:
 	if _done or not _playing:
 		return
-	if not _music_ready:
-		_poll_music()
-		if not _music_ready:
-			return
 	if _choice_state == 1:
 		# the choice scene is open: the cinematic holds its frame (r does not advance); a manual player drives the overlay
 		if manual and is_instance_valid(choice_node):
@@ -563,16 +518,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _exit_tree() -> void:
-	if _task >= 0:
-		_take_cue()
 	if _playing and not _done:
 		# freed / removed mid-cinematic: Esc must open the pause menu again (plan review Minor 3) and an awaiting host must
 		# hear the end (Tasks 5+6 review): finished(true) with leaving_tree set
 		leaving_tree = true
 		_finish(true)
-
-
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_PREDELETE and _task >= 0:
-		WorkerThreadPool.wait_for_task_completion(_task)
-		_task = -1

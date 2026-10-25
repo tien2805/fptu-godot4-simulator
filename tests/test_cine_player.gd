@@ -2,14 +2,16 @@
 # Headless test of CinePlayer with the 6 s test timeline. Part A, empty world: refuses an invalid timeline; plays exactly
 # 6.000 s (360 manual steps of 1/60); music starts on the first frame; letterbox, fades, subtitle with its Dịch line, shots
 # switch by story time; the clock ignores Engine.time_scale and is not clamped through a hitch; hold-Esc skip; debug
-# overlay; frame cost; {"music": false}; freeing a player while its cue is still synthesizing; cinematic_active cleared when
-# a playing player leaves the tree.
+# overlay; frame cost; {"music": false}; no owner file = no music and ready at once (H-D8: no synthesized cue); cinematic_active
+# cleared when a playing player leaves the tree.
 # Part B, FreeRoam (crowd off): stage found on the road side of the west gate (floor near the landmark ground, no shed roof,
 # no visual clutter in the box), play_cinematic pauses the tree, hides the player / HUD / map, stops the roam music and
-# restores everything (camera, music, time of day) when done; F9 with no timelines is a no-op.
+# restores everything (camera, music, time of day) when done; the roam music follows the time of day (roam_day / roam_night,
+# H-D8); F9 with no timelines is a no-op.
 # Run:  godot --headless --path . --script tests/test_cine_player.gd
 # CINE_NO_MIXAMO=1 sets CineRetarget.disabled = ["mixamo"] before any check (covers the fallback tiers with files present).
-# The test never reads or writes user://music: its slot "test_slot" has no owner file, Part B passes {"music": false}.
+# The test never reads or writes user://music: its slot "test_slot" has no owner file, Part B passes {"music": false}; the
+# "music starts on the first frame" check gives the player a test stream (a silent loop built here, not game music).
 extends SceneTree
 
 const TL_SCRIPT: String = "res://tests/support/cine_test_timeline.gd"
@@ -35,6 +37,17 @@ func _tl() -> CineTimeline:
 	var tl: CineTimeline = (load(TL_SCRIPT) as GDScript).new()
 	tl.build()
 	return tl
+
+
+## A silent 16-bit stream of `secs` s (test only: it stands in for an owner file; not game music).
+func _test_stream(secs: float) -> AudioStreamWAV:
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = 22050
+	var d := PackedByteArray()
+	d.resize(int(secs * 22050.0) * 2)
+	w.data = d
+	return w
 
 
 func _on_finished(skipped: bool) -> void:
@@ -78,16 +91,20 @@ func _initialize() -> void:
 		_check(not bool(sm.get("cinematic_active")), "cinematic_active cleared when a playing player leaves the tree")
 	_check(pm_end == [[true, true]], "a playing player leaving the tree emits finished(true) with leaving_tree (%s)" % str(pm_end))
 	pm.free()
-	# freeing a player while its cue is still synthesizing on the worker (B1: the worker only writes a holder box and the
-	# player waits for the task before it is deleted)
+	# H-D8: music on but no owner file for "test_slot": no synthesized cue, no music, ready at once
 	var pf := CinePlayer.new()
 	world.add_child(pf)
-	pf.setup(_tl())
+	pf.setup(_tl(), Transform3D.IDENTITY, {"manual": true})
+	_check(pf.is_ready() and pf.music.stream == null, "no owner file -> no music (no synthesized cue) and ready at once")
+	pf.start()
+	pf.step(1.0 / 60.0)
+	_check(not pf.music.playing and pf.r > 0.0, "no owner file -> the cinematic plays on without music")
 	pf.free()
-	_check(true, "freed during synthesis without a crash")
 	p = CinePlayer.new()
 	world.add_child(p)
 	_check(p.setup(_tl(), Transform3D.IDENTITY, {"manual": true}).is_empty(), "test timeline sets up")
+	p.music.stream = _test_stream(8.0)   # stands in for an owner file
+	p.music_len = 8.0
 	p.finished.connect(_on_finished)
 	p.start()
 	phase = 0
@@ -99,7 +116,7 @@ func _process(_d: float) -> bool:
 	match phase:
 		-1:
 			return false
-		0:   # wait for the synthesized cue (worker thread)
+		0:   # is_ready() is true at once since H-D8 (nothing is built in the background)
 			if p.is_ready():
 				phase = 1
 			elif frames > 600:
@@ -306,7 +323,7 @@ func _part_b() -> bool:
 		_check(bool(sm.get("cinematic_active")), "StageManager.cinematic_active while the cinematic plays")
 		_check(not bool(sm.call("_can_pause")), "Esc cannot pause during the cinematic")
 	if md_music:
-		_check(float(md_music.get("_target_gain")) == 0.0, "roam music stopped for the cinematic")
+		_check(float(md_music.get("target_gain")) == 0.0, "roam music stopped for the cinematic")
 	while not cp.is_ready():
 		OS.delay_msec(20)
 	var n2: int = 0
@@ -325,7 +342,19 @@ func _part_b() -> bool:
 	if sm:
 		_check(not bool(sm.get("cinematic_active")), "cinematic_active cleared after the cinematic")
 	if md_music:
-		_check(String(md_music.get("style_name")) == "menu" and float(md_music.get("_target_gain")) == 1.0, "roam music resumed")
+		_check(String(md_music.get("slot")) == MusicDirector.roam_slot(tod0) and float(md_music.get("target_gain")) == 1.0,
+			"roam music resumed (%s for %s)" % [String(md_music.get("slot")), tod0])
+		# H-D8: the roam slot follows the time of day while it plays (night -> roam_night, every other preset -> roam_day)
+		fr.call("set_time_of_day", "night")
+		_check(String(md_music.get("slot")) == "roam_night", "night -> roam_night (%s)" % String(md_music.get("slot")))
+		fr.call("set_time_of_day", "sunset")
+		_check(String(md_music.get("slot")) == "roam_day", "sunset -> roam_day (%s)" % String(md_music.get("slot")))
+		fr.call("set_time_of_day", "night")
+		md_music.call("play", "mission_chase")
+		fr.call("set_time_of_day", "morning")
+		_check(String(md_music.get("slot")) == "mission_chase", "a mission track is not replaced by a time-of-day change")
+		fr.call("set_time_of_day", tod0)
+		fr.call("roam_music")
 	if CineTimeline.slots().is_empty():
 		_check(fr.call("_play_next_cinematic") == null, "F9 with no timelines is a no-op")
 	return _end()

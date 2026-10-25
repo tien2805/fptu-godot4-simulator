@@ -3,7 +3,7 @@
 # gate. Mr.T has a laptop open on a folding table by the guard booth and replays the parking CCTV: StoryScreenCard "cctv"
 # (2.0-7.6 s real) shows a courier in a helmet handing a box ("hàng") to a student in the D1 parking. He asks the
 # protagonist to stake out the parking tonight and photograph the handover. In the background Chú Bảy dozes on a stool with
-# his shiba Lu (foreshadowing the corridor bonk). No ramps (story = real). Music slot cine_d1_intro (synthesized default).
+# his shiba Lu (foreshadowing the corridor bonk). No ramps (story = real). Music slot cine_d1_intro (owner file, else no music).
 # Stage: explicit "at" just inside the main gate (plot u 12, v 11: the nearest clear 10 x 9 box, yaw 181); landmark fallback.
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline

@@ -54,7 +54,7 @@ func _on_finished(_skipped: bool, tl: CineTimeline) -> void:
 func _show_help(tl: CineTimeline) -> void:
 	var folder: String = ProjectSettings.globalize_path(CineAudio.MUSIC_DIR)
 	var has_file: bool = CineAudio.music_file(tl.music_slot) != ""
-	_label.text = "R: xem lại · F10: debug · nhạc: %s%s.ogg|.mp3 (%s)" % [folder, tl.music_slot, "có file" if has_file else "nhạc tổng hợp"]
+	_label.text = "R: xem lại · F10: debug · nhạc: %s%s.ogg|.mp3 (%s)" % [folder, tl.music_slot, "có file" if has_file else "không có nhạc"]
 	_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	_label.position = Vector2(16.0, get_viewport().get_visible_rect().size.y - 40.0)
 	_label.visible = true

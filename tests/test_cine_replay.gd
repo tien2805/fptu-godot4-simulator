@@ -5,8 +5,8 @@
 # camera and the pause; length clamps to 4-6 s; hold-Esc skips; no footage -> no replay. Plan review corrections: the
 # replays run at frame 185 (>= 1 s of footage after the mark, so the impact sits at 55 % = 2.75 s) and the expected impact
 # is also computed from replay_clock (M6); the real-time loop advances by the full dt (M5); a replay removed mid-play
-# clears cinematic_active and the pause (Minor 3); the sting is cached by (length, r_hit) (Minor 8).
-# Independent of user://music (no slot is passed, so the synthesized sting is always used).
+# clears cinematic_active and the pause (Minor 3). H-D8: no synthesized sting: without a slot (or without the owner's file)
+# the replay is silent. Independent of user://music (no slot is passed; the slot case uses a name with no file).
 # Run:  godot --headless --path . --script tests/test_cine_replay.gd
 extends SceneTree
 
@@ -21,6 +21,17 @@ var cam: Camera3D
 var rec: CineReplayRecorder
 var pos_mark: Vector3
 var done: bool = false
+
+
+## A silent 16-bit stream (test only: stands in for an owner file; not game music).
+func _silent(secs: float) -> AudioStreamWAV:
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = 22050
+	var d := PackedByteArray()
+	d.resize(int(secs * 22050.0) * 2)
+	w.data = d
+	return w
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -149,19 +160,21 @@ func _run_replays() -> void:
 	_check(not paused, "and the game is not paused")
 	rp3.queue_free()
 	empty.queue_free()
-	# sting cached by (length, r_hit) (Minor 8)
-	_check(CineReplay.sting(5.0, 2.75) == CineReplay.sting(5.0, 2.75), "replay sting is cached by (length, r_hit)")
+	# H-D8: no synthesized sting; no slot -> silent, a slot without an owner file -> silent
+	var probe := CineReplay.new()
+	_check(probe.has_method("start") and not probe.has_method("sting"), "CineReplay has no synthesized sting any more")
+	probe.free()
 	var rp_a := CineReplay.new()
 	world.add_child(rp_a)
-	rp_a.start(rec, {"length": 4.0, "manual": true})
-	var st_a: AudioStream = rp_a.music.stream
+	_check(rp_a.start(rec, {"length": 4.0, "manual": true}), "a replay without a slot still plays")
+	_check(rp_a.music.stream == null and not rp_a.music.playing, "no slot -> the replay is silent (no code music)")
 	rp_a.force_skip_hold = true
 	for i: int in 60:
 		rp_a.step(1.0 / 60.0)
 	var rp_b := CineReplay.new()
 	world.add_child(rp_b)
-	rp_b.start(rec, {"length": 4.0, "manual": true})
-	_check(st_a != null and rp_b.music.stream == st_a, "a second replay of the same length reuses the sting")
+	rp_b.start(rec, {"length": 4.0, "manual": true, "slot": "hd8_no_such_replay_slot"})
+	_check(rp_b.music.stream == null and not rp_b.music.playing, "a slot with no owner file -> silent")
 	# real-time loop: full dt, no clamp (M5) - a 300 ms hitch advances r by >= 0.29 s
 	rp_b.manual = false
 	rp_b._last_us = Time.get_ticks_usec()
@@ -178,3 +191,39 @@ func _run_replays() -> void:
 		_check(not bool(sm.get("cinematic_active")), "and clears cinematic_active")
 	_check(a.global_position.distance_to(live_pos) < 1e-3, "and restores the live state")
 	rp_b.free()
+	# review I3: a replay with its own track ducks the GameFX background track and releases it at the end / on removal
+	var fx: Node = get_root().get_node_or_null("GameFX")
+	var md: MusicDirector = fx.get("music") if fx else null
+	_check(md != null, "GameFX has its MusicDirector")
+	if md:
+		MusicDirector.test_streams = {"hd8_bed": _silent(6.0), "hd8_replay_track": _silent(6.0)}
+		md.play("hd8_bed", 0.0)
+		var rp_d := CineReplay.new()
+		world.add_child(rp_d)
+		rp_d.start(rec, {"length": 4.0, "manual": true, "slot": "hd8_replay_track"})
+		_check(rp_d.music.playing and md.duck_target == 0.0, "the replay's own track ducks the background track")
+		md._process(0.4)
+		_check(md.duck_gain == 0.0 and md.players[md.cur].playing and md.players[md.cur].volume_db < -60.0,
+			"ducked to silence, the background player keeps running")
+		rp_d.force_skip_hold = true
+		for i3: int in 60:
+			rp_d.step(1.0 / 60.0)
+		_check(md.duck_target == 1.0, "the duck is released when the replay ends")
+		md._process(0.4)
+		_check(md.duck_gain == 1.0, "the background track is back")
+		var rp_e := CineReplay.new()
+		world.add_child(rp_e)
+		rp_e.start(rec, {"length": 4.0, "manual": true, "slot": "hd8_replay_track"})
+		_check(md.duck_target == 0.0, "a second replay ducks again")
+		world.remove_child(rp_e)
+		_check(md.duck_target == 1.0, "a replay removed mid-play releases the duck")
+		rp_e.free()
+		var rp_f := CineReplay.new()
+		world.add_child(rp_f)
+		rp_f.start(rec, {"length": 4.0, "manual": true})
+		_check(md.duck_target == 1.0, "a silent replay (no slot) does not duck")
+		rp_f.force_skip_hold = true
+		for i4: int in 60:
+			rp_f.step(1.0 / 60.0)
+		md.stop(false)
+		MusicDirector.test_streams = {}

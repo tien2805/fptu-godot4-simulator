@@ -1,5 +1,5 @@
 # File: res://tests/test_cine_audio_fx.gd
-# Headless test of CineAudio (slot loader, gain rule, synthesized cue/sting/SFX) and CineFX (particles follow the clock speed,
+# Headless test of CineAudio (slot loader, gain rule, no synthesized music since H-D8, synthesized SFX) and CineFX (particles follow the clock speed,
 # analytic debris freezes with story time and rests flat at half its height, fixed particle seeds, a burst inside a freeze
 # starts frozen, crate break, stars, props, code textures, no GPU particles).
 # Run:  godot --headless --path . --script tests/test_cine_audio_fx.gd
@@ -14,17 +14,6 @@ func _check(ok: bool, msg: String) -> void:
 		print("  ✗ ", msg)
 
 
-func _rms(w: AudioStreamWAV, t0: float, t1: float) -> float:
-	var d: PackedByteArray = w.data
-	var a: int = int(t0 * CineAudio.SR)
-	var b: int = mini(int(t1 * CineAudio.SR), d.size() / 2)
-	var acc: float = 0.0
-	for i: int in range(a, b):
-		var v: float = float(d.decode_s16(i * 2)) / 32767.0
-		acc += v * v
-	return sqrt(acc / maxf(float(b - a), 1.0))
-
-
 func _initialize() -> void:
 	print("--- TEST CINE AUDIO + FX ---")
 	# --- gain rule (A1-D13)
@@ -32,9 +21,9 @@ func _initialize() -> void:
 	_check(absf(CineAudio.music_gain(24.75, 25.0, 30.0) - 0.5) < 1e-6, "longer file: half way through the fade at 24.75")
 	_check(CineAudio.music_gain(25.0, 25.0, 30.0) == 0.0, "longer file: silent at the end")
 	_check(is_equal_approx(CineAudio.music_gain(24.9, 25.0, 20.0), 1.0), "shorter file: no fade")
-	_check(CineAudio.music_file("a1_no_such_slot") == "" and CineAudio.load_music("a1_no_such_slot") == null, "missing slot file -> synthesized cue")
+	_check(CineAudio.music_file("a1_no_such_slot") == "" and CineAudio.load_music("a1_no_such_slot") == null, "missing slot file -> no music")
 	# --- owner track (local only, never committed): when user://music/seg_d1_brawl.mp3 exists the slot resolves to it and it
-	# plays; when it does not, the slot falls back to the synthesized cue. The test never writes to user://music.
+	# plays; when it does not, the slot is silent (H-D8: no code music). The test never writes to user://music.
 	var owner_mp3: String = CineAudio.MUSIC_DIR + "seg_d1_brawl.mp3"
 	if FileAccess.file_exists(owner_mp3) and not FileAccess.file_exists(CineAudio.MUSIC_DIR + "seg_d1_brawl.ogg"):
 		var own: AudioStream = CineAudio.load_music("seg_d1_brawl")
@@ -54,34 +43,14 @@ func _initialize() -> void:
 		print("  owner track found: %s (%.2f s)" % [owner_mp3, own_len])
 	elif not FileAccess.file_exists(CineAudio.MUSIC_DIR + "seg_d1_brawl.ogg"):
 		_check(CineAudio.music_file("seg_d1_brawl") == "" and CineAudio.load_music("seg_d1_brawl") == null,
-			"no owner track -> seg_d1_brawl uses the synthesized cue")
-		print("  no owner track in %s: synthesized cue path" % CineAudio.MUSIC_DIR)
-	# --- synthesized cue: exact length, accents on the hits, silent end
-	var hits: Array[Dictionary] = [
-		{"r": 2.681, "preset": "heavy", "freeze": 0.18, "r_start": 2.231, "r_end": 3.961},
-		{"r": 7.975, "preset": "medium", "freeze": 0.14, "r_start": 7.655, "r_end": 8.835},
-		{"r": 19.950, "preset": "finisher", "freeze": 0.2, "r_start": 19.300, "r_end": 21.500}]
-	var t0: int = Time.get_ticks_msec()
-	var cue: AudioStreamWAV = CineAudio.synth_cue(25.0, hits, "punchy")
-	var ms: int = Time.get_ticks_msec() - t0
-	print("  25 s cue synthesized in %d ms" % ms)
-	_check(cue != null and cue.mix_rate == CineAudio.SR and cue.format == AudioStreamWAV.FORMAT_16_BITS, "cue is 22.05 kHz 16-bit")
-	_check(absi(cue.data.size() - 25 * CineAudio.SR * 2) <= 4, "cue is exactly 25.000 s (%d bytes)" % cue.data.size())
-	_check(ms < 3000, "cue synthesized in %d ms < 3000" % ms)
-	for h: Dictionary in hits:
-		var at: float = float(h["r"])
-		var peak: float = _rms(cue, at, at + 0.06)
-		var before: float = _rms(cue, at - 1.45, at - 0.45)   # 1 s of grid before the riser
-		_check(peak > 2.0 * before + 0.01, "accent at %.3f (rms %.3f vs %.3f before)" % [at, peak, before])
-	_check(_rms(cue, 24.99, 25.0) < 0.02, "cue faded out at the end")
-	# pure + thread-safe: the same cue built on a WorkerThreadPool task (holder box, as CinePlayer does) is byte-identical
-	var box: Array = [null]
-	var task: int = WorkerThreadPool.add_task(func() -> void: box[0] = CineAudio.synth_cue(25.0, hits, "punchy"))
-	WorkerThreadPool.wait_for_task_completion(task)
-	var wcue: AudioStreamWAV = box[0]
-	_check(wcue != null and wcue.data == cue.data, "worker-thread cue is identical to the main-thread cue")
-	var sting: AudioStreamWAV = CineAudio.synth_sting(5.0, 2.75)
-	_check(absi(sting.data.size() - 5 * CineAudio.SR * 2) <= 4, "sting is exactly 5.000 s")
+			"no owner track -> seg_d1_brawl has no music")
+		print("  no owner track in %s: silent path" % CineAudio.MUSIC_DIR)
+	# --- H-D8: no synthesized music path is left in CineAudio (the synthesized SFX below stay)
+	var ca := CineAudio.new()
+	_check(ca.has_method("music_file") and ca.has_method("sfx"), "has_method sees CineAudio's static functions (the checks below are not vacuous)")
+	for m: String in ["synth_cue", "synth_sting", "_in_windows"]:
+		_check(not ca.has_method(m), "CineAudio has no %s (no code music)" % m)
+	_check(not ("MOODS" in (CineAudio as Script).get_script_constant_map()), "CineAudio has no music MOODS table")
 	for c: String in CineAudio.SFX_CUES:
 		var st: AudioStream = CineAudio.sfx(c)
 		var ln: float = CineAudio.stream_length(st)
@@ -170,7 +139,7 @@ func _initialize() -> void:
 	var img: Image = tex.get_image()
 	_check(img.get_pixel(32, 32).a > 0.9 and img.get_pixel(1, 1).a < 0.05, "radial texture is code-made (bright centre, clear edge)")
 	if fails.is_empty():
-		print("✅ SUCCESS: CINE AUDIO + FX (slots, gain, synth cue/sting/sfx, clock-driven FX, props)")
+		print("✅ SUCCESS: CINE AUDIO + FX (slots, gain, no code music, synth sfx, clock-driven FX, props)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())

@@ -78,7 +78,7 @@ func _ready() -> void:
 	_place_player_at_start()
 	_spawn_road_events()
 	GameFX.upgrade_scene_visuals(get_parent(), "dawn")
-	GameFX.music_play("ride", 0.3)
+	GameFX.music_play("stage1_race", 0.3)
 
 
 func _spawn_road_events() -> void:

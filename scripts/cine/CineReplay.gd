@@ -4,7 +4,8 @@
 # plays the game is paused (the recorder is PAUSABLE, so it stops recording), the tracked actors are posed from the buffer
 # (transforms + bone poses), a replay camera cuts orbit (before the ramp) -> low (the ramp, with the whip-pan of the impact)
 # -> wide (after it), the overlay shows the letterbox, fades and the "▶ REPLAY" tag, and the music is the slot's owner file
-# or a synthesized sting (cached by (length, r_hit): no synthesis when the same replay plays again). At the end (or after a
+# user://music/<slot>.ogg|.mp3 or nothing (H-D8: no code music, no synthesized sting; with a file the GameFX background
+# track is ducked until the end). At the end (or after a
 # 0.8 s hold-Esc skip) the live state, the previous camera, the pause and StageManager.cinematic_active are restored, then
 # `finished` is emitted and the node frees itself. Removed from the tree mid-play, it releases the same things (_exit_tree).
 # Real time: Time.get_ticks_usec, full dt (no clamp: the length and the music hold through hitches); manual = step() drives.
@@ -21,10 +22,6 @@ const FADE_OUT: float = 0.3
 const ORBIT_RADIUS: float = 3.6
 const ORBIT_DEG: float = 60.0
 const FOV: Dictionary = {"orbit": 50.0, "low": 60.0, "wide": 50.0}
-const STING_CACHE_MAX: int = 8
-
-static var _sting_cache: Dictionary = {}   # "length|r_hit" -> AudioStreamWAV
-
 var length: float = 5.0
 var r: float = 0.0
 var s: float = 0.0
@@ -52,21 +49,10 @@ var _playing: bool = false
 var _done: bool = false
 var _hold: float = 0.0
 var _last_us: int = 0
+var _ducked: bool = false
 
 
-## Synthesized replay sting, cached by (length, r_hit) (plan review Minor 8). Main thread only.
-static func sting(len_s: float, r_hit: float) -> AudioStream:
-	var key: String = "%.4f|%.4f" % [len_s, r_hit]
-	if _sting_cache.has(key):
-		return _sting_cache[key]
-	if _sting_cache.size() >= STING_CACHE_MAX:
-		_sting_cache.clear()
-	var st: AudioStreamWAV = CineAudio.synth_sting(len_s, r_hit)
-	_sting_cache[key] = st
-	return st
-
-
-## Start the replay of `recorder` around its mark. opts: length (4-6, default 5), slot (music slot, "" = sting), focus,
+## Start the replay of `recorder` around its mark. opts: length (4-6, default 5), slot (music slot, "" or no file = silent), focus,
 ## other (default: the first two tracked actors), mark ("blow"), base (0.5), pause (true), manual (false).
 ## Returns false (and does nothing) without footage or without an actor to show.
 func start(recorder: CineReplayRecorder, opts: Dictionary = {}) -> bool:
@@ -123,11 +109,7 @@ func start(recorder: CineReplayRecorder, opts: Dictionary = {}) -> bool:
 	add_child(music)
 	var slot: String = String(opts.get("slot", ""))
 	var st: AudioStream = CineAudio.load_music(slot) if slot != "" else null
-	if st:
-		_music_len = CineAudio.stream_length(st)
-	else:
-		st = sting(length, float(clock.ramp("focus")["r_hit"]))
-		_music_len = length
+	_music_len = CineAudio.stream_length(st) if st else length
 	music.stream = st
 	_was_paused = get_tree().paused
 	if _pause:
@@ -140,9 +122,22 @@ func start(recorder: CineReplayRecorder, opts: Dictionary = {}) -> bool:
 	_hold = 0.0
 	_playing = true
 	_last_us = Time.get_ticks_usec()
-	music.play()
+	if st:
+		music.play()
+		_set_duck(true)   # review I3: the replay's own track never plays over the background track
 	_apply(0.0)
 	return true
+
+
+## Ducks (on) / releases the GameFX background track (MusicDirector.duck) while this replay plays its own slot file.
+func _set_duck(on: bool) -> void:
+	if on == _ducked:
+		return
+	_ducked = on
+	var fx: Node = get_node_or_null("/root/GameFX")
+	var md: Node = fx.get("music") if fx else null
+	if md and md.has_method("duck"):
+		md.call("duck", on)
 
 
 ## Position of a node at recorder time t (from the buffer when tracked, otherwise its live position).
@@ -258,6 +253,7 @@ func _finish() -> void:
 func _release() -> void:
 	_done = true
 	_playing = false
+	_set_duck(false)
 	if music:
 		music.stop()
 	if is_instance_valid(rec):

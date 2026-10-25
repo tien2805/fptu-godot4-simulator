@@ -84,6 +84,9 @@ var night_events: StoryNightEvents = null
 const MISSION_SCRIPTS: Dictionary = {"stakeout": "res://scripts/story/missions/MissionStakeout.gd",
 	"chase": "res://scripts/story/missions/MissionChase.gd", "corridor": "res://scripts/story/missions/MissionCorridor.gd",
 	"canteen": "res://scripts/story/missions/MissionCanteen.gd", "fight": "res://scripts/story/missions/MissionFight.gd"}
+## H-D8: owner music slot per mission (both fights, Day 1 and Day 4, share mission_fight).
+const MISSION_MUSIC: Dictionary = {"stakeout": "mission_stakeout", "chase": "mission_chase", "corridor": "mission_corridor",
+	"canteen": "mission_canteen", "fight": "mission_fight"}
 const MARKER_KINDS: Array[String] = ["stage", "bed", "mission", "fight", "horror", "cine"]
 
 
@@ -444,6 +447,7 @@ func _on_step(_id: String) -> void:
 	_run_t = 0.05 if not busy else -1.0
 	if director:
 		StoryAudio.warm(beat_cues(director.call("beat")))
+		warm_mission_music(director.call("beat"))
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +460,7 @@ func refresh() -> void:
 	if roam.get("cine_player") == null:
 		roam.call("set_time_of_day", String(director.get("tod")))
 	_rebuild_markers()
+	warm_mission_music(director.call("beat"))   # the marker is up: load its track ahead
 	_update_chip()
 	show_objective(String(director.get("objective")))
 
@@ -673,16 +678,38 @@ func _on_video_done(_skipped: bool, b: Dictionary) -> void:
 	director.call("complete_step", String(b["id"]))
 
 
-## Roam music off under the owner's clip, back to the roam style after (FreeRoam.play_cinematic does the same for cinematics).
+## Roam music off under the owner's clip, back to the roam slot after (FreeRoam.play_cinematic does the same for cinematics).
 func _music(on: bool) -> void:
-	var fx: Node = get_node_or_null("/root/GameFX")
-	if fx == null or not fx.has_method("music_play"):
-		return
 	if on:
-		fx.call("music_stop", false)
-		fx.call("music_play", "ride" if bool(roam.get("mounted")) else "menu", 0.15)
-	else:
+		if roam.has_method("roam_music"):
+			roam.call("roam_music")
+		return
+	var fx: Node = get_node_or_null("/root/GameFX")
+	if fx and fx.has_method("music_stop"):
 		fx.call("music_stop", true)
+
+
+## H-D8: the story mission's owner track (MISSION_MUSIC) while the mission runs; no file = silence.
+func _mission_music(b: Dictionary) -> void:
+	var ms: String = mission_slot(b)
+	var fx: Node = get_node_or_null("/root/GameFX")
+	if fx and fx.has_method("music_play") and ms != "":
+		fx.call("music_play", ms, 0.5)
+
+
+## The music slot of a mission / fight beat ("" for other beats).
+static func mission_slot(b: Dictionary) -> String:
+	var kind: String = String(b.get("kind", ""))
+	if kind != "mission" and kind != "fight":
+		return ""
+	return String(MISSION_MUSIC.get("fight" if kind == "fight" else String(b.get("mission", "")), ""))
+
+
+## Loads the beat's mission track on a worker thread before it is needed (its marker appears / the beat starts).
+func warm_mission_music(b: Dictionary) -> void:
+	var ms: String = mission_slot(b)
+	if ms != "":
+		MusicDirector.warm([ms])
 
 
 ## Pauses the game for the call / the owner's video and hides the roam HUD; unpausing restores each node's own visibility.
@@ -733,6 +760,8 @@ func start_mission(b: Dictionary) -> bool:
 	m.done.connect(_on_mission_done.bind(b), CONNECT_ONE_SHOT)
 	m.failed.connect(_on_mission_failed)
 	m.begin()
+	_mission_music(b)
+	warm_mission_music(StoryMissions.beat(String(b.get("next", ""))))   # an auto mission may follow right after
 	return true
 
 
@@ -757,7 +786,8 @@ func _clear_markers() -> void:
 	_sync_map()
 
 
-func _free_mission() -> void:
+func _free_mission(roam_track: bool = true) -> void:
+	var had: bool = mission_node != null and roam_track
 	if mission_node and is_instance_valid(mission_node):
 		if mission_node.state in ["running", "failed"]:
 			mission_node.abort()
@@ -765,15 +795,19 @@ func _free_mission() -> void:
 			mission_node.queue_free()
 	mission_node = null
 	mission_beat = {}
+	if had:
+		_music(true)   # back to the roam track (an "after" cinematic then stops it and FreeRoam restores it)
 
 
 ## The beat completes (autosave) before its "after" cinematic: quitting during the cinematic never replays the fight or
 ## the walk; Continue simply goes on without the cinematic. busy holds the next beat until the cinematic ends.
 func _on_mission_done(_info: Dictionary, b: Dictionary) -> void:
-	_free_mission()
+	var after: String = String(b.get("after", ""))
+	var nb: Dictionary = StoryMissions.beat(String(b.get("next", "")))
+	# no roam track in between when an "after" cinematic (it restores roam itself) or an auto mission follows (review I1)
+	_free_mission(after == "" and not (bool(nb.get("auto", false)) and mission_slot(nb) != ""))
 	if fail_ui:
 		fail_ui.visible = false
-	var after: String = String(b.get("after", ""))
 	if after != "":
 		var cp: CinePlayer = _start_cinematic(after, "")
 		if cp != null:
@@ -781,6 +815,7 @@ func _on_mission_done(_info: Dictionary, b: Dictionary) -> void:
 			roam.connect("cinematic_finished", _on_after_done.bind(b), CONNECT_ONE_SHOT)
 			director.call("complete_step", String(b["id"]))
 			return
+		_music(true)   # the "after" cinematic could not be staged: back to the roam track
 	busy = false
 	running = ""
 	_complete_mission(b)

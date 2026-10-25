@@ -1,238 +1,363 @@
 # File: res://scripts/MusicDirector.gd
-# NHẠC NỀN THỦ TỤC, THÍCH ỨNG (không file nhạc ngoài): bộ tổng hợp 5 giọng (kick, snare, hi-hat, bass, pad, lead)
-# chạy real-time qua AudioStreamGenerator 22.05 kHz, sequencer 16 bước, mỗi màn một "style" (nhịp, giọng, vòng hợp âm,
-# pattern). `tension` 0..1 (tốc độ, chuỗi near-miss, máu boss…) làm nhạc dồn hơn: hi-hat dày, bass sáng, lead xuất hiện,
-# nhịp nhanh hơn (capstone). Đi qua bus "Music" (âm lượng trong Cài đặt). GameFX tạo 1 node này lúc khởi động:
-#   GameFX.music_play("ride") · GameFX.music_tension(0.7) · GameFX.music_stop()
+# Background music from the owner's files only (spec H-D8, "tuyệt đối không xài nhạc code nữa"): every slot plays
+# user://music/<slot>.ogg or .mp3 (local, never committed or exported), looping; a missing file means silence. There is
+# no synthesis anywhere in this file.
+# Two AudioStreamPlayers crossfade (CROSSFADE s) on the bus "MusicBed" (send -> "Music", so the settings volume applies),
+# which carries one low-pass filter. Tension 0..1 maps to volume (tension_db) for every slot and, only for TENSION_SLOTS
+# (stage 1 speed and near-miss chain, the capstone boss HP), to the low-pass cutoff (tension_cutoff); it never changes the
+# notes. SLOT_DB: fixed per-slot trims (mission_canteen -6 dB so Dolly's hum stays audible). duck(on): a replay with its
+# own track fades the bed out (players keep running) and back in. RESUME_SLOTS (free roam) continue where they stopped.
+# GameFX creates one node at startup:  GameFX.music_play("stage1_race", 0.3) · GameFX.music_tension(0.7) · GameFX.music_stop()
+# Loading (review I2): both OGG and MP3 are read and parsed whole (an 8-50 MB file is tens of ms or more), so streams live
+# in a small static cache and warm(slots) loads them on WorkerThreadPool tasks ahead of time (FreeRoam warms both roam
+# tracks, StoryRoam the next mission track, NightMusic the four night tracks). load_slot() takes the cached stream, waits
+# for a pending task, and only reads on the main thread as a last resort (counted in main_thread_loads).
+# Statics (NightMusic, tests): SLOTS / all_slots(), slot_file, load_slot, warm, is_warm, roam_slot(tod), tension_db,
+# tension_cutoff.
 class_name MusicDirector
 extends Node
 
-const SR: float = 22050.0
-const MAJOR: Array[int] = [0, 2, 4, 5, 7, 9, 11]
-const MINOR: Array[int] = [0, 2, 3, 5, 7, 8, 10]
+const BUS: String = "MusicBed"
+const CROSSFADE: float = 1.2
+const DUCK_TIME: float = 0.3
+## Slots the MusicDirector plays (menu, free roam, stages, story missions).
+const SLOTS: Array[String] = ["menu", "roam_day", "roam_night",
+	"stage1_race", "stage2_parking", "stage3_classroom", "stage4_vovinam", "stage5_canteen", "stage6_capstone", "stage_extra_exam",
+	"mission_stakeout", "mission_chase", "mission_fight", "mission_canteen", "mission_corridor"]
+## Night Building tracks (NightMusic).
+const NIGHT_SLOTS: Array[String] = ["night_stealth", "night_tense", "night_chase", "night_escape"]
+## Short replays (CineReplay through StoryStage.play_replay; they have no timeline file).
+const REPLAY_SLOTS: Array[String] = ["seg_d0_race", "seg_d0_exam", "seg_d1_chase", "seg_d4_escape"]
+## Slots whose tension also drives the low-pass (the others play with the filter open).
+const TENSION_SLOTS: Array[String] = ["stage1_race", "stage6_capstone"]
+## Fixed per-slot trims in dB.
+const SLOT_DB: Dictionary = {"mission_canteen": -6.0}
+## Slots that resume where they stopped instead of restarting from 0:00.
+const RESUME_SLOTS: Array[String] = ["roam_day", "roam_night"]
+const TENSION_DB_MIN: float = -4.5
+const CUTOFF_MIN: float = 5000.0
+const CUTOFF_OPEN: float = 20000.0
+const CUTOFF_OPEN_AT: float = 0.6
+const CACHE_MAX: int = 8
 
-## style → {bpm, root(Hz), minor, chords(bậc 0-based), bass(16 bước: -1 nghỉ / 0 gốc / 1 quãng 5 / 2 quãng 8), kick, snare, hat, lead_arp, gains}
-const STYLES: Dictionary = {
-	"menu":      {"bpm": 92.0,  "root": 220.0,  "minor": false, "chords": [0, 5, 3, 4], "bass": [0, -1, -1, -1, 1, -1, -1, -1, 0, -1, -1, -1, 2, -1, 1, -1],
-				  "kick": [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0], "snare": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "hat": [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
-				  "lead": [0, -1, 2, -1, 4, -1, 2, -1, -1, -1, 7, -1, 4, -1, -1, -1], "pad": 0.16, "lead_gain": 0.05, "bass_gain": 0.16, "drum_gain": 0.35},
-	"ride":      {"bpm": 128.0, "root": 164.81, "minor": true,  "chords": [0, 0, 5, 3], "bass": [0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 1, 0, 2, 1],
-				  "kick": [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0], "snare": [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], "hat": [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
-				  "lead": [0, 2, 4, 7, 4, 2, 0, 2, 4, 7, 9, 7, 4, 2, 0, -1], "pad": 0.1, "lead_gain": 0.12, "bass_gain": 0.26, "drum_gain": 0.55},
-	"parking":   {"bpm": 112.0, "root": 196.0,  "minor": false, "chords": [0, 3, 4, 0], "bass": [0, -1, 0, 1, -1, 0, -1, 2, 0, -1, 0, 1, -1, 2, 1, -1],
-				  "kick": [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0], "snare": [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1], "hat": [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
-				  "lead": [4, -1, 2, -1, 0, -1, -1, -1, 4, -1, 5, -1, 4, -1, 2, -1], "pad": 0.1, "lead_gain": 0.09, "bass_gain": 0.22, "drum_gain": 0.45},
-	"classroom": {"bpm": 84.0,  "root": 174.61, "minor": false, "chords": [1, 4, 0, 5], "bass": [0, -1, -1, -1, -1, -1, 1, -1, 0, -1, -1, -1, 2, -1, -1, -1],
-				  "kick": [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0], "snare": [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], "hat": [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
-				  "lead": [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1], "pad": 0.2, "lead_gain": 0.0, "bass_gain": 0.14, "drum_gain": 0.28, "vinyl": 0.02},
-	"vovinam":   {"bpm": 140.0, "root": 146.83, "minor": true,  "chords": [0, 0, 3, 4], "bass": [0, -1, 0, -1, -1, 0, -1, -1, 0, -1, 0, -1, 1, -1, 1, 1],
-				  "kick": [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0], "snare": [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], "hat": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-				  "lead": [0, -1, -1, 2, -1, -1, 4, -1, 0, -1, -1, 2, -1, 7, -1, -1], "pad": 0.06, "lead_gain": 0.1, "bass_gain": 0.24, "drum_gain": 0.6},
-	"canteen":   {"bpm": 118.0, "root": 261.63, "minor": false, "chords": [0, 1, 4, 3], "bass": [0, -1, -1, 1, -1, -1, 0, -1, 2, -1, -1, 1, -1, -1, 0, -1],
-				  "kick": [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0], "snare": [0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0], "hat": [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1],
-				  "lead": [4, -1, 2, 4, -1, 5, -1, 4, -1, 2, -1, 0, -1, -1, 2, -1], "pad": 0.12, "lead_gain": 0.08, "bass_gain": 0.2, "drum_gain": 0.4},
-	"capstone":  {"bpm": 100.0, "root": 130.81, "minor": true,  "chords": [0, 5, 3, 6], "bass": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-				  "kick": [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0], "snare": [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], "hat": [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
-				  "lead": [0, -1, -1, -1, 3, -1, -1, -1, 2, -1, -1, -1, 7, -1, 5, -1], "pad": 0.14, "lead_gain": 0.11, "bass_gain": 0.28, "drum_gain": 0.55, "tempo_tension": 32.0},
-	"exam":      {"bpm": 90.0,  "root": 246.94, "minor": true,  "chords": [0, 0, 5, 5], "bass": [0, -1, -1, -1, -1, -1, -1, -1, 1, -1, -1, -1, -1, -1, -1, -1],
-				  "kick": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "snare": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "hat": [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-				  "lead": [-1, -1, 4, -1, -1, -1, -1, -1, -1, -1, 2, -1, -1, -1, -1, -1], "pad": 0.15, "lead_gain": 0.06, "bass_gain": 0.14, "drum_gain": 0.3, "heartbeat": true}
-}
+## Tests only: slot -> AudioStream used instead of the owner's file (no cache; also read by CineAudio.load_music).
+static var test_streams: Dictionary = {}
+## Tests only: Callable(slot) -> AudioStream standing in for the file reader (goes through the cache and warm()).
+static var test_loader: Callable = Callable()
+## Loads done on the main thread inside load_slot (a warmed slot never adds one).
+static var main_thread_loads: int = 0
+static var _cache: Dictionary = {}     # slot -> AudioStream (looping), insertion order = age
+static var _pending: Dictionary = {}   # slot -> {task, box}
+static var _resume: Dictionary = {}    # slot -> playback position (s) for RESUME_SLOTS
 
-var player: AudioStreamPlayer
-var playback: AudioStreamGeneratorPlayback
-var style_name: String = ""
-var st: Dictionary = {}
+var slot: String = ""            # requested slot ("" = stopped); kept while it fades out
+var target_gain: float = 0.0     # 1 while a slot plays, 0 after stop()
 var tension: float = 0.0
+var fade_time: float = CROSSFADE
+var players: Array[AudioStreamPlayer] = []
+var gains := PackedFloat32Array([0.0, 0.0])   # crossfade gain per player (linear)
+var goals := PackedFloat32Array([0.0, 0.0])
+var player_slots: Array[String] = ["", ""]    # slot each player holds
+var cur: int = 0                 # index of the incoming / current player
+var duck_gain: float = 1.0
+var duck_target: float = 1.0
+var _duck_time: float = DUCK_TIME
 var _tension_cur: float = 0.0
-var _master_gain: float = 0.0
-var _target_gain: float = 0.0
+var _filter: AudioEffectLowPassFilter
+var _cutoff_set: float = -1.0
 
-# sequencer
-var _t_step: float = 0.0
-var _step: int = -1
-var _bar: int = 0
-var _chord_notes: Array[float] = [0.0, 0.0, 0.0]
-# giọng
-var _kick_t: float = 9.0
-var _snare_t: float = 9.0
-var _hat_t: float = 9.0
-var _bass_f: float = 0.0
-var _bass_t: float = 9.0
-var _bass_ph: float = 0.0
-var _bass_lp: float = 0.0
-var _lead_f: float = 0.0
-var _lead_t: float = 9.0
-var _lead_ph: float = 0.0
-var _pad_ph: Array[float] = [0.0, 0.0, 0.0]
-var _pad_target: Array[float] = [0.0, 0.0, 0.0]
-var _pad_cur: Array[float] = [0.0, 0.0, 0.0]
-var _kick_ph: float = 0.0
-var _noise_prev: float = 0.0
-var _rng := RandomNumberGenerator.new()
 
+# ---------------------------------------------------------------------------
+# Slots
+# ---------------------------------------------------------------------------
+## Every music slot of the game: the MusicDirector ones, the night tracks, the cinematic timelines, the short replays.
+static func all_slots() -> PackedStringArray:
+	var out: PackedStringArray = []
+	for s: String in SLOTS + NIGHT_SLOTS:
+		out.append(s)
+	for s2: String in CineTimeline.slots():
+		var tl: CineTimeline = CineTimeline.load_slot(s2)
+		var ms: String = tl.music_slot if tl and tl.music_slot != "" else s2
+		if not out.has(ms):
+			out.append(ms)
+	for s3: String in REPLAY_SLOTS:
+		if not out.has(s3):
+			out.append(s3)
+	return out
+
+
+## The owner's file for a slot (user://music/<slot>.ogg, then .mp3, then CineAudio.SLOT_FALLBACK), "" = silence.
+static func slot_file(s: String) -> String:
+	return CineAudio.music_file(s)
+
+
+## The slot's looping stream (null = silence), from the cache / a pending warm task, else read now on the main thread.
+static func load_slot(s: String) -> AudioStream:
+	if test_streams.has(s):
+		return test_streams[s]
+	poll()
+	if _pending.has(s):
+		_adopt(s, true)
+	if _cache.has(s):
+		var st: AudioStream = _cache[s]
+		_cache.erase(s)
+		_cache[s] = st   # most recently used goes last
+		return st
+	if not test_loader.is_valid() and slot_file(s) == "":
+		return null
+	main_thread_loads += 1
+	var st2: AudioStream = _read(s)
+	if st2:
+		_store(s, st2)
+	return st2
+
+
+## Starts a WorkerThreadPool task per slot that is neither cached, pending nor without a file. Returns the tasks started.
+static func warm(slots: Array) -> int:
+	poll()
+	var n: int = 0
+	for v: Variant in slots:
+		var s: String = String(v)
+		if s == "" or test_streams.has(s) or _cache.has(s) or _pending.has(s):
+			continue
+		if not test_loader.is_valid() and slot_file(s) == "":
+			continue
+		var box: Array = [null]
+		_pending[s] = {"task": WorkerThreadPool.add_task(_warm_job(box, s, test_loader)), "box": box}
+		n += 1
+	return n
+
+
+## true when the slot is cached (or has nothing to load).
+static func is_warm(s: String) -> bool:
+	poll()
+	return _cache.has(s) or test_streams.has(s) or (not _pending.has(s) and not test_loader.is_valid() and slot_file(s) == "")
+
+
+## Adopts finished warm tasks (main thread). Called by load_slot / warm and every MusicDirector frame.
+static func poll() -> void:
+	for s: String in _pending.keys():
+		if WorkerThreadPool.is_task_completed(int((_pending[s] as Dictionary)["task"])):
+			_adopt(s, false)
+
+
+## Waits for every pending task (exit, tests) and empties the cache.
+static func clear_cache() -> void:
+	for s: String in _pending.keys():
+		WorkerThreadPool.wait_for_task_completion(int((_pending[s] as Dictionary)["task"]))
+	_pending.clear()
+	_cache.clear()
+	_resume.clear()
+
+
+static func _warm_job(box: Array, s: String, loader: Callable) -> Callable:
+	return func() -> void: box[0] = loader.call(s) if loader.is_valid() else _read_file(s)
+
+
+static func _adopt(s: String, _waiting: bool) -> void:
+	var t: Dictionary = _pending[s]
+	WorkerThreadPool.wait_for_task_completion(int(t["task"]))
+	_pending.erase(s)
+	var st: AudioStream = (t["box"] as Array)[0]
+	if st:
+		_store(s, st)
+
+
+static func _read(s: String) -> AudioStream:
+	return test_loader.call(s) if test_loader.is_valid() else _read_file(s)
+
+
+## Pure file read (worker-safe): the slot's file as a looping stream, or null.
+static func _read_file(s: String) -> AudioStream:
+	var p: String = CineAudio.music_file(s)
+	if p == "":
+		return null
+	var st: AudioStream = CineAudio._load_file(p)
+	if st and "loop" in st:
+		st.set("loop", true)
+	return st
+
+
+static func _store(s: String, st: AudioStream) -> void:
+	_cache[s] = st
+	while _cache.size() > CACHE_MAX:
+		_cache.erase(_cache.keys()[0])
+
+
+## Free roam slot for a FreeRoam time-of-day preset: "night" -> roam_night, every other preset (sunset too) -> roam_day.
+static func roam_slot(tod: String) -> String:
+	return "roam_night" if tod == "night" else "roam_day"   # GameFX.TOD_ALIASES never maps to or from "night"
+
+
+## Tension -> volume offset (dB): TENSION_DB_MIN at 0, 0 dB at 1.
+static func tension_db(t: float) -> float:
+	return lerpf(TENSION_DB_MIN, 0.0, clampf(t, 0.0, 1.0))
+
+
+## Tension -> low-pass cutoff (Hz): CUTOFF_MIN at 0, rising exponentially, fully open from CUTOFF_OPEN_AT.
+static func tension_cutoff(t: float) -> float:
+	var u: float = clampf(t / CUTOFF_OPEN_AT, 0.0, 1.0)
+	return CUTOFF_MIN * pow(CUTOFF_OPEN / CUTOFF_MIN, u)
+
+
+## The bus every bed track plays on (created on first use, sends to "Music" or "Master").
+static func ensure_bus() -> int:
+	var idx: int = AudioServer.get_bus_index(BUS)
+	if idx >= 0:
+		return idx
+	idx = AudioServer.bus_count
+	AudioServer.add_bus(idx)
+	AudioServer.set_bus_name(idx, BUS)
+	AudioServer.set_bus_send(idx, "Music" if AudioServer.get_bus_index("Music") >= 0 else "Master")
+	var lp := AudioEffectLowPassFilter.new()
+	lp.cutoff_hz = CUTOFF_OPEN
+	AudioServer.add_bus_effect(idx, lp)
+	return idx
+
+
+# ---------------------------------------------------------------------------
+# Playback
+# ---------------------------------------------------------------------------
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	player = AudioStreamPlayer.new()
-	player.bus = "Music"
-	var gen := AudioStreamGenerator.new()
-	gen.mix_rate = SR
-	gen.buffer_length = 0.25
-	player.stream = gen
-	player.volume_db = -6.0
-	add_child(player)
-	_rng.seed = 2026
+	var idx: int = ensure_bus()
+	for i: int in AudioServer.get_bus_effect_count(idx):
+		if AudioServer.get_bus_effect(idx, i) is AudioEffectLowPassFilter:
+			_filter = AudioServer.get_bus_effect(idx, i)
+	for i2: int in 2:
+		var p := AudioStreamPlayer.new()
+		p.name = "Track%d" % i2
+		p.bus = BUS
+		p.volume_db = -80.0
+		add_child(p)
+		players.append(p)
 
-func play(style: String) -> void:
-	if not STYLES.has(style):
+
+func _exit_tree() -> void:
+	for s: String in _pending.keys():
+		WorkerThreadPool.wait_for_task_completion(int((_pending[s] as Dictionary)["task"]))
+	_pending.clear()
+
+
+## Crossfades to `s` (fade s). Same slot already playing: nothing; same slot fading out: it fades back in. No owner file:
+## the current track fades out and the slot is silent. Both players busy (a switch inside a crossfade): the quieter one
+## is reused, the louder keeps fading out (no hard cut).
+func play(s: String, fade: float = CROSSFADE) -> void:
+	if s == "":
+		stop(true)
 		return
-	if style == style_name and player.playing:
+	if players.is_empty():
 		return
-	style_name = style
-	st = STYLES[style]
-	_step = -1
-	_t_step = 0.0
-	_bar = 0
-	_target_gain = 1.0
-	if not player.playing:
-		player.play()
-		playback = player.get_stream_playback() as AudioStreamGeneratorPlayback
-		_master_gain = 0.0
+	fade_time = maxf(fade, 0.0)
+	if s == slot and players[cur].playing:
+		target_gain = 1.0
+		goals[cur] = 1.0
+		return
+	if s == slot and target_gain > 0.0:
+		return   # the silent slot (no file) is already "playing"
+	slot = s
+	target_gain = 1.0
+	for i: int in 2:
+		goals[i] = 0.0
+	var st: AudioStream = load_slot(s)
+	var nxt: int = 1 - cur
+	if players[cur].playing:
+		if players[nxt].playing and gains[nxt] > gains[cur]:
+			_halt(cur)          # the incoming track barely started: reuse it, the older louder one keeps fading
+		else:
+			if players[nxt].playing:
+				_halt(nxt)
+			cur = nxt
+	var p: AudioStreamPlayer = players[cur]
+	_halt(cur)
+	p.stream = st
+	player_slots[cur] = s
+	gains[cur] = 0.0
+	if st:
+		goals[cur] = 1.0
+		if fade_time <= 0.0:
+			gains[cur] = 1.0
+		p.volume_db = -80.0 if fade_time > 0.0 else _slot_db(cur)   # never a blip at the reused player's old level
+		var from: float = float(_resume.get(s, 0.0)) if RESUME_SLOTS.has(s) else 0.0
+		p.play(from if from < st.get_length() - 1.0 else 0.0)
+	if fade_time <= 0.0:
+		for i2: int in 2:
+			if i2 != cur:
+				gains[i2] = 0.0
+				_halt(i2)
+	_apply_volumes()
+
 
 func stop(fade: bool = true) -> void:
-	_target_gain = 0.0
+	target_gain = 0.0
+	for i: int in 2:
+		goals[i] = 0.0
 	if not fade:
-		_master_gain = 0.0
-		player.stop()
-		style_name = ""
+		for i2: int in 2:
+			gains[i2] = 0.0
+			if players.size() > i2:
+				_halt(i2)
+		slot = ""
+
 
 func set_tension(v: float) -> void:
 	tension = clampf(v, 0.0, 1.0)
 
+
+## Replays with their own track: the bed fades to silence over `time` (players keep running) and back on release.
+func duck(on: bool, time: float = DUCK_TIME) -> void:
+	duck_target = 0.0 if on else 1.0
+	if time <= 0.0:
+		duck_gain = duck_target
+	_duck_time = maxf(time, 0.0)
+	_apply_volumes()
+
+
+
+## The stream of the current slot (null = silence or stopped).
+func current_stream() -> AudioStream:
+	return players[cur].stream if not players.is_empty() else null
+
+
+func is_audible() -> bool:
+	return not players.is_empty() and players[cur].playing and gains[cur] > 0.0 and duck_gain > 0.0
+
+
 func _process(delta: float) -> void:
-	if playback == null or st.is_empty() or not player.playing:
+	if players.is_empty():
 		return
+	poll()
 	_tension_cur = lerpf(_tension_cur, tension, minf(1.0, delta * 1.5))
-	_master_gain = move_toward(_master_gain, _target_gain, delta * (0.6 if _target_gain > _master_gain else 1.2))
-	if _master_gain <= 0.001 and _target_gain <= 0.0:
-		player.stop()
-		style_name = ""
-		return
-	var n: int = mini(playback.get_frames_available(), 4096)
-	if n <= 0:
-		return
-	var buf := PackedVector2Array()
-	buf.resize(n)
-	var bpm: float = float(st["bpm"]) + float(st.get("tempo_tension", 0.0)) * _tension_cur
-	var step_len: float = 60.0 / bpm / 4.0
-	var dt: float = 1.0 / SR
-	var drum_gain: float = float(st["drum_gain"])
-	var bass_gain: float = float(st["bass_gain"])
-	var pad_gain: float = float(st["pad"])
-	var lead_gain: float = float(st["lead_gain"]) * clampf((_tension_cur - 0.15) / 0.5, 0.0, 1.0)
-	var vinyl: float = float(st.get("vinyl", 0.0))
-	var heartbeat: bool = bool(st.get("heartbeat", false))
-	var lp_coef: float = clampf(0.08 + 0.3 * _tension_cur, 0.05, 0.45)
-	for i: int in range(n):
-		# --- sequencer
-		_t_step += dt
-		if _t_step >= step_len or _step < 0:
-			_t_step = 0.0 if _step >= 0 else _t_step
-			_step = (_step + 1) % 16
-			if _step == 0:
-				_bar += 1
-				_set_chord(_bar)
-			_trigger_step(_step, heartbeat)
-		# --- kick: sin quét tần số 110→42 Hz, decay 0.28 s
-		var kick: float = 0.0
-		if _kick_t < 0.35:
-			var kf: float = 42.0 + 70.0 * exp(-_kick_t * 22.0)
-			_kick_ph += kf * dt
-			kick = sin(_kick_ph * TAU) * exp(-_kick_t * 9.0)
-			_kick_t += dt
-		# --- snare / hat: nhiễu
-		var noise: float = _rng.randf_range(-1.0, 1.0)
-		var hp: float = noise - _noise_prev
-		_noise_prev = noise
-		var snare: float = 0.0
-		if _snare_t < 0.2:
-			snare = (noise * 0.6 + sin(_snare_t * 185.0 * TAU) * 0.4) * exp(-_snare_t * 18.0)
-			_snare_t += dt
-		var hat: float = 0.0
-		if _hat_t < 0.08:
-			hat = hp * 0.5 * exp(-_hat_t * 60.0)
-			_hat_t += dt
-		# --- bass: răng cưa qua lọc 1 cực
-		var bass: float = 0.0
-		if _bass_t < step_len * 1.7 and _bass_f > 0.0:
-			_bass_ph = fmod(_bass_ph + _bass_f * dt, 1.0)
-			var saw: float = 2.0 * _bass_ph - 1.0
-			_bass_lp += (saw - _bass_lp) * lp_coef
-			bass = _bass_lp * (1.0 if _bass_t < step_len * 0.9 else maxf(0.0, 1.0 - (_bass_t - step_len * 0.9) / (step_len * 0.8)))
-			_bass_t += dt
-		# --- pad: 3 sin + họa âm, glide giữa hợp âm
-		var pad: float = 0.0
-		for k: int in range(3):
-			_pad_cur[k] += (_pad_target[k] - _pad_cur[k]) * 0.00008
-			_pad_ph[k] = fmod(_pad_ph[k] + _pad_cur[k] * dt, 1.0)
-			pad += sin(_pad_ph[k] * TAU) + 0.25 * sin(_pad_ph[k] * TAU * 2.0)
-		pad *= 0.33
-		# --- lead: sin + họa âm 3, decay
-		var lead: float = 0.0
-		if _lead_t < 0.4 and _lead_f > 0.0:
-			_lead_ph = fmod(_lead_ph + _lead_f * dt, 1.0)
-			lead = (sin(_lead_ph * TAU) + 0.3 * sin(_lead_ph * TAU * 3.0)) * exp(-_lead_t * 7.0)
-			_lead_t += dt
-		var s: float = (kick * 1.0 + snare * 0.6 + hat * (0.35 + 0.35 * _tension_cur)) * drum_gain
-		s += bass * bass_gain + pad * pad_gain + lead * lead_gain
-		if vinyl > 0.0:
-			s += noise * vinyl * (1.0 if _rng.randf() < 0.002 else 0.15)
-		s *= _master_gain
-		s = s / (1.0 + absf(s)) # soft clip
-		buf[i] = Vector2(s, s)
-	playback.push_buffer(buf)
+	var rate: float = delta / fade_time if fade_time > 0.0 else 1.0
+	duck_gain = move_toward(duck_gain, duck_target, delta / _duck_time if _duck_time > 0.0 else 1.0)
+	for i: int in 2:
+		gains[i] = move_toward(gains[i], goals[i], rate)
+		if gains[i] <= 0.0 and goals[i] <= 0.0 and players[i].playing:
+			_halt(i)
+	if target_gain <= 0.0 and not players[0].playing and not players[1].playing:
+		slot = ""
+	_apply_volumes()
 
-func _scale() -> Array[int]:
-	return MINOR if bool(st["minor"]) else MAJOR
 
-func _degree_freq(deg: int, octave: int = 0) -> float:
-	var sc: Array[int] = _scale()
-	var oct: int = octave + int(floor(float(deg) / 7.0))
-	var d: int = ((deg % 7) + 7) % 7
-	return float(st["root"]) * pow(2.0, (float(sc[d]) + 12.0 * float(oct)) / 12.0)
+## Stops player i, remembering where a RESUME_SLOTS track was, and releases its stream.
+func _halt(i: int) -> void:
+	var p: AudioStreamPlayer = players[i]
+	if p.playing and RESUME_SLOTS.has(player_slots[i]):
+		_resume[player_slots[i]] = p.get_playback_position()
+	p.stop()
+	p.stream = null
+	p.volume_db = -80.0
 
-func _set_chord(bar: int) -> void:
-	var chords: Array = st["chords"]
-	var deg: int = int(chords[bar % chords.size()])
-	_pad_target[0] = _degree_freq(deg, 0)
-	_pad_target[1] = _degree_freq(deg + 2, 0)
-	_pad_target[2] = _degree_freq(deg + 4, 0)
-	if _pad_cur[0] == 0.0:
-		for k: int in range(3):
-			_pad_cur[k] = _pad_target[k]
 
-func _trigger_step(step: int, heartbeat: bool) -> void:
-	var kick_pat: Array = st["kick"]
-	var snare_pat: Array = st["snare"]
-	var hat_pat: Array = st["hat"]
-	var bass_pat: Array = st["bass"]
-	var lead_pat: Array = st["lead"]
-	var chords: Array = st["chords"]
-	var deg: int = int(chords[_bar % chords.size()])
-	if int(kick_pat[step]) == 1 or (heartbeat and _tension_cur > 0.4 and (step == 0 or step == 3)):
-		_kick_t = 0.0
-		_kick_ph = 0.0
-	if int(snare_pat[step]) == 1:
-		_snare_t = 0.0
-	# hi-hat dày hơn khi căng: thêm nốt lẻ 16
-	if int(hat_pat[step]) == 1 or (_tension_cur > 0.55 and step % 2 == 1) or (_tension_cur > 0.85):
-		_hat_t = 0.0
-	var b: int = int(bass_pat[step])
-	if b >= 0 or (_tension_cur > 0.7 and step % 2 == 0):
-		var bb: int = maxi(b, 0)
-		_bass_f = _degree_freq(deg + (4 if bb == 1 else 0), -1 + (1 if bb == 2 else 0))
-		_bass_t = 0.0
-	var l: int = int(lead_pat[step])
-	if l >= 0 and _tension_cur > 0.15:
-		_lead_f = _degree_freq(deg + l, 1)
-		_lead_t = 0.0
+func _slot_db(i: int) -> float:
+	return float(SLOT_DB.get(player_slots[i], 0.0)) + tension_db(_tension_cur)
+
+
+func _apply_volumes() -> void:
+	for i: int in 2:
+		players[i].volume_db = linear_to_db(maxf(gains[i] * duck_gain, 0.0001)) + _slot_db(i)
+	if _filter:
+		var c: float = tension_cutoff(_tension_cur) if TENSION_SLOTS.has(player_slots[cur]) else CUTOFF_OPEN
+		if absf(c - _cutoff_set) > 1.0:
+			_filter.cutoff_hz = c
+			_cutoff_set = c

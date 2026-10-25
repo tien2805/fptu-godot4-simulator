@@ -1,6 +1,10 @@
-[gd_scene load_steps=2 format=3 uid="uid://story_night_building"]
+[gd_scene load_steps=3 format=3 uid="uid://story_night_building"]
 
 [ext_resource type="Script" path="res://scripts/horror/NightBuilding.gd" id="1_night"]
+[ext_resource type="Script" path="res://scripts/story/NightMusic.gd" id="2_music"]
 
 [node name="NightBuilding" type="Node3D"]
 script = ExtResource("1_night")
+
+[node name="NightMusic" type="Node" parent="."]
+script = ExtResource("2_music")
