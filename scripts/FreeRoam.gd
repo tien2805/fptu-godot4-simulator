@@ -983,6 +983,9 @@ func toggle_bike() -> void:
 	if not mounted and combat and combat.fight_active:
 		flash_hint(CombatData.T_FIGHT_BIKE)   # Phase B: no bike in the middle of a fight (MeleeFight)
 		return
+	if not mounted and story_roam and story_roam.mission_node != null:
+		flash_hint(StoryRoam.ON_FOOT_HINT)   # Phase B story missions are on foot
+		return
 	if mounted:
 		dismount_bike()
 	else:

@@ -9,6 +9,13 @@
 # Anchors (computed once from MapData / the campus plot, same spots as the old hotspots): be6_door (the spawn, facing away
 # from the tower), be6_plaza (the old Stage 1 hotspot), be6_bed (beside the lobby door), room311 (the courtyard face of the
 # room 311 module; its stage faces the courtyard).
+# Phase B (plan 2026-10-25-phase-b-integration.md): beat kinds mission / fight (one StoryMission child of FreeRoam at a
+# time, mission_node; fail -> StoryFail "TOANG!" / "BỊ LỘ" with THỬ LẠI / VỀ THẾ GIỚI MỞ), horror (the Night Building scene
+# through StoryDirector.launch_horror_beat), marker cinematics (a cine beat with an anchor waits for [E]), choice tails
+# (slot_by_choice; a choice already recorded is never asked again), side markers (E2 locker, StoryDirector.grant_side),
+# "after" cinematics on a win, "auto" beats started right after the previous one when entered live (a marker otherwise:
+# Continue, VỀ THẾ GIỚI MỞ, wanted). Phase B anchors: campus_gate, chase_start, west_gate, corridor, locker, bench,
+# canteen, lobby (campus-plot spots, map points for the cine stages).
 class_name StoryRoam
 extends Node
 
@@ -26,6 +33,7 @@ const WARM: Array[String] = ["phone_ring_3am", "whisper_bed", "static_burst", "h
 	"boom", "call_hangup"]
 const AUDIO_WAIT_MAX: float = 3.0
 const BLOCKED_HINT: String = "Đang bị truy nã – cắt đuôi rồi hãy làm nhiệm vụ!"
+const ON_FOOT_HINT: String = "Nhiệm vụ này phải đi bộ, không gọi xe được"
 
 var roam: Node3D
 var director: Node
@@ -57,6 +65,18 @@ var _hud_saved: Dictionary = {}
 var _audio_wait: float = 0.0
 var _marker_info: Dictionary = {}   # beat id -> {"kind", "title"} (hint_text without a beat lookup per tick)
 var _toasts: Array[Array] = []        # queued [text, cue] while a toast is showing
+## Phase B: the running roam mission (StoryMission), the fail card, extra mission opts (tests: manual, clock_scale,
+## manual_replay), side markers (side id -> side dict) and whether the current step was entered while this roam ran.
+var mission_node: StoryMission = null
+var mission_beat: Dictionary = {}
+var fail_ui: StoryFail
+var mission_opts: Dictionary = {}
+var side_info: Dictionary = {}
+var entered_live: bool = false
+const MISSION_SCRIPTS: Dictionary = {"stakeout": "res://scripts/story/missions/MissionStakeout.gd",
+	"chase": "res://scripts/story/missions/MissionChase.gd", "corridor": "res://scripts/story/missions/MissionCorridor.gd",
+	"canteen": "res://scripts/story/missions/MissionCanteen.gd", "fight": "res://scripts/story/missions/MissionFight.gd"}
+const MARKER_KINDS: Array[String] = ["stage", "bed", "mission", "fight", "horror", "cine"]
 
 
 func setup(r: Node3D) -> void:
@@ -111,6 +131,22 @@ func _compute_anchors() -> void:
 	d = d.normalized() if d.length_squared() > 0.01 else Vector3(0.0, 0.0, -1.0)
 	# stage -Z points from the module into the courtyard: the corridor opening is behind the actors (+Z)
 	anchors["room311"] = {"pos": room, "yaw": atan2(-d.x, -d.z), "stage_pos": room + d * 5.0, "return": _return_xf(room, court)}
+	# Phase B (campus-plot local spots; corridor and canteen at the cine stages' map points)
+	_campus_anchor("campus_gate", campus_xf * Vector3(10.0, 0.0, 6.0), campus_xf * Vector3(10.0, 0.0, -5.0))
+	_campus_anchor("chase_start", campus_xf * Vector3(112.0, 0.0, 103.5), campus_xf * Vector3(100.0, 0.0, 103.5))
+	_campus_anchor("west_gate", campus_xf * Vector3(176.0, 0.0, 7.0), campus_xf * Vector3(176.0, 0.0, 14.0))
+	_campus_anchor("corridor", Vector3(-7.34, 0.0, 7.06), court)
+	_campus_anchor("locker", campus_xf * Vector3(60.0, 0.0, 33.0), campus_xf * Vector3(60.0, 0.0, 41.0))
+	_campus_anchor("bench", campus_xf * Vector3(66.0, 0.0, 45.0), campus_xf * Vector3(60.0, 0.0, 45.0))
+	_campus_anchor("canteen", Vector3(-31.17, 0.0, -4.51), Vector3(-31.17, 0.0, -10.0))
+	_campus_anchor("lobby", campus_xf * Vector3(85.5, 0.0, 11.0), campus_xf * Vector3(85.5, 0.0, 3.0))
+
+
+## Phase B anchor at `pos` (map point), facing and returning toward `toward`.
+func _campus_anchor(id: String, pos: Vector3, toward: Vector3) -> void:
+	var d: Vector3 = toward - pos
+	d.y = 0.0
+	anchors[id] = {"pos": pos, "yaw": atan2(-d.x, -d.z) if d.length_squared() > 0.01 else 0.0, "return": _return_xf(pos, toward)}
 
 
 ## Spot RETURN_M from `pos` toward `toward`, free for the player's capsule, facing the marker (FreeRoam hotspot rule).
@@ -144,16 +180,24 @@ func _rebuild_markers() -> void:
 	marker_pos.clear()
 	_marker_info.clear()
 	active_marker = ""
+	side_info.clear()
 	var b: Dictionary = director.call("beat") if director else {}
 	var kind: String = String(b.get("kind", ""))
-	if (kind == "stage" or kind == "bed") and anchors.has(String(b.get("anchor", ""))):
-		var id: String = String(b["id"])
-		var pos: Vector3 = anchors[String(b["anchor"])]["pos"]
-		var m: Node3D = _make_marker(id, pos, String(b.get("title", "")), kind)
-		markers[id] = m
-		marker_pos[id] = Vector2(pos.x, pos.z)
-		_marker_info[id] = {"kind": kind, "title": String(b.get("title", ""))}
+	if mission_node == null and kind in MARKER_KINDS and anchors.has(String(b.get("anchor", ""))):
+		_add_marker(String(b["id"]), anchors[String(b["anchor"])]["pos"], String(b.get("title", "")), kind)
+	if mission_node == null and director:
+		for sd: Dictionary in b.get("side", []):
+			if bool(director.call("side_available", sd)) and anchors.has(String(sd.get("anchor", ""))):
+				side_info[String(sd["id"])] = sd
+				_add_marker(String(sd["id"]), anchors[String(sd["anchor"])]["pos"], String(sd.get("title", "")), "side")
 	_sync_map()
+
+
+func _add_marker(id: String, pos: Vector3, title: String, kind: String) -> void:
+	var m: Node3D = _make_marker(id, pos, title, kind)
+	markers[id] = m
+	marker_pos[id] = Vector2(pos.x, pos.z)
+	_marker_info[id] = {"kind": kind, "title": title}
 
 
 func _make_marker(id: String, pos: Vector3, title: String, _kind: String) -> Node3D:
@@ -371,6 +415,7 @@ func _on_evidence(id: String) -> void:
 
 
 func _on_step(_id: String) -> void:
+	entered_live = true
 	_run_t = 0.05 if not busy else -1.0
 	if director:
 		StoryAudio.warm(beat_cues(director.call("beat")))
@@ -399,6 +444,16 @@ func run_step() -> void:
 		return
 	var b: Dictionary = director.call("beat")
 	var kind: String = String(b.get("kind", ""))
+	var live: bool = entered_live
+	entered_live = false
+	if kind == "cine" and b.has("anchor"):
+		refresh()   # a marker cinematic waits for [E]
+		return
+	if kind in ["mission", "fight"]:
+		refresh()
+		if bool(b.get("auto", false)) and live and not wanted_blocked() and mission_node == null:
+			start_mission(b)
+		return
 	if kind in ["cine", "call", "video"]:
 		# the beat's cues come from their warm tasks; wait (re-armed) up to AUDIO_WAIT_MAX s rather than synthesize on
 		# the main thread (review A2-R1)
@@ -469,7 +524,11 @@ func _start_cinematic(slot: String, at_id: String) -> CinePlayer:
 
 
 func _play_cine(b: Dictionary) -> bool:
-	var cp: CinePlayer = _start_cinematic(String(b["slot"]), String(b.get("at", "")))
+	var choice_id: String = String(b.get("choice", ""))
+	if choice_id != "" and String(director.call("choice_of", choice_id)) != "":
+		director.call("complete_step", String(b["id"]))   # recorded once: the choice scene is not asked again
+		return false
+	var cp: CinePlayer = _start_cinematic(cine_slot(b), String(b.get("at", "")))
 	if cp == null:
 		director.call("complete_step", String(b["id"]))   # never block the story on a missing timeline / stage spot
 		return false
@@ -477,6 +536,16 @@ func _play_cine(b: Dictionary) -> bool:
 	running = String(b["id"])
 	roam.connect("cinematic_finished", _on_cine_done.bind(String(b["id"])), CONNECT_ONE_SHOT)
 	return true
+
+
+## The beat's cinematic slot: a branch tail follows the recorded choice (slot_by_choice), else "slot".
+func cine_slot(b: Dictionary) -> String:
+	var by: Dictionary = b.get("slot_by_choice", {})
+	if not by.is_empty() and director:
+		var key: String = String(director.call("choice_of", String(by.get("id", ""))))
+		if by.has(key) and key != "id":
+			return String(by[key])
+	return String(b.get("slot", ""))
 
 
 func _free_cards() -> void:
@@ -495,7 +564,9 @@ func _on_cine_done(_slot: String, _skipped: bool, id: String) -> void:
 ## Mission intro (A2-D17): the stage beat's "intro" cinematic plays once when [E] is pressed, then the stage starts. A retry
 ## from the fail card never comes here (StoryDirector.retry_stage), so it skips the intro; so does a second [E] after a fail.
 func _play_intro(b: Dictionary) -> bool:
-	var cp: CinePlayer = _start_cinematic(String(b["intro"]), String(b.get("anchor", "")))
+	# A2 stage intros are staged at the marker; Phase B intros carry their own measured stage
+	var at_id: String = String(b.get("anchor", "")) if String(b.get("kind", "")) == "stage" else ""
+	var cp: CinePlayer = _start_cinematic(String(b["intro"]), at_id)
 	if cp == null:
 		return false
 	busy = true
@@ -509,7 +580,10 @@ func _on_intro_done(_slot: String, _skipped: bool, b: Dictionary) -> void:
 	running = ""
 	_free_cards()
 	(director.get("flags") as Dictionary)["intro_" + String(b["intro"])] = true
-	_launch(b)
+	if String(b.get("kind", "")) == "stage":
+		_launch(b)
+	else:
+		start_mission(b)
 
 
 func _launch(b: Dictionary) -> bool:
@@ -606,6 +680,126 @@ func _pause(on: bool) -> void:
 
 
 # ---------------------------------------------------------------------------
+# Phase B: roam missions and fights
+# ---------------------------------------------------------------------------
+## Starts the mission / fight of beat b (the current step): one StoryMission under FreeRoam, markers off, phone closed.
+func start_mission(b: Dictionary) -> bool:
+	if mission_node != null or director == null or String(b.get("id", "")) != String(director.get("step")):
+		return false
+	var key: String = "fight" if String(b.get("kind", "")) == "fight" else String(b.get("mission", ""))
+	if not MISSION_SCRIPTS.has(key):
+		push_error("StoryRoam: no mission %s" % key)
+		return false
+	var m: StoryMission = (load(String(MISSION_SCRIPTS[key])) as GDScript).new()
+	var o: Dictionary = mission_opts.duplicate()
+	if key == "fight":
+		var a: Dictionary = anchors.get(String(b.get("anchor", "")), {})
+		o["centre"] = _fight_centre(b, a)
+		o["face"] = float(a.get("yaw", 0.0))
+	if phone.is_open():
+		phone.close()
+	busy = true
+	running = String(b["id"])
+	mission_beat = b
+	mission_node = m
+	_clear_markers()
+	roam.add_child(m)
+	m.setup(roam, b, o)
+	m.done.connect(_on_mission_done.bind(b), CONNECT_ONE_SHOT)
+	m.failed.connect(_on_mission_failed)
+	m.begin()
+	return true
+
+
+## Fight centre: the beat anchor (Day 1 west gate); Day 4 fights on the canteen stage the brawl cinematic shares.
+func _fight_centre(b: Dictionary, a: Dictionary) -> Vector3:
+	if String(b.get("fight", "")) == "d4" and roam.has_method("cine_stage"):
+		var st: Variant = roam.call("cine_stage", CineTimeline.canteen_stage(Vector2(14.0, 10.0), "sunset"))
+		if st is Transform3D:
+			return (st as Transform3D).origin
+	return a.get("pos", roam.call("roam_position"))
+
+
+func _clear_markers() -> void:
+	for n: Node in markers.values():
+		if is_instance_valid(n):
+			n.queue_free()
+	markers.clear()
+	marker_pos.clear()
+	_marker_info.clear()
+	side_info.clear()
+	active_marker = ""
+	_sync_map()
+
+
+func _free_mission() -> void:
+	if mission_node and is_instance_valid(mission_node):
+		if mission_node.state in ["running", "failed"]:
+			mission_node.abort()
+		else:
+			mission_node.queue_free()
+	mission_node = null
+	mission_beat = {}
+
+
+func _on_mission_done(_info: Dictionary, b: Dictionary) -> void:
+	_free_mission()
+	if fail_ui:
+		fail_ui.visible = false
+	var after: String = String(b.get("after", ""))
+	if after != "":
+		var cp: CinePlayer = _start_cinematic(after, "")
+		if cp != null:
+			running = String(b["id"])
+			roam.connect("cinematic_finished", _on_after_done.bind(b), CONNECT_ONE_SHOT)
+			return
+	busy = false
+	running = ""
+	_complete_mission(b)
+
+
+func _on_after_done(_slot: String, _skipped: bool, b: Dictionary) -> void:
+	busy = false
+	running = ""
+	_free_cards()
+	_complete_mission(b)
+
+
+func _complete_mission(b: Dictionary) -> void:
+	director.call("complete_step", String(b["id"]))
+	if b.has("win_line"):
+		toast(String(b["win_line"]), "")
+
+
+func _on_mission_failed(title: String, reason: String) -> void:
+	if fail_ui == null:
+		fail_ui = StoryFail.new()
+		fail_ui.name = "StoryFail"
+		add_child(fail_ui)
+		fail_ui.retry_pressed.connect(retry_mission)
+		fail_ui.leave_pressed.connect(abort_mission)
+	fail_ui.show_fail(title, reason)
+
+
+## THỬ LẠI: the mission back at the beat's checkpoint.
+func retry_mission() -> void:
+	if fail_ui:
+		fail_ui.visible = false
+	if mission_node and is_instance_valid(mission_node) and mission_node.state == "failed":
+		mission_node.retry()
+
+
+## VỀ THẾ GIỚI MỞ: the mission ends without a result; its marker comes back (the beat stays).
+func abort_mission() -> void:
+	if fail_ui:
+		fail_ui.visible = false
+	_free_mission()
+	busy = false
+	running = ""
+	refresh()
+
+
+# ---------------------------------------------------------------------------
 # Markers: [E]
 # ---------------------------------------------------------------------------
 func wanted_blocked() -> bool:
@@ -623,6 +817,8 @@ func hint_text() -> String:
 	var info: Dictionary = _marker_info.get(active_marker, {})
 	if String(info.get("kind", "")) == "bed":
 		return "[E] Đi ngủ (kết thúc ngày) · " + String(info.get("title", ""))
+	if String(info.get("kind", "")) == "side":
+		return "[E] Mở: %s" % String(info.get("title", ""))
 	return "[E] Nhiệm vụ: %s" % String(info.get("title", ""))
 
 
@@ -636,17 +832,39 @@ func start_marker(id: String) -> bool:
 	if wanted_blocked():
 		roam.call("flash_hint", BLOCKED_HINT)
 		return false
+	if side_info.has(id):
+		return use_side(id)
 	var b: Dictionary = StoryMissions.beat(id)
 	match String(b.get("kind", "")):
-		"stage":
+		"stage", "mission", "fight":
 			var intro: String = String(b.get("intro", ""))
 			if intro != "" and not bool((director.get("flags") as Dictionary).get("intro_" + intro, false)) and _play_intro(b):
-				return true   # the stage starts when the intro ends
-			return _launch(b)
+				return true   # the stage / mission starts when the intro ends
+			if String(b["kind"]) == "stage":
+				return _launch(b)
+			return start_mission(b)
+		"horror":
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			var xf: Variant = anchor_return(String(b.get("anchor", "")))
+			return bool(director.call("launch_horror_beat", id, xf, xf))
+		"cine":
+			_play_cine(b)
+			return true
 		"bed":
 			director.set("spawn", null)
 			return bool(director.call("complete_step", id))
 	return false
+
+
+## [E] at a side marker (E2 locker): its evidence once, a toast with its line.
+func use_side(id: String) -> bool:
+	var sd: Dictionary = side_info.get(id, {})
+	if sd.is_empty() or not bool(director.call("grant_side", sd)):
+		return false
+	if sd.has("line"):
+		toast(String(sd["line"]), "")
+	_rebuild_markers()
+	return true
 
 
 func _update_active() -> void:
@@ -686,7 +904,11 @@ func _process(delta: float) -> void:
 
 ## Story HUD visible only in plain free roam (A2-D12): hidden during cinematics (FreeRoam.cine_player), the call, the video.
 func hud_should_show() -> bool:
-	return roam.get("cine_player") == null and not busy
+	if roam.get("cine_player") != null:
+		return false
+	if mission_node != null and is_instance_valid(mission_node):
+		return mission_node.hud_visible()
+	return not busy
 
 
 ## PROCESS_MODE_ALWAYS helper: keeps the story HUD visibility right while the tree is paused (one bool read per frame).
