@@ -8,9 +8,11 @@
 #   tense    any stalker is SUSPICIOUS or SEARCH;
 #   stealth  otherwise.
 # Polled at 10 Hz from the level's public API only (stalkers[].state, kit, doors_unlocked, state; NightBuilding header),
-# so any duck-typed stand-in works (tests). One AudioStreamPlayer per track on the "Music" bus, loaded lazily the first
-# time its state comes up, looping; CROSSFADE s crossfades; a track that fades out is paused at zero gain and resumes where
-# it left off. Pausable: the pause menu and the replay pause it with the tree.
+# so any duck-typed stand-in works (tests). One AudioStreamPlayer per track on the "Music" bus, looping; all four tracks
+# are warmed on worker threads in _ready (MusicDirector.warm: scene load, never mid-chase); CROSSFADE s crossfades; a track
+# that fades out is paused at zero gain and resumes where it left off. Stealth / tense / chase hold for at least MIN_HOLD s
+# before switching among themselves (no flip-flop on CHECK / SEARCH); hidden and escape switch at once.
+# Pausable: the pause menu and the replay pause it with the tree.
 # Attached by StoryNightEscape (story) and as a child of scenes/story/NightBuilding.tscn (standalone run; the level is the
 # parent). manual = true: step(dt) drives it (tests).
 class_name NightMusic
@@ -20,6 +22,8 @@ const STATES: Array[String] = ["stealth", "tense", "chase", "hidden", "escape"]
 const TRACKS: Dictionary = {"stealth": "night_stealth", "tense": "night_tense", "chase": "night_chase", "escape": "night_escape"}
 const CROSSFADE: float = 1.2
 const POLL_DT: float = 0.1
+const MIN_HOLD: float = 2.0
+const CALM: Array[String] = ["stealth", "tense", "chase"]
 
 var level: Node = null
 var manual: bool = false
@@ -29,6 +33,7 @@ var players: Dictionary = {}     # state -> AudioStreamPlayer
 var gains: Dictionary = {}       # state -> linear gain 0..1
 var loaded: Dictionary = {}      # state -> true once its slot was looked up (file or silence)
 var _poll: float = 0.0
+var held: float = 0.0            # seconds in the current state
 
 
 ## The node StoryNightEscape adds next to its level.
@@ -50,6 +55,7 @@ func _ready() -> void:
 		add_child(p)
 		players[k] = p
 		gains[k] = 0.0
+	MusicDirector.warm(TRACKS.values())
 	state = compute_state()
 	state_log.append(state)
 	_refresh_track(state)
@@ -62,12 +68,14 @@ func _process(delta: float) -> void:
 
 ## Advance dt seconds: 10 Hz state poll, then the crossfade.
 func step(dt: float) -> void:
+	held += dt
 	_poll -= dt
 	if _poll <= 0.0:
 		_poll = POLL_DT
 		var ns: String = compute_state()
-		if ns != state:
+		if ns != state and (held >= MIN_HOLD or not (CALM.has(ns) and CALM.has(state))):
 			state = ns
+			held = 0.0
 			state_log.append(ns)
 			_refresh_track(ns)
 	var rate: float = dt / CROSSFADE

@@ -23,6 +23,17 @@ var pos_mark: Vector3
 var done: bool = false
 
 
+## A silent 16-bit stream (test only: stands in for an owner file; not game music).
+func _silent(secs: float) -> AudioStreamWAV:
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = 22050
+	var d := PackedByteArray()
+	d.resize(int(secs * 22050.0) * 2)
+	w.data = d
+	return w
+
+
 func _check(ok: bool, msg: String) -> void:
 	if not ok:
 		fails.append(msg)
@@ -180,3 +191,39 @@ func _run_replays() -> void:
 		_check(not bool(sm.get("cinematic_active")), "and clears cinematic_active")
 	_check(a.global_position.distance_to(live_pos) < 1e-3, "and restores the live state")
 	rp_b.free()
+	# review I3: a replay with its own track ducks the GameFX background track and releases it at the end / on removal
+	var fx: Node = get_root().get_node_or_null("GameFX")
+	var md: MusicDirector = fx.get("music") if fx else null
+	_check(md != null, "GameFX has its MusicDirector")
+	if md:
+		MusicDirector.test_streams = {"hd8_bed": _silent(6.0), "hd8_replay_track": _silent(6.0)}
+		md.play("hd8_bed", 0.0)
+		var rp_d := CineReplay.new()
+		world.add_child(rp_d)
+		rp_d.start(rec, {"length": 4.0, "manual": true, "slot": "hd8_replay_track"})
+		_check(rp_d.music.playing and md.duck_target == 0.0, "the replay's own track ducks the background track")
+		md._process(0.4)
+		_check(md.duck_gain == 0.0 and md.players[md.cur].playing and md.players[md.cur].volume_db < -60.0,
+			"ducked to silence, the background player keeps running")
+		rp_d.force_skip_hold = true
+		for i3: int in 60:
+			rp_d.step(1.0 / 60.0)
+		_check(md.duck_target == 1.0, "the duck is released when the replay ends")
+		md._process(0.4)
+		_check(md.duck_gain == 1.0, "the background track is back")
+		var rp_e := CineReplay.new()
+		world.add_child(rp_e)
+		rp_e.start(rec, {"length": 4.0, "manual": true, "slot": "hd8_replay_track"})
+		_check(md.duck_target == 0.0, "a second replay ducks again")
+		world.remove_child(rp_e)
+		_check(md.duck_target == 1.0, "a replay removed mid-play releases the duck")
+		rp_e.free()
+		var rp_f := CineReplay.new()
+		world.add_child(rp_f)
+		rp_f.start(rec, {"length": 4.0, "manual": true})
+		_check(md.duck_target == 1.0, "a silent replay (no slot) does not duck")
+		rp_f.force_skip_hold = true
+		for i4: int in 60:
+			rp_f.step(1.0 / 60.0)
+		md.stop(false)
+		MusicDirector.test_streams = {}
