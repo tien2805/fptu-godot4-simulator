@@ -101,6 +101,8 @@ var wanted: WantedDirector
 var classic_stars: ViceStars
 var emote_wheel: EmoteWheel
 var emotes: EmoteDirector
+## Phase B unarmed Vovinam combat (scripts/combat/): owns Tay không, HP, the combat HUD; MeleeFight registers enemies.
+var combat: PlayerCombat
 ## Story mode (spec A2-D4): StoryDirector.active when the scene loads. No stage hotspots, no [T]; the story layer (markers,
 ## objective, phone, call, beat runner) lives in the StoryRoam child, scripts/story/.
 var story_mode: bool = false
@@ -1347,6 +1349,11 @@ func _build_mayhem() -> void:
 		"targets_fn": mayhem_targets, "fx": weapons.fx, "blocked_fn": mayhem_blocked})
 	# one wheel at a time; no weapon during an emote (spec section 9)
 	weapons.blocked_fn = func() -> bool: return mayhem_blocked() or emotes.active or emotes.pending >= 0 or emote_wheel.is_open()
+	# Phase B: the Vovinam moves replace the Phase W unarmed punch (pedestrians keep their Phase W reactions and heat)
+	combat = PlayerCombat.new()
+	combat.name = "Combat"
+	add_child(combat)
+	combat.setup({"player": player, "weapons": weapons, "targets_fn": mayhem_targets, "blocked_fn": weapons.blocked_fn})
 
 
 ## Everything weapons can hit: pedestrians of both tiers (officers join in Task 8).
