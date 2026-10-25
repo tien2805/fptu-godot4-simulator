@@ -13,11 +13,18 @@
 # disappears (process off, invisible, flashlight off), the spot's peek camera becomes current, breath starts.
 # leave_hiding(): the player is back at the spot's exit point facing out, with its own camera, and LEAVE_GRACE_S of catch
 # grace. While hidden a left click recaptures the mouse (the process-disabled player cannot).
+# Hold breath (H-D4): while hidden, holding Shift holds the breath: breath_left (BREATH_MAX_S = 6 s) drains 1 s per s and
+# refills 1 s per s once released. A stalker within BREATH_HEAR_R (3 m) of the spot for BREATH_HEAR_S hears the breathing
+# unless it is held and investigates the spot. Running out, or releasing while a stalker is within GASP_NEAR_R (2 m), is a
+# loud gasp (StoryAudio "gasp"): the nearest stalker within GASP_HEAR_R investigates the spot (caught if still inside).
+# After running out, Shift must be let go before holding again. hold_override (tests) replaces the key.
 class_name HorrorKit
 extends Node
 
 signal caught(stalker: HorrorStalker)
 signal hide_changed(spot: HidingSpot)
+signal gasped(reason: String)
+signal breath_heard(stalker: HorrorStalker)
 
 const NOISE_SPRINT: float = 10.0
 const NOISE_JOG: float = 6.0
@@ -27,6 +34,11 @@ const SLOW_DT: float = 0.1
 const MOUSE_SENS: float = 0.0022
 ## Catch grace after leaving a hiding spot (s): stepping out next to an unseen stalker is not an instant catch.
 const LEAVE_GRACE_S: float = 0.75
+const BREATH_MAX_S: float = 6.0
+const BREATH_HEAR_R: float = 3.0
+const BREATH_HEAR_S: float = 0.5
+const GASP_NEAR_R: float = 2.0
+const GASP_HEAR_R: float = 12.0
 
 var player: ThirdPersonController = null
 var flashlight: HorrorFlashlight = null
@@ -49,7 +61,16 @@ var interact_hook: Callable = Callable()
 var prompt_hook: Callable = Callable()
 var prompt: String = ""
 var nearest_dist: float = INF
+## Hold breath (H-D4): seconds of breath left, whether it is held now, gasps so far, why the last one happened.
+var breath_left: float = BREATH_MAX_S
+var breath_held: bool = false
+var gasps: int = 0
+var last_gasp: String = ""
+## Tests: null = the Shift key; true / false = held / not held.
+var hold_override: Variant = null
 var _slow: float = 0.0
+var _need_release: bool = false
+var _hear_t: float = 0.0
 
 
 func _init() -> void:
@@ -147,6 +168,7 @@ func nearest_spot(p: Vector3) -> HidingSpot:
 func _physics_process(delta: float) -> void:
 	senses.grace = maxf(0.0, senses.grace - delta)
 	update_senses()
+	update_breath(delta)
 	_slow += delta
 	if _slow >= SLOW_DT:
 		_slow = 0.0
@@ -154,6 +176,86 @@ func _physics_process(delta: float) -> void:
 		if scare != null:
 			scare.set_threat(nearest_dist, hidden_spot != null)
 		prompt = prompt_text()
+
+
+func breath_frac() -> float:
+	return breath_left / BREATH_MAX_S
+
+
+func _hold_input() -> bool:
+	if hold_override != null:
+		return bool(hold_override)
+	return input_enabled and Input.is_physical_key_pressed(KEY_SHIFT)
+
+
+## The stalker nearest to the hidden spot (flat) and its distance, or [null, INF].
+func _nearest_to_spot() -> Array:
+	var best: HorrorStalker = null
+	var bd: float = INF
+	if hidden_spot == null:
+		return [best, bd]
+	var p: Vector3 = hidden_spot.global_position
+	for s: HorrorStalker in stalkers:
+		if s.frozen or not s.is_inside_tree() or s.process_mode == Node.PROCESS_MODE_DISABLED:
+			continue
+		var d: float = Vector2(s.global_position.x - p.x, s.global_position.z - p.z).length()
+		if d < bd:
+			bd = d
+			best = s
+	return [best, bd]
+
+
+## Breath while hidden (every physics frame; tests call it directly). Out of hiding the breath refills.
+func update_breath(delta: float) -> void:
+	if hidden_spot == null:
+		breath_held = false
+		_hear_t = 0.0
+		_need_release = false
+		breath_left = minf(BREATH_MAX_S, breath_left + delta)
+		return
+	var want: bool = _hold_input()
+	if _need_release and not want:
+		_need_release = false
+	var holding: bool = false
+	var ran_out: bool = false
+	if want and not _need_release and breath_left > 0.0:
+		breath_left = maxf(0.0, breath_left - delta)
+		holding = true
+		if breath_left <= 0.0:
+			ran_out = true
+			holding = false
+			_need_release = true
+	else:
+		breath_left = minf(BREATH_MAX_S, breath_left + delta)
+	var near: Array = _nearest_to_spot()
+	var ns: HorrorStalker = near[0]
+	var nd: float = float(near[1])
+	if ran_out:
+		_gasp("empty", ns, nd)
+	elif breath_held and not holding and nd <= GASP_NEAR_R:
+		_gasp("release", ns, nd)
+	breath_held = holding
+	if scare != null:
+		scare.breath_held = holding
+	# a stalker right next to the spot hears the breathing unless it is held
+	if not holding and ns != null and nd <= BREATH_HEAR_R and not (ns.state == HorrorStalker.CHECK and ns.check_spot == hidden_spot):
+		_hear_t += delta
+		if _hear_t >= BREATH_HEAR_S:
+			_hear_t = 0.0
+			if ns.investigate_spot(hidden_spot):
+				breath_heard.emit(ns)
+	else:
+		_hear_t = 0.0
+
+
+func _gasp(reason: String, ns: HorrorStalker, nd: float) -> void:
+	gasps += 1
+	last_gasp = reason
+	if scare != null:
+		scare.play_cue("gasp", -2.0)
+	if ns != null and nd <= GASP_HEAR_R:
+		ns.investigate_spot(hidden_spot)
+	gasped.emit(reason)
 
 
 ## The current [E] / [F] prompt: hidden "[E] Ra", the level's prompt, a usable spot "[E] Trốn", else "".
@@ -180,6 +282,8 @@ func hide_in(spot: HidingSpot) -> bool:
 		s.notice_hide(spot)
 	hidden_spot = spot
 	spot.occupied = true
+	breath_held = false
+	_hear_t = 0.0
 	player.velocity = Vector3.ZERO
 	player.visible = false
 	player.process_mode = Node.PROCESS_MODE_DISABLED
