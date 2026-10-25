@@ -91,9 +91,10 @@ File: create `scripts/combat/MeleeEnemy.gd`.
   FLED, HOLD (AI off), IDLE (fight over). Attack tokens from the director (`request_token` / `release_token`) from
   ENGAGE to the start of RECOVER.
 - `take_strike(info) -> String` ("ignored" | "dodged" | "blocked" | "guard_break" | "hit" | "daze" | "knockdown" | "ko" |
-  "flee"), `take_finisher(kind)`, `on_player_attack(kind, eta)` (block / dodge roll), `take_hit(info)` (Phase W duck
-  type: a weapon knocks it down), `is_down()`, `is_hostile()`, `is_attacking()`, `is_dazed()`.
-- Test hooks: `ai` (false = HOLD), `force_attack("light" | "heavy")`, `force_block(secs)`.
+  "flee"), `take_finisher_start(combat) -> bool` (dazed -> HELD), `take_finisher(kind, from) -> String`,
+  `on_player_attack(kind, eta)` (block / side-step), `take_hit(info)` (Phase W duck type), `stand_down()`, `is_down()`,
+  `is_hostile()`, `is_defeated()`, `is_attacking()`, `is_dazed()`, `state_name()`.
+- Test / scripted hooks: opts `ai` (false = HOLD in guard), `force_attack("light" | "heavy")`, `force_block(secs)`.
 - Signals `ko(enemy)`, `fled(enemy)`. No per-frame allocation (sibling list shared by the fight).
 
 ## Task 4 – MeleeFight + FreeRoam wiring
@@ -105,11 +106,13 @@ API (documented at the top of the file; this is what the integration agent reads
   `force_unarmed` (default true: Tay không equipped, weapon wheel and scroll locked, the line "Nhiệm vụ này chỉ dùng tay
   không" on a try), `max_attackers` (2), `auto_checkpoint` (true: every wave start), `start_line` ("" or e.g. "Gét gô!").
 - `add_wave(spawns)`: spawns = Array of {archetype, at (Vector3), yaw (optional), opts (MeleeEnemy opts)}.
-- `start()`, `checkpoint()`, `retry()`, `stop()`, `alive() -> Array`, `attackers() -> int`, `state` ("idle" |
-  "running" | "won" | "lost"), `wave`.
+- `start()`, `checkpoint()`, `has_checkpoint()`, `retry()`, `stop()`, `alive() -> Array`, `attackers() -> int`,
+  `show_unarmed_line()`, `state` ("idle" | "running" | "won" | "lost"), `wave`, `enemies`, `combat`.
 - Signals `won`, `lost`, `enemy_ko(enemy)`, `enemy_fled(enemy)`, `wave_started(i)`, `wave_cleared(i)`.
-- A wave is cleared when every enemy is KO or fled; the last wave cleared = `won`; the player down = `lost` (enemies stand
-  down). `retry()`: enemies freed, HP back to 100, the player at the checkpoint spot, the checkpoint wave respawned.
+- A wave is cleared when every enemy is KO or fled; the next wave spawns 2 s later (the knocked-out bodies go then); the
+  last wave cleared = `won` (bodies stay until `stop()` / `queue_free()`); the player down = `lost` (enemies stand down,
+  wheel unlocked). `retry()`: enemies freed, HP back to 100, the player at the checkpoint spot, the checkpoint wave
+  respawned, wheel locked again. Without a combat in the scene the fight builds its own PlayerCombat.
 
 ## Task 5 – Tests
 
