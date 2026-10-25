@@ -5,14 +5,17 @@
 #     combo is forgotten; after the elbow it starts again);
 #   - right mouse: heavy kick (đá tạt): every enemy in its 70° arc, breaks blocks, knocks a staggered enemy down;
 #   - hold Q: block (speed capped). Pressed at most 0.2 s before an enemy hit lands = perfect block: automatic
-#     counter-strike "PHẢN ĐÒN". Telegraphed heavies go through any block;
+#     counter-strike "PHẢN ĐÒN" (a press arms it only after Q was up 0.35 s: no mashing). Telegraphed heavies go through
+#     any block;
 #   - Space with a hostile within 6 m: dodge-roll (0.35 s invulnerable) through ThirdPersonController.jump_filter; Space
 #     jumps otherwise;
 #   - E on a dazed enemy within 2.2 m: takedown finisher (throw or sweep, alternating) with 0.3 real seconds of slow motion;
+#     that E press is consumed (set_input_as_handled), so a story marker or a call never gets it too;
 #   - soft lock-on: the nearest hostile in front (input direction, else the body's facing) within 7 m, 2.5 m any direction
 #     as a fallback; attacks turn to it and step in up to 0.9 m.
 # HP 100, regenerates 10 HP/s after 4 s without damage; 0 = `down` (the player is knocked down and stays out of the fight
-# until revive()). Enemies attack through receive_attack(). Pedestrians and officers (targets_fn) keep the Phase W
+# until revive(); MeleeFight.retry() / stop() / freeing the fight revive). A weapon switched in mid-move cancels the move.
+# The HUD hides while paused or disabled (cinematics) and comes back on the next physics frame. Enemies attack through receive_attack(). Pedestrians and officers (targets_fn) keep the Phase W
 # reactions: light hits use the Phase W combo (stumble, stumble, knock out within 1.5 s), the heavy kick knocks out, +1
 # heat per knockout (WeaponDirector.mayhem when there is one, else this node's `mayhem`); they never fight back.
 # The WeaponDirector (optional) gets unarmed_owner = self: its own punch and right-mouse aim stay off while unarmed.
@@ -75,7 +78,10 @@ var _block_press_t: float = -99.0
 var _q_prev: bool = false
 var _lmb_prev: bool = false
 var _rmb_prev: bool = false
-var _e_prev: bool = false
+var _e_event: bool = false               # an E press for a finisher (consumed in _input)
+var _q_release_t: float = -99.0
+## E presses this node consumed for a finisher (tests).
+var e_consumed: int = 0
 var _mouse_block: bool = true
 var _was_captured: bool = false
 var _dodge_cd: float = 0.0
@@ -106,9 +112,12 @@ func _ready() -> void:
 
 
 ## The slow motion never outlives a pause (a cinematic right after a finisher pauses the tree) or a disabled combat.
+## The HUD hides too (FreeRoam's cinematic pauses the tree and only hides its own list); _physics_process shows it again.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PAUSED or what == NOTIFICATION_DISABLED:
 		_end_slowmo()
+		if hud:
+			hud.visible = false
 
 
 func _exit_tree() -> void:
@@ -258,6 +267,8 @@ func revive(hp_v: float = CombatData.PLAYER_HP) -> void:
 	combo_i = -1
 	invuln_left = 0.0
 	since_damage = 99.0
+	if _fin_target != null and is_instance_valid(_fin_target) and _fin_target.has_method("release_hold"):
+		_fin_target.call("release_hold")
 	_fin_target = null
 	_end_slowmo()
 	if pose:
@@ -281,7 +292,10 @@ func _physics_process(delta: float) -> void:
 	if state != St.DOWN and since_damage >= CombatData.REGEN_DELAY and hp < max_hp:
 		hp = minf(max_hp, hp + CombatData.REGEN_RATE * delta)
 		hp_changed.emit(hp)
-	var can: bool = _can_act()
+	var blocked: bool = blocked_fn.is_valid() and bool(blocked_fn.call())   # once per frame
+	var can: bool = _can_act(blocked)
+	if weapons != null and weapons.current != WeaponData.Slot.UNARMED and (state == St.LIGHT or state == St.HEAVY or state == St.COUNTER or state == St.FINISHER):
+		_cancel_move()                       # a weapon switched in mid-move: the pending hit never lands
 	var light: bool = _light_edge(can)
 	var heavy: bool = _heavy_edge(can)
 	var fin: bool = _finisher_edge(can)
@@ -304,13 +318,11 @@ func _physics_process(delta: float) -> void:
 	_apply_body()
 	if hud:
 		var shown: bool = fight_active or hp < max_hp - 0.01 or state == St.DOWN
-		hud.visible = shown and enabled and player.visible and not (blocked_fn.is_valid() and bool(blocked_fn.call()))
+		hud.visible = shown and enabled and player.visible and not blocked
 
 
-func _can_act() -> bool:
-	if not enabled or not player.visible or not player.controls_enabled:
-		return false
-	if blocked_fn.is_valid() and bool(blocked_fn.call()):
+func _can_act(blocked: bool = false) -> bool:
+	if not enabled or not player.visible or not player.controls_enabled or blocked:
 		return false
 	if weapons != null:
 		if weapons.current != WeaponData.Slot.UNARMED:
@@ -376,6 +388,19 @@ func _attacking(light: bool, heavy: bool, fin: bool, blk: bool) -> void:
 			_start_light(false)
 		elif q == "heavy":
 			_start_move(CombatData.HEAVY, St.HEAVY)
+
+
+## Drop the move in flight (its hit never lands); a held finisher target is let go.
+func _cancel_move() -> void:
+	if state == St.FINISHER and _fin_target != null and is_instance_valid(_fin_target) and _fin_target.has_method("release_hold"):
+		_fin_target.call("release_hold")
+	_fin_target = null
+	hit_done = true
+	if player.model:
+		CharacterBuilder.stop_clip(player.model)
+	if pose:
+		pose.clear()
+	_to_idle()
 
 
 func _to_idle() -> void:
@@ -626,7 +651,7 @@ func _take_damage(dmg: float, attacker: Node3D, heavy: bool) -> void:
 func try_dodge() -> bool:
 	if state == St.DOWN:
 		return enabled                       # down in a fight: no jumping around either
-	if player == null or not _can_act() or _dodge_cd > 0.0:
+	if player == null or not _can_act(blocked_fn.is_valid() and bool(blocked_fn.call())) or _dodge_cd > 0.0:
 		return false
 	if state == St.FINISHER or state == St.HITSTUN or state == St.DODGE:
 		return false
@@ -847,21 +872,39 @@ func _heavy_edge(can: bool) -> bool:
 	return edge
 
 
+## E arrives as an event (_input): consumed only when it starts a finisher, so a marker or a call never gets the same press.
 func _finisher_edge(can: bool) -> bool:
-	var raw: bool = Input.is_physical_key_pressed(KEY_E)
-	var edge: bool = can and raw and not _e_prev
-	_e_prev = raw
+	var edge: bool = can and _e_event
+	_e_event = false
 	if finisher_override:
 		finisher_override = false
 		return can
 	return edge
 
 
+func _input(event: InputEvent) -> void:
+	if not (event is InputEventKey):
+		return
+	var k: InputEventKey = event
+	if not k.pressed or k.echo or k.physical_keycode != KEY_E or player == null:
+		return
+	if state == St.DOWN or state == St.FINISHER or state == St.HITSTUN or state == St.DODGE:
+		return
+	if not _can_act(blocked_fn.is_valid() and bool(blocked_fn.call())) or finisher_target() == null:
+		return
+	_e_event = true
+	e_consumed += 1
+	get_viewport().set_input_as_handled()
+
+
+## Q held = block. A press arms the perfect-block window only after Q was up BLOCK_REARM_S (taps do not renew it).
 func _block_held(can: bool) -> bool:
 	var raw: bool = bool(block_override) if block_override is bool else Input.is_physical_key_pressed(KEY_Q)
 	var held: bool = can and raw
 	if held and not _q_prev:
-		_block_press_t = _t
+		_block_press_t = _t if _t - _q_release_t >= CombatData.BLOCK_REARM_S else -99.0
+	elif not held and _q_prev:
+		_q_release_t = _t
 	_q_prev = held
 	return held
 

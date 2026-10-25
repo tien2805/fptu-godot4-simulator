@@ -7,8 +7,11 @@
 #   - over each enemy's head (world-anchored, within 30 m, in front of the camera): its label, an HP bar and a thinner
 #     stagger bar; a small lock marker over the soft-lock target; a pulsing red ring during a telegraph (0.5 s before an
 #     unblockable heavy); "[E] Hạ gục" over the dazed enemy the finisher would take;
+#   - an edge-of-screen marker (pointing out) for every attack on its way from an enemy behind the camera or off screen:
+#     amber for a light wind-up / swing, red for a telegraphed heavy;
 #   - centre popups (popup(text, colour)): "PHẢN ĐÒN", "HẠ GỤC", "PHÁ THẾ THỦ", a fight's start line, the force-unarmed line.
-# State for tests (computed in _process, not in _draw): finisher_shown, telegraph_shown, popup_text, popup_left.
+# State for tests (computed in _process, not in _draw): finisher_shown, telegraph_shown, edge_markers, popup_text,
+# popup_left. The style (GameFX lookup) and the font are read once per frame.
 class_name CombatHUD
 extends CanvasLayer
 
@@ -28,6 +31,11 @@ const ENEMY_BAR_W: float = 70.0
 const ENEMY_MAX_M: float = 30.0
 const HEAD_Y: float = 2.05
 const POPUP_S: float = 1.0
+const LIGHT_WARN := Color("#FFB23C")
+const EDGE_INSET: float = 46.0
+static var _vice_cache: bool = true
+static var _vice_frame: int = -1
+static var _vice_font: Font = null
 
 var combat: PlayerCombat
 var bar: Control
@@ -39,6 +47,10 @@ var finisher_shown: bool = false
 var finisher_node: Node3D = null
 var telegraph_shown: int = 0
 var popups: int = 0
+var edge_markers: int = 0
+var edge_pos := PackedVector2Array()
+var edge_dir := PackedVector2Array()
+var edge_kind := PackedInt32Array()
 
 
 func _ready() -> void:
@@ -80,7 +92,11 @@ func _ready() -> void:
 
 
 static func vice() -> bool:
-	return ViceHUD.style_active()
+	var f: int = Engine.get_process_frames()
+	if f != _vice_frame:
+		_vice_frame = f
+		_vice_cache = ViceHUD.style_active()
+	return _vice_cache
 
 
 static func accent() -> Color:
@@ -92,7 +108,11 @@ static func hp_color() -> Color:
 
 
 static func font() -> Font:
-	return GameFXScript.vice_font(0.6, 0.22) if vice() else ThemeDB.fallback_font
+	if not vice():
+		return ThemeDB.fallback_font
+	if _vice_font == null:
+		_vice_font = GameFXScript.vice_font(0.6, 0.22)
+	return _vice_font
 
 
 ## A short centre popup (default colour: the style accent).
@@ -125,9 +145,54 @@ func _process(delta: float) -> void:
 	for e: Variant in combat.enemies:
 		if is_instance_valid(e) and bool((e as Object).get("flash_on")):
 			telegraph_shown += 1
+	_edge_markers()
 	if visible:
 		bar.queue_redraw()
 		world.queue_redraw()
+
+
+## Attacks on their way (MeleeEnemy.incoming) from enemies behind the camera or off screen: a point on the screen border
+## (EDGE_INSET in) in the enemy's direction. Camera-space x / y give the side for points behind the camera.
+func _edge_markers() -> void:
+	edge_pos.clear()
+	edge_dir.clear()
+	edge_kind.clear()
+	edge_markers = 0
+	if not visible or combat.enemies.is_empty():
+		return
+	var vp: Viewport = get_viewport()
+	var cam: Camera3D = vp.get_camera_3d() if vp else null
+	if cam == null:
+		return
+	var vs: Vector2 = vp.get_visible_rect().size
+	var c: Vector2 = vs * 0.5
+	var screen := Rect2(Vector2.ZERO, vs).grow(-24.0)
+	var inv: Transform3D = cam.global_transform.affine_inverse()
+	for v: Variant in combat.enemies:
+		if not is_instance_valid(v) or not (v as Node3D).is_inside_tree() or not (v as Node3D).visible:
+			continue
+		var k: int = int((v as Object).call("incoming"))
+		if k == 0:
+			continue
+		var pos: Vector3 = (v as Node3D).global_position + Vector3(0.0, 1.4, 0.0)
+		var d: Vector2
+		if cam.is_position_behind(pos):
+			var lp: Vector3 = inv * pos
+			d = Vector2(lp.x, -lp.y)
+			if d.length_squared() < 1e-4:
+				d = Vector2(0.0, 1.0)
+		else:
+			var sp: Vector2 = cam.unproject_position(pos)
+			if screen.has_point(sp):
+				continue                     # on screen: the wind-up pose / the red ring tell it
+			d = sp - c
+		d = d.normalized()
+		var half: Vector2 = c - Vector2(EDGE_INSET, EDGE_INSET)
+		var t: float = minf(half.x / maxf(absf(d.x), 1e-4), half.y / maxf(absf(d.y), 1e-4))
+		edge_pos.append(c + d * t)
+		edge_dir.append(d)
+		edge_kind.append(k)
+	edge_markers = edge_pos.size()
 
 
 ## The player's HP bar: "Máu", the bar, the number.
@@ -168,6 +233,7 @@ class WorldLayer extends Control:
 		var c: PlayerCombat = hud.combat
 		if c == null or c.enemies.is_empty():
 			return
+		_draw_edges()
 		var vp: Viewport = get_viewport()
 		var cam: Camera3D = vp.get_camera_3d() if vp else null
 		if cam == null:
@@ -211,3 +277,18 @@ class WorldLayer extends Control:
 				var p: Vector2 = Vector2(sp.x - 80.0, sp.y + 30.0)
 				draw_string_outline(f, p, CombatData.T_FINISHER_PROMPT, HORIZONTAL_ALIGNMENT_CENTER, 160.0, 18, 5, CombatHUD.INK)
 				draw_string(f, p, CombatData.T_FINISHER_PROMPT, HORIZONTAL_ALIGNMENT_CENTER, 160.0, 18, CombatHUD.GOLD)
+
+	## Edge markers: an outward arrow head and a pulsing arc, amber (light) or red (heavy).
+	func _draw_edges() -> void:
+		var pulse: float = 0.75 + 0.25 * sin(float(Time.get_ticks_msec()) / 1000.0 * 18.0)
+		for i: int in hud.edge_pos.size():
+			var p: Vector2 = hud.edge_pos[i]
+			var d: Vector2 = hud.edge_dir[i]
+			var n := Vector2(-d.y, d.x)
+			var col: Color = CombatHUD.TELEGRAPH if hud.edge_kind[i] == 2 else CombatHUD.LIGHT_WARN
+			var tri := PackedVector2Array([p + d * 18.0, p - d * 6.0 + n * 14.0, p - d * 6.0 - n * 14.0])
+			draw_colored_polygon(tri, CombatHUD.INK)
+			var tri2 := PackedVector2Array([p + d * 14.0, p - d * 3.0 + n * 10.0, p - d * 3.0 - n * 10.0])
+			draw_colored_polygon(tri2, Color(col, pulse))
+			var a: float = d.angle()
+			draw_arc(p - d * 4.0, 24.0, a - 0.9, a + 0.9, 12, Color(col, pulse), 3.0, true)

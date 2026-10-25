@@ -31,8 +31,15 @@
 #   fight.stop()                                # end without a result (enemies freed, wheel unlocked)
 #   fight.alive() -> Array                      # MeleeEnemy still fighting in the current wave
 #   fight.state                                 # "idle" | "running" | "won" | "lost";  fight.wave = current wave index
-# The PlayerCombat HUD shows while the fight runs. Winning or stopping unlocks the weapon wheel; losing stands the enemies
-# down (they stop attacking) and unlocks it too; retry() locks it again. Knocked-out bodies of a cleared wave are removed
+# The PlayerCombat HUD shows while the fight runs (combat.fight_active, from start() until won / stop(); it stays set after
+# lost until retry() or stop()). While it is set the player cannot:
+#   - mount or summon the bike [F] (FreeRoam.toggle_bike refuses with a hint); start() / retry() take a rider off the bike
+#     and close an open story phone;
+#   - open the phone [P] or the emote wheel [B] (this node consumes the keys and shows a hint; the emote wheel is blocked
+#     through FreeRoam's emote blocker as well).
+# Winning or stopping unlocks the weapon wheel; losing stands the enemies down (they stop attacking) and unlocks it too;
+# retry() locks it again. stop() and freeing the fight revive a downed player (no soft-lock if the story skips the retry)
+# and take the fight's enemies out of the PlayerCombat. Knocked-out bodies of a cleared wave are removed
 # WAVE_GAP_S after it is cleared, when the next wave spawns. The fight never changes the story state, the time of day or
 # the camera; it never references an autoload.
 # ===========================================
@@ -49,6 +56,7 @@ signal wave_cleared(index: int)
 const WAVE_GAP_S: float = 2.0
 const LINE_COOLDOWN_S: float = 1.5
 
+var roam: Node = null
 var player: ThirdPersonController
 var combat: PlayerCombat
 var weapons: WeaponDirector
@@ -60,6 +68,8 @@ var fight_seed: int = 1
 var waves: Array = []
 var wave: int = -1
 var state: String = "idle"
+## Refusals shown while the fight runs ([P] phone, [B] emotes) (tests).
+var refusals: int = 0
 ## Enemies of the current wave (shared with them as their sibling list for separation).
 var enemies: Array = []
 var holders: Array = []
@@ -76,7 +86,7 @@ var _spawned: int = 0
 
 
 func setup(opts: Dictionary) -> void:
-	var roam: Node = opts.get("roam")
+	roam = opts.get("roam")
 	if roam:
 		player = roam.get("player")
 		combat = roam.get("combat")
@@ -111,6 +121,7 @@ func start() -> void:
 	combat.fight_active = true
 	combat.revive()
 	_lock_weapons(true)
+	_off_bike()
 	if start_line != "" and combat.hud:
 		combat.hud.popup(start_line)
 	_start_wave(0)
@@ -133,9 +144,11 @@ func retry() -> void:
 		return
 	if _cp.is_empty():
 		checkpoint()
+	_off_bike()
 	player.teleport(_cp["pos"], float(_cp["yaw"]))
 	combat.revive()
 	state = "running"
+	ko_total = 0
 	combat.fight_active = true
 	_lock_weapons(true)
 	var w: int = int(_cp["wave"])
@@ -149,6 +162,25 @@ func stop() -> void:
 	_clear_enemies()
 	state = "idle"
 	_finish()
+	_revive_if_down()
+
+
+## A downed player (lost, then the story skips the retry) stands up again: PlayerCombat would keep him frozen in DOWN.
+func _revive_if_down() -> void:
+	if combat and is_instance_valid(combat) and combat.is_down():
+		combat.revive()
+
+
+## Ready to fight: off the bike, and the story phone closed (an open phone blocks the moves and [P] is refused now).
+func _off_bike() -> void:
+	if roam == null or not is_instance_valid(roam):
+		return
+	if bool(roam.get("mounted")) and roam.has_method("dismount_bike"):
+		roam.call("dismount_bike")
+	var sr: Object = roam.get("story_roam")
+	var ph: Object = sr.get("phone") if sr else null
+	if ph and ph.has_method("is_open") and bool(ph.call("is_open")):
+		ph.call("close")
 
 
 func alive() -> Array:
@@ -318,6 +350,14 @@ func show_unarmed_line() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if combat == null or not combat.fight_active:
+		return
+	if event is InputEventKey:
+		var k: InputEventKey = event
+		if k.pressed and not k.echo and (k.physical_keycode == KEY_P or k.physical_keycode == KEY_B):
+			_refuse(CombatData.T_FIGHT_PHONE if k.physical_keycode == KEY_P else CombatData.T_FIGHT_EMOTE)
+			get_viewport().set_input_as_handled()
+		return
 	if state != "running" or not force_unarmed or not (event is InputEventMouseButton):
 		return
 	var mb: InputEventMouseButton = event
@@ -325,6 +365,23 @@ func _input(event: InputEvent) -> void:
 		show_unarmed_line()
 
 
+## A refused key during the fight: a short hint (FreeRoam's hint line, else a combat popup).
+func _refuse(text: String) -> void:
+	refusals += 1
+	if roam and is_instance_valid(roam) and roam.has_method("flash_hint"):
+		roam.call("flash_hint", text)
+	elif combat and combat.hud:
+		combat.hud.popup(text, CombatHUD.WARN)
+
+
 func _exit_tree() -> void:
 	if state == "running":
 		_finish()
+	_revive_if_down()
+	if combat and is_instance_valid(combat):
+		for e: Variant in enemies:
+			if is_instance_valid(e):
+				combat.remove_enemy(e)
+			else:
+				combat.enemies.erase(e)
+		combat.fight_active = false

@@ -76,6 +76,11 @@ var _flee_dir: Vector3 = Vector3.ZERO
 var _rng := RandomNumberGenerator.new()
 var _meshes: Array[MeshInstance3D] = []
 var _settle_t: float = 0.0
+var _anim: Node = null                   # the body's animator (set_speed without a node lookup per frame)
+var _stuck_t: float = 0.0
+## Spawn point (bind): where a stuck / fallen enemy is put back. respawns: how often that happened.
+var home: Vector3 = Vector3.ZERO
+var respawns: int = 0
 static var _flash_mat: StandardMaterial3D = null
 
 
@@ -122,6 +127,7 @@ func setup(arch: String, opts: Dictionary = {}) -> void:
 		add_child(pose)
 	for mi: Node in body.find_children("*", "MeshInstance3D", true, false):
 		_meshes.append(mi as MeshInstance3D)
+	_anim = CharacterBuilder.get_animator(body)
 
 
 ## Wire to the player's combat, the token director (MeleeFight; null = always allowed), the shared sibling list and the FX.
@@ -131,6 +137,7 @@ func bind(c: PlayerCombat, dir: Object, sibs: Array, effects: WeaponFX) -> void:
 	siblings = sibs
 	fx = effects
 	body.rotation.y = yaw
+	home = global_position
 	_enter(St.APPROACH if ai else St.HOLD)
 
 
@@ -152,8 +159,9 @@ func is_down() -> bool:
 	return st == St.KO or st == St.KNOCKDOWN or st == St.FLEE or st == St.FLED
 
 
+## Still in the fight against the player (not knocked out, fleeing, fled or stood down).
 func is_hostile() -> bool:
-	return st != St.KO and st != St.FLED and st != St.FLEE
+	return st != St.KO and st != St.FLED and st != St.FLEE and st != St.IDLE
 
 
 func is_ko() -> bool:
@@ -171,6 +179,16 @@ func is_attacking() -> bool:
 
 func is_dazed() -> bool:
 	return st == St.DAZE
+
+
+## An attack on its way to the player, for the HUD: 0 none, 1 light (wind-up or swing before the impact), 2 heavy
+## (telegraph or swing before the impact).
+func incoming() -> int:
+	if st == St.TELEGRAPH or (st == St.ATTACK and not hit_done and attack_kind == "heavy"):
+		return 2
+	if st == St.WINDUP or (st == St.ATTACK and not hit_done):
+		return 1
+	return 0
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +280,8 @@ func _physics_process(delta: float) -> void:
 				fled.emit(self)
 				return
 		St.HELD:
-			pass
+			if st_t >= CombatData.HELD_MAX_S:
+				release_hold()               # the finisher never landed (player hit, fight reset)
 		St.HOLD, St.IDLE:
 			if _taunt_left > 0.0:
 				_taunt_left -= delta
@@ -278,10 +297,43 @@ func _physics_process(delta: float) -> void:
 		velocity.y -= GRAVITY * delta
 	move_and_slide()
 	push_v = push_v.move_toward(Vector3.ZERO, PUSH_DECEL * delta)
+	_stuck_check(delta, want, dist)
 	if face_player and p and dist > 0.05:
 		_turn_to(atan2(-to_p.x, -to_p.z), delta)
 	var moving: bool = st == St.APPROACH or st == St.CIRCLE or st == St.ENGAGE or st == St.FLEE or st == St.DODGE
-	CharacterBuilder.set_speed(body, Vector2(velocity.x, velocity.z).length() if moving else 0.0)
+	if _anim:
+		_anim.set("speed", Vector2(velocity.x, velocity.z).length() if moving else 0.0)
+
+
+## Wedged (wants >= 1 m/s, moves < a quarter of it), off the leash or fallen below its spawn point: after STUCK_S (1 s when
+## fallen) it is put back at its spawn point; after RESPAWN_MAX of those it counts as knocked out (the wave never hangs).
+func _stuck_check(delta: float, want: Vector3, dist: float) -> void:
+	if st == St.KO or st == St.FLED or st == St.FLEE or st == St.IDLE:
+		_stuck_t = 0.0
+		return
+	var fallen: bool = global_position.y < home.y - CombatData.FALL_BELOW_M
+	var ws: float = Vector2(want.x, want.z).length()
+	var wedged: bool = ws >= 1.0 and Vector2(get_real_velocity().x, get_real_velocity().z).length() < ws * 0.25
+	if fallen:
+		_stuck_t += delta * CombatData.STUCK_S
+	elif wedged or dist > CombatData.LEASH_M:
+		_stuck_t += delta
+	else:
+		_stuck_t = maxf(0.0, _stuck_t - delta)
+	if _stuck_t < CombatData.STUCK_S:
+		return
+	_stuck_t = 0.0
+	respawns += 1
+	if respawns > CombatData.RESPAWN_MAX:
+		hp = 0.0
+		_knock_out(-facing_dir())
+		return
+	global_position = home + Vector3(0.0, 0.05, 0.0)
+	velocity = Vector3.ZERO
+	push_v = Vector3.ZERO
+	collision_layer = 1
+	_release_token()
+	_enter(St.APPROACH if ai else St.HOLD)
 
 
 func _turn_to(target: float, delta: float) -> void:
@@ -366,8 +418,10 @@ func _enter(s: int, length: float = 0.0) -> void:
 	if s != St.TELEGRAPH and s != St.ATTACK:
 		_set_flash(false)
 	match s:
-		St.APPROACH, St.ENGAGE, St.HOLD, St.WINDUP:
+		St.APPROACH, St.ENGAGE, St.HOLD:
 			pose.set_pose("guard")
+		St.WINDUP:
+			pose.set_pose("jab_windup_l" if _alt else "jab_windup_r")   # the side of the coming punch
 		St.CIRCLE:
 			if _taunt_left <= 0.0:
 				pose.set_pose("guard")
@@ -466,7 +520,7 @@ func _strike() -> void:
 	if p:
 		var d := Vector3(p.global_position.x - global_position.x, 0.0, p.global_position.z - global_position.z)
 		var l: float = d.length()
-		if l <= float(stats["reach"]) + 0.45 and (l < 0.05 or facing_dir().dot(d / l) >= cos(deg_to_rad(75.0))):
+		if l <= float(stats["reach"]) + 0.45 and (l < 0.05 or facing_dir().dot(d / l) >= cos(deg_to_rad(75.0))) and _clear_to(p):
 			var heavy: bool = attack_kind == "heavy"
 			r = combat.receive_attack(self, {"damage": float(stats["heavy_dmg"] if heavy else stats["light_dmg"]), "heavy": heavy,
 				"kind": attack_kind})
@@ -479,11 +533,22 @@ func _strike() -> void:
 		combat._cue("swish", global_position + Vector3(0.0, 1.2, 0.0), -6.0)
 
 
+## Nothing solid between this enemy's chest and the player's (walls, props); people and bodies do not count.
+func _clear_to(p: Node3D) -> bool:
+	if not is_inside_tree():
+		return true
+	var rq := PhysicsRayQueryParameters3D.create(global_position + Vector3(0.0, 1.3, 0.0), p.global_position + Vector3(0.0, 1.3, 0.0))
+	rq.exclude = [get_rid(), (p as CollisionObject3D).get_rid()] if p is CollisionObject3D else [get_rid()]
+	rq.collide_with_areas = false
+	var h: Dictionary = get_world_3d().direct_space_state.intersect_ray(rq)
+	return h.is_empty() or h["collider"] is CharacterBody3D
+
+
 func _after_attack() -> void:
 	var last: String = results.back() if not results.is_empty() else "miss"
 	if attack_kind == "light" and chain_left > 0 and (last == "hit" or last == "blocked"):
 		chain_left -= 1
-		_enter(St.WINDUP, 0.18)
+		_enter(St.WINDUP, CombatData.CHAIN_WINDUP)
 		return
 	_release_token()
 	_enter(St.RECOVER, float(stats["recover"]) + (CombatData.BLOCKED_RECOVER_ADD if _blocked else 0.0))
@@ -638,6 +703,14 @@ func take_finisher_start(_c: Object) -> bool:
 	_release_token()
 	_enter(St.HELD)
 	return true
+
+
+## A finisher that will not land lets the held enemy go (it fights on, the stagger meter emptied).
+func release_hold() -> void:
+	if st != St.HELD:
+		return
+	stagger = 0.0
+	_to_idle_state()
 
 
 ## The finisher's impact ("throw" | "sweep"): knocked out (archetypes with finisher_ko) or FINISHER_DMG + knockdown (Dolly;

@@ -28,6 +28,7 @@ const COUNTER: Dictionary = {"id": "counter", "clip": "punch", "from": 0.4, "hit
 	"push": 0.8, "stun": 0.6}
 const SPEED_CAP: Dictionary = {"light": 0.8, "heavy": 0.4, "counter": 0.4, "finisher": 0.0, "hitstun": 0.4, "block": 1.2, "down": 0.0}
 const PERFECT_BLOCK_S: float = 0.2       # block pressed at most this long before the hit lands
+const BLOCK_REARM_S: float = 0.35        # Q must have been up this long for a press to arm the perfect window (no mashing)
 const HITSTUN_S: float = 0.35
 const HEAVY_KNOCK_POWER: float = 3.0     # an unblockable heavy knocks the player down (ThirdPersonController.knock_down)
 const DODGE_HOSTILE_M: float = 6.0       # Space dodge-rolls when a hostile is this close (jumps otherwise)
@@ -62,6 +63,14 @@ const STAGGER_DECAY: float = 15.0        # per second
 const BLOCKED_RECOVER_ADD: float = 0.35
 const BLOCK_CHIP_STAGGER: float = 4.0
 const ENGAGE_TIMEOUT: float = 3.0
+## Light attacks are read from a wind-up pose (jab_windup_r / _l) held over the whole WINDUP: the tell starts `windup` +
+## ENEMY_LIGHT.hit before the impact (0.38-0.45 s with the archetype windups below; CHAIN_WINDUP for a chained punch).
+const CHAIN_WINDUP: float = 0.2
+const HELD_MAX_S: float = 1.5            # an enemy held for a finisher that never lands is let go
+const STUCK_S: float = 4.0               # wedged / off the ring this long (or fallen 1 s): back to its spawn point
+const FALL_BELOW_M: float = 3.0          # this far below its spawn point = fallen
+const LEASH_M: float = 35.0              # this far from the player = lost
+const RESPAWN_MAX: int = 2               # then it counts as knocked out
 const ENEMY_RADIUS: float = 0.3
 const ENEMY_HEIGHT: float = 1.7
 const SEPARATION_M: float = 1.3
@@ -72,17 +81,17 @@ const ENEMY_HEAVY: Dictionary = {"clip": "kick", "from": 0.15, "hit_at": 0.5, "d
 ## Archetypes (B-D2). look = CharacterBuilder opts (callers merge their own "body" opts over it: helmet colours, masks...).
 const ARCHETYPES: Dictionary = {
 	"courier": {"hp": 70.0, "stagger_max": 60.0, "speed": 3.8, "circle_speed": 1.3, "circle_r": 3.0, "reach": 1.3,
-		"light_dmg": 8.0, "heavy_dmg": 20.0, "heavy_chance": 0.3, "windup": 0.38, "recover": 0.8, "chain": 2,
+		"light_dmg": 8.0, "heavy_dmg": 20.0, "heavy_chance": 0.3, "windup": 0.26, "recover": 0.8, "chain": 2,
 		"block_chance": 0.3, "dodge_chance": 0.0, "think": Vector2(0.5, 1.2), "cooldown": Vector2(0.8, 1.8),
 		"taunt_chance": 0.15, "flee_at": 0.0, "finisher_ko": true,
 		"look": {"preset": "rider", "body": "hoodie", "backpack": false, "female": false}},
 	"clone": {"hp": 45.0, "stagger_max": 45.0, "speed": 3.5, "circle_speed": 1.2, "circle_r": 3.2, "reach": 1.3,
-		"light_dmg": 7.0, "heavy_dmg": 18.0, "heavy_chance": 0.25, "windup": 0.42, "recover": 0.9, "chain": 1,
+		"light_dmg": 7.0, "heavy_dmg": 18.0, "heavy_chance": 0.25, "windup": 0.27, "recover": 0.9, "chain": 1,
 		"block_chance": 0.15, "dodge_chance": 0.0, "think": Vector2(0.6, 1.4), "cooldown": Vector2(1.0, 2.2),
 		"taunt_chance": 0.25, "flee_at": 0.0, "finisher_ko": true,
 		"look": {"preset": "student_m", "seed": 4040, "female": false, "backpack": false, "glasses": false}},
 	"dolly": {"hp": 150.0, "stagger_max": 90.0, "speed": 4.8, "circle_speed": 2.0, "circle_r": 2.8, "reach": 1.35,
-		"light_dmg": 9.0, "heavy_dmg": 22.0, "heavy_chance": 0.4, "windup": 0.3, "recover": 0.55, "chain": 3,
+		"light_dmg": 9.0, "heavy_dmg": 22.0, "heavy_chance": 0.4, "windup": 0.2, "recover": 0.55, "chain": 3,
 		"block_chance": 0.1, "dodge_chance": 0.45, "think": Vector2(0.3, 0.8), "cooldown": Vector2(0.5, 1.2),
 		"taunt_chance": 0.2, "flee_at": 0.3, "finisher_ko": false,
 		"look": {"preset": "student_f", "seed": 777, "female": true, "backpack": false}},
@@ -99,6 +108,10 @@ const T_GUARD_BREAK: String = "PHÁ THẾ THỦ"
 const T_UNARMED_ONLY: String = "Nhiệm vụ này chỉ dùng tay không"
 ## Control hint under the HP bar during a fight (key glyphs: allowed in control hints).
 const T_CONTROLS: String = "[Chuột trái] đấm · [Chuột phải] đá tạt · [Q] đỡ · [Space] lăn né · [E] hạ gục"
+## Refusals while a fight runs (MeleeFight / FreeRoam).
+const T_FIGHT_BIKE: String = "Đang đánh nhau, chưa lấy xe được"
+const T_FIGHT_PHONE: String = "Đang đánh nhau, chưa xem điện thoại được"
+const T_FIGHT_EMOTE: String = "Đang đánh nhau, không phải lúc diễn"
 
 # ----- sounds (CineAudio A1 cues, WeaponAudio Phase W cues) -----
 const CINE_CUES: Array[String] = ["impact_light", "impact_medium", "impact_heavy", "groan", "body_fall", "whoosh_down"]
@@ -142,7 +155,7 @@ static func play_clip(model: Node3D, clip: String, dur: float, from: float = 0.0
 ## Static poses are cached (no allocation per frame).
 static func pose(pose_name: String, u: float) -> Dictionary:
 	match pose_name:
-		"guard", "block", "windup", "brace":
+		"guard", "block", "windup", "brace", "jab_windup_r", "jab_windup_l":
 			if not _pose_cache.has(pose_name):
 				_pose_cache[pose_name] = _static_pose(pose_name)
 			return _pose_cache[pose_name]
@@ -166,6 +179,18 @@ static func _static_pose(pose_name: String) -> Dictionary:
 			return {"torso": Vector3(0.22, 0.7, 0.0), "head": Vector3(-0.12, -0.45, 0.0),
 				"shoulder_r": Vector3(0.5, 0.0, 1.25), "elbow_r": Vector3(2.2, 0.0, 0.0),
 				"shoulder_l": Vector3(1.25, 0.0, -0.3), "elbow_l": Vector3(1.4, 0.0, 0.0)}
+		"jab_windup_r":          # light attack tell: the punching fist pulled back to the cheek, shoulders turned, weight back
+			return {"torso": Vector3(0.18, 0.5, 0.0), "head": Vector3(-0.1, -0.35, 0.0),
+				"shoulder_r": Vector3(0.35, 0.0, 0.55), "elbow_r": Vector3(2.35, 0.0, 0.0),
+				"shoulder_l": Vector3(1.3, 0.0, -0.2), "elbow_l": Vector3(1.3, 0.0, 0.0)}
+		"jab_windup_l":          # the same, left fist (mirror: sides swapped, y and z negated)
+			var m: Dictionary = {}
+			var r: Dictionary = _static_pose("jab_windup_r")
+			for j: String in r.keys():
+				var v: Vector3 = r[j]
+				var k: String = j.replace("_r", "_X").replace("_l", "_r").replace("_X", "_l")
+				m[k] = Vector3(v.x, -v.y, -v.z)
+			return m
 		"brace":                 # hit while blocking: arms crossed tight, leaning in
 			var b: Dictionary = CineMoves.code_pose("block", 0.5).duplicate()
 			b["torso"] = Vector3(-0.25, 0.0, 0.0)
