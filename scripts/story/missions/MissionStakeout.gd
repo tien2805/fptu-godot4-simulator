@@ -7,6 +7,9 @@
 # The photo key is [E] (consumed; S is the walk-back key). The "too far" / "not in frame" lines show only during the
 # handover window; before it [E] does nothing.
 # Sight checks run at 10 Hz.
+# Horror polish (H-D7): once per mission, at RUSTLE_AT s, leaves rustle behind the player (rustle), LU_DELAY s later the
+# shiba Lu trots up from behind (a short sting, "Lu! Mày làm tao hết hồn."), sits, then trots off: a fake-out within the
+# mission ScareDirector's fake-out budget (no loops, no flicker; "Giảm hù dọa": a soft sting, quieter cues).
 class_name MissionStakeout
 extends StoryMission
 
@@ -32,6 +35,12 @@ const T_TOO_FAR: String = "Xa quá, ảnh mờ tịt. Lại gần hơn."
 const T_NO_FRAME: String = "Quay camera về phía shipper rồi chụp."
 const T_WINDOW: String = "ĐANG GIAO HÀNG! [E] Chụp ảnh"
 const T_START: String = "Núp kín, đừng để bảo vệ thấy. Lúc giao hàng thì bấm [E] chụp ảnh."
+const RUSTLE_AT: float = 18.0
+const LU_DELAY: float = 1.6
+const LU_STAY: float = 3.0
+const LU_LEAVE: float = 1.6
+const LU_BEHIND_M: float = 2.6
+const T_LU: String = "Lu! Mày làm tao hết hồn."
 
 var courier: Node3D
 var buyer: Node3D
@@ -43,10 +52,23 @@ var photo_tries: int = 0
 var _g: Array[Dictionary] = []   # per guard: {a, b, t (0..1 along a-b), dir (+1 / -1), pause}
 var _check_t: float = 0.0
 var _flash: ColorRect
+## The Lu fake-out: "" (not yet) | rustle | lu | leave | gone; lu_shown once Lu appeared.
+var scare: ScareDirector
+var shiba: StoryShiba
+var lu_state: String = ""
+var lu_shown: bool = false
+var _lu_t: float = 0.0
 
 
 func _start() -> void:
-	StoryAudio.warm(["success_fanfare"])
+	StoryAudio.warm(["success_fanfare", "rustle"])
+	scare = ScareDirector.new()
+	scare.loops_enabled = false
+	scare.flicker_enabled = false
+	scare.fake_budget = 1
+	scare.reduce_scares = StoryUtil.reduce_scares()
+	scare.player = player
+	add_child(scare)
 	var h: Vector3 = campus(HANDOVER)
 	var bp: Vector3 = campus(BUYER)
 	courier = spawn_body("courier_do", h, yaw_of(bp - h))
@@ -84,10 +106,69 @@ func _reset() -> void:
 	set_prompt("")
 	popup(T_START, 3.5, Color("#FFE66D"))
 	_check_t = CHECK_S
+	if lu_state != "":
+		_lu_gone()   # once per mission: a restart does not bring Lu back
+
+
+func _lu_gone() -> void:
+	lu_state = "gone"
+	if shiba != null and is_instance_valid(shiba):
+		shiba.queue_free()
+	shiba = null
+
+
+## The Lu fake-out (H-D7): rustle behind, then Lu from behind, then off again.
+func _tick_lu(dt: float) -> void:
+	match lu_state:
+		"":
+			if clock >= RUSTLE_AT and scare.try_fake_out("shiba"):
+				lu_state = "rustle"
+				_lu_t = LU_DELAY
+				play_cue("rustle", -3.0)
+		"rustle":
+			_lu_t -= dt
+			if _lu_t <= 0.0:
+				_lu_appear()
+		"lu":
+			_lu_t -= dt
+			var to: Vector3 = player.global_position - shiba.global_position
+			to.y = 0.0
+			if to.length() > 0.9 and _lu_t > LU_STAY - 0.9:
+				shiba.global_position += to.normalized() * 1.6 * dt
+			elif shiba.motion != "idle":
+				shiba.play("idle")
+			if _lu_t <= 0.0:
+				lu_state = "leave"
+				_lu_t = LU_LEAVE
+				shiba.play("walk")
+				shiba.rotation.y = shiba.rotation.y + PI
+		"leave":
+			_lu_t -= dt
+			shiba.global_position += fwd_of(shiba) * 2.2 * dt
+			if _lu_t <= 0.0:
+				_lu_gone()
+
+
+func _lu_appear() -> void:
+	var yaw: float = player.facing_yaw() if player.has_method("facing_yaw") else player.rotation.y
+	var back := Vector3(sin(yaw), 0.0, cos(yaw))   # behind the player (characters face -Z at their yaw)
+	var p: Vector3 = player.global_position + back * LU_BEHIND_M
+	p.y = ground_y(p)
+	shiba = StoryCast.build("shiba") as StoryShiba
+	add_child(shiba)
+	shiba.global_position = p
+	shiba.rotation.y = yaw_of(player.global_position - p)
+	shiba.play("walk")
+	lu_state = "lu"
+	lu_shown = true
+	_lu_t = LU_STAY
+	scare.fake_sting(-12.0)
+	popup(T_LU, 2.4, StoryCast.color("shiba"))
 
 
 func _tick(dt: float) -> void:
 	_place_guards(dt)
+	_tick_lu(dt)
 	# the courier glances around (±50° around the buyer), the buyer fidgets
 	var base: float = yaw_of(campus(BUYER) - campus(HANDOVER))
 	courier.rotation.y = base + sin(clock * 0.55) * 0.87
@@ -199,7 +280,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _cleanup() -> void:
-	var all: Array = [courier, buyer, box]
+	var all: Array = [courier, buyer, box, shiba]
 	all.append_array(guards)
 	for n: Variant in all:
 		if n != null and is_instance_valid(n):
