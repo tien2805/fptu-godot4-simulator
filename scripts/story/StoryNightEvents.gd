@@ -115,8 +115,8 @@ func advance(dt: float) -> void:
 	if _check_t > 0.0:
 		return
 	_check_t = CHECK_S
-	if since < GAP_S or figure != null or crossing != null:
-		return
+	if since < GAP_S or figure != null or crossing != null or not RandomScares.shared_ok():
+		return   # (shared_ok: not on top of a random scare)
 	var kind: String = pick()
 	if kind == "":
 		return
@@ -128,6 +128,7 @@ func advance(dt: float) -> void:
 		since = GAP_S - 15.0
 		return
 	since = -rng.randf_range(0.0, 60.0)   # the next one comes 3-4 minutes later
+	RandomScares.mark_shared()
 	events += 1
 	fired.append(kind)
 	event_fired.emit(kind)

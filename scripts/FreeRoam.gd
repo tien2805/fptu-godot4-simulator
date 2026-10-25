@@ -107,6 +107,8 @@ var combat: PlayerCombat
 ## objective, phone, call, beat runner) lives in the StoryRoam child, scripts/story/.
 var story_mode: bool = false
 var story_roam: StoryRoam = null
+## Random jump scares in both modes (RandomScares; GameFX "Hù dọa ngẫu nhiên").
+var random_scares: RandomScares = null
 var mounted: bool = false
 var bike_parked: bool = false
 var campus_xf: Transform3D = Transform3D.IDENTITY
@@ -203,6 +205,9 @@ func _ready() -> void:
 		story_roam = StoryRoam.new()
 		add_child(story_roam)
 		story_roam.setup(self)
+	random_scares = RandomScares.new()
+	add_child(random_scares)
+	random_scares.setup(self)
 	player.camera.make_current()
 	var sm: Node = get_node_or_null("/root/StageManager")
 	if sm:
@@ -1258,6 +1263,8 @@ func _update_vice_hud(blips_too: bool) -> void:
 		bl.append({"pos": Vector2(bike.global_position.x, bike.global_position.z), "color": RoamMap.BIKE, "shape": "diamond"})
 	if story_roam:
 		bl.append_array(story_roam.blips())
+	if random_scares:
+		bl.append_array(random_scares.blips())
 	vice_hud.radar.blips = bl
 
 
