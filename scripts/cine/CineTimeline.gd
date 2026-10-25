@@ -11,6 +11,8 @@ const RIGS: Array[String] = ["static", "dolly", "orbit", "low_hero", "track", "c
 const FX_KINDS: Array[String] = ["sparks", "dust", "flash", "debris", "crate", "stars"]
 const TRANSLATED_SPEAKERS: Array[String] = ["Anh Duy"]
 const PARTS: Array[String] = ["helmet"]
+## Phase B 2D card layers (CinePlayer builds them): StoryVillainCard, StoryScreenCard.
+const CARD_KINDS: Array[String] = ["villain", "screen"]
 
 var slot: String = ""
 var length: float = 25.0
@@ -20,6 +22,9 @@ var mood: String = "punchy"
 var fade_in: float = 0.5
 var fade_out: float = 0.5
 var letterbox: bool = true
+## {landmark, near, size, tod, yaw_deg, offset, fallback, at, exposure, ambient}; Phase B adds "drop_set": true (or
+## CinePlayer.setup / FreeRoam.play_cinematic opt "drop_set") to leave out the carried set dressing (props with opts
+## "set": true) when the scene is staged inside the real building or the Night Building.
 var stage: Dictionary = {}
 var clock: CineClock = CineClock.new()
 var actors: Dictionary = {}            # id -> {"opts", "name", "color"}
@@ -30,6 +35,8 @@ var sfx: Array[Dictionary] = []        # {"at", "cue", "db"}
 var fx: Array[Dictionary] = []         # {"at", "kind", "where", "params"}
 var props: Array[Dictionary] = []      # {"id", "kind", "pos", "yaw", "opts"}
 var punches: Array[Dictionary] = []    # {"at", "preset"}: camera punch-in / whip on a non-ramp hit
+var cards: Array[Dictionary] = []      # {"kind", "r", "dur", "data"}: 2D card layers on REAL time (Phase B)
+var choice_def: Dictionary = {}        # {"r", "id", "prompt", "options", "honest", "timeout_line", ...}: StoryChoice (Phase B)
 var _last_yaw: Dictionary = {}         # actor -> last keyed yaw (keeps yaw continuous)
 
 
@@ -58,6 +65,26 @@ static func load_slot(slot_name: String) -> CineTimeline:
 	if tl.music_slot == "":
 		tl.music_slot = tl.slot
 	return tl
+
+
+## Map point (Vector2 x, z) of a campus-plot local point (FPTUCampusBuilder u, v): the explicit stage "at" of story timelines.
+static func campus_at(local: Vector3) -> Vector2:
+	var w: Vector3 = FPTUCampusBuilder.real_plot_transform() * local
+	return Vector2(w.x, w.z)
+
+
+## Map yaw (degrees) of a campus-plot local yaw (degrees): stage yaw_deg for a direction given in plot coordinates.
+static func campus_yaw(local_yaw_deg: float) -> float:
+	return local_yaw_deg + FPTUCampusBuilder.REAL_ROT_Y_DEG
+
+
+## Stage of the Day 4 canteen slots (cine_d4_intro, cine_d4_stare, seg_d4_brawl share it for continuity): the canteen
+## hall itself has no clear box (columns, building meshes: FreeRoam.cine_clutter), so the nearest clear spot is used, on
+## the courtyard side in front of the canteen (map point measured with FreeRoam.cine_stage: ring 0 at yaw 271). The
+## scenes carry their own furniture; staged inside a real hall, pass "xf" and "drop_set" to play_cinematic.
+static func canteen_stage(size: Vector2, tod: String) -> Dictionary:
+	return {"landmark": "campus_parking_center", "at": Vector2(-31.17, -4.51), "near": 24.0, "size": size, "tod": tod,
+		"yaw_deg": 271.0}
 
 
 ## Yaw in degrees for an actor at `from` to face `to` (characters face -Z at yaw 0).
@@ -126,6 +153,25 @@ func part(actor_id: String, s: float, part_name: String, on: bool) -> void:
 ## Camera punch-in (FOV) and whip-pan on a hit without a slow-motion ramp; preset sets the strength (CineShots.WHIP_DEG keys).
 func punch(at: Variant, preset: String = "medium") -> void:
 	punches.append({"at": at, "preset": preset})
+
+
+## A 2D card layer on REAL time [r, r + dur): kind "villain" (StoryVillainCard data) or "screen" (StoryScreenCard data).
+func card(kind: String, r: float, dur: float, data: Dictionary = {}) -> void:
+	cards.append({"kind": kind, "r": r, "dur": dur, "data": data})
+
+
+## Villain intro card: a "card" clock ramp named `name` freezes story time for `dur` real seconds from real time r (a pure
+## freeze frame: no slow-down, no strike) and StoryVillainCard shows over it (data: name, nick, joke, color, pointer).
+func villain(name: String, r: float, dur: float, data: Dictionary) -> void:
+	hit(name, 0.0, "card", "villain card: %s" % String(data.get("name", "?")), {"r": r, "freeze": dur})
+	card("villain", r, dur, data)
+
+
+## Choice scene at REAL time r (one per timeline): CinePlayer holds its clock there and opens StoryChoice with def (see
+## StoryChoice.gd: id, title, prompt, options [{key, label}] x 2, honest, timeout_line), emits choice_made, then plays on.
+func choice(r: float, def: Dictionary) -> void:
+	choice_def = def.duplicate()
+	choice_def["r"] = r
 
 
 func shot(id: String, s: float, rig: String, what: String, params: Dictionary = {}) -> void:
@@ -211,7 +257,7 @@ func validate() -> PackedStringArray:
 		if c["type"] == "part" and String(c["part"]) not in PARTS:
 			err.append("%s: unknown part %s" % [aid, String(c["part"])])
 	for p: Dictionary in clock.ramps:
-		if float(p["freeze"]) > 0.0 and not struck.has(String(p["name"])):
+		if float(p["freeze"]) > 0.0 and String(p["preset"]) != "card" and not struck.has(String(p["name"])):
 			err.append("%s has no strike cue" % String(p["name"]))
 	if shots.is_empty():
 		err.append("no shots")
@@ -267,6 +313,24 @@ func validate() -> PackedStringArray:
 			err.append("%s fx at %s: where must be an actor, a prop id or a Vector3" % [String(e2["kind"]), str(e2["at"])])
 	if not stage.is_empty() and not stage.has("landmark"):
 		err.append("stage needs a landmark")
+	for cd: Dictionary in cards:
+		if not CARD_KINDS.has(String(cd["kind"])):
+			err.append("unknown card kind %s" % String(cd["kind"]))
+		if float(cd["r"]) < 0.0 or float(cd["dur"]) <= 0.0 or float(cd["r"]) + float(cd["dur"]) > length + 1e-6:
+			err.append("%s card at %.3f (+%.3f) outside 0..%.3f s" % [String(cd["kind"]), float(cd["r"]), float(cd["dur"]), length])
+	for p2: Dictionary in clock.ramps:
+		var has_card: bool = cards.any(func(cd2: Dictionary) -> bool: return String(cd2["kind"]) == "villain" and absf(float(cd2["r"]) - float(p2["r_hit"])) < 0.001)
+		if String(p2["preset"]) == "card" and not has_card:
+			err.append("%s: card freeze without a villain card at real %.3f" % [String(p2["name"]), float(p2["r_hit"])])
+	if not choice_def.is_empty():
+		var opts: Array = choice_def.get("options", [])
+		var keys: Array = opts.map(func(o: Dictionary) -> String: return String(o.get("key", "")))
+		if String(choice_def.get("id", "")) == "" or opts.size() != 2 or keys.has(""):
+			err.append("choice needs an id and two options with keys")
+		elif not keys.has(String(choice_def.get("honest", ""))):
+			err.append("choice honest option %s is not one of %s" % [String(choice_def.get("honest", "")), str(keys)])
+		if float(choice_def["r"]) < 0.0 or float(choice_def["r"]) > length + 1e-6:
+			err.append("choice at %.3f outside 0..%.3f s" % [float(choice_def["r"]), length])
 	return err
 
 
@@ -287,7 +351,8 @@ func beat_sheet() -> String:
 	L.append("# id   kind      real_hit  freeze_end  slowmo_from  slowmo_to  speed  story_s  what")
 	for row: Dictionary in clock.beat_rows():
 		L.append("%-4s %-9s %8.3f %11.3f %12.3f %10.3f %6.2f %8.3f  %s" % [String(row["name"]), String(row["preset"]), float(row["r_hit"]),
-			float(row["r_freeze_end"]), float(row["r_start"]), float(row["r_end"]), float(row["k"]), float(row["s"]), String(row["what"])])
+			float(row["r_freeze_end"]), float(row["r_start"]), float(row["r_end"]), 0.0 if String(row["preset"]) == "card" else float(row["k"]),
+			float(row["s"]), String(row["what"]) + (" (freeze frame)" if String(row["preset"]) == "card" else "")])
 	L.append("#")
 	L.append("# Shots (real start, rig, what)")
 	for sh: Dictionary in shots:
@@ -299,4 +364,20 @@ func beat_sheet() -> String:
 		if String(sb["tr"]) != "":
 			line += "  /  " + String(sb["tr"])
 		L.append(line)
+	if not cards.is_empty():
+		L.append("#")
+		L.append("# Cards (real start - end, kind: what)")
+		for cd: Dictionary in cards:
+			var dd: Dictionary = cd["data"]
+			var what: String = String(dd.get("name", ""))
+			if String(cd["kind"]) == "screen":
+				what = "%s %s" % [String(dd.get("kind", "")), String(dd.get("text", dd.get("place", "")))]
+			L.append("CARD %8.3f - %6.3f  %s: %s" % [float(cd["r"]), float(cd["r"]) + float(cd["dur"]), String(cd["kind"]), what.strip_edges()])
+	if not choice_def.is_empty():
+		L.append("#")
+		var labels: PackedStringArray = []
+		for o: Dictionary in choice_def.get("options", []):
+			labels.append("%s = %s" % [String(o.get("key", "")), String(o.get("label", ""))])
+		L.append("CHOICE %6.3f  %s: %s  (timeout %.0f s -> %s)" % [float(choice_def["r"]), String(choice_def.get("id", "")), " | ".join(labels),
+			StoryChoice.TIMEOUT, String(choice_def.get("honest", ""))])
 	return "\n".join(L) + "\n"

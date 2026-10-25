@@ -151,7 +151,42 @@ const MOVES: Dictionary = {
 	"sit_bench": {"dur": 3.0, "loop": true, "src": [{"t": "code", "a": "sit_bench"}]},
 	"sit_bench_hold": {"dur": 3.0, "loop": true, "src": [{"t": "code", "a": "sit_bench_hold"}]},
 	"nod": {"dur": 0.8, "src": [{"t": "code", "a": "nod"}]},
+	# --- story Phase B (Days 1 and 4): dialogue gestures, the canteen (seated eating / staring, masks going on), the choice
+	# scene, Dolly cornered, and the brawl's two-handed chair / pot smash. Code poses on every tier.
+	"talk": {"dur": 2.4, "loop": true, "src": [{"t": "code", "a": "talk"}]},
+	"point": {"dur": 1.2, "loop": true, "src": [{"t": "code", "a": "point"}]},
+	"arms_crossed": {"dur": 3.0, "loop": true, "src": [{"t": "code", "a": "arms_crossed"}]},
+	"confess": {"dur": 3.0, "loop": true, "src": [{"t": "code", "a": "confess"}]},
+	"phone_call": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "phone_call"}]},
+	"tray_hold": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "tray_hold"}]},
+	"eat_sit": {"dur": 1.6, "loop": true, "src": [{"t": "code", "a": "eat_sit"}]},
+	"stare_sit": {"dur": 3.0, "loop": true, "src": [{"t": "code", "a": "stare_sit"}]},
+	"mask_on": {"dur": 0.9, "src": [{"t": "code", "a": "mask_on"}]},
+	"startled": {"dur": 0.7, "src": [{"t": "code", "a": "startled"}]},
+	"cornered": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "cornered"}]},
+	"ride": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "ride"}]},
+	"step_back": {"dur": 0.6, "src": [{"t": "code", "a": "step_back"}]},
+	"chair_smash": {"dur": 0.9, "hit_u": 0.5, "src": [{"t": "code", "a": "chair_smash", "hit": 0.5}]},
 }
+
+## Two-handed overhead smash (a chair or the soup pot held between both hands): wind up over the head, bring it down on
+## the impact (hit 0.5), follow through, recover to a low guard.
+const SMASH_KEYS: Array = [
+	[0.0, {"shoulder_l": Vector3(1.0, 0.0, 0.12), "elbow_l": Vector3(1.2, 0.0, 0.0), "shoulder_r": Vector3(1.0, 0.0, -0.12),
+		"elbow_r": Vector3(1.2, 0.0, 0.0), "torso": Vector3(0.0, 0.0, 0.0), "head": Vector3(0.0, 0.0, 0.0)}],
+	[0.3, {"shoulder_l": Vector3(2.75, 0.0, 0.14), "elbow_l": Vector3(0.55, 0.0, 0.0), "shoulder_r": Vector3(2.75, 0.0, -0.14),
+		"elbow_r": Vector3(0.55, 0.0, 0.0), "torso": Vector3(0.22, 0.0, 0.0), "head": Vector3(-0.2, 0.0, 0.0),
+		"thigh_l": Vector3(0.15, 0.0, 0.06), "knee_l": Vector3(-0.2, 0.0, 0.0)}],
+	[0.5, {"shoulder_l": Vector3(1.35, 0.0, 0.1), "elbow_l": Vector3(0.15, 0.0, 0.0), "shoulder_r": Vector3(1.35, 0.0, -0.1),
+		"elbow_r": Vector3(0.15, 0.0, 0.0), "torso": Vector3(-0.45, 0.0, 0.0), "head": Vector3(0.15, 0.0, 0.0),
+		"thigh_l": Vector3(0.35, 0.0, 0.06), "knee_l": Vector3(-0.45, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.06),
+		"knee_r": Vector3(-0.25, 0.0, 0.0)}],
+	[0.75, {"shoulder_l": Vector3(0.75, 0.0, 0.1), "elbow_l": Vector3(0.3, 0.0, 0.0), "shoulder_r": Vector3(0.75, 0.0, -0.1),
+		"elbow_r": Vector3(0.3, 0.0, 0.0), "torso": Vector3(-0.55, 0.0, 0.0), "head": Vector3(0.25, 0.0, 0.0),
+		"thigh_l": Vector3(0.35, 0.0, 0.06), "knee_l": Vector3(-0.45, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.06),
+		"knee_r": Vector3(-0.25, 0.0, 0.0)}],
+	[1.0, {"shoulder_l": Vector3(0.5, 0.0, 0.1), "elbow_l": Vector3(0.8, 0.0, 0.0), "shoulder_r": Vector3(0.5, 0.0, -0.1),
+		"elbow_r": Vector3(0.8, 0.0, 0.0), "torso": Vector3(-0.12, 0.0, 0.0), "head": Vector3(0.05, 0.0, 0.0)}]]
 
 ## Fighting stance (code "stance" at u 0) as keyframe joints, shared by the brawling poses below.
 const GUARD: Dictionary = {"thigh_l": Vector3(0.25, 0.0, 0.08), "knee_l": Vector3(-0.45, 0.0, 0.0),
@@ -658,4 +693,92 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 					"thigh_r": Vector3(1.1, 0.0, -0.1), "knee_r": Vector3(-1.3, 0.0, 0.0)}],
 				[1.0, sit]]
 			return _kpose(keys, u)
+		"talk":       # explaining: the right hand gestures, the left moves a little, small nods (loop phase u)
+			var w1: float = sin(u * TAU * 2.0)
+			var w2: float = sin(u * TAU * 2.0 + 1.0)
+			return {"shoulder_r": Vector3(0.45 + 0.12 * w1, 0.0, 0.22), "elbow_r": Vector3(1.35 + 0.25 * w2, 0.0, 0.0),
+				"shoulder_l": Vector3(0.3 + 0.08 * sin(u * TAU + 2.0), 0.0, -0.18), "elbow_l": Vector3(1.0, 0.0, 0.0),
+				"torso": Vector3(-0.03, 0.04 * w1, 0.0), "head": Vector3(0.05 * sin(u * TAU * 3.0), 0.0, 0.0)}
+		"point":      # the right arm straight out at shoulder height (aim with the actor's yaw / a look cue)
+			var pp: float = sin(u * TAU) * 0.02
+			return {"shoulder_r": Vector3(1.45 + pp, 0.0, 0.12), "elbow_r": Vector3(0.08, 0.0, 0.0),
+				"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0), "torso": Vector3(-0.04, -0.1, 0.0)}
+		"arms_crossed":
+			var ab: float = sin(u * TAU) * 0.015
+			return {"shoulder_l": Vector3(0.6, 0.0, 0.45), "elbow_l": Vector3(1.95, 0.0, 0.0), "shoulder_r": Vector3(0.55, 0.0, -0.45),
+				"elbow_r": Vector3(2.0, 0.0, 0.0), "torso": Vector3(0.04 + ab, 0.0, 0.0), "head": Vector3(-0.05, 0.0, 0.0)}
+		"confess":    # head down, hands clasped in front, knees a little soft (loop phase u)
+			var cb: float = sin(u * TAU) * 0.03
+			return {"head": Vector3(0.38 + cb, 0.0, 0.0), "torso": Vector3(-0.12, 0.0, 0.0),
+				"shoulder_l": Vector3(0.5, 0.0, 0.28), "elbow_l": Vector3(1.25, 0.0, 0.0),
+				"shoulder_r": Vector3(0.5, 0.0, -0.28), "elbow_r": Vector3(1.25, 0.0, 0.0),
+				"thigh_l": Vector3(0.08, 0.0, 0.05), "knee_l": Vector3(-0.15, 0.0, 0.0), "thigh_r": Vector3(0.08, 0.0, -0.05),
+				"knee_r": Vector3(-0.15, 0.0, 0.0)}
+		"phone_call": # the right hand holds a phone at the ear, head tilted to it
+			return {"shoulder_r": Vector3(0.8, 0.0, 0.75), "elbow_r": Vector3(2.5, 0.0, 0.0), "head": Vector3(0.05, 0.0, -0.12),
+				"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.3, 0.0, 0.0)}
+		"tray_hold":  # carrying a tray in front of the waist with both hands (hold with "mid": the prop sits between them)
+			var tb: float = sin(u * TAU) * 0.01
+			return {"shoulder_l": Vector3(0.55 + tb, 0.0, 0.15), "elbow_l": Vector3(1.3, 0.0, 0.0),
+				"shoulder_r": Vector3(0.55 + tb, 0.0, -0.15), "elbow_r": Vector3(1.3, 0.0, 0.0), "head": Vector3(0.1, 0.0, 0.0)}
+		"eat_sit":    # seated at a table, spoon to the mouth and back, the left hand by the bowl (loop phase u)
+			var ek: float = pow(maxf(sin(u * TAU), 0.0), 2.0)
+			var es: Dictionary = code_pose("sit_bench", u)
+			es["shoulder_r"] = Vector3(0.55 + 0.45 * ek, 0.0, 0.18)
+			es["elbow_r"] = Vector3(1.1 + 1.0 * ek, 0.0, 0.0)
+			es["shoulder_l"] = Vector3(0.7, 0.0, -0.1)
+			es["elbow_l"] = Vector3(1.1, 0.0, 0.0)
+			es["head"] = Vector3(0.25 - 0.12 * ek, 0.0, 0.0)
+			return es
+		"stare_sit":  # seated, frozen mid-meal, hands flat on the table (a look cue turns the head)
+			var ss: Dictionary = code_pose("sit_bench", u)
+			ss["shoulder_l"] = Vector3(0.75, 0.0, -0.06)
+			ss["elbow_l"] = Vector3(0.95, 0.0, 0.0)
+			ss["shoulder_r"] = Vector3(0.75, 0.0, 0.06)
+			ss["elbow_r"] = Vector3(0.95, 0.0, 0.0)
+			ss["head"] = Vector3(0.0, 0.0, 0.0)
+			return ss
+		"mask_on":    # both hands up to the face (the mask appears at the peak, u 0.5) and down again
+			var mk: float = sin(clampf(u, 0.0, 1.0) * PI)
+			return {"shoulder_l": Vector3(0.1 + 1.25 * mk, 0.0, -0.12 + 0.37 * mk), "elbow_l": Vector3(0.25 + 2.0 * mk, 0.0, 0.0),
+				"shoulder_r": Vector3(0.1 + 1.25 * mk, 0.0, 0.12 - 0.37 * mk), "elbow_r": Vector3(0.25 + 2.0 * mk, 0.0, 0.0),
+				"head": Vector3(0.1 * mk, 0.0, 0.0)}
+		"startled":   # jumps out of the skin: arms fly up and out, knees tuck (pair it with a key "arc" for the hop)
+			var sk2: float = sin(clampf(u, 0.0, 1.0) * PI)
+			return {"shoulder_l": Vector3(0.1 + 1.5 * sk2, 0.0, -0.12 - 0.6 * sk2), "elbow_l": Vector3(0.25 + 0.4 * sk2, 0.0, 0.0),
+				"shoulder_r": Vector3(0.1 + 1.5 * sk2, 0.0, 0.12 + 0.6 * sk2), "elbow_r": Vector3(0.25 + 0.4 * sk2, 0.0, 0.0),
+				"torso": Vector3(0.2 * sk2, 0.0, 0.0), "head": Vector3(-0.2 * sk2, 0.0, 0.0),
+				"thigh_l": Vector3(0.5 * sk2, 0.0, 0.06), "knee_l": Vector3(-0.9 * sk2, 0.0, 0.0),
+				"thigh_r": Vector3(0.5 * sk2, 0.0, -0.06), "knee_r": Vector3(-0.9 * sk2, 0.0, 0.0)}
+		"cornered":   # backed off, palms out, leaning away, a nervous tremble (loop phase u)
+			var tr: float = sin(u * TAU * 6.0) * 0.03
+			return {"torso": Vector3(0.15, 0.0, 0.0), "head": Vector3(-0.05, tr, 0.0),
+				"shoulder_l": Vector3(1.1 + tr, 0.0, -0.25), "elbow_l": Vector3(1.9, 0.0, 0.0),
+				"shoulder_r": Vector3(1.1 - tr, 0.0, 0.25), "elbow_r": Vector3(1.9, 0.0, 0.0),
+				"thigh_l": Vector3(0.12, 0.0, 0.06), "knee_l": Vector3(-0.25, 0.0, 0.0), "thigh_r": Vector3(-0.05, 0.0, -0.06),
+				"knee_r": Vector3(-0.1, 0.0, 0.0)}
+		"chair_smash":
+			return _kpose(SMASH_KEYS, u)
+		"step_back":  # one step back with the right foot, still carrying a tray (tray_hold arms)
+			var kb: float = sin(clampf(u, 0.0, 1.0) * PI)
+			var tb2: Dictionary = code_pose("tray_hold", 0.0)
+			tb2["thigh_r"] = Vector3(-0.45 * kb, 0.0, -0.06)
+			tb2["knee_r"] = Vector3(-0.35 * kb, 0.0, 0.0)
+			tb2["thigh_l"] = Vector3(0.12 * kb, 0.0, 0.06)
+			tb2["knee_l"] = Vector3(-0.1 * kb, 0.0, 0.0)
+			tb2["torso"] = Vector3(0.12 * kb, 0.0, 0.0)
+			return tb2
+		"ride":       # astride a scooter seat (key the root up to the seat), hands on the handlebar, feet on the board
+			var rd: Dictionary = code_pose("sit_bench", u)
+			rd["thigh_l"] = Vector3(1.3, 0.0, 0.12)
+			rd["thigh_r"] = Vector3(1.3, 0.0, -0.12)
+			rd["knee_l"] = Vector3(-1.1, 0.0, 0.0)
+			rd["knee_r"] = Vector3(-1.1, 0.0, 0.0)
+			rd["shoulder_l"] = Vector3(1.25, 0.0, -0.2)
+			rd["shoulder_r"] = Vector3(1.25, 0.0, 0.2)
+			rd["elbow_l"] = Vector3(0.45, 0.0, 0.0)
+			rd["elbow_r"] = Vector3(0.45, 0.0, 0.0)
+			rd["torso"] = Vector3(-0.15, 0.0, 0.0)
+			rd["head"] = Vector3(-0.1, 0.0, 0.0)
+			return rd
 	return {}

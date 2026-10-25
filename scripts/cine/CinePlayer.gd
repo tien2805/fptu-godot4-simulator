@@ -14,6 +14,8 @@ class_name CinePlayer
 extends Node3D
 
 signal finished(skipped: bool)
+## Phase B: the timeline's choice scene was answered (StoryChoice: key of the option, timed_out = the honest default).
+signal choice_made(id: String, key: String, timed_out: bool)
 
 const ESC_HOLD: float = 0.8
 const SKIP_FADE: float = 0.25
@@ -57,6 +59,11 @@ var _hold: float = 0.0
 var _skipping: float = -1.0
 var _last_us: int = 0
 var leaving_tree: bool = false           # finished(true) emitted from _exit_tree (the host may be leaving the tree too)
+var card_nodes: Array[CanvasLayer] = []  # Phase B: StoryVillainCard / StoryScreenCard layers, updated on real time
+var choice_node: StoryChoice = null      # Phase B: open while the timeline's choice is asked (the clock holds)
+var choice_key: String = ""
+var choice_timed_out: bool = false
+var _choice_state: int = 0               # 0 not asked yet (or no choice), 1 open, 2 answered
 
 
 ## Build everything for tl at stage_xf. Returns the validation errors (empty = ready); an invalid timeline builds nothing.
@@ -81,7 +88,12 @@ func setup(tl: CineTimeline, xf: Transform3D = Transform3D.IDENTITY, opts: Dicti
 		a.setup(tl.actors[id]["opts"])
 		a.display_name = String(tl.actors[id]["name"])
 		actors[id] = a
+	# Phase B: drop_set (setup opt, or tl.stage["drop_set"]) leaves out the carried set dressing (props with opts "set": true,
+	# e.g. the corridor walls) when the integration stages the scene inside the real building or the Night Building
+	var drop_set: bool = bool(opts.get("drop_set", tl.stage.get("drop_set", false)))
 	for pr: Dictionary in tl.props:
+		if drop_set and bool((pr["opts"] as Dictionary).get("set", false)):
+			continue
 		var pn: Node3D = CineFX.build_prop(String(pr["kind"]), pr["opts"])
 		pn.name = String(pr["id"])
 		pn.position = pr["pos"]
@@ -102,6 +114,14 @@ func setup(tl: CineTimeline, xf: Transform3D = Transform3D.IDENTITY, opts: Dicti
 	overlay.name = "Overlay"
 	add_child(overlay)
 	overlay.set_debug(debug)
+	for cd: Dictionary in tl.cards:
+		var cl: CanvasLayer = StoryVillainCard.new() if String(cd["kind"]) == "villain" else StoryScreenCard.new()
+		cl.name = "%sCard%d" % [String(cd["kind"]).capitalize(), card_nodes.size()]
+		cl.set("data", cd["data"])
+		cl.set("r0", float(cd["r"]))
+		cl.set("dur", float(cd["dur"]))
+		add_child(cl)
+		card_nodes.append(cl)
 	music = AudioStreamPlayer.new()
 	music.name = "Music"
 	music.bus = _bus("Music")
@@ -181,7 +201,7 @@ func _build_events() -> void:
 			_events.append({"s": float(p["s0"]), "kind": "sfx", "cue": "whoosh_down", "db": 0.0})
 		if AUTO_SFX.has(pre):
 			_events.append({"s": float(p["s"]), "kind": "sfx", "cue": String(AUTO_SFX[pre]), "db": 0.0})
-		if float(p["freeze"]) > 0.0:
+		if float(p["freeze"]) > 0.0 and pre != "card":
 			_events.append({"s": float(p["s"]), "kind": "sfx", "cue": "freeze_tick", "db": 0.0})
 	_events.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["s"]) < float(b["s"]))
 	_ev_i = 0
@@ -201,11 +221,19 @@ func _prepare_music(enabled: bool) -> void:
 		music_len = CineAudio.stream_length(st)
 		_music_ready = true
 		return
-	var hits: Array[Dictionary] = []
-	for row: Dictionary in _rows:
-		hits.append({"r": row["r_hit"], "preset": row["preset"], "freeze": row["freeze"], "r_start": row["r_start"], "r_end": row["r_end"]})
 	_box = [null]
-	_task = WorkerThreadPool.add_task(_synth_job(_box, timeline.length, hits, timeline.mood))
+	_task = WorkerThreadPool.add_task(_synth_job(_box, timeline.length, music_hits(_rows), timeline.mood))
+
+
+## Hit layout of the synthesized cue: every ramp row except "card" freezes (a villain card is silent in the music; the
+## timeline gives it its own sting), so no boom, tick, ducking or outro hit lands on or after a card.
+static func music_hits(rows: Array[Dictionary]) -> Array[Dictionary]:
+	var hits: Array[Dictionary] = []
+	for row: Dictionary in rows:
+		if String(row["preset"]) == "card":
+			continue
+		hits.append({"r": row["r_hit"], "preset": row["preset"], "freeze": row["freeze"], "r_start": row["r_start"], "r_end": row["r_end"]})
+	return hits
 
 
 ## Worker job: pure synthesis into the holder box; built in a static function so the lambda holds no reference to the node.
@@ -261,16 +289,58 @@ func step(dt: float) -> void:
 		_poll_music()
 		if not _music_ready:
 			return
+	if _choice_state == 1:
+		# the choice scene is open: the cinematic holds its frame (r does not advance); a manual player drives the overlay
+		if manual and is_instance_valid(choice_node):
+			choice_node.step(dt)
+		return
 	if r == 0.0 and not music.playing and music.stream:
 		music.play()
 	var t0: int = Time.get_ticks_usec()
 	_skip_logic(dt)
-	r = minf(r + dt, timeline.length)
+	var nr: float = minf(r + dt, timeline.length)
+	var at_choice: bool = choice_pending() and _skipping < 0.0 and nr >= float(timeline.choice_def["r"]) - 1e-9
+	if at_choice:
+		nr = float(timeline.choice_def["r"])
+	r = nr
 	_update(r)
 	frame_ms_total += float(Time.get_ticks_usec() - t0) / 1000.0
 	frames += 1
+	if at_choice:
+		_open_choice()
+		return
 	if r >= timeline.length - 1e-9 or _skipping >= SKIP_FADE:
+		if choice_pending():
+			_open_choice()   # skipped before the choice: it is still asked (over the fade) before finished
+			return
 		_finish(_skipping >= 0.0)
+
+
+## true while the timeline has a choice that has not been asked yet.
+func choice_pending() -> bool:
+	return not timeline.choice_def.is_empty() and _choice_state == 0
+
+
+func _open_choice() -> void:
+	_choice_state = 1
+	if music.stream:
+		music.stream_paused = true
+	choice_node = StoryChoice.open(self, timeline.choice_def, manual)
+	choice_node.chosen.connect(_on_chosen)
+
+
+func _on_chosen(key: String, timed_out: bool) -> void:
+	choice_key = key
+	choice_timed_out = timed_out
+	_choice_state = 2
+	choice_node = null
+	if music.stream:
+		music.stream_paused = false
+	choice_made.emit(String(timeline.choice_def.get("id", "")), key, timed_out)
+	if _skipping >= SKIP_FADE:
+		_finish(true)
+	elif r >= timeline.length - 1e-9:
+		_finish(false)
 
 
 ## Jump to real time rr (debug, tests): events before it are not fired.
@@ -308,14 +378,21 @@ func _update(rr: float) -> void:
 func _update_props(ss: float) -> void:
 	for pr: Dictionary in timeline.props:
 		var po: Dictionary = pr["opts"]
-		if not po.has("show_at") and not po.has("hide_at") and not po.has("path") and not po.has("flicker"):
+		if not po.has("show_at") and not po.has("hide_at") and not po.has("path") and not po.has("flicker") and not po.has("dark") and not po.has("anim"):
 			continue
 		var pn: Node3D = prop_nodes.get(String(pr["id"]))
 		if pn == null:
 			continue
-		if po.has("flicker"):
-			CineFX.set_lamp(pn, CineFX.lamp_on(ss, po["flicker"]))   # A2 lamp: stutters inside its story windows (seekable)
-		pn.visible = ss >= timeline.story_time(po.get("show_at", 0.0)) and ss < timeline.story_time(po.get("hide_at", INF))
+		if po.has("anim"):
+			# Phase B: an animated prop (the shiba) poses itself from story time (seekable)
+			var an: Node = pn.get_meta("shiba", pn)
+			if an.has_method("cine_eval"):
+				an.call("cine_eval", ss, po)
+		if po.has("flicker") or po.has("dark"):
+			# A2 lamp: stutters inside its "flicker" story windows; Phase B: fully off inside its "dark" windows (seekable)
+			CineFX.set_lamp(pn, CineFX.lamp_on(ss, po.get("flicker", [])) and not CineFX.in_windows(ss, po.get("dark", [])))
+		if po.has("show_at") or po.has("hide_at"):
+			pn.visible = ss >= timeline.story_time(po.get("show_at", 0.0)) and ss < timeline.story_time(po.get("hide_at", INF))
 		var path: Array = po.get("path", [])
 		if path.size() >= 2:
 			var s0: float = float(path[0][0])
@@ -437,6 +514,8 @@ func _update_overlay(rr: float, speed: float) -> void:
 	if not shown:
 		overlay.hide_sub()
 	overlay.set_skip(_hold / ESC_HOLD if _hold > 0.0 and _skipping < 0.0 else -1.0)
+	for cl: CanvasLayer in card_nodes:
+		cl.call("update", rr)
 	if debug:
 		var nxt: String = "-"
 		for row: Dictionary in _rows:

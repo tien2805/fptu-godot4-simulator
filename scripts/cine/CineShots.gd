@@ -12,8 +12,8 @@
 class_name CineShots
 extends RefCounted
 
-const WHIP_DEG: Dictionary = {"light": 6.0, "medium": 9.0, "heavy": 12.0, "finisher": 12.0, "accent": 4.0}
-const FOV_PUNCH: Dictionary = {"light": -2.0, "medium": -4.0, "heavy": -7.0, "finisher": -8.0, "accent": 0.0}
+const WHIP_DEG: Dictionary = {"light": 6.0, "medium": 9.0, "heavy": 12.0, "finisher": 12.0, "accent": 4.0, "card": 0.0}
+const FOV_PUNCH: Dictionary = {"light": -2.0, "medium": -4.0, "heavy": -7.0, "finisher": -8.0, "accent": 0.0, "card": 0.0}
 
 
 static func _apos(ctx: Dictionary, id: String) -> Vector3:
@@ -68,7 +68,7 @@ static func whip(r: float, shot_r0: float, shot_r1: float, rows: Array[Dictionar
 		if dt >= 0.0 and dt < 0.8:
 			out["fov"] = float(out["fov"]) + float(FOV_PUNCH.get(pre, 0.0)) * exp(-dt / 0.25)
 		var fr: float = row["freeze"]
-		if dt >= 0.0 and dt <= fr:
+		if dt >= 0.0 and dt <= fr and pre != "card":
 			var amp: float = 0.012 if pre == "light" else 0.02
 			out["shake"] = Vector3(sin(r * 97.0), sin(r * 131.0 + 1.3), 0.0) * amp
 		side = -side
