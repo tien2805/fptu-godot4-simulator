@@ -45,10 +45,10 @@ Mỗi dòng là một file `music\<slot>.ogg` hoặc `music\<slot>.mp3`. Nhạc 
 | `mission_stakeout` | nhiệm vụ rình bãi xe (Ngày 1) | *Secret Agent Man*, Johnny Rivers | |
 | `mission_chase` | nhiệm vụ đuổi theo Mũ Đỏ (Ngày 1) | *Chase*, Giorgio Moroder | |
 | `mission_fight` | trận tay không Ngày 1 và Ngày 4 | *Holding Out for a Hero*, Bonnie Tyler | |
-| `mission_canteen` | nằm vùng căn tin (Ngày 4) | *Careless Whisper*, George Michael | |
+| `mission_canteen` | nằm vùng căn tin (Ngày 4); phát nhỏ hơn 6 dB để còn nghe tiếng ngân nga của Dolly | *Careless Whisper*, George Michael | |
 | `mission_corridor` | hành lang tối (Ngày 1) | *Tubular Bells* (đoạn mở đầu), Mike Oldfield | |
 
-Độ căng (tốc độ Màn 1, máu boss Màn 6) chỉ làm nhạc to hơn và sáng hơn (bớt lọc trầm), không đổi bài.
+Độ căng chỉ đổi âm lượng; riêng Màn 1 (tốc độ) và boss Màn 6 (máu boss) nhạc còn sáng dần lên (bớt lọc trầm). Không bao giờ đổi bài. Nhạc thế giới mở phát tiếp từ chỗ đang nghe sau nhiệm vụ, cinematic hay video. Replay có bài riêng thì nhạc nền tắt dần trong lúc replay. File nên là bản cắt vài phút: game đọc cả file vào bộ nhớ (đọc trước trên luồng phụ).
 
 **Tòa nhà đêm (Ngày 4 và chạy riêng màn Night Building)**
 
@@ -59,7 +59,7 @@ Mỗi dòng là một file `music\<slot>.ogg` hoặc `music\<slot>.mp3`. Nhạc 
 | `night_chase` | có con đang đuổi | *Halloween Theme*, John Carpenter |
 | `night_escape` | đủ 3 cầu chì, cửa sảnh mở, chạy ra | *Turbo Killer*, Carpenter Brut |
 
-Lúc trốn trong tủ hay gầm bàn, nhạc tắt dần chỉ còn tim đập và tiếng thở. Mỗi bài nhớ chỗ đang phát: quay lại trạng thái cũ thì bài phát tiếp từ chỗ đó.
+Lúc trốn trong tủ hay gầm bàn, nhạc tắt dần chỉ còn tim đập và tiếng thở. Đổi qua lại giữa yên / căng / bị đuổi giữ mỗi bài ít nhất 2 s. Mỗi bài nhớ chỗ đang phát: quay lại trạng thái cũ thì bài phát tiếp từ chỗ đó.
 
 **Cảnh phim (cinematic)**
 
@@ -76,6 +76,8 @@ Lúc trốn trong tủ hay gầm bàn, nhạc tắt dần chỉ còn tim đập 
 | `cine_d1_choice` | *Mad World*, Gary Jules |
 | `cine_d1_choice_cover` (đuôi lựa chọn: che cho Phúc, "…Hai tô.") | *With a Little Help from My Friends*, Joe Cocker |
 | `cine_d1_choice_report` (đuôi lựa chọn: báo cáo Phúc) | *The Sound of Silence*, Simon & Garfunkel |
+
+Hai đuôi lựa chọn không có file riêng thì phát file của `cine_d1_choice`; không có cả file đó thì im lặng.
 | `cine_d1` | *Green Onions*, Booker T. & the M.G.'s |
 | `cine_d4_intro` | *Stayin' Alive*, Bee Gees |
 | `cine_d4_stare` | *The Lonely Shepherd*, Gheorghe Zamfir |

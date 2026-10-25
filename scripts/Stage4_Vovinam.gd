@@ -50,8 +50,10 @@ const GOOD_WIN: float = 0.15
 const FINISHER_TIME: float = 30.0
 ## Nhịp trống (spec H-D8: không còn nhạc code): 2 tiếng đếm vào + một tiếng trống đúng mỗi nốt (mỗi phách của vòng).
 const DRUM_COUNT_IN: int = 2
-const DRUM_DB: float = -6.0
-const DRUM_ACCENT_DB: float = -2.0
+const DRUM_DB: float = -3.0
+const DRUM_ACCENT_DB: float = 0.0
+## Nhạc nền lúc đánh nhịp: tension thấp = nhỏ hơn ~4 dB để trống nổi lên trên bài của chủ game.
+const RHYTHM_MUSIC_TENSION: float = 0.0
 
 var KEY_DEFS: Dictionary = {
 	KEY_LEFT: {"icon": "⬅", "name": "ĐẤM THẲNG", "move": "punch", "color": Color("#E74C3C")},
@@ -158,7 +160,7 @@ func _ready() -> void:
 	execute_btn.visible = false
 	GameFX.disable_button_focus(hud)
 	GameFX.upgrade_scene_visuals(self, "noon")
-	GameFX.music_play("stage4_vovinam", 0.5)
+	GameFX.music_play("stage4_vovinam", RHYTHM_MUSIC_TENSION)
 	next_btn.pressed.connect(_on_next_pressed)
 	menu_btn.pressed.connect(_on_menu_pressed)
 	retry_btn.pressed.connect(_on_retry_pressed)
@@ -479,7 +481,9 @@ func _start_round(idx: int) -> void:
 
 ## Trống võ đường đánh đúng phách (BPM của vòng): nhạc của chủ game chỉ là nền, nhịp vẫn đọc được khi không có file.
 func _update_drums() -> void:
-	while drum_idx < drum_times.size() and drum_times[drum_idx] <= song_time:
+	# phát sớm đúng độ trễ đầu ra (tối đa 0,1 s) để tiếng trống nghe được đúng lúc nốt vào vùng HIT
+	var lead: float = clampf(AudioServer.get_output_latency(), 0.0, 0.1)
+	while drum_idx < drum_times.size() and drum_times[drum_idx] <= song_time + lead:
 		var accent: bool = posmod(drum_idx - DRUM_COUNT_IN, 4) == 0   # nốt đầu vòng là phách mạnh
 		GameFX.play_sfx("drum", DRUM_ACCENT_DB if accent else DRUM_DB, 1.0 if accent else 1.08)
 		drum_idx += 1
@@ -723,6 +727,7 @@ func _dummy_hit(amount: float) -> void:
 # PHA 2: FINISHER CHUỖI 5 BƯỚC
 # ===========================================================================
 func _start_finisher() -> void:
+	GameFX.music_tension(0.8)   # hết pha nhịp: nhạc của chủ game to lại
 	state = State.FINISHER
 	rhythm_panel.visible = false
 	finisher_panel.visible = true

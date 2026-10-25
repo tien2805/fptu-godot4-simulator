@@ -19,15 +19,23 @@ const SFX_CUES: Array[String] = ["impact_light", "impact_medium", "impact_heavy"
 static var _sfx_cache: Dictionary = {}
 
 
+## A slot without its own owner file plays its parent slot's file (then silence): the choice tails reuse cine_d1_choice.
+const SLOT_FALLBACK: Dictionary = {"cine_d1_choice_cover": "cine_d1_choice", "cine_d1_choice_report": "cine_d1_choice"}
+
+
 static func music_file(slot: String) -> String:
 	for ext: String in [".ogg", ".mp3"]:
 		var p: String = MUSIC_DIR + slot + ext
 		if FileAccess.file_exists(p):
 			return p
+	if SLOT_FALLBACK.has(slot):
+		return music_file(String(SLOT_FALLBACK[slot]))
 	return ""
 
 
 static func load_music(slot: String) -> AudioStream:
+	if MusicDirector.test_streams.has(slot):
+		return MusicDirector.test_streams[slot]   # tests only
 	var p: String = music_file(slot)
 	if p == "":
 		return null

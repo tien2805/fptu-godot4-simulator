@@ -4,7 +4,8 @@
 # plays the game is paused (the recorder is PAUSABLE, so it stops recording), the tracked actors are posed from the buffer
 # (transforms + bone poses), a replay camera cuts orbit (before the ramp) -> low (the ramp, with the whip-pan of the impact)
 # -> wide (after it), the overlay shows the letterbox, fades and the "▶ REPLAY" tag, and the music is the slot's owner file
-# user://music/<slot>.ogg|.mp3 or nothing (H-D8: no code music, no synthesized sting). At the end (or after a
+# user://music/<slot>.ogg|.mp3 or nothing (H-D8: no code music, no synthesized sting; with a file the GameFX background
+# track is ducked until the end). At the end (or after a
 # 0.8 s hold-Esc skip) the live state, the previous camera, the pause and StageManager.cinematic_active are restored, then
 # `finished` is emitted and the node frees itself. Removed from the tree mid-play, it releases the same things (_exit_tree).
 # Real time: Time.get_ticks_usec, full dt (no clamp: the length and the music hold through hitches); manual = step() drives.
@@ -48,6 +49,7 @@ var _playing: bool = false
 var _done: bool = false
 var _hold: float = 0.0
 var _last_us: int = 0
+var _ducked: bool = false
 
 
 ## Start the replay of `recorder` around its mark. opts: length (4-6, default 5), slot (music slot, "" or no file = silent), focus,
@@ -122,8 +124,20 @@ func start(recorder: CineReplayRecorder, opts: Dictionary = {}) -> bool:
 	_last_us = Time.get_ticks_usec()
 	if st:
 		music.play()
+		_set_duck(true)   # review I3: the replay's own track never plays over the background track
 	_apply(0.0)
 	return true
+
+
+## Ducks (on) / releases the GameFX background track (MusicDirector.duck) while this replay plays its own slot file.
+func _set_duck(on: bool) -> void:
+	if on == _ducked:
+		return
+	_ducked = on
+	var fx: Node = get_node_or_null("/root/GameFX")
+	var md: Node = fx.get("music") if fx else null
+	if md and md.has_method("duck"):
+		md.call("duck", on)
 
 
 ## Position of a node at recorder time t (from the buffer when tracked, otherwise its live position).
@@ -239,6 +253,7 @@ func _finish() -> void:
 func _release() -> void:
 	_done = true
 	_playing = false
+	_set_duck(false)
 	if music:
 		music.stop()
 	if is_instance_valid(rec):

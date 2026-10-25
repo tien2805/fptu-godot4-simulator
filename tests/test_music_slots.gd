@@ -94,7 +94,8 @@ func _catalogue() -> void:
 	var files: int = 0
 	for s2: String in all:
 		var f: String = MusicDirector.slot_file(s2)
-		_check(f == "" or (f.begins_with("user://music/" + s2 + ".") and (f.ends_with(".ogg") or f.ends_with(".mp3"))),
+		var own: String = s2 if not CineAudio.SLOT_FALLBACK.has(s2) or f.contains("/" + s2 + ".") else String(CineAudio.SLOT_FALLBACK[s2])
+		_check(f == "" or (f.begins_with("user://music/" + own + ".") and (f.ends_with(".ogg") or f.ends_with(".mp3"))),
 			"%s resolves to its owner file or to silence (%s)" % [s2, f if f != "" else "silence"])
 		if f == "":
 			_check(MusicDirector.load_slot(s2) == null and CineAudio.load_music(s2) == null, "%s: no file -> silence" % s2)
@@ -225,8 +226,9 @@ func _crossfade() -> void:
 	for i5: int in 15:
 		md._process(0.1)
 	_check(not md.players[0].playing and not md.players[1].playing and md.slot == "hd8_no_such_file", "a missing file fades to silence")
-	# tension reaches the live bus filter and the volume
-	md.play("hd8_a", 0.0)
+	# tension reaches the live bus filter (tension slots only) and the volume
+	MusicDirector.test_streams["stage1_race"] = a
+	md.play("stage1_race", 0.0)
 	md.set_tension(1.0)
 	for i6: int in 60:
 		md._process(0.1)
@@ -240,8 +242,143 @@ func _crossfade() -> void:
 	for i7: int in 80:
 		md._process(0.1)
 	_check(lp != null and lp.cutoff_hz < 5200.0 and md.players[md.cur].volume_db < -4.0, "tension 0: gentle low-pass and %.1f dB" % MusicDirector.TENSION_DB_MIN)
+	md.play("hd8_b", 0.0)
+	md._process(0.1)
+	_check(lp != null and lp.cutoff_hz > 19000.0, "a non-tension slot at tension 0 plays with the low-pass open (%.0f Hz)" % (lp.cutoff_hz if lp else 0.0))
+	# fixed trim: mission_canteen -6 dB (Dolly's hum stays audible)
+	MusicDirector.test_streams["mission_canteen"] = b
+	md.set_tension(1.0)
+	for i8: int in 60:
+		md._process(0.1)
+	md.play("mission_canteen", 0.0)
+	_check(absf(md.players[md.cur].volume_db - (-6.0)) < 0.2, "mission_canteen plays 6 dB down (%.1f dB)" % md.players[md.cur].volume_db)
 	md.free()
 	MusicDirector.test_streams = {}
+	await _both_busy()
+	await _duck_and_resume()
+	await _warm_cache()
+	_drum_onset()
+
+
+## Review I1: a switch while both players are busy reuses the quieter one; the louder keeps fading; no blip.
+func _both_busy() -> void:
+	MusicDirector.test_streams = {"hd8_a": _loop(3.0), "hd8_b": _loop(3.0), "hd8_c": _loop(3.0)}
+	var md := MusicDirector.new()
+	world.add_child(md)
+	await process_frame
+	md.process_mode = Node.PROCESS_MODE_DISABLED
+	md.play("hd8_a", 0.0)
+	var pa: AudioStreamPlayer = md.players[md.cur]
+	md.play("hd8_b")          # A (gain 1) starts fading out, B (gain 0) in
+	var pb: AudioStreamPlayer = md.players[md.cur]
+	md._process(0.05)         # the auto-mission case: a new slot 0.05 s later
+	var ga: float = md.gains[md.players.find(pa)]
+	md.play("hd8_c")
+	var pc: AudioStreamPlayer = md.players[md.cur]
+	_check(pc == pb and pc.stream == MusicDirector.test_streams["hd8_c"], "both busy: the quieter (just started) player takes the new slot")
+	_check(pa.playing and absf(md.gains[md.players.find(pa)] - ga) < 1e-6 and md.goals[md.players.find(pa)] == 0.0,
+		"the louder outgoing track keeps fading (gain %.2f), no hard cut" % ga)
+	_check(pc.volume_db <= -79.0, "the reused player starts silent (%.1f dB), no blip at its old level" % pc.volume_db)
+	for i: int in 14:
+		md._process(0.1)
+	_check(not pa.playing and is_equal_approx(md.gains[md.cur], 1.0), "after the crossfade only the new slot plays")
+	md.free()
+	MusicDirector.test_streams = {}
+
+
+## Review I3 (director side) + Minor: duck keeps the players running; roam tracks resume where they stopped.
+func _duck_and_resume() -> void:
+	MusicDirector.clear_cache()
+	MusicDirector.test_streams = {"roam_day": _loop(20.0), "hd8_b": _loop(3.0)}
+	var md := MusicDirector.new()
+	world.add_child(md)
+	await process_frame
+	md.process_mode = Node.PROCESS_MODE_DISABLED
+	md.play("roam_day", 0.0)
+	md.duck(true)
+	md._process(0.15)
+	_check(md.duck_gain > 0.0 and md.duck_gain < 1.0, "duck fades (%.2f after 0.15 s)" % md.duck_gain)
+	md._process(0.2)
+	_check(md.duck_gain == 0.0 and md.players[md.cur].playing and md.players[md.cur].volume_db < -60.0, "ducked: silent, still playing")
+	md.duck(false)
+	md._process(0.4)
+	_check(md.duck_gain == 1.0 and md.players[md.cur].volume_db > -6.0, "released: back to its level")
+	var t0: int = Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < 700:
+		await process_frame
+	var p0: float = md.players[md.cur].get_playback_position()
+	md.play("hd8_b", 0.0)     # a mission / cinematic takes over
+	var saved: float = float(MusicDirector._resume.get("roam_day", 0.0))
+	_check(saved > 0.3 and absf(saved - p0) < 0.2, "roam_day's position is remembered (%.2f s)" % saved)
+	md.play("roam_day", 0.0)
+	_check(md.players[md.cur].get_playback_position() >= saved - 0.05, "roam_day resumes at %.2f s instead of 0:00" % md.players[md.cur].get_playback_position())
+	md.free()
+	MusicDirector.test_streams = {}
+	MusicDirector.clear_cache()
+
+
+## Review I2: warm() loads on a worker thread; play() after warm does no main-thread load.
+func _warm_cache() -> void:
+	MusicDirector.clear_cache()
+	var threads: Array = []
+	var main_id: int = OS.get_thread_caller_id()
+	MusicDirector.test_loader = func(s: String) -> AudioStream:
+		threads.append([s, OS.get_thread_caller_id()])
+		return _loop(2.0)
+	var started: int = MusicDirector.warm(["hd8_w1", "hd8_w2"])
+	_check(started == 2 and MusicDirector.warm(["hd8_w1"]) == 0, "warm starts one task per slot, once")
+	var t0: int = Time.get_ticks_msec()
+	while not (MusicDirector.is_warm("hd8_w1") and MusicDirector.is_warm("hd8_w2")) and Time.get_ticks_msec() - t0 < 3000:
+		await process_frame
+	_check(MusicDirector.is_warm("hd8_w1") and MusicDirector.is_warm("hd8_w2"), "both slots warmed")
+	_check(threads.size() == 2 and threads.all(func(e: Array) -> bool: return int(e[1]) != main_id), "the loads ran off the main thread")
+	var md := MusicDirector.new()
+	world.add_child(md)
+	await process_frame
+	md.process_mode = Node.PROCESS_MODE_DISABLED
+	var before: int = MusicDirector.main_thread_loads
+	md.play("hd8_w1", 0.0)
+	md.play("hd8_w2")
+	_check(MusicDirector.main_thread_loads == before and threads.size() == 2, "play() after warm() loads nothing on the main thread")
+	var st1: AudioStream = md.players[1 - md.cur].stream
+	md.play("hd8_w1")
+	_check(md.current_stream() == st1 and threads.size() == 2, "the cached stream is reused on the next play")
+	md.play("hd8_cold")
+	_check(MusicDirector.main_thread_loads == before + 1, "a slot that was never warmed is the only main-thread load")
+	# a play() while the warm task still runs waits for it instead of reading the file again
+	MusicDirector.warm(["hd8_pending"])
+	md.play("hd8_pending")
+	_check(MusicDirector.main_thread_loads == before + 1 and md.current_stream() != null, "a pending warm is adopted, not re-read")
+	md.free()
+	MusicDirector.test_loader = Callable()
+	MusicDirector.clear_cache()
+
+
+## Review I4: the Stage 4 drum hits from sample 0 (no late layer).
+func _drum_onset() -> void:
+	var fx: Node = root.get_node_or_null("GameFX")
+	if fx == null:
+		_check(false, "GameFX autoload present for the drum check")
+		return
+	var w: AudioStreamWAV = fx.call("_synth", "drum")
+	var sr: int = w.mix_rate
+	var n: int = w.data.size() / 2
+	var peak_i: int = 0
+	var peak: float = 0.0
+	var early: float = 0.0
+	for i: int in n:
+		var v: float = absf(float(w.data.decode_s16(i * 2)) / 32767.0)
+		if v > peak:
+			peak = v
+			peak_i = i
+		if i < int(0.005 * sr):
+			early = maxf(early, v)
+	_check(early > 0.3, "the drum is loud within its first 5 ms (%.2f)" % early)
+	_check(float(peak_i) / float(sr) < 0.02, "the drum peaks within 20 ms of the beat (%.3f s)" % (float(peak_i) / float(sr)))
+	var late: float = 0.0
+	for j: int in range(int(0.08 * sr), n):
+		late = maxf(late, absf(float(w.data.decode_s16(j * 2)) / 32767.0))
+	_check(late < peak * 0.5, "no layer starts late (after 80 ms: %.2f vs peak %.2f)" % [late, peak])
 
 
 func _night_music() -> void:
@@ -255,8 +392,8 @@ func _night_music() -> void:
 	nm.manual = true
 	world.add_child(nm)
 	await process_frame
-	_check(nm.state == "stealth" and nm.loaded.has("stealth") and not nm.loaded.has("chase"), "starts in stealth; only the stealth track is loaded")
-	_run(nm, 1.3)
+	_check(nm.state == "stealth" and nm.loaded.has("stealth") and not nm.loaded.has("chase"), "starts in stealth; only the stealth track is started")
+	_run(nm, 2.1)
 	_check(is_equal_approx(nm.gain("stealth"), 1.0), "stealth faded in")
 	(lvl.stalkers[1] as FakeStalker).state = "SUSPICIOUS"
 	_run(nm, 0.15)
@@ -272,8 +409,8 @@ func _night_music() -> void:
 	_run(nm, 0.2)
 	_check(nm.state == "tense", "searching stays tense")
 	(lvl.stalkers[0] as FakeStalker).state = "CHASE"
-	_run(nm, 0.2)
-	_check(nm.state == "chase" and nm.loaded.has("chase"), "a chasing stalker -> chase (loaded on first use)")
+	_run(nm, 0.5)
+	_check(nm.state == "chase" and nm.loaded.has("chase"), "a chasing stalker -> chase")
 	_run(nm, 1.3)
 	(lvl.stalkers[0] as FakeStalker).state = "CHECK"
 	_run(nm, 0.2)
@@ -293,6 +430,11 @@ func _night_music() -> void:
 	_check(nm.state == "stealth" and not ps.stream_paused and ps.playing, "back to stealth: the track resumes")
 	_check(ps.get_playback_position() >= pos_s - 0.01 and ps.get_playback_position() < pos_s + 1.0,
 		"stealth resumes where it left off (%.2f s, was %.2f s)" % [ps.get_playback_position(), pos_s])
+	(lvl.stalkers[1] as FakeStalker).state = "SUSPICIOUS"
+	_run(nm, 0.5)
+	_check(nm.state == "stealth", "a new suspicion right after a switch waits out the %.0f s hold" % NightMusic.MIN_HOLD)
+	_run(nm, 1.7)
+	_check(nm.state == "tense", "then tense once the hold is over")
 	lvl.doors_unlocked = true
 	_run(nm, 0.2)
 	_check(nm.state == "escape", "doors unlocked -> escape")
@@ -330,6 +472,19 @@ func _night_music() -> void:
 	_check(nm2.state == "hidden", "hiding still ducks the music during the escape")
 	nm2.free()
 	al.free()
+	# review I2: the four night tracks are warmed on worker threads when the node enters the scene
+	MusicDirector.clear_cache()
+	MusicDirector.test_loader = func(_s: String) -> AudioStream: return _loop(1.0)
+	var nmw := NightMusic.new()
+	nmw.manual = true
+	world.add_child(nmw)
+	var warmed: bool = true
+	for ns: String in NightMusic.TRACKS.values():
+		warmed = warmed and (MusicDirector.is_warm(ns) or MusicDirector._pending.has(ns))
+	_check(warmed, "all four night tracks are warmed at scene load")
+	nmw.free()
+	MusicDirector.test_loader = Callable()
+	MusicDirector.clear_cache()
 	# no level (freed or never set): stealth, no error; without owner files every track is silent
 	MusicDirector.test_streams = {}
 	var nm3 := NightMusic.new()

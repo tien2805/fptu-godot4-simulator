@@ -207,6 +207,7 @@ func _ready() -> void:
 	var sm: Node = get_node_or_null("/root/StageManager")
 	if sm:
 		sm.set("hub_key_blocked", true)
+	MusicDirector.warm(["roam_day", "roam_night"])   # both roam tracks load on worker threads (no stall at a switch)
 	roam_music()
 	print("FreeRoam: world built in %d ms" % build_ms)
 
@@ -1686,6 +1687,9 @@ func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 		if n2:
 			_cine_saved["proc"][n2] = n2.process_mode
 			n2.process_mode = Node.PROCESS_MODE_DISABLED
+	var fx: Node = get_node_or_null("/root/GameFX")
+	if fx and fx.has_method("music_stop"):
+		fx.call("music_stop", true)   # before the time of day changes, so the other roam track is not started for nothing
 	set_time_of_day(String(tl.stage.get("tod", tod_preset)))
 	# stage "exposure" / "ambient": hệ số sáng riêng cho cinematic (đêm vẫn đọc rõ người), lưu giá trị gốc để trả lại
 	var we: WorldEnvironment = get_node_or_null("WorldEnvironment") as WorldEnvironment
@@ -1694,9 +1698,6 @@ func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 		_cine_saved["env"] = [env, env.tonemap_exposure, env.ambient_light_energy]
 		env.tonemap_exposure *= float(tl.stage.get("exposure", 1.0))
 		env.ambient_light_energy *= float(tl.stage.get("ambient", 1.0))
-	var fx: Node = get_node_or_null("/root/GameFX")
-	if fx and fx.has_method("music_stop"):
-		fx.call("music_stop", true)
 	get_tree().paused = true
 	cine_player = p
 	p.finished.connect(_on_cine_finished.bind(tl.slot), CONNECT_ONE_SHOT)
