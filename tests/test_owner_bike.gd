@@ -8,13 +8,17 @@
 # from a temp sfx folder (empty folder = the res:// wav fallbacks; a temp bike_exhaust / bike_horn = the owner loop and
 # melody); the horn melody: a tap plays, a second tap stops; pedestrians within 14 m cheer, beyond it or fleeing do not,
 # a late walker joins in, the dancers stop at once after an early stop and by themselves at the melody's end.
+# Fix round: the sfx folders live under OS.get_cache_dir() (never user://); the roam music ducks while the melody plays
+# and comes back after a tap-stop, the natural end (which also stops the player and never loops), parking mid-melody
+# (process disabled or park()) and the bike leaving the tree mid-melody; park() turns the strobe and headlight off for
+# good; the headlight is off while disabled at night; the haze follows the high beam's angle; the lamp materials survive a
+# ViceStyle classic -> vice -> classic round trip (GameFX.art_style_changed); BikeChase caps through start() / stop() and
+# a chase freed without stop() gives the profile back.
 # Counts physics frames (Engine.max_fps = 60).
 # Run:  godot --headless --path . --script tests/test_owner_bike.gd
 extends SceneTree
 
 const World: Script = preload("res://tests/support/mayhem_world.gd")
-const EMPTY_DIR: String = "user://__test_owner_bike_no_sfx__/"
-const TMP_DIR: String = "user://test_owner_bike_sfx/"
 const BRANDS: Array[String] = ["YAMAHA", "HONDA", "SIRIUS", "JUPITER", "EXCITER", "SUZUKI", "WAVE"]
 
 var fails: Array[String] = []
@@ -35,6 +39,9 @@ var fleer: Pedestrian
 var late: Pedestrian
 var peds: Array = []
 var late_t: int = -1
+var empty_dir: String = ""
+var tmp_dir: String = ""
+var md: Object
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -49,8 +56,19 @@ func _initialize() -> void:
 	Engine.max_fps = 60
 	print("--- TEST OWNER BIKE ---")
 	PlayerBike.clear_owner_sfx()
-	PlayerBike.sfx_dir = EMPTY_DIR
+	var cache: String = OS.get_cache_dir().replace("\\", "/").trim_suffix("/")
+	empty_dir = cache + "/fptu_test_owner_bike_no_sfx/"
+	tmp_dir = cache + "/fptu_test_owner_bike_sfx/"
+	PlayerBike.sfx_dir = empty_dir
 	physics_frame.connect(_on_physics)
+
+
+func _duck() -> float:
+	return float(md.get("duck_target")) if md else -1.0
+
+
+func _fx() -> Node:
+	return root.get_node_or_null("/root/GameFX")
 
 
 func _reset(b: PlayerBike, at: Vector3, speed: float = 0.0) -> void:
@@ -68,6 +86,8 @@ func _on_physics() -> void:
 		arena.set_meta("visual_preset", "dawn")   # like Stage 1 (RoadManager: dawn)
 		root.add_child(arena)
 		World.floor_box(arena, 600.0)
+		var fx: Node = _fx()
+		md = fx.get("music") if fx else null
 		bike = (load("res://scenes/PlayerBike.tscn") as PackedScene).instantiate() as PlayerBike
 		arena.add_child(bike)
 		_reset(bike, Vector3(0.0, -0.12, 200.0))
@@ -99,10 +119,12 @@ func _on_physics() -> void:
 		var red2: float = (bike.bike_parts["strobe_red_mat"] as StandardMaterial3D).emission_energy_multiplier
 		var blue2: float = (bike.bike_parts["strobe_blue_mat"] as StandardMaterial3D).emission_energy_multiplier
 		_check(bike.strobe_color == 0 and red2 == 0.0 and blue2 == 0.0 and not bike.strobe_glow.visible, "parked (process disabled): the strobe is off")
+		_check(not bike.headlight.visible and not bike.headlight_haze.visible, "parked at night: the headlight and the haze are off")
 	elif f == 79:
 		var red3: float = (bike.bike_parts["strobe_red_mat"] as StandardMaterial3D).emission_energy_multiplier
 		_check(bike.strobe_color == 0 and red3 == 0.0, "the strobe stays off while parked")
 		bike.process_mode = Node.PROCESS_MODE_INHERIT
+		_check(bike.headlight.visible and bike.headlight_haze.visible, "ridden again at night: the headlight and the haze are back")
 		bike.apply_speed_profile(PlayerBike.STAGE_PROFILE)
 		_reset(bike, Vector3(0.0, -0.12, 200.0))
 		Input.action_press("gas")
@@ -142,6 +164,10 @@ func _on_physics() -> void:
 		print("  wall test: closest origin z %.2f (wall face at 175.05)" % min_z)
 		_check(min_z < 177.0 and min_z > 175.0, "no tunnelling: the bike at 33.3 m/s stops at a 0.1 m wall")
 		_part_profiles()
+	elif f == 762:
+		_part_vice()
+	elif f == 763:
+		_part_vice_2()
 	elif f == 765:
 		_part_audio_setup()
 	elif f == 775:
@@ -162,7 +188,9 @@ func _on_physics() -> void:
 			late_t = f - 777
 	elif f == 815:
 		_check(late_t > 0 and late_t <= 32, "a pedestrian walking into the radius joins in within 0.5 s (%d frames)" % late_t)
+		_check(md != null and absf(_duck() - db_to_linear(PlayerBike.HORN_DUCK_DB)) < 0.001, "the roam music ducks by 8 dB while the melody plays")
 		bike2.horn_tap()
+		_check(md != null and _duck() >= 0.999, "a tap-stop brings the music back")
 		var stopped: bool = true
 		for p3: Pedestrian in near + [late]:
 			stopped = stopped and p3.state == Pedestrian.State.IDLE and p3.react_kind == ""
@@ -173,12 +201,35 @@ func _on_physics() -> void:
 	elif f == 834:
 		_check(bike2.horn_melody_playing() and (near[0] as Pedestrian).state == Pedestrian.State.REACT, "a new tap plays the melody from the start again")
 	elif f == 834 + 125 + 10:
-		_check(not bike2.horn_melody_playing(), "the melody ends by itself after its length")
+		_check(not bike2.horn_melody_playing() and not bike2.melody_player.playing, "the melody ends by itself after its length and the player stops")
+		_check(_duck() >= 0.999, "the music comes back after the melody's natural end")
+		_check((bike2.melody_stream as AudioStreamWAV).loop_mode == AudioStreamWAV.LOOP_DISABLED, "the horn melody never loops")
 	elif f == 834 + 125 + 75:
 		var resumed: bool = true
 		for p4: Pedestrian in near:
 			resumed = resumed and p4.state == Pedestrian.State.IDLE
 		_check(resumed, "the dancers resume after the melody ends")
+		bike2.horn_tap()
+	elif f == 834 + 125 + 77:
+		bike2.process_mode = Node.PROCESS_MODE_DISABLED
+		_check(not bike2.horn_melody_playing() and not bike2.melody_player.playing and _duck() >= 0.999, "parked (disabled) mid-melody: the melody stops and the music comes back")
+		bike2.process_mode = Node.PROCESS_MODE_INHERIT
+	elif f == 834 + 125 + 79:
+		bike2.set_time_of_day("night")
+		bike2.horn_tap()
+		_check(bike2.horn_melody_playing() and _duck() < 0.5, "the melody plays again")
+	elif f == 834 + 125 + 81:
+		bike2.park()
+		_check(bike2.parked and bike2.is_controls_locked and not bike2.horn_melody_playing() and not bike2.melody_player.playing and _duck() >= 0.999, "park() mid-melody (Stage 1 finish / Stage 2 parked): locked, the melody stops, the music comes back")
+	elif f == 834 + 125 + 100:
+		var red4: float = (bike2.bike_parts["strobe_red_mat"] as StandardMaterial3D).emission_energy_multiplier
+		var blue4: float = (bike2.bike_parts["strobe_blue_mat"] as StandardMaterial3D).emission_energy_multiplier
+		_check(bike2.strobe_color == 0 and red4 == 0.0 and blue4 == 0.0 and not bike2.headlight.visible, "a parked (locked, still processing) bike keeps its strobe and headlight off")
+		bike.horn_tap()
+		_check(bike.horn_melody_playing() and _duck() < 0.5, "another bike's melody ducks the music")
+		bike.queue_free()
+	elif f == 834 + 125 + 103:
+		_check(_duck() >= 0.999, "the bike leaving the tree mid-melody brings the music back")
 		_finish()
 
 
@@ -220,8 +271,10 @@ func _part_static() -> void:
 	bike.toggle_high_beam()
 	var dir2: Vector3 = (bike.global_transform.basis.inverse() * -h.global_transform.basis.z).normalized()
 	_check(bike.high_beam and is_equal_approx(h.spot_range, 70.0) and is_equal_approx(h.spot_angle, 20.0) and is_equal_approx(h.light_energy, 5.0) and dir2.z < -0.95 and lens.emission_energy_multiplier > lens_low, "toggle: high beam 70 m, 20 degrees, energy 5, still forward, brighter lens")
+	var k_high: float = bike.headlight_haze.transform.basis.x.length()
+	_check(absf(k_high - tan(deg_to_rad(20.0)) / tan(deg_to_rad(30.0))) < 0.01 and bike.headlight_haze.transform.origin.is_equal_approx(h.transform.origin), "the haze narrows with the high beam (%.2f) and follows the lamp" % k_high)
 	bike.toggle_high_beam()
-	_check(not bike.high_beam and is_equal_approx(h.spot_range, 40.0), "toggle again: back to the low beam")
+	_check(not bike.high_beam and is_equal_approx(h.spot_range, 40.0) and absf(bike.headlight_haze.transform.basis.x.length() - 1.0) < 0.01, "toggle again: back to the low beam and its haze")
 	# time of day
 	_check(bike.lights_preset == "dawn" and h.visible, "without a call the bike reads the scene's preset (Stage 1 dawn: beam on)")
 	var tod_ok: bool = true
@@ -263,16 +316,64 @@ func _part_profiles() -> void:
 	fr.call("_build_bike")
 	var rb: PlayerBike = fr.get("bike") as PlayerBike
 	_check(rb != null and is_equal_approx(rb.max_speed_ms, 33.3) and is_equal_approx(rb.slipstream_max_ms, 36.1), "FreeRoam's bike (free roam, story roam) uses the owner profile")
-	_check(rb != null and rb.strobe_color == 0, "FreeRoam's parked bike has its strobe off")
+	_check(rb != null and rb.strobe_color == 0 and not rb.headlight.visible, "FreeRoam's parked bike has its strobe and headlight off")
 	fr.free()
-	# the Phase C chase caps the player while it runs and gives the profile back
-	var ch := BikeChase.new()
-	ch.bike = bike
-	ch.call("_set_hooks", true)
-	var capped: bool = is_equal_approx(bike.max_speed_ms, 22.5) and is_equal_approx(bike.slipstream_max_ms, 27.0)
-	ch.call("_set_hooks", false)
-	_check(capped and is_equal_approx(bike.max_speed_ms, 33.3) and is_equal_approx(bike.air_drag, 0.0105), "BikeChase caps the bike at the stage profile while it runs and restores the owner profile")
+	# the Phase C chase caps the player while it runs and gives the profile back (start / stop, then freed mid-chase)
+	var ch: BikeChase = _chase()
+	ch.start()
+	var capped: bool = ch.state == "running" and is_equal_approx(bike.max_speed_ms, 22.5) and is_equal_approx(bike.slipstream_max_ms, 27.0) and is_equal_approx(bike.air_drag, 0.015)
+	ch.stop()
+	_check(capped and is_equal_approx(bike.max_speed_ms, 33.3) and is_equal_approx(bike.air_drag, 0.0105), "BikeChase.start() caps the bike at the stage profile, stop() restores the owner profile")
 	ch.free()
+	var ch2: BikeChase = _chase()
+	ch2.start()
+	var capped2: bool = is_equal_approx(bike.max_speed_ms, 22.5)
+	ch2.free()
+	_check(capped2 and is_equal_approx(bike.max_speed_ms, 33.3) and is_equal_approx(bike.slipstream_max_ms, 36.1), "a chase freed mid-run (no stop()) gives the owner profile back")
+	_reset(bike, Vector3(0.0, -0.12, 200.0))
+
+
+func _chase() -> BikeChase:
+	var c := BikeChase.new()
+	arena.add_child(c)
+	c.setup({"bike": bike, "route": [Vector2(0.0, 150.0), Vector2(0.0, -250.0)], "start_s": 10.0, "manual_replay": true, "hud": false, "seed": 3})
+	c.add_wave([{"lane": 1, "opts": {"ai": false, "label": "T0"}}])
+	return c
+
+
+## ViceStyle classic -> vice -> classic around the bike while braking with the red strip lit, parked before the second
+## classic pass (the reviewer's probe): GameFX.art_style_changed makes the bike re-tag and rewrite its lamps.
+func _part_vice() -> void:
+	var fx: Node = _fx()
+	_check(fx != null and fx.has_signal("art_style_changed"), "GameFX is there with art_style_changed")
+	var red: StandardMaterial3D = bike.bike_parts["strobe_red_mat"]
+	var tail: StandardMaterial3D = bike.bike_parts["tail_mat"]
+	ViceStyle._ever_stylized = true
+	ViceStyle.unstylize_materials(arena)
+	if fx:
+		fx.emit_signal("art_style_changed", "classic")
+	_check(red.has_meta("vice_done") and tail.has_meta("vice_done"), "after a classic pass the lamps are tagged again")
+	bike.braking = true
+	bike._update_tail()
+	bike._apply_strobe(1)
+	ViceStyle.unstylize_materials(arena)              # a time-of-day pass in classic strips the tags again
+	ViceStyle.stylize_materials(arena)                # then the switch to vice
+	if fx:
+		fx.emit_signal("art_style_changed", "vice")
+	_check(red.has_meta("vice_done") and not red.has_meta("vice_orig") and not tail.has_meta("vice_orig") and is_equal_approx(tail.roughness, OwnerBikeBuilder.LAMP_ROUGHNESS) and tail.specular_mode == BaseMaterial3D.SPECULAR_SCHLICK_GGX, "after a vice pass the lamps keep their look and no energy snapshot")
+	bike.braking = false
+	bike._update_tail()
+	bike.process_mode = Node.PROCESS_MODE_DISABLED
+	ViceStyle.unstylize_materials(arena)
+	if fx:
+		fx.emit_signal("art_style_changed", "classic")
+	_check(bike.strobe_color == 0 and red.emission_energy_multiplier == 0.0 and is_equal_approx(tail.emission_energy_multiplier, PlayerBike.TAIL_ENERGY), "back to classic while parked: strobe off, tail normal (no stale energy)")
+
+
+func _part_vice_2() -> void:
+	var red: StandardMaterial3D = bike.bike_parts["strobe_red_mat"]
+	_check(red.emission_energy_multiplier == 0.0, "the strobe stays off on the parked bike after the round trip")
+	bike.process_mode = Node.PROCESS_MODE_INHERIT
 
 
 func _part_audio_setup() -> void:
@@ -282,9 +383,9 @@ func _part_audio_setup() -> void:
 	bike.horn_tap()
 	_check(bike.horn_player.playing and not bike.horn_melody_playing(), "fallback: the horn key plays the short wav horn")
 	# owner files in a temp folder (never the owner's real user://sfx)
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(TMP_DIR))
-	_check(_silent_wav(2.0).save_to_wav(TMP_DIR + "bike_horn.wav") == OK and _silent_wav(0.5).save_to_wav(TMP_DIR + "bike_exhaust.wav") == OK, "temp owner files written")
-	PlayerBike.sfx_dir = TMP_DIR
+	DirAccess.make_dir_recursive_absolute(tmp_dir)
+	_check(_silent_wav(2.0).save_to_wav(tmp_dir + "bike_horn.wav") == OK and _silent_wav(0.5).save_to_wav(tmp_dir + "bike_exhaust.wav") == OK, "temp owner files written (OS cache folder, not user://)")
+	PlayerBike.sfx_dir = tmp_dir
 	bike2 = (load("res://scenes/PlayerBike.tscn") as PackedScene).instantiate() as PlayerBike
 	arena.add_child(bike2)
 	_reset(bike2, Vector3(80.0, -0.12, 0.0))
@@ -305,7 +406,7 @@ func _part_audio_setup() -> void:
 
 func _part_audio_owner() -> void:
 	fleer.flee_from(bike2.global_position + Vector3(-1.0, 0.0, 0.0), 30.0)
-	_check(PlayerBike.owner_file(PlayerBike.SFX_HORN) == TMP_DIR + "bike_horn.wav", "the owner file is looked up in the settable sfx folder")
+	_check(PlayerBike.owner_file(PlayerBike.SFX_HORN) == tmp_dir + "bike_horn.wav", "the owner file is looked up in the settable sfx folder")
 	_check(bike2.owner_exhaust and bike2.engine_player.stream is AudioStreamWAV and (bike2.engine_player.stream as AudioStreamWAV).loop_mode == AudioStreamWAV.LOOP_FORWARD, "the owner exhaust (loaded on a worker thread) replaces the engine loop and loops")
 	_check(bike2.melody_stream != null and absf(bike2.melody_stream.get_length() - 2.0) < 0.05, "the owner horn melody is loaded")
 	_check(is_equal_approx(PlayerBike.exhaust_pitch(0.0, 0.0), 0.62) and is_equal_approx(PlayerBike.exhaust_pitch(0.7, 0.0), 1.0) and is_equal_approx(PlayerBike.exhaust_pitch(1.0, 0.0), 1.18) and is_equal_approx(PlayerBike.exhaust_pitch(0.0, 1.0), 0.68), "exhaust pitch curve 0.62 / 1.0 at 70 % / 1.18 at top / +0.06 throttle")
@@ -326,10 +427,11 @@ func _silent_wav(secs: float) -> AudioStreamWAV:
 
 
 func _finish() -> void:
+	arena.free()   # the bikes' players stop and go before quitting (no ObjectDB leak at exit)
 	PlayerBike.clear_owner_sfx()
 	for n: String in ["bike_horn.wav", "bike_exhaust.wav"]:
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP_DIR + n))
-	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP_DIR))
+		DirAccess.remove_absolute(tmp_dir + n)
+	DirAccess.remove_absolute(tmp_dir)
 	PlayerBike.sfx_dir = "user://sfx/"
 	if fails.is_empty():
 		print("✅ SUCCESS: OWNER BIKE")

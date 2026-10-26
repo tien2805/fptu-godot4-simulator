@@ -104,3 +104,5 @@ Màn 4 vẫn giữ tiếng trống gõ theo nhịp để chơi được. Bài nh
 ## Đã có, không cần tải lại
 
 39 bài cho các đoạn phim, replay và cảnh đánh lớn: Ngày 0, các cảnh cuối ngày, các kết, Deja Vu, Tokyo Drift… Danh sách đầy đủ ở `docs/cinematics/music_suggestions.md`.
+
+Âm thanh xe của bạn cũng đã có: `user://sfx/bike_exhaust.ogg` (tiếng pô, đoạn lặp 6,2 giây) và `user://sfx/bike_horn.ogg` (còi nhạc 19,2 giây).
