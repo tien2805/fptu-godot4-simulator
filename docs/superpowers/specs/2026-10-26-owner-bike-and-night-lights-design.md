@@ -48,7 +48,7 @@ The photo is kept outside the repo; agents get its description from this spec.
 - **Free roam and story roam** (set by `FreeRoam` on its bike):
   - `max_speed_ms` 33.3 (120 km/h);
   - slipstream max 36.1 (130 km/h);
-  - `engine_accel` raised so 0 to 100 km/h takes about 5 s.
+  - `engine_accel` 15 with `air_drag` 0.0105: about 2.4 s to 100 km/h and 3.5 s to 120 km/h. The old bike already reached 81 km/h in about 2.2 s, and the owner wants a fast bike, so the new one is never slower off the line.
 - **Stage 1 race and Stage 2 parking** keep their current values. Stage 1 is tuned to its 90 s clock.
 - **Traffic:** unchanged.
 - **Camera and controls:** the camera FOV and shake scale with the new max. Steering stays controllable at 120 km/h.

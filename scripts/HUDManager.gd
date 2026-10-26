@@ -468,6 +468,8 @@ func _trigger_absent_screen() -> void:
 	is_game_ended = true
 	if player_bike:
 		player_bike.set("is_controls_locked", true)
+		if player_bike.has_method("park"):
+			player_bike.call("park")   # strobe / headlight off, horn melody stopped (owner-bike fix round)
 	StageManager.report_stage_result(StageManager.StageID.STAGE_1_RACE, {"result": "fail", "score": 0, "rank": "C", "detail": "absent"})
 
 	absent_title.text = "BẠN ĐÃ BỊ ĐÁNH ABSENT!\nHẸN GẶP LẠI Ở KỲ RETAKE (HỌC LẠI)!\n\nSát nút %d · Drift boost %d · Va chạm %d · Phạt %.1fs" % [near_miss_count, drift_boosts, crashes, penalty_total]
@@ -489,6 +491,8 @@ func _on_destination_reached() -> void:
 	is_game_ended = true
 	if player_bike:
 		player_bike.set("is_controls_locked", true)
+		if player_bike.has_method("park"):
+			player_bike.call("park")   # strobe / headlight off, horn melody stopped (owner-bike fix round)
 	if story_rec and is_instance_valid(story_rec):
 		await _story_replay()
 

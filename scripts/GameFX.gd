@@ -452,6 +452,21 @@ func music_stop(fade: bool = true) -> void:
 	if music:
 		music.stop(fade)
 
+## Quitting: the owner bike sounds cached by PlayerBike (static) are released after any pending load (no ObjectDB leak).
+## The script is loaded by path only when it was used, so GameFX never depends on PlayerBike at compile time.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_EXIT_TREE:
+		_release_owner_bike_sfx()
+
+
+func _release_owner_bike_sfx() -> void:
+	const BIKE_SCRIPT: String = "res://scripts/PlayerBike.gd"
+	if ResourceLoader.has_cached(BIKE_SCRIPT):
+		var s: Script = load(BIKE_SCRIPT)
+		if s:
+			s.call("clear_owner_sfx")
+
+
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_audio_buses()

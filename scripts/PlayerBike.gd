@@ -1,6 +1,12 @@
 # File: res://scripts/PlayerBike.gd
 # Xe máy sinh viên FPTU: vật lý arcade, DRIFT [SPACE], lùi xe [S khi dừng], núp gió F-Bus,
 # near-miss (lách sát xe khác), kẹp ranh giới làn đường, âm thanh động cơ/gió/lết bánh.
+# Owner's bike (spec owner-bike OB-D1..D5): the model is OwnerBikeBuilder (silver / black underbone); speed profiles
+# STAGE_PROFILE (Stage 1, Stage 2, the bike chase) and OWNER_PROFILE (FreeRoam: 120 km/h) via apply_speed_profile();
+# lights: a forward headlight (low / high beam on [L], on only at DARK_PRESETS via set_time_of_day, haze at night), tail
+# brighter while braking, the red / blue strobe bar (strobe_state, off while parked = NOTIFICATION_DISABLED); owner sounds
+# sfx_dir/bike_exhaust (engine loop) and sfx_dir/bike_horn (horn_tap: melody on / off, ducks the music, pedestrians within
+# HORN_RADIUS cheer through horn_targets_fn), loaded once on WorkerThreadPool tasks, fallback to the res:// wavs.
 class_name PlayerBike
 extends CharacterBody3D
 
@@ -14,6 +20,37 @@ signal drift_boost(duration: float)
 signal drift_state_changed(is_drifting: bool)
 
 @export var road_path: Path3D
+
+## Speed profiles (OB-D2). STAGE = the exports' defaults (Stage 1 is tuned to its 90 s clock; Stage 2 and the bike chase
+## use it too). OWNER = free roam and story roam: 120 km/h, 130 in a slipstream. The quadratic drag already took the old
+## bike to 81 km/h in ~2.2 s, so the owner profile lowers the drag a little and raises the thrust: never slower off the
+## line than before, ~2.4 s to 100 km/h, ~3.5 s to 120 km/h.
+const STAGE_PROFILE: Dictionary = {"max_speed_ms": 22.5, "slipstream_max_ms": 27.0, "engine_accel": 13.5, "air_drag": 0.015}
+const OWNER_PROFILE: Dictionary = {"max_speed_ms": 33.3, "slipstream_max_ms": 36.1, "engine_accel": 15.0, "air_drag": 0.0105}
+## Lights (OB-D5): the real headlight only at these presets; the haze cone only at night.
+const DARK_PRESETS: Array[String] = ["night", "sunset", "dawn"]
+const LOW_BEAM: Dictionary = {"range": 40.0, "angle": 30.0, "energy": 3.0, "tilt": -5.0, "lens": 2.6}
+const HIGH_BEAM: Dictionary = {"range": 70.0, "angle": 20.0, "energy": 5.0, "tilt": -2.0, "lens": 3.6}
+const BEAM_EDGE: float = 2.2
+const STROBE_CYCLE: float = 1.2           # 3 quick red flashes, then 3 quick blue ones
+const STROBE_ON_ENERGY: float = 6.0
+const STROBE_RED: Color = Color(1.0, 0.12, 0.1)
+const STROBE_BLUE: Color = Color(0.18, 0.38, 1.0)
+const TAIL_ENERGY: float = 1.4
+const BRAKE_ENERGY: float = 4.5
+## Owner sounds (OB-D3, OB-D4): sfx_dir/<name>.ogg | .mp3 | .wav, local only, never committed.
+const SFX_EXHAUST: String = "bike_exhaust"
+const SFX_HORN: String = "bike_horn"
+const HORN_RADIUS: float = 14.0
+const HORN_SCAN_S: float = 0.5
+const HORN_FADE_S: float = 0.15
+const HORN_DUCK_DB: float = -8.0
+const MELODY_DB: float = 0.0
+
+## The owner's sound folder (tests point it at an empty temp folder).
+static var sfx_dir: String = "user://sfx/"
+static var _owner_cache: Dictionary = {}   # file path -> AudioStream (null = failed to load)
+static var _owner_tasks: Dictionary = {}   # file path -> {"task": int, "box": [AudioStream]}
 
 @export_group("Bike Physics")
 @export var max_speed_ms: float = 22.5        # ~81 km/h bình thường (lái sạch 1.9km vừa kịp 90s)
@@ -79,6 +116,34 @@ var boost_player: AudioStreamPlayer
 
 var smoke_particles: CPUParticles3D
 
+# Owner's bike: model parts, lights, owner sounds, horn melody (OB-D1..D5)
+var bike_parts: Dictionary = {}           # OwnerBikeBuilder.build() result
+var headlight: SpotLight3D
+var headlight_haze: Node3D
+var strobe_glow: OmniLight3D
+var high_beam: bool = false
+var lights_preset: String = ""
+var lights_dark: bool = false
+var strobe_t: float = 0.0
+var strobe_color: int = 0                 # 0 off, 1 red, 2 blue
+var braking: bool = false
+var _tail_lit: bool = false
+var _tod_set: bool = false
+var owner_exhaust: bool = false           # the engine plays the owner's loop
+var melody_stream: AudioStream            # the owner's horn melody (null = the short wav horn)
+var melody_player: AudioStreamPlayer3D
+var melody_left: float = 0.0              # seconds of melody left (counted here, not by the audio driver)
+## -> Array of nodes; the Pedestrians among them within HORN_RADIUS cheer while the melody plays (FreeRoam sets it).
+var horn_targets_fn: Callable
+var horn_cheers: int = 0
+var _dancers: Array = []
+var _scan_t: float = 0.0
+var _owner_pending: bool = false
+var _ducked: bool = false
+var _fade_tw: Tween
+## Stage 1 finish / Stage 2 parking (park()): locked for good, strobe off, headlight off, melody stopped.
+var parked: bool = false
+
 @onready var visual_pivot: Node3D = $VisualPivot
 @onready var front_wheel: Node3D = $VisualPivot/FrontWheel
 @onready var rear_wheel: Node3D = $VisualPivot/RearWheel
@@ -98,7 +163,10 @@ func _ready() -> void:
 	var fx_node: Node = get_node_or_null("/root/GameFX")
 	if fx_node:
 		fx_node.route_audio_to_bus(self, "SFX")
+		if fx_node.has_signal("art_style_changed"):
+			fx_node.connect("art_style_changed", _on_art_style_changed)
 	_setup_drift_smoke()
+	_auto_time_of_day.call_deferred()
 	slipstream_ray.target_position = Vector3(0.0, 0.0, -8.5) # Quét cự ly 8.5m phía trước
 	slipstream_ray.enabled = true
 	floor_snap_length = 0.45 # Chống bay lơ lửng hoặc xuyên dốc Cầu Trau Trảu
@@ -117,7 +185,8 @@ func _ensure_input_map() -> void:
 		"steer_left": [KEY_A, KEY_LEFT],
 		"steer_right": [KEY_D, KEY_RIGHT],
 		"drift": [KEY_SPACE],
-		"horn": [KEY_H, KEY_B]
+		"horn": [KEY_H, KEY_B],
+		"high_beam": [KEY_L]
 	}
 	for action: String in bindings.keys():
 		if not InputMap.has_action(action):
@@ -131,25 +200,37 @@ func _ensure_input_map() -> void:
 func _setup_audio_system() -> void:
 	# 1. Tiếng bô xe máy 4 thì Honda Wave (AudioStreamPlayer3D định hướng theo vị trí xe)
 	engine_player = AudioStreamPlayer3D.new()
+	engine_player.name = "Engine"
+	engine_player.unit_size = 8.0
+	engine_player.max_distance = 65.0
+	engine_player.volume_db = -4.0
+	engine_player.pitch_scale = 0.85
+	add_child(engine_player)
 	var engine_stream := _load_wav_stream("res://assets/audio/bike_engine_loop.wav", true)
 	if engine_stream:
 		engine_player.stream = engine_stream
-		engine_player.unit_size = 8.0
-		engine_player.max_distance = 65.0
-		engine_player.volume_db = -4.0
-		engine_player.pitch_scale = 0.85
-		add_child(engine_player)
 		engine_player.play()
 
-	# 2. Còi xe máy đĩa đôi bim bim
+	# 2. Còi xe máy đĩa đôi bim bim (+ còi nhạc của chủ game: melody_player)
 	horn_player = AudioStreamPlayer3D.new()
+	horn_player.name = "Horn"
+	horn_player.unit_size = 12.0
+	horn_player.max_distance = 80.0
+	horn_player.volume_db = 2.0
+	add_child(horn_player)
 	var horn_stream := _load_wav_stream("res://assets/audio/bike_horn.wav", false)
 	if horn_stream:
 		horn_player.stream = horn_stream
-		horn_player.unit_size = 12.0
-		horn_player.max_distance = 80.0
-		horn_player.volume_db = 2.0
-		add_child(horn_player)
+	melody_player = AudioStreamPlayer3D.new()
+	melody_player.name = "HornMelody"
+	melody_player.unit_size = 14.0
+	melody_player.max_distance = 90.0
+	melody_player.volume_db = MELODY_DB
+	add_child(melody_player)
+	# owner files (OB-D3, OB-D4): loaded on worker threads, adopted by _poll_owner_sfx()
+	warm_owner_sfx()
+	_owner_pending = true
+	_poll_owner_sfx()
 
 	# 3. Tiếng gió rít khi chạy tốc độ cao
 	wind_player = AudioStreamPlayer.new()
@@ -294,18 +375,11 @@ func _setup_drift_smoke() -> void:
 	visual_pivot.add_child(smoke_particles)
 
 func _build_procedural_bike_and_seated_rider() -> void:
-	# 1–3. XE TAY GA CHI TIẾT (PropBuilder): lắp vào các pivot của scene để bánh quay & ghi-đông bẻ lái như cũ
+	# 1–3. XE CỦA CHỦ GAME (OwnerBikeBuilder, OB-D1): lắp vào các pivot của scene để bánh quay & ghi-đông bẻ lái như cũ
 	front_wheel.set("mesh", null)
 	rear_wheel.set("mesh", null)
-	PropBuilder.build_scooter_parts(visual_pivot, front_wheel, rear_wheel, handlebar_pivot, Color("#2C3E50"), {"headlight_energy": 2.2})
-	var spot := SpotLight3D.new()
-	spot.light_color = Color("#FFF9C4")
-	spot.light_energy = 2.4
-	spot.spot_range = 28.0
-	spot.spot_angle = 35.0
-	spot.position = Vector3(0.0, 0.9, -0.7)
-	spot.rotation_degrees = Vector3(-8.0, 180.0, 0.0)
-	visual_pivot.add_child(spot)
+	bike_parts = OwnerBikeBuilder.build(visual_pivot, front_wheel, rear_wheel, handlebar_pivot)
+	_build_lights()
 
 	# 4. SINH VIÊN FPTU NGỒI LÁI XE – CharacterBuilder (mặt, tóc, áo polo FPT, ba lô, mũ bảo hiểm, tay ôm ghi-đông)
 	#    Gốc nhân vật đặt tại yên: hông ở 0.62 m trên gốc khi ở clip "ride"; yên xe cao 0.85 m → gốc y = 0.23.
@@ -323,10 +397,454 @@ func _build_procedural_bike_and_seated_rider() -> void:
 	CharacterBuilder.set_param(rider_node, "ride_lean", 0.4)
 
 # ---------------------------------------------------------------------------
+# ĐÈN XE (OB-D5): đèn pha chiếu tới (-Z), cos / pha [L], đèn hậu + phanh, đèn nháy xanh đỏ
+# ---------------------------------------------------------------------------
+func _build_lights() -> void:
+	headlight = SpotLight3D.new()
+	headlight.name = "Headlight"
+	headlight.light_color = Color("#FFF4D8")
+	headlight.spot_angle_attenuation = BEAM_EDGE
+	headlight.spot_attenuation = 1.2
+	headlight.shadow_enabled = false
+	headlight.position = bike_parts.get("headlamp_pos", Vector3(0.0, 0.0, -0.2))
+	handlebar_pivot.add_child(headlight)   # steers with the handlebar cowl
+	_apply_beam()
+	# night haze: the CineFX headlight cones (without the dust motes), shown only at night
+	CineFX._build_haze(handlebar_pivot, headlight)
+	headlight_haze = handlebar_pivot.get_node_or_null("HeadlightHaze") as Node3D
+	if headlight_haze:
+		var dust: Node = headlight_haze.get_node_or_null("HeadlightDust")
+		if dust:
+			dust.free()
+	strobe_glow = OmniLight3D.new()
+	strobe_glow.name = "StrobeGlow"
+	strobe_glow.omni_range = 4.0
+	strobe_glow.light_energy = 0.9
+	strobe_glow.shadow_enabled = false
+	strobe_glow.position = (bike_parts.get("strobe_pos", Vector3(0.0, 0.66, 0.93)) as Vector3) + Vector3(0.0, -0.15, 0.15)
+	visual_pivot.add_child(strobe_glow)
+	_apply_lights_visibility()
+	_apply_strobe(0, true)
+	_update_tail(true)
+
+
+func _apply_beam() -> void:
+	var b: Dictionary = HIGH_BEAM if high_beam else LOW_BEAM
+	if headlight:
+		headlight.spot_range = float(b["range"])
+		headlight.spot_angle = float(b["angle"])
+		headlight.light_energy = float(b["energy"])
+		headlight.rotation_degrees = Vector3(float(b["tilt"]), 0.0, 0.0)
+		if headlight_haze:
+			# the haze cones were built for the low beam's angle: follow the beam's tilt and narrow with its angle
+			var k: float = tan(deg_to_rad(float(b["angle"]))) / tan(deg_to_rad(float(LOW_BEAM["angle"])))
+			headlight_haze.transform = headlight.transform.scaled_local(Vector3(k, k, 1.0))
+	var lens: StandardMaterial3D = bike_parts.get("headlamp_mat") as StandardMaterial3D
+	if lens:
+		lens.emission_energy_multiplier = float(b["lens"])
+
+
+## The lamp materials must never be restyled: ViceStyle's classic pass strips their "vice_done" tag, a later vice pass
+## then restyles them and snapshots their energy at that moment (the next classic pass would bring a stale strobe or
+## brake energy back). After every style change (GameFX.art_style_changed) and every time-of-day change: tag them again,
+## drop the snapshot, put the lamp look back and rewrite every energy from the bike's state.
+func refresh_lamp_materials() -> void:
+	for key: String in ["headlamp_mat", "tail_mat", "pos_lamp_mat", "strobe_red_mat", "strobe_blue_mat"]:
+		var m: StandardMaterial3D = bike_parts.get(key) as StandardMaterial3D
+		if m == null:
+			continue
+		for tag: StringName in [&"vice_orig", &"vice_soft_emitter", &"vice_window"]:
+			if m.has_meta(tag):
+				m.remove_meta(tag)
+		m.set_meta("vice_done", true)
+		m.roughness = OwnerBikeBuilder.LAMP_ROUGHNESS
+		m.metallic = OwnerBikeBuilder.LAMP_METALLIC
+		m.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+		m.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+		m.normal_enabled = false
+		m.next_pass = null
+		m.emission_enabled = true
+	var pos: StandardMaterial3D = bike_parts.get("pos_lamp_mat") as StandardMaterial3D
+	if pos:
+		pos.emission_energy_multiplier = OwnerBikeBuilder.POS_LAMP_ENERGY
+	_apply_beam()
+	_apply_strobe(strobe_color, true)
+	_update_tail(true)
+
+
+func _on_art_style_changed(_style: String) -> void:
+	refresh_lamp_materials()
+
+
+## Stage 1 finish, Stage 2 parked: the bike stays where it is for good (locked, never disabled). Strobe and headlight
+## off, tail back to normal, the horn melody stops at once (the music comes back up).
+func park() -> void:
+	parked = true
+	is_controls_locked = true
+	_park_lights_and_horn()
+
+
+func _park_lights_and_horn() -> void:
+	braking = false
+	if not bike_parts.is_empty():
+		_apply_strobe(0, true)
+		_update_tail(true)
+	stop_horn_melody(false)
+	_apply_lights_visibility()
+
+
+## [L]: low beam <-> high beam.
+func toggle_high_beam() -> void:
+	high_beam = not high_beam
+	_apply_beam()
+
+
+## The world's time of day (FreeRoam.set_time_of_day; Stage 1 / Stage 2 read the scene's preset once): the headlight is on
+## at DARK_PRESETS, the haze only at night. The lens, tail and strobe meshes glow whatever the time.
+func set_time_of_day(preset: String) -> void:
+	_tod_set = true
+	lights_preset = preset
+	lights_dark = preset in DARK_PRESETS
+	refresh_lamp_materials()   # the time-of-day pass may have run ViceStyle over the scene
+	_apply_lights_visibility()
+
+
+func _auto_time_of_day() -> void:
+	if _tod_set or not is_inside_tree():
+		return
+	var n: Node = get_parent()
+	while n != null:
+		if n.has_meta("visual_preset"):
+			set_time_of_day(String(n.get_meta("visual_preset")))
+			return
+		n = n.get_parent()
+
+
+## The headlight and the haze shine only at dark presets while the bike is ridden (not parked, not disabled).
+func headlight_on() -> bool:
+	return lights_dark and not parked and (not is_inside_tree() or can_process())
+
+
+func _apply_lights_visibility() -> void:
+	var on: bool = headlight_on()
+	if headlight:
+		headlight.visible = on
+	if headlight_haze:
+		headlight_haze.visible = on and lights_preset == "night"
+	if strobe_glow:
+		strobe_glow.visible = lights_dark and strobe_color != 0
+
+
+## Strobe colour at time t of the cycle: 0 off, 1 red, 2 blue (3 flashes of 0.1 s every 0.2 s per colour, 1.2 s cycle).
+static func strobe_state(t: float) -> int:
+	var ph: float = fposmod(t, STROBE_CYCLE)
+	var half: float = STROBE_CYCLE * 0.5
+	var slot: float = fposmod(ph, half) / (half / 3.0)
+	if slot - floorf(slot) >= 0.5:
+		return 0
+	return 1 if ph < half else 2
+
+
+func _apply_strobe(c: int, force: bool = false) -> void:
+	if c == strobe_color and not force:
+		return
+	strobe_color = c
+	var red: StandardMaterial3D = bike_parts.get("strobe_red_mat") as StandardMaterial3D
+	var blue: StandardMaterial3D = bike_parts.get("strobe_blue_mat") as StandardMaterial3D
+	if red:
+		red.emission_energy_multiplier = STROBE_ON_ENERGY if c == 1 else 0.0
+	if blue:
+		blue.emission_energy_multiplier = STROBE_ON_ENERGY if c == 2 else 0.0
+	if strobe_glow:
+		strobe_glow.visible = lights_dark and c != 0
+		if c != 0:
+			strobe_glow.light_color = STROBE_RED if c == 1 else STROBE_BLUE
+
+
+func _update_tail(force: bool = false) -> void:
+	if braking == _tail_lit and not force:
+		return
+	_tail_lit = braking
+	var tail: StandardMaterial3D = bike_parts.get("tail_mat") as StandardMaterial3D
+	if tail:
+		tail.emission_energy_multiplier = BRAKE_ENERGY if braking else TAIL_ENERGY
+
+
+## Current tail light energy (tests).
+func tail_energy() -> float:
+	var tail: StandardMaterial3D = bike_parts.get("tail_mat") as StandardMaterial3D
+	return tail.emission_energy_multiplier if tail else 0.0
+
+
+## Strobe, tail, owner sounds and the horn melody: every physics frame the bike runs (also while locked).
+func _tick_extras(delta: float) -> void:
+	if _owner_pending:
+		_poll_owner_sfx()
+	strobe_t = fposmod(strobe_t + delta, STROBE_CYCLE)
+	_apply_strobe(0 if parked else strobe_state(strobe_t))
+	_update_tail()
+	_tick_horn(delta)
+
+
+## Parked (FreeRoam disables the bike): strobe and headlight off, tail back to normal, the melody stops at once.
+## Enabled again (mounted): the headlight follows the time of day again.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_DISABLED:
+		_park_lights_and_horn()
+	elif what == NOTIFICATION_ENABLED:
+		_apply_lights_visibility()
+
+
+func _exit_tree() -> void:
+	if _ducked:
+		_duck_music(false)
+
+
+# ---------------------------------------------------------------------------
+# TỐC ĐỘ (OB-D2)
+# ---------------------------------------------------------------------------
+func apply_speed_profile(p: Dictionary) -> void:
+	for k: String in p.keys():
+		set(k, float(p[k]))
+
+
+func speed_profile() -> Dictionary:
+	return {"max_speed_ms": max_speed_ms, "slipstream_max_ms": slipstream_max_ms, "engine_accel": engine_accel, "air_drag": air_drag}
+
+
+# ---------------------------------------------------------------------------
+# ÂM THANH CỦA CHỦ GAME (OB-D3, OB-D4): pô + còi nhạc, nạp một lần trên WorkerThreadPool
+# ---------------------------------------------------------------------------
+## The owner's file for name: sfx_dir/<name>.ogg, .mp3 or .wav ("" when there is none).
+static func owner_file(name: String) -> String:
+	for ext: String in [".ogg", ".mp3", ".wav"]:
+		var p: String = sfx_dir + name + ext
+		if FileAccess.file_exists(p):
+			return p
+	return ""
+
+
+## Starts one WorkerThreadPool task per owner file (exhaust, horn) that is neither cached nor loading. Returns the count.
+static func warm_owner_sfx() -> int:
+	var n: int = 0
+	for name: String in [SFX_EXHAUST, SFX_HORN]:
+		var p: String = owner_file(name)
+		if p == "" or _owner_cache.has(p) or _owner_tasks.has(p):
+			continue
+		var box: Array = [null]
+		_owner_tasks[p] = {"task": WorkerThreadPool.add_task(_owner_job(box, p)), "box": box}
+		n += 1
+	return n
+
+
+static func _owner_job(box: Array, p: String) -> Callable:
+	return func() -> void: box[0] = AudioStreamWAV.load_from_file(p) if p.ends_with(".wav") else CineAudio._load_file(p)
+
+
+## 0 = no owner file, 1 = loading, 2 = ready (or failed to load: then owner_sfx() returns null).
+static func owner_sfx_state(name: String) -> int:
+	var p: String = owner_file(name)
+	if p == "":
+		return 0
+	_adopt_owner(p, false)
+	if _owner_cache.has(p):
+		return 2
+	return 1 if _owner_tasks.has(p) else 0
+
+
+## The owner's stream for name (the exhaust loops), or null (no file, still loading without `wait`, or unreadable).
+static func owner_sfx(name: String, wait: bool) -> AudioStream:
+	var p: String = owner_file(name)
+	if p == "":
+		return null
+	if not _owner_cache.has(p) and not _owner_tasks.has(p):
+		warm_owner_sfx()
+	_adopt_owner(p, wait)
+	return _owner_cache.get(p) as AudioStream
+
+
+static func _adopt_owner(p: String, wait: bool) -> void:
+	if not _owner_tasks.has(p):
+		return
+	var t: Dictionary = _owner_tasks[p]
+	if not wait and not WorkerThreadPool.is_task_completed(int(t["task"])):
+		return
+	WorkerThreadPool.wait_for_task_completion(int(t["task"]))
+	_owner_tasks.erase(p)
+	var st: AudioStream = (t["box"] as Array)[0]
+	if st and p.get_file().get_basename() == SFX_EXHAUST:
+		StoryAudio._set_loop(st, true)
+	elif st:
+		_set_no_loop(st)   # the horn melody plays once (an owner WAV may carry loop points)
+	_owner_cache[p] = st
+
+
+static func _set_no_loop(st: AudioStream) -> void:
+	if st is AudioStreamWAV:
+		(st as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_DISABLED
+	elif st is AudioStreamOggVorbis:
+		(st as AudioStreamOggVorbis).loop = false
+	elif st is AudioStreamMP3:
+		(st as AudioStreamMP3).loop = false
+
+
+## Waits for every loading task and empties the cache (tests, exit).
+static func clear_owner_sfx() -> void:
+	for p: String in _owner_tasks.keys():
+		WorkerThreadPool.wait_for_task_completion(int((_owner_tasks[p] as Dictionary)["task"]))
+	_owner_tasks.clear()
+	_owner_cache.clear()
+
+
+func _poll_owner_sfx() -> void:
+	var ex_state: int = owner_sfx_state(SFX_EXHAUST)
+	var horn_state: int = owner_sfx_state(SFX_HORN)
+	if ex_state == 2 and not owner_exhaust:
+		var st: AudioStream = owner_sfx(SFX_EXHAUST, false)
+		if st and engine_player:
+			owner_exhaust = true
+			engine_player.stream = st
+			engine_player.pitch_scale = exhaust_pitch(0.0, 0.0)
+			engine_player.volume_db = exhaust_db(0.0)
+			engine_player.play()
+	if horn_state == 2 and melody_stream == null:
+		melody_stream = owner_sfx(SFX_HORN, false)
+	_owner_pending = ex_state == 1 or horn_state == 1
+
+
+## Owner exhaust loop pitch: 0.62 idle, 1.0 at 70 % of top speed, 1.18 at top (a slipstream continues the slope), +0.06
+## under throttle.
+static func exhaust_pitch(speed_ratio: float, gas: float) -> float:
+	var r: float = clampf(speed_ratio, 0.0, 1.25)
+	var p: float = lerpf(0.62, 1.0, r / 0.7) if r <= 0.7 else 1.0 + (r - 0.7) / 0.3 * 0.18
+	return p + 0.06 * clampf(gas, 0.0, 1.0)
+
+
+## Owner exhaust loop volume: -10 dB at idle, +4 dB under full throttle.
+static func exhaust_db(gas: float) -> float:
+	return lerpf(-10.0, 4.0, clampf(gas, 0.0, 1.0))
+
+
+## The horn key: with the owner's melody a tap plays it from the start and a tap while it plays stops it (0.15 s fade);
+## without it the short wav horn plays as before.
+func horn_tap() -> void:
+	if melody_stream == null and owner_sfx_state(SFX_HORN) == 2:
+		melody_stream = owner_sfx(SFX_HORN, false)   # still loading: never wait on the main thread, the wav horn plays
+	if melody_stream:
+		if melody_left > 0.0:
+			stop_horn_melody(true)
+		else:
+			_start_melody()
+		return
+	if horn_player and horn_player.stream:
+		horn_player.play()
+
+
+func horn_melody_playing() -> bool:
+	return melody_left > 0.0
+
+
+func _start_melody() -> void:
+	if _fade_tw and _fade_tw.is_valid():
+		_fade_tw.kill()
+	_fade_tw = null
+	melody_player.stream = melody_stream
+	melody_player.volume_db = MELODY_DB
+	melody_player.play(0.0)
+	melody_left = maxf(melody_stream.get_length(), 0.1)
+	_scan_t = 0.0
+	_dancers.clear()
+	_duck_music(true)
+
+
+## Stops the melody (fade: 0.15 s, else at once); the bike's dancers stop at once.
+func stop_horn_melody(fade: bool = true) -> void:
+	if melody_left <= 0.0:
+		return
+	melody_left = 0.0
+	_end_dancers()
+	_duck_music(false)
+	if melody_player == null:
+		return
+	if fade and melody_player.playing and is_inside_tree() and can_process():
+		_fade_tw = create_tween()
+		_fade_tw.tween_property(melody_player, "volume_db", -40.0, HORN_FADE_S)
+		_fade_tw.tween_callback(melody_player.stop)
+	else:
+		melody_player.stop()
+
+
+func _tick_horn(delta: float) -> void:
+	if melody_left <= 0.0:
+		return
+	melody_left -= delta
+	if melody_left <= 0.0:
+		melody_left = 0.0
+		_dancers.clear()   # their reaction ends with the melody by itself
+		_duck_music(false)
+		if melody_player:
+			melody_player.stop()
+		return
+	_scan_t -= delta
+	if _scan_t <= 0.0:
+		_scan_t = HORN_SCAN_S
+		_cheer_scan()
+
+
+## Real pedestrians within HORN_RADIUS that can react (walking or standing) raise both arms and bounce (the "clap"
+## reaction = the cheer clip) for the rest of the melody (at least 1 s). Officers, cast and enemies are never in the list.
+func _cheer_scan() -> void:
+	if not horn_targets_fn.is_valid():
+		return
+	var me: Vector3 = global_position
+	var secs: float = maxf(1.0, melody_left)
+	var r2: float = HORN_RADIUS * HORN_RADIUS
+	for n: Variant in horn_targets_fn.call():
+		if not is_instance_valid(n) or not (n is Pedestrian):
+			continue
+		var p: Pedestrian = n
+		if not p.is_inside_tree() or not p.can_react_emote():
+			continue
+		var dx: float = p.global_position.x - me.x
+		var dz: float = p.global_position.z - me.z
+		if dx * dx + dz * dz > r2:
+			continue
+		if p.react_emote("clap", me, secs):
+			_dancers.append(p)
+			horn_cheers += 1
+
+
+func _end_dancers() -> void:
+	for d: Variant in _dancers:
+		if is_instance_valid(d) and (d as Pedestrian).react_kind == "clap":
+			(d as Pedestrian).end_react()
+	_dancers.clear()
+
+
+## Roam music ducks by HORN_DUCK_DB while the melody plays (only when nothing else ducks it), back afterwards.
+func _duck_music(on: bool) -> void:
+	var fx: Node = get_node_or_null("/root/GameFX") if is_inside_tree() else null
+	var md: Object = fx.get("music") if fx else null
+	if md == null:
+		_ducked = false
+		return
+	var lin: float = db_to_linear(HORN_DUCK_DB)
+	if on:
+		if not _ducked and float(md.get("duck_target")) >= 0.999:
+			md.set("duck_target", lin)
+			_ducked = true
+	elif _ducked:
+		_ducked = false
+		if absf(float(md.get("duck_target")) - lin) < 0.001:
+			md.call("duck", false)
+
+# ---------------------------------------------------------------------------
 # VẬT LÝ CHÍNH
 # ---------------------------------------------------------------------------
 func _physics_process(delta: float) -> void:
+	_tick_extras(delta)
 	if is_controls_locked:
+		braking = false
 		current_speed_ms = move_toward(current_speed_ms, 0.0, brake_decel * delta)
 		velocity = -global_transform.basis.z * current_speed_ms
 		if not is_on_floor():
@@ -366,6 +884,7 @@ func _physics_process(delta: float) -> void:
 	var gas_input: float = Input.get_action_strength("gas")
 	var brake_input: float = Input.get_action_strength("brake")
 	var drift_held: bool = Input.is_action_pressed("drift")
+	braking = brake_input > 0.1 and current_speed_ms > 0.3
 
 	var target_top_speed: float = slipstream_max_ms if is_slipstream_boosting else max_speed_ms
 	if drift_boost_timer > 0.0:
@@ -522,14 +1041,19 @@ func _on_near_body_exited(body: Node3D) -> void:
 # ---------------------------------------------------------------------------
 func _update_audio_dynamics(delta: float, gas_input: float, brake_input: float) -> void:
 	if Input.is_action_just_pressed("horn"):
-		if horn_player:
-			horn_player.play()
+		horn_tap()   # Stage 2 reads the same action for its rival
+	if Input.is_action_just_pressed("high_beam"):
+		toggle_high_beam()
 
 	if engine_player and engine_player.playing:
 		var speed_ratio: float = clampf(absf(current_speed_ms) / max_speed_ms, 0.0, 1.25)
-		var target_pitch: float = 0.85 + speed_ratio * 0.95 + gas_input * 0.25
-		engine_player.pitch_scale = lerpf(engine_player.pitch_scale, target_pitch, delta * 8.0)
-		engine_player.volume_db = lerpf(engine_player.volume_db, -5.0 + gas_input * 3.5, delta * 6.0)
+		if owner_exhaust:
+			engine_player.pitch_scale = lerpf(engine_player.pitch_scale, exhaust_pitch(speed_ratio, gas_input), delta * 8.0)
+			engine_player.volume_db = lerpf(engine_player.volume_db, exhaust_db(gas_input), delta * 6.0)
+		else:
+			var target_pitch: float = 0.85 + speed_ratio * 0.95 + gas_input * 0.25
+			engine_player.pitch_scale = lerpf(engine_player.pitch_scale, target_pitch, delta * 8.0)
+			engine_player.volume_db = lerpf(engine_player.volume_db, -5.0 + gas_input * 3.5, delta * 6.0)
 
 	if wind_player and wind_player.playing:
 		var speed_kmh: float = absf(current_speed_ms) * 3.6
