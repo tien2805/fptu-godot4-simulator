@@ -6,6 +6,9 @@
 #   B: RoamTraffic trên MapData tự dựng (z ~ 6000): roam "night" -> đèn sáng, vũng sáng trước ô tô / xe buýt hiện (vật liệu
 #      và mesh dùng chung, tầm nhìn <= 40 m, cộng màu, không đổ bóng), không có Light3D nào; set_night_lamps(false) tắt;
 #      xe lật thì giấu vũng sáng; dawn / sunset cũng là tối; RoamTraffic rời cây -> đèn về ban ngày; roam "morning" -> tắt.
+#   C: ViceStyle: chuyển kiểu (stylize) rồi trả cổ điển (unstylize) qua một lần đổi giờ giữ đúng trạng thái đèn hiện tại;
+#      kịch bản rò: đêm FreeRoam vice (lưu vice_orig lúc đèn sáng) -> rời FreeRoam -> menu đổi cổ điển -> Màn 1 dựng xe
+#      buýt + unstylize -> đèn vẫn mờ ban ngày. Ban ngày đèn không thành soft emitter.
 # Chạy:  godot --headless --path . --script tests/test_traffic_lamps.gd
 extends SceneTree
 
@@ -30,6 +33,8 @@ func _on_frame() -> void:
 	if not _part_a():
 		return
 	if not _part_b():
+		return
+	if not _part_c():
 		return
 	done = true
 	print("SUCCESS: traffic lamps lit at night, dim by day, shared materials, light pools near cars and buses")
@@ -160,6 +165,8 @@ func _part_b() -> bool:
 					return false
 			if not _check(v.pool.visibility_range_end > 0.0 and v.pool.visibility_range_end <= 40.0, "light pools draw only near the camera"):
 				return false
+			if not _check(v.pool.visibility_range_end_margin > 0.0 and v.pool.visibility_range_fade_mode == GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF, "light pools fade out instead of popping"):
+				return false
 			if not _check(v.pool.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and v.pool.position.z < -3.0, "the pool lies on the road ahead (-Z) and casts no shadow"):
 				return false
 			pools += 1
@@ -229,3 +236,42 @@ func _synthetic_roads() -> Array:
 		var b: Vector2 = sq[i][1]
 		out.append({"id": i + 1, "name": "Vuông %d" % (i + 1), "class": "primary", "width": W, "lanes": 2, "oneway": false, "roundabout": false, "bridge": false, "region": "corridor", "points": [[a.x, a.y], [b.x, b.y]]})
 	return out
+
+
+# ---------------------------------------------------------------------------
+func _part_c() -> bool:
+	# 1) chuyển kiểu ban ngày, đổi sang đêm, trả cổ điển: đèn giữ trạng thái đêm; về ngày thì mờ
+	PropBuilder.set_traffic_lamps(false)
+	var h := Node3D.new()
+	root.add_child(h)
+	PropBuilder.build_car(h, Color("#AFCBFF"), true)
+	PropBuilder.build_scooter(h, Vector3.ZERO, 0.0, Color("#2C3E50"), {"baked": true, "traffic_lamps": true})
+	ViceStyle.stylize_materials(h)
+	for kind: String in PropBuilder.TRAFFIC_LAMPS.keys():
+		var m: StandardMaterial3D = PropBuilder.traffic_lamp(kind)
+		if not _check(m.has_meta("vice_done") and not m.has_meta("vice_soft_emitter"), "vice stylizes lamp %s but never as a night-only soft emitter" % kind):
+			return false
+	PropBuilder.set_traffic_lamps(true)
+	ViceStyle.unstylize_materials(h)
+	if not _check(_all_at(2), "classic restore at night keeps the lamps lit (vice_orig follows the switch)"):
+		return false
+	PropBuilder.set_traffic_lamps(false)
+	if not _check(_all_at(1), "then day dims them"):
+		return false
+	# 2) kịch bản rò sang Màn 1 (proof_vice_orig): đêm vice lưu vice_orig lúc đèn sáng
+	PropBuilder.set_traffic_lamps(true)
+	ViceStyle.stylize_materials(h)
+	var orig: Dictionary = PropBuilder.traffic_lamp("head").get_meta("vice_orig", {})
+	if not _check(is_equal_approx(float(orig.get("emission_energy_multiplier", -1.0)), float(PropBuilder.TRAFFIC_LAMPS["head"][2])), "vice stylized at night saves the night energy"):
+		return false
+	PropBuilder.set_traffic_lamps(false)                  # rời FreeRoam (RoamTraffic._exit_tree)
+	h.queue_free()
+	var s1 := Node3D.new()
+	root.add_child(s1)
+	PropBuilder.build_bus(s1, true, true)                 # Màn 1 (TrafficSpawner) ở đồ hoạ cổ điển
+	ViceStyle.unstylize_materials(s1)
+	if not _check(not PropBuilder.traffic_lamps_on() and _all_at(1), "Stage 1 in classic style by day: bus lamps stay dim (got head %.2f)" % _energy("head")):
+		return false
+	s1.queue_free()
+	print("  C ok: stylize / unstylize across a time-of-day switch, no Stage 1 leak")
+	return true

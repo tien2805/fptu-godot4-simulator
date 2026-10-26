@@ -508,7 +508,11 @@ func _on_physics_b() -> void:
 				if not _check(crashes >= 1 and bs < 4.0, "the player's bike hitting a traffic vehicle uses the existing crash handling (crashes %d, speed %.2f)" % [crashes, bs]):
 					return
 				tr.set_physics_process(true)
+				if not _check(not PropBuilder.traffic_lamps_on() and not tr.lamps_on, "OB-D6: morning free roam starts with dim traffic lamps"):
+					return
 				roam.call("set_time_of_day", "night")
+				if not _check(PropBuilder.traffic_lamps_on() and tr.lamps_on, "OB-D6: FreeRoam.set_time_of_day(night) lights the traffic lamps"):
+					return
 				b_phase = "night"
 				b_t0 = b_frames
 		"night":
@@ -516,6 +520,9 @@ func _on_physics_b() -> void:
 				var n: int = tr.active_count()
 				print("  night traffic: %d active" % n)
 				if not _check(n >= 1 and n <= roundi(25.0 * RoamTraffic.NIGHT_FACTOR), "night keeps 30 %% of the vehicles (active %d)" % n):
+					return
+				roam.call("set_time_of_day", "morning")
+				if not _check(not PropBuilder.traffic_lamps_on() and not tr.lamps_on, "OB-D6: FreeRoam.set_time_of_day(morning) dims the traffic lamps"):
 					return
 				print("✅ SUCCESS: ROAM TRAFFIC (parts A + B)")
 				done = true
