@@ -1,7 +1,9 @@
 # File: res://scripts/story/missions/MissionFight.gd
 # The Phase B story brawls on MeleeFight (spec B-D1 / B-D2, B-D5 beat 5, B-D7 beat 6), forced unarmed:
 #   d1  three couriers (Mũ Đỏ, Mũ Xanh, Mũ Vàng) at the west gate, start line "Gét gô!";
-#   d4  sheep-masked clones in two waves in front of the canteen, Cừu Dolly joins the second and flees at 30 % HP.
+#   d4  sheep-masked clones in two waves in front of the canteen, Cừu Dolly joins the second and flees at 30 % HP;
+#   d2  (Phase C, spec C-D6 beat 6 / C-D4) Sói Xám alone on the bank under the Rạch Hầm bridge: the soi_xam mini-boss
+#       archetype (fast 4-hit chains, LED-eye glow before every attack, a howl buff at 50 %, the boss bar).
 # The player and the enemies stand around the beat's anchor (free spots). MeleeFight `won` = done (the beat's "after"
 # cinematic follows), `lost` (the player down) = fail "TOANG!"; retry() = MeleeFight.retry() from its checkpoint (the
 # wave in progress, full HP); abort() stops the fight.
@@ -12,6 +14,7 @@ const RING_M: float = 5.5
 const T_DOWN: String = "Bị hạ đo ván rồi!"
 const D1_LINE: String = "Gét gô!"
 const D4_LINE: String = "Bầy cừu xông lên!"
+const D2_LINE: String = "Đầu đàn thì sao? Vào đây!"
 
 var fight: MeleeFight
 var centre: Vector3 = Vector3.ZERO
@@ -30,9 +33,11 @@ func _start() -> void:
 	fight.name = "Fight"
 	add_child(fight)
 	fight.setup({"roam": roam, "force_unarmed": true, "max_attackers": 2, "auto_checkpoint": true,
-		"start_line": D1_LINE if kind == "d1" else D4_LINE, "seed": int(opts.get("seed", 11))})
+		"start_line": {"d1": D1_LINE, "d2": D2_LINE}.get(kind, D4_LINE), "seed": int(opts.get("seed", 11))})
 	var fwd := Vector3(-sin(yaw), 0.0, -cos(yaw))
-	if kind == "d1":
+	if kind == "d2":
+		fight.add_wave(_ring([["soi_xam", "soi_xam", "Sói Xám"]], fwd))
+	elif kind == "d1":
 		fight.add_wave(_ring([["courier", "courier_do", "Mũ Đỏ"], ["courier", "courier_xanh", "Mũ Xanh"],
 			["courier", "courier_vang", "Mũ Vàng"]], fwd))
 	else:

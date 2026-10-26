@@ -24,6 +24,8 @@
 #                 "hp": 60.0, "accuracy": 1.0, "ai": true, "alerted": false}},
 #       {"boss": "forklift", "at": Vector3(...), "yaw": 0.0,
 #        "opts": {"hp": 500.0, "body": {...Alexander's CharacterBuilder opts}, "body_fn": Callable, "seed": 3}}])
+#   A wave entry {"target": node} adds an external enemy of the level (never freed; reset() at every wave start): any
+#   Node3D with is_defeated(), hit_node() (a Node3D with take_hit(info) / is_down()) and stand_down() (Day 3 crates).
 #   fight.add_ammo(Vector3(...), WeaponData.Slot.PISTOL, 24)   # pickups (taken ones come back on retry() before them)
 #   fight.won.connect(...)                      # the last wave is beaten (KO'd bodies stay until stop() / free)
 #   fight.lost.connect(...)                     # the player's HP reached 0: show "TOANG!", then call retry()
@@ -431,6 +433,8 @@ func _start_wave(i: int) -> void:
 		var d: Dictionary = s
 		if d.has("boss"):
 			_spawn_boss(d)
+		elif d.has("target"):
+			_add_target(d["target"])
 		else:
 			_spawn_gunman(d, i)
 	wave_started.emit(i)
@@ -500,9 +504,24 @@ func _spawn_boss(d: Dictionary) -> void:
 	boss_spawned.emit(b)
 
 
+## An external enemy of the level (wave entry {"target": node}; Phase C: the Day 3 smart-glasses crates): duck-typed like a
+## gunman (is_defeated(), hit_node(), stand_down(); optional reset() at every wave start, optional signal ko(node)); the
+## fight never frees it.
+func _add_target(n: Variant) -> void:
+	if not (n is Node3D) or not is_instance_valid(n):
+		return
+	var t: Node3D = n
+	if t.has_method("reset"):
+		t.call("reset")
+	if t.has_signal("ko") and not t.is_connected("ko", _on_ko):
+		t.connect("ko", _on_ko)
+	t.set_meta("gunfight_external", true)
+	enemies.append(t)
+
+
 func _clear_enemies() -> void:
 	for e: Variant in enemies:
-		if is_instance_valid(e):
+		if is_instance_valid(e) and not (e as Node).has_meta("gunfight_external"):
 			(e as Node).queue_free()
 	enemies.clear()
 	gunmen.clear()

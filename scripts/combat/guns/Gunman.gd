@@ -28,7 +28,8 @@
 # Usage (GunFight does this): var g := Gunman.new(); g.setup(opts); g.position = at; parent.add_child(g); g.bind(fight).
 # opts: "body" (CharacterBuilder opts over GunData.GUARD_LOOK), "body_fn" (Callable(look) -> rigged Node3D), "mask"
 # ("sheep" | "wolf" | "fox" | "none"; default by seed), "label", "hp", "accuracy" (scale), "patrol" (Array of Vector3),
-# "ai" (false = HOLD), "alerted" (start alerted), "seed", "yaw".
+# "ai" (false = HOLD), "alerted" (start alerted), "seed", "yaw", "sight_m" / "fov_deg" (sight before the alert; default
+# GunData.SIGHT_M / FOV_DEG).
 class_name Gunman
 extends Node3D
 
@@ -57,6 +58,9 @@ var accuracy_k: float = 1.0
 var accuracy_override: float = -1.0
 var ai: bool = true
 var start_alerted: bool = false
+## Sight while not alerted (opts "sight_m" / "fov_deg"; Phase C story sneaks use the horror toolkit's 14 m / 70 deg).
+var patrol_sight_m: float = GunData.SIGHT_M
+var patrol_fov_deg: float = GunData.FOV_DEG
 var st: int = St.HOLD
 var st_t: float = 0.0
 var state_log: Array[String] = []
@@ -118,6 +122,8 @@ func setup(opts: Dictionary = {}) -> void:
 	accuracy_override = float(opts.get("accuracy_override", -1.0))
 	ai = bool(opts.get("ai", true))
 	start_alerted = bool(opts.get("alerted", false))
+	patrol_sight_m = float(opts.get("sight_m", GunData.SIGHT_M))
+	patrol_fov_deg = float(opts.get("fov_deg", GunData.FOV_DEG))
 	yaw = float(opts.get("yaw", 0.0))
 	peeks_max = _rng.randi_range(GunData.PEEKS_BEFORE_FLANK.x, GunData.PEEKS_BEFORE_FLANK.y)
 	_sense_acc = _rng.randf() * GunData.SENSE_DT
@@ -334,9 +340,9 @@ func _sense() -> void:
 	var eye: Vector3 = feet() + Vector3(0.0, GunData.EYE_Y - drop, 0.0)
 	var to := Vector3(tp.x - eye.x, 0.0, tp.z - eye.z)
 	var d: float = to.length()
-	var in_view: bool = d <= GunData.SIGHT_M
+	var in_view: bool = d <= (GunData.SIGHT_M if is_alerted else patrol_sight_m)
 	if in_view and not is_alerted and d > 0.5:
-		in_view = forward().angle_to(to / d) <= deg_to_rad(GunData.FOV_DEG * 0.5)
+		in_view = forward().angle_to(to / d) <= deg_to_rad(patrol_fov_deg * 0.5)
 	sees = in_view and bool(fight.call("clear_line", eye, tp))
 	if sees:
 		last_seen = pp

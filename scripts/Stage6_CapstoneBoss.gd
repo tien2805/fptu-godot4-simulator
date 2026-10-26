@@ -392,7 +392,7 @@ func _update_boss_ui() -> void:
 	boss_name_lbl.text = "QUÁI VẬT DEADLINE 23:59 · HP %d/%d · COMBO x%d (%d) · ĐIỂM %d" % [int(boss_hp), int(BOSS_MAX_HP), _mult(), combo, score]
 
 func _mult() -> int:
-	return 1 + mini(combo / 6, 2)
+	return TypingCore.mult(combo)   # shared rules with the story mode (StoryHack, Phase C)
 
 # ===========================================================================
 # INPUT
@@ -474,18 +474,10 @@ func _bullet_alive(b: Dictionary) -> bool:
 	return not b.is_empty() and not b.get("dead", false) and is_instance_valid(b.get("node"))
 
 func _find_bullet_with_prefix(prefix: String) -> Dictionary:
-	var best: Dictionary = {}
-	var best_y: float = -1.0
 	var pool: Array = bullets.duplicate()
 	if not final_bullet.is_empty():
 		pool.append(final_bullet)
-	for b: Dictionary in pool:
-		if not _bullet_alive(b):
-			continue
-		if str(b["word"]).to_lower().begins_with(prefix) and float(b["y"]) > best_y:
-			best_y = float(b["y"])
-			best = b
-	return best
+	return TypingCore.find_prefix(pool, prefix, _bullet_alive)
 
 func _refresh_typing_label() -> void:
 	if typed.is_empty():
@@ -654,7 +646,7 @@ func _destroy_bullet(b: Dictionary, by_typing: bool) -> void:
 		return
 	b["dead"] = true
 	var word: String = str(b["word"])
-	var dmg: int = word.length() * (6 if by_typing else 4) * (_mult() if by_typing else 1)
+	var dmg: int = TypingCore.damage(word, by_typing, _mult())
 	if by_typing:
 		combo += 1
 		max_combo = maxi(max_combo, combo)
