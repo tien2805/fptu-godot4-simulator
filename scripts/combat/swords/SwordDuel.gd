@@ -15,7 +15,10 @@
 #                "stats": {...}, "hp_scale": 1.0},             #   (SwordData.ZA_MAN overrides), "seed", "ai"
 #       "start_line": "",                       # centre popup at start() ("" = none)
 #       "seed": 5})
-#   duel.won.connect(...)                       # the katana snapped and he is knocked out (after the comic finale)
+#   duel.prepare()                              # optional: Za Mẫn appears now (villain card), standing in his guard,
+#                                               #   invulnerable, until start()
+#   duel.won.connect(...)                       # the katana snapped and he is knocked out (after the comic finale); the
+#                                               #   staff is put away and the unarmed moves are back at that moment
 #   duel.lost.connect(...)                      # the player's HP reached 0 (show "TOANG!", then call retry())
 #   duel.phase_changed.connect(func(phase: int): ...)   # 2 at 66 % HP, 3 at 33 %
 #   duel.start()
@@ -24,7 +27,8 @@
 #   duel.stop()                                 # end without a result: boss freed, unarmed moves and wheel back
 #   duel.state                                  # "idle" | "running" | "won" | "lost"; duel.phase (1..3); duel.boss
 # The staff (and the staff move set: LMB 3 slashes, RMB thrust, hold Q block, perfect block = parry, Space dodge within
-# 14 m) is in the player's hand from start() until stop() or the duel is freed (it stays after `won`: stop() when done).
+# 14 m, E finisher on a dazed Za Mẫn) is in the player's hand from start() / retry() until `won`, stop() or freeing the
+# duel (the knocked-out boss stays until stop() or free).
 # The boss bar shows while the duel runs. The duel never changes the story state, the time of day or the camera; it never
 # references an autoload.
 # ===========================================
@@ -70,6 +74,13 @@ func setup(opts: Dictionary) -> void:
 	fight.lost.connect(_on_lost)
 
 
+## Spawn Za Mẫn before the fight (a villain card can frame him): he stands in his guard, invulnerable, until start().
+func prepare() -> void:
+	if fight == null or combat == null or state == "running":
+		return
+	fight.prepare()
+
+
 func start() -> void:
 	if fight == null or combat == null:
 		push_warning("SwordDuel.start: setup() first")
@@ -93,6 +104,8 @@ func stop() -> void:
 	if fight:
 		fight.stop()
 	state = "idle"
+	boss = null
+	phase = 1
 	_arm(false)
 
 
@@ -110,6 +123,7 @@ func _on_phase(ph: int) -> void:
 
 func _on_won() -> void:
 	state = "won"
+	_arm(false)                                  # the staff goes away with the win: nothing left glued to the hand
 	won.emit()
 
 
@@ -130,8 +144,7 @@ func _arm(on: bool) -> void:
 		_armed = true
 	elif not on and _armed:
 		combat.reset_moveset()
-		if _staff_pivot and is_instance_valid(_staff_pivot):
-			_staff_pivot.queue_free()
+		SwordProps.detach(_staff_pivot)
 		_staff_pivot = null
 		staff = null
 		_armed = false

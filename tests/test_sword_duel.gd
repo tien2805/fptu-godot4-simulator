@@ -8,8 +8,11 @@
 #   the roll is avoided; AI on: every hit comes 0.5 s after its glint + sound, the glint shows, unblockable tells flash
 #   red; the lunge dashes in from 5 m through the block, the spin hits at 2.6 m; player down -> lost (he stands down);
 #   retry() -> a fresh boss, full HP, back at the start, still the staff; phases at 66 / 33 % (signal, faster, spin then
-#   frenzy); katana bend stages 1-3 at 75 / 50 / 25 % (the blade visibly curves more); 0 HP -> FINALE (snap, slow motion,
-#   the line, a falling tip) -> knockout -> won; stop() restores the unarmed set; freeing a running duel too.
+#   frenzy), with the AI-on tell check again in phases 2 and 3 and a forced spin and frenzy; katana bend stages 1-3 at
+#   75 / 50 / 25 % (the blade visibly curves more); down in phase 3 -> retry() gives a fresh phase-1 boss; 0 HP -> FINALE
+#   (snap, slow motion, the line, a falling tip) -> knockout -> won, and at that moment the staff goes away and the boss
+#   bar hides even with the player's HP below full; stop() clears the boss and the hand (no leaked attachment); freeing a
+#   running duel too; prepare() shows Za Mẫn idle and invulnerable before start(), which wakes the same boss.
 # Counts physics frames (Engine.max_fps = 60).
 # Run:  godot --headless --path . --script tests/test_sword_duel.gd
 extends SceneTree
@@ -30,6 +33,8 @@ var mark: Dictionary = {}
 var won_n: int = 0
 var lost_n: int = 0
 var phases_seen: Array[int] = []
+var dev: Array[float] = [0.0, 0.0, 0.0, 0.0]
+var base_speed: float = 0.0
 var countered_n: int = 0
 
 
@@ -133,6 +138,7 @@ func _on_physics() -> void:
 		duel.phase_changed.connect(func(p: int) -> void: phases_seen.append(p))
 		duel.start()
 		boss = duel.boss
+		base_speed = float(boss.stats["speed"])
 		_next("arm")
 		return
 	var t: int = frames - t0
@@ -165,6 +171,16 @@ func _on_physics() -> void:
 			_retry(t)
 		"phases":
 			_phases(t)
+		"p2ai":
+			_p2ai(t)
+		"phases_b":
+			_phases_b(t)
+		"p3ai":
+			_p3ai(t)
+		"phases_c":
+			_phases_c(t)
+		"retry3":
+			_retry3(t)
 		"break":
 			_break(t)
 		"stop":
@@ -341,38 +357,52 @@ func _dodge(t: int) -> void:
 		_next("telegraph")
 
 
-## AI on for 15 s: every hit 0.5 s after its glint + sound; glints show; unblockable tells flash red.
-func _telegraph(t: int) -> void:
+## An AI-on window from `t` 1 to `len`: every hit lands 0.5 s after its glint + sound (lunge included), the glint shows
+## through every tell, unblockable tells flash red. Returns true at the end of the window (checks done).
+func _ai_window(t: int, length: int, tag: String) -> bool:
 	if t == 1:
 		mark["h0"] = boss.hit_log.size()
+		mark["p0"] = boss.pattern_log.size()
 		mark["bad_glint"] = 0
 		mark["bad_flash"] = 0
-		mark["cues0"] = 0
+		_reset_player()
+		combat.god = true
+		boss.ai = true
+		boss._to_idle_state()
 	if boss.st == MeleeEnemy.St.WINDUP and boss._glinted and not boss.katana.glint.visible:
 		mark["bad_glint"] = int(mark["bad_glint"]) + 1
 	if boss.incoming() == 2 and not boss.flash_on:
 		mark["bad_flash"] = int(mark["bad_flash"]) + 1
-	if boss.incoming() == 2:
-		mark["red_seen"] = true
-	if t == 900:
-		var hits: Array[Dictionary] = boss.hit_log.slice(int(mark["h0"]))
-		var bad: Array[String] = []
-		for h: Dictionary in hits:
-			var best: float = -1.0
-			for tl: Dictionary in boss.tells:
-				if String(tl["step"]) == String(h["step"]) and float(tl["t"]) <= float(h["t"]):
-					best = float(h["t"]) - float(tl["t"])
-			var hi: float = 0.52 + (float(SwordData.STEPS["lunge"]["dash_s"]) if String(h["step"]) == "lunge" else 0.0)
-			if best < 0.48 or best > hi:
-				bad.append("%s %.3f" % [String(h["step"]), best])
-		print("  AI duel: %d boss hits in 15 s (%s), %d tells" % [hits.size(), str(_steps_of(hits)), boss.tells.size()])
-		_check(hits.size() >= 4, "AI on: Za Mẫn keeps attacking (%d hits)" % hits.size())
-		_check(bad.is_empty(), "every hit lands 0.5 s after its glint + sound (bad: %s)" % str(bad))
-		_check(int(mark["bad_glint"]) == 0, "the glint is visible through every tell (%d bad frames)" % int(mark["bad_glint"]))
-		_check(int(mark["bad_flash"]) == 0, "unblockable tells flash red (%d bad frames)" % int(mark["bad_flash"]))
-		combat.god = false
-		boss.ai = false
-		boss._to_idle_state()
+	if t < length:
+		return false
+	var hits: Array[Dictionary] = boss.hit_log.slice(int(mark["h0"]))
+	var bad: Array[String] = _bad_leads(hits)
+	print("  AI duel %s: %d boss hits (%s), patterns %s" % [tag, hits.size(), str(_steps_of(hits)), str(boss.pattern_log.slice(int(mark["p0"])))])
+	_check(hits.size() >= 4, "%s, AI on: Za Mẫn keeps attacking (%d hits)" % [tag, hits.size()])
+	_check(bad.is_empty(), "%s: every hit lands 0.5 s after its glint + sound (bad: %s)" % [tag, str(bad)])
+	_check(int(mark["bad_glint"]) == 0, "%s: the glint is visible through every tell (%d bad frames)" % [tag, int(mark["bad_glint"])])
+	_check(int(mark["bad_flash"]) == 0, "%s: unblockable tells flash red (%d bad frames)" % [tag, int(mark["bad_flash"])])
+	combat.god = false
+	boss.ai = false
+	boss._to_idle_state()
+	return true
+
+
+## Hits whose own tell (same step, the latest one before it) is not 0.48-0.52 s earlier.
+func _bad_leads(hits: Array[Dictionary]) -> Array[String]:
+	var bad: Array[String] = []
+	for h: Dictionary in hits:
+		var best: float = -1.0
+		for tl: Dictionary in boss.tells:
+			if String(tl["step"]) == String(h["step"]) and float(tl["t"]) <= float(h["t"]):
+				best = float(h["t"]) - float(tl["t"])
+		if best < 0.48 or best > 0.52:
+			bad.append("%s %.3f" % [String(h["step"]), best])
+	return bad
+
+
+func _telegraph(t: int) -> void:
+	if _ai_window(t, 900, "phase 1"):
 		_next("lunge")
 
 
@@ -400,6 +430,8 @@ func _lunge(t: int) -> void:
 	if t > 60 and not mark.has("done") and boss.hit_log.size() > int(mark["n"]):
 		mark["done"] = true
 		var travelled: float = WeaponMath.flat(boss.global_position, mark["from"])
+		var hl: Array[Dictionary] = [boss.hit_log.back()]
+		_check(_bad_leads(hl).is_empty(), "the lunge lands exactly 0.5 s after its glint (%s)" % str(_bad_leads(hl)))
 		_check(String(boss.hit_log.back()["result"]) == "hit", "the lunge goes through the block (%s)" % String(boss.hit_log.back()["result"]))
 		_check(travelled >= 2.5, "he dashes in from 5 m (%.1f m)" % travelled)
 		_check(combat.hp < 100.0 and player.is_knocked_down(), "it hurts and knocks the player down (hp %.0f)" % combat.hp)
@@ -463,47 +495,123 @@ func _hit_to(frac: float) -> String:
 func _phases(t: int) -> void:
 	if t == 2:
 		mark["speed"] = float(boss.stats["speed"])
-		mark["dev0"] = boss.katana.tip_deviation()
+		dev[0] = boss.katana.tip_deviation()
 		_check(boss.patterns() == SwordData.PHASES[0]["patterns"], "phase 1 patterns")
 		_hit_to(0.7)
 	if t == 3:
 		_check(boss.katana.stage == 1 and boss.phase == 1 and phases_seen.is_empty(), "70 %: bend stage 1, still phase 1")
 		_check(combat.hud.popup_text == SwordData.T_BEND[1] and combat.cues.has("katana_boing"), "the bend line and the boing")
 	if t == 90:
-		mark["dev1"] = boss.katana.tip_deviation()
+		dev[1] = boss.katana.tip_deviation()
 		_check(is_equal_approx(boss.katana.bend, SwordData.BEND_RAD[1]), "the blade eased to stage 1 (%.2f)" % boss.katana.bend)
 		_hit_to(0.65)
 	if t == 91:
 		_check(boss.phase == 2 and phases_seen == [2] and duel.phase == 2, "65 %%: phase 2 and the signal (%s)" % str(phases_seen))
-		_check(is_equal_approx(float(boss.stats["speed"]), float(mark["speed"]) * 1.2) and boss.patterns().has("spin"), "phase 2: faster, the spin")
+		_check(is_equal_approx(float(boss.stats["speed"]), base_speed * 1.2) and boss.patterns().has("spin"), "phase 2: faster, the spin")
 		_check(combat.hud.popup_text == SwordData.T_PHASE[2], "the phase line pops (%s)" % combat.hud.popup_text)
 		_check(boss.st == MeleeEnemy.St.BLOCK and boss.pose.pose_name == "sw_kat_taunt", "he hops back into a taunt (%s)" % boss.state_name())
 		_check(_hit_to(0.45) == "blocked" and boss.katana.stage == 1, "the taunt is guarded")
 	if t == 150:
 		_check(boss.st == MeleeEnemy.St.HOLD, "the taunt ends (%s)" % boss.state_name())
+		_next("p2ai")
+
+
+## Phase 2: the AI-on tell check (gaps 0.2 s, spin in the pool), then a forced spin.
+func _p2ai(t: int) -> void:
+	if t <= 720:
+		_ai_window(t, 720, "phase 2")
+		return
+	if t == 760:
+		_reset_player()
+		_place(Vector3(0.0, 0.0, -2.2))
+		mark["n"] = boss.hit_log.size()
+		boss.force_pattern("spin")
+	if t > 760 and not mark.has("done") and boss.hit_log.size() > int(mark["n"]):
+		mark["done"] = true
+		var hl: Array[Dictionary] = [boss.hit_log.back()]
+		_check(String(hl[0]["step"]) == "spin" and _bad_leads(hl).is_empty(), "phase 2: the spin lands 0.5 s after its red glint (%s)" % str(_bad_leads(hl)))
+	if t == 900:
+		_check(mark.has("done"), "phase 2: the spin resolved")
+		_next("phases_b")
+
+
+func _phases_b(t: int) -> void:
+	if t == 1:
+		_reset_player()
+		_place(Vector3(0.0, 0.0, -1.6))
+	if t == 40:
+		_check(boss.st == MeleeEnemy.St.HOLD and boss.phase == 2, "test setup: phase 2, in guard (%s)" % boss.state_name())
 		_hit_to(0.45)
-	if t == 151:
+	if t == 41:
 		_check(boss.katana.stage == 2, "45 %: bend stage 2")
-	if t == 240:
-		mark["dev2"] = boss.katana.tip_deviation()
+	if t == 130:
+		dev[2] = boss.katana.tip_deviation()
 		_hit_to(0.32)
-	if t == 241:
+	if t == 131:
 		_check(boss.phase == 3 and phases_seen == [2, 3] and duel.phase == 3, "32 %%: phase 3 (%s)" % str(phases_seen))
-		_check(is_equal_approx(float(boss.stats["speed"]), float(mark["speed"]) * 1.4) and boss.patterns().has("frenzy"), "phase 3: faster again, the frenzy")
-	if t == 300:
+		_check(is_equal_approx(float(boss.stats["speed"]), base_speed * 1.4) and boss.patterns().has("frenzy"), "phase 3: faster again, the frenzy")
+	if t == 190:
+		_next("p3ai")
+
+
+## Phase 3: the AI-on tell check (gaps 0.12 s, frenzy in the pool), then a forced frenzy (4 hits, each told 0.5 s ahead).
+func _p3ai(t: int) -> void:
+	if t <= 720:
+		_ai_window(t, 720, "phase 3")
+		return
+	if t == 760:
+		_reset_player()
+		combat.god = true
+		_place(Vector3(0.0, 0.0, -1.6))
+		mark["n"] = boss.hit_log.size()
+		boss.force_pattern("frenzy")
+	if t == 1000:
+		var hits: Array[Dictionary] = boss.hit_log.slice(int(mark["n"]))
+		_check(_steps_of(hits) == ["slash_r", "slash_l", "slash_r", "lunge"], "phase 3: the frenzy is slash, slash, slash, lunge (%s)" % str(_steps_of(hits)))
+		_check(_bad_leads(hits).is_empty(), "phase 3: every frenzy hit is told 0.5 s ahead (%s)" % str(_bad_leads(hits)))
+		if hits.size() >= 2:
+			var cadence: float = float(hits[1]["t"]) - float(hits[0]["t"])
+			var want: float = (0.5 - 0.16) / 1.4 + 0.12 + 0.5
+			_check(absf(cadence - want) < 0.05, "phase 3 cadence: follow-through / 1.4 + 0.12 s gap + 0.5 s tell (%.3f vs %.3f)" % [cadence, want])
+		combat.god = false
+		_next("phases_c")
+
+
+func _phases_c(t: int) -> void:
+	if t == 1:
+		_reset_player()
+		_place(Vector3(0.0, 0.0, -1.6))
+	if t == 40:
 		_hit_to(0.2)
-	if t == 301:
+	if t == 41:
 		_check(boss.katana.stage == 3, "20 %: bend stage 3")
-	if t == 400:
-		mark["dev3"] = boss.katana.tip_deviation()
-		var d: Array[float] = [float(mark["dev0"]), float(mark["dev1"]), float(mark["dev2"]), float(mark["dev3"])]
-		print("  katana tip deviation by stage: %.2f %.2f %.2f %.2f rad" % d)
-		_check(d[0] < 0.2 and d[1] > d[0] + 0.08 and d[2] > d[1] + 0.2 and d[3] > d[2] + 0.3, "the katana visibly bends more at every stage (%s)" % str(d))
+	if t == 140:
+		dev[3] = boss.katana.tip_deviation()
+		print("  katana tip deviation by stage: %.2f %.2f %.2f %.2f rad" % dev)
+		_check(dev[0] < 0.2 and dev[1] > dev[0] + 0.08 and dev[2] > dev[1] + 0.2 and dev[3] > dev[2] + 0.3, "the katana visibly bends more at every stage (%s)" % str(dev))
+		combat.receive_attack(boss, {"damage": 999.0})
+	if t == 142:
+		_check(duel.state == "lost" and lost_n == 2, "down in phase 3: lost (%s)" % duel.state)
+		mark["old"] = boss
+		duel.retry()
+		_next("retry3")
+
+
+## A retry from phase 3: a fresh phase-1 boss with a straight katana and phase-1 numbers.
+func _retry3(t: int) -> void:
+	if t == 2:
+		boss = duel.boss
+		_check(boss != mark.get("old") and boss.phase == 1 and duel.phase == 1 and boss.katana.stage == 0 and is_equal_approx(boss.hp, boss.max_hp), "retry() in phase 3: a fresh phase-1 Za Mẫn")
+		_check(is_equal_approx(float(boss.stats["speed"]), base_speed) and boss.patterns() == SwordData.PHASES[0]["patterns"] and is_equal_approx(boss.katana.bend, 0.0), "phase-1 speed, patterns and a straight blade again")
+		_check(String(combat.light_moves[0]["id"]) == "slash1" and duel.staff != null, "still the staff after the retry")
+	if t == 10:
 		_next("break")
 
 
 func _break(t: int) -> void:
 	if t == 2:
+		_reset_player()
+		_place(Vector3(0.0, 0.0, -1.6))
 		var r: String = _hit_to(0.0)
 		_check(r == "ko", "the last hit: ko (%s)" % r)
 		_check(boss.st == MeleeEnemy.St.FINALE and not boss.is_hostile() and not boss.is_defeated(), "the finale, not yet knocked out (%s)" % boss.state_name())
@@ -515,10 +623,16 @@ func _break(t: int) -> void:
 	if t == 40:
 		_check(combat.hud.popup_text == SwordData.T_BREAK, "the comic line (%s)" % combat.hud.popup_text)
 		_check(boss.pose.pose_name == "sw_kat_stare", "he stares at the stump")
+		_check(combat.hud.boss_shown, "the boss bar stays through the finale")
+		combat.hp = 50.0                         # win with HP below full: the HUD stays up, the boss bar must not
+		combat.since_damage = 0.0
 	if not mark.has("ko") and boss.st == MeleeEnemy.St.KO:
 		mark["ko"] = t
-	if mark.has("ko") and t == int(mark["ko"]) + 2:
+	if mark.has("ko") and t == int(mark["ko"]) + 5:
 		_check(won_n == 1 and duel.state == "won", "the knockout after the finale wins the duel (%d)" % won_n)
+		_check(combat.hud.visible and combat.hp < combat.max_hp and not combat.hud.boss_shown and not combat.hud.boss_bar.visible and combat.boss == null, "after the win (HP %.0f) the boss bar is gone" % combat.hp)
+		_check(combat.light_moves == CombatData.LIGHT and duel.staff == null and not combat.fight_active, "the win puts the staff away: unarmed moves again")
+		_check(player.model.find_child("PropGrip", true, false) == null and player.model.find_child("Att_prop_r*", true, false) == null, "no staff or staff attachment left on the hand")
 		_check(combat.fx.cine.find_children("Star*", "", true, false).size() >= 3, "knockout stars")
 		_check(is_equal_approx(Engine.time_scale, 1.0), "the time scale is back to 1")
 		_check(boss.katana.piece.global_position.y < float(mark["piece_y0"]) and boss.katana.piece_resting, "the broken tip lies on the floor (y %.2f)" % boss.katana.piece.global_position.y)
@@ -533,6 +647,7 @@ func _stop(t: int) -> void:
 		duel.stop()
 		_check(combat.light_moves == CombatData.LIGHT and combat.controls_text == CombatData.T_CONTROLS and not combat.blade and combat.idle_pose == "", "stop(): the unarmed move set is back")
 		_check(combat.boss == null and combat.enemies.is_empty() and not combat.fight_active and duel.state == "idle", "stop(): no boss, no fight")
+		_check(duel.boss == null and duel.phase == 1, "stop() clears the duel's boss and phase")
 	if t == 3:
 		_check(player.model.find_child("PropGrip", true, false) == null and duel.staff == null, "stop(): the staff is gone")
 		combat.light_override = true
@@ -550,6 +665,26 @@ func _stop(t: int) -> void:
 		duel.queue_free()
 	if t == 44:
 		_check(combat.light_moves == CombatData.LIGHT and player.model.find_child("PropGrip", true, false) == null and combat.boss == null, "freeing a running duel restores the unarmed set")
+		_check(player.model.find_child("Att_prop_r*", true, false) == null, "no staff attachment left behind after start / free cycles")
+		duel = SwordDuel.new()
+		duel.name = "Duel3"
+		arena.add_child(duel)
+		duel.setup({"player": player, "combat": combat, "at": Vector3(0.0, 0.0, -1.6), "boss": {"ai": false}})
+		duel.prepare()
+		boss = duel.boss
+	if t == 46:
+		_check(boss != null and boss.staged and not boss.is_hostile() and boss.pose.pose_name == "sw_kat_guard", "prepare(): Za Mẫn stands in his guard before the fight")
+		_check(boss.take_strike({"kind": "slash1", "dmg": 50.0, "from": player.global_position}) == "ignored" and is_equal_approx(boss.hp, boss.max_hp), "prepare(): he is invulnerable")
+		_check(duel.state == "idle" and duel.staff == null and not combat.fight_active and not combat.hud.boss_shown, "prepare(): no fight, no staff, no boss bar yet")
+	if t == 80:
+		_check(boss.st == MeleeEnemy.St.IDLE and boss.attacks == 0, "prepare(): he just stands there")
+		duel.start()
+		_check(duel.boss == boss and not boss.staged and boss.is_hostile() and boss.st == MeleeEnemy.St.HOLD, "start() wakes the same boss")
+		_check(duel.staff != null and combat.fight_active, "start() arms the staff")
+	if t == 84:
+		_check(combat.hud.boss_shown, "the boss bar shows once the duel starts")
+		duel.queue_free()
+	if t == 86:
 		_check(arena.find_children("*", "GPUParticles3D", true, false).is_empty(), "no GPUParticles3D")
 		_finish()
 
@@ -557,7 +692,7 @@ func _stop(t: int) -> void:
 func _finish() -> void:
 	Engine.time_scale = 1.0
 	if fails.is_empty():
-		print("✅ SUCCESS: SWORD DUEL (staff set + prop, 3-slash combo, thrust breaks guard, block, parry stagger, dodge i-frames, 0.5 s glint tells, lunge, spin, lost, retry, phases 66 / 33, katana bend stages, snap finale -> won, stop restores)")
+		print("✅ SUCCESS: SWORD DUEL (staff set + prop, 3-slash combo, thrust breaks guard, block, parry stagger, dodge i-frames, 0.5 s glint tells in phases 1-3, lunge, spin, frenzy, lost, retry from phases 1 and 3, katana bend stages, snap finale -> won puts the staff away and hides the boss bar, stop / free restore, prepare)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())

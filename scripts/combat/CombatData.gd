@@ -105,7 +105,7 @@ const ARCHETYPES: Dictionary = {
 		"taunt_chance": 0.1, "flee_at": 0.0, "finisher_ko": false, "boss": true, "glow": true, "howl_at": 0.5,
 		"howl": {"speed": 1.25, "circle_speed": 1.25, "light_dmg": 1.3, "heavy_dmg": 1.3, "windup": 0.85, "recover": 0.7,
 			"cooldown": 0.7, "think": 0.7, "chain": 1},
-		"howl_line": "Sói Xám nổi điên rồi!", "sfx": ["howl"],
+		"howl_line": "Sói Xám nổi điên rồi!", "sfx": ["howl"], "label": "Sói Xám",
 		"look": {"preset": "rider", "body": "hoodie", "helmet_color": Color("#7D848C"), "seed": 2020, "female": false, "backpack": false}},
 }
 const HOWL_S: float = 1.4               # Sói Xám's howl (armoured)
@@ -134,6 +134,7 @@ const REF_LEN: Dictionary = {"Punch_Left": 0.8333, "Punch_Right": 0.8333, "Sword
 	"Kick_Left": 0.9333, "HitRecieve": 0.5667, "HitRecieve_2": 0.5667, "Roll": 1.3333, "Death": 1.0667}
 const UPPER_JOINTS: Array[String] = ["torso", "head", "shoulder_l", "shoulder_r", "elbow_l", "elbow_r"]
 static var _pose_cache: Dictionary = {}
+static var _howl_scratch: Dictionary = {}
 
 
 static func archetype(id: String) -> Dictionary:
@@ -174,11 +175,16 @@ static func pose(pose_name: String, u: float) -> Dictionary:
 			return _pose_cache[pose_name]
 		"stunned", "taunt", "dodge_lean", "hip_throw", "winded":
 			return CineMoves.code_pose(pose_name, u)
-		"howl":                  # Sói Xám: head thrown back, arms spread, a tremble (loop phase u)
+		"howl":                  # Sói Xám: head thrown back, arms spread, a tremble (loop phase u; one reused Dictionary)
 			var k: float = sin(u * TAU * 3.0) * 0.05
-			return {"torso": Vector3(-0.3, 0.0, k), "head": Vector3(-0.75 + k, 0.0, 0.0),
-				"shoulder_l": Vector3(0.45, 0.0, -1.15 - k), "elbow_l": Vector3(0.5, 0.0, 0.0),
-				"shoulder_r": Vector3(0.45, 0.0, 1.15 + k), "elbow_r": Vector3(0.5, 0.0, 0.0)}
+			var h: Dictionary = _howl_scratch
+			h["torso"] = Vector3(-0.3, 0.0, k)
+			h["head"] = Vector3(-0.75 + k, 0.0, 0.0)
+			h["shoulder_l"] = Vector3(0.45, 0.0, -1.15 - k)
+			h["elbow_l"] = Vector3(0.5, 0.0, 0.0)
+			h["shoulder_r"] = Vector3(0.45, 0.0, 1.15 + k)
+			h["elbow_r"] = Vector3(0.5, 0.0, 0.0)
+			return h
 	if pose_name.begins_with("sw_"):
 		return SwordData.pose(pose_name, u)   # Phase C staff and katana poses
 	return {}

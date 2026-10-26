@@ -28,6 +28,8 @@
 #                                               #   bodies stay until you stop() or queue_free() the fight
 #   fight.lost.connect(...)                     # the player's HP reached 0 (show "TOANG!", then call retry())
 #   fight.enemy_ko.connect(func(e: MeleeEnemy): ...)   # also enemy_fled(e), wave_started(i), wave_cleared(i)
+#   fight.prepare()                             # optional: spawn the first wave now for a villain card; they stand in guard,
+#                                               #   not hostile, invulnerable (MeleeEnemy.staged) until start()
 #   fight.start()
 #   fight.checkpoint()                          # remember the current wave + the player's spot (automatic per wave)
 #   fight.retry()                               # enemies removed, HP 100, player back at the checkpoint, that wave again
@@ -86,6 +88,8 @@ var _line_cd: float = 0.0
 var _mid_prev: bool = false
 var _gap_left: float = -1.0
 var _spawned: int = 0
+var _staging: bool = false
+var _prepared: bool = false
 
 
 func setup(opts: Dictionary) -> void:
@@ -116,6 +120,17 @@ func add_wave(spawns: Array) -> void:
 	waves.append(spawns.duplicate(true))
 
 
+## Spawn the first wave before start() (a villain card can frame them): staged enemies stand in guard, are not hostile and
+## take no hits; start() wakes them instead of spawning again. wave_started(0) fires here.
+func prepare() -> void:
+	if waves.is_empty() or player == null or combat == null or state == "running":
+		return
+	_staging = true
+	_start_wave(0)
+	_staging = false
+	_prepared = true
+
+
 func start() -> void:
 	if waves.is_empty() or player == null or combat == null:
 		push_warning("MeleeFight.start: no wave, player or combat")
@@ -127,7 +142,15 @@ func start() -> void:
 	_off_bike()
 	if start_line != "" and combat.hud:
 		combat.hud.popup(start_line)
-	_start_wave(0)
+	if _prepared and wave == 0 and not enemies.is_empty():
+		_prepared = false
+		if auto_checkpoint:
+			checkpoint()
+		for e: Variant in enemies:
+			if is_instance_valid(e):
+				(e as MeleeEnemy).unstage()
+	else:
+		_start_wave(0)
 
 
 ## Remember the current wave and the player's spot: retry() comes back here.
@@ -251,6 +274,8 @@ func _start_wave(i: int) -> void:
 		add_child(e)
 		e.set_yaw(yaw)
 		e.bind(combat, self, enemies, combat.fx)
+		if _staging:
+			e.stage()
 		e.ko.connect(_on_ko)
 		e.fled.connect(_on_fled)
 		enemies.append(e)
@@ -263,6 +288,7 @@ func _start_wave(i: int) -> void:
 
 
 func _clear_enemies() -> void:
+	_prepared = false
 	for e: Variant in enemies:
 		if combat.boss == e:
 			combat.boss = null
@@ -327,6 +353,8 @@ func _physics_process(delta: float) -> void:
 func _finish() -> void:
 	if combat:
 		combat.fight_active = false
+		if combat.boss != null and enemies.has(combat.boss):
+			combat.boss = null                   # the boss bar goes with the fight (won / stop)
 	_lock_weapons(false)
 
 

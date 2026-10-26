@@ -30,6 +30,8 @@ var step_name: String = ""
 ## Logs (last LOG_MAX): tells {"t", "step", "red"} (game time of the glint), hit_log {"t", "step", "result"}.
 var tells: Array[Dictionary] = []
 var hit_log: Array[Dictionary] = []
+## Patterns started (last LOG_MAX; tests).
+var pattern_log: Array[String] = []
 var parries: int = 0
 var finales: int = 0
 var lunge_from: Vector3 = Vector3.ZERO
@@ -44,6 +46,7 @@ var _base_circle: float = 1.5
 var _fixed: Dictionary = {}
 var _last_pattern: String = ""
 var _dash_dir: Vector3 = Vector3.ZERO
+var _dash_v: float = 0.0
 var _finale_away: Vector3 = Vector3.ZERO
 var _finale_done: bool = false
 var _finale_line: bool = false
@@ -168,6 +171,10 @@ func _begin_attack() -> void:
 	step = SwordData.STEPS[step_name]
 	attack_kind = "heavy" if bool(step["unblockable"]) else "light"
 	var gap: float = 0.0 if _step == 0 else _gap
+	if _step == 0:
+		pattern_log.append(pattern_name)
+		if pattern_log.size() > LOG_MAX:
+			pattern_log.pop_front()
 	_glint_at = gap
 	_glinted = false
 	_enter(St.WINDUP, gap + SwordData.TELL_S - float(step["hit"]))
@@ -214,9 +221,9 @@ func _start_attack() -> void:
 				var gap: float = d.length() - float(step["reach"]) + 0.2
 				if gap > 0.05:
 					push_v = facing_dir() * minf(sqrt(2.0 * PUSH_DECEL * minf(gap, 0.9)), 4.5)
-			"lunge":
-				_hit_t = 999.0                   # contact is checked every frame of the dash (_physics_process)
+			"lunge":                             # dash so that his reach meets the player at the hit frame
 				_dash_dir = facing_dir()
+				_dash_v = clampf((d.length() - float(step["reach"]) + 0.15) / hit, 0.0, float(step["dash_max"]))
 				lunge_from = global_position
 	if combat:
 		combat._cue("katana_slash", global_position + Vector3(0.0, 1.3, 0.0), -4.0)
@@ -226,8 +233,8 @@ func _physics_process(delta: float) -> void:
 	if st == St.ATTACK and not step.is_empty():
 		match String(step["kind"]):
 			"lunge":
-				if not hit_done and st_t + delta < float(step["dash_s"]):
-					push_v = _dash_dir * float(step["dash"])
+				if not hit_done and st_t + delta <= float(step["hit"]) + 1e-4:
+					push_v = _dash_dir * _dash_v
 			"spin":
 				set_yaw(wrapf(yaw + float(step["turns"]) * TAU / maxf(st_len, 0.1) * delta, -PI, PI))
 	super._physics_process(delta)
@@ -235,10 +242,6 @@ func _physics_process(delta: float) -> void:
 		St.WINDUP:
 			if not _glinted and st_t >= _glint_at - 1e-5:
 				_do_glint()
-		St.ATTACK:
-			if not hit_done and String(step.get("kind", "")) == "lunge" and st_t >= float(step["hit"]):
-				if _in_reach() or st_t >= float(step["dash_s"]):
-					_strike()
 		St.FINALE:
 			_finale_tick()
 
@@ -264,6 +267,8 @@ func _strike() -> void:
 	_set_flash(false)
 	katana.set_glint(false)
 	attacks += 1
+	if String(step.get("kind", "")) == "lunge":
+		push_v = _dash_dir * minf(_dash_v, 1.5)  # the dash stops at the hit: a short follow-through slide
 	var r: String = "miss"
 	var p: Node3D = combat.player if combat else null
 	if p and _in_reach():

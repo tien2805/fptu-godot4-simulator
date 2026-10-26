@@ -100,6 +100,9 @@ var _glow_mat: StandardMaterial3D = null
 ## Howl phase (stats "howl_at", Sói Xám): howled once, howls counted (tests).
 var howled: bool = false
 var howls: int = 0
+## Staged (MeleeFight.prepare): spawned before the fight for a villain card; stands in guard, not hostile, takes no hits
+## until unstage() (MeleeFight.start).
+var staged: bool = false
 var _marks := PackedFloat32Array()
 static var _flash_mat: StandardMaterial3D = null
 
@@ -111,7 +114,7 @@ func setup(arch: String, opts: Dictionary = {}) -> void:
 	var over: Dictionary = opts.get("stats", {})
 	for k: String in over.keys():
 		stats[k] = over[k]
-	label = String(opts.get("label", ""))
+	label = String(opts.get("label", stats.get("label", "")))
 	ai = bool(opts.get("ai", ai))
 	_rng.seed = int(opts.get("seed", hash(archetype_id)))
 	max_hp = float(stats["hp"]) * float(opts.get("hp_scale", 1.0))
@@ -188,6 +191,28 @@ func _build_glow() -> void:
 			glow_nodes.append(mi)
 	for mi2: MeshInstance3D in glow_nodes:
 		mi2.material_override = _glow_mat
+
+
+## Light (or dim) the LED eyes from a scripted beat (Day 2: eyes in the dark). The next state change sets them again (lit
+## for a wind-up / telegraph / howl, dim otherwise), so a staged enemy keeps them as set until the fight starts.
+func set_glow(on: bool) -> void:
+	_set_glow(on)
+
+
+## Spawned early for a villain card (MeleeFight.prepare): stand in guard, not hostile, no hits taken, no attacks.
+func stage() -> void:
+	staged = true
+	_release_token()
+	_enter(St.IDLE)
+	pose.set_pose(guard_pose)
+
+
+## The fight starts (MeleeFight.start): back to the AI (or HOLD with the AI off).
+func unstage() -> void:
+	if not staged:
+		return
+	staged = false
+	_enter(St.APPROACH if ai else St.HOLD)
 
 
 func _set_glow(on: bool) -> void:
@@ -668,7 +693,7 @@ func on_player_attack(_kind: String, eta: float) -> void:
 ## "breaks_block", "stun" (stagger seconds), "knockdown", "from". Returns "ignored" | "dodged" | "blocked" | "guard_break" |
 ## "hit" | "daze" | "knockdown" | "ko" | "flee".
 func take_strike(info: Dictionary) -> String:
-	if st == St.KO or st == St.FLED or st == St.FLEE or st == St.KNOCKDOWN or st == St.FINALE:
+	if staged or st == St.KO or st == St.FLED or st == St.FLEE or st == St.KNOCKDOWN or st == St.FINALE:
 		return "ignored"
 	if st == St.DODGE:
 		return "dodged"

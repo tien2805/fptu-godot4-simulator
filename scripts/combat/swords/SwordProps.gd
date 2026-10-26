@@ -103,3 +103,14 @@ static func attach_to_hand(body: Node3D, prop: Node3D, tilt: float) -> Node3D:
 	pivot.transform = forearm.affine_inverse() * grip
 	att.add_child(pivot)
 	return pivot
+
+
+## Take a prop off the hand: its pivot and the forearm BoneAttachment3D that attach_to_hand made for it.
+static func detach(pivot: Node3D) -> void:
+	if pivot == null or not is_instance_valid(pivot):
+		return
+	var att: Node = pivot.get_parent()
+	if att is BoneAttachment3D and String(att.name).begins_with("Att_prop_r"):
+		att.queue_free()
+	else:
+		pivot.queue_free()

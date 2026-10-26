@@ -63,8 +63,13 @@ Files: `swords/KatanaBoss.gd`, `swords/SwordDuel.gd`.
   slashes can be blocked and parried. At 0 HP: FINALE (katana snaps, slow motion, the comic stare and line, 1.8 s),
   then the knockout with stars, then `won`.
 - SwordDuel API: `setup(opts)` (roam or player / combat / weapons; `at`, `yaw`, `boss` opts, `start_line`, `seed`),
-  `start()`, `retry()`, `stop()`, signals `won`, `lost`, `phase_changed(phase)`, fields `state`, `phase`, `boss`,
-  `fight`, `combat`. Start / retry swap in the staff set and prop; stop / free restore unarmed.
+  `prepare()` (optional: the boss stands staged, invulnerable, for a villain card), `start()`, `retry()`, `stop()`,
+  signals `won`, `lost`, `phase_changed(phase)`, fields `state`, `phase`, `boss`, `fight`, `combat`. Start / retry swap in
+  the staff set and prop; `won` (after the finale), stop and free restore unarmed and take the staff off the hand.
+- Review fixes: the boss bar shows only while the fight runs (and MeleeFight clears `combat.boss` on won / stop);
+  `MeleeFight.prepare()` + `MeleeEnemy.stage()` / `unstage()`; `MeleeEnemy.set_glow()` (Day 2 eyes in the dark); default
+  label "Sói Xám"; the lunge dashes to land exactly at its hit frame; the staff hint keeps "[E] hạ gục"; owner SFX files
+  load on the warm-up worker; looping poses reuse their Dictionary; the staff's forearm attachment is freed with it.
 
 ## Task 4: Tests
 

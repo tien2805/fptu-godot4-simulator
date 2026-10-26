@@ -5,7 +5,10 @@
 #   bar (combat.boss, a tick at 50 %); a forced combo lands 4 hits fast, every one told by the LED eyes lit >= 0.35 s
 #   before the impact and dark right after; a heavy is told by eyes + red flash; under 50 % HP he howls once (state HOWL,
 #   the howl cue and line, armoured: hits hurt without interrupting) and comes out faster and harder hitting; 0 HP through
-#   the MeleeFight -> won; stop() clears the boss bar; AI on: his chains reach 3+ hits and every hit is glow-told.
+#   the MeleeFight -> won, and the boss bar hides at once although the player's HP is below full; the default label;
+#   set_glow() for a scripted beat; MeleeFight.prepare() shows him staged (guard, invulnerable, eyes lit on demand) until
+#   start() wakes the same enemy; courier / clone / dolly fights get no boss bar and keep their attack length; AI on: his
+#   chains reach 3+ hits and every hit is glow-told.
 # Counts physics frames (Engine.max_fps = 60).
 # Run:  godot --headless --path . --script tests/test_soi_xam.gd
 extends SceneTree
@@ -71,14 +74,17 @@ func _next(p: String) -> void:
 	mark.clear()
 
 
-func _new_fight(ai: bool, at: Vector3) -> void:
+func _new_fight(ai: bool, at: Vector3, prepare_only: bool = false) -> void:
 	fight = MeleeFight.new()
 	fight.name = "SoiFight"
 	arena.add_child(fight)
 	fight.setup({"player": player, "combat": combat, "force_unarmed": false, "seed": 2})
-	fight.add_wave([{"archetype": "soi_xam", "at": at, "opts": {"ai": ai, "label": "Sói Xám", "stats": {"block_chance": 0.0, "dodge_chance": 0.0}}}])
+	fight.add_wave([{"archetype": "soi_xam", "at": at, "opts": {"ai": ai, "stats": {"block_chance": 0.0, "dodge_chance": 0.0}}}])
 	fight.won.connect(func() -> void: won_n += 1)
-	fight.start()
+	if prepare_only:
+		fight.prepare()
+	else:
+		fight.start()
 	e = fight.enemies[0]
 
 
@@ -114,18 +120,26 @@ func _on_physics() -> void:
 			_howl(t)
 		"ko":
 			_ko(t)
+		"plain":
+			_plain_fights(t)
+		"prepare":
+			_prepare(t)
 		"ai":
 			_ai(t)
 
 
 func _spawn(t: int) -> void:
 	if t == 20:
-		_check(e.archetype_id == "soi_xam" and e.label == "Sói Xám", "Sói Xám spawns through the MeleeFight")
+		_check(e.archetype_id == "soi_xam" and e.label == "Sói Xám", "Sói Xám spawns through the MeleeFight, labelled by default (%s)" % e.label)
 		_check(e.glow_nodes.size() == 2 and e.glow_nodes[0].is_inside_tree() and e.glow_nodes[0].name.begins_with("LedEye"), "two LED eyes on his head")
 		var eye_y: float = e.glow_nodes[0].global_position.y - e.global_position.y
 		_check(eye_y > 1.3 and eye_y < 2.0, "the eyes sit at head height (%.2f m)" % eye_y)
 		_check(not e.glow_on and is_equal_approx((e.glow_nodes[0].material_override as StandardMaterial3D).emission_energy_multiplier, MeleeEnemy.GLOW_OFF_ENERGY), "the eyes are dim at rest")
 		_check(combat.boss == e and combat.hud.boss_shown and e.boss_marks().size() == 1 and is_equal_approx(e.boss_marks()[0], 0.5), "the boss bar, with a tick at 50 %")
+		e.set_glow(true)
+		_check(e.glow_on and is_equal_approx((e.glow_nodes[0].material_override as StandardMaterial3D).emission_energy_multiplier, MeleeEnemy.GLOW_ON_ENERGY), "set_glow(true) lights the eyes for a scripted beat")
+		e.set_glow(false)
+		_check(not e.glow_on, "set_glow(false) dims them")
 		combat.block_override = true
 		_next("combo")
 
@@ -202,14 +216,71 @@ func _howl(t: int) -> void:
 
 func _ko(t: int) -> void:
 	if t == 30:
+		combat.hp = 50.0                         # win with HP below full: the HUD stays up, the boss bar must not
+		combat.since_damage = 0.0
 		var r: String = e.take_strike({"dmg": 9999.0, "stagger": 0.0, "from": player.global_position})
 		_check(r == "ko" and e.is_defeated(), "0 HP: knocked out (%s)" % r)
-	if t == 33:
+	if t == 36:
 		_check(won_n == 1 and fight.state == "won", "his knockout wins the MeleeFight")
+		_check(combat.hud.visible and combat.hp < combat.max_hp and not combat.hud.boss_shown and not combat.hud.boss_bar.visible and combat.boss == null, "after the win (HP %.0f) the boss bar is gone" % combat.hp)
 		fight.stop()
-		_check(combat.boss == null and combat.enemies.is_empty(), "stop() clears the boss bar")
+		_check(combat.boss == null and combat.enemies.is_empty(), "stop() clears the enemies")
 		fight.queue_free()
-	if t == 40:
+		_next("plain")
+
+
+## Phase B fights (courier, clone, Dolly): no boss bar, the head bars as before, the light attack length unchanged.
+func _plain_fights(t: int) -> void:
+	if t == 2:
+		combat.revive()
+		player.teleport(Vector3.ZERO, 0.0)
+		fight = MeleeFight.new()
+		fight.name = "PlainFight"
+		arena.add_child(fight)
+		fight.setup({"player": player, "combat": combat, "force_unarmed": false, "seed": 4})
+		fight.add_wave([{"archetype": "courier", "at": Vector3(0.0, 0.0, -1.3), "opts": {"ai": false, "stats": {"block_chance": 0.0, "dodge_chance": 0.0}}},
+			{"archetype": "clone", "at": Vector3(3.0, 0.0, -3.0), "opts": {"ai": false}},
+			{"archetype": "dolly", "at": Vector3(-3.0, 0.0, -3.0), "opts": {"ai": false}}])
+		fight.start()
+	if t == 20:
+		_check(combat.boss == null and not combat.hud.boss_shown and combat.hud.visible, "courier / clone / Dolly: no boss bar")
+		var labels: Array[String] = []
+		for n: Variant in fight.enemies:
+			labels.append((n as MeleeEnemy).label)
+		_check(labels == ["", "", ""], "no default labels for the Phase B archetypes (%s)" % str(labels))
+		(fight.enemies[0] as MeleeEnemy).force_attack("light")
+	if t > 20 and not mark.has("len") and (fight.enemies[0] as MeleeEnemy).st == MeleeEnemy.St.ATTACK:
+		mark["len"] = (fight.enemies[0] as MeleeEnemy).st_len
+		_check(is_equal_approx(float(mark["len"]), float(CombatData.ENEMY_LIGHT["dur"])), "a courier's punch keeps its 0.45 s length (%.2f)" % float(mark["len"]))
+	if t == 90:
+		_check(mark.has("len"), "the courier punched")
+		fight.stop()
+		fight.queue_free()
+		_next("prepare")
+
+
+## MeleeFight.prepare(): Sói Xám staged before the fight (villain card / eyes in the dark), start() wakes the same enemy.
+func _prepare(t: int) -> void:
+	if t == 2:
+		combat.revive()
+		player.teleport(Vector3.ZERO, 0.0)
+		_new_fight(true, Vector3(0.0, 0.0, -4.0), true)
+		mark["e"] = e
+	if t == 4:
+		_check(e.staged and e.st == MeleeEnemy.St.IDLE and not e.is_hostile() and e.pose.pose_name == "guard", "prepare(): he stands in guard, not hostile")
+		_check(e.take_strike({"dmg": 50.0, "from": player.global_position}) == "ignored" and is_equal_approx(e.hp, e.max_hp), "prepare(): invulnerable")
+		_check(fight.state == "idle" and not combat.fight_active and not combat.hud.boss_shown, "prepare(): no fight, no boss bar yet")
+		e.set_glow(true)
+	if t == 60:
+		_check(e.glow_on and e.st == MeleeEnemy.St.IDLE and e.attacks == 0, "staged with his eyes lit: they stay lit, he does not move in")
+		fight.start()
+		_check(fight.enemies.size() == 1 and fight.enemies[0] == mark["e"] and not e.staged and e.is_hostile(), "start() wakes the same Sói Xám")
+		_check(not e.glow_on, "the eyes go back to telling attacks")
+	if t == 64:
+		_check(combat.hud.boss_shown, "the boss bar shows once the fight starts")
+		fight.stop()
+		fight.queue_free()
+	if t == 70:
 		player.teleport(Vector3.ZERO, 0.0)
 		combat.revive()
 		combat.god = true
@@ -250,7 +321,7 @@ func _ai(t: int) -> void:
 func _finish() -> void:
 	Engine.time_scale = 1.0
 	if fails.is_empty():
-		print("✅ SUCCESS: SÓI XÁM (archetype, LED eyes, boss bar, 4-hit combo told by the glow, heavy, howl at 50 % armoured + buff once, KO -> won, AI chains)")
+		print("✅ SUCCESS: SÓI XÁM (archetype, LED eyes, boss bar, 4-hit combo told by the glow, heavy, howl at 50 % armoured + buff once, KO -> won hides the boss bar, set_glow, prepare, plain fights without a boss bar, AI chains)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())

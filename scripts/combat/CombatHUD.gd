@@ -10,8 +10,8 @@
 #   - an edge-of-screen marker (pointing out) for every attack on its way from an enemy behind the camera or off screen:
 #     amber for a light wind-up / swing, red for a telegraphed heavy;
 #   - centre popups (popup(text, colour)): "PHẢN ĐÒN", "HẠ GỤC", "PHÁ THẾ THỦ", a fight's start line, the force-unarmed line;
-#   - top centre under the HP bar, the boss bar (Phase C) for combat.boss: its label, a wide HP bar and a tick at each of
-#     its boss_marks() (phase / howl thresholds); the boss gets no bar over its head (the bottom belongs to the hint line,
+#   - top centre under the HP bar, while a fight runs, the boss bar (Phase C) for combat.boss: its label, a wide HP bar
+#     and a tick at each of its boss_marks() (phase / howl thresholds); the boss gets no bar over its head (the bottom belongs to the hint line,
 #     the stamina bar, the zone name and the story objective).
 # State for tests (computed in _process, not in _draw): finisher_shown, telegraph_shown, edge_markers, popup_text,
 # popup_left, boss_shown. The style (GameFX lookup) and the font are read once per frame.
@@ -166,7 +166,7 @@ func _process(delta: float) -> void:
 			telegraph_shown += 1
 	_edge_markers()
 	var bs: Node3D = combat.boss
-	boss_shown = visible and bs != null and is_instance_valid(bs) and bs.is_inside_tree() and bs.visible
+	boss_shown = visible and combat.fight_active and bs != null and is_instance_valid(bs) and bs.is_inside_tree() and bs.visible
 	if boss_bar.visible != boss_shown:
 		boss_bar.visible = boss_shown
 	if visible:

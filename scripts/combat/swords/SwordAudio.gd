@@ -5,9 +5,9 @@
 #   glint / glint_red (the katana boss's tell 0.5 s before a hit: blockable / unblockable), katana_slash, katana_boing (the
 #   cheap blade bending), katana_snap (it breaks), howl (Sói Xám's howl phase).
 # Owner override: user://sfx/<cue>.ogg | .mp3 (WeaponAudio.owner_file: local only, never committed).
-# warm(cues) builds each missing cue on its own WorkerThreadPool task (Phase W / A2 lesson: never synthesize on a frame);
-# stream(cue) adopts finished tasks, waits for one pending cue, or synthesizes as a last resort. Main thread only (static
-# cache); synth(cue) is pure.
+# warm(cues) builds each missing cue on its own WorkerThreadPool task (Phase W / A2 lesson: never synthesize or load on a
+# frame): the owner's file is loaded there when he has one, else the cue is synthesized; stream(cue) adopts finished
+# tasks, waits for one pending cue, or builds it as a last resort. Main thread only (static cache); synth(cue) is pure.
 class_name SwordAudio
 extends RefCounted
 
@@ -29,16 +29,19 @@ static func warm(cues: Array = CUES) -> int:
 	var n: int = 0
 	for c: Variant in cues:
 		var cue: String = String(c)
-		if not is_cue(cue) or _cache.has(cue) or _tasks.has(cue) or WeaponAudio.owner_file(cue) != "":
+		if not is_cue(cue) or _cache.has(cue) or _tasks.has(cue):
 			continue
 		var box: Array = [null]
-		_tasks[cue] = {"task": WorkerThreadPool.add_task(_job(box, cue)), "box": box}
+		_tasks[cue] = {"task": WorkerThreadPool.add_task(_job(box, cue, WeaponAudio.owner_file(cue))), "box": box}
 		n += 1
 	return n
 
 
-static func _job(box: Array, cue: String) -> Callable:
-	return func() -> void: box[0] = synth(cue)
+## Worker job built in a static function (writes only into its own box): the owner's file, else the synthesized cue.
+static func _job(box: Array, cue: String, owner_path: String) -> Callable:
+	return func() -> void:
+		var st: AudioStream = CineAudio._load_file(owner_path) if owner_path != "" else null
+		box[0] = st if st != null else synth(cue)
 
 
 ## Adopt the finished warm tasks (main thread). true when nothing is pending.

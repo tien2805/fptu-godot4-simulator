@@ -4,6 +4,8 @@
 # every 0.4 s and thrusting every 2 s, then one measured window of 120 physics frames against two baselines:
 #   B1 the duel (fight, boss, katana) and the PlayerCombat (HUD, the player's pose layer) disabled: the duel's own cost;
 #   B2 also the crowd, traffic, weapons, wanted level and emotes disabled: the duel + crowd.
+# Then the Day 2 mini-boss case: everything back on, a MeleeFight against Sói Xám (AI on, tough, the player blocking and
+# punching in god mode), one window against S1 (that fight and the PlayerCombat disabled) and against B2.
 # Each cost must stay < 3 ms per physics frame (headless script time, the phase-change frame dropped) by the MEDIAN and by
 # the 5 %-TRIMMED MEAN (6 lowest and 6 highest of 120 frames dropped), method of tests/test_combat_perf.gd. Also: no
 # GPUParticles3D anywhere, Engine.time_scale back at 1.0. Prints the numbers.
@@ -28,6 +30,7 @@ var phase: String = ""
 var t0: int = 0
 var roam: Node3D
 var duel: SwordDuel
+var soi: MeleeFight
 var timing: bool = false
 var _pt0: int = 0
 var samples: PackedInt32Array = PackedInt32Array()
@@ -35,6 +38,7 @@ var medians: Array[float] = []
 var means: Array[float] = []
 var trimmed: Array[float] = []
 var tells0: int = 0
+var mark_attacks: int = 0
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -107,6 +111,10 @@ static func trimmed_mean(sorted: PackedInt32Array, frac: float) -> float:
 	return float(t) / float(n)
 
 
+func _crowd() -> Array[Node]:
+	return [roam.get("pedestrians"), roam.get("traffic"), roam.get("weapons"), roam.get("wanted"), roam.get("emotes")]
+
+
 func _on_physics() -> void:
 	_pt0 = Time.get_ticks_usec()
 	frames += 1
@@ -148,15 +156,51 @@ func _on_physics() -> void:
 				_start_window()   # disabling removes bodies from the physics space: drop the change frame
 			if t == 2 + WINDOW:
 				_end_window()
-				var wd: Node = roam.get("weapons")
-				for n: Node in [roam.get("pedestrians"), roam.get("traffic"), wd, roam.get("wanted"), roam.get("emotes")]:
-					(n as Node).process_mode = Node.PROCESS_MODE_DISABLED
+				for n: Node in _crowd():
+					n.process_mode = Node.PROCESS_MODE_DISABLED
 				_next("b2")
 		"b2":
 			if t == 2:
 				_start_window()
 			if t == 2 + WINDOW:
 				_end_window()
+				for n: Node in _crowd():
+					n.process_mode = Node.PROCESS_MODE_INHERIT
+				combat.process_mode = Node.PROCESS_MODE_INHERIT
+				combat.pose.process_mode = Node.PROCESS_MODE_INHERIT
+				duel.process_mode = Node.PROCESS_MODE_INHERIT
+				duel.stop()
+				duel.queue_free()
+				soi = MeleeFight.new()
+				soi.name = "PerfSoiXam"
+				roam.add_child(soi)
+				soi.setup({"roam": roam, "seed": 12})
+				soi.add_wave([{"archetype": "soi_xam", "at": pl.global_position + pl.facing_dir() * 4.0, "opts": {"hp_scale": 40.0}}])
+				soi.start()
+				combat.block_override = true
+				_next("soi")
+		"soi":
+			if t % 30 == 0:
+				combat.light_override = true
+			if t == 150:
+				var e: MeleeEnemy = soi.enemies[0]
+				print("  Sói Xám at BE6: %s, %d attacks so far" % [e.state_name(), e.attacks])
+				_check(soi.state == "running" and e.is_hostile(), "the Sói Xám fight runs (%s)" % soi.state)
+				mark_attacks = e.attacks
+				_start_window()
+			if t == 150 + WINDOW:
+				_end_window()
+				_check((soi.enemies[0] as MeleeEnemy).attacks > mark_attacks, "Sói Xám attacked during the window")
+				soi.process_mode = Node.PROCESS_MODE_DISABLED
+				combat.process_mode = Node.PROCESS_MODE_DISABLED
+				combat.pose.process_mode = Node.PROCESS_MODE_DISABLED
+				_next("s1")
+		"s1":
+			if t == 2:
+				_start_window()
+			if t == 2 + WINDOW:
+				_end_window()
+				combat.block_override = null
 				_report()
 
 
@@ -171,11 +215,19 @@ func _report() -> void:
 	_check(trim_c < GATE_MS, "sword duel < 3 ms per physics frame, 5 %%-trimmed mean (%.2f)" % trim_c)
 	_check(cost_b < GATE_MS, "sword duel + crowd < 3 ms per physics frame at BE6, median (%.2f)" % cost_b)
 	_check(trim_b < GATE_MS, "sword duel + crowd < 3 ms per physics frame, 5 %%-trimmed mean (%.2f)" % trim_b)
+	var cost_s: float = (medians[3] - medians[4]) / 1000.0
+	var trim_s: float = (trimmed[3] - trimmed[4]) / 1000.0
+	var cost_sb: float = (medians[3] - medians[2]) / 1000.0
+	var trim_sb: float = (trimmed[3] - trimmed[2]) / 1000.0
+	print("  Sói Xám fight only (+ PlayerCombat + HUD): %.2f ms per physics frame median, %.2f ms trimmed mean (median %.0f vs %.0f us)" % [cost_s, trim_s, medians[3], medians[4]])
+	print("  Sói Xám fight + crowd + traffic + wanted: %.2f ms median, %.2f ms trimmed mean (median %.0f vs %.0f us)" % [cost_sb, trim_sb, medians[3], medians[2]])
+	_check(cost_s < GATE_MS and trim_s < GATE_MS, "Sói Xám fight < 3 ms per physics frame (%.2f / %.2f)" % [cost_s, trim_s])
+	_check(cost_sb < GATE_MS and trim_sb < GATE_MS, "Sói Xám fight + crowd < 3 ms per physics frame (%.2f / %.2f)" % [cost_sb, trim_sb])
 	_check(roam.find_children("*", "GPUParticles3D", true, false).is_empty(), "no GPUParticles3D in FreeRoam")
 	_check(is_equal_approx(Engine.time_scale, 1.0), "Engine.time_scale is 1.0")
 	Engine.time_scale = 1.0
 	if fails.is_empty():
-		print("✅ SUCCESS: SWORD DUEL PERFORMANCE (duel %.2f / %.2f ms, duel + crowd %.2f / %.2f ms median / trimmed mean < 3 ms per physics frame)" % [cost_c, trim_c, cost_b, trim_b])
+		print("✅ SUCCESS: SWORD DUEL PERFORMANCE (duel %.2f / %.2f ms, duel + crowd %.2f / %.2f ms, Sói Xám %.2f / %.2f ms, Sói Xám + crowd %.2f / %.2f ms median / trimmed mean < 3 ms per physics frame)" % [cost_c, trim_c, cost_b, trim_b, cost_s, trim_s, cost_sb, trim_sb])
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())

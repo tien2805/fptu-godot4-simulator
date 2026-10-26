@@ -7,7 +7,7 @@ class_name SwordData
 extends RefCounted
 
 # ----- texts (plain, Vietnamese) -----
-const T_CONTROLS: String = "[Chuột trái] chém gậy · [Chuột phải] đâm · [Q] đỡ, gạt đúng lúc · [Space] lăn né"
+const T_CONTROLS: String = "[Chuột trái] chém · [Chuột phải] đâm · [Q] đỡ, gạt · [Space] lăn né · [E] hạ gục"
 const T_PARRY: String = "GẠT ĐỠ"
 const T_BOSS: String = "Lê Minh Za Mẫn"
 ## Popups on a phase change (index = the new phase).
@@ -50,8 +50,9 @@ const ZA_MAN: Dictionary = {"hp": 300.0, "stagger_max": 180.0, "speed": 4.0, "ci
 	"taunt_chance": 0.12, "flee_at": 0.0, "finisher_ko": false, "boss": true,
 	"sfx": ["glint", "glint_red", "katana_slash", "katana_boing", "katana_snap", "blade_clash", "parry_ring", "staff_swish", "staff_hit", "staff_hit_heavy"],
 	"look": {"preset": "student_m", "body": "suit", "seed": 5050, "female": false, "backpack": false, "glasses": true}}
-## One attack of a pattern. kind: slash (cone at the hit frame), lunge (a dash; contact any time from `hit` to `dash_s`),
-## spin (all around at the hit frame). unblockable: red glint + red flash, goes through any block (dodge it).
+## One attack of a pattern, resolved at its hit frame (TELL_S after the glint). kind: slash (cone), lunge (a dash from the
+## start of the swing that covers the gap to his reach by the hit frame, at most dash_max m/s), spin (all around).
+## unblockable: red glint + red flash, goes through any block (dodge it).
 const STEPS: Dictionary = {
 	"slash_r": {"kind": "slash", "clip": "chop", "from": 0.2, "hit_at": 0.5, "dur": 0.5, "hit": 0.16, "dmg": 10.0, "reach": 1.9,
 		"half_deg": 75.0, "unblockable": false, "wind": "sw_kat_wind_r", "pose": "sw_kat_slash_r"},
@@ -59,8 +60,8 @@ const STEPS: Dictionary = {
 		"half_deg": 75.0, "unblockable": false, "wind": "sw_kat_wind_l", "pose": "sw_kat_slash_l"},
 	"slash_down": {"kind": "slash", "clip": "chop", "from": 0.15, "hit_at": 0.5, "dur": 0.55, "hit": 0.18, "dmg": 13.0, "reach": 2.0,
 		"half_deg": 50.0, "unblockable": false, "wind": "sw_kat_wind_down", "pose": "sw_kat_slash_down"},
-	"lunge": {"kind": "lunge", "clip": "", "dur": 0.6, "hit": 0.12, "dmg": 18.0, "reach": 1.5,
-		"half_deg": 60.0, "unblockable": true, "dash": 9.0, "dash_s": 0.45, "wind": "sw_kat_wind_lunge", "pose": "sw_kat_lunge"},
+	"lunge": {"kind": "lunge", "clip": "", "dur": 0.65, "hit": 0.3, "dmg": 18.0, "reach": 1.5,
+		"half_deg": 60.0, "unblockable": true, "dash_max": 14.0, "wind": "sw_kat_wind_lunge", "pose": "sw_kat_lunge"},
 	"spin": {"kind": "spin", "clip": "", "dur": 0.7, "hit": 0.3, "dmg": 15.0, "reach": 2.5, "half_deg": 180.0, "unblockable": true,
 		"turns": 1.5, "wind": "sw_kat_wind_spin", "pose": "sw_kat_spin"},
 }
@@ -174,11 +175,12 @@ const SWINGS: Dictionary = {
 	"sw_kat_slash_r": ["sw_kat_wind_r", "kat_end_r", 0.0, 0.45],
 	"sw_kat_slash_l": ["sw_kat_wind_l", "kat_end_l", 0.0, 0.45],
 	"sw_kat_slash_down": ["sw_kat_wind_down", "kat_end_down", 0.0, 0.45],
-	"sw_kat_lunge": ["sw_kat_wind_lunge", "kat_end_lunge", 0.0, 0.3],
+	"sw_kat_lunge": ["sw_kat_wind_lunge", "kat_end_lunge", 0.0, 0.45],
 	"sw_kat_spin": ["sw_kat_wind_spin", "kat_spin", 0.0, 0.25],
 }
 static var _scratch: Dictionary = {}     # swing name -> Dictionary reused every frame (read at once by CombatPose)
 static var _held: Dictionary = {}        # held pose name -> POSES entry + the neutral wrist (built once)
+static var _loop: Dictionary = {}        # looping pose name -> Dictionary reused every frame
 
 
 ## A held pose with "hand_r" at the neutral wrist added: the clip's wrist turns never twist the fist off the prop's grip.
@@ -212,15 +214,31 @@ static func pose(pose_name: String, u: float) -> Dictionary:
 	match pose_name:
 		"sw_kat_stare":          # the finale: stares at the broken hilt held up close, trembling
 			var k: float = sin(u * TAU * 4.0) * 0.06
-			return {"torso": Vector3(0.2, 0.1, 0.0), "head": Vector3(0.15, 0.25, k),
-				"shoulder_r": Vector3(0.8, 0.4, 0.0), "elbow_r": Vector3(1.9 + k, 0.0, 0.0),
-				"shoulder_l": Vector3(0.3, 0.0, -0.25), "elbow_l": Vector3(0.4, 0.0, 0.0)}
+			var d: Dictionary = _loop_dict(pose_name)
+			d["torso"] = Vector3(0.2, 0.1, 0.0)
+			d["head"] = Vector3(0.15, 0.25, k)
+			d["shoulder_r"] = Vector3(0.8, 0.4, 0.0)
+			d["elbow_r"] = Vector3(1.9 + k, 0.0, 0.0)
+			d["shoulder_l"] = Vector3(0.3, 0.0, -0.25)
+			d["elbow_l"] = Vector3(0.4, 0.0, 0.0)
+			return d
 		"sw_kat_taunt":          # a phase change: arms open, "pivot!"
 			var w: float = sin(u * TAU)
-			return {"torso": Vector3(-0.1, 0.0, 0.0), "head": Vector3(-0.15, 0.0, 0.15 * w),
-				"shoulder_r": Vector3(0.7, 0.0, 1.0 + 0.15 * w), "elbow_r": Vector3(1.1, 0.0, 0.0),
-				"shoulder_l": Vector3(0.7, 0.0, -1.0 - 0.15 * w), "elbow_l": Vector3(1.1, 0.0, 0.0)}
+			var d2: Dictionary = _loop_dict(pose_name)
+			d2["torso"] = Vector3(-0.1, 0.0, 0.0)
+			d2["head"] = Vector3(-0.15, 0.0, 0.15 * w)
+			d2["shoulder_r"] = Vector3(0.7, 0.0, 1.0 + 0.15 * w)
+			d2["elbow_r"] = Vector3(1.1, 0.0, 0.0)
+			d2["shoulder_l"] = Vector3(0.7, 0.0, -1.0 - 0.15 * w)
+			d2["elbow_l"] = Vector3(1.1, 0.0, 0.0)
+			return d2
 	return {}
+
+
+static func _loop_dict(pose_name: String) -> Dictionary:
+	if not _loop.has(pose_name):
+		_loop[pose_name] = {"hand_r": Vector3.ZERO}
+	return _loop[pose_name]
 
 
 ## The phase (1..3) of an HP fraction.
