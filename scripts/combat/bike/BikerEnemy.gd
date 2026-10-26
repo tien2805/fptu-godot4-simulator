@@ -28,7 +28,8 @@
 # road) or brakes behind it; touching a car anyway (a kicked biker wobbling into one) is a crash.
 # opts: "kind", "label", "hp" (kicks to crash, default the kind's), "seed", "ai" (false = HOLD), "aggression" (0..1:
 # shorter pacing), "eye_color", "paint", "body" (CharacterBuilder opts merged over the wolf rider look), "body_fn"
-# (Callable(look) -> rigged Node3D; the wolf helmet is not added then).
+# (Callable(look) -> rigged Node3D; the wolf helmet is not added then), "traffic_proof" (perf tests: a car only scrapes it,
+# so a measured window keeps every biker riding).
 # Takedown tags: takedown_tag ("spin" | "air") set before a kick crash turns its cause into that takedown; air_y lifts the
 # bike (the ramp jump, BikeChase).
 class_name BikerEnemy
@@ -99,6 +100,7 @@ var prefer_front: bool = false
 var leave_along: float = 45.0
 ## Day 2: takedown tag of the next kick crash ("spin" | "air"), the ramp jump lift, LED flare, kind state.
 var takedown_tag: String = ""
+var traffic_proof: bool = false
 var air_y: float = 0.0
 var airborne: bool = false
 var flare_t: float = 0.0
@@ -147,6 +149,7 @@ func setup(opts: Dictionary = {}) -> void:
 	max_hp = maxi(1, int(opts.get("hp", int(kp["hp"]))))
 	hp = max_hp
 	ai = bool(opts.get("ai", true))
+	traffic_proof = bool(opts.get("traffic_proof", false))
 	aggression = clampf(float(opts.get("aggression", 0.5)), 0.0, 1.0)
 	_rng.seed = int(opts.get("seed", 1))
 	_eye_col = opts.get("eye_color", BikeCombatData.EYE_COL)
@@ -994,7 +997,7 @@ func _traffic_contact() -> void:
 			continue
 		var n: Vector2 = cr * (1.0 if rl >= 0.0 else -1.0) if pl < pa else c.dir * (1.0 if ra >= 0.0 else -1.0)
 		var into: float = -(vel - c.dir * c.speed).dot(n)
-		if kind != "police" and (st == St.WOBBLE or into > BikeCombatData.GRAZE_SPEED):
+		if kind != "police" and not traffic_proof and (st == St.WOBBLE or into > BikeCombatData.GRAZE_SPEED):
 			crash("traffic", n * 3.0 + c.dir * c.speed * 0.5)
 			return
 		pos2 += n * minf(pl, pa)
