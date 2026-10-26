@@ -15,6 +15,7 @@ const T_GOAL_CLEAR: String = "Dọn sạch rồi. Tới chỗ cần tới đi!"
 
 var spotted: bool = false
 var cleared_said: bool = false
+var _left_shown: int = -1
 
 
 func _start() -> void:
@@ -40,6 +41,7 @@ func _start() -> void:
 func _reset_state() -> void:
 	spotted = false
 	cleared_said = false
+	_left_shown = -1
 	set_info("Đi lén, đừng để bảo vệ thấy")
 	set_prompt("Tới chỗ cột sáng xanh")
 
@@ -62,7 +64,9 @@ func _on_fight_won() -> void:
 func _lair_tick(_dt: float) -> void:
 	if spotted:
 		var left: int = fight.alive().size() if fight else 0
-		set_info("Bị lộ! Còn %d bảo vệ" % left if left > 0 else T_GOAL_CLEAR)
+		if left != _left_shown:
+			_left_shown = left
+			set_info("Bị lộ! Còn %d bảo vệ" % left if left > 0 else T_GOAL_CLEAR)
 		if left > 0:
 			return
 		if not cleared_said:

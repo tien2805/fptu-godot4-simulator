@@ -89,6 +89,7 @@ func _ready() -> void:
 		_on_objective(String(director.get("objective")))
 	_apply_state()
 	StoryAudio.warm(["heartbeat", "toang_sting", "success_fanfare"])
+	MusicDirector.warm(LAIR_MUSIC.values())   # every task track decodes on a worker now, not when its task starts
 	_run_t = 0.3
 
 
@@ -437,8 +438,7 @@ func _music(slot: String) -> void:
 		if fx.has_method("music_stop"):
 			fx.call("music_stop", true)
 	elif fx.has_method("music_play"):
-		MusicDirector.warm([slot])
-		fx.call("music_play", slot, 0.5)
+		fx.call("music_play", slot, 0.5)   # warmed in _ready
 
 
 ## Back to story free roam (the beat after the basement, or VỀ THẾ GIỚI MỞ).

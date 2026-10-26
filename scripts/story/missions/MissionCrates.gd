@@ -27,6 +27,12 @@ var dance_len: float = 0.0
 var fleeing: float = -1.0
 var time_left: float = TIME_S
 var meme_on: bool = false
+var _shown: Vector2i = Vector2i(-1, -1)   # (broken, seconds) on the info line: text rebuilt only when it changes
+
+
+func _init() -> void:
+	armed = true
+	keep_top = true
 
 
 func _start() -> void:
@@ -44,6 +50,7 @@ func _start() -> void:
 	_track_all()
 	_reset_dance()
 	radio("Hàng fake đó e, destroy hết đi, cái hòm mấy ông kia khiêng cũng tính nha.", "Phá hết các thùng kính, cả cái hòm đang khiêng.")
+	MusicDirector.warm(["mission_gunfight"])   # the track that comes back when the carriers drop their crate
 
 
 ## Every crate counts: the yard's crates plus the carried one.
@@ -99,6 +106,8 @@ func _reset_dance() -> void:
 	_place_dance(0.0)
 	_set_meme(true)
 	time_left = TIME_S
+	_shown = Vector2i(-1, -1)
+	_show_info()
 
 
 ## The recorder tracks the player, the dance and every crate's planks (the replay shows the last one breaking).
@@ -137,6 +146,16 @@ func _on_carried_broken(_c: Node3D) -> void:
 		CharacterBuilder.set_speed(b, 4.5)
 
 
+## The counter and the countdown in the top panel, rebuilt only when the shown numbers change (no per-frame strings).
+func _show_info() -> void:
+	var now := Vector2i(broken_count(), maxi(0, ceili(time_left)))
+	if now == _shown:
+		return
+	_shown = now
+	set_info("Thùng kính: %d / %d · Còn %d s" % [now.x, total(), now.y])
+	set_meter(clampf(float(now.y) / TIME_S * 100.0, 0.0, 100.0))
+
+
 func _set_meme(on: bool) -> void:
 	if on == meme_on:
 		return
@@ -149,8 +168,7 @@ func _set_meme(on: bool) -> void:
 
 func _lair_tick(dt: float) -> void:
 	time_left -= dt
-	set_info("Thùng kính: %d / %d · Còn %d s" % [broken_count(), total(), maxi(0, ceili(time_left))])
-	set_meter(clampf(time_left / TIME_S * 100.0, 0.0, 100.0))
+	_show_info()
 	if fleeing >= 0.0:
 		fleeing += dt
 		var away := Vector3(-1.0, 0.0, 0.3).normalized()

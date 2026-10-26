@@ -66,6 +66,7 @@ var lights: Array[OmniLight3D] = []
 var _hidden: Array[Node3D] = []
 var _fire_t: float = 0.0
 var _fire_acc: float = 0.0
+var _fire_opts: Dictionary = {"fire_from": 0.0}   # reused by tick() (no dictionary per update)
 
 
 func _init() -> void:
@@ -191,7 +192,7 @@ func tick(delta: float) -> void:
 		return
 	_fire_acc = 0.0
 	for ap: CineAnimProp in fires:
-		ap.cine_eval(_fire_t, {"fire_from": 0.0})
+		ap.cine_eval(_fire_t, _fire_opts)
 
 
 func _hall() -> void:

@@ -298,6 +298,31 @@ func _phase_c() -> void:
 	_check(not bool(sd.call("launch_lair_beat", "d3_crates", xf)), "the yard is not a lair scene (FreeRoam)")
 	sd.call("leave_lair")
 	_check(String(sd.get("last_nav")) == "roam", "leave_lair goes back to story free roam")
+	# old saves at the Phase B placeholders load (review fix: read_save validates the migrated step) and resume at the new
+	# first beats; Chọn cảnh seeds their chapters
+	var su: String = StoryChapters.unlocks_path
+	var sc: String = StoryChapters.chapters_path
+	StoryChapters.unlocks_path = "user://test_story_director_unlocks.cfg"
+	StoryChapters.chapters_path = "user://test_story_director_chapters.cfg"
+	for old2: Array in [["d2_wait", 2, "d2_chase"], ["d3_wait", 3, "d3_sneak"], ["d5_locked", 5, "d5_stealth"]]:
+		for pth: String in [StoryChapters.unlocks_path, StoryChapters.chapters_path]:
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(pth))
+		var od: Dictionary = {"active": true, "day": int(old2[1]), "tod": "sunset", "step": String(old2[0]), "evidence": ["E1"],
+			"choices": {}, "flags": {}, "protagonist": {"name": "Cũ"}, "texts": [], "objective": "", "spawn": null}
+		var oc := ConfigFile.new()
+		oc.set_value("story", "version", 1)
+		oc.set_value("story", "data", var_to_str(od))
+		oc.save(TMP)
+		sd.call("reset_state")
+		_check(not (sd.call("read_save", TMP) as Dictionary).is_empty(), "an old save at %s is a valid save" % String(old2[0]))
+		_check(bool(sd.call("continue_story")) and String(sd.get("step")) == String(old2[2]) and String(sd.get("last_nav")) == "roam",
+			"an old save at %s continues at %s" % [String(old2[0]), String(old2[2])])
+		_check(String((sd.call("read_save", TMP) as Dictionary).get("step", "")) == String(old2[2]), "the migrated %s save is written back once" % String(old2[0]))
+		_check(StoryChapters.is_beat_unlocked(String(old2[2])) and not StoryChapters.snapshot(String(old2[2])).is_empty(), "Chọn cảnh seeds %s from the old save" % String(old2[2]))
+	for pth2: String in [StoryChapters.unlocks_path, StoryChapters.chapters_path]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(pth2))
+	StoryChapters.unlocks_path = su
+	StoryChapters.chapters_path = sc
 	# optional sides
 	sd.call("reset_state")
 	sd.set("active", true)

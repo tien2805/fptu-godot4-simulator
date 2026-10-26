@@ -380,13 +380,17 @@ func _layout() -> void:
 		if n and is_instance_valid(n):
 			n.position = Vector2(float(b["lane"]) * lane_w + lane_w * 0.5 - n.size.x * 0.5, float(b["y"]) * 300.0)
 			var k: int = typed.length() if b == locked else 0
-			n.text = String(b["word"]).to_upper().substr(0, k) + String(b["word"]).substr(k)
+			if int(b.get("k", 0)) != k:   # the typed part in capitals, rebuilt only when it changes
+				b["k"] = k
+				n.text = String(b["word"]).to_upper().substr(0, k) + String(b["word"]).substr(k)
 	if not final_bullet.is_empty():
 		var nf: Label = final_bullet.get("node")
 		if nf and is_instance_valid(nf):
 			nf.position = Vector2(w * 0.5 - nf.size.x * 0.5, 130.0)
 			var k2: int = typed.length() if final_bullet == locked else 0
-			nf.text = FINAL_COMMAND.to_upper().substr(0, k2) + FINAL_COMMAND.substr(k2)
+			if int(final_bullet.get("k", 0)) != k2:
+				final_bullet["k"] = k2
+				nf.text = FINAL_COMMAND.to_upper().substr(0, k2) + FINAL_COMMAND.substr(k2)
 
 
 func _refresh() -> void:

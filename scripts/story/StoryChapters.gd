@@ -58,6 +58,8 @@ const GALLERY: Array = [
 static var unlocks_path: String = UNLOCKS_PATH
 static var chapters_path: String = CHAPTERS_PATH
 static var backup_path: String = BACKUP_PATH
+## The last restore_backup put back a finished story (ending C): it is restored but does not continue.
+static var last_restore_finished: bool = false
 
 
 ## true for the owner's real files while running headless (bots and tests never touch them).
@@ -215,6 +217,10 @@ static func restore_backup(sd: Node) -> bool:
 	if _guarded(save) or not _copy(backup_path, save):
 		return false
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(backup_path))
+	last_restore_finished = String((sd.call("read_save", save) as Dictionary).get("ending", "")) != ""
+	if last_restore_finished:
+		sd.call("reset_state")   # a finished story (ending C) is back as the save; it does not continue (Chọn cảnh rewinds it)
+		return true
 	return bool(sd.call("continue_story"))
 
 

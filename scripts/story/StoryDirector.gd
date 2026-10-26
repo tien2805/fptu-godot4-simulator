@@ -336,8 +336,8 @@ static func read_save(path: String = SAVE_PATH) -> Dictionary:
 	var v: Variant = str_to_var(String(cfg.get_value("story", "data", "")))
 	if not (v is Dictionary) or not (v as Dictionary).has("step"):
 		return {}
-	if StoryMissions.beat(String(v["step"])).is_empty():
-		return {}
+	if StoryMissions.beat(StoryMissions.migrate(String(v["step"]))).is_empty():
+		return {}   # an old placeholder step (d2_wait, d5_locked...) is valid: from_dict migrates it
 	return v
 
 

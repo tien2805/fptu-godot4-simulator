@@ -25,6 +25,9 @@ var replay_wait: float = -1.0
 var won_info: Dictionary = {}
 var _crowd: Dictionary = {}
 var _leash_t: float = 0.0
+## The mission's top panel (title, info, meter) stays visible, moved under GunHUD's panel (MissionCrates: the countdown
+## and the crate counter); otherwise GunHUD shows everything and the panel is hidden.
+var keep_top: bool = false
 
 
 func _init() -> void:
@@ -39,7 +42,12 @@ func setup(r: Node3D, b: Dictionary, o: Dictionary = {}) -> void:
 
 func begin() -> void:
 	super.begin()
-	hide_top_panel()
+	if keep_top:
+		var top: Control = hud.get_node_or_null("Top") as Control if hud else null
+		if top:
+			top.offset_top = GunHUD.TOP + GunHUD.PANEL.y + 10.0
+	else:
+		hide_top_panel()
 	_quiet_crowd(true)
 
 

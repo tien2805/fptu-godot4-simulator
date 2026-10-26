@@ -943,6 +943,8 @@ func _sync_yard(force: bool = false) -> void:
 		yard = null
 	if yard:
 		yard.set_stack_open(not (String(b.get("id", "")) in ["d3_sneak", "d3_mannequins"]))
+		if String(b.get("id", "")) in ["d3_end", "d3_bed"] and yard.forklift_park.visible:
+			yard.set_parked_forklift(false)   # Alexander's forklift lies toppled: it does not come back on Continue
 
 
 # ---------------------------------------------------------------------------

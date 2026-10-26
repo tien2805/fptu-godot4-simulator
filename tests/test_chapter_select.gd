@@ -485,6 +485,23 @@ func _phase_c() -> void:
 		"flags": {"d3_all_crates": true, "d3_manifest": true}, "protagonist": P, "texts": [], "objective": "", "spawn": null}
 	var be: Dictionary = StoryChapters.best_effort(save, "d3_boss")
 	_check(bool((be["flags"] as Dictionary).get("d3_all_crates", false)) and not (be["evidence"] as Array).has("E4"), "best effort at d3_boss: the crates flag kept, E4 offered again")
+	# a finished story (ending C) put back by QUAY VỀ: restored, not a failure (review fix)
+	sd.call("reset_state")
+	sd.call("from_dict", {"active": true, "day": 5, "tod": "night", "step": "d5_end_c", "evidence": ["E1"], "choices": {"zaman_offer": "accept"},
+		"flags": {"ending": "C"}, "protagonist": P, "texts": [], "objective": "", "spawn": null, "ending": "C"})
+	sd.call("save_game", TMP_B)
+	sd.call("reset_state")
+	sd.call("new_story", P)
+	_open_cs()
+	_check(cs.restore_btn.visible, "the restore button shows with a backup")
+	cs.ask_restore()
+	cs._on_confirm()
+	_check(StoryChapters.last_restore_finished and String(_read_save(TMP_SAVE).get("ending", "")) == "C" and not bool(sd.get("active")),
+		"QUAY VỀ to a finished story: the save is back (ending C), the story does not continue")
+	_check(cs.notice_label.visible and cs.notice_label.text == ChapterSelect.RESTORED_FINISHED_LINE and cs.last_nav != "story" and not cs.restore_btn.visible,
+		"the screen says the finished save was restored (no failure)")
+	_check(_clean(ChapterSelect.RESTORED_FINISHED_LINE), "the restore line without emoji")
+	_free_cs()
 	sd.call("reset_state")
 
 

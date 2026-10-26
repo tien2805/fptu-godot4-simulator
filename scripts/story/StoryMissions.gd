@@ -201,7 +201,7 @@ const BEATS: Dictionary = {
 		"objective": "Lại là số lạ…"},
 	"d5_start": {"day": 5, "title": "Ngày 5", "kind": "day", "tod": "morning", "next": "d5_morning"},
 	"d5_morning": {"day": 5, "title": "Sáng Ngày 5", "kind": "cine", "slot": "cine_day_start", "at": "be6_door",
-		"tod": "morning", "next": "d5_stealth", "objective": "Ngày mới… còn 3 ngày",
+		"tod": "morning", "next": "d5_stealth", "objective": "Ngày mới... còn 3 ngày",
 		"texts": [["Mr.T", "Lịch thi hộ có rồi. Hôm nay mình tính tiếp."],
 			["Anh Duy", "USB decrypt xong r e, có IP server dưới hầm The Beverly. Tối a đợi ở lobby. (Dịch: Tối nay vào hầm server.)"]]},
 	# ----- Day 5 "Hầm server" (C-D8), night in the server basement (its own scene, StoryBasement) -----

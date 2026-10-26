@@ -303,6 +303,12 @@ func _process(_d: float) -> bool:
 				return false
 			var mc: MissionCrates = m
 			_check(mc.total() == 9 and mc.broken_count() == 0 and mc.dancers.size() == 4 and mc.dance.visible, "9 crates counted (8 + the coffin-dance one), 4 carriers")
+			var top: Control = mc.hud.get_node_or_null("Top") as Control
+			_check(top != null and top.is_visible_in_tree() and mc.hud_info.is_visible_in_tree() and mc.hud_meter.is_visible_in_tree()
+				and mc.hud_info.text == "Thùng kính: 0 / 9 · Còn 90 s" and top.offset_top >= GunHUD.TOP + GunHUD.PANEL.y,
+				"the counter and the 90 s countdown are on screen, under the gunfight panel (%s)" % mc.hud_info.text)
+			mc.advance(1.5)
+			_check(mc.hud_info.text == "Thùng kính: 0 / 9 · Còn 89 s" and mc.hud_meter.value < 100.0, "the countdown runs (%s)" % mc.hud_info.text)
 			_check(mc.meme_on and mc.cues_played.has("meme_coffin_dance") and StoryRoam.mission_slot(sd.call("beat")) == "meme_coffin_dance", "the coffin-dance meme slot while they carry it")
 			var p0: Vector3 = mc.dance.global_position
 			for k: int in 60:
@@ -375,6 +381,7 @@ func _process(_d: float) -> bool:
 			if frames < 5:
 				return false
 			_check(String(sd.get("step")) == "d3_bed" and sr.markers.has("d3_bed") and sr.yard != null, "bed marker, the yard still there for the night")
+			_check(not sr.yard.forklift_park.visible, "the parked forklift stays gone after the boss")
 			for id: String in ["d3_sneak", "d3_mannequins", "d3_gunfight", "d3_crates", "d3_boss", "d3_end"]:
 				_check(StoryChapters.is_beat_unlocked(id) and not StoryChapters.snapshot(id).is_empty(), "Chọn cảnh: %s snapshotted" % id)
 			_check(sr.start_marker("d3_bed"), "bed")
@@ -431,6 +438,21 @@ func _process(_d: float) -> bool:
 			if frames < 5:
 				return false
 			_check(not bool((sd.get("flags") as Dictionary).get("d3_all_crates", false)) and sr.markers.has("d3_boss") and not sr.markers.has("d3_manifest"), "not every crate broken: no E4 offered")
+			sd.call("set_step", "d3_bed")
+			sd.call("on_leave_to_menu")
+			fr.queue_free()
+			_next(28)
+		28:
+			if frames < 3:
+				return false
+			sd.call("reset_state")
+			_check(bool(sd.call("continue_story")) and String(sd.get("step")) == "d3_bed", "Continue restores d3_bed")
+			_roam()
+			_next(29)
+		29:
+			if frames < 45:
+				return false
+			_check(sr.yard != null and not sr.yard.forklift_park.visible, "Continue at d3_bed: the yard rebuilt without the parked forklift")
 			fr.queue_free()
 			return _end()
 	return false
