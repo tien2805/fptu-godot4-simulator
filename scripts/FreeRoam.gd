@@ -1088,6 +1088,7 @@ func set_time_of_day(preset: String) -> void:
 	if we and _base_env:
 		we.environment = _base_env
 	GameFXScript.upgrade_scene_visuals(self, key)
+	if traffic: traffic.set_night_lamps(RoamTraffic.is_dark_preset(key))   # OB-D6 traffic lamps
 	_refresh_lab_hotspot()
 	if tod_label:
 		tod_label.text = "%s · [T] đổi giờ" % String(TOD_NAMES.get(key, key))
