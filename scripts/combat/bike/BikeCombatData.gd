@@ -2,6 +2,9 @@
 # Numbers, texts and poses of the Phase C bike combat (spec C-D1): the player's kicks from the bike, the bike's stability,
 # the Bầy Sói biker AI and its comic crash. Plain Vietnamese texts (no emoji or decorative symbols; key glyphs only in the
 # control hints). Static only; the kick poses are built once (no allocation per frame).
+# Day 2 "Tokyo Drift" (spec 2026-10-27, D2X-2 to D2X-7): the chase speed profile, the enemy kinds (KINDS: rider, stick,
+# thrower, heavy, pickup, police), takedowns, the film opening (OPEN_DROP_S, tunable), the set pieces (DAY2_SET_PIECES,
+# tunable: kind + route distance) and the Sói Xám cameo.
 class_name BikeCombatData
 extends RefCounted
 
@@ -17,18 +20,21 @@ const KICK_PUSH: float = 4.5             # lateral speed given to the kicked bik
 
 # ----- stability (the player's bike HP) -----
 const STABILITY_MAX: float = 100.0
-const ENEMY_KICK_DMG: float = 20.0
-const CRASH_DMG: float = 25.0            # PlayerBike.crash_occurred: traffic, curb, pothole, fall
+const ENEMY_KICK_DMG: float = 22.0       # = KINDS.rider.dmg
+const CRASH_DMG: float = 25.0            # PlayerBike.crash_occurred: traffic, curb, pothole, fall (PlayerBikeCombat's own)
+const CRASH_DMG_MIN: float = 15.0        # D2X-4: BikeChase scales a crash by the speed before it: 15 at 6 m/s ...
+const CRASH_DMG_MAX: float = 25.0        # ... 25 at the chase top speed
+const WAVE_REFILL: float = 25.0          # D2X-4: a cleared wave gives back this much stability
 const RAM_DMG: float = 6.0               # riding into the front biker's back wheel
 const HURT_IFRAMES: float = 0.6
 const REGEN_DELAY: float = 5.0
-const REGEN_RATE: float = 4.0            # per second
+const REGEN_RATE: float = 0.0            # per second (D2X-4: no regeneration; a cleared wave refills WAVE_REFILL)
 const SHOVE_M: float = 0.7               # sideways shove of the player's bike by an enemy kick (m, over SHOVE_S)
 const SHOVE_S: float = 0.18
 const RAM_COOLDOWN: float = 1.2
 
 # ----- biker AI -----
-const MAX_SPEED: float = 31.0            # m/s (player: 22.5, 27 in a slipstream)
+const MAX_SPEED: float = 32.0            # m/s (D2X-2: the chase profile tops at 27.8, 30.6 in a slipstream; heavies slower)
 const CATCH_SPEED: float = 8.0           # max speed relative to the player while closing in
 const ACCEL: float = 16.0                # m/s² (lateral swerves included)
 const POS_GAIN: float = 1.8              # target pull (1/s)
@@ -53,10 +59,10 @@ const ENEMY_HIT_AT: float = 0.15         # into the kick
 const ENEMY_REACH: float = 1.75          # lateral
 const ENEMY_ALONG: float = 1.5
 const RECOVER_S: float = 0.8
-const ATTACK_GAP_S: float = 0.8          # between two attack starts
+const ATTACK_GAP_S: float = 0.6          # between two attack starts
 const BRAKE_S: float = 1.1
 const WOBBLE_S: float = 0.55
-const MAX_ATTACKERS: int = 2
+const MAX_ATTACKERS: int = 3            # D2X-4: 3 at once (wave 3: 4, per wave opts)
 const ROLE_EVERY: float = 0.25
 const RAY_EVERY: int = 6                 # physics frames between floor rays (10 Hz at 60 fps)
 const AVOID_EVERY: int = 3
@@ -91,6 +97,103 @@ const WAVE_GAP_S: float = 2.5
 const REPLAY_AFTER: float = 0.8
 const REPLAY_LEN: float = 5.0
 
+# ----- Day 2 "Tokyo Drift" (spec 2026-10-27) -----
+## D2X-2: the player's bike while the Day 2 chase runs (100 km/h, 110 in a slipstream); BikeChase opt "profile".
+const CHASE_PROFILE: Dictionary = {"max_speed_ms": 27.8, "slipstream_max_ms": 30.6, "engine_accel": 14.5, "air_drag": 0.0125}
+## D2X-4 enemy kinds. hp: kicks to crash; dmg: stability per hit; windup: telegraph (s); reach / along: the hit box beside
+## the player (m); lock: the attack line (and with lock_speed the speed too: braking dodges) is fixed this long before the
+## attack starts; swerve: lateral distance of the attack line (negative = past the player's line); slot_lat: pacing
+## distance to the side; top: top speed (m/s); wobble / push: a kick's wobble time and shove; atk: attack duration (s).
+const KINDS: Dictionary = {
+	"rider": {"hp": 1, "dmg": 22.0, "windup": 0.5, "reach": 1.75, "along": 1.5, "lock": 0.2, "lock_speed": false, "swerve": 1.0,
+		"slot_lat": 1.95, "top": 32.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
+	"stick": {"hp": 1, "dmg": 25.0, "windup": 0.5, "reach": 2.5, "along": 1.15, "lock": 0.35, "lock_speed": true, "swerve": 1.6,
+		"slot_lat": 2.2, "top": 32.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
+	"thrower": {"hp": 1, "dmg": 15.0, "windup": 0.6, "reach": 1.6, "along": 1.6, "lock": 0.0, "lock_speed": false, "swerve": 2.0,
+		"slot_lat": 2.4, "top": 32.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
+	"heavy": {"hp": 3, "dmg": 30.0, "windup": 0.6, "reach": 1.8, "along": 1.8, "lock": 0.25, "lock_speed": false, "swerve": 1.05,
+		"slot_lat": 2.1, "top": 29.5, "kickable": true, "wobble": 0.35, "push": 2.0, "atk": 0.45},
+	"pickup": {"hp": 1, "dmg": 35.0, "windup": 1.0, "reach": 1.55, "along": 2.9, "lock": 0.5, "lock_speed": true, "swerve": -0.3,
+		"slot_lat": 3.3, "top": 31.0, "kickable": false, "wobble": 0.0, "push": 0.0, "atk": 0.75},
+	"police": {"hp": 1, "dmg": 18.0, "windup": 0.5, "reach": 1.75, "along": 1.6, "lock": 0.2, "lock_speed": false, "swerve": 1.0,
+		"slot_lat": 2.0, "top": 33.0, "kickable": false, "wobble": 0.0, "push": 0.0, "atk": 0.4},
+}
+const KIND_NAMES: Dictionary = {"rider": "", "stick": "Sói Gậy", "thrower": "Sói Ném", "heavy": "Sói Bự", "pickup": "Bán Tải Sói",
+	"police": "Cảnh sát"}
+const THROW_AHEAD: float = 9.0           # thrower: paces this far ahead ...
+const THROW_BACK_S: float = 2.8          # ... and after each throw drops back alongside for this long (the kick window)
+const THROW_FLIGHT: float = 0.8          # helmet flight = the red road marker's warning (s)
+const THROW_R: float = 1.6               # the marker's radius: inside it when the helmet lands = hit
+const THROW_ARC: float = 3.5             # helmet arc height (m)
+const PICKUP_STRIKES: int = 2            # dodged rams before the pickup loses it and hits a pole (takedown)
+const PICKUP_HALF := Vector2(0.95, 2.6)  # pickup half width / half length (m)
+const PICKUP_RECOVER_S: float = 1.4
+const POLICE_RAM_EVERY := Vector2(2.4, 3.8)
+const POLICE_PLAYER_CHANCE: float = 0.35
+const POLICE_APPROACH_S: float = 2.5
+const POLICE_BEHIND: float = 7.0
+## D2X-5 takedowns: crash causes that count (a plain kick crash does not); 0.5 s at 0.3x and a side camera cut, at most
+## one every TD_GAP_S and none while 2+ attackers wind up within TD_BUSY_M of the player.
+const TAKEDOWN_CAUSES: Array[String] = ["traffic", "pole", "melon", "barrier", "police", "nitro", "spin", "air", "cones"]
+const TD_SCALE: float = 0.3
+const TD_REAL_S: float = 0.5
+const TD_GAP_S: float = 3.0
+const TD_BUSY_M: float = 6.0
+const TD_CHARGE: float = 15.0            # nitro charge per takedown (D2X-8)
+const SPIN_PAIR_S: float = 0.3           # two spin-kick hits within this = both riders tagged "spin"
+## D2X-3 film opening: slow motion until OPEN_DROP_S (the beat drop of the owner's Tokyo Drift file, 4.15 s: measured
+## 2026-10-27, owner-tunable), then wave 1 bursts out of the side roads.
+const OPEN_DROP_S: float = 4.15
+const OPEN_SCALE: float = 0.35
+const START_SPEED_D2: float = 14.0       # rolling start of the Day 2 chase (m/s)
+const OPEN_CAM_BACK: float = 3.1         # the opening's low camera behind the bike ...
+const OPEN_CAM_UP: float = 0.55          # ... and its height
+const SIDE_SPAWN_LAT: float = 3.4        # "side" spawns: this far past the AI half width, out of view beside the player
+const FLARE_S: float = 1.2               # LED eyes flaring after a burst
+## D2X-6 set pieces.
+const MELON_N: int = 24
+const MELON_S: float = 5.0               # melons roll this long
+const MELON_DMG: float = 10.0
+const MELON_R: float = 0.85              # player / biker within this of a melon = hit
+const MELON_TRUCK_LEAD: float = 90.0     # the truck shows this far before the drop point
+const TRUCK_SPEED: float = 15.0
+const BARRIER_WARN_M: float = 80.0
+const BARRIER_GAP_W: float = 1.6         # the slow gap by the right curb (m)
+const BARRIER_Y: float = 1.15            # the arm's height (chest high on the bike)
+const CONE_DMG: float = 8.0
+const CONE_CD: float = 0.8
+const RAMP_MIN_SPEED: float = 20.0
+const RAMP_HALF_W: float = 1.25
+const JUMP_REAL_S: float = 1.2           # the scripted jump (real seconds) ...
+const JUMP_SCALE: float = 0.4            # ... in slow motion
+const JUMP_H: float = 1.7
+const POLICE_N: int = 2
+const POLICE_S: float = 25.0
+const DRIFT_FAST: float = 19.0           # through a drift zone faster than this without drifting = into the curb
+const CURB_DMG: float = 10.0
+const CURB_SLOW: float = 0.6
+const DRIFT_ZONE_BONUS: float = 12.5     # extra charge per second drifting in a zone (PlayerBike's own 25/s x 1.5)
+## The Day 2 layout on MissionBikeChase.day2_route (route distance s in m; drift zones from s over len, on the real turns).
+const DAY2_SET_PIECES: Array = [
+	{"kind": "drift", "s": 488.0, "len": 44.0},
+	{"kind": "melons", "s": 690.0},
+	{"kind": "drift", "s": 748.0, "len": 28.0},
+	{"kind": "ramp", "s": 860.0, "d": 1.4},
+	{"kind": "drift", "s": 910.0, "len": 58.0},
+	{"kind": "wrong_way", "s": 1000.0, "len": 250.0},
+	{"kind": "drift", "s": 1266.0, "len": 30.0},
+	{"kind": "barrier", "s": 1720.0},
+	{"kind": "police", "s": 1800.0, "end_s": 2230.0, "dur": 25.0},
+]
+## D2X-7: Sói Xám rides past after wave 2 once the player is past CAMEO_S (at CAMEO_FORCE_S anyway).
+const CAMEO_S: float = 1470.0
+const CAMEO_FORCE_S: float = 1640.0
+const CAMEO_REL: float = 7.0             # he closes in at this much over the player ...
+const CAMEO_AWAY: float = 22.0           # ... and leaves on nitro at this much
+const CAMEO_TAUNT_S: float = 2.6
+const CAMEO_PAINT := Color("#8E9AA6")
+const NITRO_FLAME := Color(0.25, 0.55, 1.0)
+
 # ----- look (Bầy Sói) -----
 const BIKE_PAINT := Color("#2B2F36")
 const HELMET_COL := Color("#7B8088")
@@ -105,7 +208,7 @@ const T_WAVE: String = "Đợt %d/%d"
 const T_KICK_L: String = "[Q] Đạp trái"
 const T_KICK_R: String = "[E] Đạp phải"
 ## FreeRoam's bottom hint while a chase runs (replaces "[F] xuống xe ...").
-const T_RIDING: String = "[Q]/[E] đạp trái/phải · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [H] còi · [L] đèn xa"
+const T_RIDING: String = "[Q]/[E] đạp · [SPACE] drift · [Q]/[E] khi drift: đá xoay · [SHIFT] nitro · [CTRL] cúi · [W]/[S] ga/phanh · [A]/[D] lái"
 const T_NO_DISMOUNT: String = "Đang bị Bầy Sói rượt, không xuống xe được!"
 const T_WARN_L: String = "BÊN TRÁI"
 const T_WARN_R: String = "BÊN PHẢI"
@@ -119,6 +222,31 @@ const T_START_D2: String = "Tới công chuyện luôn!"
 const T_WIN_D2: String = "Đỉnh nóc kịch trần bay phấp phới"
 const TAUNTS: Array[String] = ["Đứng lại đó!", "Bầy Sói tới đây!", "Né đi cưng!", "Hàng nóng, tránh ra!", "Chạy đâu cho thoát!"]
 const NAMES: Array[String] = ["Sói Đen", "Sói Lửa", "Sói Bạc", "Sói Còi", "Sói Mập", "Sói Phó"]
+## Day 2 (D2X-5 to D2X-7, D2X-11).
+const T_TAKEDOWN: Array[String] = ["TAKEDOWN!", "BAY MÀU!", "ĐI ĐÂU VỘI THẾ EM?"]
+const T_TD_COUNT: String = "Hạ gục: %d"
+const T_AIR_KICK: String = "AIR KICK!"
+const T_DUCK: String = "[CTRL] CÚI XUỐNG"
+const T_DUCKED: String = "CÚI NÉ!"
+const T_BARRIER_HIT: String = "Đập mặt vào thanh chắn!"
+const T_BARRIER_SIGN: String = "CÔNG TRÌNH\nCÚI XUỐNG"
+const T_DRIFT: String = "DRIFT!"
+const T_CURB: String = "VĂNG RA LỀ!"
+const T_MELONS: String = "XE DƯA RỚT THÙNG!"
+const T_MELON_HIT: String = "Dính dưa!"
+const T_TRUCK_SIGN: String = "DƯA HẤU"
+const T_WRONG_WAY: String = "ĐƯỜNG CHẶN! CHẠY NGƯỢC CHIỀU!"
+const T_CONES: String = "Tông cọc!"
+const T_RAMP: String = "BAY!"
+const T_POLICE: String = "CẢNH SÁT TỚI!"
+const T_POLICE_GONE: String = "Cảnh sát bỏ cuộc"
+const T_HELMET_HIT: String = "Trúng mũ bảo hiểm!"
+const T_PICKUP: String = "XE BÁN TẢI!"
+const T_PICKUP_DOWN: String = "BÁN TẢI ÔM CỘT!"
+const T_STICK_HIT: String = "Ăn gậy!"
+const T_HEAVY_HIT: String = "Bị ủi văng!"
+const T_CAMEO_TAUNT: String = "Muốn biết hàng về đâu thì lên cầu Rạch Hầm mà hỏi!"
+const T_CAMEO_NAME: String = "SÓI XÁM - đầu đàn Bầy Sói"
 
 # ----- sounds (CineAudio / StoryAudio / WeaponAudio cues) -----
 const CINE_CUES: Array[String] = ["impact_medium", "impact_heavy", "helmet_clonk", "slide_whistle", "body_fall", "groan", "engine_roar"]
@@ -160,4 +288,16 @@ static func texts() -> Array[String]:
 		T_WARN_R, T_DOWN, T_TRAFFIC_DOWN, T_BOXED, T_KNOCKED_OFF, T_RAM, T_START_D2, T_WIN_D2]
 	out.append_array(TAUNTS)
 	out.append_array(NAMES)
+	out.append_array(T_TAKEDOWN)
+	out.append_array([T_TD_COUNT % 4, T_AIR_KICK, T_DUCK, T_DUCKED, T_BARRIER_HIT, T_BARRIER_SIGN, T_DRIFT, T_CURB, T_MELONS,
+		T_MELON_HIT, T_TRUCK_SIGN, T_WRONG_WAY, T_CONES, T_RAMP, T_POLICE, T_POLICE_GONE, T_HELMET_HIT, T_PICKUP, T_PICKUP_DOWN,
+		T_STICK_HIT, T_HEAVY_HIT, T_CAMEO_TAUNT, T_CAMEO_NAME])
+	for k: String in KIND_NAMES.keys():
+		if String(KIND_NAMES[k]) != "":
+			out.append(String(KIND_NAMES[k]))
 	return out
+
+
+## The parameters of an enemy kind (KINDS; an unknown kind is a rider).
+static func kind(k: String) -> Dictionary:
+	return KINDS.get(k, KINDS["rider"])

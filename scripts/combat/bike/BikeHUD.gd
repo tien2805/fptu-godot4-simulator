@@ -7,17 +7,22 @@
 #     lit on the side being kicked;
 #   - left / right edge: a red arrow and "BÊN TRÁI" / "BÊN PHẢI" while a biker on that side winds up a kick;
 #   - centre popups: the start line, "ĐẠP BAY!", "BỊ VÂY!", "Húc đuôi!", the knocked-off line, the win line.
-# State for tests: popup_text, popups, warn_left, warn_right.
+# Day 2 (spec 2026-10-27): a third panel row "Hạ gục: N" (takedowns), the film letterbox (letterbox(on): two black bars
+# slide in, the panel and the kick hints hide), and a blinking prompt line for the set pieces (set_prompt(text): "[CTRL]
+# CÚI XUỐNG", "DRIFT!", the wrong way warning; "" hides it).
+# State for tests: popup_text, popups, warn_left, warn_right, prompt_text, letterboxed.
 class_name BikeHUD
 extends CanvasLayer
 
-const PANEL_SIZE := Vector2(440.0, 78.0)
+const PANEL_SIZE := Vector2(440.0, 104.0)
 const PANEL_TOP: float = 18.0
 const HINT_SIZE := Vector2(400.0, 40.0)
 const HINT_BOTTOM: float = 112.0          # px above the bottom edge (FreeRoam's hint line sits below)
 const WARN_SIZE := Vector2(190.0, 70.0)
 const STAB_COL := Color("#3FE07A")
 const LOW_COL := Color("#FF3B3B")
+const LETTER_H: float = 0.11              # letterbox bar height (viewport fraction)
+const LETTER_IN_S: float = 0.35
 
 var chase: BikeChase
 var panel: Control
@@ -39,6 +44,14 @@ var stab_text: String = ""
 var _left_n: int = -1
 var _wave_n: int = -1
 var _stab_n: int = -1
+var td_text: String = ""
+var _td_n: int = -1
+var letter_top: ColorRect
+var letter_bottom: ColorRect
+var letterboxed: bool = false
+var _lb: float = 0.0
+var prompt_label: Label
+var prompt_text: String = ""
 
 
 func _ready() -> void:
@@ -80,6 +93,33 @@ func _ready() -> void:
 	popup_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	popup_label.visible = false
 	add_child(popup_label)
+	prompt_label = Label.new()
+	prompt_label.name = "BikePrompt"
+	prompt_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	prompt_label.offset_left = -380.0
+	prompt_label.offset_right = 380.0
+	prompt_label.offset_top = 90.0
+	prompt_label.offset_bottom = 140.0
+	prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	prompt_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	prompt_label.add_theme_font_size_override("font_size", 34)
+	prompt_label.add_theme_color_override("font_outline_color", CombatHUD.INK)
+	prompt_label.add_theme_constant_override("outline_size", 10)
+	prompt_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	prompt_label.visible = false
+	add_child(prompt_label)
+	for i: int in 2:
+		var bar := ColorRect.new()
+		bar.name = "LetterTop" if i == 0 else "LetterBottom"
+		bar.color = Color(0.0, 0.0, 0.0, 1.0)
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar.set_anchors_preset(Control.PRESET_TOP_WIDE if i == 0 else Control.PRESET_BOTTOM_WIDE)
+		bar.visible = false
+		add_child(bar)
+		if i == 0:
+			letter_top = bar
+		else:
+			letter_bottom = bar
 	visible = false
 
 
@@ -98,6 +138,9 @@ func show_hud() -> void:
 
 
 func hide_hud() -> void:
+	letterboxed = false
+	_lb = 0.0
+	set_prompt("")
 	if _linger < 0.0:
 		visible = false
 
@@ -106,6 +149,24 @@ func hide_hud() -> void:
 func linger(secs: float) -> void:
 	_linger = secs
 	visible = true
+
+
+## Film letterbox on / off (the bars slide in and out over LETTER_IN_S; the panel and the kick hints hide while on).
+func letterbox(on: bool) -> void:
+	letterboxed = on
+	if on:
+		visible = true
+
+
+## The set-piece prompt line (blinking; "" hides it).
+func set_prompt(text: String, col: Color = CombatHUD.GOLD) -> void:
+	if text == prompt_text:
+		return
+	prompt_text = text
+	prompt_label.text = text
+	prompt_label.add_theme_font_override("font", CombatHUD.font())
+	prompt_label.add_theme_color_override("font_color", col)
+	prompt_label.visible = text != ""
 
 
 ## A centre popup for `secs` (default colour: the style accent).
@@ -135,6 +196,19 @@ func _process(delta: float) -> void:
 		if popup_left <= 0.0:
 			popup_label.visible = false
 	_refresh_texts()
+	_lb = move_toward(_lb, 1.0 if letterboxed else 0.0, delta / LETTER_IN_S)
+	var vh: float = get_viewport().get_visible_rect().size.y if is_inside_tree() else 720.0
+	var bh: float = roundf(vh * LETTER_H * _lb)
+	letter_top.visible = _lb > 0.0
+	letter_bottom.visible = _lb > 0.0
+	letter_top.offset_top = 0.0
+	letter_top.offset_bottom = bh
+	letter_bottom.offset_top = -bh
+	letter_bottom.offset_bottom = 0.0
+	panel.visible = _lb <= 0.0
+	hints.visible = _lb <= 0.0
+	if prompt_text != "":
+		prompt_label.modulate.a = 0.55 + 0.45 * absf(sin(float(Time.get_ticks_msec()) / 1000.0 * 6.0))
 	var m: int = chase.warn_mask() if chase and chase.state == "running" else 0
 	warn_left = (m & 1) != 0
 	warn_right = (m & 2) != 0
@@ -164,6 +238,9 @@ func _refresh_texts() -> void:
 	if st != _stab_n:
 		_stab_n = st
 		stab_text = str(st)
+	if chase.takedowns != _td_n:
+		_td_n = chase.takedowns
+		td_text = BikeCombatData.T_TD_COUNT % _td_n
 
 
 static func _text(ci: CanvasItem, f: Font, pos: Vector2, s: String, sz: int, col: Color, align: HorizontalAlignment, w: float) -> void:
@@ -197,6 +274,7 @@ class Panel_ extends Control:
 		BikeHUD._text(self, f, Vector2(12.0, 60.0), hud.left_text, 17, CombatHUD.GOLD, HORIZONTAL_ALIGNMENT_LEFT, 240.0)
 		if ch.waves.size() > 1:
 			BikeHUD._text(self, f, Vector2(size.x - 160.0, 60.0), hud.wave_text, 17, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, 148.0)
+		BikeHUD._text(self, f, Vector2(12.0, 88.0), hud.td_text, 17, acc, HORIZONTAL_ALIGNMENT_LEFT, 240.0)
 
 
 ## "[Q] Đạp trái" / "[E] Đạp phải": dim in the cooldown, lit on the side kicking.

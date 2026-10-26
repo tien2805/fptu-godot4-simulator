@@ -5,29 +5,47 @@
 # its AnimationPlayer kept inactive while riding so far LOD frames never flash the idle pose), with the wolf helmet
 # (grey shell, cone ears, snout, red LED eyes) unless opts give a body / body_fn; a name label with short taunts.
 # AI states (BikeChase assigns the role FRONT / LEFT / RIGHT / BACK and the attack tokens):
-#   APPROACH (catch up to the slot) -> PACE (hold it) -> WINDUP (0.5 s telegraph: LED eyes flash, engine rev, HUD side
-#   warning; swerves in; its last KICK_LOCK_S fix the kick line in world space, so steering away dodges) -> KICK (hit
-#   check at 0.15 s through BikeChase.enemy_kick, on that fixed line) -> RECOVER; BRAKE (the FRONT biker
-#   brake-checks the player); WOBBLE (kicked: 0.55 s, then CRASH, or RECOVER while hp is left); CRASH (the rider flies in a
-#   comic somersault, bounces once and slides; the bike slides on its side with sparks); DOWN (stars, no gore); LEAVE
-#   (after `lost` or the chase's end: rides off ahead, or drops back at the route end, and is hidden once out of view);
-#   HOLD (ai off, tests: holds hold_along / hold_lat beside the player).
+#   APPROACH (catch up to the slot) -> PACE (hold it) -> WINDUP (the telegraph: LED eyes flash, engine rev, HUD side
+#   warning; swerves in; its last `lock` seconds fix the attack line in world space, so steering away dodges) -> KICK (hit
+#   check through BikeChase.enemy_kick, on that fixed line) -> RECOVER; BRAKE (the FRONT biker brake-checks the player);
+#   WOBBLE (kicked, then CRASH, or RECOVER while hp is left); CRASH (the rider flies in a comic somersault, bounces once and
+#   slides; the bike slides on its side with sparks); DOWN (stars, no gore); LEAVE (after `lost` or the chase's end: rides
+#   off ahead, or drops back at the route end, and is hidden once out of view); HOLD (ai off, tests: holds hold_along /
+#   hold_lat beside the player).
+# Day 2 kinds (spec 2026-10-27 D2X-4, numbers in BikeCombatData.KINDS), opts "kind":
+#   rider    flank and kick (as above);
+#   stick    a raised wooden stick; the wind-up raises it (whoosh on the swing); its line AND speed lock 0.35 s before the
+#            swing, so braking or steering out dodges; a kick in the wind-up interrupts it (any kick wobbles);
+#   thrower  two on one bike: paces THROW_AHEAD in front, the pillion (facing back) raises a helmet, throws it in an arc
+#            at where the player will be in THROW_FLIGHT s (BikeChase.throw_helmet: the red road marker), then drops back
+#            alongside for THROW_BACK_S (the kick window); a kick drops both;
+#   heavy    a bigger, louder tuned bike, 3 kicks, a shoulder ram;
+#   pickup   the gang's pickup truck: cannot be kicked; paces one lane over; horn + headlight flash for 1.0 s, then a
+#            side ram whose line and speed lock 0.5 s before it (brake, speed up or steer out); PICKUP_STRIKES dodged rams
+#            (or a car) and it loses it and hits a pole (cause "pole": a takedown);
+#   police   (BikeChase.spawn_police) cannot be kicked, never crashes; rams a biker (crash "police") or the player.
 # Traffic: every AVOID_EVERY frames it looks for the nearest car in its path and passes on the free side (within the
 # road) or brakes behind it; touching a car anyway (a kicked biker wobbling into one) is a crash.
-# opts: "label", "hp" (kicks to crash, default 1), "seed", "ai" (false = HOLD), "aggression" (0..1: shorter pacing),
-# "eye_color", "paint", "body" (CharacterBuilder opts merged over the wolf rider look), "body_fn" (Callable(look) ->
-# rigged Node3D; the wolf helmet is not added then).
+# opts: "kind", "label", "hp" (kicks to crash, default the kind's), "seed", "ai" (false = HOLD), "aggression" (0..1:
+# shorter pacing), "eye_color", "paint", "body" (CharacterBuilder opts merged over the wolf rider look), "body_fn"
+# (Callable(look) -> rigged Node3D; the wolf helmet is not added then).
+# Takedown tags: takedown_tag ("spin" | "air") set before a kick crash turns its cause into that takedown; air_y lifts the
+# bike (the ramp jump, BikeChase).
 class_name BikerEnemy
 extends Node3D
 
 enum St { APPROACH, PACE, WINDUP, KICK, RECOVER, BRAKE, WOBBLE, CRASH, DOWN, LEAVE, HOLD }
-enum Role { BACK, LEFT, RIGHT, FRONT }
+enum Role { BACK, LEFT, RIGHT, FRONT, THROW, SOLO }
 const ST_NAMES: Array[String] = ["approach", "pace", "windup", "kick", "recover", "brake", "wobble", "crash", "down", "leave", "hold"]
 const SEAT := Vector3(0.0, 0.32, 0.14)
 const LABEL_Y: float = 2.25
 const SPIN_PIVOT: float = 0.9            # the somersault turns about a point this high above the rider's root
+## Kinds BikeChase gives the flank / front / back roles (the others keep their own slot).
+const ROLE_KINDS: Array[String] = ["rider", "stick", "heavy"]
 
 var ch: BikeChase
+var kind: String = "rider"
+var kp: Dictionary = {}
 var label: String = ""
 var hp: int = 1
 var max_hp: int = 1
@@ -50,7 +68,7 @@ var hold_along: float = 0.0
 var hold_lat: float = 2.0
 var crash_cause: String = ""
 var kicked_by_player: bool = false
-## Results of this biker's kicks on the player ("hit" | "miss" | "ignored"; last 16).
+## Results of this biker's attacks on the player ("hit" | "miss" | "ignored"; last 16).
 var results: Array[String] = []
 var attacks: int = 0
 var body: Node3D
@@ -79,9 +97,29 @@ var gone: bool = false
 ## Spawned behind for an "ahead" slot (in view there): takes the FRONT role first.
 var prefer_front: bool = false
 var leave_along: float = 45.0
+## Day 2: takedown tag of the next kick crash ("spin" | "air"), the ramp jump lift, LED flare, kind state.
+var takedown_tag: String = ""
+var air_y: float = 0.0
+var airborne: bool = false
+var flare_t: float = 0.0
+var strikes: int = 0                     # pickup: rams dodged
+var fall_back_t: float = 0.0             # thrower: seconds left alongside after a throw
+var throws: int = 0
+var ram_target: BikerEnemy = null        # police: the biker it goes for (null = the player)
+var _ram_t: float = 3.0
+var _approach_t: float = 0.0
+var stick: Node3D = null
+var pillion: Node3D = null
+var helmet_prop: Node3D = null
+var _head_mat: StandardMaterial3D = null
+var _siren: Array[Node3D] = []
 var _line_locked: bool = false
 var _line_o: Vector2 = Vector2.ZERO
 var _line_t: Vector2 = Vector2(0.0, -1.0)
+var _line_speed: bool = false
+var _line_a0: float = 0.0
+var _line_v: float = 0.0
+var _line_clock: float = 0.0
 var _rng := RandomNumberGenerator.new()
 var _sk: Skeleton3D = null
 var _anim: Node = null
@@ -101,19 +139,55 @@ var _wob_sign: float = 1.0
 
 func setup(opts: Dictionary = {}) -> void:
 	top_level = true
+	kind = String(opts.get("kind", "rider"))
+	if not BikeCombatData.KINDS.has(kind):
+		kind = "rider"
+	kp = BikeCombatData.kind(kind)
 	label = String(opts.get("label", ""))
-	max_hp = maxi(1, int(opts.get("hp", 1)))
+	max_hp = maxi(1, int(opts.get("hp", int(kp["hp"]))))
 	hp = max_hp
 	ai = bool(opts.get("ai", true))
 	aggression = clampf(float(opts.get("aggression", 0.5)), 0.0, 1.0)
 	_rng.seed = int(opts.get("seed", 1))
 	_eye_col = opts.get("eye_color", BikeCombatData.EYE_COL)
 	_taunt_t = _rng.randf_range(BikeCombatData.TAUNT_EVERY.x, BikeCombatData.TAUNT_EVERY.y)
-	var paint: Color = opts.get("paint", BikeCombatData.BIKE_PAINT)
+	_ram_t = _rng.randf_range(1.2, 2.2)       # the police's first ram comes soon after they join
+	if kind == "thrower":
+		role = Role.THROW
+	elif kind == "pickup" or kind == "police":
+		role = Role.SOLO
+	if kind == "pickup":
+		_build_pickup(opts)
+	else:
+		_build_bike_and_rider(opts)
+	_label3d = Label3D.new()
+	_label3d.name = "Name"
+	_label3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_label3d.font_size = 40
+	_label3d.pixel_size = 0.006
+	_label3d.outline_size = 8
+	_label3d.modulate = Color("#FFD0C8") if kind != "police" else Color("#CFE2FF")
+	_label3d.position = Vector3(0.0, LABEL_Y + (0.6 if kind == "pickup" else 0.0), 0.0)
+	_label3d.text = label
+	_label3d.no_depth_test = false
+	add_child(_label3d)
+	process_priority = 11                  # the kick pose layer runs after the RigAnimator (10)
+
+
+func _build_bike_and_rider(opts: Dictionary) -> void:
+	var paint: Color = opts.get("paint", BikeCombatData.BIKE_PAINT if kind != "police" else RoamTraffic.POLICE_PAINT)
+	if kind == "heavy" and not opts.has("paint"):
+		paint = Color("#5A1E1E")
 	PropBuilder.build_scooter(self, Vector3.ZERO, 0.0, paint, {"baked": true, "name": "Scooter", "traffic_lamps": true})
+	var big: float = 1.25 if kind == "heavy" else 1.0
+	var sc: Node3D = get_node_or_null("Scooter") as Node3D
+	if sc and big != 1.0:
+		sc.scale = Vector3.ONE * big
 	var look: Dictionary = {"preset": "rider", "seed": _rng.randi(), "female": false, "body": "hoodie", "backpack": false,
 		"glasses": false, "helmet_color": BikeCombatData.HELMET_COL,
 		"shirt_color": BikeCombatData.JACKETS[_rng.randi() % BikeCombatData.JACKETS.size()], "clip": "ride"}
+	if kind == "police":
+		look = {"preset": "cop", "seed": _rng.randi(), "clip": "ride"}
 	var bo: Dictionary = opts.get("body", {})
 	for k: String in bo.keys():
 		look[k] = bo[k]
@@ -122,31 +196,91 @@ func setup(opts: Dictionary = {}) -> void:
 	var bf: Callable = opts.get("body_fn", Callable())
 	body = bf.call(look) if bf.is_valid() else CharacterBuilder.build(look)
 	body.name = "Rider"
-	body.position = SEAT
+	body.position = Vector3(SEAT.x, SEAT.y * big, SEAT.z * big)
+	if big != 1.0:
+		body.scale *= 1.12
 	add_child(body)
 	CharacterBuilder.set_param(body, "ride_shoulder", 1.2)
 	CharacterBuilder.set_param(body, "ride_elbow", 0.28)
 	CharacterBuilder.set_param(body, "ride_lean", 0.4)
-	if not bf.is_valid():
+	if not bf.is_valid() and kind != "police":
 		attach_wolf_helmet(body, _eye_col)
-	_eye_mat = body.get_meta("wolf_eye_mat", null) as StandardMaterial3D
-	_sk = body.get_meta("skeleton", null) as Skeleton3D
+	_eye_mat = body.get_meta("wolf_eye_mat") as StandardMaterial3D if body.has_meta("wolf_eye_mat") else null
+	_sk = body.get_meta("skeleton") as Skeleton3D if body.has_meta("skeleton") else null
 	_anim = CharacterBuilder.get_animator(body)
 	_ap = _anim.get("player") as AnimationPlayer if _anim else null
 	if _ap:
 		_ap.active = false                # the "ride" code clip owns every joint that matters while riding
-	_label3d = Label3D.new()
-	_label3d.name = "Name"
-	_label3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_label3d.font_size = 40
-	_label3d.pixel_size = 0.006
-	_label3d.outline_size = 8
-	_label3d.modulate = Color("#FFD0C8")
-	_label3d.position = Vector3(0.0, LABEL_Y, 0.0)
-	_label3d.text = label
-	_label3d.no_depth_test = false
-	add_child(_label3d)
-	process_priority = 11                  # the kick pose layer runs after the RigAnimator (10)
+	match kind:
+		"stick":
+			stick = Node3D.new()
+			stick.name = "Stick"
+			add_child(stick)
+			var wood: StandardMaterial3D = CineFX._mat(Color("#7A5230"), 0.8)
+			CineFX._cyl(stick, "Wood", 0.028, 0.036, 1.15, Vector3(0.0, 0.5, 0.0), wood)
+			CineFX._cyl(stick, "Tape", 0.04, 0.04, 0.14, Vector3(0.0, 0.0, 0.0), CineFX._mat(Color("#1C1C1C"), 0.6))
+			_stick_pose(0.0)
+		"thrower":
+			pillion = CharacterBuilder.build_baked_rider(self, Vector3(0.0, 0.36, 0.55),
+				{"seed": _rng.randi(), "helmet_color": BikeCombatData.HELMET_DARK, "shirt_color": BikeCombatData.JACKETS[0]})
+			pillion.name = "Pillion"
+			pillion.rotation.y = PI          # faces back, toward the player behind
+			helmet_prop = Node3D.new()
+			helmet_prop.name = "HelmetProp"
+			add_child(helmet_prop)
+			CineFX._sphere(helmet_prop, "Shell", 0.16, Vector3.ZERO, CineFX._mat(BikeCombatData.HELMET_COL, 0.4), Vector3(1.0, 0.9, 1.1))
+			CineFX._box(helmet_prop, "Visor", Vector3(0.2, 0.07, 0.04), Vector3(0.0, 0.0, 0.15), CineFX._glow_mat(BikeCombatData.EYE_COL, 2.0))
+			helmet_prop.position = Vector3(0.0, 1.45, 0.95)
+		"police":
+			for k2: int in 2:
+				var mi := MeshInstance3D.new()
+				mi.name = "SirenR" if k2 == 0 else "SirenB"
+				var bm := BoxMesh.new()
+				bm.size = Vector3(0.09, 0.07, 0.09)
+				mi.mesh = bm
+				var m := StandardMaterial3D.new()
+				m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+				m.albedo_color = Color("#FF2E3C") if k2 == 0 else Color("#2E6BFF")
+				m.set_meta("vice_done", true)
+				mi.material_override = m
+				mi.position = Vector3(-0.06 + 0.12 * float(k2), 1.2, 0.75)
+				add_child(mi)
+				_siren.append(mi)
+
+
+## The gang's pickup: a dark cab and open bed, wolf LED eyes on the grille, headlights that flash for the ram telegraph.
+## `body` is an empty node (the driver sits behind the tinted glass).
+func _build_pickup(opts: Dictionary) -> void:
+	var root := Node3D.new()
+	root.name = "PickupModel"
+	var pm: Material = PropBuilder.paint(opts.get("paint", Color("#30343A")))
+	var dark: Material = PropBuilder.black_plastic()
+	var glass: Material = PropBuilder.glass_dark()
+	CharacterBuilder._box(root, Vector3(0.0, 0.7, 0.0), Vector3(1.9, 0.62, 5.2), pm)                 # chassis
+	CharacterBuilder._box(root, Vector3(0.0, 1.25, -0.75), Vector3(1.84, 0.62, 1.9), pm)            # cab
+	CharacterBuilder._box(root, Vector3(0.0, 1.3, -0.72), Vector3(1.86, 0.44, 1.7), glass)          # windows
+	CharacterBuilder._box(root, Vector3(0.0, 1.06, -2.2), Vector3(1.86, 0.18, 0.9), pm)             # hood
+	for sx: float in [-1.0, 1.0]:
+		CharacterBuilder._box(root, Vector3(sx * 0.9, 1.18, 1.25), Vector3(0.08, 0.36, 2.5), pm)    # bed walls
+		CharacterBuilder._box(root, Vector3(sx * 0.68, 0.98, 2.58), Vector3(0.3, 0.14, 0.05), PropBuilder.traffic_lamp("tail"))
+		for z: float in [-1.7, 1.7]:
+			PropBuilder.build_wheel(root, Vector3(sx * 0.86, 0.38, z), 0.38, 0.26, 5, Color("#8A9096"))
+	CharacterBuilder._box(root, Vector3(0.0, 1.18, 2.52), Vector3(1.86, 0.36, 0.08), pm)            # tailgate
+	CharacterBuilder._box(root, Vector3(0.0, 0.55, -2.62), Vector3(1.92, 0.26, 0.1), dark)          # bumper
+	CharacterBuilder._box(root, Vector3(0.0, 1.62, -0.75), Vector3(1.5, 0.1, 0.2), dark)            # light bar
+	PropBuilder.bake_into(self, root, "PickupModel", Vector3.ZERO)
+	_head_mat = CineFX._glow_mat(Color(1.0, 0.95, 0.8), 0.8)
+	for sx2: float in [-0.66, 0.66]:
+		CineFX._box(self, "Headlight", Vector3(0.36, 0.16, 0.05), Vector3(sx2, 0.92, -2.63), _head_mat)
+	var eye: StandardMaterial3D = CineFX._glow_mat(_eye_col, 3.0)
+	eye.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for sx3: float in [-0.22, 0.22]:
+		CineFX._sphere(self, "GrilleEye", 0.07, Vector3(sx3, 0.82, -2.64), eye)
+	_eye_mat = eye
+	body = Node3D.new()
+	body.name = "Rider"
+	body.position = Vector3(0.0, 0.9, -0.6)
+	add_child(body)
 
 
 ## The Bầy Sói helmet on a rigged body's head pivot: cone ears, a snout with a nose, two red LED eyes (an emissive material
@@ -200,9 +334,9 @@ func is_active() -> bool:
 	return not is_down() and st != St.LEAVE
 
 
-## A player kick can land on it.
+## A player kick can land on it (the pickup and the police cannot be kicked).
 func kickable() -> bool:
-	return is_active() and not gone
+	return is_active() and not gone and bool(kp.get("kickable", true))
 
 
 func is_attacking() -> bool:
@@ -225,11 +359,23 @@ func speed() -> float:
 	return vel.length()
 
 
+## Half extents on the map plane (lateral, along): a bike or the pickup.
+func half_extents() -> Vector2:
+	return BikeCombatData.PICKUP_HALF if kind == "pickup" else Vector2(0.35, 0.95)
+
+
+## LED eyes flaring for `secs` (the opening burst).
+func flare(secs: float = BikeCombatData.FLARE_S) -> void:
+	flare_t = secs
+
+
 func _enter(s: int) -> void:
 	if (st == St.WINDUP or st == St.KICK) and s != St.WINDUP and s != St.KICK:
 		_release_token()
 	if st == St.WINDUP and _eye_mat:
 		_eye_mat.emission_energy_multiplier = 3.0
+	if st == St.WINDUP and _head_mat:
+		_head_mat.emission_energy_multiplier = 0.8
 	st = s
 	st_t = 0.0
 	hit_done = false
@@ -240,7 +386,16 @@ func _enter(s: int) -> void:
 			attacks += 1
 			_line_locked = false
 			if ch:
-				ch.cue("engine_roar", ground_pos(), -6.0)
+				match kind:
+					"pickup":
+						ch.cue("horn", ground_pos() + Vector3(0.0, 1.0, 0.0), 2.0, 0.62)
+						ch.cue("engine_roar", ground_pos(), -2.0)
+					"heavy":
+						ch.cue("engine_roar", ground_pos(), 0.0)
+					"police":
+						ch.cue("horn", ground_pos() + Vector3(0.0, 1.0, 0.0), -2.0, 1.25)
+					_:
+						ch.cue("engine_roar", ground_pos(), -6.0)
 
 
 func _release_token() -> void:
@@ -257,30 +412,66 @@ func start_attack(from_side: float) -> void:
 
 
 ## A player kick (away = unit direction from the player to this biker on the map plane). "wobble" (hp left: it recovers),
-## "crash" (it wobbles, then crashes) or "ignored".
+## "crash" (it wobbles, then crashes) or "ignored". Airborne (the ramp jump): always a crash, tagged "air".
 func take_kick(away: Vector2) -> String:
 	if not kickable() or st == St.WOBBLE:
 		return "ignored"
 	hp -= 1
+	if airborne:
+		hp = 0
+		takedown_tag = "air"
 	kicked_by_player = true
 	_release_token()
-	vel += away * BikeCombatData.KICK_PUSH
+	vel += away * float(kp.get("push", BikeCombatData.KICK_PUSH))
 	_wob_sign = signf(away.dot(Vector2(-vel.y, vel.x))) if vel.length() > 0.5 else 1.0
 	_enter(St.WOBBLE)
+	if stick and hp <= 0:
+		stick.visible = false
 	if ch:
 		ch.cue("impact_medium", ground_pos() + Vector3(0.0, 1.0, 0.0))
 	return "crash" if hp <= 0 else "wobble"
 
 
-## Comic crash: the rider is thrown off in a somersault, the bike slides on its side. cause "kick" | "traffic" | ...
+## Comic crash: the rider is thrown off in a somersault, the bike slides on its side (the pickup spins out and stops).
+## cause "kick" | "traffic" | "pole" | "melon" | "barrier" | "police" | "nitro" | ...; a kick crash takes the takedown tag.
 func crash(cause: String, push: Vector2 = Vector2.ZERO) -> void:
 	if is_down():
 		return
-	crash_cause = cause
+	if kind == "police":
+		return                             # the police never crash (no arrests, no wrecks)
+	crash_cause = takedown_tag if (cause == "kick" and takedown_tag != "") else cause
 	_release_token()
+	bike_v = vel + push * 0.6
+	_spark_t = 0.0
+	airborne = false
+	air_y = 0.0
+	if kind == "pickup":
+		rider_pos = body.global_position
+		rider_landed = true
+		rider_v = Vector3.ZERO
+		bike_spin = _rng.randf_range(2.2, 3.4) * (1.0 if _rng.randf() < 0.5 else -1.0)
+		crash_roll = 0.0
+		pose_w = 0.0
+		_label3d.visible = false
+		if _head_mat:
+			_head_mat.emission_energy_multiplier = 0.2
+		_enter(St.CRASH)
+		if ch:
+			ch.cue("bin_crash", ground_pos(), 2.0)
+			ch.cue("impact_heavy", ground_pos() + Vector3(0.0, 1.0, 0.0))
+			ch.on_biker_crash(self)
+		return
 	var g: Transform3D = body.global_transform
 	body.top_level = true
 	body.global_transform = g
+	if pillion:
+		var pg: Transform3D = pillion.global_transform
+		pillion.reparent(body)
+		pillion.global_transform = pg
+	if helmet_prop:
+		helmet_prop.visible = false
+	if stick:
+		stick.visible = false
 	rider_pos = g.origin
 	rider_yaw = yaw
 	rider_v = Vector3(vel.x * 0.85 + push.x, BikeCombatData.TUMBLE_UP, vel.y * 0.85 + push.y)
@@ -288,11 +479,9 @@ func crash(cause: String, push: Vector2 = Vector2.ZERO) -> void:
 	rider_flip = 0.0
 	rider_landed = false
 	bounces = 0
-	bike_v = vel + push * 0.6
 	bike_spin = _rng.randf_range(1.2, 2.6) * (1.0 if _rng.randf() < 0.5 else -1.0)
 	crash_roll = -1.0 if (push.dot(Vector2(cos(yaw), -sin(yaw))) >= 0.0) else 1.0   # falls toward the push (+roll = left)
 	pose_w = 0.0
-	_spark_t = 0.0
 	if _ap:
 		_ap.active = true
 	CharacterBuilder.play(body, "knockdown")
@@ -335,11 +524,23 @@ func tick(delta: float) -> void:
 				_frozen = true
 				body.process_mode = Node.PROCESS_MODE_DISABLED   # the Death pose holds; no animation cost
 			return
+	if flare_t > 0.0:
+		flare_t -= delta
+		if _eye_mat and st != St.WINDUP:
+			_eye_mat.emission_energy_multiplier = 3.0 + 9.0 * clampf(flare_t / 0.4, 0.0, 1.0)
+	if fall_back_t > 0.0:
+		fall_back_t -= delta
 	_think(delta)
 	if st == St.CRASH:
 		return
 	_floor_ray(BikeCombatData.RAY_EVERY)
 	_taunts(delta)
+	if stick:
+		_stick_pose(delta)
+	if not _siren.is_empty():
+		var on: bool = (Time.get_ticks_msec() / (90 if st == St.WINDUP else RoamTraffic.SIREN_MS)) % 2 == 0
+		_siren[0].visible = on
+		_siren[1].visible = not on
 	if st != St.WOBBLE and st != St.LEAVE and ch.traffic and (_frame + get_index()) % BikeCombatData.AVOID_EVERY == 0:
 		_avoid_check()
 	if ch.traffic and st != St.LEAVE:
@@ -350,6 +551,10 @@ func _think(delta: float) -> void:
 	var target: Vector2 = pos2
 	var max_rel: float = BikeCombatData.CATCH_SPEED
 	var gain: float = BikeCombatData.POS_GAIN
+	var windup: float = float(kp["windup"])
+	var atk: float = float(kp["atk"])
+	if _line_locked and _line_speed:
+		_line_clock += delta
 	match st:
 		St.HOLD:
 			target = ch.target_at(hold_along, hold_lat)
@@ -359,8 +564,15 @@ func _think(delta: float) -> void:
 				_enter(St.PACE)
 		St.PACE:
 			target = slot_target()
-			if ai and st_t >= pace_t:
-				if (role == Role.LEFT or role == Role.RIGHT) and ch.request_token(self):
+			if kind == "police":
+				target = _police_pace(delta)
+			elif ai and st_t >= pace_t:
+				if kind == "thrower" or kind == "pickup":
+					if fall_back_t <= 0.0 and pos2.distance_to(target) < 4.0 and ch.request_token(self):
+						start_attack(side)
+					else:
+						pace_t += 0.4
+				elif (role == Role.LEFT or role == Role.RIGHT) and ch.request_token(self):
 					start_attack(-1.0 if role == Role.LEFT else 1.0)
 				elif role == Role.FRONT:
 					_enter(St.BRAKE)
@@ -368,46 +580,105 @@ func _think(delta: float) -> void:
 					pace_t += 0.4
 		St.RECOVER:
 			target = slot_target() if ai else ch.target_at(hold_along, hold_lat)
-			if st_t >= BikeCombatData.RECOVER_S:
+			var rec: float = BikeCombatData.PICKUP_RECOVER_S if kind == "pickup" else BikeCombatData.RECOVER_S
+			if st_t >= rec:
 				_enter(St.PACE if ai else St.HOLD)
 		St.BRAKE:
 			target = slot_target()
 			if st_t >= BikeCombatData.BRAKE_S:
 				_enter(St.PACE)
 		St.WINDUP:
-			var u: float = clampf(st_t / BikeCombatData.WINDUP_S, 0.0, 1.0)
+			var u: float = clampf(st_t / windup, 0.0, 1.0)
 			var ui: float = clampf(u / BikeCombatData.WINDUP_IN, 0.0, 1.0)
-			if not _line_locked and st_t >= BikeCombatData.WINDUP_S - BikeCombatData.KICK_LOCK_S:
+			var lock: float = float(kp["lock"])
+			if not _line_locked and lock > 0.0 and st_t >= windup - lock:
 				_lock_line()
-			if _line_locked:
+			if ram_target != null:
+				target = _ram_point(1.5)
+			elif kind == "thrower":
+				target = slot_target()
+				if helmet_prop:
+					helmet_prop.position = Vector3(0.0, lerpf(1.45, 1.95, u), lerpf(0.95, 0.85, u))
+			elif kind == "pickup":
+				var wide: float = float(kp["slot_lat"]) + 0.2 * ui
+				if _line_locked:   # committed: its speed is fixed, it holds its lane until the ram
+					target = _on_line(BikeCombatData.SLOT_ALONG) + _line_right() * side * (wide - float(kp["swerve"]))
+				else:
+					target = ch.target_at(BikeCombatData.SLOT_ALONG, side * wide)
+				if _head_mat:
+					_head_mat.emission_energy_multiplier = 0.8 + 7.0 * float(int(st_t * 8.0) % 2)
+			elif _line_locked:
 				target = _on_line(BikeCombatData.SLOT_ALONG * 0.5)
 			else:
-				target = ch.target_at(BikeCombatData.SLOT_ALONG * 0.5, side * lerpf(BikeCombatData.SLOT_LAT, BikeCombatData.SWERVE_LAT + 0.25, ui))
-			gain = BikeCombatData.SWERVE_GAIN
-			pose_w = 0.25 * u
+				var sw: float = float(kp["swerve"])
+				target = ch.target_at(BikeCombatData.SLOT_ALONG * 0.5, side * lerpf(float(kp["slot_lat"]), sw + (0.25 if kind != "stick" else 0.0), ui))
+			gain = BikeCombatData.SWERVE_GAIN if kind != "pickup" else BikeCombatData.POS_GAIN * 1.4
+			if kind == "rider" or kind == "heavy" or kind == "police":
+				pose_w = 0.25 * u
 			if _eye_mat:
 				_eye_mat.emission_energy_multiplier = 3.0 + 7.0 * absf(sin(st_t * 24.0))
-			if st_t >= BikeCombatData.WINDUP_S:
+			if st_t >= windup:
 				_enter(St.KICK)
+				if kind == "stick" and ch:
+					ch.cue("swish", ground_pos() + Vector3(0.0, 1.3, 0.0), 2.0)
 		St.KICK:
-			if not _line_locked:
-				_lock_line()
-			target = _on_line(0.0)
-			gain = BikeCombatData.SWERVE_GAIN
-			pose_w = BikeCombatData.kick_weight(st_t, 0.1, 0.25, BikeCombatData.ENEMY_KICK_S)
-			if not hit_done and st_t >= BikeCombatData.ENEMY_HIT_AT:
-				hit_done = true
-				var res: String = ch.enemy_kick(self)
-				results.append(res)
-				if results.size() > 16:
-					results.pop_front()
-			if st_t >= BikeCombatData.ENEMY_KICK_S:
-				pose_w = 0.0
-				_enter(St.RECOVER)
+			if kind == "thrower":
+				target = slot_target()
+				if not hit_done and st_t >= 0.1:
+					hit_done = true
+					throws += 1
+					if helmet_prop:
+						helmet_prop.visible = false
+					ch.throw_helmet(self)
+				if st_t >= atk:
+					if helmet_prop:
+						helmet_prop.visible = true
+						helmet_prop.position = Vector3(0.0, 1.45, 0.95)
+					fall_back_t = BikeCombatData.THROW_BACK_S
+					_enter(St.RECOVER)
+				_drive(delta, target, max_rel, gain)
+				return
+			if ram_target != null:
+				target = _ram_point(0.2)
+				gain = BikeCombatData.SWERVE_GAIN
+				if not hit_done and st_t >= BikeCombatData.ENEMY_HIT_AT:
+					hit_done = true
+					if is_instance_valid(ram_target) and ram_target.is_active() and ram_target.pos2.distance_to(pos2) < 2.0:
+						ram_target.crash("police", (ram_target.pos2 - pos2).normalized() * 3.0)
+				if st_t >= atk:
+					ram_target = null
+					_enter(St.RECOVER)
+			else:
+				if not _line_locked:
+					_lock_line()
+				target = _on_line(0.0)
+				gain = BikeCombatData.SWERVE_GAIN
+				if kind == "rider" or kind == "heavy" or kind == "police":
+					pose_w = BikeCombatData.kick_weight(st_t, 0.1, 0.25, atk)
+				var check: bool = (st_t >= BikeCombatData.ENEMY_HIT_AT) if kind != "pickup" else (st_t >= 0.12)
+				if not hit_done and check:
+					var res: String = ch.enemy_kick(self)
+					if kind != "pickup" or res == "hit" or st_t >= atk - 0.05:
+						hit_done = true
+						results.append(res)
+						if results.size() > 16:
+							results.pop_front()
+						if kind == "pickup" and res != "hit":
+							strikes += 1
+						elif kind == "pickup":
+							_enter(St.RECOVER)   # it connected: it bounces off instead of driving through the bike
+							_drive(delta, slot_target(), max_rel, BikeCombatData.POS_GAIN)
+							return
+				if st_t >= atk:
+					pose_w = 0.0
+					if kind == "pickup" and strikes >= BikeCombatData.PICKUP_STRIKES:
+						crash("pole", ch.p_right * side * -3.0 + vel.normalized() * 2.0)
+						return
+					_enter(St.RECOVER)
 		St.WOBBLE:
 			target = pos2 + vel * 0.5
 			vel = vel * maxf(0.0, 1.0 - 0.8 * delta)
-			if st_t >= BikeCombatData.WOBBLE_S:
+			if st_t >= float(kp.get("wobble", BikeCombatData.WOBBLE_S)):
 				if hp <= 0:
 					crash("kick", vel.normalized() * 1.5 if vel.length() > 0.1 else Vector2.ZERO)
 					return
@@ -446,7 +717,7 @@ func _think(delta: float) -> void:
 
 
 ## Kinematic follower: the player's velocity fed forward plus a pull to the target (gain 1/s), capped relative to the
-## player and in absolute speed, reached with an acceleration limit.
+## player and in absolute speed (the kind's top), reached with an acceleration limit.
 func _drive(delta: float, target: Vector2, max_rel: float, gain: float) -> void:
 	var pv: Vector2 = ch.p_vel
 	var v_des: Vector2 = pv + (target - pos2) * gain
@@ -459,8 +730,9 @@ func _drive(delta: float, target: Vector2, max_rel: float, gain: float) -> void:
 		if along > avoid_cap:
 			v_des -= f * (along - avoid_cap)
 	var sp: float = v_des.length()
-	if sp > BikeCombatData.MAX_SPEED:
-		v_des *= BikeCombatData.MAX_SPEED / sp
+	var top: float = minf(float(kp.get("top", BikeCombatData.MAX_SPEED)), BikeCombatData.MAX_SPEED + 1.0) if st != St.LEAVE else BikeCombatData.MAX_SPEED
+	if sp > top:
+		v_des *= top / sp
 	vel = vel.move_toward(v_des, BikeCombatData.ACCEL * delta)
 	pos2 += vel * delta
 	var spd: float = vel.length()
@@ -469,15 +741,28 @@ func _drive(delta: float, target: Vector2, max_rel: float, gain: float) -> void:
 	var acc: Vector2 = (vel - _prev_vel) / maxf(delta, 1e-3)
 	_prev_vel = vel
 	var right := Vector2(cos(yaw), -sin(yaw))
-	lean = lerpf(lean, clampf(-acc.dot(right) * 0.05, -0.45, 0.45), minf(1.0, delta * 8.0))
+	var lean_max: float = 0.45 if kind != "pickup" else 0.06
+	lean = lerpf(lean, clampf(-acc.dot(right) * 0.05, -lean_max, lean_max), minf(1.0, delta * 8.0))
 	_place_bike()
 
 
 ## Slot of its role around the player (BikeChase.target_at clamps it to the road on the route).
 func slot_target() -> Vector2:
+	match kind:
+		"thrower":
+			if fall_back_t > 0.0:
+				return ch.target_at(BikeCombatData.SLOT_ALONG, side * 2.2)
+			return ch.target_at(BikeCombatData.THROW_AHEAD, side * float(kp["slot_lat"]))
+		"pickup":
+			var want: float = side * float(kp["slot_lat"])
+			if ch.lat_room(side) < 2.3:
+				return ch.target_at(-8.0, want)   # no room on its side: hang back in that lane
+			return ch.target_at(BikeCombatData.SLOT_ALONG, want)
+		"police":
+			return ch.target_at(-BikeCombatData.POLICE_BEHIND, side * 1.5)
 	match role:
 		Role.LEFT, Role.RIGHT:
-			return ch.target_at(BikeCombatData.SLOT_ALONG, side * BikeCombatData.SLOT_LAT)
+			return ch.target_at(BikeCombatData.SLOT_ALONG, side * float(kp["slot_lat"]))
 		Role.FRONT:
 			var along: float = BikeCombatData.FRONT_ALONG
 			if st == St.BRAKE:
@@ -488,21 +773,102 @@ func slot_target() -> Vector2:
 	return ch.target_at(-BikeCombatData.BACK_ALONG - 3.0 * float(back_k / 2), lat)
 
 
-## Fix the kick line in world space: through the point SWERVE_LAT beside the player now, along his travel direction.
+## Police pacing: behind the pack; every POLICE_RAM_EVERY it picks a biker (or the player) and closes in beside it.
+func _police_pace(delta: float) -> Vector2:
+	if ram_target != null and (not is_instance_valid(ram_target) or not ram_target.is_active()):
+		ram_target = null
+		_approach_t = 0.0
+	if ram_target == null and _approach_t <= 0.0:
+		_ram_t -= delta
+		if _ram_t <= 0.0 and ai:
+			_ram_t = _rng.randf_range(1.2, 2.2)       # the police's first ram comes soon after they join
+			var best: BikerEnemy = null
+			var bd: float = 30.0
+			for b: Variant in ch.bikers:
+				var e: BikerEnemy = b as BikerEnemy
+				if e != null and is_instance_valid(e) and e.is_active() and e.kind != "pickup" and e.pos2.distance_to(pos2) < bd:
+					bd = e.pos2.distance_to(pos2)
+					best = e
+			if best != null and _rng.randf() >= BikeCombatData.POLICE_PLAYER_CHANCE:
+				ram_target = best
+			else:
+				side = 1.0 if (pos2 - ch.p_pos).dot(ch.p_right) >= 0.0 else -1.0
+			_approach_t = BikeCombatData.POLICE_APPROACH_S
+		return slot_target()
+	_approach_t -= delta
+	var p: Vector2
+	if ram_target != null:
+		p = _ram_point(1.5)
+	else:
+		p = ch.target_at(BikeCombatData.SLOT_ALONG, side * float(kp["slot_lat"]))
+	if pos2.distance_to(p) < 1.2:
+		_approach_t = 0.0
+		if ram_target == null:
+			has_token = false
+		_enter(St.WINDUP)
+	elif _approach_t <= 0.0:
+		ram_target = null
+	return p
+
+
+## Point beside the police's target biker at `lat` m on the police's side (its own frame).
+func _ram_point(lat: float) -> Vector2:
+	if ram_target == null or not is_instance_valid(ram_target):
+		return slot_target()
+	var f: Vector2 = ram_target.vel.normalized() if ram_target.vel.length() > 1.0 else ch.p_fwd
+	var r := Vector2(-f.y, f.x)
+	var sd: float = signf((pos2 - ram_target.pos2).dot(r))
+	if sd == 0.0:
+		sd = 1.0
+	return ram_target.pos2 + r * sd * lat
+
+
+## Fix the attack line in world space: through the point `swerve` m beside the player now, along his travel direction
+## (lock_speed kinds also fix the speed along it: the attacker no longer follows the player's braking).
 func _lock_line() -> void:
 	_line_locked = true
-	_line_o = ch.target_at(0.0, side * BikeCombatData.SWERVE_LAT)
+	_line_o = ch.target_at(0.0, side * float(kp["swerve"]))
 	_line_t = ch.p_fwd
+	_line_speed = bool(kp.get("lock_speed", false))
+	_line_a0 = (ch.p_pos - _line_o).dot(_line_t)
+	_line_v = ch.p_vel.dot(_line_t)
+	_line_clock = 0.0
 
 
-## Point on the fixed kick line level with the player (+ along metres ahead of him).
+## Right-hand normal of the fixed attack line (= the player's right at the lock).
+func _line_right() -> Vector2:
+	return Vector2(-_line_t.y, _line_t.x)
+
+
+## Point on the fixed attack line level with the player (+ along metres ahead); speed-locked kinds advance at the speed
+## of the lock instead.
 func _on_line(along: float) -> Vector2:
+	if _line_speed:
+		return _line_o + _line_t * (_line_a0 + _line_v * _line_clock + along)
 	return _line_o + _line_t * ((ch.p_pos - _line_o).dot(_line_t) + along)
 
 
 func _place_bike() -> void:
 	var b := Basis(Vector3.UP, yaw) * Basis(Vector3(0.0, 0.0, 1.0), lean)
-	global_transform = Transform3D(b, Vector3(pos2.x, floor_y, pos2.y))
+	global_transform = Transform3D(b, Vector3(pos2.x, floor_y + air_y, pos2.y))
+
+
+## The stick: raised over the rider's shoulder on the player's side; the wind-up cocks it back, the swing sweeps it flat
+## toward the player.
+func _stick_pose(_d: float) -> void:
+	var px: float = -side                  # the player is on this side of the biker (local x)
+	stick.position = Vector3(px * 0.3, 1.2, 0.05)
+	var rx: float = 0.3
+	var tilt: float = -0.25
+	if st == St.WINDUP:
+		var u: float = clampf(st_t / float(kp["windup"]), 0.0, 1.0)
+		rx = lerpf(0.3, 0.75, u)
+		tilt = -0.25 - 0.2 * u + 0.06 * sin(st_t * 40.0)
+	elif st == St.KICK:
+		var k: float = clampf(st_t / 0.15, 0.0, 1.0)
+		rx = lerpf(0.75, 0.0, k)
+		tilt = lerpf(-0.45, 1.45, k)
+	stick.rotation = Vector3(rx, 0.0, -px * tilt)
 
 
 func _floor_ray(every: int) -> void:
@@ -519,7 +885,7 @@ func _taunts(delta: float) -> void:
 		if _taunt_left <= 0.0:
 			_label3d.text = label
 		return
-	if st != St.PACE:
+	if st != St.PACE or kind == "police":
 		return
 	_taunt_t -= delta
 	if _taunt_t <= 0.0:
@@ -538,6 +904,7 @@ func _avoid_check() -> void:
 	var tl: float = (_last_target - pos2).dot(r)
 	var lo: float = minf(0.0, tl)
 	var hi: float = maxf(0.0, tl)
+	var hw: float = half_extents().x
 	var best_along: float = INF
 	var best_lat: float = 0.0
 	var best_need: float = 0.0
@@ -558,11 +925,11 @@ func _avoid_check() -> void:
 		var ext: float = c.half_w * absf(c.dir.dot(f)) + c.half_len * absf(c.dir.cross(f))
 		var lat: float = rel.dot(r)
 		var gap: float = 0.0 if (lat >= lo and lat <= hi) else minf(absf(lat - lo), absf(lat - hi))
-		if gap > ext + 0.75:
+		if gap > ext + 0.75 + hw - 0.35:
 			continue
 		best_along = along
 		best_lat = lat
-		best_need = ext + 1.0
+		best_need = ext + 0.65 + hw
 		best_v = v_along
 		best_i = c.idx
 	if best_i < 0:
@@ -597,25 +964,30 @@ func _avoid_check() -> void:
 
 
 ## Touching a car: a crash when it hits it hard (faster than GRAZE_SPEED into it) or while wobbling from a kick; a slow
-## scrape only pushes it out along the shallower side and takes the speed into the car away.
+## scrape only pushes it out along the shallower side and takes the speed into the car away. The police only scrape.
 func _traffic_contact() -> void:
+	var he: Vector2 = half_extents()
 	for v: Variant in ch.traffic.vehicles:
 		var c: RoamTraffic.Vehicle = v
 		if not c.active:
 			continue
 		var rel: Vector2 = pos2 - c.pos
-		if rel.length_squared() > 36.0:
+		if rel.length_squared() > 49.0:
 			continue
 		var cr := Vector2(-c.dir.y, c.dir.x)
 		var ra: float = rel.dot(c.dir)
 		var rl: float = rel.dot(cr)
-		var pa: float = c.half_len + 0.55 - absf(ra)
-		var pl: float = c.half_w + 0.28 - absf(rl)
+		# this biker's own box projected on the car's axes (a bike is long and thin, the pickup big)
+		var f := Vector2(-sin(yaw), -cos(yaw))
+		var ext_a: float = he.y * absf(f.dot(c.dir)) + he.x * absf(f.cross(c.dir))
+		var ext_l: float = he.y * absf(f.dot(cr)) + he.x * absf(f.cross(cr))
+		var pa: float = c.half_len + minf(ext_a, 0.55 if kind != "pickup" else ext_a) - absf(ra)
+		var pl: float = c.half_w + minf(ext_l, 0.28 if kind != "pickup" else ext_l) - absf(rl)
 		if pa <= 0.0 or pl <= 0.0:
 			continue
 		var n: Vector2 = cr * (1.0 if rl >= 0.0 else -1.0) if pl < pa else c.dir * (1.0 if ra >= 0.0 else -1.0)
 		var into: float = -(vel - c.dir * c.speed).dot(n)
-		if st == St.WOBBLE or into > BikeCombatData.GRAZE_SPEED:
+		if kind != "police" and (st == St.WOBBLE or into > BikeCombatData.GRAZE_SPEED):
 			crash("traffic", n * 3.0 + c.dir * c.speed * 0.5)
 			return
 		pos2 += n * minf(pl, pa)
@@ -640,6 +1012,11 @@ func _tumble(delta: float) -> void:
 	bike_spin = move_toward(bike_spin, 0.0, 2.5 * delta)
 	lean = move_toward(lean, crash_roll * BikeCombatData.BIKE_ROLL, 6.0 * delta)
 	_place_bike()
+	if kind == "pickup":
+		if bike_v.length() < 0.3 and absf(bike_spin) < 0.3:
+			_enter(St.DOWN)
+			_add_stars(Vector3(pos2.x, floor_y + 0.4, pos2.y))
+		return
 	if not rider_landed:
 		rider_v.y -= BikeCombatData.GRAVITY * delta
 	rider_pos += rider_v * delta
@@ -665,14 +1042,19 @@ func _tumble(delta: float) -> void:
 	body.global_transform = Transform3D(rb, rider_pos + piv) * Transform3D(Basis.IDENTITY, -piv)
 	if rider_landed and rider_v.length() < 0.3 and bike_v.length() < 0.3 and rider_flip == _flip_target:
 		_enter(St.DOWN)
-		_anchor = Node3D.new()
-		_anchor.name = "StarsAnchor"
-		_anchor.top_level = true
-		add_child(_anchor)
-		_anchor.global_position = rider_pos + Vector3(0.0, -1.55, 0.0)   # WeaponFX stars ring 2.18 m above: ~0.6 m over the body
+		_add_stars(rider_pos)
 		if ch:
-			ch.stars(_anchor, BikeCombatData.STARS_S)
 			ch.cue("groan", rider_pos + Vector3(0.0, 0.4, 0.0), -3.0)
+
+
+func _add_stars(at: Vector3) -> void:
+	_anchor = Node3D.new()
+	_anchor.name = "StarsAnchor"
+	_anchor.top_level = true
+	add_child(_anchor)
+	_anchor.global_position = at + Vector3(0.0, -1.55, 0.0)   # WeaponFX stars ring 2.18 m above: ~0.6 m over the body
+	if ch:
+		ch.stars(_anchor, BikeCombatData.STARS_S)
 
 
 ## Distance the rider ended up from its bike (tests: the rider is thrown clear).
