@@ -618,6 +618,16 @@ func _reacting(delta: float) -> void:
 		state = _react_prev
 
 
+## Ends an emote reaction now and resumes the previous state (the bike's horn melody stopped early, spec owner-bike
+## OB-D4). false when not reacting.
+func end_react() -> bool:
+	if state != State.REACT:
+		return false
+	_end_react()
+	state = _react_prev
+	return true
+
+
 func _end_react() -> void:
 	if _react_prop:
 		_react_prop.queue_free()
