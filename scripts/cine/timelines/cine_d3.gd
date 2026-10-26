@@ -10,8 +10,8 @@ extends CineTimeline
 
 const ALEX := Vector3(-0.45, 0.0, -0.75)        # sitting on the ground, facing +Z
 const HERO := Vector3(0.45, 0.0, 0.65)
-const HORN := Vector3(0.75, 0.01, 0.15)
-const USB_FROM := Vector3(-0.42, 0.95, -0.6)    # his shirt pocket
+const HORN := Vector3(0.75, 0.05, 0.15)       # the curl rests on the ground
+const USB_FROM := Vector3(-0.42, 0.55, -0.58)   # his shirt pocket (he sits on the ground)
 const USB := Vector3(-0.12, 0.006, -0.2)
 const FORKLIFT := Vector3(3.6, 0.6, -1.3)
 
@@ -59,7 +59,8 @@ func build() -> void:
 	key("hero", 5.7, HERO, CineTimeline.face(HERO, HORN))
 	key("hero", 6.0, HERO, y_al)
 	move("hero", 6.05, "blow", {"fade": 0.12})
-	hold("hero", 5.4, 7.3, "party_horn", {"bone": "Head", "offset": Vector3(0.0, 0.05, -0.115)})
+	hold("hero", 5.4, 6.05, "party_horn", {"offset": Vector3(0.0, 0.0, -0.03)})   # in the hand off the ground
+	hold("hero", 6.05, 7.3, "party_horn", {"bone": "Head", "offset": Vector3(0.0, 0.05, -0.115)})   # at the mouth for the blast
 	move("hero", 7.3, "arms_crossed", {"fade": 0.25})
 	look("hero", 6.0, 11.0, "alex")
 	look("hero", 11.0, 13.0, USB)

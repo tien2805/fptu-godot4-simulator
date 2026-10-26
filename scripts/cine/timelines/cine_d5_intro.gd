@@ -48,31 +48,30 @@ func build() -> void:
 	move("hero", 0.0, "arms_crossed")
 	look("hero", 0.0, 14.0, Vector3(0.0, 0.95, 0.15))
 	expr("hero", 0.0, "open")
-	expr("hero", 9.85, "surprised")
+	expr("hero", 10.3, "surprised")
 	expr("hero", 12.5, "angry")
-	move("hero", 9.85, "startled", {"dur": 0.6, "fade": 0.08})
-	move("hero", 10.45, "arms_crossed", {"fade": 0.3})
+	move("hero", 10.3, "startled", {"dur": 0.6, "fade": 0.08})
+	move("hero", 10.9, "arms_crossed", {"fade": 0.3})
 	sfx_at(PLUG, "freeze_tick", -6.0)
 	sfx_at(2.3, "keyboard_clack", -10.0)
-	sfx_at(5.0, "keyboard_clack", -11.0)
+	sfx_at(5.3, "keyboard_clack", -11.0)
 	sfx_at(6.4, "success_fanfare", -14.0)
-	sfx_at(9.85, "record_scratch", -8.0)
+	sfx_at(10.3, "record_scratch", -8.0)
 	shot("S1", 0.0, "static", "close over the laptops: Anh Duy holds up the USB \"ZA MẪN LABS\"",
 		{"pos": Vector3(0.22, 1.32, 0.62), "look": Vector3(0.0, 1.18, -0.72), "fov": 40.0, "hand": 0.15})
 	shot("S2", 1.75, "static", "insert: the USB slides into the laptop",
 		{"pos": Vector3(0.5, 0.95, -0.15), "look": USB_PORT, "fov": 34.0})
 	shot("S3", 2.4, "static", "two-shot side on: decrypting",
 		{"pos": Vector3(-2.3, 1.45, -1.4), "look": Vector3(0.3, 1.2, -1.0), "fov": 44.0})
-	shot("S4", 9.75, "static", "close: the protagonist, \"Ngay dưới chỗ tao ngủ?!\"",
+	shot("S4", 10.2, "static", "close: the protagonist, \"Ngay dưới chỗ tao ngủ?!\"",
 		{"pos": Vector3(1.05, 1.6, -0.3), "look": Vector3(0.78, 1.55, -1.42), "fov": 38.0, "hand": 0.15})
-	shot("S5", 11.35, "static", "close over the laptops: Anh Duy, pleased with himself",
+	shot("S5", 11.0, "static", "close over the laptops: Anh Duy, pleased with himself",
 		{"pos": Vector3(0.22, 1.32, 0.62), "look": Vector3(0.0, 1.18, -0.72), "fov": 40.0})
-	shot("S6", 12.4, "static", "wide: \"Đêm nay xuống hầm.\"",
+	shot("S6", 11.85, "static", "wide: \"Đêm nay xuống hầm.\"",
 		{"pos": Vector3(2.4, 1.65, 1.9), "look": Vector3(0.3, 1.0, -0.9), "fov": 50.0})
-	sub(0.3, 1.5, "duy", "Đồ tốt đây.", "Dịch: Cái USB này xịn đó.")
-	sub(2.4, 2.4, "duy", "USB mã hoá AES-256, mà pass là 123456.", "Dịch: Khóa xịn, mật khẩu dỏm.")
-	sub(5.0, 1.3, "hero", "Rồi trong đó có gì?")
-	sub(6.5, 3.3, "duy", "Một IP nội bộ, trỏ về server dưới hầm tòa The Beverly.", "Dịch: Máy chủ của tụi nó nằm dưới tầng hầm tòa nhà mày ở.")
-	sub(9.9, 1.4, "hero", "Ngay dưới chỗ tao ngủ?!")
-	sub(11.4, 1.0, "duy", "Ping 1ms.", "Dịch: Sát vách luôn.")
-	sub(12.5, 1.3, "hero", "Đêm nay xuống hầm.")
+	# Anh Duy's lines show with their Dịch line: timed for both (0.06 s per character of the two)
+	sub(0.4, 3.4, "duy", "AES-256, mà pass là 123456.", "Dịch: Khóa xịn, mật khẩu dỏm.")
+	sub(3.9, 1.2, "hero", "Rồi trong đó có gì?")
+	sub(5.2, 5.0, "duy", "IP nội bộ, trỏ về server dưới hầm The Beverly.", "Dịch: Máy chủ nằm dưới hầm tòa mày ở.")
+	sub(10.3, 1.4, "hero", "Ngay dưới chỗ tao ngủ?!")
+	sub(11.9, 1.2, "hero", "Đêm nay xuống hầm.")

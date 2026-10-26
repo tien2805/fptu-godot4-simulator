@@ -19,7 +19,10 @@ const FADE: float = 0.25               # real seconds of fade in / out
 const CCTV_SIZE := Vector2(760.0, 428.0)
 const PHONE_SIZE := Vector2(330.0, 600.0)
 const RADIO_SIZE := Vector2(420.0, 120.0)
-const CREDITS_SIZE := Vector2(980.0, 540.0)
+const CREDITS_SIZE := Vector2(980.0, 440.0)
+## The radio box and the credits stay between the letterbox bars (each 12.8 % of a 16:9 screen): anchors of their area.
+const SAFE_TOP: float = 0.135
+const SAFE_BOTTOM: float = 0.865
 const FLOW_SIZE := Vector2(860.0, 360.0)
 
 var data: Dictionary = {}
@@ -148,6 +151,7 @@ func _ready() -> void:
 
 func _build() -> void:
 	var cc := CenterContainer.new()
+	cc.name = "Area"
 	cc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	cc.anchor_bottom = 0.92
 	cc.offset_bottom = 0.0
@@ -156,7 +160,11 @@ func _build() -> void:
 	var phone: bool = kind() == "phone"
 	if kind() == "radio":
 		cc.anchor_right = 0.4
-		cc.anchor_bottom = 0.4
+		cc.anchor_top = SAFE_TOP
+		cc.anchor_bottom = 0.42
+	elif kind() == "credits":
+		cc.anchor_top = SAFE_TOP
+		cc.anchor_bottom = SAFE_BOTTOM
 	frame = PanelContainer.new()
 	frame.name = "Frame"
 	var sb := StyleBoxFlat.new()

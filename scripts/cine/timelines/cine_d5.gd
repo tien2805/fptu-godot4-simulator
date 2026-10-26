@@ -3,7 +3,7 @@
 # smoke and the red emergency light. Za Mẫn sits slumped against a rack holding the hilt of his broken katana: "Bảo hành...
 # bảy ngày...". The protagonist opens the transaction logs (E6) on a laptop; the money flow (StoryScreenCard "flow") runs
 # from "LỌ THẦN 9.0" through an anonymous wallet to "TRÀ SỮA LỌ". "...Trà Sữa Lọ?" - "Trà sữa ngon lắm... size L, ít đá..."
-# - "Lọ Thần. Trà Sữa Lọ. Toàn Lọ." - the phone buzzes: "Chủ quán là ai đây..."
+# - "Lọ Thần. Trà Sữa Lọ. Lọ hết trơn." - the phone buzzes: "Chủ quán là ai đây..."
 # No ramps (story = real). Music slot cine_d5 (owner file, else silence).
 # Stage: CineTimeline.phase_c_stage("server"), the carried room (cine_d5_monitors.server_room).
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
@@ -74,7 +74,7 @@ func build() -> void:
 		{"pos": Vector3(0.75, 1.6, -1.9), "look": HERO + Vector3(0.0, 1.55, 0.0), "fov": 38.0})
 	shot("S5", 10.9, "static", "close: Za Mẫn, dreamy: the milk tea",
 		{"pos": Vector3(-3.4, 0.95, -2.0), "look": Vector3(-4.55, 0.8, -2.25), "fov": 40.0})
-	shot("S6", 13.4, "static", "wide side on: \"Lọ Thần. Trà Sữa Lọ. Toàn Lọ.\"",
+	shot("S6", 13.4, "static", "wide side on: \"Lọ Thần. Trà Sữa Lọ. Lọ hết trơn.\"",
 		{"pos": Vector3(-1.4, 1.5, 1.6), "look": Vector3(0.6, 1.2, -1.2), "fov": 46.0})
 	shot("S7", 15.6, "static", "close: the phone buzzes in the protagonist's hand",
 		{"pos": Vector3(1.35, 1.55, -0.3), "look": Vector3(1.0, 1.3, -1.15), "fov": 40.0})
@@ -84,5 +84,5 @@ func build() -> void:
 	sub(2.2, 1.9, "hero", "Tiền của Lọ Thần chảy về đâu?")
 	sub(9.8, 1.0, "hero", "...Trà Sữa Lọ?")
 	sub(11.0, 2.3, "za", "Trà sữa ngon lắm... size L, ít đá...")
-	sub(13.5, 1.9, "hero", "Lọ Thần. Trà Sữa Lọ. Toàn Lọ.")
+	sub(13.5, 2.05, "hero", "Lọ Thần. Trà Sữa Lọ. Lọ hết trơn.")
 	sub(15.8, 1.4, "hero", "Chủ quán là ai đây...")

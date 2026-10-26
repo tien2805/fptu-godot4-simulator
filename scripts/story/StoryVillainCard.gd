@@ -199,8 +199,11 @@ func update(r: float) -> void:
 		var nb: int = String(data.get("name", "")).length()
 		name_label.text = name_full.substr(0, name_chars_at(u, nb, name_full.length() - nb))
 		var k: float = name_scale_at(u, name_fit * vs.x / 1280.0)
-		name_label.scale = Vector2(k, k)
+		var fs: int = maxi(8, int(round(60.0 * k)))   # shrink by font size: the layout shrinks too (no gap above the nick)
+		if fs != name_label.get_theme_font_size("font_size"):
+			name_label.add_theme_font_size_override("font_size", fs)
 		st["name_scale"] = k
+		st["name_size"] = fs
 		st["name_chars"] = name_label.text.length()
 	var pv: float = float(st["pointer"])
 	pointer.visible = pv >= 0.0

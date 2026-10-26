@@ -4,8 +4,8 @@
 # "Phòng cháy kìa!" - "Cháy là dấu hiệu tăng trưởng nóng."; behind him a "STONKS" chart climbs, then dives (red ticker
 # "LỌ THẦN 9.0 -99,9%"): "...Điều chỉnh kỹ thuật thôi." Then the offer: join him, he erases the suspension, "equity 0,01%".
 # The frame freezes on choice 2 (StoryChoice at 13.600 s real, the clock holds): "Nhận lời" (key accept) / "Từ chối" (key
-# refuse); on timeout the honest option is taken: "Từ chối", with a comic line. The answer goes to StoryDirector.choices.za_man
-# and CinePlayer.choice_made("za_man", key, timed_out); the integration then plays cine_d5_choice_accept (then end_c) or
+# refuse); on timeout the honest option is taken: "Từ chối", with a comic line. The answer goes to
+# StoryDirector.choices.zaman_offer (evaluate_ending: "accept" = ending C) and CinePlayer.choice_made("zaman_offer", key, timed_out); the integration then plays cine_d5_choice_accept (then end_c) or
 # cine_d5_choice_refuse (then the villain card via show_for and the katana duel).
 # No ramps (story = real). Music slot cine_d5_choice (owner file, else silence).
 # Stage: CineTimeline.phase_c_stage("server"), the carried room (cine_d5_monitors.server_room); positions shared with the tails.
@@ -91,15 +91,30 @@ func build() -> void:
 	sub(7.1, 1.8, "za", "...Điều chỉnh kỹ thuật thôi.")
 	sub(9.0, 2.3, "za", "Về phe tôi đi, %s." % StoryCast.speaker("hero"))
 	sub(11.45, 2.1, "za", "Xoá án đình chỉ, tặng equity 0,01%.")
-	choice(CHOICE_R, {"id": "za_man", "title": "Lựa chọn 2",
+	choice(CHOICE_R, {"id": "zaman_offer", "title": "Lựa chọn 2",
 		"prompt": "Za Mẫn mời mày vào phe, đổi lại xoá án đình chỉ. Mày chọn sao?",
 		"options": [{"key": "accept", "label": "Nhận lời"}, {"key": "refuse", "label": "Từ chối"}],
 		"honest": "refuse", "timeout_line": "Im lặng mười giây... Za Mẫn hiểu là mày từ chối. Có cốt khí đó!"})
 
 
 ## The burning server room shared by cine_d5_choice and its tails: the room and racks (cine_d5_monitors.server_room), the
-## frozen monitor wall, small fires by the racks.
-static func set_dressing(tl: CineTimeline) -> void:
+## frozen monitor wall, small fires by the racks, and Za Mẫn's desk behind him with his katana lying on it (taken at
+## katana_take in the refuse tail) and, from cup_put on, the coffee cup he puts down there (the tails).
+const DESK := Vector3(-1.2, 0.0, -1.75)
+const DESK_YAW: float = 40.0
+const CUP_ON_DESK := Vector3(-0.91, 0.76, -1.67)
+const KATANA_ON_DESK := Vector3(-1.33, 0.785, -1.51)
+
+
+static func set_dressing(tl: CineTimeline, katana_take: float = -1.0, cup_put: float = -1.0) -> void:
+	tl.prop("desk", "desk", DESK, DESK_YAW)
+	var rot := Vector3(0.0, DESK_YAW + 90.0, 90.0)   # lying flat along the desk
+	var ko: Dictionary = {"bend": 22.0, "path": [[0.0, KATANA_ON_DESK, rot], [1.0, KATANA_ON_DESK, rot]]}
+	if katana_take >= 0.0:
+		ko["hide_at"] = katana_take
+	tl.prop("katana_desk", "katana", KATANA_ON_DESK, DESK_YAW + 90.0, ko)
+	if cup_put >= 0.0:
+		tl.prop("cup", "coffee_cup", CUP_ON_DESK, 0.0, {"show_at": cup_put})
 	(load("res://scripts/cine/timelines/cine_d5_monitors.gd") as GDScript).call("server_room", tl, true)
 	tl.prop("wall", "monitor_wall", Vector3(0.0, 0.0, -4.7), 180.0, {"anim": true, "freeze_at": -1.0, "set": true})
 	for i: int in FIRES.size():

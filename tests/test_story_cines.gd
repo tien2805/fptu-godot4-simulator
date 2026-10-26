@@ -110,7 +110,8 @@ func _timelines() -> void:
 		_check(bool(ho.get("female", false)) and String(ho.get("hair_style", "")) == "bun" and int(ho.get("variant", -1)) == 1 and String(hero["name"]) == "Minh Thư",
 			"%s: the hero is the protagonist (%s)" % [s, str(ho)])
 		for sb: Dictionary in tl.subs:
-			_check(float(sb["dur"]) >= 0.06 * float(String(sb["text"]).length()) - 1e-6, "%s: '%s' reads at >= 0.06 s per character (%.2f s)" % [s, String(sb["text"]), float(sb["dur"])])
+			var chars: int = String(sb["text"]).length() + String(sb["tr"]).length()   # a Dịch line shows with it: read both
+			_check(float(sb["dur"]) >= 0.06 * chars - 1e-6, "%s: '%s' reads at >= 0.06 s per character, Dịch line included (%.2f s)" % [s, String(sb["text"]), float(sb["dur"])])
 			var line: String = String(sb["text"]).to_lower()
 			_check(not line.contains("{name}"), "%s: {name} formatted in '%s'" % [s, String(sb["text"])])
 			for w: String in BANNED:
@@ -948,6 +949,19 @@ func _phase_c_slots() -> void:
 	_check(ec.cards.size() == 1 and String(ec.cards[0]["data"]["kind"]) == "credits" and _said("end_c").contains("CEO Lọ Thần 10.0")
 		and _said("end_c").contains("Minh Thư"), "end_c: the CEO of Lọ Thần 10.0 ({name}), then the credits")
 	_check(ec.props.any(func(pr: Dictionary) -> bool: return String(pr["kind"]) == "keynote" and bool(pr["opts"].get("set", false))), "end_c: the keynote set is set dressing")
+	var kn: Dictionary = ec.props.filter(func(pr: Dictionary) -> bool: return String(pr["kind"]) == "keynote")[0]
+	var kp: Node3D = CineFX.build_prop("keynote", kn["opts"])
+	var podium: Vector3 = (kn["pos"] as Vector3) + Basis(Vector3.UP, deg_to_rad(float(kn["yaw"]))) * (kp.find_child("Podium", true, false) as Node3D).position
+	kp.free()
+	_check(podium.x > 1.5, "end_c: the podium stands on the right, off the CEO's walk-on and Za Mẫn's entry from the left (x %.2f)" % podium.x)
+	var d2: CineTimeline = CineTimeline.load_slot("cine_d2")
+	_check(d2.cues.filter(func(c: Dictionary) -> bool: return c["type"] == "hold" and c["actor"] == "soi" and String(c["kind"]) == "wolf_helmet").all(
+		func(c: Dictionary) -> bool: return not bool((c["opts"] as Dictionary).get("led_on", true))), "cine_d2: Sói Xám's LED eyes stay dark (as at the end of seg_d2_boss)")
+	var rf: CineTimeline = CineTimeline.load_slot("cine_d5_choice_refuse")
+	var take: float = float(rf.props.filter(func(pr: Dictionary) -> bool: return pr["id"] == "katana_desk")[0]["opts"]["hide_at"])
+	var reaches: Array = rf.cues.filter(func(c: Dictionary) -> bool: return c["type"] == "strike" and c["actor"] == "za" and String(c["move"]) == "shove")
+	_check(reaches.size() == 2 and reaches.any(func(c: Dictionary) -> bool: return absf(float(c["at"]) - take) < 1e-6),
+		"cine_d5_choice_refuse: Za Mẫn reaches to put the cup down and to take the katana off the desk")
 	var ch: CineTimeline = CineTimeline.load_slot("cine_d5_choice")
 	_check(_said("cine_d5_choice").contains("Ổn mà, mọi thứ vẫn ổn.") and _said("cine_d5_choice").contains("equity 0,01%")
 		and ch.props.any(func(pr: Dictionary) -> bool: return String(pr["kind"]) == "stonks_screen"), "cine_d5_choice: the coffee among the fires, STONKS, the equity offer")
@@ -958,7 +972,7 @@ func _phase_c_scares() -> void:
 	var was: bool = bool(fx.get("reduce_scares"))
 	var world := Node3D.new()
 	root.add_child(world)
-	for e: Array in [["cine_d3_mannequins", 1.9], ["cine_d5_monitors", 3.3]]:
+	for e: Array in [["cine_d3_mannequins", 1.6], ["cine_d5_monitors", 3.3]]:
 		for calm: bool in [false, true]:
 			fx.set("reduce_scares", calm)
 			var tl: CineTimeline = CineTimeline.load_slot(String(e[0]))
@@ -995,15 +1009,16 @@ func _phase_c_choice() -> void:
 	var tl: CineTimeline = CineTimeline.load_slot("cine_d5_choice")
 	var labels: Array = (tl.choice_def["options"] as Array).map(func(o: Dictionary) -> String: return String(o["label"]))
 	var keys: Array = (tl.choice_def["options"] as Array).map(func(o: Dictionary) -> String: return String(o["key"]))
-	_check(String(tl.choice_def["id"]) == "za_man" and labels == ["Nhận lời", "Từ chối"] and keys == ["accept", "refuse"]
+	_check(String(tl.choice_def["id"]) == "zaman_offer" and labels == ["Nhận lời", "Từ chối"] and keys == ["accept", "refuse"]
 		and String(tl.choice_def["honest"]) == "refuse" and absf(float(tl.choice_def["r"]) - 13.6) < 1e-6,
 		"choice 2: Nhận lời / Từ chối at 13.6 s, honest default = refuse")
 	var ct: String = String(tl.choice_def["prompt"]) + String(tl.choice_def["timeout_line"]) + String(tl.choice_def.get("title", ""))
 	_check(_plain(ct) and not ct.contains("…"), "choice 2 texts are plain")
 	var choices: Dictionary = sd.get("choices")
-	var had: bool = choices.has("za_man")
-	var old: Variant = choices.get("za_man", "")
-	choices["za_man"] = ""
+	_check(choices.has("zaman_offer"), "StoryDirector.choices has the zaman_offer key (ending C reads it)")
+	var old: Variant = choices.get("zaman_offer", "")
+	if choices.has("zaman_offer"):
+		choices["zaman_offer"] = ""   # a fresh answer (the key itself is StoryDirector's own)
 	var world := Node3D.new()
 	root.add_child(world)
 	var p := CinePlayer.new()
@@ -1018,14 +1033,12 @@ func _phase_c_choice() -> void:
 	while done.is_empty() and n < 3000:
 		p.step(1.0 / 60.0)
 		n += 1
-	_check(made == [["za_man", "refuse", true]] and done == [false] and String(choices["za_man"]) == "refuse",
-		"no answer: choice_made(za_man, refuse, timed out), recorded in StoryDirector.choices (%s)" % str(made))
+	_check(made == [["zaman_offer", "refuse", true]] and done == [false] and String(choices.get("zaman_offer", "")) == "refuse",
+		"no answer: choice_made(zaman_offer, refuse, timed out), recorded in StoryDirector.choices (%s)" % str(made))
 	world.queue_free()
 	paused = false
-	if had:
-		choices["za_man"] = old
-	else:
-		choices.erase("za_man")
+	if choices.has("zaman_offer"):
+		choices["zaman_offer"] = old
 	var acc: CineTimeline = CineTimeline.load_slot("cine_d5_choice_accept")
 	var ref: CineTimeline = CineTimeline.load_slot("cine_d5_choice_refuse")
 	_check(acc.length >= 3.0 and acc.length <= 5.0 and ref.length >= 3.0 and ref.length <= 5.0, "choice 2 branch tails are 3-5 s")
@@ -1069,7 +1082,9 @@ func _phase_c_cards() -> void:
 			var c2: int = vc.name_label.text.length()
 			print("  alexander's name: %d -> %d -> %d characters, %.0f px running, scale %.2f at the end" % [c0, c1, c2, w1, vc.name_label.scale.x])
 			_check(c0 == nb and c1 > nb + 10 and c2 == vc.name_full.length(), "Alexander's endless name types on after the name")
-			_check(vc.box.position.x + w1 > 0.56 * vs.x and vc.name_label.scale.x < 0.95, "it runs off the band, then shrinks to fit")
+			var fs: int = vc.name_label.get_theme_font_size("font_size")
+			_check(vc.box.position.x + w1 > 0.56 * vs.x and fs < 57, "it runs off the band, then shrinks to fit (font %d px)" % fs)
+			_check(vc.name_label.get_combined_minimum_size().y < 60.0, "the shrunk name leaves no gap above the nick (%.0f px tall)" % vc.name_label.get_combined_minimum_size().y)
 		vc.queue_free()
 	for id2: String in ["soi_xam", "za_man"]:
 		paused = false
@@ -1094,6 +1109,11 @@ func _phase_c_cards() -> void:
 		root.add_child(sc)
 		sc.update(sc.r0 + sc.dur * 0.5)
 		_check(String(cd["data"]["kind"]) == String(e[1]) and sc.frame.visible and sc.screen.get_combined_minimum_size().x >= 300.0, "%s: the %s card shows" % [String(e[0]), String(e[1])])
+		if String(e[1]) in ["credits", "radio"]:
+			var area: Control = sc.find_child("Area", true, false) as Control
+			var vh: float = sc.get_viewport().get_visible_rect().size.y
+			_check(area != null and area.anchor_top >= 0.128 and sc.frame.get_combined_minimum_size().y <= (area.anchor_bottom - area.anchor_top) * vh,
+				"the %s card sits between the letterbox bars" % String(e[1]))
 		if String(e[1]) == "credits":
 			var y0: float = sc.roll.position.y
 			sc.update(sc.r0 + sc.dur * 0.8)
@@ -1123,15 +1143,15 @@ func _phase_c_props() -> void:
 	var door: CineAnimProp = (p.prop_nodes["box01"] as Node3D).get_meta("anim_node")
 	p.seek(0.2)
 	var shut: String = door.state
-	p.seek(1.75)
+	p.seek(1.5)
 	var away: float = crowd.head_turn
 	var dst: String = door.state
-	p.seek(2.3)
+	p.seek(2.0)
 	var front: float = crowd.head_turn
-	_check(shut == "shut" and dst == "open" and rad_to_deg(away) > 60.0 and rad_to_deg(front) < 1.0,
+	_check(shut == "shut" and dst in ["opening", "open"] and rad_to_deg(away) > 60.0 and rad_to_deg(front) < 1.0,
 		"the middle door creaks open, the heads face away (%.0f deg), then all snap to the front (%.1f deg)" % [rad_to_deg(away), rad_to_deg(front)])
 	var other: CineAnimProp = (p.prop_nodes["box10"] as Node3D).get_meta("anim_node")
-	p.seek(1.7)
+	p.seek(1.5)
 	var o0: String = other.state
 	p.seek(2.4)
 	_check(o0 == "shut" and other.state == "open", "the other containers bang open at the scare")

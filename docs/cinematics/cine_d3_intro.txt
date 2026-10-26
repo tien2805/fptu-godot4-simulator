@@ -10,12 +10,12 @@ SHOT S2      4.600  track     side tracking close: the protagonist rides, Anh Du
 SHOT S3      9.300  track     behind the scooter: the road ahead to the bridge
 #
 # Subtitles (real start - end, speaker: line)
-SUB    1.000 -  3.600  Anh Duy: Tới đâu rồi? Anh track GPS mày nãy giờ.  /  Dịch: Anh đang theo dõi mày trên bản đồ.
-SUB    3.800 -  5.200  Bạn: Gần cầu Rạch Hầm rồi.
-SUB    5.400 -  8.600  Anh Duy: Bến container có camera, anh loop feed được 30 giây.  /  Dịch: Anh làm camera đứng hình được ba mươi giây thôi.
-SUB    8.800 -  9.900  Bạn: Ba mươi giây?!
-SUB   10.200 - 11.200  Anh Duy: Ừ. Hên xui.  /  Dịch: Ừ. Hên xui.
-SUB   11.600 - 12.900  Bạn: ...Chạy lẹ thôi.
+SUB    0.400 -  4.150  Anh Duy: Tới đâu rồi? Anh track GPS mày.  /  Dịch: Anh thấy mày trên bản đồ.
+SUB    4.250 -  5.550  Bạn: Gần cầu Rạch Hầm rồi.
+SUB    5.650 -  9.850  Anh Duy: Anh loop camera bến được 30 giây.  /  Dịch: Camera đứng hình 30 giây thôi.
+SUB    9.950 - 10.850  Bạn: Ba mươi giây?!
+SUB   10.950 - 12.650  Anh Duy: Ừ. Hên xui.  /  Dịch: Ừ. Hên xui.
+SUB   12.750 - 13.750  Bạn: ...Chạy lẹ thôi.
 #
 # Cards (real start - end, kind: what)
-CARD    0.900 - 13.300  screen: radio
+CARD    0.300 - 12.750  screen: radio

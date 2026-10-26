@@ -177,6 +177,10 @@ const MOVES: Dictionary = {
 	"present": {"dur": 2.4, "loop": true, "src": [{"t": "code", "a": "present"}]},
 	"bow_ceo": {"dur": 1.6, "src": [{"t": "code", "a": "bow_ceo"}]},
 	"staff_guard": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "staff_guard"}]},
+	# both hands up over the head holding a weapon across it (Za Mẫn blocks the staff with his katana; UAL2 Sword_Block keeps
+	# the hands at the hips, so this is a code pose on every tier)
+	"block_high": {"dur": 0.8, "hit_u": 0.45, "src": [{"t": "code", "a": "block_high", "hit": 0.45}]},
+	"handshake": {"dur": 1.2, "loop": true, "src": [{"t": "code", "a": "handshake"}]},
 }
 
 ## Two-handed overhead smash (a chair or the soup pot held between both hands): wind up over the head, bring it down on
@@ -829,6 +833,17 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 			return {"torso": Vector3(0.55 * bk, 0.0, 0.0), "head": Vector3(0.15 * bk, 0.0, 0.0),
 				"shoulder_r": Vector3(0.6, 0.0, -0.55), "elbow_r": Vector3(2.0, 0.0, 0.0),
 				"shoulder_l": Vector3(0.2, 0.0, -0.2), "elbow_l": Vector3(0.3, 0.0, 0.0)}
+		"handshake":    # the right hand out at waist height, a few pumps; the left arm relaxed (two actors 0.85-0.9 m apart)
+			var hp: float = sin(u * TAU * 2.0) * 0.08
+			return {"shoulder_r": Vector3(0.62 + hp, 0.0, 0.05), "elbow_r": Vector3(0.55, 0.0, 0.0),
+				"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0),
+				"torso": Vector3(0.06, 0.0, 0.0), "head": Vector3(0.05, 0.0, 0.0)}
+		"block_high":   # arms up over the head (a weapon held across it), braced for the blow, then down a little
+			var bh: float = _sm(u / 0.35) * (1.0 - 0.3 * _sm((u - 0.6) / 0.4))
+			return {"shoulder_l": Vector3(2.7 * bh, 0.0, -0.35 * bh), "elbow_l": Vector3(0.7 * bh, 0.0, 0.0),
+				"shoulder_r": Vector3(2.7 * bh, 0.0, 0.35 * bh), "elbow_r": Vector3(0.7 * bh, 0.0, 0.0),
+				"torso": Vector3(-0.12 * bh, 0.0, 0.0), "head": Vector3(-0.3 * bh, 0.0, 0.0),
+				"knee_l": Vector3(-0.3 * bh, 0.0, 0.0), "knee_r": Vector3(-0.3 * bh, 0.0, 0.0)}
 		"staff_guard":  # both hands on a staff held forward at waist height, knees soft (loop phase u)
 			var sg: float = sin(u * TAU) * 0.02
 			return {"shoulder_l": Vector3(0.95 + sg, 0.0, 0.3), "elbow_l": Vector3(1.0, 0.0, 0.0),

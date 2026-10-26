@@ -599,7 +599,7 @@ static func _rack(root: Node3D, opts: Dictionary) -> void:
 
 ## Server room set (set dressing for the basement under The Beverly tower): raised floor, three walls, ceiling with cable
 ## trays, a red emergency light; the open side faces +Z. opts "width" (x), "depth" (z extent behind the origin toward -Z),
-## "height", "red" (emergency light on).
+## "height", "red" (emergency light on), "door_x" (an open doorway in the back wall there, a dark corridor behind it).
 static func _room(root: Node3D, opts: Dictionary) -> void:
 	var w: float = float(opts.get("width", 13.0))
 	var d: float = float(opts.get("depth", 9.5))
@@ -608,10 +608,22 @@ static func _room(root: Node3D, opts: Dictionary) -> void:
 	var zc: float = z1 - d * 0.5
 	var wall: StandardMaterial3D = CineFX._mat(Color("#3A3F46"), 0.85)
 	CineFX._box(root, "Floor", Vector3(w, 0.02, d), Vector3(0.0, 0.01, zc), CineFX._mat(Color("#5A6068"), 0.6))
-	CineFX._box(root, "BackWall", Vector3(w, h, 0.15), Vector3(0.0, h * 0.5, z1 - d - 0.075), wall)
+	var zb: float = z1 - d - 0.075
+	if opts.has("door_x"):   # an open doorway (1.2 x 2.2 m) in the back wall at door_x, a dark corridor behind it
+		var dx: float = float(opts["door_x"])
+		var lw: float = dx - 0.6 + w * 0.5
+		var rw: float = w * 0.5 - (dx + 0.6)
+		CineFX._box(root, "BackWallL", Vector3(lw, h, 0.15), Vector3(-w * 0.5 + lw * 0.5, h * 0.5, zb), wall)
+		CineFX._box(root, "BackWallR", Vector3(rw, h, 0.15), Vector3(w * 0.5 - rw * 0.5, h * 0.5, zb), wall)
+		CineFX._box(root, "BackWallTop", Vector3(1.2, h - 2.2, 0.15), Vector3(dx, 2.2 + (h - 2.2) * 0.5, zb), wall)
+		CineFX._box(root, "DoorFrame", Vector3(1.32, 0.08, 0.2), Vector3(dx, 2.24, zb), CineFX._mat(Color("#8C939C"), 0.4))
+		CineFX._box(root, "Corridor", Vector3(1.6, 2.4, 0.1), Vector3(dx, 1.2, zb - 0.5), CineFX._mat(Color("#07080A"), 1.0))
+		CineFX._box(root, "ExitSign", Vector3(0.5, 0.16, 0.04), Vector3(dx, 2.45, zb + 0.1), CineFX._glow_mat(Color("#29C46A"), 2.0))
+	else:
+		CineFX._box(root, "BackWall", Vector3(w, h, 0.15), Vector3(0.0, h * 0.5, zb), wall)
 	for sx: float in [-1.0, 1.0]:
-		CineFX._box(root, "SideWall", Vector3(0.15, h, d), Vector3(sx * (w * 0.5 + 0.075), h * 0.5, zc), wall)
-		CineFX._box(root, "Tray", Vector3(0.3, 0.08, d), Vector3(sx * w * 0.25, h - 0.3, zc), CineFX._mat(Color("#8C939C"), 0.4))
+		CineFX._box(root, "SideWallL" if sx < 0.0 else "SideWallR", Vector3(0.15, h, d), Vector3(sx * (w * 0.5 + 0.075), h * 0.5, zc), wall)
+		CineFX._box(root, "TrayL" if sx < 0.0 else "TrayR", Vector3(0.3, 0.08, d), Vector3(sx * w * 0.25, h - 0.3, zc), CineFX._mat(Color("#8C939C"), 0.4))
 	CineFX._box(root, "Ceiling", Vector3(w + 0.3, 0.12, d), Vector3(0.0, h + 0.06, zc), CineFX._mat(Color("#2B2F35"), 0.9))
 	var cold := OmniLight3D.new()
 	cold.name = "ColdLight"
@@ -651,7 +663,8 @@ static func _keynote(root: Node3D, opts: Dictionary) -> void:
 		l.position = Vector3(0.0, float(e[4]), 1.63)
 		l.rotation.y = PI
 		root.add_child(l)
-	CineFX._box(root, "Podium", Vector3(0.6, 1.1, 0.45), Vector3(2.7, 0.45 + 0.55, -0.6), CineFX._mat(Color("#2B2F36"), 0.5))
+	# podium at local x -2.7: the stage turned to face the audience (yaw 180) puts it on the right, clear of the walk-on from the left
+	CineFX._box(root, "Podium", Vector3(0.6, 1.1, 0.45), Vector3(-2.7, 0.45 + 0.55, -0.6), CineFX._mat(Color("#2B2F36"), 0.5))
 	for sx: float in [-3.0, 3.0]:
 		var sp := OmniLight3D.new()
 		sp.name = "Spot"

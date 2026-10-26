@@ -1,9 +1,9 @@
 # File: res://scripts/cine/timelines/cine_d3_mannequins.gd
 # cine_d3_mannequins (10.000 s, spec C-D7 beats 4-5, C-D9 discovery beat + villain card): Day 3, the container yard at night.
 # Six containers (two rows of three) stand in the dark; the middle one's door creaks open on rows of mannequins in smart
-# glasses, their heads turned away. At 1.9 every head snaps to the camera at once (jump scare v2: scare_hit, the duck, the
+# glasses, their heads turned away. At 1.6 every head snaps to the camera at once (jump scare v2: scare_hit, the duck, the
 # screen hit, the +8 dB sting) and the other five containers bang open: hundreds of red LEDs staring. Alexander ABCXYZ hops
-# out of the middle container blowing a party horn: "Surprise!" - the frame freezes on his villain card (3.6-6.9 s real;
+# out of the middle container blowing a party horn: "Surprise!" - the frame freezes on his villain card (3.0-7.0 s real;
 # StoryVillainCard: his endless name types on, runs off the band, then shrinks to fit: data "name_run"). Tail at 1x: he
 # starts reciting the name again, "Ta là Alexander ABCXYZ DEFGH IJK..." - "Dài ghê." (the gunfight starts next).
 # "Giảm hù dọa" (read at build time): the heads turn slowly over a second, the other doors swing open quietly, the scare mark
@@ -14,10 +14,10 @@
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline
 
-const CREAK: float = 0.4
-const SCARE: float = 1.9
-const POP: float = 2.6
-const CARD_R: float = 3.6
+const CREAK: float = 0.3
+const SCARE: float = 1.6
+const POP: float = 2.05
+const CARD_R: float = 3.0
 const HERO := Vector3(0.0, 0.0, 3.6)
 const ALEX_FROM := Vector3(0.35, 0.0, 0.05)
 const ALEX := Vector3(0.35, 0.0, 0.95)
@@ -53,9 +53,9 @@ func build() -> void:
 	var s_card: float = story_time("V1")
 	# the protagonist creeps up, jumps at the scare, gapes at Alexander
 	key("hero", 0.0, HERO + Vector3(0.0, 0.0, 0.9), 0.0)
-	key("hero", 1.2, HERO, 0.0, {"mode": "out"})
+	key("hero", 1.0, HERO, 0.0, {"mode": "out"})
 	move("hero", 0.0, "walk")
-	move("hero", 1.2, "idle", {"fade": 0.25})
+	move("hero", 1.0, "idle", {"fade": 0.25})
 	move("hero", SCARE, "startled", {"dur": 0.6, "fade": 0.05})
 	move("hero", SCARE + 0.6, "idle", {"fade": 0.2})
 	look("hero", 0.0, POP, Vector3(0.0, 1.5, -1.0))
@@ -76,7 +76,7 @@ func build() -> void:
 	expr("alex", POP, "happy")
 	expr("alex", s_card + 0.4, "talk")
 	sfx_at(CREAK, "metal_creak", -2.0)
-	sfx_at(1.0, "heartbeat", -4.0)
+	sfx_at(0.9, "heartbeat", -4.0)
 	scare_hit(SCARE, {})
 	if not calm:
 		sfx_at(SCARE + 0.05, "door_bang", -1.0)
@@ -86,7 +86,7 @@ func build() -> void:
 	sfx_at(POP + 0.3, "party_horn", 0.0)
 	shot("S1", 0.0, "static", "over the protagonist's shoulder: six containers in the dark, the middle door creaks open",
 		{"pos": Vector3(1.1, 1.7, 5.6), "look": Vector3(0.0, 1.7, -1.0), "fov": 52.0, "hand": 0.2})
-	shot("S2", 1.1, "dolly", "push to the open door: rows of mannequins in smart glasses, heads turned away",
+	shot("S2", 0.9, "dolly", "push to the open door: rows of mannequins in smart glasses, heads turned away",
 		{"from": Vector3(0.35, 1.6, 2.2), "to": Vector3(0.25, 1.6, 1.6), "look_from": Vector3(0.0, 1.5, -3.0),
 		"look_to": Vector3(0.0, 1.55, -3.0), "fov": 46.0})
 	shot("S3", SCARE - 0.2, "static", "at the door: every head snaps to the camera at once",
@@ -99,7 +99,7 @@ func build() -> void:
 		{"pos": Vector3(-2.6, 1.5, 2.6), "look": Vector3(0.2, 1.35, 2.2), "fov": 44.0})
 	shot("S7", s_card + 2.5, "static", "close: the protagonist, deadpan",
 		{"pos": Vector3(0.25, 1.6, 2.55), "look": Vector3(0.0, 1.55, 3.6), "fov": 38.0})
-	sub(0.4, 1.5, "hero", "Có ai trong đó không...?")
-	sub(2.75, 0.8, "alex", "Surprise!")
+	sub(0.12, 1.46, "hero", "Có ai trong đó không...?")
+	sub(2.2, 0.75, "alex", "Surprise!")
 	sub(7.1, 2.2, "alex", "Ta là Alexander ABCXYZ DEFGH IJK...")
 	sub(9.4, 0.55, "hero", "Dài ghê.")

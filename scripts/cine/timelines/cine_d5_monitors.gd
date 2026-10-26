@@ -4,8 +4,8 @@
 # Mẫn's face laughing on every screen (a code-drawn caricature: man bun, round glasses). The camera is right at one screen
 # when the face snaps on it (jump scare v2: scare_hit, the duck, the screen hit, the +8 dB sting). "Ha ha ha! Chào mừng tới
 # Lọ Thần 9.0!" - then every screen freezes on the blue "Lọ Thần đã gặp sự cố". "...Nó tự sập kìa."
-# "Giảm hù dọa" (read at build time): the faces come on without the close snap (the camera stays wide), the scare mark plays
-# its soft variant.
+# "Giảm hù dọa" (read at build time): the faces come on without the close snap (the camera stays wide), the laughs are
+# 11 dB softer with no static burst, the scare mark plays its soft variant.
 # No ramps (story = real). Music slot cine_d5_monitors (owner file, else silence).
 # Stage: CineTimeline.phase_c_stage("server") (14 x 10): the room, the racks and the monitor wall are carried; the room is
 # set dressing (drop_set inside the real basement scene).
@@ -50,11 +50,13 @@ func build() -> void:
 	expr("hero", FACE, "surprised")
 	expr("hero", FREEZE + 1.2, "done")
 	sfx_at(0.3, "heartbeat", -6.0)
-	sfx_at(FACE, "static_burst", -6.0)
-	sfx_at(FACE + 0.15, "evil_laugh", -3.0)
+	var laugh_db: float = -11.0 if calm else 0.0   # "Giảm hù dọa": the laughs come in soft, no static burst
+	if not calm:
+		sfx_at(FACE, "static_burst", -6.0)
+	sfx_at(FACE + 0.15, "evil_laugh", -3.0 + laugh_db)
 	scare_hit(SCARE, {})
-	sfx_at(4.0, "evil_laugh", -2.0)
-	sfx_at(5.6, "evil_laugh", -4.0)
+	sfx_at(4.0, "evil_laugh", -2.0 + laugh_db)
+	sfx_at(5.6, "evil_laugh", -4.0 + laugh_db)
 	sfx_at(FREEZE, "toang_sting", -2.0)
 	shot("S1", 0.0, "static", "behind the protagonist: a dark server room, red emergency light, a dead wall of monitors",
 		{"pos": Vector3(1.2, 1.7, 4.4), "look": Vector3(0.0, 1.4, -3.0), "fov": 52.0, "hand": 0.2})

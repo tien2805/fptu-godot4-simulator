@@ -22,4 +22,4 @@ SUB    7.100 -  8.900  Za Mẫn: ...Điều chỉnh kỹ thuật thôi.
 SUB    9.000 - 11.300  Za Mẫn: Về phe tôi đi, Bạn.
 SUB   11.450 - 13.550  Za Mẫn: Xoá án đình chỉ, tặng equity 0,01%.
 #
-CHOICE 13.600  za_man: accept = Nhận lời | refuse = Từ chối  (timeout 10 s -> refuse)
+CHOICE 13.600  zaman_offer: accept = Nhận lời | refuse = Từ chối  (timeout 10 s -> refuse)

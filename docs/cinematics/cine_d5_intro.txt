@@ -8,15 +8,13 @@
 SHOT S1      0.000  static    close over the laptops: Anh Duy holds up the USB "ZA MẪN LABS"
 SHOT S2      1.750  static    insert: the USB slides into the laptop
 SHOT S3      2.400  static    two-shot side on: decrypting
-SHOT S4      9.750  static    close: the protagonist, "Ngay dưới chỗ tao ngủ?!"
-SHOT S5     11.350  static    close over the laptops: Anh Duy, pleased with himself
-SHOT S6     12.400  static    wide: "Đêm nay xuống hầm."
+SHOT S4     10.200  static    close: the protagonist, "Ngay dưới chỗ tao ngủ?!"
+SHOT S5     11.000  static    close over the laptops: Anh Duy, pleased with himself
+SHOT S6     11.850  static    wide: "Đêm nay xuống hầm."
 #
 # Subtitles (real start - end, speaker: line)
-SUB    0.300 -  1.800  Anh Duy: Đồ tốt đây.  /  Dịch: Cái USB này xịn đó.
-SUB    2.400 -  4.800  Anh Duy: USB mã hoá AES-256, mà pass là 123456.  /  Dịch: Khóa xịn, mật khẩu dỏm.
-SUB    5.000 -  6.300  Bạn: Rồi trong đó có gì?
-SUB    6.500 -  9.800  Anh Duy: Một IP nội bộ, trỏ về server dưới hầm tòa The Beverly.  /  Dịch: Máy chủ của tụi nó nằm dưới tầng hầm tòa nhà mày ở.
-SUB    9.900 - 11.300  Bạn: Ngay dưới chỗ tao ngủ?!
-SUB   11.400 - 12.400  Anh Duy: Ping 1ms.  /  Dịch: Sát vách luôn.
-SUB   12.500 - 13.800  Bạn: Đêm nay xuống hầm.
+SUB    0.400 -  3.800  Anh Duy: AES-256, mà pass là 123456.  /  Dịch: Khóa xịn, mật khẩu dỏm.
+SUB    3.900 -  5.100  Bạn: Rồi trong đó có gì?
+SUB    5.200 - 10.200  Anh Duy: IP nội bộ, trỏ về server dưới hầm The Beverly.  /  Dịch: Máy chủ nằm dưới hầm tòa mày ở.
+SUB   10.300 - 11.700  Bạn: Ngay dưới chỗ tao ngủ?!
+SUB   11.900 - 13.100  Bạn: Đêm nay xuống hầm.

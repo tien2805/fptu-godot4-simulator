@@ -29,8 +29,11 @@ const PEN_HIT_LIMB: float = 0.06
 const PEN_HIT_CORE: float = 0.04
 const PEN_WINDOW: float = 0.08
 const FOOT_FLOOR: float = -0.03
-## Props that are not solid for the body check (sets with floors / ceilings, fire, the pickups lying on the floor).
-const NOT_SOLID: Array[String] = ["deck", "room", "floor_item", "grab_item", "w1_drop", "blade", "shades_fly"]
+## Props that are not solid for the body check: the bridge deck high overhead. Everything else counts while it is visible
+## (the pickups on the floor until they are taken, the dropped weapon, the snapped blade); the server room counts by its
+## walls (not its floor, ceiling trays or the dark corridor behind the doorway).
+const NOT_SOLID: Array[String] = ["deck"]
+const ROOM_SOLID: Array[String] = ["BackWall", "SideWall"]
 const PHASE_C: Array[String] = ["cine_d2_intro", "cine_d2", "seg_d2_boss", "cine_d3_intro", "cine_d3_mannequins", "cine_d3", "seg_d3_boss",
 	"cine_d5_intro", "cine_d5_monitors", "cine_d5_choice", "cine_d5_choice_accept", "cine_d5_choice_refuse", "cine_d5", "seg_d5_boss", "end_c"]
 
@@ -93,11 +96,25 @@ func _held_boxes(a: CineActor, h: Dictionary) -> Array:
 	return out
 
 
+## Knee spheres (the knee joints, r 0.07) for knee strikes.
+static func _knees(a: CineActor) -> Array:
+	return [["knee.L", a.bone_world("LowerLeg.L"), 0.07], ["knee.R", a.bone_world("LowerLeg.R"), 0.07]]
+
+
+## The striking part of a contact row (X2 is c's knee in a fight whose cfg sets x2_move "knee_strike").
+func _part(row: String) -> String:
+	if row == "X2" and String((tl.get("cfg") as Dictionary).get("x2_move", "jab")) == "knee_strike":
+		return "knees"
+	return String(STRIKES[row][1])
+
+
 func _strike_gap(pl: CinePlayer, who: String, part: String, target: String) -> Dictionary:
 	var a: CineActor = pl.actors[who]
 	var tc: Array = Bodies.capsules(pl.actors[target])
 	if part == "fists":
 		return Bodies.gap_spheres(Bodies.fists(a), tc)
+	if part == "knees":
+		return Bodies.gap_spheres(_knees(a), tc)
 	var h: Dictionary = _hold_of(a, part)
 	if h.is_empty():
 		return {"g": INF, "from": "no %s in hand" % part, "to": "?"}
@@ -119,14 +136,15 @@ func _contacts(pl: CinePlayer, label: String) -> void:
 		rows.append([ex.to_upper(), _real(ex)])
 	for row: Array in rows:
 		pl.seek(float(row[1]))
-		var st: Array = STRIKES[row[0]]
+		var st: Array = (STRIKES[row[0]] as Array).duplicate()
+		st[1] = _part(String(row[0]))
 		var res: Dictionary = _strike_gap(pl, String(st[0]), String(st[1]), String(st[2]))
 		var mv: Dictionary = (pl.actors[String(st[0])] as CineActor).active_move(pl.s)
 		print("  gap     %-6s %-3s %+.3f m  %s %s -> %s %s  (%s %s)" % [label, String(row[0]), float(res["g"]), st[0], res["from"], st[2],
 			res["to"], String(mv.get("move", "?")), String((mv.get("res", {}) as Dictionary).get("tier", "?"))])
 		_check(float(res["g"]) <= lim, "%s: %s surface gap %.3f m <= %.2f (%s %s -> %s %s)" % [label, String(row[0]), float(res["g"]), lim,
 			st[0], res["from"], st[2], res["to"]])
-		var deep: float = PEN_HIT_LIMB if String(st[1]) == "fists" else PEN_HIT_LIMB + 0.04
+		var deep: float = PEN_HIT_LIMB if String(st[1]) in ["fists", "knees"] else PEN_HIT_LIMB + 0.04
 		_check(float(res["g"]) >= -deep, "%s: %s strike sinks %.3f m into the target (> %.2f)" % [label, String(row[0]), -float(res["g"]), deep])
 	# c slammed back into the surface prop
 	var boxes: Array = Bodies.prop_boxes(pl.prop_nodes["surface"])
@@ -206,10 +224,18 @@ func _solid_props() -> Array[String]:
 	var out: Array[String] = []
 	for pr: Dictionary in tl.props:
 		var id: String = String(pr["id"])
-		if id in NOT_SOLID or id.begins_with("fire") or String(pr["kind"]) in ["bridge_deck", "server_room", "fire", "monitor_wall"]:
+		if id in NOT_SOLID or String(pr["kind"]) in ["bridge_deck", "fire", "monitor_wall"]:
 			continue
 		out.append(id)
 	return out
+
+
+## Solid boxes of a prop (the server room by its walls only).
+func _boxes_of(pl: CinePlayer, pk: String) -> Array:
+	var bx: Array = Bodies.prop_boxes(pl.prop_nodes[pk])
+	if String(tl.props.filter(func(pr: Dictionary) -> bool: return String(pr["id"]) == pk)[0]["kind"]) == "server_room":
+		bx = bx.filter(func(b: Array) -> bool: return ROOM_SOLID.any(func(k: String) -> bool: return String(b[0]).begins_with(k)))
+	return bx
 
 
 func _penetration(pl: CinePlayer, label: String) -> void:
@@ -221,10 +247,18 @@ func _penetration(pl: CinePlayer, label: String) -> void:
 	var s_crash: float = float(tl.get("sc"))
 	hits.append(s_crash)
 	hits.append(float(tl.get("slam_s")))
+	for k: String in ["s_open", "s_pick1", "s_pick2"]:   # the boss's opener (blocked / slipped), the two pickups (hands on the item)
+		if float(tl.get(k)) >= 0.0:
+			hits.append(float(tl.get(k)))
 	var boxes: Dictionary = {}
+	var landed: Dictionary = {}   # props flying along a path (the dropped weapon, the blade, the sunglasses) count once landed
 	for pk: String in _solid_props():
 		if pl.prop_nodes.has(pk):
-			boxes[pk] = Bodies.prop_boxes(pl.prop_nodes[pk])
+			boxes[pk] = _boxes_of(pl, pk)
+			var po: Dictionary = tl.props.filter(func(pr: Dictionary) -> bool: return String(pr["id"]) == pk)[0]["opts"]
+			var pth: Array = po.get("path", [])
+			if pth.size() >= 2 and float(pth[pth.size() - 1][0]) > 1.5:
+				landed[pk] = float(pth[pth.size() - 1][0])
 	var ids: Array = pl.actors.keys()
 	var worst: Dictionary = {"d": -1.0, "what": "-"}
 	var fail: String = ""
@@ -255,6 +289,10 @@ func _penetration(pl: CinePlayer, label: String) -> void:
 			for pk: String in boxes.keys():
 				if pk == "crates" and pl.s > s_crash + 0.001:
 					continue
+				if not (pl.prop_nodes[pk] as Node3D).visible or pl.s < float(landed.get(pk, -1.0)):
+					continue
+				if pk in ["w1_drop", "blade", "shades_fly", "floor_item", "grab_item"]:   # moving props: boxes where they are now
+					boxes[pk] = _boxes_of(pl, pk)
 				var rb: Dictionary = Bodies.actor_boxes(caps[ids[i]], boxes[pk])
 				var limb: float = PEN_HIT_LIMB if near else PEN_MAX
 				if float(rb["d"]) > limb and fail == "":
@@ -333,13 +371,23 @@ func _initialize() -> void:
 		var hitp: bool = tl.punches.any(func(pu: Dictionary) -> bool: return absf(tl.clock.real_at(tl.story_time(pu["at"])) - _real(ex)) < 0.0005)
 		_check(hitp, "camera punch-in on the hit taken at %.2f" % _real(ex))
 	_check(tl.fx.any(func(e: Dictionary) -> bool: return String(e["kind"]) == "crate" and String(e["where"]) == "crates"), "the crash prop bursts")
+	# the boss attacks the protagonist at least twice (the opener and the A1 miss), each fight with its own moves and cameras
+	var cfg0: Dictionary = tl.get("cfg")
+	var boss_strikes: Array = []
+	for c: Dictionary in tl.cues:
+		if c["actor"] == "a" and c["type"] == "strike" and not String(c["move"]) in ["hit_head", "hit_stomach", "launched_back", "knocked_out", "slammed", "block"]:
+			boss_strikes.append(String(c["move"]))
+	_check(boss_strikes.size() >= 2 and cfg0.has("opener") and String(cfg0.get("a1_by", "")) == "a", "the boss attacks twice: opener + the A1 miss (%s)" % str(boss_strikes))
+	_check((cfg0.get("shots", {}) as Dictionary).has("S1") and (cfg0.get("shots", {}) as Dictionary).has("S14"), "the fight has its own S1 / S14 cameras")
+	var sopen: float = float(tl.get("s_open"))
+	_check(sopen > 0.0 and tl.clock.real_at(sopen) < _real("h1") - 0.5, "the opener comes before H1 (%.2f)" % tl.clock.real_at(sopen))
 	var hero_o: Dictionary = tl.actors["hero"]["opts"]
 	_check(String(hero_o.get("preset", "")) == "player", "the hero is the protagonist look (%s)" % str(hero_o))
 	var cfg: Dictionary = tl.get("cfg")
 	for role: String in ["a", "b", "c", "d"]:
 		var want: Dictionary = StoryCast.opts(String(cfg["cast"][role]), (cfg.get("cast_extra", {}) as Dictionary).get(role, {}))
 		_check(tl.actors[role]["opts"] == want, "role %s is StoryCast %s" % [role, String(cfg["cast"][role])])
-		var gear_kinds: Array = StoryCast.gear(String(cfg["cast"][role])).map(func(g: Dictionary) -> String: return String(g["kind"]))
+		var gear_kinds: Array = [] if role in cfg.get("bare", []) else StoryCast.gear(String(cfg["cast"][role])).map(func(g: Dictionary) -> String: return String(g["kind"]))
 		for gk: String in gear_kinds:
 			_check(tl.cues.any(func(c: Dictionary) -> bool: return c["type"] == "hold" and c["actor"] == role and String(c["kind"]) == gk),
 				"role %s wears its %s" % [role, gk])

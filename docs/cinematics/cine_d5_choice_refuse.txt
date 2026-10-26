@@ -6,8 +6,8 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    close: the protagonist, "Không."
-SHOT S2      0.900  static    wide side on: Za Mẫn sets the cup down and draws a slightly bent katana
+SHOT S2      0.700  static    wide side on: Za Mẫn puts the cup down and takes up a bent katana off the desk
 #
 # Subtitles (real start - end, speaker: line)
-SUB    0.200 -  0.800  Bạn: Không.
-SUB    1.400 -  3.700  Za Mẫn: Tiếc ghê. Vậy tôi pivot sang... chém.
+SUB    0.150 -  0.650  Bạn: Không.
+SUB    1.500 -  3.800  Za Mẫn: Tiếc ghê. Vậy tôi pivot sang... chém.

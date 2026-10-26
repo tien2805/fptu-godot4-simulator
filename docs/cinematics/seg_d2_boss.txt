@@ -7,7 +7,7 @@ H1   medium       2.400       2.540        2.080      3.260   0.30    2.218  a d
 H2   heavy        5.700       5.880        5.250      6.980   0.25    4.670  a broken-off bike mirror comes down on a biker: the glass cracks
 H3   light        8.200       8.300        8.000      8.700   0.40    6.187  a two-handed shove slams a biker back into a bridge pillar
 H4   medium      11.000      11.140       10.680     11.760   0.30    8.510  the chain-wrapped fist into Sói Xám's helmet: the LED eyes go dark
-A1   accent      13.400      13.400       13.030     14.000   0.30   10.196  slow-motion accent: the protagonist slips the third biker's second punch
+A1   accent      13.400      13.400       13.030     14.000   0.30   10.196  slow-motion accent: the blind Sói Xám's roundhouse kick sails past the protagonist
 H5   finisher    14.800      15.000       14.150     22.000   0.25   10.851  uppercut: the blind Sói Xám flies back into the beer crates (long swell)
 #
 # Shots (real start, rig, what)

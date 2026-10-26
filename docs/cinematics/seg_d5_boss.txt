@@ -7,7 +7,7 @@ H1   medium       2.600       2.740        2.280      3.460   0.30    2.418  a k
 H2   heavy        5.900       6.080        5.450      7.180   0.25    4.870  a torn-off server panel comes down on the sheep-masked guard
 H3   light        8.400       8.500        8.200      8.900   0.40    6.387  a two-handed shove slams the wolf-masked guard back into the server racks
 H4   medium      11.200      11.340       10.880     11.960   0.30    8.710  the staff comes down: the bent katana raised to block snaps, the staff lands
-A1   accent      13.600      13.600       13.230     14.200   0.30   10.396  slow-motion accent: the protagonist slips the fox-masked guard's second punch
+A1   accent      13.600      13.600       13.230     14.200   0.30   10.396  slow-motion accent: Za Mẫn's wild swing with the snapped stub misses
 H5   finisher    15.000      15.200       14.350     22.000   0.25   11.051  uppercut: Za Mẫn flies back into a server rack (long swell)
 #
 # Shots (real start, rig, what)

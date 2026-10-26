@@ -6,13 +6,13 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    wide under the bridge: Sói Xám tied to the pillar, the bike's headlight on him
-SHOT S2      1.900  static    close: the wolf helmet, LED eyes, "Tao không nói đâu!"
+SHOT S2      1.900  static    close: the wolf helmet, LED eyes dark, "Tao không nói đâu!"
 SHOT S3      3.450  static    insert: his phone lights up and rings, a cheesy synth tune
 SHOT S4      5.100  static    side on: the protagonist reads the message from "Ngài Alexander", Sói Xám watching
 SHOT S5      8.500  static    close: Sói Xám gives in
 SHOT S6     11.900  static    close: the protagonist, "Alexander nào?"
 SHOT S7     13.200  static    two-shot from the side: the endless name
-SHOT S8     16.500  static    wide: the protagonist walks off, a feeble howl, the LED eyes flicker out
+SHOT S8     16.500  static    wide: the protagonist walks off, a feeble howl from the dark helmet
 #
 # Subtitles (real start - end, speaker: line)
 SUB    0.500 -  1.800  Bạn: Hàng đi đâu? Nói.

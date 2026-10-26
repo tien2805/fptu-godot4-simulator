@@ -81,8 +81,8 @@ func build() -> void:
 		{"pos": Vector3(-0.75, 1.2, 0.55), "look": Vector3(0.0, 0.95, -0.35), "fov": 38.0})
 	shot("S6", 11.9, "static", "wide: the protagonist turns and goes, \"Tới công chuyện luôn!\"",
 		{"pos": Vector3(2.7, 1.7, 1.2), "look": Vector3(1.4, 1.2, -1.8), "fov": 48.0})
-	sub(0.6, 3.0, "duy", "Anh trace route Bầy Sói qua ba con laptop rồi.", "Dịch: Anh biết tụi nó chạy đường nào.")
+	# Anh Duy's lines show with their Dịch line: timed for both (0.06 s per character of the two)
+	sub(0.5, 3.95, "duy", "Anh trace route Bầy Sói rồi.", "Dịch: Anh biết tụi nó chạy đường nào.")
 	sub(4.6, 1.5, "hero", "Nói tiếng người đi anh.")
-	sub(6.2, 3.4, "duy", "Tụi nó ping nhau lúc 2h, payload chạy trên Nguyễn Xiển.", "Dịch: Hai giờ sáng tụi nó chở hàng trên đường Nguyễn Xiển.")
-	sub(9.7, 2.2, "duy", "Chặn được là anh deploy hotfix liền.", "Dịch: Mày chặn tụi nó, phần còn lại anh lo.")
-	sub(12.1, 1.4, "hero", "Tới công chuyện luôn!")
+	sub(6.2, 5.6, "duy", "Tụi nó ping nhau 2h, payload trên Nguyễn Xiển.", "Dịch: 2 giờ sáng tụi nó chở hàng ở Nguyễn Xiển.")
+	sub(12.05, 1.4, "hero", "Tới công chuyện luôn!")

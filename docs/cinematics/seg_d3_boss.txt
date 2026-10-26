@@ -7,7 +7,7 @@ H1   medium       2.700       2.840        2.380      3.560   0.30    2.518  a c
 H2   heavy        6.000       6.180        5.550      7.280   0.25    4.970  a pallet comes down on the fox-masked guard: planks fly
 H3   light        8.500       8.600        8.300      9.000   0.40    6.487  a two-handed shove slams the wolf-masked guard back into the forklift
 H4   medium      11.300      11.440       10.980     12.060   0.30    8.810  a straight right jams the party horn into Alexander's mouth: squeak
-A1   accent      13.700      13.700       13.330     14.300   0.30   10.496  slow-motion accent: the protagonist slips the sheep-masked guard's second punch
+A1   accent      13.700      13.700       13.330     14.300   0.30   10.496  slow-motion accent: Alexander's lunging tackle misses the protagonist
 H5   finisher    15.100      15.300       14.450     22.000   0.25   11.151  uppercut: Alexander flies back into the crates of smart glasses (long swell)
 #
 # Shots (real start, rig, what)

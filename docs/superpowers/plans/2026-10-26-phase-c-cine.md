@@ -115,12 +115,12 @@ blocking with a per-fight beat table, cast, weapons and set), and both Phase C v
   `card_len(id)`. New ids: `soi_xam`, `bay_soi` (extra `seed` per biker), `alexander`, `za_man`, `anh_duy`, `guard_sheep`,
   `guard_wolf`, `guard_fox`, `mannequins`.
 - **Villain cards.**
-  - Alexander: inside `cine_d3_mannequins` (3.6-6.9 s real, freeze, the running name).
+  - Alexander: inside `cine_d3_mannequins` (3.0-7.0 s real, freeze, the running name).
   - Sói Xám, before the duel: `StoryVillainCard.show_for(parent, StoryCast.villain_data("soi_xam"), StoryCast.card_len("soi_xam"))`.
   - Za Mẫn, after `cine_d5_choice_refuse`: the same call with `"za_man"`.
-- **Choice 2.** `cine_d5_choice` asks at 13.6 s: id `za_man`, `accept` "Nhận lời" / `refuse` "Từ chối", honest `refuse`.
-  `CinePlayer.choice_made("za_man", key, timed_out)` fires before `finished`. StoryChoice records the answer only when
-  `StoryDirector.choices` already has the key `za_man`: the integration adds it to the defaults.
+- **Choice 2.** `cine_d5_choice` asks at 13.6 s: id `zaman_offer` (StoryDirector's own key, read by `evaluate_ending`),
+  `accept` "Nhận lời" / `refuse` "Từ chối", honest `refuse`. `CinePlayer.choice_made("zaman_offer", key, timed_out)` fires
+  before `finished`, and StoryChoice records the answer in `StoryDirector.choices.zaman_offer`.
   Then play `cine_d5_choice_accept` followed by `end_c`, or `cine_d5_choice_refuse` followed by the card and the duel.
 - **Slots** (real length, stage):
 
@@ -130,7 +130,7 @@ blocking with a per-fight beat table, cast, weapons and set), and both Phase C v
   | `cine_d2` | 18 | bridge |
   | `seg_d2_boss` | 25 | bridge |
   | `cine_d3_intro` | 14 | drive |
-  | `cine_d3_mannequins` | 10 | yard (scare 1.9, card 3.6-6.9) |
+  | `cine_d3_mannequins` | 10 | yard (scare 1.6, card 3.0-7.0) |
   | `cine_d3` | 18 | yard |
   | `seg_d3_boss` | 25 | yard |
   | `cine_d5_intro` | 14 | duy_room |

@@ -13,8 +13,7 @@ SHOT S5      9.600  static    insert: the energy drink goes down, fingers on the
 SHOT S6     11.900  static    wide: the protagonist turns and goes, "Tới công chuyện luôn!"
 #
 # Subtitles (real start - end, speaker: line)
-SUB    0.600 -  3.600  Anh Duy: Anh trace route Bầy Sói qua ba con laptop rồi.  /  Dịch: Anh biết tụi nó chạy đường nào.
+SUB    0.500 -  4.450  Anh Duy: Anh trace route Bầy Sói rồi.  /  Dịch: Anh biết tụi nó chạy đường nào.
 SUB    4.600 -  6.100  Bạn: Nói tiếng người đi anh.
-SUB    6.200 -  9.600  Anh Duy: Tụi nó ping nhau lúc 2h, payload chạy trên Nguyễn Xiển.  /  Dịch: Hai giờ sáng tụi nó chở hàng trên đường Nguyễn Xiển.
-SUB    9.700 - 11.900  Anh Duy: Chặn được là anh deploy hotfix liền.  /  Dịch: Mày chặn tụi nó, phần còn lại anh lo.
-SUB   12.100 - 13.500  Bạn: Tới công chuyện luôn!
+SUB    6.200 - 11.800  Anh Duy: Tụi nó ping nhau 2h, payload trên Nguyễn Xiển.  /  Dịch: 2 giờ sáng tụi nó chở hàng ở Nguyễn Xiển.
+SUB   12.050 - 13.450  Bạn: Tới công chuyện luôn!

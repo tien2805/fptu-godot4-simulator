@@ -150,38 +150,40 @@ func _eval_wall(s: float, opts: Dictionary) -> void:
 			light.light_energy = 1.4
 
 
-## Za Mẫn's caricature (96 x 72, code-drawn): green-tinted CRT look, man bun, round glasses, laughing mouth (open or closed).
+## Za Mẫn's caricature (112 x 68, the screens' 0.56 x 0.34 aspect, code-drawn): green-tinted CRT look, man bun, round
+## glasses, laughing mouth (open or closed).
 static func face_texture(open: bool) -> ImageTexture:
 	var key: String = "face_%s" % str(open)
 	if _tex.has(key):
 		return _tex[key]
-	var w: int = 96
-	var h: int = 72
+	var w: int = 112
+	var h: int = 68
+	var o := Vector2(8, -2)   # the 96 x 72 drawing centred in the wider frame
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color("#06140C"))
 	var skin := Color("#E2B48C")
 	var hair := Color("#141414")
-	_ellipse(img, Vector2(48, 40), Vector2(19, 23), skin)          # face
-	_ellipse(img, Vector2(48, 22), Vector2(20, 9), hair)           # hair cap
-	_ellipse(img, Vector2(48, 10), Vector2(7, 6), hair)            # the man bun
-	_ellipse(img, Vector2(29, 40), Vector2(3, 5), skin)            # ears
-	_ellipse(img, Vector2(67, 40), Vector2(3, 5), skin)
+	_ellipse(img, Vector2(48, 40) + o, Vector2(19, 23), skin)          # face
+	_ellipse(img, Vector2(48, 22) + o, Vector2(20, 9), hair)           # hair cap
+	_ellipse(img, Vector2(48, 10) + o, Vector2(7, 6), hair)            # the man bun
+	_ellipse(img, Vector2(29, 40) + o, Vector2(3, 5), skin)            # ears
+	_ellipse(img, Vector2(67, 40) + o, Vector2(3, 5), skin)
 	for cx: int in [40, 56]:
-		_ring(img, Vector2(cx, 36), 6.5, 1.6, Color("#101010"))    # round glasses
-		_ellipse(img, Vector2(cx, 36 if open else 37), Vector2(3, 1 if open else 2), Color("#101010"))   # squinting eyes
-	_rect(img, Rect2i(46, 35, 4, 2), Color("#101010"))             # bridge
+		_ring(img, Vector2(cx, 36) + o, 6.5, 1.6, Color("#101010"))    # round glasses
+		_ellipse(img, Vector2(cx, 36 if open else 37) + o, Vector2(3, 1 if open else 2), Color("#101010"))   # squinting eyes
+	_rect(img, Rect2i(54, 33, 4, 2), Color("#101010"))                 # bridge
 	if open:
-		_ellipse(img, Vector2(48, 53), Vector2(9, 7), Color("#5A0E14"))
-		_rect(img, Rect2i(41, 47, 14, 3), Color("#F4F1EA"))         # teeth
+		_ellipse(img, Vector2(48, 53) + o, Vector2(9, 7), Color("#5A0E14"))
+		_rect(img, Rect2i(49, 45, 14, 3), Color("#F4F1EA"))             # teeth
 	else:
-		_rect(img, Rect2i(40, 52, 16, 2), Color("#5A0E14"))
+		_rect(img, Rect2i(48, 50, 16, 2), Color("#5A0E14"))
 	# scanlines
 	for y: int in range(0, h, 3):
 		for x: int in w:
 			img.set_pixel(x, y, img.get_pixel(x, y).darkened(0.25))
-	var t := ImageTexture.create_from_image(img)
-	_tex[key] = t
-	return t
+	var tx := ImageTexture.create_from_image(img)
+	_tex[key] = tx
+	return tx
 
 
 static func error_texture() -> ImageTexture:
@@ -307,13 +309,10 @@ func _build_fire(opts: Dictionary) -> void:
 	for i: int in n:
 		var mi := MeshInstance3D.new()
 		mi.name = "Flame%d" % i
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.0
-		cm.bottom_radius = 0.16
-		cm.height = 0.6
-		cm.radial_segments = 6
-		mi.mesh = cm
-		mi.material_override = CineFX._glow_mat(Color("#FF8A1E") if i % 2 == 0 else Color("#FFC23A"), 3.0)
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.34, 0.6)
+		mi.mesh = qm
+		mi.material_override = _flame_mat(i % 2 == 0)
 		var a: float = TAU * float(i) / n
 		mi.position = Vector3(cos(a) * spread * 0.5 * (0.4 + 0.6 * float(i % 3) / 2.0), 0.3, sin(a) * spread * 0.3)
 		add_child(mi)
@@ -348,6 +347,25 @@ func _build_fire(opts: Dictionary) -> void:
 	embers.position = Vector3(0.0, 0.5, 0.0)
 	embers.set_meta("cine_ambient", true)   # CineFX follows the cinematic clock (freezes in freeze frames)
 	add_child(embers)
+
+
+## Flame material: a soft radial blob, additive, unshaded, always facing the camera (Y-billboard): reads as fire, not cones.
+static func _flame_mat(hot: bool) -> StandardMaterial3D:
+	var k: String = "flame_hot" if hot else "flame_warm"
+	if _tex.has(k):
+		return _tex[k]
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
+	m.albedo_texture = CineFX.radial_texture(64, 1.6)
+	m.albedo_color = Color("#FF7A1E") if hot else Color("#FFC23A")
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.no_depth_test = false
+	m.set_meta("vice_done", true)
+	_tex[k] = m
+	return m
 
 
 func _eval_fire(s: float, opts: Dictionary) -> void:

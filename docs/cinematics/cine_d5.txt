@@ -10,7 +10,7 @@ SHOT S2      0.400  static    close: Za Mẫn, "Bảo hành... bảy ngày..."
 SHOT S3      2.000  static    over the protagonist's shoulder: the transaction logs on the laptop
 SHOT S4      9.700  static    close: the protagonist, "...Trà Sữa Lọ?"
 SHOT S5     10.900  static    close: Za Mẫn, dreamy: the milk tea
-SHOT S6     13.400  static    wide side on: "Lọ Thần. Trà Sữa Lọ. Toàn Lọ."
+SHOT S6     13.400  static    wide side on: "Lọ Thần. Trà Sữa Lọ. Lọ hết trơn."
 SHOT S7     15.600  static    close: the phone buzzes in the protagonist's hand
 #
 # Subtitles (real start - end, speaker: line)
@@ -18,7 +18,7 @@ SUB    0.500 -  2.000  Za Mẫn: Bảo hành... bảy ngày...
 SUB    2.200 -  4.100  Bạn: Tiền của Lọ Thần chảy về đâu?
 SUB    9.800 - 10.800  Bạn: ...Trà Sữa Lọ?
 SUB   11.000 - 13.300  Za Mẫn: Trà sữa ngon lắm... size L, ít đá...
-SUB   13.500 - 15.400  Bạn: Lọ Thần. Trà Sữa Lọ. Toàn Lọ.
+SUB   13.500 - 15.550  Bạn: Lọ Thần. Trà Sữa Lọ. Lọ hết trơn.
 SUB   15.800 - 17.200  Bạn: Chủ quán là ai đây...
 #
 # Cards (real start - end, kind: what)

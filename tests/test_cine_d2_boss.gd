@@ -25,5 +25,5 @@ func _gags(_t: Object, pl: CinePlayer) -> void:
 	var after: int = _led(a)
 	_check(before == 1 and after == 0, "Sói Xám's LED eyes glow before the chain fist and go dark after it (%d -> %d)" % [before, after])
 	pl.seek(1.0)
-	var bikers: bool = ["b", "c", "d"].all(func(r: String) -> bool: return _led(pl.actors[r]) == 1)
-	_check(bikers, "the three bikers wear wolf helmets with glowing eyes")
+	var bikers: bool = ["b", "d"].all(func(r: String) -> bool: return _led(pl.actors[r]) == 1) and _led(pl.actors["c"]) == -1
+	_check(bikers, "two bikers wear wolf helmets with glowing eyes, the third lost his (the one in the protagonist's hands)")

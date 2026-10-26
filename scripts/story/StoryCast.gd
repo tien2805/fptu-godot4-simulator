@@ -364,4 +364,5 @@ static func villain_data(id: String) -> Dictionary:
 static func card_len(id: String) -> float:
 	var d: Dictionary = villain_data(id)
 	var n: int = String(d.get("name", "")).length() + String(d.get("nick", "")).length() + String(d.get("joke", "")).length()
-	return maxf(3.0, ceilf((0.06 * n) * 10.0) / 10.0)
+	var run: int = String(d.get("name_run", "")).length()   # the running name is watched, not read: 0.02 s per character
+	return clampf(ceilf((0.06 * n + 0.02 * run) * 10.0 - 0.001) / 10.0, 3.0, 4.0)
