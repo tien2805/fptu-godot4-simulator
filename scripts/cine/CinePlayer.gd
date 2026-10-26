@@ -21,6 +21,7 @@ signal choice_made(id: String, key: String, timed_out: bool)
 const ESC_HOLD: float = 0.8
 const SKIP_FADE: float = 0.25
 const LETTERBOX_IN: float = 0.4
+const FADE_S: float = 0.18   # hosts fade gameplay to black over this before setup (preroll)
 const SFX_POOL: int = 6
 const AUTO_SFX: Dictionary = {"light": "impact_light", "medium": "impact_medium", "heavy": "impact_heavy", "finisher": "impact_heavy"}
 
@@ -66,6 +67,18 @@ var scare: CineScare = null              # jump scare v2 marks (scare_hit), null
 var _scare_twitch: Array[String] = []    # actor id per scare hit ("" = none)
 var _sfx_db: PackedFloat32Array = PackedFloat32Array()   # each pool player's own level (the duck goes on top)
 var _fov_off: float = 0.0
+## setup: prepared actors adopted (opts "actors") and actors cloned from a seeded twin (CineActor clone cache).
+var adopted: int = 0
+var clones: int = 0
+## Preroll (hosts' fade to black before setup, plan 2026-10-26-cine-transition): true while the black layer rises; nothing
+## is built yet (timeline is set so hosts and cards can read it). The 2D cards stay hidden meanwhile.
+var prerolling: bool = false
+var _pre_len: float = 0.0
+var _pre_t: float = 0.0
+var _pre_black: int = 0
+var _pre_go: Callable = Callable()
+var _pre_layer: CanvasLayer = null
+var _pre_rect: ColorRect = null
 
 
 ## Build everything for tl at stage_xf. Returns the validation errors (empty = ready); an invalid timeline builds nothing.
@@ -83,13 +96,35 @@ func setup(tl: CineTimeline, xf: Transform3D = Transform3D.IDENTITY, opts: Dicti
 	stage.name = "Stage"
 	add_child(stage)
 	stage.transform = xf
+	# prepared actors (opts "actors": CinePrep.take_actors) are adopted when their opts still match; the others are built,
+	# seeded duplicates cloned from the first actor with the same opts (CineActor.clone_key)
+	var prepared: Dictionary = opts.get("actors", {})
+	var templates: Dictionary = {}
+	for pa: Variant in prepared.values():
+		if is_instance_valid(pa) and pa is CineActor and CineActor.clone_key((pa as CineActor).src_opts) != "":
+			templates[CineActor.clone_key((pa as CineActor).src_opts)] = pa
 	for id: String in tl.actors.keys():
-		var a := CineActor.new()
-		a.name = id
-		stage.add_child(a)
-		a.setup(tl.actors[id]["opts"])
+		var ao: Dictionary = tl.actors[id]["opts"]
+		var pv: Variant = prepared.get(id)
+		var a: CineActor = pv as CineActor if is_instance_valid(pv) and pv is CineActor else null
+		if a != null and is_instance_valid(a) and a.src_opts == ao and a.cues_free():
+			a.reparent(stage, false)
+			adopted += 1
+		else:
+			var key: String = CineActor.clone_key(ao)
+			a = CineActor.new()
+			a.name = id
+			stage.add_child(a)
+			a.setup(ao, templates.get(key))
+			if a.cloned:
+				clones += 1
+			if key != "" and not templates.has(key):
+				templates[key] = a
 		a.display_name = String(tl.actors[id]["name"])
 		actors[id] = a
+	for pa2: Variant in prepared.values():
+		if is_instance_valid(pa2) and pa2 is CineActor and not actors.values().has(pa2):
+			(pa2 as CineActor).queue_free()   # prepared for opts that changed since: not used
 	# Phase B: drop_set (setup opt, or tl.stage["drop_set"]) leaves out the carried set dressing (props with opts "set": true,
 	# e.g. the corridor walls) when the integration stages the scene inside the real building or the Night Building
 	var drop_set: bool = bool(opts.get("drop_set", tl.stage.get("drop_set", false)))
@@ -160,6 +195,51 @@ func setup(tl: CineTimeline, xf: Transform3D = Transform3D.IDENTITY, opts: Dicti
 	_seeking = false
 	overlay.set_fade(1.0)
 	return PackedStringArray()
+
+
+## Fade to black over fade_s REAL seconds (runs while the host pauses the tree), then, one frame after the screen is fully
+## black, call on_black (the host's setup + start: the heavy work lands under the black frame) and drop the layer
+## (setup leaves the overlay black, so the cinematic still fades in from black on its own fade_in).
+func preroll(tl: CineTimeline, fade_s: float, on_black: Callable) -> void:
+	timeline = tl
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	prerolling = true
+	_pre_len = maxf(fade_s, 0.0)
+	_pre_t = 0.0
+	_pre_black = 0
+	_pre_go = on_black
+	_pre_layer = CanvasLayer.new()
+	_pre_layer.name = "PreFade"
+	_pre_layer.layer = 127
+	add_child(_pre_layer)
+	_pre_rect = ColorRect.new()
+	_pre_rect.color = Color(0.0, 0.0, 0.0, 0.0)
+	_pre_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pre_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_pre_layer.add_child(_pre_rect)
+	_last_us = Time.get_ticks_usec()
+	_set_flag(true)   # Esc must not open the pause menu during the fade
+
+
+func _preroll_step() -> void:
+	var now: int = Time.get_ticks_usec()
+	_pre_t += float(now - _last_us) / 1e6
+	_last_us = now
+	var a: float = 1.0 if _pre_len <= 0.0 else clampf(_pre_t / _pre_len, 0.0, 1.0)
+	_pre_rect.color = Color(0.0, 0.0, 0.0, a)
+	if a < 1.0:
+		return
+	_pre_black += 1
+	if _pre_black < 2:
+		return   # this frame draws the full black; the work goes into the next one
+	prerolling = false
+	var go: Callable = _pre_go
+	_pre_go = Callable()
+	go.call()
+	if is_instance_valid(_pre_layer):
+		_pre_layer.queue_free()
+	_pre_layer = null
+	_pre_rect = null
 
 
 static func _bus(nm: String) -> StringName:
@@ -249,6 +329,9 @@ func start() -> void:
 
 
 func _process(_d: float) -> void:
+	if prerolling:
+		_preroll_step()
+		return
 	if manual or not _playing or _done:
 		return
 	var now: int = Time.get_ticks_usec()
@@ -527,7 +610,8 @@ func _skip_logic(dt: float) -> void:
 func _finish(skipped: bool) -> void:
 	_done = true
 	_playing = false
-	music.stop()
+	if music:
+		music.stop()
 	if scare != null:   # a skip mid-scare: the overlay goes, the camera and the audio levels come back
 		scare.cleanup()
 		if camera != null:
@@ -559,6 +643,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _exit_tree() -> void:
+	if prerolling and not _done:
+		prerolling = false   # removed during the fade: the host hears the end like a skip (nothing was built)
+		leaving_tree = true
+		_finish(true)
+		return
 	if _playing and not _done:
 		# freed / removed mid-cinematic: Esc must open the pause menu again (plan review Minor 3) and an awaiting host must
 		# hear the end (Tasks 5+6 review): finished(true) with leaving_tree set
