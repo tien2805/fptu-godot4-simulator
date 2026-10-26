@@ -189,6 +189,9 @@ func _process(_d: float) -> bool:
 			var md: MusicDirector = root.get_node("GameFX").get("music")
 			_check(StoryRoam.mission_slot(sd.call("beat")) == "mission_bike_chase" and md != null and md.slot == "mission_bike_chase" and m.cues_played.has("radio"), "the chase track plays from the start, Anh Duy on the radio")
 			_check(MusicDirector.SLOTS.has("mission_bike_chase_b") and ch.replay_slot == "", "wave 3 has its own optional slot; the replay has none (the song never restarts)")
+			_check(md != null and (md.current_stream() == null or is_equal_approx(md.gains[md.cur], 1.0)) and is_equal_approx(md.players[md.cur].pitch_scale, 1.0) and is_equal_approx(AudioServer.playback_speed_scale, 1.0),
+				"the chase track starts without a fade-in, and the slow motion leaves its speed alone (stream %s, gain %.2f, pitch %.2f, speed %.2f, slot %s / %s)" % [str(md.current_stream() != null), md.gains[md.cur], md.players[md.cur].pitch_scale, AudioServer.playback_speed_scale, md.slot, md.player_slots[md.cur]])
+			_check(mc.music_pos() < 0.0 or ch.music_pos_fn.is_valid(), "the opening's drop follows the track's playback position when it plays")
 			ch.combat.damage(999.0, "kick", 1)
 			_next(5)
 		5:
@@ -202,6 +205,8 @@ func _process(_d: float) -> bool:
 			sr.fail_ui.press_retry()
 			_check(ch2.state == "running" and is_equal_approx(ch2.combat.stability, BikeCombatData.STABILITY_MAX) and not ch2.opening_on and is_equal_approx(Engine.time_scale, 1.0),
 				"THỬ LẠI: the chase again from the checkpoint, stability full, no second opening")
+			var md5: MusicDirector = root.get_node("GameFX").get("music")
+			_check(md5.slot == "mission_bike_chase", "THỬ LẠI keeps the chase track (remounting does not leave the roam track on) (%s)" % md5.slot)
 			_next(6)
 		6:
 			var mc6: MissionBikeChase = m as MissionBikeChase if is_instance_valid(m) else null

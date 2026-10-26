@@ -13,7 +13,7 @@
 #     from MissionBridge: StoryVillainCard over a freeze frame).
 #   Memes: the start line "Tới công chuyện luôn!" (during the opening) and the win line "Đỉnh nóc kịch trần bay phấp phới".
 #   `won` (also when bikers left ride off at the bridge) = done; `lost` (stability 0, knocked off, the barrier) = "TOANG!"
-#   -> retry() at the wave checkpoint. The chase is stopped and freed on the win: the downed riders are cleared behind the
+#   -> retry() at the wave checkpoint, the chase track resumed where it was (mounting switches FreeRoam to its roam track). The chase is stopped and freed on the win: the downed riders are cleared behind the
 #   next beat's fade.
 # opts (tests): manual_replay (the replay is stepped by the test), manual_card (the cameo card is stepped), seed.
 class_name MissionBikeChase
@@ -29,6 +29,7 @@ var chase: BikeChase
 var route: BikeRoute
 var card: StoryVillainCard = null
 var music_b: bool = false
+var music_at: float = -1.0                # where the chase track was at the knock-off (THỬ LẠI resumes it there)
 
 
 ## The Day 2 route: the Stage 1 real route (BE6 -> FPTU), its Rạch Hầm bridge distance set (~2389 m).
@@ -64,8 +65,8 @@ func _start() -> void:
 	chase.won.connect(_on_won)
 	chase.lost.connect(_on_lost)
 	chase.wave_started.connect(_on_wave_started)
-	_music(SLOT, 0.0)                         # the intro must not fade in: the opening's drop rides on it
-	chase.start()
+	chase.start()                             # (mounting the bike switches FreeRoam to its roam track ...)
+	_music(SLOT, 0.0)                         # ... so the chase track starts after it, with no fade-in: the drop rides on it
 	radio("Ok e, a ping vị trí Bầy Sói lên map r, cứ bám route ra cầu Rạch Hầm nhé.", "Đuổi theo tụi nó tới cầu Rạch Hầm.")
 
 
@@ -118,6 +119,7 @@ func _on_won() -> void:
 
 
 func _on_lost() -> void:
+	music_at = music_pos()
 	fail(T_KNOCKED)
 
 
@@ -127,6 +129,19 @@ func _reset() -> void:
 	card = null
 	if chase:
 		chase.retry()
+	_resume_music()
+
+
+## THỬ LẠI gets off and back on the bike, and FreeRoam switches to its roam track each time: the chase track comes back at
+## once, where it was (wave 3's track from its start).
+func _resume_music() -> void:
+	var md: MusicDirector = _director()
+	if md == null:
+		return
+	var slot: String = SLOT_B if music_b else SLOT
+	md.play(slot, 0.0)
+	if slot == SLOT and music_at > 0.0 and md.current_stream() != null and md.player_slots[md.cur] == SLOT:
+		md.players[md.cur].seek(music_at)
 
 
 func _cleanup() -> void:
