@@ -17,6 +17,7 @@ const GameFXScript = preload("res://scripts/GameFX.gd")
 const SCENE: String = "res://scenes/story/ChapterSelect.tscn"
 const GALLERY_SCENE: String = "res://scenes/story/StoryGalleryPlayer.tscn"
 const MAIN_MENU_SCENE: String = "res://scenes/MainMenu.tscn"
+const RESTORED_FINISHED_LINE: String = "Đã khôi phục bản lưu. Cốt truyện đó đã kết thúc, chọn một cảnh để chơi lại."
 const PINK := Color("#FF4FA3")
 const CYAN := Color("#3FF2FF")
 const MUTED := Color("#7F8C8D")
@@ -40,6 +41,8 @@ var tab_buttons: Dictionary = {}
 var restore_btn: Button
 var back_btn: Button
 var empty_label: Label
+## A short plain line under the list (Phase C: the finished story restored).
+var notice_label: Label
 var confirm_dim: ColorRect
 var confirm_title: Label
 var confirm_note: Label
@@ -138,6 +141,10 @@ func _build() -> void:
 	empty_label = GameFXScript.make_label("", 15, Color("#BDC3C7"), HORIZONTAL_ALIGNMENT_LEFT)
 	empty_label.visible = false
 	col.add_child(empty_label)
+	notice_label = GameFXScript.make_label("", 15, Color("#F1C40F"), HORIZONTAL_ALIGNMENT_LEFT)
+	notice_label.name = "Notice"
+	notice_label.visible = false
+	col.add_child(notice_label)
 	var bottom := HBoxContainer.new()
 	bottom.add_theme_constant_override("separation", 12)
 	col.add_child(bottom)
@@ -312,7 +319,12 @@ func _on_confirm() -> void:
 	var ok: bool = false
 	if sd:
 		ok = bool(StoryChapters.restore_backup(sd)) if what == "restore" else bool(StoryChapters.rewind(sd, what))
-	if ok:
+	if ok and what == "restore" and StoryChapters.last_restore_finished:
+		notice_label.text = RESTORED_FINISHED_LINE   # the finished story is the save again: nothing to continue
+		notice_label.visible = true
+		_fx("play_sfx", ["success", -2.0])
+		show_tab(tab)
+	elif ok:
 		from_story = false
 		last_nav = "story"
 		_fx("play_sfx", ["success", -2.0])

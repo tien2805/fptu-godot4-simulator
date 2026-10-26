@@ -23,11 +23,15 @@ const DUCK_TIME: float = 0.3
 ## Slots the MusicDirector plays (menu, free roam, stages, story missions).
 const SLOTS: Array[String] = ["menu", "roam_day", "roam_night",
 	"stage1_race", "stage2_parking", "stage3_classroom", "stage4_vovinam", "stage5_canteen", "stage6_capstone", "stage_extra_exam",
-	"mission_stakeout", "mission_chase", "mission_fight", "mission_canteen", "mission_corridor"]
+	"mission_stakeout", "mission_chase", "mission_fight", "mission_canteen", "mission_corridor",
+	# Phase C (spec C-D11): missions, bosses and the coffin-dance meme of Days 2, 3 and 5
+	"mission_bike_chase", "boss_d2", "mission_sneak", "mission_gunfight", "meme_coffin_dance", "boss_d3", "mission_basement",
+	"mission_gunfight_d5", "mission_typing", "boss_d5"]
 ## Night Building tracks (NightMusic).
 const NIGHT_SLOTS: Array[String] = ["night_stealth", "night_tense", "night_chase", "night_escape"]
 ## Short replays (CineReplay through StoryStage.play_replay; they have no timeline file).
-const REPLAY_SLOTS: Array[String] = ["seg_d0_race", "seg_d0_exam", "seg_d1_chase", "seg_d4_escape"]
+const REPLAY_SLOTS: Array[String] = ["seg_d0_race", "seg_d0_exam", "seg_d1_chase", "seg_d4_escape",
+	"seg_d2_chase", "seg_d3_gunfight", "seg_d3_crates", "seg_d5_gunfight", "seg_d5_hack"]
 ## Slots whose tension also drives the low-pass (the others play with the filter open).
 const TENSION_SLOTS: Array[String] = ["stage1_race", "stage6_capstone"]
 ## Fixed per-slot trims in dB.

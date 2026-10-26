@@ -16,7 +16,8 @@ const CHAPTERS_PATH: String = "user://story_chapters.cfg"
 const BACKUP_PATH: String = "user://story_save_before_rewind.cfg"
 const REAL_SAVE_PATH: String = "user://story_save.cfg"
 ## Beat kinds listed in the chapter select (day starts are the dN_morning cine beats, choice beats are cine beats).
-const REPLAY_KINDS: Array[String] = ["cine", "video", "stage", "mission", "fight", "horror"]
+## Phase C: "lair" (a task inside the basement scene; its snapshot resumes at the marker that launches the scene).
+const REPLAY_KINDS: Array[String] = ["cine", "video", "stage", "mission", "fight", "horror", "lair"]
 const NEED_PLAY_LINE: String = "Chơi tới cảnh này một lần để mở"
 ## Story cinematics of the gallery, in story order: [slot, day, title].
 const GALLERY: Array = [
@@ -33,15 +34,32 @@ const GALLERY: Array = [
 	["cine_d1_choice_cover", 1, "Bao che cho Phúc"],
 	["cine_d1_choice_report", 1, "Báo cho Mr.T"],
 	["cine_d1", 1, "Sói Xám"],
+	["cine_d2_intro", 2, "Anh Duy dò đường Bầy Sói"],
+	["seg_d2_boss", 2, "Sói Xám"],
+	["cine_d2", 2, "Trói Sói Xám"],
+	["cine_d3_intro", 3, "Đêm về bến container"],
+	["cine_d3_mannequins", 3, "Container bí ẩn"],
+	["seg_d3_boss", 3, "Xe nâng của Alexander"],
+	["cine_d3", 3, "Tên dài nhất bến"],
 	["cine_d4_intro", 4, "Nằm vùng căn tin"],
 	["cine_d4_stare", 4, "Giờ đóng cửa"],
 	["seg_d4_brawl", 4, "Bầy cừu"],
 	["cine_d4", 4, "Dolly khai"],
+	["cine_d5_intro", 5, "USB Za Mẫn Labs"],
+	["cine_d5_monitors", 5, "Năm mươi màn hình"],
+	["cine_d5_choice", 5, "Lời mời của Za Mẫn"],
+	["cine_d5_choice_accept", 5, "Nhận lời"],
+	["cine_d5_choice_refuse", 5, "Từ chối"],
+	["seg_d5_boss", 5, "Katana mua trên mạng"],
+	["cine_d5", 5, "Dòng tiền"],
+	["end_c", 5, "Kết C: Kẻ phản diện mới"],
 ]
 
 static var unlocks_path: String = UNLOCKS_PATH
 static var chapters_path: String = CHAPTERS_PATH
 static var backup_path: String = BACKUP_PATH
+## The last restore_backup put back a finished story (ending C): it is restored but does not continue.
+static var last_restore_finished: bool = false
 
 
 ## true for the owner's real files while running headless (bots and tests never touch them).
@@ -199,6 +217,10 @@ static func restore_backup(sd: Node) -> bool:
 	if _guarded(save) or not _copy(backup_path, save):
 		return false
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(backup_path))
+	last_restore_finished = String((sd.call("read_save", save) as Dictionary).get("ending", "")) != ""
+	if last_restore_finished:
+		sd.call("reset_state")   # a finished story (ending C) is back as the save; it does not continue (Chọn cảnh rewinds it)
+		return true
 	return bool(sd.call("continue_story"))
 
 
@@ -333,6 +355,9 @@ static func best_effort(save: Dictionary, id: String) -> Dictionary:
 			evidence.append(String(bb["evidence"]))
 		if bb.has("flag"):
 			flags[String(bb["flag"])] = true
+		for fk: Variant in (bb.get("flag_by_info", {}) as Dictionary).values():   # Phase C: d3_all_crates (E4)
+			if bool(flags_now.get(String(fk), false)):
+				flags[String(fk)] = true
 		if bb.has("intro"):
 			flags["intro_" + String(bb["intro"])] = true
 		if bb.has("choice"):

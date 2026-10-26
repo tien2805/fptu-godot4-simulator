@@ -111,6 +111,10 @@ var story_roam: StoryRoam = null
 var random_scares: RandomScares = null
 var mounted: bool = false
 var bike_parked: bool = false
+## Phase C bike chase (BikeChase): the riding hint while set (instead of HINT_RIDING), and [F] refused off the bike with
+## this hint while set ("" = normal).
+var riding_hint: String = ""
+var dismount_refusal: String = ""
 var campus_xf: Transform3D = Transform3D.IDENTITY
 var gate_xz: Vector2 = Vector2(16.1, 99.5)
 var hotspots: Array[Area3D] = []
@@ -986,6 +990,9 @@ func toggle_bike() -> void:
 	if not mounted and story_mission_active():
 		flash_hint(StoryRoam.ON_FOOT_HINT)   # Phase B story missions are on foot
 		return
+	if mounted and dismount_refusal != "":
+		flash_hint(dismount_refusal)   # Phase C: no getting off mid-chase (BikeChase)
+		return
 	if mounted:
 		dismount_bike()
 	else:
@@ -1279,7 +1286,7 @@ func _hint_text() -> String:
 	if active_hotspot:
 		return "[E] Chơi %s" % _stage_title(int(active_hotspot.get_meta("stage_id")))
 	if mounted:
-		return HINT_RIDING
+		return riding_hint if riding_hint != "" else HINT_RIDING
 	if bike_parked:
 		if can_mount():
 			return "[F] lên xe máy · " + base

@@ -20,11 +20,16 @@
 #   #   opts = MeleeEnemy opts: "body" (CharacterBuilder opts merged over the archetype look), "body_fn"
 #   #   (Callable(look) -> rigged Node3D: masks, cardigans), "label", "stats" (archetype overrides), "hp_scale".
 #   #   Archetypes: "courier" (helmet rider), "clone" (identical student, give it a sheep mask via body_fn), "dolly"
-#   #   (mini-boss: fast, side-steps, flees at 30 % HP; fled counts as beaten).
+#   #   (mini-boss: fast, side-steps, flees at 30 % HP; fled counts as beaten), "soi_xam" (Phase C mini-boss: fast 4-hit
+#   #   combos, LED-eye glow before every attack, a howl buff at 50 % HP; gets the boss bar).
+#   #   Optional spawn key "make": Callable() -> MeleeEnemy subclass to spawn instead (SwordDuel: KatanaBoss).
+#   #   The first enemy whose stats have "boss" becomes combat.boss (the HUD's boss bar) until it is removed.
 #   fight.won.connect(...)                      # last wave beaten (every enemy knocked out or fled); the knocked-out
 #                                               #   bodies stay until you stop() or queue_free() the fight
 #   fight.lost.connect(...)                     # the player's HP reached 0 (show "TOANG!", then call retry())
 #   fight.enemy_ko.connect(func(e: MeleeEnemy): ...)   # also enemy_fled(e), wave_started(i), wave_cleared(i)
+#   fight.prepare()                             # optional: spawn the first wave now for a villain card; they stand in guard,
+#                                               #   not hostile, invulnerable (MeleeEnemy.staged) until start()
 #   fight.start()
 #   fight.checkpoint()                          # remember the current wave + the player's spot (automatic per wave)
 #   fight.retry()                               # enemies removed, HP 100, player back at the checkpoint, that wave again
@@ -83,6 +88,8 @@ var _line_cd: float = 0.0
 var _mid_prev: bool = false
 var _gap_left: float = -1.0
 var _spawned: int = 0
+var _staging: bool = false
+var _prepared: bool = false
 
 
 func setup(opts: Dictionary) -> void:
@@ -113,6 +120,17 @@ func add_wave(spawns: Array) -> void:
 	waves.append(spawns.duplicate(true))
 
 
+## Spawn the first wave before start() (a villain card can frame them): staged enemies stand in guard, are not hostile and
+## take no hits; start() wakes them instead of spawning again. wave_started(0) fires here.
+func prepare() -> void:
+	if waves.is_empty() or player == null or combat == null or state == "running":
+		return
+	_staging = true
+	_start_wave(0)
+	_staging = false
+	_prepared = true
+
+
 func start() -> void:
 	if waves.is_empty() or player == null or combat == null:
 		push_warning("MeleeFight.start: no wave, player or combat")
@@ -124,7 +142,15 @@ func start() -> void:
 	_off_bike()
 	if start_line != "" and combat.hud:
 		combat.hud.popup(start_line)
-	_start_wave(0)
+	if _prepared and wave == 0 and not enemies.is_empty():
+		_prepared = false
+		if auto_checkpoint:
+			checkpoint()
+		for e: Variant in enemies:
+			if is_instance_valid(e):
+				(e as MeleeEnemy).unstage()
+	else:
+		_start_wave(0)
 
 
 ## Remember the current wave and the player's spot: retry() comes back here.
@@ -229,7 +255,7 @@ func _start_wave(i: int) -> void:
 	var spawns: Array = waves[i]
 	for s: Variant in spawns:
 		var d: Dictionary = s
-		var e := MeleeEnemy.new()
+		var e: MeleeEnemy = (d["make"] as Callable).call() if d.has("make") else MeleeEnemy.new()
 		e.name = "Enemy%d" % _spawned
 		var o: Dictionary = (d.get("opts", {}) as Dictionary).duplicate()
 		if not o.has("seed"):
@@ -248,17 +274,24 @@ func _start_wave(i: int) -> void:
 		add_child(e)
 		e.set_yaw(yaw)
 		e.bind(combat, self, enemies, combat.fx)
+		if _staging:
+			e.stage()
 		e.ko.connect(_on_ko)
 		e.fled.connect(_on_fled)
 		enemies.append(e)
 		combat.add_enemy(e)
+		if bool(e.stats.get("boss", false)) and combat.boss == null:
+			combat.boss = e
 		if player.cam_ray:
 			player.cam_ray.add_exception(e)
 	wave_started.emit(i)
 
 
 func _clear_enemies() -> void:
+	_prepared = false
 	for e: Variant in enemies:
+		if combat.boss == e:
+			combat.boss = null
 		if is_instance_valid(e):
 			combat.remove_enemy(e)
 			if player and player.cam_ray:
@@ -320,6 +353,8 @@ func _physics_process(delta: float) -> void:
 func _finish() -> void:
 	if combat:
 		combat.fight_active = false
+		if combat.boss != null and enemies.has(combat.boss):
+			combat.boss = null                   # the boss bar goes with the fight (won / stop)
 	_lock_weapons(false)
 
 
@@ -380,6 +415,8 @@ func _exit_tree() -> void:
 	_revive_if_down()
 	if combat and is_instance_valid(combat):
 		for e: Variant in enemies:
+			if combat.boss == e:
+				combat.boss = null
 			if is_instance_valid(e):
 				combat.remove_enemy(e)
 			else:

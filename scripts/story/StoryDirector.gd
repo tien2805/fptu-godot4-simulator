@@ -9,6 +9,10 @@
 # Phase B: horror beats run the Night Building as its own scene (launch_horror_beat -> on_horror_result: E5 only when the
 # player was never caught); side markers grant their evidence once (grant_side); a beat's "flag" is set when it completes;
 # old saves at dN_locked of a day that is now playable resume at the day's first beat (StoryMissions.migrate).
+# Phase C: a choice tail follows its next_by_choice; lair beats run in a dedicated scene (launch_lair_beat -> the scene runs
+# the consecutive lair beats -> leave_lair back to story free roam); an "ending" beat (ending C) marks the save finished
+# when it completes (finish_story: ending = "C", the story stops, the main menu; Continue refuses a finished save, Chọn cảnh
+# can still rewind it).
 extends Node
 
 const GameFXScript: Script = preload("res://scripts/GameFX.gd")
@@ -37,6 +41,8 @@ var protagonist: Dictionary = {}
 var texts: Array[Dictionary] = []
 var objective: String = ""
 var spawn: Variant = null
+## Phase C: "" while the story runs, else the ending it finished on ("C").
+var ending: String = ""
 
 # ----- runtime -----
 ## Save file (tests point it at a temp file).
@@ -73,6 +79,7 @@ func reset_state() -> void:
 	texts = []
 	objective = ""
 	spawn = null
+	ending = ""
 
 
 ## Starts a new story with the creator's protagonist {female, name, variant, hair_style, hair_color, skin}; autosaves.
@@ -127,11 +134,39 @@ func complete_step(id: String) -> bool:
 		add_evidence(String(b["evidence"]))
 	if b.has("flag"):
 		flags[String(b["flag"])] = true
-	var nxt: String = String(b.get("next", ""))
+	var nxt: String = next_of(b)
 	if nxt != "":
 		_enter(nxt)
+	elif b.has("ending"):
+		finish_story(String(b["ending"]))
+		return true
 	save_game()
 	return true
+
+
+## The beat after b: its next_by_choice branch for the recorded choice (Phase C choice 2), else "next".
+func next_of(b: Dictionary) -> String:
+	var by: Dictionary = b.get("next_by_choice", {})
+	if not by.is_empty():
+		var key: String = choice_of(String(by.get("id", "")))
+		if key != "" and key != "id" and by.has(key):
+			return String(by[key])
+	return String(b.get("next", ""))
+
+
+## The story ends on `which` (ending C, story spec section 6): the save is marked finished (TIẾP TỤC hides it, Chọn cảnh
+## can still rewind), the story stops, the main menu.
+func finish_story(which: String) -> void:
+	ending = which
+	flags["ending"] = which
+	spawn = null
+	save_game()
+	active = false
+	hide_result()
+	var sm: Node = _sm()
+	if sm:
+		sm.set("story_context", {})
+	_nav("menu")
 
 
 ## Makes `id` the current beat: tod, objective, texts; a "day" beat advances the day, autosaves and enters its next beat.
@@ -227,7 +262,7 @@ func day_chip_text() -> String:
 func to_dict() -> Dictionary:
 	return {"active": active, "day": day, "tod": tod, "step": step, "evidence": evidence.duplicate(),
 		"choices": choices.duplicate(true), "flags": flags.duplicate(true), "protagonist": protagonist.duplicate(true),
-		"texts": texts.duplicate(true), "objective": objective, "spawn": spawn}
+		"texts": texts.duplicate(true), "objective": objective, "spawn": spawn, "ending": ending}
 
 
 func from_dict(d: Dictionary) -> void:
@@ -253,6 +288,7 @@ func from_dict(d: Dictionary) -> void:
 	var sp: Variant = d.get("spawn", null)
 	spawn = sp if sp is Transform3D else null
 	active = bool(d.get("active", true))
+	ending = String(d.get("ending", ""))
 	_read_old_days()
 	migrated = false
 	var mig: String = StoryMissions.migrate(step)
@@ -300,8 +336,8 @@ static func read_save(path: String = SAVE_PATH) -> Dictionary:
 	var v: Variant = str_to_var(String(cfg.get_value("story", "data", "")))
 	if not (v is Dictionary) or not (v as Dictionary).has("step"):
 		return {}
-	if StoryMissions.beat(String(v["step"])).is_empty():
-		return {}
+	if StoryMissions.beat(StoryMissions.migrate(String(v["step"]))).is_empty():
+		return {}   # an old placeholder step (d2_wait, d5_locked...) is valid: from_dict migrates it
 	return v
 
 
@@ -371,6 +407,9 @@ func enter_roam() -> void:
 func continue_story() -> bool:
 	if not load_game():
 		return false
+	if ending != "":
+		active = false   # a finished story (ending C) does not continue: Chọn cảnh rewinds it
+		return false
 	enter_roam()
 	return true
 
@@ -402,13 +441,15 @@ func _nav(where: String) -> void:
 		return
 	if where == "roam":
 		sm.call("go_to_roam")
-	elif where.begins_with("horror:") and is_inside_tree():
+	elif where == "menu":
+		sm.call("go_to_main_menu")
+	elif (where.begins_with("horror:") or where.begins_with("lair:")) and is_inside_tree():
 		sm.set("roam_spawn", null)
 		var fx: Node = get_node_or_null("/root/GameFX")
 		if fx and fx.has_method("music_stop"):
 			fx.call("music_stop", true)   # the roam track does not play in the Night Building; FreeRoam restarts it on return
 		get_tree().paused = false
-		get_tree().change_scene_to_file(where.substr(7))
+		get_tree().change_scene_to_file(where.substr(where.find(":") + 1))
 	elif where.begins_with("stage:"):
 		sm.call("start_stage_from_roam", int(where.get_slice(":", 1)), sm.get("roam_spawn"))
 	elif where == "creator" and is_inside_tree():
@@ -624,6 +665,31 @@ func on_horror_result(caught_count: int, go_roam: bool = true) -> bool:
 	if go_roam:
 		enter_roam()
 	return true
+
+
+# ---------------------------------------------------------------------------
+# Phase C: lair scenes (the Day 5 server basement)
+# ---------------------------------------------------------------------------
+## Starts the dedicated lair scene of beat `id` (the current step, a beat with a lair scene). fail_xf: the free-roam spot
+## the save resumes at until the scene hands back (beside the marker). The scene runs this and the following lair beats.
+func launch_lair_beat(id: String, fail_xf: Variant = null) -> bool:
+	var b: Dictionary = StoryMissions.beat(id)
+	var scene: String = StoryMissions.lair_scene(b)
+	if id != step or scene == "":
+		return false
+	if fail_xf is Transform3D:
+		spawn = fail_xf
+	var sm: Node = _sm()
+	if sm:
+		sm.set("story_context", {"beat": id, "lair": String(b["lair"]), "fail_xf": fail_xf})
+	save_game()
+	_nav("lair:" + scene)
+	return true
+
+
+## The lair scene is done (the current beat is outside it): back to story free roam beside the marker it started from.
+func leave_lair() -> void:
+	enter_roam()
 
 
 ## Main menu: story start goes through the character creator.

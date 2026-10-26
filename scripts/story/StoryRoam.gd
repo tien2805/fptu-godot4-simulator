@@ -17,6 +17,12 @@
 # Continue, VỀ THẾ GIỚI MỞ, wanted). Phase B anchors: campus_gate, chase_start, west_gate, corridor, locker, bench,
 # canteen, lobby (campus-plot spots, map points for the cine stages).
 # Horror polish (H-D7): a StoryNightEvents child runs the night scares of free roam (night_events).
+# Phase C (plan 2026-10-26-phase-c-integration.md): missions bike_chase, bridge, sneak, gunfight, crates, forklift and the
+# fight d2; the Day 3 container yard (LairYard) is built under FreeRoam while a "lair": "yard" beat is current (its
+# missions get opts level + points; its cinematics play at the yard pad's "xf" with the yard's own copies hidden); beats of
+# a dedicated lair scene (the Day 5 basement) are markers here: [E] (intro once) -> StoryDirector.launch_lair_beat. New
+# anchors: duy_corner (BE6 lobby), bridge_road, bridge_bank, bridge_pillar, bridge_ledger (the Rạch Hầm bridge), yard_gate,
+# yard_pad, yard_mid, yard_manifest. Mission results set flag_by_info flags; "after_at" stages an after cinematic.
 class_name StoryRoam
 extends Node
 
@@ -81,13 +87,24 @@ var side_info: Dictionary = {}
 var entered_live: bool = false
 ## Horror polish H-D7: the night scares of story free roam (StoryNightEvents).
 var night_events: StoryNightEvents = null
+## Phase C: the Day 3 container yard while a yard beat is current (else null).
+var yard: LairYard = null
 const MISSION_SCRIPTS: Dictionary = {"stakeout": "res://scripts/story/missions/MissionStakeout.gd",
 	"chase": "res://scripts/story/missions/MissionChase.gd", "corridor": "res://scripts/story/missions/MissionCorridor.gd",
-	"canteen": "res://scripts/story/missions/MissionCanteen.gd", "fight": "res://scripts/story/missions/MissionFight.gd"}
-## H-D8: owner music slot per mission (both fights, Day 1 and Day 4, share mission_fight).
+	"canteen": "res://scripts/story/missions/MissionCanteen.gd", "fight": "res://scripts/story/missions/MissionFight.gd",
+	"bike_chase": "res://scripts/story/missions/MissionBikeChase.gd", "bridge": "res://scripts/story/missions/MissionBridge.gd",
+	"sneak": "res://scripts/story/missions/MissionSneak.gd", "gunfight": "res://scripts/story/missions/MissionGunfight.gd",
+	"crates": "res://scripts/story/missions/MissionCrates.gd", "forklift": "res://scripts/story/missions/MissionForklift.gd"}
+## H-D8: owner music slot per mission (the Day 1 and Day 4 fights share mission_fight; Phase C C-D11: the Day 2 bridge
+## horror beat plays the night building's tense track, the crates start on the coffin-dance meme).
 const MISSION_MUSIC: Dictionary = {"stakeout": "mission_stakeout", "chase": "mission_chase", "corridor": "mission_corridor",
-	"canteen": "mission_canteen", "fight": "mission_fight"}
-const MARKER_KINDS: Array[String] = ["stage", "bed", "mission", "fight", "horror", "cine"]
+	"canteen": "mission_canteen", "fight": "mission_fight", "bike_chase": "mission_bike_chase", "bridge": "night_tense",
+	"sneak": "mission_sneak", "gunfight": "mission_gunfight", "crates": "meme_coffin_dance", "forklift": "boss_d3"}
+## Phase C: a fight's own slot (the Sói Xám duel), else MISSION_MUSIC.fight.
+const FIGHT_MUSIC: Dictionary = {"d2": "boss_d2"}
+## Phase C: the yard missions run on the yard level (mission -> LairYard.mission_points task).
+const YARD_MISSIONS: Array[String] = ["sneak", "gunfight", "crates", "forklift"]
+const MARKER_KINDS: Array[String] = ["stage", "bed", "mission", "fight", "horror", "cine", "lair"]
 
 
 func setup(r: Node3D) -> void:
@@ -154,6 +171,19 @@ func _compute_anchors() -> void:
 	_campus_anchor("bench", campus_xf * Vector3(66.0, 0.0, 45.0), campus_xf * Vector3(60.0, 0.0, 45.0))
 	_campus_anchor("canteen", Vector3(-31.17, 0.0, -4.51), Vector3(-31.17, 0.0, -10.0))
 	_campus_anchor("lobby", campus_xf * Vector3(85.5, 0.0, 11.0), campus_xf * Vector3(85.5, 0.0, 3.0))
+	# Phase C: Anh Duy's corner of the BE6 lobby (the Day 2 / Day 5 markers; the basement stairs), the Rạch Hầm bridge
+	# (measured map points beside the deck: the cine stage "bridge" at (2145, 150) is clear 14 x 10), the container yard
+	_campus_anchor("duy_corner", sp.origin + fwd * 3.5 - right * 6.0, sp.origin + fwd * 3.5)
+	_campus_anchor("bridge_road", Vector3(2133.0, 0.0, 184.0), Vector3(2145.0, 0.0, 150.0))
+	_campus_anchor("bridge_bank", Vector3(2145.0, 0.0, 150.0), Vector3(2133.0, 0.0, 184.0))
+	_campus_anchor("bridge_pillar", Vector3(2140.0, 0.0, 156.0), Vector3(2145.0, 0.0, 150.0))
+	_campus_anchor("bridge_ledger", Vector3(2151.0, 0.0, 160.0), Vector3(2145.0, 0.0, 150.0))
+	var yx := Transform3D(Basis(Vector3.UP, deg_to_rad(LairYard.YAW)), Vector3(LairYard.CENTER.x, 0.0, LairYard.CENTER.y))
+	_campus_anchor("yard_gate", yx * Vector3(-29.0, 0.0, 8.5), yx * LairYard.SNEAK_START)
+	_campus_anchor("yard_mid", yx * LairYard.MID, yx * (LairYard.MID + Vector3(0.0, 0.0, 4.0)))
+	_campus_anchor("yard_manifest", yx * LairYard.MANIFEST, yx * (LairYard.MANIFEST + Vector3(-3.0, 0.0, 0.0)))
+	_campus_anchor("yard_pad", yx * LairYard.PAD, yx * (LairYard.PAD + Vector3(0.0, 0.0, 4.0)))
+	anchors["yard_pad"]["xf"] = Transform3D(yx.basis, yx * LairYard.PAD)
 
 
 ## Phase B anchor at `pos` (map point), facing and returning toward `toward`.
@@ -459,6 +489,7 @@ func refresh() -> void:
 		return
 	if roam.get("cine_player") == null:
 		roam.call("set_time_of_day", String(director.get("tod")))
+	_sync_yard()
 	_rebuild_markers()
 	warm_mission_music(director.call("beat"))   # the marker is up: load its track ahead
 	_update_chip()
@@ -476,6 +507,9 @@ func run_step() -> void:
 	var kind: String = String(b.get("kind", ""))
 	var live: bool = entered_live
 	entered_live = false
+	if StoryMissions.lair_scene(b) != "":
+		refresh()   # a beat of a lair scene (Day 5 basement): its marker launches the scene
+		return
 	if kind == "cine" and b.has("anchor"):
 		refresh()   # a marker cinematic waits for [E]
 		return
@@ -529,13 +563,24 @@ func _start_cinematic(slot: String, at_id: String) -> CinePlayer:
 	if tl == null:
 		return null
 	var a: Dictionary = anchors.get(at_id, {})
-	if not a.is_empty():
+	var o: Dictionary = cine_opts.duplicate()
+	if a.get("xf") is Transform3D:
+		o["xf"] = a["xf"]   # Phase C: the yard pad (no stage search onto the yard's own boxes)
+	elif not a.is_empty():
 		var at: Vector3 = a.get("stage_pos", a["pos"])
 		tl.stage["at"] = Vector2(at.x, at.z)
 		tl.stage["yaw_deg"] = rad_to_deg(float(a["yaw"]))
-	var cp: Variant = roam.call("play_cinematic", tl, cine_opts.duplicate())
+	if yard:
+		yard.hide_for_cine(true)   # the cinematic brings its own stack / forklift
+	var cp: Variant = roam.call("play_cinematic", tl, o)
 	if cp == null:
+		if yard:
+			yard.hide_for_cine(false)
 		return null
+	if yard:
+		roam.connect("cinematic_finished", func(_s: String, _k: bool) -> void:
+			if yard:
+				yard.hide_for_cine(false), CONNECT_ONE_SHOT)
 	StoryChapters.mark_cine(slot)   # the gallery (Xem lại phim) lists it from now on
 	if slot == "ai_intro":
 		var ic := StoryIntroCards.new()
@@ -613,6 +658,8 @@ func _on_intro_done(_slot: String, _skipped: bool, b: Dictionary) -> void:
 	(director.get("flags") as Dictionary)["intro_" + String(b["intro"])] = true
 	if String(b.get("kind", "")) == "stage":
 		_launch(b)
+	elif StoryMissions.lair_scene(b) != "":
+		_launch_lair(b)
 	else:
 		start_mission(b)
 
@@ -622,6 +669,12 @@ func _launch(b: Dictionary) -> bool:
 	var win: Variant = anchor_return(String(b.get("return", "")))
 	var fail: Variant = anchor_return(String(b.get("anchor", "")))
 	return bool(director.call("launch_stage_beat", String(b["id"]), win, fail))
+
+
+## Phase C: the dedicated lair scene of beat b (the save resumes beside its marker until the scene hands back).
+func _launch_lair(b: Dictionary) -> bool:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	return bool(director.call("launch_lair_beat", String(b["id"]), anchor_return(String(b.get("anchor", "")))))
 
 
 func _start_call(b: Dictionary) -> void:
@@ -704,7 +757,9 @@ static func mission_slot(b: Dictionary) -> String:
 	var kind: String = String(b.get("kind", ""))
 	if kind != "mission" and kind != "fight":
 		return ""
-	return String(MISSION_MUSIC.get("fight" if kind == "fight" else String(b.get("mission", "")), ""))
+	if kind == "fight":
+		return String(FIGHT_MUSIC.get(String(b.get("fight", "")), MISSION_MUSIC["fight"]))
+	return String(MISSION_MUSIC.get(String(b.get("mission", "")), ""))
 
 
 ## Loads the beat's mission track on a worker thread before it is needed (its marker appears / the beat starts).
@@ -750,6 +805,11 @@ func start_mission(b: Dictionary) -> bool:
 		var a: Dictionary = anchors.get(String(b.get("anchor", "")), {})
 		o["centre"] = _fight_centre(b, a)
 		o["face"] = float(a.get("yaw", 0.0))
+	o["anchors"] = anchors
+	if key in YARD_MISSIONS:
+		_sync_yard(true)
+		o["level"] = yard
+		o["points"] = yard.mission_points(key)
 	if phone.is_open():
 		phone.close()
 	busy = true
@@ -803,7 +863,11 @@ func _free_mission(roam_track: bool = true) -> void:
 
 ## The beat completes (autosave) before its "after" cinematic: quitting during the cinematic never replays the fight or
 ## the walk; Continue simply goes on without the cinematic. busy holds the next beat until the cinematic ends.
-func _on_mission_done(_info: Dictionary, b: Dictionary) -> void:
+func _on_mission_done(info: Dictionary, b: Dictionary) -> void:
+	var fl: Dictionary = director.get("flags") if director else {}
+	for k: Variant in (b.get("flag_by_info", {}) as Dictionary).keys():   # Phase C: d3_all_crates (the optional E4)
+		if bool(info.get(k, false)):
+			fl[String(b["flag_by_info"][k])] = true
 	var after: String = String(b.get("after", ""))
 	var nb: Dictionary = StoryMissions.beat(String(b.get("next", "")))
 	# no roam track in between when an "after" cinematic (it restores roam itself) or an auto mission follows (review I1)
@@ -811,7 +875,7 @@ func _on_mission_done(_info: Dictionary, b: Dictionary) -> void:
 	if fail_ui:
 		fail_ui.visible = false
 	if after != "":
-		var cp: CinePlayer = _start_cinematic(after, "")
+		var cp: CinePlayer = _start_cinematic(after, String(b.get("after_at", "")))
 		if cp != null:
 			running = String(b["id"])
 			roam.connect("cinematic_finished", _on_after_done.bind(b), CONNECT_ONE_SHOT)
@@ -866,6 +930,23 @@ func abort_mission() -> void:
 	refresh()
 
 
+## Phase C: the container yard exists while the current beat is a yard beat (or `force`): built under FreeRoam, freed
+## after; its discovery stack is open once the discovery beat is over.
+func _sync_yard(force: bool = false) -> void:
+	var b: Dictionary = director.call("beat") if director else {}
+	var want: bool = force or String(b.get("lair", "")) == "yard"
+	if want and yard == null:
+		yard = LairYard.new()
+		yard.build_in(roam)
+	elif not want and yard != null and mission_node == null:
+		yard.queue_free()
+		yard = null
+	if yard:
+		yard.set_stack_open(not (String(b.get("id", "")) in ["d3_sneak", "d3_mannequins"]))
+		if String(b.get("id", "")) in ["d3_end", "d3_bed"] and yard.forklift_park.visible:
+			yard.set_parked_forklift(false)   # Alexander's forklift lies toppled: it does not come back on Continue
+
+
 # ---------------------------------------------------------------------------
 # Markers: [E]
 # ---------------------------------------------------------------------------
@@ -902,6 +983,11 @@ func start_marker(id: String) -> bool:
 	if side_info.has(id):
 		return use_side(id)
 	var b: Dictionary = StoryMissions.beat(id)
+	if StoryMissions.lair_scene(b) != "":
+		var li: String = String(b.get("intro", ""))
+		if li != "" and not bool((director.get("flags") as Dictionary).get("intro_" + li, false)) and _play_intro(b):
+			return true   # the scene loads when the intro ends
+		return _launch_lair(b)
 	match String(b.get("kind", "")):
 		"stage", "mission", "fight":
 			var intro: String = String(b.get("intro", ""))

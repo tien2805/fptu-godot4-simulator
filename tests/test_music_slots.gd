@@ -85,10 +85,18 @@ func _catalogue() -> void:
 		_check(all.has(s), "slot %s is in the catalogue" % s)
 	for t: String in CineTimeline.slots():
 		_check(all.has(CineTimeline.load_slot(t).music_slot), "cinematic %s's music slot is in the catalogue" % t)
-	# every story mission (and both fights) has its owner slot (StoryRoam.MISSION_MUSIC)
+	# every story mission (and both fights) has its owner slot (StoryRoam.MISSION_MUSIC; Phase C: the bridge horror beat
+	# plays a night track, the Sói Xám duel and the basement tasks their own slots)
 	for mk: String in StoryMissions.MISSIONS + ["fight"]:
-		_check(StoryRoam.MISSION_MUSIC.has(mk) and MusicDirector.SLOTS.has(String(StoryRoam.MISSION_MUSIC.get(mk, ""))),
+		var ms: String = String(StoryRoam.MISSION_MUSIC.get(mk, ""))
+		_check(StoryRoam.MISSION_MUSIC.has(mk) and (MusicDirector.SLOTS.has(ms) or MusicDirector.NIGHT_SLOTS.has(ms)),
 			"mission %s plays a known slot (%s)" % [mk, String(StoryRoam.MISSION_MUSIC.get(mk, "?"))])
+	for fk: String in StoryRoam.FIGHT_MUSIC.keys():
+		_check(MusicDirector.SLOTS.has(String(StoryRoam.FIGHT_MUSIC[fk])), "fight %s plays a known slot" % fk)
+	for tk: String in StoryMissions.LAIR_TASKS:
+		_check(MusicDirector.SLOTS.has(String(StoryBasement.LAIR_MUSIC.get(tk, ""))), "basement task %s plays a known slot" % tk)
+	for rs: String in ["seg_d2_chase", "seg_d3_gunfight", "seg_d3_crates", "seg_d5_gunfight", "seg_d5_hack"]:
+		_check(MusicDirector.REPLAY_SLOTS.has(rs), "the Phase C replay %s is a slot" % rs)
 	var doc: String = FileAccess.get_file_as_string("res://docs/cinematics/music_suggestions.md")
 	var loads: int = 0
 	var files: int = 0

@@ -9,6 +9,9 @@
 # advance(dt) from _physics_process (dt * clock_scale), or from the test when opts.manual is true.
 # opts (tests): manual (bool), clock_scale (float), manual_replay (bool: short replays stepped by the test), seed (int).
 # Subclasses override _start(), _reset(), _tick(dt), _cleanup(); they call fail(reason, title) and finish(info).
+# Phase C: `armed` missions (the lair gunfights) skip the unarmed lock (GunFight forces its own loadout: story lairs allow
+# the Phase W guns, campus stays unarmed); radio(line, dich) shows Anh Duy on the radio with his "Dịch:" line; the host
+# may be FreeRoam or a lair scene (StoryBasement) with the same fields (player, weapons, combat, mounted).
 class_name StoryMission
 extends Node3D
 
@@ -43,6 +46,11 @@ var popup_label: Label
 var _popup_t: float = 0.0
 var _locked: bool = false
 var _prev_locked: bool = false
+## Phase C: lair missions keep the weapons (GunFight forces the loadout).
+var armed: bool = false
+var radio_panel: PanelContainer
+var radio_label: Label
+var _radio_t: float = 0.0
 
 
 func setup(r: Node3D, b: Dictionary, o: Dictionary = {}) -> void:
@@ -114,6 +122,10 @@ func hud_visible() -> bool:
 
 
 func advance(dt: float) -> void:
+	if _radio_t > 0.0:
+		_radio_t -= dt
+		if _radio_t <= 0.0 and radio_panel:
+			radio_panel.visible = false
 	if _popup_t > 0.0:
 		_popup_t -= dt
 		if _popup_t <= 0.0 and popup_label:
@@ -275,6 +287,24 @@ func popup(text: String, secs: float = 2.0, col: Color = INK) -> void:
 	_popup_t = secs
 
 
+## Anh Duy on the radio (story spec S-D12): his jargon line and a second "Dịch:" line, bottom left for `secs`.
+func radio(line: String, dich: String, secs: float = 5.0) -> void:
+	cues_played.append("radio")
+	if radio_panel == null:
+		return
+	radio_label.text = "ANH DUY (bộ đàm): %s
+Dịch: %s" % [line, dich]
+	radio_panel.visible = true
+	_radio_t = secs
+
+
+## Hides the top panel (title / info / meter) when the mission's own HUD shows those (BikeHUD, GunHUD).
+func hide_top_panel() -> void:
+	var top: Node = hud.get_node_or_null("Top") if hud else null
+	if top:
+		(top as CanvasItem).visible = false
+
+
 func set_info(text: String) -> void:
 	if hud_info:
 		hud_info.text = text
@@ -356,6 +386,23 @@ func _build_hud() -> void:
 	popup_label.add_theme_constant_override("outline_size", 8)
 	popup_label.visible = false
 	hud.add_child(popup_label)
+	radio_panel = PanelContainer.new()
+	radio_panel.name = "Radio"
+	radio_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	radio_panel.offset_left = 24.0
+	radio_panel.offset_right = 560.0
+	radio_panel.offset_top = -250.0
+	radio_panel.offset_bottom = -170.0
+	radio_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var rb := sb.duplicate() as StyleBoxFlat
+	rb.border_color = Color("#3FF2FF")
+	radio_panel.add_theme_stylebox_override("panel", rb)
+	radio_panel.visible = false
+	hud.add_child(radio_panel)
+	radio_label = _label("", 16, INK)
+	radio_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	radio_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	radio_panel.add_child(radio_label)
 
 
 func _label(text: String, size: int, col: Color) -> Label:
@@ -375,8 +422,10 @@ func _off_bike() -> void:
 		roam.call("dismount_bike")
 
 
-## Story campus missions are unarmed (S-D5): Tay không equipped, the wheel and scroll locked.
+## Story campus missions are unarmed (S-D5): Tay không equipped, the wheel and scroll locked (not for `armed` missions).
 func _lock_weapons(on: bool) -> void:
+	if armed and on:
+		return
 	var w: WeaponDirector = roam.get("weapons") if roam else null
 	if w == null or not is_instance_valid(w):
 		return

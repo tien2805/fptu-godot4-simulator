@@ -447,7 +447,7 @@ func _save_info() -> Dictionary:
 ## "TIẾP TỤC – NGÀY N" only with a valid save (A2-D2, A2-D6).
 func _refresh_story_buttons() -> void:
 	var info: Dictionary = _save_info()
-	btn_continue.visible = not info.is_empty()
+	btn_continue.visible = not info.is_empty() and String(info.get("ending", "")) == ""   # a finished story (ending C) only rewinds
 	if not info.is_empty():
 		btn_continue.text = "TIẾP TỤC – NGÀY %d" % int(info.get("day", 0))
 	StoryChapters.ensure_seeded(info)   # a save from before the chapter select unlocks what it has played

@@ -3,8 +3,13 @@
 #   kind "cctv"   a security-camera frame: grain, scanlines, "CAM 03  BÃI XE D1", a running timestamp, a blinking REC dot,
 #                 and two silhouettes: a courier in a helmet hands a box ("hàng") to a buyer, who walks off with it
 #                 (cine_d1_intro: Mr.T replays the CCTV);
-#   kind "phone"  a phone lock screen with one notification (sender, message, time) (cine_d1: the courier's phone).
-# data: {"kind", "cam", "place", "clock" ("21:47:05", seconds run on), "sender", "text", "time"}.
+#   kind "phone"  a phone lock screen with one notification (sender, message, time) (cine_d1: the courier's phone);
+#   kind "radio"  (Phase C) a small walkie-talkie box in the upper left: the caller's name and a live waveform
+#                 (cine_d3_intro: Anh Duy on the radio);
+#   kind "credits" (Phase C) the end credits: a title, then "lines" roll up the black frame (end_c, ending C);
+#   kind "flow"   (Phase C) a money-flow chart on a dark screen: "nodes" (3 boxes) light up one after another, joined by
+#                 arrows that draw in, with "amounts" beside the arrows; the last node pulses (cine_d5: "TRÀ SỮA LỌ").
+# data: {"kind", "cam", "place", "clock" ("21:47:05", seconds run on), "sender", "text", "time", "title", "lines"}.
 # CineTimeline.card("screen", r, dur, data) places it; CinePlayer calls update(r). state_at(u) is pure (tests).
 # Layer 106: above the HUD and StoryIntroCards / StoryDayCard (105), below the cinematic overlay (110: subtitles, fades).
 class_name StoryScreenCard
@@ -13,6 +18,12 @@ extends CanvasLayer
 const FADE: float = 0.25               # real seconds of fade in / out
 const CCTV_SIZE := Vector2(760.0, 428.0)
 const PHONE_SIZE := Vector2(330.0, 600.0)
+const RADIO_SIZE := Vector2(420.0, 120.0)
+const CREDITS_SIZE := Vector2(980.0, 440.0)
+## The radio box and the credits stay between the letterbox bars (each 12.8 % of a 16:9 screen): anchors of their area.
+const SAFE_TOP: float = 0.135
+const SAFE_BOTTOM: float = 0.865
+const FLOW_SIZE := Vector2(860.0, 360.0)
 
 var data: Dictionary = {}
 var r0: float = 0.0
@@ -26,6 +37,9 @@ var sender_label: Label
 var text_label: Label
 var time_label: Label
 var last_state: Dictionary = {}
+var title_label: Label
+var roll: VBoxContainer
+var flow_labels: Array[Label] = []
 
 
 ## Code-drawn screen content (redrawn when u changes).
@@ -35,6 +49,40 @@ class ScreenDraw extends Control:
 
 	func _draw() -> void:
 		var s: Vector2 = size
+		if kind == "credits":
+			draw_rect(Rect2(Vector2.ZERO, s), Color("#050507"))
+			return
+		if kind == "flow":
+			draw_rect(Rect2(Vector2.ZERO, s), Color("#0A0F14"))
+			for g: int in 9:
+				draw_line(Vector2(0.0, s.y * g / 8.0), Vector2(s.x, s.y * g / 8.0), Color(0.3, 0.6, 0.5, 0.08), 1.0)
+			for k: int in 3:
+				var on: float = clampf((u - 0.12 - 0.27 * k) / 0.08, 0.0, 1.0)
+				var r := Rect2(Vector2(s.x * (0.04 + 0.33 * k), s.y * 0.36), Vector2(s.x * 0.25, s.y * 0.28))
+				var col: Color = Color("#FF8A3D") if k == 2 else Color("#5BD38A")
+				if k == 2 and on >= 1.0:
+					col = col.lightened(0.25 * absf(sin(u * 40.0)))
+				draw_rect(r, Color(col.r, col.g, col.b, 0.18 * on))
+				draw_rect(r, Color(col.r, col.g, col.b, on), false, 3.0)
+				if k < 2:
+					var a0 := Vector2(r.end.x + 6.0, r.get_center().y)
+					var a1 := Vector2(s.x * (0.04 + 0.33 * (k + 1)) - 6.0, a0.y)
+					var d: float = clampf((u - 0.2 - 0.27 * k) / 0.15, 0.0, 1.0)
+					if d > 0.0:
+						var tip: Vector2 = a0.lerp(a1, d)
+						draw_line(a0, tip, Color("#FFD23F"), 4.0)
+						if d >= 1.0:
+							draw_colored_polygon(PackedVector2Array([a1, a1 + Vector2(-14.0, -9.0), a1 + Vector2(-14.0, 9.0)]), Color("#FFD23F"))
+			return
+		if kind == "radio":
+			draw_rect(Rect2(Vector2.ZERO, s), Color("#10161A"))
+			for i: int in 48:   # the live waveform (pure in u)
+				var x: float = 150.0 + float(i) * 5.4
+				var a: float = absf(sin(u * 61.0 + float(i) * 0.7)) * absf(sin(u * 17.0 + float(i) * 0.23)) * 34.0 + 3.0
+				draw_rect(Rect2(x, s.y * 0.62 - a * 0.5, 3.0, a), Color("#5BD38A"))
+			draw_circle(Vector2(60.0, s.y * 0.5), 34.0, Color("#1E2A30"))
+			draw_rect(Rect2(52.0, s.y * 0.5 - 22.0, 16.0, 44.0), Color("#5BD38A"))
+			return
 		if kind == "phone":
 			draw_rect(Rect2(Vector2.ZERO, s), Color("#0E1430"))
 			for i: int in 6:   # soft wallpaper bands
@@ -103,12 +151,20 @@ func _ready() -> void:
 
 func _build() -> void:
 	var cc := CenterContainer.new()
+	cc.name = "Area"
 	cc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	cc.anchor_bottom = 0.92
 	cc.offset_bottom = 0.0
 	cc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(cc)
 	var phone: bool = kind() == "phone"
+	if kind() == "radio":
+		cc.anchor_right = 0.4
+		cc.anchor_top = SAFE_TOP
+		cc.anchor_bottom = 0.42
+	elif kind() == "credits":
+		cc.anchor_top = SAFE_TOP
+		cc.anchor_bottom = SAFE_BOTTOM
 	frame = PanelContainer.new()
 	frame.name = "Frame"
 	var sb := StyleBoxFlat.new()
@@ -125,9 +181,65 @@ func _build() -> void:
 	screen.name = "Screen"
 	screen.kind = kind()
 	screen.custom_minimum_size = PHONE_SIZE if phone else CCTV_SIZE
+	if kind() == "radio":
+		screen.custom_minimum_size = RADIO_SIZE
+	elif kind() == "credits":
+		screen.custom_minimum_size = CREDITS_SIZE
+	elif kind() == "flow":
+		screen.custom_minimum_size = FLOW_SIZE
 	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	screen.clip_contents = true
 	frame.add_child(screen)
+	if kind() == "flow":
+		var nodes: Array = data.get("nodes", [])
+		var amounts: Array = data.get("amounts", [])
+		for k: int in nodes.size():
+			var l: Label = _lbl(String(nodes[k]), 26, Color("#F4F1EA"))
+			l.name = "Node%d" % k
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			l.position = Vector2(FLOW_SIZE.x * (0.04 + 0.33 * k), FLOW_SIZE.y * 0.36)
+			l.size = Vector2(FLOW_SIZE.x * 0.25, FLOW_SIZE.y * 0.28)
+			screen.add_child(l)
+			flow_labels.append(l)
+		for k2: int in amounts.size():
+			var m: Label = _lbl(String(amounts[k2]), 20, Color("#FFD23F"))
+			m.name = "Amount%d" % k2
+			m.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			m.position = Vector2(FLOW_SIZE.x * (0.27 + 0.33 * k2), FLOW_SIZE.y * 0.66)
+			m.size = Vector2(FLOW_SIZE.x * 0.12, 30.0)
+			screen.add_child(m)
+			flow_labels.append(m)
+		head_label = _lbl(String(data.get("title", "")), 22, Color("#9FE8C0"))
+		head_label.name = "FlowTitle"
+		head_label.position = Vector2(20.0, 14.0)
+		screen.add_child(head_label)
+		return
+	if kind() == "radio":
+		sender_label = _lbl("BỘ ĐÀM: " + String(data.get("sender", "")).to_upper(), 22, Color("#DDF5E4"))
+		sender_label.name = "Sender"
+		sender_label.position = Vector2(110.0, 14.0)
+		screen.add_child(sender_label)
+		return
+	if kind() == "credits":
+		title_label = _lbl(String(data.get("title", "")), 54, Color("#FFB23B"))
+		title_label.name = "Title"
+		title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		title_label.size = Vector2(CREDITS_SIZE.x, 80.0)
+		title_label.position = Vector2(0.0, 40.0)
+		screen.add_child(title_label)
+		roll = VBoxContainer.new()
+		roll.name = "Roll"
+		roll.add_theme_constant_override("separation", 14)
+		roll.custom_minimum_size = Vector2(CREDITS_SIZE.x, 0.0)
+		roll.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		screen.add_child(roll)
+		for line: Variant in data.get("lines", []):
+			var l: Label = _lbl(String(line), 30, Color("#E8E4F0"))
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			l.custom_minimum_size = Vector2(CREDITS_SIZE.x, 0.0)
+			roll.add_child(l)
+		return
 	if phone:
 		time_label = _lbl(String(data.get("time", "23:58")), 64, Color.WHITE)
 		time_label.position = Vector2(0.0, 60.0)
@@ -201,5 +313,13 @@ func update(r: float) -> void:
 	frame.modulate.a = float(st["alpha"])
 	screen.u = float(st["u"])
 	screen.queue_redraw()
+	for k3: int in flow_labels.size():   # flow: each node / amount appears with its box / arrow
+		var nn: int = (data.get("nodes", []) as Array).size()
+		var t0: float = 0.12 + 0.27 * k3 if k3 < nn else 0.3 + 0.27 * (k3 - nn)
+		flow_labels[k3].modulate.a = clampf((float(st["u"]) - t0) / 0.08, 0.0, 1.0)
+	if roll:   # the credits roll up from below the title to past the top
+		var u: float = float(st["u"])
+		roll.position = Vector2(0.0, lerpf(CREDITS_SIZE.y, -roll.get_combined_minimum_size().y + 140.0, u))
+		title_label.modulate.a = clampf(1.0 - (u - 0.25) / 0.15, 0.0, 1.0)
 	if clock_label:
 		clock_label.text = clock_at(String(data.get("clock", "21:47:05")), maxf(r - r0, 0.0) * 1.0)

@@ -15,12 +15,16 @@ const FADE_OUT: float = 0.5
 const SFX_CUES: Array[String] = ["impact_light", "impact_medium", "impact_heavy", "whoosh_down", "freeze_tick", "crate_smash",
 	"body_fall", "slide_whistle", "groan", "phone_buzz", "engine_roar", "neck_crack", "helmet_clonk",
 	# story Phase B: canteen brawl and Day 1 / Day 4 discovery beats
-	"tray_clang", "pot_clonk", "chair_smash", "burp", "fluoro_buzz"]
+	"tray_clang", "pot_clonk", "chair_smash", "burp", "fluoro_buzz",
+	# story Phase C: Days 2, 3, 5 (synthesized SFX; the ringtone is a phone ringtone, not music: spec C-D6)
+	"party_horn", "wolf_howl", "ringtone_synth", "door_bang", "keyboard_clack", "glass_crack", "sword_clang", "blade_snap",
+	"fire_crackle", "evil_laugh", "applause", "chain_rattle"]
 static var _sfx_cache: Dictionary = {}
 
 
 ## A slot without its own owner file plays its parent slot's file (then silence): the choice tails reuse cine_d1_choice.
-const SLOT_FALLBACK: Dictionary = {"cine_d1_choice_cover": "cine_d1_choice", "cine_d1_choice_report": "cine_d1_choice"}
+const SLOT_FALLBACK: Dictionary = {"cine_d1_choice_cover": "cine_d1_choice", "cine_d1_choice_report": "cine_d1_choice",
+	"cine_d5_choice_accept": "cine_d5_choice", "cine_d5_choice_refuse": "cine_d5_choice"}
 
 
 static func music_file(slot: String) -> String:
@@ -218,7 +222,96 @@ static func _synth_sfx(cue: String) -> AudioStreamWAV:
 			return _to_wav(fb)
 		"helmet_clonk": # hollow plastic shell knock
 			return _to_wav(_mix([_tone(0.22, 520.0, 430.0, 0.55, 18.0), _tone(0.22, 1180.0, 1010.0, 0.2, 24.0), _noise(0.05, 0.45, 60.0, 10, 0.3)]))
+		"party_horn":   # a paper party horn: a buzzy blat that unrolls and wobbles
+			return _to_wav(_buzz(0.7, 440.0, 470.0, 0.35, 9.0))
+		"wolf_howl":    # a rising, then falling howl (sine glide with vibrato)
+			var hn: int = int(1.8 * SR)
+			var hw := PackedFloat32Array()
+			hw.resize(hn)
+			var hp: float = 0.0
+			for i: int in hn:
+				var ht: float = float(i) / SR
+				var hu: float = ht / 1.8
+				var hf: float = 330.0 + 260.0 * sin(clampf(hu * 1.6, 0.0, 1.0) * PI * 0.5) - 180.0 * smoothstep(0.6, 1.0, hu) + 6.0 * sin(ht * 31.0)
+				hp += TAU * hf / SR
+				hw[i] = (sin(hp) + 0.3 * sin(hp * 2.0)) * 0.3 * smoothstep(0.0, 0.15, hu) * (1.0 - smoothstep(0.8, 1.0, hu))
+			return _to_wav(hw)
+		"ringtone_synth":   # Sói Xám's cheesy synth ringtone: a square-wave arpeggio, twice
+			var rb := PackedFloat32Array()
+			rb.resize(int(1.7 * SR))
+			var notes: Array[float] = [659.0, 784.0, 988.0, 1319.0, 988.0, 784.0]
+			for rep2: int in 2:
+				for k: int in notes.size():
+					_paste(rb, _square(0.11, notes[k], 0.22), 0.85 * rep2 + 0.13 * k, 1.0)
+			return _to_wav(rb)
+		"door_bang":    # a steel container door slamming open: a low clang with a rattle
+			return _to_wav(_mix([_tone(0.9, 120.0, 95.0, 0.6, 4.0), _tone(0.7, 410.0, 395.0, 0.25, 5.0), _noise(0.25, 0.6, 12.0, 21, 0.3)]))
+		"keyboard_clack":   # fast typing: a run of short clicks
+			var kb := PackedFloat32Array()
+			kb.resize(int(0.9 * SR))
+			for k2: int in 11:
+				_paste(kb, _mix([_noise(0.02, 0.5, 160.0, 30 + k2, 0.1), _tone(0.02, 2400.0 + 90.0 * (k2 % 4), 2000.0, 0.15, 150.0)]), 0.075 * k2 + 0.012 * (k2 % 3), 1.0)
+			return _to_wav(kb)
+		"glass_crack":  # a mirror cracking: bright noise tick, high ringing shards
+			return _to_wav(_mix([_noise(0.12, 0.7, 30.0, 22, 0.0), _tone(0.5, 3100.0, 2900.0, 0.18, 8.0), _tone(0.5, 4300.0, 4100.0, 0.12, 9.0)]))
+		"sword_clang":  # steel on steel (or on a wooden staff): a ringing strike
+			return _to_wav(_mix([_tone(0.8, 1650.0, 1600.0, 0.35, 4.0), _tone(0.8, 2470.0, 2430.0, 0.2, 5.0), _noise(0.05, 0.6, 80.0, 23, 0.1)]))
+		"blade_snap":   # the cheap katana snapping: a sharp crack and a falling ping
+			return _to_wav(_mix([_noise(0.06, 0.8, 70.0, 24, 0.0), _tone(0.6, 2200.0, 900.0, 0.3, 4.0)]))
+		"fire_crackle": # burning server room: pops over a low roar
+			var fc: PackedFloat32Array = _noise(2.0, 0.12, 0.0, 25, 0.95)
+			var frng := RandomNumberGenerator.new()
+			frng.seed = 26
+			for k3: int in 14:
+				_paste(fc, _noise(0.02, 0.6, 120.0, 40 + k3, 0.1), frng.randf_range(0.0, 1.95), 1.0)
+			return _to_wav(fc)
+		"evil_laugh":   # a comic villain laugh on tinny speakers: "ha ha ha" voiced bursts falling in pitch
+			var lb := PackedFloat32Array()
+			lb.resize(int(1.6 * SR))
+			for k4: int in 6:
+				_paste(lb, _mix([_buzz(0.16, 260.0 - 14.0 * k4, 220.0 - 14.0 * k4, 0.3, 6.0), _noise(0.16, 0.08, 10.0, 50 + k4, 0.6)]), 0.22 * k4, 1.0)
+			return _to_wav(lb)
+		"applause":     # a room clapping: many short noise claps
+			var ab := PackedFloat32Array()
+			ab.resize(int(2.2 * SR))
+			var arng := RandomNumberGenerator.new()
+			arng.seed = 27
+			for k5: int in 90:
+				_paste(ab, _noise(0.025, arng.randf_range(0.15, 0.35), 90.0, 60 + k5, 0.2), arng.randf_range(0.0, 2.1) * (1.0 - 0.1 * float(k5 % 3)), 1.0)
+			return _to_wav(ab)
+		"chain_rattle": # a chain rattling: metal ticks
+			var cb := PackedFloat32Array()
+			cb.resize(int(0.6 * SR))
+			for k6: int in 9:
+				_paste(cb, _tone(0.05, 2900.0 + 230.0 * (k6 % 3), 2600.0, 0.18, 60.0), 0.06 * k6, 1.0)
+			return _to_wav(cb)
 	return _to_wav(_tone(0.08, 800.0, 800.0, 0.4, 20.0))
+
+
+## Buzzy voice (sawtooth-ish with vibrato): party horn, the tinny laugh.
+static func _buzz(dur: float, f0: float, f1: float, amp: float, vib: float) -> PackedFloat32Array:
+	var n: int = int(dur * SR)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var ph: float = 0.0
+	for i: int in n:
+		var t: float = float(i) / SR
+		var f: float = lerpf(f0, f1, t / dur) * (1.0 + 0.03 * sin(t * TAU * vib))
+		ph += f / SR
+		var saw: float = 2.0 * (ph - floor(ph)) - 1.0
+		var env: float = smoothstep(0.0, 0.02, t) * (1.0 - smoothstep(dur * 0.8, dur, t))
+		out[i] = saw * amp * env
+	return out
+
+
+static func _square(dur: float, f: float, amp: float) -> PackedFloat32Array:
+	var n: int = int(dur * SR)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	for i: int in n:
+		var t: float = float(i) / SR
+		out[i] = (1.0 if fmod(t * f, 1.0) < 0.5 else -1.0) * amp * (1.0 - t / dur)
+	return out
 
 
 ## Distant motorbike engines revving up: two detuned pulsing low voices (firing rate rising) plus filtered noise, faded in
