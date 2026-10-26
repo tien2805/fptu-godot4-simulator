@@ -89,6 +89,11 @@ func _start() -> void:
 	_reset()
 
 
+## The stage search for the corridor set (baked with the cinematic stages, CineStage.requests).
+static func corridor_stage() -> Dictionary:
+	return {"landmark": "campus_parking_center", "at": Vector2(-7.34, 7.06), "near": 34.0, "size": Vector2(5.0, 44.0), "yaw_deg": 271.0}
+
+
 ## A flat spot for the 5 x 44 m set: FreeRoam.cine_stage around cine_d1_corridor's courtyard point (yaw 271, the long axis
 ## along the courtyard), else in front of the player.
 func _find_spot() -> Transform3D:
@@ -96,8 +101,7 @@ func _find_spot() -> Transform3D:
 	if o is Transform3D:
 		return o
 	if roam and roam.has_method("cine_stage"):
-		var st: Variant = roam.call("cine_stage", {"landmark": "campus_parking_center", "at": Vector2(-7.34, 7.06), "near": 34.0,
-			"size": Vector2(5.0, 44.0), "yaw_deg": 271.0})
+		var st: Variant = roam.call("cine_stage", corridor_stage())
 		if st is Transform3D:
 			return st
 	var p: Vector3 = player.global_position if player else Vector3.ZERO

@@ -160,9 +160,18 @@ const CINE_CLUTTER_H: float = 0.15       # mesh nhìn thấy nhô > 0,15 m trên
 const CINE_CLUTTER_TOP: float = 2.5      # ... và bắt đầu thấp hơn 2,5 m trên sàn (tán cây cao không tính)
 const CINE_GRID_STEP: float = 1.0       # lưới tia sàn ~1 m trong hộp sân khấu (bậc vỉa hè gộp lớn không có đỉnh nào trong hộp)
 const CINE_BIG_MESH: float = 30.0        # mesh gộp rộng hơn 30 m: xét từng đỉnh thay cho AABB
+const CINE_SEARCH_BUDGET_MS: float = 6.0 # stage search off the baked table (dev, new content): wall-clock cap of the tries
+const CINE_CELL: float = 4.0             # XZ grid over the clutter items: a try only tests the items near its box
 var cine_player: CinePlayer = null
-## Chỗ diễn vừa tìm được (báo cáo / test): landmark, tâm dò, vòng, yaw, sàn, mặt đất landmark.
+## The cinematic being prepared ahead (prepare_cinematic): stage resolved, actors built one per frame; null when none.
+var cine_prep: CinePrep = null
+## Chỗ diễn vừa tìm được (báo cáo / test): landmark, tâm dò, vòng, yaw, sàn, mặt đất landmark, source (baked / cache /
+## search), budget_hit.
 var cine_stage_info: Dictionary = {}
+## _cine_try calls of the last stage resolution (0 = served from the baked table or the cache).
+var cine_search_tries: int = 0
+var _cine_stage_cache: Dictionary = {}   # CineStage.signature -> [Transform3D, info] (searched spots, this FreeRoam)
+var _cine_flat: Variant = null           # first candidate of the running search with a flat floor (budget fallback)
 var _cine_saved: Dictionary = {}
 var _cine_slot_i: int = -1
 
@@ -1433,7 +1442,52 @@ func mayhem_blocked() -> bool:
 # ===========================================================================
 # CINEMATIC (spec A1)
 # ===========================================================================
-## Clear, flat stage frame for a cinematic near a landmark (spec A1-D19, plan review M4). stage: {"landmark", "near" (m),
+## Stage frame for a cinematic (Transform3D, origin on the floor) or null. Resolution order (plan 2026-10-26-cine-transition):
+## the baked table (CineStage / CineStageBake: every stage the game resolves, recomputed by tests/test_cine_transition.gd),
+## then the spots searched earlier by this FreeRoam (per CineStage.signature), then cine_stage_search with a
+## CINE_SEARCH_BUDGET_MS wall-clock cap. A baked or cached spot is used after one cheap static check (cine_stage_ok: the
+## floor-ray grid, no mesh scan; the visual clutter is static map content the bake test verifies). cine_stage_info says
+## which spot won and its "source" ("baked", "cache", "search"); cine_search_tries counts the tries (0 off the table).
+func cine_stage(stage: Dictionary) -> Variant:
+	cine_stage_info = {}
+	cine_search_tries = 0
+	if not is_inside_tree() or md == null:
+		return null
+	var sig: String = CineStage.signature(stage)
+	var bk: Dictionary = CineStage.baked(stage)
+	if bk.has("none"):
+		cine_stage_info = {"source": "baked", "none": true}   # baked: no clear spot (play_cinematic shows its hint)
+		return null
+	if not bk.is_empty():
+		if cine_stage_ok(bk["xf"], stage):
+			cine_stage_info = (bk["info"] as Dictionary).duplicate()
+			cine_stage_info["source"] = "baked"
+			return bk["xf"]
+		push_warning("FreeRoam: baked cinematic stage %s has lost its floor; searching (re-run tests/test_cine_transition.gd)" % sig)
+	if _cine_stage_cache.has(sig):
+		var hit: Array = _cine_stage_cache[sig]
+		if cine_stage_ok(hit[0], stage):
+			cine_stage_info = (hit[1] as Dictionary).duplicate()
+			cine_stage_info["source"] = "cache"
+			return hit[0]
+	var xf: Variant = cine_stage_search(stage, CINE_SEARCH_BUDGET_MS)
+	cine_stage_info["source"] = "search"
+	if xf is Transform3D:
+		_cine_stage_cache[sig] = [xf, cine_stage_info.duplicate()]   # the same spot on every replay of this stage
+	return xf
+
+
+## Cheap static check of a known stage frame: the floor-ray grid (CINE_GRID_STEP) finds the stage floor everywhere in the
+## box (no missing floor, no step, no slope). No mesh scan and no body query: those are static map content (bake test) or
+## transient bodies (a fight's knocked-out enemies, a set being freed) that never moved a stage.
+func cine_stage_ok(xf: Transform3D, stage: Dictionary) -> bool:
+	if not is_inside_tree():
+		return false
+	var size: Vector2 = stage.get("size", Vector2(14.0, 10.0))
+	return _cine_floor_steps(get_world_3d().direct_space_state, xf, size, true).is_empty()
+
+
+## Clear, flat stage frame near a landmark (spec A1-D19, plan review M4): the full search. stage: {"landmark", "near" (m),
 ## "size" (Vector2 m: x across, y along the stage's Z), "yaw_deg" (road-aligned yaw; the stage's -Z runs along the road),
 ## "offset" (Vector2 m in that yaw frame: x right, y back; pushes the search centre, e.g. to the road side of a gate),
 ## "fallback" (second landmark)}. Landmark ground = the lowest upward floor under the landmark. Rings every 2 m out to
@@ -1441,11 +1495,17 @@ func mayhem_blocked() -> bool:
 ## within 0.5 m of it (no shed roofs) and agreeing within 0.15 m; no visible mesh pokes more than 0.15 m above the floor
 ## inside the box (gate barrier arm, poles, bollards: cine_clutter); the box (size.x × 1.8 × size.y) 0.25 m above the
 ## floor touches nothing except the player, the bike, pedestrians and traffic. Returns Transform3D (origin on the floor)
-## or null; cine_stage_info says which spot won.
-func cine_stage(stage: Dictionary) -> Variant:
+## or null; cine_stage_info says which spot won. Each try tests only the clutter items of the grid cells its box covers
+## (same answer as testing them all). budget_ms > 0: after that much wall time spent on tries (the first spot's clutter
+## walk, about 60 ms windowed, is not counted) the search stops and returns the first flat candidate it met, else the first
+## spot's centre on its ground (cine_stage_info.budget_hit).
+func cine_stage_search(stage: Dictionary, budget_ms: float = 0.0) -> Variant:
 	cine_stage_info = {}
+	cine_search_tries = 0
+	_cine_flat = null
 	if not is_inside_tree() or md == null:
 		return null
+	var t0: int = Time.get_ticks_usec()
 	var size: Vector2 = stage.get("size", Vector2(14.0, 10.0))
 	var near: float = float(stage.get("near", 30.0))
 	var yaw0: float = deg_to_rad(float(stage.get("yaw_deg", 0.0)))
@@ -1459,6 +1519,7 @@ func cine_stage(stage: Dictionary) -> Variant:
 		names.append(String(stage["fallback"]))
 	if stage.get("at") is Vector2:
 		names.push_front("@at")   # story (A2): an explicit map point (Vector2 x, z) searched first, the landmark stays the fallback
+	var first: Variant = null     # [landmark, centre, ground_y] of the first spot (budget fallback)
 	for lk: String in names:
 		var lm: Variant = [(stage["at"] as Vector2).x, (stage["at"] as Vector2).y] if lk == "@at" else md.landmark(lk)
 		if not (lm is Array and (lm as Array).size() >= 2):
@@ -1467,7 +1528,10 @@ func cine_stage(stage: Dictionary) -> Variant:
 		var ground_y: float = _cine_ground_y(space, lc)
 		var ov: Vector3 = Basis(Vector3.UP, yaw0) * Vector3(off.x, 0.0, off.y)
 		var c: Vector2 = lc + Vector2(ov.x, ov.z)
-		var items: Array = _cine_clutter_items(Vector3(c.x, ground_y, c.y), near + size.length() * 0.5 + 1.0)
+		var grid: Dictionary = _cine_grid(_cine_clutter_items(Vector3(c.x, ground_y, c.y), near + size.length() * 0.5 + 1.0))
+		if first == null:
+			first = [lk, c, ground_y]
+			t0 = Time.get_ticks_usec()   # the budget is for the tries (the first spot's clutter walk is not counted)
 		for pass_i: int in 2:
 			var yaws: Array[float] = [yaw0]
 			if pass_i == 1:
@@ -1479,7 +1543,9 @@ func cine_stage(stage: Dictionary) -> Variant:
 					var a: float = TAU * float(i) / float(steps)
 					var pt: Vector2 = c + Vector2(cos(a), sin(a)) * ring
 					for yaw: float in yaws:
-						var xf: Variant = _cine_try(space, box, excl, pt, yaw, size, ground_y, items)
+						if budget_ms > 0.0 and cine_search_tries > 0 and float(Time.get_ticks_usec() - t0) > budget_ms * 1000.0:
+							return _cine_budget_fallback(first, yaw0)
+						var xf: Variant = _cine_try(space, box, excl, pt, yaw, size, ground_y, [], grid)
 						if xf != null:
 							cine_stage_info = {"landmark": lk, "centre": c, "ring": ring, "yaw_deg": snappedf(rad_to_deg(yaw), 0.01),
 								"floor_y": snappedf((xf as Transform3D).origin.y, 0.001), "ground_y": ground_y,
@@ -1487,6 +1553,18 @@ func cine_stage(stage: Dictionary) -> Variant:
 							return xf
 				ring += 2.0
 	return null
+
+
+## Budget ran out: the first candidate with a flat floor, else the first spot's centre on its ground (road yaw).
+func _cine_budget_fallback(first: Variant, yaw0: float) -> Variant:
+	if first == null:
+		return null
+	var c: Vector2 = first[1]
+	var xf: Transform3D = _cine_flat if _cine_flat is Transform3D else Transform3D(Basis(Vector3.UP, yaw0), Vector3(c.x, float(first[2]), c.y))
+	cine_stage_info = {"landmark": String(first[0]), "centre": c, "ring": -1.0, "yaw_deg": snappedf(rad_to_deg(xf.basis.get_euler().y), 0.01),
+		"floor_y": snappedf(xf.origin.y, 0.001), "ground_y": float(first[2]), "pos": Vector2(snappedf(xf.origin.x, 0.01), snappedf(xf.origin.z, 0.01)),
+		"road_aligned": false, "budget_hit": true, "flat": _cine_flat is Transform3D}
+	return xf
 
 
 ## Lowest upward-facing floor under the landmark (walk-floor level, below gate roofs and fences; WaterFloor ignored).
@@ -1509,8 +1587,10 @@ func _cine_ground_y(space: PhysicsDirectSpaceState3D, lc: Vector2) -> float:
 	return best
 
 
+## One candidate box. Clutter from `grid` (_cine_grid: only the items near the box) when given, else from the flat list.
 func _cine_try(space: PhysicsDirectSpaceState3D, box: BoxShape3D, excl: Array[RID], pt: Vector2, yaw: float, size: Vector2,
-		ground_y: float, items: Array) -> Variant:
+		ground_y: float, items: Array, grid: Dictionary = {}) -> Variant:
+	cine_search_tries += 1
 	var basis := Basis(Vector3.UP, yaw)
 	var ray_excl: Array[RID] = excl.duplicate()
 	if water_floor:
@@ -1530,7 +1610,9 @@ func _cine_try(space: PhysicsDirectSpaceState3D, box: BoxShape3D, excl: Array[RI
 	if ys.max() - ys.min() > 0.15:
 		return null
 	var xf := Transform3D(basis, Vector3(pt.x, ys[0], pt.y))
-	if not _cine_clutter_in(items, xf, size).is_empty():
+	if _cine_flat == null:
+		_cine_flat = xf
+	if _cine_grid_hit(grid, xf, size) if not grid.is_empty() else not _cine_clutter_in(items, xf, size).is_empty():
 		return null
 	if not _cine_floor_steps(space, xf, size, true).is_empty():
 		return null
@@ -1615,16 +1697,21 @@ func _cine_clutter_items(centre: Vector3, radius: float) -> Array:
 		if not g.is_visible_in_tree():
 			continue
 		var gt: Transform3D = g.global_transform
-		var ab: AABB = gt * g.get_aabb()
+		var mm: MultiMesh = (n as MultiMeshInstance3D).multimesh if n is MultiMeshInstance3D else null
+		var kept: Array = mm.get_meta("cine_xforms", []) if mm != null and mm.mesh != null else []
+		var ab: AABB = gt * (_cine_mm_aabb(mm, kept) if not kept.is_empty() else g.get_aabb())
 		if not ab.intersects(region):
 			continue
 		if n is MultiMeshInstance3D:
-			var mm: MultiMesh = (n as MultiMeshInstance3D).multimesh
 			if mm == null or mm.mesh == null:
 				continue
+			# the builders' own instance transforms when kept (meta cine_xforms: the headless RenderingServer returns none,
+			# so headless tests and the windowed game see the same clutter), else the RenderingServer's
 			var cnt: int = mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count
+			var use_kept: bool = kept.size() >= cnt
+			var mab: AABB = mm.mesh.get_aabb()
 			for i: int in cnt:
-				var iab: AABB = gt * mm.get_instance_transform(i) * mm.mesh.get_aabb()
+				var iab: AABB = gt * (kept[i] as Transform3D if use_kept else mm.get_instance_transform(i)) * mab
 				if iab.intersects(region):
 					out.append({"name": "%s#%d" % [g.name, i], "aabb": iab})
 			continue
@@ -1651,7 +1738,19 @@ func _cine_clutter_items(centre: Vector3, radius: float) -> Array:
 	return out
 
 
-func _cine_clutter_in(items: Array, xf: Transform3D, size: Vector2) -> Array:
+## Local AABB of a multimesh from its kept instance transforms (meta cine_xforms), cached on the MultiMesh.
+func _cine_mm_aabb(mm: MultiMesh, kept: Array) -> AABB:
+	if mm.has_meta("cine_aabb"):
+		return mm.get_meta("cine_aabb")
+	var mab: AABB = mm.mesh.get_aabb()
+	var out: AABB = (kept[0] as Transform3D) * mab
+	for i: int in range(1, kept.size()):
+		out = out.merge((kept[i] as Transform3D) * mab)
+	mm.set_meta("cine_aabb", out)
+	return out
+
+
+func _cine_clutter_in(items: Array, xf: Transform3D, size: Vector2, first_only: bool = false) -> Array:
 	var inv: Transform3D = xf.affine_inverse()
 	var hx: float = size.x * 0.5
 	var hz: float = size.y * 0.5
@@ -1671,6 +1770,8 @@ func _cine_clutter_in(items: Array, xf: Transform3D, size: Vector2) -> Array:
 				hi = Vector2(maxf(hi.x, l.x), maxf(hi.y, l.z))
 			if hi.x > -hx and lo.x < hx and hi.y > -hz and lo.y < hz:
 				out.append(it["name"])
+				if first_only:
+					return out
 		else:
 			for w: Vector3 in (it["pts"] as PackedVector3Array):
 				if w.y <= y0 or w.y >= y1:
@@ -1678,27 +1779,158 @@ func _cine_clutter_in(items: Array, xf: Transform3D, size: Vector2) -> Array:
 				var l2: Vector3 = inv * w
 				if absf(l2.x) < hx and absf(l2.z) < hz:
 					out.append(it["name"])
+					if first_only:
+						return out
 					break
 	return out
 
 
+## XZ grid (CINE_CELL) over clutter items for the search: {"items": [...], "cells": {Vector2i: Array of item indices}}. An AABB
+## item goes into every cell of its centre ± half-diagonal × √2 (the stage-local bounds _cine_clutter_in tests never reach
+## farther); a vertex item is split per cell (one sub-item per cell with that cell's vertices). A box then only needs the
+## cells within its half-diagonal: the same answer as testing every item.
+func _cine_grid(items: Array) -> Dictionary:
+	var sub: Array = []
+	var cells: Dictionary = {}
+	for it: Dictionary in items:
+		if it.has("aabb"):
+			var ab: AABB = it["aabb"]
+			var cc := Vector2(ab.position.x + ab.size.x * 0.5, ab.position.z + ab.size.z * 0.5)
+			var r: float = Vector2(ab.size.x, ab.size.z).length() * 0.5 * 1.4143 + 0.01
+			var k: int = sub.size()
+			sub.append(it)
+			for gx: int in range(floori((cc.x - r) / CINE_CELL), floori((cc.x + r) / CINE_CELL) + 1):
+				for gz: int in range(floori((cc.y - r) / CINE_CELL), floori((cc.y + r) / CINE_CELL) + 1):
+					_cine_cell_add(cells, Vector2i(gx, gz), k)
+		else:
+			var per: Dictionary = {}
+			for w: Vector3 in (it["pts"] as PackedVector3Array):
+				var key := Vector2i(floori(w.x / CINE_CELL), floori(w.z / CINE_CELL))
+				if not per.has(key):
+					per[key] = []
+				(per[key] as Array).append(w)   # plain Array: a packed array read from a Dictionary is a copy
+			for key2: Vector2i in per.keys():
+				_cine_cell_add(cells, key2, sub.size())
+				sub.append({"name": it["name"], "pts": PackedVector3Array(per[key2])})
+	return {"items": sub, "cells": cells}
+
+
+func _cine_cell_add(cells: Dictionary, key: Vector2i, k: int) -> void:
+	if not cells.has(key):
+		cells[key] = []
+	(cells[key] as Array).append(k)   # plain Array: a packed array read from a Dictionary is a copy
+
+
+## true when any item of the grid cells under the box is clutter for it (same test as _cine_clutter_in).
+func _cine_grid_hit(grid: Dictionary, xf: Transform3D, size: Vector2) -> bool:
+	var r: float = size.length() * 0.5 + 0.01
+	var o: Vector3 = xf.origin
+	var cells: Dictionary = grid["cells"]
+	var sub: Array = grid["items"]
+	var seen: Dictionary = {}
+	var near: Array = []
+	for gx: int in range(floori((o.x - r) / CINE_CELL), floori((o.x + r) / CINE_CELL) + 1):
+		for gz: int in range(floori((o.z - r) / CINE_CELL), floori((o.z + r) / CINE_CELL) + 1):
+			var key := Vector2i(gx, gz)
+			if not cells.has(key):
+				continue
+			for k: int in (cells[key] as Array):
+				if not seen.has(k):
+					seen[k] = true
+					near.append(sub[k])
+	return not near.is_empty() and not _cine_clutter_in(near, xf, size, true).is_empty()
+
+
+## Prepare tl ahead (plan 2026-10-26-cine-transition): one CinePrep child resolves its stage now (opts "xf" wins, as in
+## play_cinematic) and builds its actors one per unpaused frame. A prep for the same slot and stage is kept; another one
+## is replaced. false when tl is null.
+func prepare_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> bool:
+	if tl == null:
+		return false
+	var sig: String = CineStage.signature(tl.stage)
+	if cine_prep != null and is_instance_valid(cine_prep) and cine_prep.slot == tl.slot and cine_prep.stage_sig == sig \
+			and (not (opts.get("xf") is Transform3D) or cine_prep.xf == opts["xf"]):
+		return true
+	drop_cinematic_prep()
+	var xf: Variant = opts["xf"] if opts.get("xf") is Transform3D else (cine_stage(tl.stage) if not tl.stage.is_empty() else null)
+	cine_prep = CinePrep.new()
+	add_child(cine_prep)
+	cine_prep.begin(tl, xf)
+	cine_prep.info = cine_stage_info.duplicate()
+	return true
+
+
+func drop_cinematic_prep() -> void:
+	if cine_prep != null and is_instance_valid(cine_prep):
+		cine_prep.queue_free()
+	cine_prep = null
+
+
 ## Play a cinematic at its stage: pauses the game (game clock frozen), hides the roam player / bike / HUD / map / crowd /
 ## traffic, stops the roam music, switches the time of day, and restores everything (camera, music) on finished. opts go
-## to CinePlayer.setup (manual, debug, music).
+## to CinePlayer.setup (manual, debug, music, drop_set); "fade" (default: not manual) fades to black over CinePlayer.FADE_S
+## first and does the setup, the hiding, the time of day and the exposure under the black frame (CinePlayer.preroll);
+## "on_black" (Callable) runs there too, before the setup (StoryRoam hides the yard's copies). A prepared cinematic
+## (prepare_cinematic) with the same slot and stage hands over its stage frame and actors. Returns the player at once
+## (during the fade its timeline is set, nothing else), or null (invalid timeline, no stage spot, one already playing).
 func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 	if tl == null or cine_player != null:
 		return null
-	var xf: Variant = opts["xf"] if opts.get("xf") is Transform3D else (cine_stage(tl.stage) if not tl.stage.is_empty() else Transform3D(Basis.IDENTITY, roam_position()))
+	var errs: PackedStringArray = tl.validate()
+	if not errs.is_empty():
+		push_error("CinePlayer: timeline %s is invalid:\n  %s" % [tl.slot, "\n  ".join(errs)])
+		return null
+	var o: Dictionary = opts.duplicate()
+	var xf: Variant = null
+	var adopt: CinePrep = null
+	if cine_prep != null and is_instance_valid(cine_prep) and cine_prep.slot == tl.slot \
+			and cine_prep.stage_sig == CineStage.signature(tl.stage) and (not (opts.get("xf") is Transform3D) or cine_prep.xf == opts["xf"]):
+		xf = cine_prep.xf
+		if cine_prep.xf is Transform3D:
+			cine_stage_info = cine_prep.info.duplicate()
+			cine_stage_info["prepared"] = true
+		adopt = cine_prep
+		o["actors"] = adopt.take_actors()
+		cine_prep = null   # the prep node (its hidden actors) goes with the player until the setup reparents them
+	if not (xf is Transform3D):
+		xf = opts["xf"] if opts.get("xf") is Transform3D else (cine_stage(tl.stage) if not tl.stage.is_empty() else Transform3D(Basis.IDENTITY, roam_position()))
 	if xf == null:
+		if adopt != null:
+			adopt.queue_free()
 		flash_hint("Không tìm được chỗ trống để diễn cinematic %s" % tl.slot)
 		return null
 	var p := CinePlayer.new()
 	p.name = "CinePlayer"
 	add_child(p)
-	if not p.setup(tl, xf, opts).is_empty():
-		p.queue_free()
-		return null
+	if adopt != null:
+		adopt.reparent(p, false)   # freed with the player; setup moves its actors under the stage
+	cine_player = p
 	_cine_saved = {"tod": tod_preset, "vis": {}, "proc": {}, "cam": get_viewport().get_camera_3d()}
+	get_tree().paused = true   # the game freezes now (also through the fade)
+	var fx: Node = get_node_or_null("/root/GameFX")
+	if fx and fx.has_method("music_stop"):
+		fx.call("music_stop", true)   # before the time of day changes, so the other roam track is not started for nothing
+	p.finished.connect(_on_cine_finished.bind(tl.slot), CONNECT_ONE_SHOT)
+	var go: Callable = _cine_go.bind(p, tl, xf, o)
+	if bool(opts.get("fade", not bool(opts.get("manual", false)))):
+		p.preroll(tl, CinePlayer.FADE_S, go)
+	else:
+		go.call()
+	return p
+
+
+## Setup and start (under the black frame when faded): the actors, props and camera, then the world hidden, the crowd and
+## traffic stopped, the stage's time of day and exposure.
+func _cine_go(p: CinePlayer, tl: CineTimeline, xf: Transform3D, o: Dictionary) -> void:
+	if not is_instance_valid(p) or cine_player != p:
+		return
+	var ob: Variant = o.get("on_black")
+	if ob is Callable and (ob as Callable).is_valid():
+		(ob as Callable).call()
+	o.erase("on_black")
+	if not p.setup(tl, xf, o).is_empty():
+		p.call("_finish", true)   # validated in play_cinematic: not expected; the host restores as after a skip
+		return
 	for n: Node in [player, bike, hint_holder, tod_holder, stats_holder, vice_hud, stamina_bar, map_overlay, pedestrians, traffic, weapon_hud, wanted, classic_stars]:
 		if n and "visible" in n:
 			_cine_saved["vis"][n] = n.visible
@@ -1707,9 +1939,6 @@ func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 		if n2:
 			_cine_saved["proc"][n2] = n2.process_mode
 			n2.process_mode = Node.PROCESS_MODE_DISABLED
-	var fx: Node = get_node_or_null("/root/GameFX")
-	if fx and fx.has_method("music_stop"):
-		fx.call("music_stop", true)   # before the time of day changes, so the other roam track is not started for nothing
 	set_time_of_day(String(tl.stage.get("tod", tod_preset)))
 	# stage "exposure" / "ambient": hệ số sáng riêng cho cinematic (đêm vẫn đọc rõ người), lưu giá trị gốc để trả lại
 	var we: WorldEnvironment = get_node_or_null("WorldEnvironment") as WorldEnvironment
@@ -1718,11 +1947,7 @@ func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 		_cine_saved["env"] = [env, env.tonemap_exposure, env.ambient_light_energy]
 		env.tonemap_exposure *= float(tl.stage.get("exposure", 1.0))
 		env.ambient_light_energy *= float(tl.stage.get("ambient", 1.0))
-	get_tree().paused = true
-	cine_player = p
-	p.finished.connect(_on_cine_finished.bind(tl.slot), CONNECT_ONE_SHOT)
 	p.start()
-	return p
 
 
 func _on_cine_finished(skipped: bool, slot: String) -> void:

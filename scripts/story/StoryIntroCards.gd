@@ -183,4 +183,5 @@ func update(r: float) -> void:
 
 func _process(_d: float) -> void:
 	if player and is_instance_valid(player):
+		visible = not bool(player.get("prerolling"))   # hidden while the host fades to black before the cinematic
 		update(float(player.get("r")))
