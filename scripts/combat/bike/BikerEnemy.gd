@@ -21,8 +21,8 @@
 #            alongside for THROW_BACK_S (the kick window); a kick drops both;
 #   heavy    a bigger, louder tuned bike, 3 kicks, a shoulder ram;
 #   pickup   the gang's pickup truck: cannot be kicked; paces one lane over; horn + headlight flash for 1.0 s, then a
-#            side ram whose line and speed lock 0.5 s before it (brake, speed up or steer out); PICKUP_STRIKES dodged rams
-#            (or a car) and it loses it and hits a pole (cause "pole": a takedown);
+#            side ram whose line and speed lock 0.5 s before it (brake, speed up or steer out); PICKUP_STRIKES dodged rams,
+#            its PICKUP_MAX_RAMS-th ram (or a car) and it loses it and hits a pole (cause "pole": a takedown);
 #   police   (BikeChase.spawn_police) cannot be kicked, never crashes; rams a biker (crash "police") or the player.
 # Traffic: every AVOID_EVERY frames it looks for the nearest car in its path and passes on the free side (within the
 # road) or brakes behind it; touching a car anyway (a kicked biker wobbling into one) is a crash.
@@ -666,12 +666,15 @@ func _think(delta: float) -> void:
 						if kind == "pickup" and res != "hit":
 							strikes += 1
 						elif kind == "pickup":
+							if attacks >= BikeCombatData.PICKUP_MAX_RAMS:
+								crash("pole", ch.p_right * side * 3.0 + vel.normalized() * 2.0)
+								return
 							_enter(St.RECOVER)   # it connected: it bounces off instead of driving through the bike
 							_drive(delta, slot_target(), max_rel, BikeCombatData.POS_GAIN)
 							return
 				if st_t >= atk:
 					pose_w = 0.0
-					if kind == "pickup" and strikes >= BikeCombatData.PICKUP_STRIKES:
+					if kind == "pickup" and (strikes >= BikeCombatData.PICKUP_STRIKES or attacks >= BikeCombatData.PICKUP_MAX_RAMS):
 						crash("pole", ch.p_right * side * -3.0 + vel.normalized() * 2.0)
 						return
 					_enter(St.RECOVER)
@@ -789,10 +792,14 @@ func _police_pace(delta: float) -> Vector2:
 				if e != null and is_instance_valid(e) and e.is_active() and e.kind != "pickup" and e.pos2.distance_to(pos2) < bd:
 					bd = e.pos2.distance_to(pos2)
 					best = e
-			if best != null and _rng.randf() >= BikeCombatData.POLICE_PLAYER_CHANCE:
+			var at_player: bool = ch.police_player_ok() and (best == null or _rng.randf() < BikeCombatData.POLICE_PLAYER_CHANCE)
+			if best != null and not at_player:
 				ram_target = best
-			else:
+			elif at_player:
+				ch.police_player_t = BikeCombatData.POLICE_PLAYER_GAP_S
 				side = 1.0 if (pos2 - ch.p_pos).dot(ch.p_right) >= 0.0 else -1.0
+			else:
+				return slot_target()          # nobody to ram this time
 			_approach_t = BikeCombatData.POLICE_APPROACH_S
 		return slot_target()
 	_approach_t -= delta

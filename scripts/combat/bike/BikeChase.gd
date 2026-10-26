@@ -213,6 +213,9 @@ var _air: Array = []                     # bikers airborne with the player
 var helmets: Array = []                  # pooled thrown helmets {"node", "mark", "t", "from", "to", "active", "by"}
 var helmets_thrown: int = 0
 var helmets_hit: int = 0
+var attack_starts: int = 0               # attack tokens granted (telemetry: tests, the tuning bots)
+var police_player_t: float = 0.0         # the police's next go at the player waits this long
+var attack_hits: int = 0                 # enemy attacks that cost stability
 var _prev_speed: float = 0.0
 var _horn: AudioStream = null
 
@@ -341,25 +344,27 @@ func wave_opt(i: int, key: String, def: Variant) -> Variant:
 	return (wave_opts[i] as Dictionary).get(key, def)
 
 
-## The Day 2 layout (spec 2026-10-27 D2X-4: 14 vehicles in 3 waves). W1 bursts out of the side roads at the opening drop:
-## 3 riders and a stick. W2 (by s 1000 at the latest): 2 riders, a stick, a thrower and a heavy. W3 after the Sói Xám cameo,
-## 4 attackers at once: 2 riders, a heavy, a thrower and the pickup. Owner-tunable: kinds, hp, aggression, delays.
+## The Day 2 layout (spec 2026-10-27 D2X-4: 14 vehicles in 3 waves; tuned with tests/sim_bike_chase_d2.gd, see the plan).
+## W1 bursts out of the side roads at the opening drop: 3 riders and a stick, a 4th rider later. W2 (by s 1000 at the
+## latest): reinforcements over ~20 s (2 riders, a heavy, a thrower, a stick) so the fight runs to the cameo. W3 after the
+## Sói Xám cameo, 4 attackers at once: the pickup, 2 riders, a thrower and a heavy. Owner-tunable: kinds, hp, aggression,
+## delays (s after the wave start).
 static func day2_waves() -> Array:
 	return [
-		[{"from": "side", "lane": -1, "opts": {"label": "Sói Đen", "aggression": 0.55}},
-		{"from": "side", "lane": 1, "opts": {"label": "Sói Lửa", "hp": 2, "aggression": 0.6}},
+		[{"from": "side", "lane": -1, "opts": {"label": "Sói Đen", "aggression": 0.6}},
+		{"from": "side", "lane": 1, "opts": {"label": "Sói Lửa", "hp": 2, "aggression": 0.65}},
 		{"from": "side", "lane": -1, "delay": 0.4, "opts": {"kind": "stick", "label": "Sói Gậy", "aggression": 0.6}},
-		{"from": "behind", "lane": 1, "delay": 2.5, "opts": {"label": "Sói Còi", "aggression": 0.4}}],
+		{"from": "behind", "lane": 1, "delay": 6.0, "opts": {"label": "Sói Còi", "hp": 2, "aggression": 0.5}}],
 		[{"from": "behind", "lane": 1, "opts": {"label": "Sói Bạc", "hp": 2, "aggression": 0.7}},
-		{"from": "behind", "lane": -1, "delay": 0.8, "opts": {"kind": "heavy", "label": "Sói Bự", "aggression": 0.6}},
-		{"from": "ahead", "lane": 0, "opts": {"kind": "thrower", "label": "Sói Ném", "aggression": 0.6}},
-		{"from": "behind", "lane": 1, "delay": 3.0, "opts": {"kind": "stick", "label": "Sói Gậy 2", "aggression": 0.7}},
-		{"from": "behind", "lane": -1, "delay": 5.0, "opts": {"label": "Sói Phó", "hp": 2, "aggression": 0.8}}],
+		{"from": "behind", "lane": -1, "delay": 1.0, "opts": {"kind": "heavy", "label": "Sói Bự", "aggression": 0.6}},
+		{"from": "ahead", "lane": 0, "delay": 7.0, "opts": {"kind": "thrower", "label": "Sói Ném", "aggression": 0.7}},
+		{"from": "behind", "lane": 1, "delay": 13.0, "opts": {"kind": "stick", "label": "Sói Gậy 2", "hp": 2, "aggression": 0.7}},
+		{"from": "behind", "lane": -1, "delay": 19.0, "opts": {"label": "Sói Phó", "hp": 2, "aggression": 0.8}}],
 		[{"from": "behind", "lane": 1, "opts": {"kind": "pickup", "label": "Bán Tải Sói", "aggression": 0.6}},
-		{"from": "behind", "lane": -1, "delay": 0.6, "opts": {"label": "Sói Nanh", "hp": 2, "aggression": 0.8}},
-		{"from": "ahead", "lane": 0, "delay": 1.0, "opts": {"kind": "thrower", "label": "Sói Ném 2", "aggression": 0.7}},
-		{"from": "behind", "lane": -1, "delay": 2.5, "opts": {"kind": "heavy", "label": "Sói Bự 2", "aggression": 0.7}},
-		{"from": "behind", "lane": 1, "delay": 4.0, "opts": {"label": "Sói Vuốt", "hp": 2, "aggression": 0.9}}]]
+		{"from": "ahead", "lane": 0, "opts": {"kind": "thrower", "label": "Sói Ném 2", "aggression": 0.75}},
+		{"from": "behind", "lane": -1, "delay": 0.6, "opts": {"label": "Sói Nanh", "aggression": 0.8}},
+		{"from": "behind", "lane": -1, "delay": 5.0, "opts": {"kind": "heavy", "label": "Sói Bự 2", "aggression": 0.7}},
+		{"from": "behind", "lane": 1, "delay": 6.0, "opts": {"label": "Sói Vuốt", "aggression": 0.9}}]]
 
 
 ## The Day 2 wave options matching day2_waves().
@@ -445,8 +450,7 @@ func retry() -> void:
 	if hud:
 		hud.show_hud()
 	var cw: int = int(keep["wave"])
-	if cameo_state != "done" or not bool(wave_opt(cw, "after_cameo", false)):
-		cameo_state = ""                     # the cameo comes again unless its wave is the checkpoint
+	cameo_state = "done" if bool(wave_opt(cw, "after_cameo", false)) else ""   # the cameo comes again unless past it
 	if set_pieces:
 		set_pieces.rearm(float(keep.get("s", -INF)))
 	_start_wave(cw)
@@ -523,6 +527,7 @@ func request_token(e: Object) -> bool:
 		return false
 	_holders.append(e)
 	_last_attack_t = _t
+	attack_starts += 1
 	return true
 
 
@@ -551,6 +556,7 @@ func enemy_kick(b: BikerEnemy) -> String:
 	var cause: String = {"stick": "stick", "heavy": "ram", "pickup": "pickup", "police": "police"}.get(b.kind, "kick")
 	if not combat.damage(float(b.kp.get("dmg", BikeCombatData.ENEMY_KICK_DMG)), cause, 1 if lat > 0.0 else -1):
 		return "ignored"
+	attack_hits += 1
 	if hud:
 		var t: String = {"stick": BikeCombatData.T_STICK_HIT, "heavy": BikeCombatData.T_HEAVY_HIT, "pickup": BikeCombatData.T_HEAVY_HIT}.get(b.kind, "")
 		if t != "":
@@ -959,6 +965,11 @@ func release_police() -> void:
 			e.leave_along = -90.0
 
 
+## The police may go for the player now (POLICE_PLAYER_GAP_S since the last time).
+func police_player_ok() -> bool:
+	return police_player_t <= 0.0
+
+
 func police_active() -> int:
 	var n: int = 0
 	for c: Variant in cops:
@@ -1061,6 +1072,7 @@ func _physics_process(delta: float) -> void:
 				_prev_speed = absf(bike.current_speed_ms)
 				return
 	_box_cd -= delta
+	police_player_t -= delta
 	_tick_jump(rdt)
 	for b: Variant in bikers:
 		if is_instance_valid(b):
@@ -1697,6 +1709,8 @@ func _end_opening_visuals() -> void:
 
 func _begin_cameo() -> void:
 	cameo_state = "running"
+	if auto_checkpoint and bike:              # a knock-off from here on retries at the next wave, not the cameo again
+		_cp = {"wave": wave + 1, "xf": bike.global_transform, "s": s_p}
 	if cameo and is_instance_valid(cameo):
 		cameo.queue_free()
 	cameo = BikeCameo.new()

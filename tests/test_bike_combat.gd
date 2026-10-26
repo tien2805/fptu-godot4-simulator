@@ -703,6 +703,10 @@ func _phase_a8(t: int) -> void:
 		chase = _arena_chase([2], true, {"auto_replay": false, "seed": 5}, {"hp": 2, "aggression": 0.0})
 		chase.combat.god = true
 		chase.start()
+		for b0: Variant in chase.bikers:          # Day 2 riders pace just out of kick reach: this geometry test keeps the
+			var e0: BikerEnemy = b0               # old in-reach slot to aim moving kicks at a flanker alongside
+			e0.kp = e0.kp.duplicate()
+			e0.kp["slot_lat"] = BikeCombatData.SLOT_LAT
 		_ride(true)
 		autopilot = true
 		tangent_mode = false
@@ -1300,7 +1304,7 @@ func _phase_c5(t: int) -> void:
 		mark["hit"] = true
 		var lead: float = float(frames - int(mark["f0"])) / 60.0
 		_check(lead >= 0.95, "pickup: the ram lands %.2f s after the horn" % lead)
-		_check(is_equal_approx(chase.combat.stability, float(mark["stab0"]) - 35.0), "pickup: the side ram costs 35 (%.1f)" % chase.combat.stability)
+		_check(is_equal_approx(chase.combat.stability, float(mark["stab0"]) - float(BikeCombatData.KINDS["pickup"]["dmg"])), "pickup: the side ram costs %.0f (%.1f)" % [float(BikeCombatData.KINDS["pickup"]["dmg"]), chase.combat.stability])
 	if t == 420:
 		_check(mark.has("hit") and mark.has("flash"), "pickup: horn and headlight flash, then the ram hits a rider going straight")
 	for k: int in 2:

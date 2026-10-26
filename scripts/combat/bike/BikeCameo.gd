@@ -112,7 +112,7 @@ func begin() -> void:
 		lat = float(opts["lat"])
 	else:
 		lat = -1.6 if ch.lat_room(-1.0) >= ch.lat_room(1.0) else 1.6
-	along = -30.0
+	along = -24.0
 	floor_y = ch.bike.global_position.y + BikeChase.BIKE_FLOOR_OFFSET
 	phase = "approach"
 	_place()

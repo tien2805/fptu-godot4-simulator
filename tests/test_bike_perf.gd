@@ -2,7 +2,9 @@
 # Phase C performance gate for the bike chase (spec C-D13, "bike-chase case"): FreeRoam with the full daytime crowd and
 # traffic (worse than the Day 2 night: 30 % traffic), the player riding Nguyễn Xiển on autopilot (gas held, steered
 # along the chase route), a BikeChase of 6 AI bikers in one wave (god mode, tough bikers that wobble and recover), a kick
-# every 0.6 s, then one measured window of 120 physics frames against two baselines:
+# every 0.6 s, then one measured window of 120 physics frames against two baselines. Day 2 (spec 2026-10-27 D2X-12): the
+# bikers are the new kinds (2 riders, a stick, a heavy, a thrower, the pickup) on the chase profile, and the window runs
+# with set pieces live (melons rolling, 2 police riders, the wrong-way cones, a drift zone):
 #   B1 the chase disabled (its bikers, PlayerBikeCombat and HUD with it; crowd, traffic, weapons, wanted level still on):
 #      the chase's own cost;
 #   B2 also the crowd, traffic, weapons, wanted level and emotes disabled: chase + crowd + traffic.
@@ -15,6 +17,13 @@ extends SceneTree
 const GATE_MS: float = 3.0
 const WINDOW: int = 120
 const ENGAGE: int = 330                  # frames after the start before measuring (bikers caught up, traffic refilled)
+## Day 2 set pieces live in the window (the start at s 60; ~5.5 s in the player is near s 150).
+const PERF_PIECES: Array = [
+	{"kind": "police", "s": 80.0, "end_s": 900.0, "dur": 25.0},
+	{"kind": "drift", "s": 130.0, "len": 60.0},
+	{"kind": "wrong_way", "s": 140.0, "len": 250.0},
+	{"kind": "melons", "s": 175.0},
+]
 
 
 class PhysTail extends Node:
@@ -136,10 +145,12 @@ func _on_physics() -> void:
 				chase = BikeChase.new()
 				chase.name = "PerfChase"
 				roam.add_child(chase)
-				chase.setup({"roam": roam, "start_s": 60.0, "seed": 21})
+				chase.setup({"roam": roam, "start_s": 60.0, "seed": 21, "profile": BikeCombatData.CHASE_PROFILE, "takedown_cam": false,
+					"set_pieces": PERF_PIECES})
 				var w: Array = []
+				var kinds: Array[String] = ["rider", "stick", "heavy", "rider", "thrower", "pickup"]
 				for i: int in 6:
-					w.append({"lane": [-1, 1, 0][i % 3], "gap": float(i / 3) * 4.0, "opts": {"hp": 99, "aggression": 0.8}})
+					w.append({"lane": [-1, 1, 0][i % 3], "gap": float(i / 3) * 4.0, "opts": {"kind": kinds[i], "hp": 99, "aggression": 0.8}})
 				chase.add_wave(w)
 				chase.combat.god = true
 				chase.start()
@@ -155,7 +166,8 @@ func _on_physics() -> void:
 				for b: Variant in chase.bikers:
 					if (b as BikerEnemy).pos2.distance_to(chase.p_pos) < 20.0:
 						near += 1
-				print("  chase on Nguyễn Xiển s %.0f at %.1f m/s: %d bikers riding (%d within 20 m), %d pedestrians, %d impostors, %d vehicles active" % [chase.s_p, chase.p_vel.length(), _riding(), near, sp.pedestrians().size(), sp.impostors.count(), tr.active_count()])
+				print("  chase on Nguyễn Xiển s %.0f at %.1f m/s: %d bikers riding (%d within 20 m), %d pedestrians, %d impostors, %d vehicles active; set pieces %s, melons rolling %s, police %d" % [chase.s_p, chase.p_vel.length(), _riding(), near, sp.pedestrians().size(), sp.impostors.count(), tr.active_count(), str(chase.set_pieces.counts), str(chase.set_pieces.melon_t >= 0.0), chase.police_active()])
+				_check(chase.set_pieces.melon_t >= 0.0 and chase.police_active() == 2 and chase.set_pieces.fired("wrong_way") == 1, "the window runs with melons rolling, 2 police and the wrong way (%s)" % str(chase.set_pieces.counts))
 				_check(chase.state == "running" and _riding() >= 5 and near >= 4, "the 6-biker chase is engaged (%s, %d riding, %d near)" % [chase.state, _riding(), near])
 				_check(chase.p_vel.length() > 12.0, "the player rides at speed (%.1f m/s)" % chase.p_vel.length())
 				kicks0 = chase.combat.kicks
@@ -172,7 +184,8 @@ func _on_physics() -> void:
 					info.append("%s %s%s avoids %d" % [e.label, e.state_name(), (" (" + e.crash_cause + (", kicked" if e.kicked_by_player else "") + ")") if e.is_down() else "", e.avoids])
 				print("  bikers: ", ", ".join(info))
 				_check(chase.combat.kicks > kicks0, "the player kicked during the window")
-				_check(chase.max_attackers_seen <= 2, "never more than 2 attackers (max %d)" % chase.max_attackers_seen)
+				_check(chase.max_attackers_seen <= BikeCombatData.MAX_ATTACKERS, "never more than %d attackers (max %d)" % [BikeCombatData.MAX_ATTACKERS, chase.max_attackers_seen])
+				chase.end_slow_motion()
 				chase.process_mode = Node.PROCESS_MODE_DISABLED
 				_next("b1")
 		"b1":

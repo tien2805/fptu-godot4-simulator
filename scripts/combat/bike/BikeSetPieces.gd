@@ -193,8 +193,8 @@ func tick(delta: float, _rdt: float) -> void:
 					if s >= ps and s <= ps + ln and ch.d_p * ch.dir_sign > 0.35 and _cone_cd <= 0.0:
 						_cone_cd = BikeCombatData.CONE_CD
 						cone_hits += 1
-						ch.combat.damage(BikeCombatData.CONE_DMG, "cones")
-						ch.bike.current_speed_ms *= 0.85
+						if ch.combat.damage(BikeCombatData.CONE_DMG, "cones"):   # the slowdown comes with the damage (not in god mode)
+							ch.bike.current_speed_ms *= 0.85
 						ch.cue("tray_clang", ch.bike.global_position, -2.0)
 						if ch.hud:
 							ch.hud.popup(BikeCombatData.T_CONES, CombatHUD.WARN, 0.7)
@@ -256,8 +256,8 @@ func tick(delta: float, _rdt: float) -> void:
 						p["phase"] = "done"
 						if not bool(p["drifted"]) and float(p["vmax"]) > BikeCombatData.DRIFT_FAST:
 							curb_hits += 1
-							ch.combat.damage(BikeCombatData.CURB_DMG, "curb")
-							ch.bike.current_speed_ms *= BikeCombatData.CURB_SLOW
+							if ch.combat.damage(BikeCombatData.CURB_DMG, "curb"):
+								ch.bike.current_speed_ms *= BikeCombatData.CURB_SLOW
 							ch.bike.add_camera_shake(0.6)
 							ch.sparks(ch.bike.global_position + Vector3(0.0, 0.2, 0.0), Vector3.UP)
 							ch.cue("impact_medium", ch.bike.global_position, 0.0)
@@ -413,8 +413,8 @@ func _place_truck() -> void:
 	var tr := Vector2(-t.y, t.x)
 	if absf(rel.dot(t)) < TRUCK_HALF.y + 0.9 and absf(rel.dot(tr)) < TRUCK_HALF.x + 0.4 and ch.combat.ram_cd <= 0.0:
 		ch.combat.ram_cd = BikeCombatData.RAM_COOLDOWN
-		ch.combat.damage(BikeCombatData.CRASH_DMG_MIN, "crash")
-		ch.bike.current_speed_ms = minf(ch.bike.current_speed_ms, truck_v * 0.8)
+		if ch.combat.damage(BikeCombatData.CRASH_DMG_MIN, "crash"):
+			ch.bike.current_speed_ms = minf(ch.bike.current_speed_ms, truck_v * 0.8)
 		ch.bike.add_camera_shake(0.6)
 
 
@@ -479,8 +479,8 @@ func _tick_melon_balls(delta: float) -> void:
 			melon_on[i] = 0
 			mm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ZERO), p))
 			melon_hits += 1
-			ch.combat.damage(BikeCombatData.MELON_DMG, "melon")
-			ch.bike.current_speed_ms *= 0.8
+			if ch.combat.damage(BikeCombatData.MELON_DMG, "melon"):
+				ch.bike.current_speed_ms *= 0.8
 			ch.bike.add_camera_shake(0.5)
 			_splat(p)
 			if ch.hud:

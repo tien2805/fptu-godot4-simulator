@@ -51,8 +51,8 @@ const BACK_ALONG: float = 8.0            # reserves behind ...
 const BACK_LAT: float = 0.65             # ... staggered just off the player's line (clear of the traffic lanes)
 const ROAD_HALF: float = 3.6             # default half width the AI keeps to on the route
 const SLOT_SQUEEZE: float = 0.8          # a flank slot clamped by more than this has no room: BACK instead
-const PACE_MIN: float = 1.2
-const PACE_MAX: float = 2.8
+const PACE_MIN: float = 0.9            # tuned 2026-10-27 (Day 2 bots): flankers pace, then attack
+const PACE_MAX: float = 2.2
 const WINDUP_S: float = 0.5              # telegraph before the kick
 const ENEMY_KICK_S: float = 0.4
 const ENEMY_HIT_AT: float = 0.15         # into the kick
@@ -101,35 +101,38 @@ const REPLAY_LEN: float = 5.0
 ## D2X-2: the player's bike while the Day 2 chase runs (100 km/h, 110 in a slipstream); BikeChase opt "profile".
 const CHASE_PROFILE: Dictionary = {"max_speed_ms": 27.8, "slipstream_max_ms": 30.6, "engine_accel": 14.5, "air_drag": 0.0125}
 ## D2X-4 enemy kinds. hp: kicks to crash; dmg: stability per hit; windup: telegraph (s); reach / along: the hit box beside
-## the player (m); lock: the attack line (and with lock_speed the speed too: braking dodges) is fixed this long before the
+## the player (m; tuned 2026-10-27 so a flanker paces just out of kick reach: the kick is a counter in its wind-up, or
+## a steer toward it); lock: the attack line (and with lock_speed the speed too: braking dodges) is fixed this long before the
 ## attack starts; swerve: lateral distance of the attack line (negative = past the player's line); slot_lat: pacing
 ## distance to the side; top: top speed (m/s); wobble / push: a kick's wobble time and shove; atk: attack duration (s).
 const KINDS: Dictionary = {
 	"rider": {"hp": 1, "dmg": 22.0, "windup": 0.5, "reach": 1.75, "along": 1.5, "lock": 0.2, "lock_speed": false, "swerve": 1.0,
-		"slot_lat": 1.95, "top": 32.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
+		"slot_lat": 2.9, "top": 32.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
 	"stick": {"hp": 1, "dmg": 25.0, "windup": 0.5, "reach": 2.5, "along": 1.15, "lock": 0.35, "lock_speed": true, "swerve": 1.6,
-		"slot_lat": 2.2, "top": 32.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
+		"slot_lat": 3.0, "top": 32.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
 	"thrower": {"hp": 1, "dmg": 15.0, "windup": 0.6, "reach": 1.6, "along": 1.6, "lock": 0.0, "lock_speed": false, "swerve": 2.0,
-		"slot_lat": 2.4, "top": 32.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
+		"slot_lat": 3.2, "top": 33.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
 	"heavy": {"hp": 3, "dmg": 30.0, "windup": 0.6, "reach": 1.8, "along": 1.8, "lock": 0.25, "lock_speed": false, "swerve": 1.05,
-		"slot_lat": 2.1, "top": 29.5, "kickable": true, "wobble": 0.35, "push": 2.0, "atk": 0.45},
+		"slot_lat": 2.9, "top": 29.5, "kickable": true, "wobble": 0.35, "push": 2.0, "atk": 0.45},
 	"pickup": {"hp": 1, "dmg": 35.0, "windup": 1.0, "reach": 1.55, "along": 2.9, "lock": 0.5, "lock_speed": true, "swerve": -0.3,
 		"slot_lat": 3.3, "top": 31.0, "kickable": false, "wobble": 0.0, "push": 0.0, "atk": 0.75},
-	"police": {"hp": 1, "dmg": 18.0, "windup": 0.5, "reach": 1.75, "along": 1.6, "lock": 0.2, "lock_speed": false, "swerve": 1.0,
+	"police": {"hp": 1, "dmg": 12.0, "windup": 0.5, "reach": 1.75, "along": 1.6, "lock": 0.2, "lock_speed": false, "swerve": 1.0,
 		"slot_lat": 2.0, "top": 33.0, "kickable": false, "wobble": 0.0, "push": 0.0, "atk": 0.4},
 }
 const KIND_NAMES: Dictionary = {"rider": "", "stick": "Sói Gậy", "thrower": "Sói Ném", "heavy": "Sói Bự", "pickup": "Bán Tải Sói",
 	"police": "Cảnh sát"}
-const THROW_AHEAD: float = 9.0           # thrower: paces this far ahead ...
-const THROW_BACK_S: float = 2.8          # ... and after each throw drops back alongside for this long (the kick window)
+const THROW_AHEAD: float = 7.5           # thrower: paces this far ahead ...
+const THROW_BACK_S: float = 2.2          # ... and after each throw drops back alongside for this long (the kick window)
 const THROW_FLIGHT: float = 0.8          # helmet flight = the red road marker's warning (s)
 const THROW_R: float = 1.6               # the marker's radius: inside it when the helmet lands = hit
 const THROW_ARC: float = 3.5             # helmet arc height (m)
-const PICKUP_STRIKES: int = 2            # dodged rams before the pickup loses it and hits a pole (takedown)
+const PICKUP_STRIKES: int = 2            # dodged rams before the pickup loses it and hits a pole (takedown) ...
+const PICKUP_MAX_RAMS: int = 3           # ... and it loses it after its 3rd ram anyway
 const PICKUP_HALF := Vector2(0.95, 2.6)  # pickup half width / half length (m)
 const PICKUP_RECOVER_S: float = 1.4
 const POLICE_RAM_EVERY := Vector2(2.4, 3.8)
-const POLICE_PLAYER_CHANCE: float = 0.35
+const POLICE_PLAYER_CHANCE: float = 0.2
+const POLICE_PLAYER_GAP_S: float = 6.0     # the police go for the player at most once in this long (both cops)
 const POLICE_APPROACH_S: float = 2.5
 const POLICE_BEHIND: float = 7.0
 ## D2X-5 takedowns: crash causes that count (a plain kick crash does not); 0.5 s at 0.3x and a side camera cut, at most
@@ -182,15 +185,15 @@ const DAY2_SET_PIECES: Array = [
 	{"kind": "drift", "s": 910.0, "len": 58.0},
 	{"kind": "wrong_way", "s": 1000.0, "len": 250.0},
 	{"kind": "drift", "s": 1266.0, "len": 30.0},
-	{"kind": "barrier", "s": 1720.0},
 	{"kind": "police", "s": 1800.0, "end_s": 2230.0, "dur": 25.0},
+	{"kind": "barrier", "s": 1950.0},
 ]
 ## D2X-7: Sói Xám rides past after wave 2 once the player is past CAMEO_S (at CAMEO_FORCE_S anyway).
 const CAMEO_S: float = 1470.0
 const CAMEO_FORCE_S: float = 1640.0
-const CAMEO_REL: float = 7.0             # he closes in at this much over the player ...
+const CAMEO_REL: float = 9.0             # he closes in at this much over the player ...
 const CAMEO_AWAY: float = 22.0           # ... and leaves on nitro at this much
-const CAMEO_TAUNT_S: float = 2.6
+const CAMEO_TAUNT_S: float = 2.3
 const CAMEO_PAINT := Color("#8E9AA6")
 const NITRO_FLAME := Color(0.25, 0.55, 1.0)
 
