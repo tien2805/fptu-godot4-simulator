@@ -72,6 +72,15 @@ const POLICE_NO_PROGRESS_S: float = 2.0
 const POLICE_GIVE_UP_S: float = 20.0        # a bike that has not got closer for this long (looping far away) stops
 const POLICE_MAX: int = 8
 const SIREN_MS: int = 166                   # red / blue swap
+# OB-D6: traffic lamps. Dark presets light the shared lamp materials (PropBuilder.set_traffic_lamps); cars and buses also
+# get a soft additive light pool on the road ahead, drawn only within LAMP_POOL_RANGE of the camera (visibility range).
+const DARK_PRESETS: Array[String] = ["night", "sunset", "dawn"]
+const LAMP_POOL_RANGE: float = 40.0
+const LAMP_POOL_FADE: float = 5.0
+const LAMP_POOL_COLOR := Color(1.0, 0.93, 0.76, 0.32)
+const LAMP_POOL: Dictionary = {Kind.CAR: [Vector2(3.0, 6.5), -5.3], Kind.BUS: [Vector2(3.4, 7.0), -7.3]}   # [size, centre z]
+static var _pool_mat: StandardMaterial3D = null
+static var _pool_meshes: Dictionary = {}
 
 signal police_arrived(idx: int, at: Vector3)
 
@@ -113,6 +122,7 @@ class Vehicle:
 	var no_prog_t: float = 0.0
 	var siren_r: Node3D = null           # cached siren lamps (police)
 	var siren_b: Node3D = null
+	var pool: MeshInstance3D = null      # OB-D6 light pool (CAR / BUS), null for scooters
 
 
 var md: MapData
@@ -130,6 +140,7 @@ var lane_road := PackedInt32Array()
 var lane_exits: Array = []               # Array của Array[[lane, s]]
 var recycled: int = 0
 var night: bool = false
+var lamps_on: bool = false               # OB-D6: lamps lit (dark time-of-day preset)
 var _spawn_hash: Dictionary = {}         # Vector2i -> Array[[lane, s]]
 var _rng := RandomNumberGenerator.new()
 var _check_t: float = 0.0
@@ -158,8 +169,10 @@ func setup(map_data: MapData, player_node: Node3D, opts: Dictionary = {}) -> voi
 		for k: int in range(KIND_COUNT.size()):
 			for i: int in range(KIND_COUNT[k]):
 				kinds.append(k)
+	lamps_on = roam != null and is_dark_preset(String(roam.get("tod_preset")))
 	for kind: Variant in kinds:
 		vehicles.append(_make_vehicle(int(kind)))
+	set_night_lamps(lamps_on)
 	night = _is_night()
 	_fill_initial()
 
@@ -210,7 +223,7 @@ func _make_vehicle(kind: int) -> Vehicle:
 	match kind:
 		Kind.MOTO:
 			var paint: Color = FPTUCampusBuilder.BIKE_PAINTS[_rng.randi() % FPTUCampusBuilder.BIKE_PAINTS.size()]
-			PropBuilder.build_scooter(b, Vector3.ZERO, 0.0, paint, {"baked": true, "name": "Scooter"})
+			PropBuilder.build_scooter(b, Vector3.ZERO, 0.0, paint, {"baked": true, "name": "Scooter", "traffic_lamps": true})
 			var ro: Dictionary = {"seed": _rng.randi(), "helmet_color": HELMETS[_rng.randi() % HELMETS.size()]}
 			if _rng.randf() < 0.3:
 				ro["backpack"] = true
@@ -221,9 +234,11 @@ func _make_vehicle(kind: int) -> Vehicle:
 			PropBuilder.build_bus(b, _rng.randf() < 0.5, true)
 		Kind.POLICE:
 			c.police = true
-			PropBuilder.build_scooter(b, Vector3.ZERO, 0.0, POLICE_PAINT, {"baked": true, "name": "Scooter"})
+			PropBuilder.build_scooter(b, Vector3.ZERO, 0.0, POLICE_PAINT, {"baked": true, "name": "Scooter", "traffic_lamps": true})
 			CharacterBuilder.build_baked_rider(b, Vector3(0.0, 0.32, 0.12), {"preset": "cop", "seed": _rng.randi()})
 			_add_siren(b)
+	if LAMP_POOL.has(kind):
+		c.pool = _add_lamp_pool(b, kind)
 	add_child(b)
 	c.body = b
 	_park(c)
@@ -248,6 +263,8 @@ func _park(c: Vehicle) -> void:
 	if smoke:
 		c.body.remove_child(smoke)
 		smoke.queue_free()
+	if c.pool:
+		c.pool.visible = lamps_on
 	c.body.visible = false
 	c.body.process_mode = Node.PROCESS_MODE_DISABLED
 	c.body.position = Vector3(0.0, -200.0, 0.0)
@@ -582,6 +599,8 @@ func hit_vehicle(idx: int, kind: String, from: Vector3) -> bool:
 		c.wreck_from = c.body.global_transform
 		var rel := Vector2(from.x, from.z) - c.pos
 		c.wreck_roll = 1.0 if rel.cross(c.dir) >= 0.0 else -1.0
+		if c.pool:
+			c.pool.visible = false           # no light pool flipping through the air
 		_add_smoke(c)
 		_rider_flees(c, from)
 		return true
@@ -836,6 +855,79 @@ func _add_siren(b: Node3D) -> void:
 		mi.material_override = m
 		mi.position = Vector3(-0.06 + 0.12 * float(k), 1.2, 0.75)
 		b.add_child(mi)
+
+
+# ===========================================================================
+# ĐÈN XE BAN ĐÊM (OB-D6)
+# ===========================================================================
+static func is_dark_preset(preset: String) -> bool:
+	return DARK_PRESETS.has(preset)
+
+
+## Lamps on (dark preset) / off (day, dim as before). Called once per time-of-day change (FreeRoam.set_time_of_day) and at
+## setup: switches the shared lamp materials and shows / hides the few light pools; no per-frame or per-material cost.
+func set_night_lamps(on: bool) -> void:
+	lamps_on = on
+	PropBuilder.set_traffic_lamps(on)
+	for v: Vehicle in vehicles:
+		if v.pool:
+			v.pool.visible = on and v.wreck_t < 0.0
+
+
+func _exit_tree() -> void:
+	PropBuilder.set_traffic_lamps(false)     # static state: Stage 1 / the menu keep the daytime look
+
+
+func _add_lamp_pool(b: Node3D, kind: int) -> MeshInstance3D:
+	var spec: Array = LAMP_POOL[kind]
+	var mi := MeshInstance3D.new()
+	mi.name = "LampPool"
+	mi.mesh = _lamp_pool_mesh(kind, spec[0])
+	mi.material_override = _lamp_pool_material()
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visibility_range_end = LAMP_POOL_RANGE
+	mi.visibility_range_end_margin = LAMP_POOL_FADE
+	mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF   # fade out, no pop from the fast bike
+	mi.position = Vector3(0.0, 0.06, float(spec[1]))
+	mi.visible = lamps_on
+	b.add_child(mi)
+	return mi
+
+
+static func _lamp_pool_mesh(kind: int, size: Vector2) -> PlaneMesh:
+	if _pool_meshes.has(kind):
+		return _pool_meshes[kind]
+	var pm := PlaneMesh.new()
+	pm.size = size
+	_pool_meshes[kind] = pm
+	return pm
+
+
+## Unshaded additive quad, code-built radial falloff brightest at the bumper end (+Z = UV v 1). Tagged vice_done so the
+## art-style pass leaves it alone.
+static func _lamp_pool_material() -> StandardMaterial3D:
+	if _pool_mat:
+		return _pool_mat
+	var g := Gradient.new()
+	g.set_color(0, Color(1.0, 1.0, 1.0, 1.0))
+	g.set_color(1, Color(1.0, 1.0, 1.0, 0.0))
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.width = 64
+	tex.height = 64
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 1.0)
+	tex.fill_to = Vector2(0.5, 0.0)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	m.albedo_color = LAMP_POOL_COLOR
+	m.albedo_texture = tex
+	m.set_meta("vice_done", true)
+	_pool_mat = m
+	return m
 
 
 func _siren(c: Vehicle) -> void:

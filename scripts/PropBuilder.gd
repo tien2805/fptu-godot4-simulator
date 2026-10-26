@@ -4,6 +4,8 @@
 #   build_scooter(parent, pos, yaw, paint, opts)      xe tay ga ~50 chi tiết (bánh có lốp/mâm/nan hoa, phuộc, yếm, sàn,
 #                                                     thân sau tiện, yên da, baga, đèn, biển số, ống xả, ghi-đông, gương…)
 #                                                     opts.baked = true → gộp thành 1 MeshInstance3D (xe NPC, menu)
+#                                                     opts.traffic_lamps = true → đèn pha / hậu dùng chung traffic_lamp()
+#   traffic_lamp(kind), set_traffic_lamps(on)        đèn xe giao thông dùng chung, bật ban đêm (OB-D6); build_car / build_bus luôn dùng
 #   build_scooter_parts(root, front, rear, handlebar) lắp chi tiết vào các pivot có sẵn (PlayerBike.tscn)
 #   build_bus(parent, is_fbus)                        xe buýt F-Bus / VinBus (thân bo, dải kính + trụ, cửa, gương, đèn, 6 bánh)
 #   build_car(parent, paint, baked)                   ô tô con hatchback (xe chạy FreeRoam), mặt trước -Z
@@ -95,6 +97,54 @@ static func lens(color: Color, energy: float = 1.6) -> StandardMaterial3D:
 	m.emission_energy_multiplier = energy
 	CharacterBuilder._mat_cache[k] = m
 	return m
+
+## Đèn xe giao thông (OB-D6): 4 vật liệu dùng chung cho mọi xe chạy (ô tô / xe buýt: "head", "tail"; xe máy:
+## "moto_head", "moto_tail"). Năng lượng ban ngày = năng lượng lens() cũ thực tế (cache theo màu do xe máy menu tạo trước:
+## 1,8 / 1,2) nên ban ngày trông như trước (cả Màn 1).
+## Giữ trong biến tĩnh riêng (không phải CharacterBuilder._mat_cache, bị ViceStyle thay mới khi đổi phong cách) để
+## set_traffic_lamps() luôn tới được mọi xe đã bake trước đó. Năng lượng ngày > 0,5 nên ViceStyle không coi là soft emitter.
+const TRAFFIC_LAMPS: Dictionary = {
+	"head": [Color("#FFF4C8"), 1.8, 4.5],        # [màu, năng lượng ngày, năng lượng đêm]
+	"tail": [Color("#E53935"), 1.2, 3.0],
+	"moto_head": [Color("#FFF4C8"), 1.8, 4.5],
+	"moto_tail": [Color("#E53935"), 1.2, 3.0],
+}
+static var _traffic_lamp_mats: Dictionary = {}
+static var _traffic_lamps_lit: bool = false
+
+static func traffic_lamp(kind: String) -> StandardMaterial3D:
+	if _traffic_lamp_mats.has(kind):
+		return _traffic_lamp_mats[kind]
+	var spec: Array = TRAFFIC_LAMPS.get(kind, TRAFFIC_LAMPS["head"])
+	var m := StandardMaterial3D.new()
+	m.albedo_color = spec[0]
+	m.roughness = 0.15
+	m.emission_enabled = true
+	m.emission = spec[0]
+	m.emission_energy_multiplier = float(spec[2] if _traffic_lamps_lit else spec[1])
+	_traffic_lamp_mats[kind] = m
+	return m
+
+## Bật (đêm) / tắt (ngày, mờ như cũ) đèn của mọi xe giao thông: chỉ đổi 4 vật liệu dùng chung, không đụng từng xe.
+## Luôn ghi lại giá trị (không return sớm). Giá trị gốc ViceStyle đã lưu (meta "vice_orig", _unstylize ghi lại khi về
+## đồ hoạ cổ điển) cũng được cập nhật theo trạng thái hiện tại: không thì năng lượng đêm lưu lúc chuyển kiểu sẽ quay lại
+## ban ngày (vd. đêm FreeRoam vice -> menu đổi cổ điển -> đèn xe buýt Màn 1 sáng rực).
+static func set_traffic_lamps(on: bool) -> void:
+	_traffic_lamps_lit = on
+	for kind: String in TRAFFIC_LAMPS.keys():
+		var spec: Array = TRAFFIC_LAMPS[kind]
+		var m: StandardMaterial3D = traffic_lamp(kind)
+		var e: float = float(spec[2] if on else spec[1])
+		m.emission_enabled = true
+		m.emission_energy_multiplier = e
+		if m.has_meta("vice_orig"):
+			var o: Dictionary = m.get_meta("vice_orig")
+			o["emission_energy_multiplier"] = e
+			o["emission_enabled"] = true
+			m.set_meta("vice_orig", o)
+
+static func traffic_lamps_on() -> bool:
+	return _traffic_lamps_lit
 
 static func _textured(key: String, fallback: Color, albedo_file: String, normal_file: String, rough: float, metal: float, uv_scale: float) -> StandardMaterial3D:
 	if CharacterBuilder._mat_cache.has(key):
@@ -202,6 +252,7 @@ static func build_scooter_parts(root: Node3D, front: Node3D, rear: Node3D, bar: 
 	var dark: Material = black_plastic()
 	var chr: Material = chrome()
 	var stl: Material = steel()
+	var lamps: bool = bool(opts.get("traffic_lamps", false))   # xe giao thông: đèn dùng chung bật theo giờ (OB-D6)
 	# --- bánh. Pivot FrontWheel/RearWheel của PlayerBike.tscn đã xoay 90° quanh Z (dành cho hình trụ cũ) nên
 	#     hình bánh được đặt basis = nghịch đảo basis pivot → trục lốp luôn là trục X của xe, rotate_x quay đúng chiều.
 	build_wheel(front, Vector3.ZERO, 0.3, 0.1, 5, Color("#C9CED3"), front.basis.inverse())
@@ -250,7 +301,7 @@ static func build_scooter_parts(root: Node3D, front: Node3D, rear: Node3D, bar: 
 		_tube(root, Vector3(sx * 0.12, 0.72, 0.88), Vector3(sx * 0.14, 0.91, 0.9), 0.01, chr)
 	CharacterBuilder._box(root, Vector3(0.0, 0.92, 0.95), Vector3(0.3, 0.02, 0.02), chr)
 	CharacterBuilder._box(root, Vector3(0.0, 0.92, 0.82), Vector3(0.26, 0.015, 0.2), chr)
-	CharacterBuilder._box(root, Vector3(0.0, 0.71, 0.92), Vector3(0.22, 0.08, 0.05), lens(Color("#E53935"), 1.2))
+	CharacterBuilder._box(root, Vector3(0.0, 0.71, 0.92), Vector3(0.22, 0.08, 0.05), traffic_lamp("moto_tail") if lamps else lens(Color("#E53935"), 1.2))
 	var plate_mat: StandardMaterial3D = _textured("plate_59", Color.WHITE, "prop_plate_59.png", "", 0.5, 0.0, 1.0)
 	plate_mat.uv1_triplanar = false
 	var plate: MeshInstance3D = CharacterBuilder._mi(root, _quad_mesh(Vector2(0.19, 0.14)), plate_mat, Vector3(0.0, 0.58, 0.955), Vector3(0.0, 0.0, 0.0), Vector3.ONE)
@@ -269,7 +320,7 @@ static func build_scooter_parts(root: Node3D, front: Node3D, rear: Node3D, bar: 
 	CharacterBuilder._box(root, Vector3(-0.25, 0.02, 0.12), Vector3(0.06, 0.02, 0.05), dark)
 	# --- ghi-đông: đèn pha, táp-lô, tay lái, bao tay, phanh, gương, xi-nhan
 	CharacterBuilder._cyl(bar, Vector3(0.0, 0.0, -0.1), 0.12, 0.135, 0.16, pm, Vector3(PI * 0.5, 0.0, 0.0))
-	CharacterBuilder._cyl(bar, Vector3(0.0, 0.0, -0.185), 0.105, 0.105, 0.012, lens(Color("#FFF4C8"), float(opts.get("headlight_energy", 1.8))), Vector3(PI * 0.5, 0.0, 0.0))
+	CharacterBuilder._cyl(bar, Vector3(0.0, 0.0, -0.185), 0.105, 0.105, 0.012, traffic_lamp("moto_head") if lamps else lens(Color("#FFF4C8"), float(opts.get("headlight_energy", 1.8))), Vector3(PI * 0.5, 0.0, 0.0))
 	CharacterBuilder._cyl(bar, Vector3(0.0, 0.085, -0.02), 0.05, 0.05, 0.03, dark, Vector3(0.5, 0.0, 0.0))
 	CharacterBuilder._cyl(bar, Vector3(0.0, 0.1, -0.03), 0.04, 0.04, 0.004, CharacterBuilder._mat("dial", Color("#F4F4F4"), 0.4, 0.0, 0.3), Vector3(0.5, 0.0, 0.0))
 	CharacterBuilder._cyl(bar, Vector3(0.0, 0.05, 0.0), 0.015, 0.015, 0.72, chr, Vector3(0.0, 0.0, PI * 0.5))
@@ -336,8 +387,8 @@ static func build_bus(parent: Node3D, is_fbus: bool, baked: bool = true) -> Node
 	ws.rotation.x = -0.08
 	CharacterBuilder._box(root, Vector3(0.0, 2.1, 3.76), Vector3(2.2, 1.0, 0.05), glass)
 	for sx: float in [-1.0, 1.0]:
-		CharacterBuilder._box(root, Vector3(sx * 0.85, 1.05, -3.77), Vector3(0.45, 0.22, 0.06), lens(Color("#FFF4C8"), 1.4))
-		CharacterBuilder._box(root, Vector3(sx * 0.9, 1.15, 3.77), Vector3(0.35, 0.3, 0.06), lens(Color("#E53935"), 1.0))
+		CharacterBuilder._box(root, Vector3(sx * 0.85, 1.05, -3.77), Vector3(0.45, 0.22, 0.06), traffic_lamp("head"))
+		CharacterBuilder._box(root, Vector3(sx * 0.9, 1.15, 3.77), Vector3(0.35, 0.3, 0.06), traffic_lamp("tail"))
 		CharacterBuilder._box(root, Vector3(sx * 1.1, 0.75, -3.77), Vector3(0.25, 0.12, 0.06), lens(Color("#FFB300"), 0.6))
 		_tube(root, Vector3(sx * 1.25, 2.3, -3.6), Vector3(sx * 1.55, 2.35, -3.75), 0.025, dark)
 		CharacterBuilder._box(root, Vector3(sx * 1.58, 2.25, -3.75), Vector3(0.1, 0.4, 0.22), dark)
@@ -386,8 +437,8 @@ static func build_car(parent: Node3D, paint_color: Color, baked: bool = true) ->
 		CharacterBuilder._box(root, Vector3(sx * 0.79, 1.22, -0.78), Vector3(0.06, 0.58, 0.08), pm)      # trụ A
 		CharacterBuilder._box(root, Vector3(sx * 0.79, 1.22, 1.27), Vector3(0.06, 0.58, 0.12), pm)       # trụ C
 		CharacterBuilder._box(root, Vector3(sx * 0.86, 0.42, 0.0), Vector3(0.04, 0.16, 3.0), dark)       # ốp sườn
-		CharacterBuilder._box(root, Vector3(sx * 0.62, 0.78, -1.96), Vector3(0.34, 0.14, 0.04), lens(Color("#FFF4C8"), 1.4))
-		CharacterBuilder._box(root, Vector3(sx * 0.66, 0.85, 1.96), Vector3(0.28, 0.16, 0.04), lens(Color("#E53935"), 1.0))
+		CharacterBuilder._box(root, Vector3(sx * 0.62, 0.78, -1.96), Vector3(0.34, 0.14, 0.04), traffic_lamp("head"))
+		CharacterBuilder._box(root, Vector3(sx * 0.66, 0.85, 1.96), Vector3(0.28, 0.16, 0.04), traffic_lamp("tail"))
 		CharacterBuilder._box(root, Vector3(sx * 0.95, 1.1, -0.72), Vector3(0.14, 0.1, 0.2), dark)       # gương
 	CharacterBuilder._box(root, Vector3(0.0, 0.42, -1.97), Vector3(1.72, 0.22, 0.08), dark)             # cản trước
 	CharacterBuilder._box(root, Vector3(0.0, 0.42, 1.97), Vector3(1.72, 0.22, 0.08), dark)              # cản sau
