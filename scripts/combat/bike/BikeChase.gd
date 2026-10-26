@@ -65,7 +65,8 @@
 #       BikeCombatData.CHASE_PROFILE), "opening" ({"drop_s": OPEN_DROP_S, "scale": OPEN_SCALE}: slow motion, a low camera
 #       and letterbox until the drop, then wave 0 spawns; the drop follows "music_pos_fn" (-> the chase track's playback
 #       seconds, < 0 = no music) or a real-time timer), "set_pieces" (BikeSetPieces data, e.g. DAY2_SET_PIECES), "cameo"
-#       ({"s", "force_s", "body_fn", "card_fn": Callable(done: Callable)}: Sói Xám before an "after_cameo" wave),
+#       ({"s", "force_s", "body_fn", "card_fn": Callable(done: Callable)}: Sói Xám before an "after_cameo" wave; its start is
+#       a checkpoint for that wave, so a knock-off after it never replays it),
 #       "nitro" (bike.set_nitro_enabled(true) at the start), "takedown_cam" (default true);
 #       tests: "duck_fn" / "nitro_fn" / "charge_fn" stand in for PlayerBike.is_ducking / nitro_active / add_drift_charge.
 #   add_wave(spawns, {"max_attackers": 4, "force_s": 1000.0, "after_cameo": true}); spawn "from": "side" (bursts out beside

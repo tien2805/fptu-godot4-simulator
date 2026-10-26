@@ -252,9 +252,10 @@ const T_CAMEO_TAUNT: String = "Muốn biết hàng về đâu thì lên cầu R�
 const T_CAMEO_NAME: String = "SÓI XÁM - đầu đàn Bầy Sói"
 
 # ----- sounds (CineAudio / StoryAudio / WeaponAudio cues) -----
-const CINE_CUES: Array[String] = ["impact_medium", "impact_heavy", "helmet_clonk", "slide_whistle", "body_fall", "groan", "engine_roar"]
+const CINE_CUES: Array[String] = ["impact_medium", "impact_heavy", "helmet_clonk", "slide_whistle", "body_fall", "groan", "engine_roar",
+	"impact_light", "whoosh_down", "crate_smash", "tray_clang"]   # Day 2 set pieces (synthesized at setup, never mid-chase)
 const STORY_CUES: Array[String] = ["bin_crash"]
-const WEAPON_CUES: Array[String] = ["swish"]
+const WEAPON_CUES: Array[String] = ["swish", "dep_whoosh"]
 
 # ----- kick poses (CharacterBuilder joints, character frame; built once) -----
 static var _kick_l: Dictionary = {}
