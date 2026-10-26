@@ -536,6 +536,7 @@ func _start_cinematic(slot: String, at_id: String) -> CinePlayer:
 	var cp: Variant = roam.call("play_cinematic", tl, cine_opts.duplicate())
 	if cp == null:
 		return null
+	StoryChapters.mark_cine(slot)   # the gallery (Xem lại phim) lists it from now on
 	if slot == "ai_intro":
 		var ic := StoryIntroCards.new()
 		ic.name = "IntroCards"
@@ -652,6 +653,7 @@ func _play_video(b: Dictionary) -> void:
 		video.name = "StoryVideo"
 		add_child(video)
 		if video.play_file(path):
+			StoryChapters.mark_cine(String(b["slot"]))   # the gallery plays the in-engine version of the clip
 			busy = true
 			running = String(b["id"])
 			_pause(true)

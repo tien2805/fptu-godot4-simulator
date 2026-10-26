@@ -107,6 +107,8 @@ var hub_key_blocked: bool = false
 ## story. {"beat", "stage", "replay", "name", "opts"}; report_stage_result forwards to StoryDirector when set.
 var story_context: Dictionary = {}
 var pause_hub_btn: Button
+## Pause menu "CHỌN CẢNH" (story mode only, in place of the Campaign Hub button that the story hides).
+var pause_chapters_btn: Button
 var cinematic_active: bool = false   # cinematic / replay đang chạy: ESC là "giữ để bỏ qua", không mở menu tạm dừng (spec A1-D16)
 var roam_return_layer: CanvasLayer
 ## Kỷ lục lưu trên đĩa: stage_id -> {"score": int, "rank": String, "wins": int, "plays": int}
@@ -149,7 +151,7 @@ func _on_node_added(node: Node) -> void:
 # ---------------------------------------------------------------------------
 # MENU CHÍNH & LƯU KỶ LỤC
 # ---------------------------------------------------------------------------
-func go_to_main_menu() -> void:
+func go_to_main_menu(scene: String = MAIN_MENU_SCENE) -> void:
 	var sd: Node = get_node_or_null("/root/StoryDirector")
 	if sd:
 		sd.call("on_leave_to_menu")   # A2-D2: autosave the story (player spot in story free roam), story off
@@ -165,7 +167,13 @@ func go_to_main_menu() -> void:
 	get_tree().paused = false
 	Engine.time_scale = 1.0
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
+	get_tree().change_scene_to_file(scene)
+
+## Pause menu "CHỌN CẢNH" in story mode: leave the story like VỀ MENU CHÍNH (autosave of the player's spot), then the
+## chapter select, whose QUAY LẠI resumes the story.
+func go_to_chapter_select() -> void:
+	ChapterSelect.from_story = true
+	go_to_main_menu(ChapterSelect.SCENE)
 
 ## Bắt đầu hành trình mới từ Màn 1: xoá vật phẩm & kết quả phiên hiện tại (kỷ lục trên đĩa vẫn giữ)
 func start_new_day() -> void:
@@ -359,6 +367,8 @@ func pause_game() -> void:
 	if pause_hub_btn:
 		var sd: Node = get_node_or_null("/root/StoryDirector")
 		pause_hub_btn.visible = sd == null or not bool(sd.get("active"))   # no stage picking in the middle of the story
+		if pause_chapters_btn:
+			pause_chapters_btn.visible = not pause_hub_btn.visible
 	pause_resume_btn.call_deferred("grab_focus")
 
 func resume_game() -> void:
@@ -470,6 +480,13 @@ func _create_pause_ui() -> void:
 		open_stage_select())
 	vb.add_child(hub_btn)
 	pause_hub_btn = hub_btn
+	pause_chapters_btn = _pause_button("CHỌN CẢNH (tua lại · xem lại phim)")
+	pause_chapters_btn.name = "PauseChapters"
+	pause_chapters_btn.visible = false
+	pause_chapters_btn.pressed.connect(func() -> void:
+		resume_game()
+		go_to_chapter_select())
+	vb.add_child(pause_chapters_btn)
 	var menu_btn: Button = _pause_button("VỀ MENU CHÍNH")
 	menu_btn.pressed.connect(func() -> void:
 		resume_game()
