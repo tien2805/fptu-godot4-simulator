@@ -74,7 +74,7 @@ const MAP_BOTTOM: float = 30.0
 const HINT_DEFAULT: String = "[WASD] đi · [Shift] chạy nước rút · [Ctrl] đi bộ · [Space] nhảy · [Z]/[C] xoay camera · [F] xe máy · [T] giờ trong ngày · [M] bản đồ · [ESC] tạm dừng"
 ## Story mode (A2): the story drives the time of day, so [T] gives way to the phone [P].
 const HINT_STORY: String = "[WASD] đi · [Shift] chạy nước rút · [Ctrl] đi bộ · [Space] nhảy · [Z]/[C] xoay camera · [F] xe máy · [P] điện thoại · [M] bản đồ · [ESC] tạm dừng"
-const HINT_RIDING: String = "[F] xuống xe · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [H] còi · [L] đèn xa"
+const HINT_RIDING: String = "[F] xuống xe · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [SHIFT] nitro · [CTRL] cúi · [H] còi · [L] đèn xa"
 const HINT_NO_DISMOUNT: String = "Không có chỗ trống cạnh xe để xuống (nước / tường / vật cản) – chạy ra chỗ rộng rồi bấm [F]"
 const HINT_RESCUED: String = "Rơi xuống kênh! Đã đưa bạn về chỗ khô gần nhất"
 const HINT_SERVICE_BIKE: String = "Đang lao động công ích – làm xong mới được lấy xe"
@@ -598,6 +598,7 @@ func _build_bike() -> void:
 	# xe đang đỗ (PROCESS_MODE_DISABLED) vẫn là vật cản: không bị gỡ khỏi không gian vật lý
 	bike.disable_mode = CollisionObject3D.DISABLE_MODE_KEEP_ACTIVE
 	add_child(bike)
+	bike.set_nitro_enabled(true)   # D2X-8: the owner's bike has nitro in free roam / story roam (never Stage 1 / Stage 2)
 	if bank_walls and bike.spring_arm:
 		bike.spring_arm.add_excluded_object(bank_walls.get_rid())
 	bike.chase_cam.current = false
