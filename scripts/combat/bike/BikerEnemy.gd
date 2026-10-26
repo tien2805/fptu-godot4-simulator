@@ -110,7 +110,7 @@ func setup(opts: Dictionary = {}) -> void:
 	_eye_col = opts.get("eye_color", BikeCombatData.EYE_COL)
 	_taunt_t = _rng.randf_range(BikeCombatData.TAUNT_EVERY.x, BikeCombatData.TAUNT_EVERY.y)
 	var paint: Color = opts.get("paint", BikeCombatData.BIKE_PAINT)
-	PropBuilder.build_scooter(self, Vector3.ZERO, 0.0, paint, {"baked": true, "name": "Scooter"})
+	PropBuilder.build_scooter(self, Vector3.ZERO, 0.0, paint, {"baked": true, "name": "Scooter", "traffic_lamps": true})
 	var look: Dictionary = {"preset": "rider", "seed": _rng.randi(), "female": false, "body": "hoodie", "backpack": false,
 		"glasses": false, "helmet_color": BikeCombatData.HELMET_COL,
 		"shirt_color": BikeCombatData.JACKETS[_rng.randi() % BikeCombatData.JACKETS.size()], "clip": "ride"}
