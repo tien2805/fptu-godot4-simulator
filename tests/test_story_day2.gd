@@ -1,10 +1,13 @@
 # File: res://tests/test_story_day2.gd
 # Headless end-to-end test of story Day 2 "Bầy Sói" (spec C-D6; plan 2026-10-26-phase-c-integration.md), from the end of
 # Day 1: the call N = 6 -> the Day 2 morning (Anh Duy's text with its Dịch: line, CÒN 6 NGÀY) -> the marker at Anh Duy's
-# corner of the BE6 lobby -> cine_d2_intro -> the bike chase on Nguyễn Xiển southbound (the reversed route ending just past
-# the Rạch Hầm bridge, "Tới công chuyện luôn!", knocked off = TOANG! -> THỬ LẠI, the Bầy Sói crashed wave after wave, the
-# seg_d2_chase replay) -> the bridge horror beat (fog, howl, LED eyes going out, the snap, the synth ringtone, the Sói Xám
-# villain card) -> the duel (soi_xam, the boss bar, down = TOANG! -> retry, KO) -> seg_d2_boss -> the pillar marker with the
+# corner of the BE6 lobby -> cine_d2_intro -> the "Tokyo Drift" bike chase (spec 2026-10-27: the Stage 1 route from BE6 to
+# just past the Rạch Hầm bridge, the film opening in slow motion with "Tới công chuyện luôn!", the chase profile, the chase
+# track from its start, 3 waves of 14, set pieces; knocked off = TOANG! -> THỬ LẠI without a second opening; the Bầy Sói
+# crashed wave after wave, the Sói Xám cameo with his villain card, wave 3, the replay with no slot of its own) -> the drift
+# duel with Sói Xám (plan 2026-10-27-d2x-drift.md: his intro line, 3-2-1, a loss = a quick retry with no fail card, the
+# win, his ending) -> the bridge horror beat (fog, howl, LED eyes going out, the snap, the synth ringtone; no card any more)
+# -> the duel (soi_xam, the boss bar, down = TOANG! -> retry, KO) -> seg_d2_boss -> the pillar marker with the
 # optional E3 ledger (taken) -> cine_d2 -> bed -> the call N = 5 -> Day 3. Then Continue at d2_end with E3 skipped (no E3
 # after the call), Continue at d2_duel (the bank marker, the fight does not start by itself) and Chọn cảnh: the new beats
 # are snapshotted and a rewind to d2_bridge resumes at its marker.
@@ -173,11 +176,24 @@ func _process(_d: float) -> bool:
 			var mc: MissionBikeChase = m
 			var ch: BikeChase = mc.chase
 			_check(ch != null and ch.state == "running" and bool(fr.get("mounted")), "the chase runs, the player rides")
-			_check(mc.route != null and mc.route.bridge_s > 1500.0 and absf(ch.start_s - (mc.route.bridge_s - MissionBikeChase.CHASE_M)) < 1.0
-				and absf(ch.end_at_s - (mc.route.bridge_s + MissionBikeChase.END_PAST_M)) < 1.0, "southbound on Nguyễn Xiển: ends just past the Rạch Hầm bridge (bridge at %.0f m)" % (mc.route.bridge_s if mc.route else -1.0))
+			_check(mc.route != null and absf(mc.route.length - 5476.0) < 30.0 and absf(mc.route.bridge_s - 2389.0) < 25.0 and absf(ch.start_s - MissionBikeChase.START_S) < 0.5
+				and absf(ch.end_at_s - (mc.route.bridge_s + MissionBikeChase.END_PAST_M)) < 1.0, "BE6 -> the Rạch Hầm bridge on the Stage 1 route (bridge at %.0f m)" % (mc.route.bridge_s if mc.route else -1.0))
+			var bk: PlayerBike = fr.get("bike")
+			_check(bk.global_position.distance_to(ch.route_transform(MissionBikeChase.START_S).origin) < 2.0, "the chase starts on the Hải Đăng straight by BE6")
 			_check(ch.start_line == BikeCombatData.T_START_D2 and ch.start_line == "Tới công chuyện luôn!" and ch.win_line == "Đỉnh nóc kịch trần bay phấp phới", "the memes: start and win lines")
-			_check(ch.waves.size() == 2 and (ch.waves[0] as Array).size() + (ch.waves[1] as Array).size() == 6, "two waves, six bikers")
-			_check(StoryRoam.mission_slot(sd.call("beat")) == "mission_bike_chase" and m.cues_played.has("radio"), "the chase track slot, Anh Duy on the radio")
+			var nv: int = 0
+			for wv: Variant in ch.waves:
+				nv += (wv as Array).size()
+			_check(ch.waves.size() == 3 and nv == 14 and bool(ch.wave_opt(2, "after_cameo", false)), "three waves, 14 vehicles, wave 3 after the cameo")
+			_check(ch.opening_on and Engine.time_scale < 0.5 and ch.cam.current and ch.hud.letterboxed, "the film opening: slow motion, the low camera, letterbox")
+			_check(is_equal_approx(bk.max_speed_ms, 27.8) and is_equal_approx(bk.slipstream_max_ms, 30.6), "the chase profile: 100 km/h, 110 in a slipstream")
+			_check(ch.set_pieces != null and ch.set_pieces.pieces.size() == BikeCombatData.DAY2_SET_PIECES.size() and not ch.cameo_opts.is_empty(), "the set pieces and the cameo are armed")
+			var md: MusicDirector = root.get_node("GameFX").get("music")
+			_check(StoryRoam.mission_slot(sd.call("beat")) == "mission_bike_chase" and md != null and md.slot == "mission_bike_chase" and m.cues_played.has("radio"), "the chase track plays from the start, Anh Duy on the radio")
+			_check(MusicDirector.SLOTS.has("mission_bike_chase_b") and ch.replay_slot == "", "wave 3 has its own optional slot; the replay has none (the song never restarts)")
+			_check(md != null and (md.current_stream() == null or is_equal_approx(md.gains[md.cur], 1.0)) and is_equal_approx(md.players[md.cur].pitch_scale, 1.0) and is_equal_approx(AudioServer.playback_speed_scale, 1.0),
+				"the chase track starts without a fade-in, and the slow motion leaves its speed alone (stream %s, gain %.2f, pitch %.2f, speed %.2f, slot %s / %s)" % [str(md.current_stream() != null), md.gains[md.cur], md.players[md.cur].pitch_scale, AudioServer.playback_speed_scale, md.slot, md.player_slots[md.cur]])
+			_check(mc.music_pos() < 0.0 or ch.music_pos_fn.is_valid(), "the opening's drop follows the track's playback position when it plays")
 			ch.combat.damage(999.0, "kick", 1)
 			_next(5)
 		5:
@@ -187,9 +203,12 @@ func _process(_d: float) -> bool:
 					phase = 999
 				return false
 			var ch2: BikeChase = (m as MissionBikeChase).chase
-			_check(sr.fail_ui.title_label.text == "TOANG!" and ch2.state == "lost", "knocked off: TOANG!")
+			_check(sr.fail_ui.title_label.text == "TOANG!" and ch2.state == "lost" and is_equal_approx(Engine.time_scale, 1.0), "knocked off: TOANG! (normal time)")
 			sr.fail_ui.press_retry()
-			_check(ch2.state == "running" and is_equal_approx(ch2.combat.stability, BikeCombatData.STABILITY_MAX), "THỬ LẠI: the chase again from the checkpoint, stability full")
+			_check(ch2.state == "running" and is_equal_approx(ch2.combat.stability, BikeCombatData.STABILITY_MAX) and not ch2.opening_on and is_equal_approx(Engine.time_scale, 1.0),
+				"THỬ LẠI: the chase again from the checkpoint, stability full, no second opening")
+			var md5: MusicDirector = root.get_node("GameFX").get("music")
+			_check(md5.slot == "mission_bike_chase", "THỬ LẠI keeps the chase track (remounting does not leave the roam track on) (%s)" % md5.slot)
 			_next(6)
 		6:
 			var mc6: MissionBikeChase = m as MissionBikeChase if is_instance_valid(m) else null
@@ -198,18 +217,77 @@ func _process(_d: float) -> bool:
 				if ch6.state == "running":
 					for b: Variant in ch6.alive():
 						(b as BikerEnemy).crash("test")
+					if ch6.cameo_state == "waiting" and not mark.has("tp"):
+						mark["tp"] = true             # wave 2 is down: ride on to the cameo point (teleport)
+						ch6.bike.global_transform = ch6.route_transform(BikeCombatData.CAMEO_S + 5.0)
+						ch6.bike.current_speed_ms = 20.0
+				if mc6 != null and mc6.card != null and not mark.has("card"):
+					mark["card"] = true
+					_check(String(mc6.card.data.get("name", "")) == "Sói Xám" and String(mc6.card.data.get("nick", "")) == "đầu đàn Bầy Sói" and ch6.cameo_state == "running",
+						"the cameo: the villain card Sói Xám, đầu đàn Bầy Sói (his first appearance)")
+					var nc: int = 0
+					while mc6.card != null and nc < 600:
+						mc6.card.step(DT)
+						nc += 1
+				if ch6.cameo_state == "done" and not mark.has("taunt"):
+					mark["taunt"] = true
+					_check(ch6.wave == 2, "after the cameo: wave 3")
 				if ch6.replay != null:
 					mark["replay"] = true
 					var n6: int = 0
 					while ch6.replay != null and n6 < 1200:
 						ch6.replay.step(DT)
 						n6 += 1
-			if String(sd.get("step")) != "d2_bridge":
+			if String(sd.get("step")) != "d2_drift":
 				if frames > 3000:
 					_check(false, "the chase was not won (state %s)" % (ch6.state if ch6 else "gone"))
 					phase = 999
 				return false
-			_check(mark.has("replay"), "the last fall: the seg_d2_chase replay")
+			_check(mark.has("replay") and mark.has("card") and mark.has("taunt"), "the cameo card, wave 3, then the last fall's replay")
+			_check(is_equal_approx(Engine.time_scale, 1.0), "the time scale is back to 1 after the chase")
+			_next(60)
+		# ----- Tokyo Drift (plan 2026-10-27-d2x-drift.md): the drift duel with Sói Xám, then the bridge -----
+		60:
+			m = _wait_mission("MissionDriftDuel")
+			if m == null:
+				return false
+			var md60: MissionDriftDuel = m
+			var du: DriftDuel = md60.duel
+			_check(String(sd.get("step")) == "d2_drift" and du != null and du.state == "intro" and du.rival.standing, "d2_drift: the duel starts with Sói Xám standing beside his bike")
+			_check(du.subtitle_text.contains(DriftDuel.T_START) and bool(fr.get("mounted")) and String(fr.call("_hint_text")) == DriftDuel.T_RIDING, "his line, the player still riding, the duel's hint")
+			_check(StoryRoam.mission_slot(sd.call("beat")) == "race_d2_drift" and StoryRoam.SELF_MUSIC.has("drift_duel"), "the drift track slot, started by the duel itself")
+			_check(fr.get("bike").nitro_enabled and is_equal_approx(fr.get("bike").max_speed_ms, float(DriftDuel.DUEL_PROFILE["max_speed_ms"])), "nitro on, the duel profile")
+			_next(61)
+		61:
+			var du61: DriftDuel = (m as MissionDriftDuel).duel
+			if du61.state != "racing":
+				if frames > 600:
+					_check(false, "the duel never raced (%s)" % du61.state)
+					phase = 999
+				return false
+			_check(du61.rival.racing and not fr.get("bike").staged, "3-2-1-ĐI: racing")
+			du61.call("_lose", "gap")
+			_next(62)
+		62:
+			var du62: DriftDuel = (m as MissionDriftDuel).duel
+			if du62.state != "countdown":
+				if frames > 300:
+					_check(false, "no quick retry after the loss (%s)" % du62.state)
+					phase = 999
+				return false
+			_check(du62.losses == 1 and du62.retry_count and not (sr.fail_ui and sr.fail_ui.visible) and m.state == "running", "lost: a quick retry on the grid, no fail card")
+			_next(63)
+		63:
+			var du63: DriftDuel = (m as MissionDriftDuel).duel if is_instance_valid(m) else null
+			if du63 and du63.state == "racing":
+				du63.points = du63.target
+				du63.call("_win", "points")
+			if String(sd.get("step")) != "d2_bridge":
+				if frames > 1500:
+					_check(false, "the duel did not end (%s)" % (du63.state if du63 else "gone"))
+					phase = 999
+				return false
+			_check(StoryChapters.is_beat_unlocked("d2_drift") and not StoryChapters.snapshot("d2_drift").is_empty(), "Chọn cảnh: d2_drift unlocked and snapshotted")
 			_next(7)
 		7:
 			m = _wait_mission("MissionBridge")
@@ -235,14 +313,9 @@ func _process(_d: float) -> bool:
 			_check(mb.phase == "ringing" and mb.cues_played.has("ringtone_synth") and mb.bubble.visible, "his ringtone: a cheesy synth tune, a phone call")
 			for k2: int in 200:
 				mb.advance(DT)
-				if mb.card != null:
+				if mb.state == "done":
 					break
-			_check(mb.card != null and String(mb.card.data.get("name", "")) == "Sói Xám" and String(mb.card.data.get("nick", "")) == "đầu đàn Bầy Sói", "the villain card: Sói Xám, đầu đàn Bầy Sói")
-			var n7: int = 0
-			while mb.card != null and n7 < 600:
-				mb.card.step(DT)
-				n7 += 1
-			_check(mb.state == "done", "the card ends the horror beat")
+			_check(mb.state == "done" and fr.find_children("*", "StoryVillainCard", true, false).is_empty(), "the call ends the horror beat (his villain card came in the chase)")
 			_next(8)
 		8:
 			m = _wait_mission("MissionFight")
@@ -294,7 +367,7 @@ func _process(_d: float) -> bool:
 			if frames < 5:
 				return false
 			_check(String(sd.get("step")) == "d2_bed" and sr.markers.has("d2_bed") and not sr.markers.has("d2_ledger"), "bed marker, the ledger taken")
-			for id: String in ["d2_chase", "d2_bridge", "d2_duel", "d2_end"]:
+			for id: String in ["d2_chase", "d2_drift", "d2_bridge", "d2_duel", "d2_end"]:
 				_check(StoryChapters.is_beat_unlocked(id) and not StoryChapters.snapshot(id).is_empty(), "Chọn cảnh: %s unlocked and snapshotted" % id)
 			_check(StoryChapters.is_cine_unlocked("cine_d2_intro") and StoryChapters.is_cine_unlocked("seg_d2_boss") and StoryChapters.is_cine_unlocked("cine_d2"), "the gallery lists the Day 2 cinematics")
 			_check(sr.start_marker("d2_bed"), "bed")
@@ -404,7 +477,7 @@ func _end() -> bool:
 	sd.call("reset_state")
 	sd.set("save_path", "user://story_save.cfg")
 	if fails.is_empty():
-		print("✅ SUCCESS: STORY DAY 2 (chase on Nguyễn Xiển, bridge horror, Sói Xám duel, E3 taken / skipped, call, continue, chapters)")
+		print("✅ SUCCESS: STORY DAY 2 (Tokyo Drift chase BE6 -> Rạch Hầm with the Sói Xám cameo, bridge horror, Sói Xám duel, E3 taken / skipped, call, continue, chapters)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())

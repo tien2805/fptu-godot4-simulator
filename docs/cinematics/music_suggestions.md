@@ -102,8 +102,10 @@ Không có nhạc riêng (chỉ âm thanh hiệu ứng): cuộc gọi 3 giờ s�
 | Slot | Phát khi | Bài |
 |---|---|---|
 | `cine_d2_intro` | Anh Duy dò đường Bầy Sói (14 s) | *Who Let the Dogs Out*, Baha Men |
-| `mission_bike_chase` | rượt xe đá Bầy Sói, Nguyễn Xiển | *Gas Gas Gas*, Manuel |
+| `mission_bike_chase` | rượt xe đá Bầy Sói, BE6 ra cầu Rạch Hầm (Ngày 2) | *Tokyo Drift*, Teriyaki Boyz (bản gốc từ đầu: beat vào ở 4.15 s, khớp `OPEN_DROP_S`) |
+| `mission_bike_chase_b` | đợt 3 của cuộc rượt sau khi Sói Xám vượt mặt (không có file thì Tokyo Drift chạy tiếp) | *Gas Gas Gas*, Manuel |
 | `boss_d2` | đấu tay đôi Sói Xám dưới cầu Rạch Hầm | *Hungry Like the Wolf*, Duran Duran |
+| `race_d2_drift` | đua drift một vòng với Sói Xám quanh cầu Rạch Hầm; bắt đầu đúng lúc "ĐI!", đếm ngược không có nhạc | *Deja Vu*, Dave Rodgers (bản cắt từ điệp khúc, đã có); khác: *Running in the 90s*, Max Coveri |
 | `cine_d2` | Sói Xám bị trói vào cột (18 s) | đã có |
 | `seg_d2_boss` | cảnh đánh lớn 25 s dưới cầu | *Heartbreaker*, Pat Benatar (đã có) |
 | `cine_d3_intro` | chạy xe đêm tới kênh (14 s) | *A Real Hero*, College & Electric Youth |

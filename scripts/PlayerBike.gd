@@ -7,6 +7,16 @@
 # brighter while braking, the red / blue strobe bar (strobe_state, off while parked = NOTIFICATION_DISABLED); owner sounds
 # sfx_dir/bike_exhaust (engine loop) and sfx_dir/bike_horn (horn_tap: melody on / off, ducks the music, pedestrians within
 # HORN_RADIUS cheer through horn_targets_fn), loaded once on WorkerThreadPool tasks, fallback to the res:// wavs.
+# Tokyo Drift (spec D2X-8 / D2X-9, plan 2026-10-27-d2x-drift.md):
+#   - nitro: set_nitro_enabled(on) (FreeRoam's owner bike, the chase and the drift duel; never Stage 1 / Stage 2),
+#     drift_charge 0-100 (drifting 25 per second x drift_charge_mult, near misses +8, add_drift_charge for the rest),
+#     [SHIFT] fires at NITRO_MIN or more: the whole charge for NITRO_FULL_S x charge / 100, +NITRO_BONUS_MS on top of the
+#     profile max, stronger acceleration, NitroFX blue flame, FOV punch, whoosh; nitro_active() (also the ram flag),
+#     signals nitro_started / nitro_ended; the NitroGauge shows while enabled and ridden;
+#   - duck: hold [CTRL] while riding (is_ducking): steering x DUCK_STEER, drag x DUCK_DRAG, the rider flat on the tank;
+#   - real revs: rev_blip() plays the owner's sfx_dir/bike_rev (+REV_DB_OVER over the riding engine level, 2 voices),
+#     else a throttle blip of the exhaust loop; set_staged(on) holds the bike on a start line with the engine idling and
+#     each [W] press revving (one start per REV_MIN_GAP).
 class_name PlayerBike
 extends CharacterBody3D
 
@@ -18,6 +28,8 @@ signal offroad_changed(is_offroad: bool)
 signal near_miss(chain: int)
 signal drift_boost(duration: float)
 signal drift_state_changed(is_drifting: bool)
+signal nitro_started
+signal nitro_ended
 
 @export var road_path: Path3D
 
@@ -41,6 +53,32 @@ const BRAKE_ENERGY: float = 4.5
 ## Owner sounds (OB-D3, OB-D4): sfx_dir/<name>.ogg | .mp3 | .wav, local only, never committed.
 const SFX_EXHAUST: String = "bike_exhaust"
 const SFX_HORN: String = "bike_horn"
+const SFX_REV: String = "bike_rev"
+## Nitro (D2X-8).
+const NITRO_MIN: float = 34.0
+const NITRO_FULL_S: float = 3.0
+const NITRO_BONUS_MS: float = 8.0
+const NITRO_ACCEL_MULT: float = 2.2
+const NITRO_FOV: float = 8.0
+const NITRO_FOV_PUNCH: float = 6.0       # extra FOV at ignition, decaying over NITRO_PUNCH_S
+const NITRO_PUNCH_S: float = 0.5
+const DRIFT_CHARGE_RATE: float = 25.0    # per second of drifting
+const NEAR_MISS_CHARGE: float = 8.0
+const NITRO_COAST_DECEL: float = 6.0     # m/s per second the extra speed fades after a burn
+## The muffler tip of OwnerBikeBuilder (visual pivot space) and the way the flame points.
+const EXHAUST_TIP: Vector3 = Vector3(0.2, 0.456, 0.81)
+const EXHAUST_DIR: Vector3 = Vector3(0.0, 0.17, 1.0)
+## Duck (D2X-9).
+const DUCK_STEER: float = 0.9
+const DUCK_DRAG: float = 0.85
+## Revs (owner request 2026-10-27): +4 dB over the riding engine, 2 voices, one player start per 0.35 s; the fallback
+## blip of the exhaust loop: idle -> REV_BLIP_PITCH -> idle over REV_BLIP_S.
+const REV_DB_OVER: float = 4.0
+const REV_VOICES: int = 2
+const REV_MIN_GAP: float = 0.35
+const REV_BLIP_S: float = 0.8
+const REV_BLIP_UP: float = 0.22
+const REV_BLIP_PITCH: float = 1.2
 const HORN_RADIUS: float = 14.0
 const HORN_SCAN_S: float = 0.5
 const HORN_FADE_S: float = 0.15
@@ -144,6 +182,32 @@ var _fade_tw: Tween
 ## Stage 1 finish / Stage 2 parking (park()): locked for good, strobe off, headlight off, melody stopped.
 var parked: bool = false
 
+# Nitro, duck, revs (D2X-8 / D2X-9)
+var nitro_enabled: bool = false
+var drift_charge: float = 0.0
+## A drift zone owner (chase, duel) sets 1.5 while the bike is inside a zone.
+var drift_charge_mult: float = 1.0
+var nitro_left: float = 0.0
+var nitro_len: float = 0.0
+var nitro_count: int = 0
+var nitro_refusals: int = 0
+var nitro_fx: NitroFX
+var nitro_gauge: NitroGauge
+var nitro_player: AudioStreamPlayer
+var _nitro_punch: float = 0.0
+var _coast_cap: float = 0.0
+var _burning: bool = false
+var ducking: bool = false
+var duck_w: float = 0.0
+var staged: bool = false
+var revs: int = 0
+var rev_source: String = ""               # "file" | "blip" (the last rev)
+var rev_stream: AudioStream               # the owner's bike_rev (null = the exhaust blip)
+var _rev_players: Array[AudioStreamPlayer3D] = []
+var _rev_cd: float = 0.0
+var _blip_t: float = -1.0
+var _rider_base: Vector3 = Vector3(0.0, 0.32, 0.14)
+
 @onready var visual_pivot: Node3D = $VisualPivot
 @onready var front_wheel: Node3D = $VisualPivot/FrontWheel
 @onready var rear_wheel: Node3D = $VisualPivot/RearWheel
@@ -166,6 +230,8 @@ func _ready() -> void:
 		if fx_node.has_signal("art_style_changed"):
 			fx_node.connect("art_style_changed", _on_art_style_changed)
 	_setup_drift_smoke()
+	if nitro_enabled:
+		_ensure_nitro_nodes()
 	_auto_time_of_day.call_deferred()
 	slipstream_ray.target_position = Vector3(0.0, 0.0, -8.5) # Quét cự ly 8.5m phía trước
 	slipstream_ray.enabled = true
@@ -186,7 +252,9 @@ func _ensure_input_map() -> void:
 		"steer_right": [KEY_D, KEY_RIGHT],
 		"drift": [KEY_SPACE],
 		"horn": [KEY_H, KEY_B],
-		"high_beam": [KEY_L]
+		"high_beam": [KEY_L],
+		"nitro": [KEY_SHIFT],
+		"duck": [KEY_CTRL]
 	}
 	for action: String in bindings.keys():
 		if not InputMap.has_action(action):
@@ -227,6 +295,13 @@ func _setup_audio_system() -> void:
 	melody_player.max_distance = 90.0
 	melody_player.volume_db = MELODY_DB
 	add_child(melody_player)
+	for i: int in REV_VOICES:
+		var rp := AudioStreamPlayer3D.new()
+		rp.name = "Rev%d" % i
+		rp.unit_size = 8.0
+		rp.max_distance = 70.0
+		add_child(rp)
+		_rev_players.append(rp)
 	# owner files (OB-D3, OB-D4): loaded on worker threads, adopted by _poll_owner_sfx()
 	warm_owner_sfx()
 	_owner_pending = true
@@ -584,6 +659,11 @@ func _tick_extras(delta: float) -> void:
 	_apply_strobe(0 if parked else strobe_state(strobe_t))
 	_update_tail()
 	_tick_horn(delta)
+	_tick_rev(delta)
+	if nitro_fx and nitro_fx.on:
+		nitro_fx.tick(delta)
+	if nitro_gauge:
+		_sync_gauge(delta)
 
 
 ## Parked (FreeRoam disables the bike): strobe and headlight off, tail back to normal, the melody stops at once.
@@ -591,6 +671,10 @@ func _tick_extras(delta: float) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_DISABLED:
 		_park_lights_and_horn()
+		_end_nitro()
+		_set_ducking(false)
+		if nitro_gauge:
+			nitro_gauge.visible = false
 	elif what == NOTIFICATION_ENABLED:
 		_apply_lights_visibility()
 
@@ -613,6 +697,246 @@ func speed_profile() -> Dictionary:
 
 
 # ---------------------------------------------------------------------------
+# NITRO (D2X-8)
+# ---------------------------------------------------------------------------
+## Nitro on (FreeRoam's owner bike, the chase, the drift duel) or off (a burn ends; the charge stays). Stage 1 and
+## Stage 2 never turn it on. The flame, the whoosh and the gauge are built on the first enable.
+func set_nitro_enabled(on: bool) -> void:
+	nitro_enabled = on
+	if not on:
+		_end_nitro()
+	if is_node_ready():
+		if on:
+			_ensure_nitro_nodes()
+		if nitro_gauge:
+			_sync_gauge(0.0)
+
+
+## A burn is running (also the nitro-ram flag: touching a biker now is a takedown).
+func nitro_active() -> bool:
+	return _burning
+
+
+func add_drift_charge(points: float) -> void:
+	drift_charge = clampf(drift_charge + points, 0.0, 100.0)
+
+
+## [SHIFT]: spends the whole charge (at least NITRO_MIN) on a burn of NITRO_FULL_S x charge / 100. false when it cannot
+## (off, burning, too little charge, locked, parked; counted in nitro_refusals while enabled).
+func fire_nitro() -> bool:
+	if not nitro_enabled or _burning or drift_charge < NITRO_MIN or is_controls_locked or parked:
+		if nitro_enabled:
+			nitro_refusals += 1
+		return false
+	_ensure_nitro_nodes()
+	nitro_len = NITRO_FULL_S * drift_charge / 100.0
+	nitro_left = nitro_len
+	drift_charge = 0.0
+	nitro_count += 1
+	_burning = true
+	_nitro_punch = NITRO_PUNCH_S
+	_coast_cap = 0.0
+	add_camera_shake(0.35)
+	if chase_cam:
+		chase_cam.fov += NITRO_FOV_PUNCH   # the kick lands on this frame, the lerp holds it
+	if nitro_fx:
+		nitro_fx.set_on(true)
+	if nitro_player and nitro_player.stream and nitro_player.is_inside_tree():
+		nitro_player.play()
+	if boost_player and boost_player.stream:
+		boost_player.play()
+	nitro_started.emit()
+	return true
+
+
+## The burn ends (time out, respawn, lock, park, disable, nitro off): the extra speed fades (NITRO_COAST_DECEL).
+func _end_nitro() -> void:
+	if not _burning:
+		return
+	_burning = false
+	nitro_left = 0.0
+	_coast_cap = current_speed_ms
+	if nitro_fx:
+		nitro_fx.set_on(false)
+	nitro_ended.emit()
+
+
+func _ensure_nitro_nodes() -> void:
+	if nitro_fx == null and visual_pivot:
+		nitro_fx = NitroFX.build(visual_pivot, EXHAUST_TIP, EXHAUST_DIR)
+	if nitro_player == null:
+		nitro_player = AudioStreamPlayer.new()
+		nitro_player.name = "NitroWhoosh"
+		nitro_player.volume_db = 1.0
+		nitro_player.stream = NitroFX.whoosh_stream()
+		add_child(nitro_player)
+		var fx_node: Node = get_node_or_null("/root/GameFX") if is_inside_tree() else null
+		if fx_node:
+			fx_node.route_audio_to_bus(nitro_player, "SFX")
+	if nitro_gauge == null:
+		nitro_gauge = NitroGauge.new()
+		nitro_gauge.name = "NitroGauge"
+		nitro_gauge.bike = self
+		add_child(nitro_gauge)
+
+
+## The gauge shows while nitro is enabled, the bike is ridden (processing, shown, not parked) and its chase camera is the
+## current camera (not in cinematics or replays).
+func gauge_shown() -> bool:
+	return nitro_enabled and not parked and visible and is_inside_tree() and can_process() and chase_cam != null \
+		and chase_cam.current
+
+
+func _sync_gauge(delta: float) -> void:
+	var show: bool = gauge_shown()
+	if nitro_gauge.visible != show:
+		nitro_gauge.visible = show
+	if show:
+		nitro_gauge.refresh(drift_charge, _burning, nitro_left / maxf(nitro_len, 0.01), delta)
+
+
+# ---------------------------------------------------------------------------
+# DUCK (D2X-9)
+# ---------------------------------------------------------------------------
+func is_ducking() -> bool:
+	return ducking
+
+
+func _set_ducking(on: bool) -> void:
+	ducking = on
+
+
+## The rider eases flat on the tank and back (every physics frame, also while locked).
+func _tick_duck_pose(delta: float) -> void:
+	var target: float = 1.0 if ducking else 0.0
+	if duck_w == target or rider_node == null:
+		return
+	duck_w = move_toward(duck_w, target, delta * 6.0)
+	rider_node.position = _rider_base + Vector3(0.0, -0.07, -0.07) * duck_w
+	CharacterBuilder.set_param(rider_node, "ride_lean", lerpf(0.4, 1.05, duck_w))
+	CharacterBuilder.set_param(rider_node, "ride_elbow", lerpf(0.28, 1.0, duck_w))
+	CharacterBuilder.set_param(rider_node, "ride_shoulder", lerpf(1.2, 1.02, duck_w))
+
+
+# ---------------------------------------------------------------------------
+# REVS (owner request: real recordings, a bit louder)
+# ---------------------------------------------------------------------------
+## One rev: the owner's bike_rev on a free voice (REV_VOICES, the oldest is reused) at rev_db(), else a throttle blip of
+## the exhaust loop (rev_blip_pitch over REV_BLIP_S, same level). One start per REV_MIN_GAP unless forced (the countdown).
+func rev_blip(force: bool = false) -> bool:
+	if not force and _rev_cd > 0.0:
+		return false
+	_rev_cd = REV_MIN_GAP
+	revs += 1
+	if rev_stream == null and owner_sfx_state(SFX_REV) == 2:
+		rev_stream = owner_sfx(SFX_REV, false)   # never waits on the main thread
+	if rev_stream and not _rev_players.is_empty():
+		var p: AudioStreamPlayer3D = _rev_voice()
+		p.stream = rev_stream
+		p.pitch_scale = 1.0
+		p.volume_db = rev_db()
+		p.play()
+		rev_source = "file"
+	else:
+		_blip_t = 0.0
+		rev_source = "blip"
+	return true
+
+
+func _rev_voice() -> AudioStreamPlayer3D:
+	var best: AudioStreamPlayer3D = _rev_players[0]
+	var oldest: float = -1.0
+	for p: AudioStreamPlayer3D in _rev_players:
+		if not p.playing:
+			return p
+		var at: float = p.get_playback_position()
+		if at > oldest:
+			oldest = at
+			best = p
+	return best
+
+
+## Rev voices playing now (tests).
+func rev_voices_playing() -> int:
+	var n: int = 0
+	for p: AudioStreamPlayer3D in _rev_players:
+		if p.playing:
+			n += 1
+	return n
+
+
+## The engine level while riding at full throttle (the owner loop or the res:// wav); revs sit REV_DB_OVER above it.
+func riding_engine_db() -> float:
+	return exhaust_db(1.0) if owner_exhaust else -1.5
+
+
+func rev_db() -> float:
+	return riding_engine_db() + REV_DB_OVER
+
+
+func idle_pitch() -> float:
+	return exhaust_pitch(0.0, 0.0) if owner_exhaust else 0.85
+
+
+func idle_db() -> float:
+	return exhaust_db(0.0) if owner_exhaust else -5.0
+
+
+## The fallback blip: idle -> peak (REV_BLIP_PITCH for the owner loop's idle 0.62, scaled for another idle) over
+## REV_BLIP_UP, back to idle at REV_BLIP_S.
+static func rev_blip_pitch(t: float, idle: float) -> float:
+	if t <= 0.0 or t >= REV_BLIP_S:
+		return idle
+	var peak: float = idle * REV_BLIP_PITCH / 0.62
+	if t < REV_BLIP_UP:
+		return lerpf(idle, peak, smoothstep(0.0, REV_BLIP_UP, t))
+	return lerpf(peak, idle, smoothstep(REV_BLIP_UP, REV_BLIP_S, t))
+
+
+func _tick_rev(delta: float) -> void:
+	if _rev_cd > 0.0:
+		_rev_cd -= delta
+	_tick_duck_pose(delta)
+	if _blip_t < 0.0:
+		return
+	_blip_t += delta
+	if engine_player == null:
+		_blip_t = -1.0
+		return
+	if _blip_t >= REV_BLIP_S:
+		_blip_t = -1.0
+		engine_player.pitch_scale = idle_pitch()
+		engine_player.volume_db = idle_db()
+		return
+	engine_player.pitch_scale = rev_blip_pitch(_blip_t, idle_pitch())
+	engine_player.volume_db = rev_db()
+
+
+## On a start line: locked, stopped, the engine idling, each [W] press revs (one start per REV_MIN_GAP). Off = GO: the
+## bike rides (unlocked) and the engine loop jumps to full throttle.
+func set_staged(on: bool) -> void:
+	staged = on
+	if on:
+		is_controls_locked = true
+		current_speed_ms = 0.0
+		velocity = Vector3.ZERO
+		return
+	is_controls_locked = false
+	_blip_t = -1.0
+	if engine_player:
+		engine_player.pitch_scale = exhaust_pitch(0.0, 1.0) if owner_exhaust else 1.1
+		engine_player.volume_db = riding_engine_db()
+
+
+func _staged_audio(delta: float) -> void:
+	if Input.is_action_just_pressed("gas"):
+		rev_blip()
+	if _blip_t < 0.0 and engine_player:
+		engine_player.pitch_scale = lerpf(engine_player.pitch_scale, idle_pitch(), delta * 8.0)
+		engine_player.volume_db = lerpf(engine_player.volume_db, idle_db(), delta * 6.0)
+
+
+# ---------------------------------------------------------------------------
 # ÂM THANH CỦA CHỦ GAME (OB-D3, OB-D4): pô + còi nhạc, nạp một lần trên WorkerThreadPool
 # ---------------------------------------------------------------------------
 ## The owner's file for name: sfx_dir/<name>.ogg, .mp3 or .wav ("" when there is none).
@@ -624,10 +948,10 @@ static func owner_file(name: String) -> String:
 	return ""
 
 
-## Starts one WorkerThreadPool task per owner file (exhaust, horn) that is neither cached nor loading. Returns the count.
+## Starts one WorkerThreadPool task per owner file (exhaust, horn, rev) that is neither cached nor loading. Returns the count.
 static func warm_owner_sfx() -> int:
 	var n: int = 0
-	for name: String in [SFX_EXHAUST, SFX_HORN]:
+	for name: String in [SFX_EXHAUST, SFX_HORN, SFX_REV]:
 		var p: String = owner_file(name)
 		if p == "" or _owner_cache.has(p) or _owner_tasks.has(p):
 			continue
@@ -675,7 +999,7 @@ static func _adopt_owner(p: String, wait: bool) -> void:
 	if st and p.get_file().get_basename() == SFX_EXHAUST:
 		StoryAudio._set_loop(st, true)
 	elif st:
-		_set_no_loop(st)   # the horn melody plays once (an owner WAV may carry loop points)
+		_set_no_loop(st)   # the horn melody and the rev play once (an owner WAV may carry loop points)
 	_owner_cache[p] = st
 
 
@@ -709,7 +1033,10 @@ func _poll_owner_sfx() -> void:
 			engine_player.play()
 	if horn_state == 2 and melody_stream == null:
 		melody_stream = owner_sfx(SFX_HORN, false)
-	_owner_pending = ex_state == 1 or horn_state == 1
+	var rev_state: int = owner_sfx_state(SFX_REV)
+	if rev_state == 2 and rev_stream == null:
+		rev_stream = owner_sfx(SFX_REV, false)
+	_owner_pending = ex_state == 1 or horn_state == 1 or rev_state == 1
 
 
 ## Owner exhaust loop pitch: 0.62 idle, 1.0 at 70 % of top speed, 1.18 at top (a slipstream continues the slope), +0.06
@@ -845,6 +1172,10 @@ func _physics_process(delta: float) -> void:
 	_tick_extras(delta)
 	if is_controls_locked:
 		braking = false
+		_end_nitro()
+		_set_ducking(false)
+		if staged:
+			_staged_audio(delta)
 		current_speed_ms = move_toward(current_speed_ms, 0.0, brake_decel * delta)
 		velocity = -global_transform.basis.z * current_speed_ms
 		if not is_on_floor():
@@ -885,10 +1216,22 @@ func _physics_process(delta: float) -> void:
 	var brake_input: float = Input.get_action_strength("brake")
 	var drift_held: bool = Input.is_action_pressed("drift")
 	braking = brake_input > 0.1 and current_speed_ms > 0.3
+	_set_ducking(Input.is_action_pressed("duck"))
+	# NITRO (D2X-8): [SHIFT] fires the charge; while it burns the throttle is full (unless braking)
+	if nitro_enabled and Input.is_action_just_pressed("nitro"):
+		fire_nitro()
+	if nitro_left > 0.0:
+		nitro_left -= delta
+		if nitro_left <= 0.0:
+			_end_nitro()
+		elif brake_input <= 0.1:
+			gas_input = 1.0
 
 	var target_top_speed: float = slipstream_max_ms if is_slipstream_boosting else max_speed_ms
 	if drift_boost_timer > 0.0:
 		target_top_speed += drift_boost_bonus_ms
+	if nitro_left > 0.0:
+		target_top_speed += NITRO_BONUS_MS
 
 	if gas_input > 0.0:
 		var boost_mult: float = 1.0
@@ -896,6 +1239,8 @@ func _physics_process(delta: float) -> void:
 			boost_mult = 1.45
 		if drift_boost_timer > 0.0:
 			boost_mult *= 1.6
+		if nitro_left > 0.0:
+			boost_mult *= NITRO_ACCEL_MULT
 		if is_drifting:
 			boost_mult *= 0.55
 		current_speed_ms += engine_accel * boost_mult * gas_input * delta
@@ -912,7 +1257,10 @@ func _physics_process(delta: float) -> void:
 		current_speed_ms = move_toward(current_speed_ms, 0.0, 2.2 * delta)
 
 	# Lực cản không khí tỷ lệ với bình phương vận tốc (có dấu)
-	var drag_loss: float = air_drag * current_speed_ms * absf(current_speed_ms) * delta
+	var drag_loss: float = air_drag * current_speed_ms * absf(current_speed_ms) * delta * (DUCK_DRAG if ducking else 1.0)
+	if _coast_cap > target_top_speed:   # after a nitro burn the extra speed fades instead of snapping off
+		_coast_cap = maxf(target_top_speed, _coast_cap - NITRO_COAST_DECEL * delta)
+		target_top_speed = maxf(target_top_speed, minf(_coast_cap, current_speed_ms))
 	current_speed_ms = clampf(current_speed_ms - drag_loss, -reverse_speed_ms, target_top_speed)
 
 	# 3. Bẻ lái & nghiêng thân xe + DRIFT
@@ -924,8 +1272,10 @@ func _physics_process(delta: float) -> void:
 	_set_drifting(can_drift)
 	if is_drifting:
 		drift_time += delta
+		if nitro_enabled:
+			drift_charge = minf(100.0, drift_charge + DRIFT_CHARGE_RATE * drift_charge_mult * delta)
 
-	var steer_mult: float = (drift_steer_mult if is_drifting else 1.0) * rain_factor
+	var steer_mult: float = (drift_steer_mult if is_drifting else 1.0) * rain_factor * (DUCK_STEER if ducking else 1.0)
 	if is_drifting and rain_factor < 1.0:
 		steer_mult *= 1.25 # Mưa trơn: drift văng mạnh hơn
 	if absf(current_speed_ms) > 0.5:
@@ -1026,14 +1376,16 @@ func _on_near_body_exited(body: Node3D) -> void:
 		return
 	near_miss_chain = (near_miss_chain + 1) if near_miss_chain_timer > 0.0 else 1
 	near_miss_chain_timer = NEAR_MISS_CHAIN_WINDOW
+	if nitro_enabled:
+		add_drift_charge(NEAR_MISS_CHARGE)
 	longest_near_miss_chain = maxi(longest_near_miss_chain, near_miss_chain)
 	add_camera_shake(0.08 + 0.03 * float(mini(near_miss_chain, 4)))
 	var fx: Node = get_node_or_null("/root/GameFX")
 	if fx:
 		# Cao độ tăng theo chuỗi: 1.0 / 1.15 / 1.3 (Crazy Taxi "Crazy Through")
 		fx.play_sfx("whoosh", -4.0, [1.0, 1.15, 1.3][mini(near_miss_chain, 3) - 1])
-		if near_miss_chain >= 3:
-			fx.hit_stop(0.04, 0.1)
+		if near_miss_chain >= 3 and not (fx.has_method("time_scale_owned") and bool(fx.call("time_scale_owned"))):
+			fx.hit_stop(0.04, 0.1)   # never over a slow motion that owns the time scale (RadialWheel.scale_owner)
 	emit_signal("near_miss", near_miss_chain)
 
 # ---------------------------------------------------------------------------
@@ -1045,8 +1397,10 @@ func _update_audio_dynamics(delta: float, gas_input: float, brake_input: float) 
 	if Input.is_action_just_pressed("high_beam"):
 		toggle_high_beam()
 
-	if engine_player and engine_player.playing:
+	if engine_player and engine_player.playing and _blip_t < 0.0:
 		var speed_ratio: float = clampf(absf(current_speed_ms) / max_speed_ms, 0.0, 1.25)
+		if nitro_left > 0.0:
+			speed_ratio += 0.12   # the engine screams a little higher while nitro burns
 		if owner_exhaust:
 			engine_player.pitch_scale = lerpf(engine_player.pitch_scale, exhaust_pitch(speed_ratio, gas_input), delta * 8.0)
 			engine_player.volume_db = lerpf(engine_player.volume_db, exhaust_db(gas_input), delta * 6.0)
@@ -1151,6 +1505,8 @@ func _perform_road_respawn(closest_offset: float) -> void:
 	is_slipstream_boosting = false
 	_set_drifting(false)
 	drift_boost_timer = 0.0
+	_end_nitro()
+	_coast_cap = 0.0
 	respawn_invulnerable_timer = 1.5
 
 	emit_signal("respawned", 3.0)
@@ -1201,6 +1557,10 @@ func _update_chase_camera(delta: float, speed_factor: float) -> void:
 		extra_fov += 6.0
 	if drift_boost_timer > 0.0:
 		extra_fov += 8.0
+	if nitro_left > 0.0:
+		extra_fov += NITRO_FOV + NITRO_FOV_PUNCH * (_nitro_punch / NITRO_PUNCH_S)
+	if _nitro_punch > 0.0:
+		_nitro_punch = maxf(0.0, _nitro_punch - delta)
 	var target_fov: float = 68.0 + speed_factor * 14.0 + extra_fov
 	chase_cam.fov = lerpf(chase_cam.fov, target_fov, delta * 5.0)
 
