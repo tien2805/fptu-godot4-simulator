@@ -1,8 +1,9 @@
 # File: res://scripts/combat/CombatData.gd
 # Story Phase B unarmed Vovinam combat (spec 2026-10-25-story-phase-b-days-1-4-design.md, B-D1 / B-D2): every number of the
-# player's moves and the melee enemies, the archetype table (courier / clone / dolly), the game texts, the code-pose library
-# laid over the rigged bodies by CombatPose, and play_clip() (a Quaternius pack clip fitted to a gameplay duration so its
-# impact frame lands on the move's hit time). Times are game seconds (Engine.time_scale applies) unless named "real".
+# player's moves and the melee enemies, the archetype table (courier / clone / dolly; Phase C: soi_xam), the game texts, the
+# code-pose library laid over the rigged bodies by CombatPose (the Phase C "sw_*" staff / katana poses live in SwordData),
+# and play_clip() (a Quaternius pack clip fitted to a gameplay duration so its impact frame lands on the move's hit time).
+# Times are game seconds (Engine.time_scale applies) unless named "real".
 # Plain text only in the strings below (owner rule 2026-10-25: no emoji or decorative symbols; key glyphs in hints only).
 class_name CombatData
 extends RefCounted
@@ -95,7 +96,19 @@ const ARCHETYPES: Dictionary = {
 		"block_chance": 0.1, "dodge_chance": 0.45, "think": Vector2(0.3, 0.8), "cooldown": Vector2(0.5, 1.2),
 		"taunt_chance": 0.2, "flee_at": 0.3, "finisher_ko": false,
 		"look": {"preset": "student_f", "seed": 777, "female": true, "backpack": false}},
+	## Phase C (spec C-D4, Day 2): the Bầy Sói leader, an unarmed mini-boss. Fast 4-hit chains (light tell 0.2 + 0.18 s, the
+	## follow-through shortened by attack_speed: a hit every 0.52 s), the
+	## LED eyes glow before every attack, a howl at 50 % HP buffs him; the finisher does not knock him out; boss bar.
+	"soi_xam": {"hp": 220.0, "stagger_max": 110.0, "speed": 5.2, "circle_speed": 2.2, "circle_r": 2.7, "reach": 1.35,
+		"light_dmg": 8.0, "heavy_dmg": 20.0, "heavy_chance": 0.3, "windup": 0.2, "recover": 0.55, "chain": 4, "attack_speed": 1.4,
+		"block_chance": 0.25, "dodge_chance": 0.2, "think": Vector2(0.3, 0.7), "cooldown": Vector2(0.5, 1.1),
+		"taunt_chance": 0.1, "flee_at": 0.0, "finisher_ko": false, "boss": true, "glow": true, "howl_at": 0.5,
+		"howl": {"speed": 1.25, "circle_speed": 1.25, "light_dmg": 1.3, "heavy_dmg": 1.3, "windup": 0.85, "recover": 0.7,
+			"cooldown": 0.7, "think": 0.7, "chain": 1},
+		"howl_line": "Sói Xám nổi điên rồi!", "sfx": ["howl"],
+		"look": {"preset": "rider", "body": "hoodie", "helmet_color": Color("#7D848C"), "seed": 2020, "female": false, "backpack": false}},
 }
+const HOWL_S: float = 1.4               # Sói Xám's howl (armoured)
 const DODGE_SIDE_S: float = 0.3          # enemy side-step (Dolly)
 const DODGE_SIDE_SPEED: float = 6.0
 
@@ -161,6 +174,13 @@ static func pose(pose_name: String, u: float) -> Dictionary:
 			return _pose_cache[pose_name]
 		"stunned", "taunt", "dodge_lean", "hip_throw", "winded":
 			return CineMoves.code_pose(pose_name, u)
+		"howl":                  # Sói Xám: head thrown back, arms spread, a tremble (loop phase u)
+			var k: float = sin(u * TAU * 3.0) * 0.05
+			return {"torso": Vector3(-0.3, 0.0, k), "head": Vector3(-0.75 + k, 0.0, 0.0),
+				"shoulder_l": Vector3(0.45, 0.0, -1.15 - k), "elbow_l": Vector3(0.5, 0.0, 0.0),
+				"shoulder_r": Vector3(0.45, 0.0, 1.15 + k), "elbow_r": Vector3(0.5, 0.0, 0.0)}
+	if pose_name.begins_with("sw_"):
+		return SwordData.pose(pose_name, u)   # Phase C staff and katana poses
 	return {}
 
 

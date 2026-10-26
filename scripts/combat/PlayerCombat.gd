@@ -21,6 +21,10 @@
 # The WeaponDirector (optional) gets unarmed_owner = self: its own punch and right-mouse aim stay off while unarmed.
 # Engine.time_scale is written only through RadialWheel.scale_owner (a wheel that owns the time scale wins; restored on exit).
 # Test hooks: light_override / heavy_override / finisher_override (one press each), block_override (held), god (no damage).
+# Move set (Phase C, spec C-D3): set_moveset(d) swaps the moves, texts, poses and sounds (SwordDuel puts in the Vovinam
+# staff of SwordData.STAFF); reset_moveset() restores the unarmed defaults below. A move's optional "pose" key plays that
+# code pose once over the move (CombatPose), `idle_pose` is held while idle. `boss` (set by MeleeFight / SwordDuel) gets
+# the HUD's boss bar.
 # Autoloads are never referenced here.
 class_name PlayerCombat
 extends Node
@@ -93,6 +97,23 @@ var _fin_kind: String = ""
 var _ped_combo: Dictionary = {}          # pedestrian instance id -> [hits, game time of the last]
 var _sfx: Array[AudioStreamPlayer3D] = []
 var _sfx_i: int = 0
+## The fight's boss (CombatHUD draws its boss bar); null = none.
+var boss: Node3D = null
+# ----- move set (defaults: unarmed Vovinam; set_moveset() / reset_moveset()) -----
+var light_moves: Array = CombatData.LIGHT
+var heavy_move: Dictionary = CombatData.HEAVY
+var counter_move: Dictionary = CombatData.COUNTER
+var controls_text: String = CombatData.T_CONTROLS
+var counter_text: String = CombatData.T_COUNTER
+var block_pose: String = "block"
+var idle_pose: String = ""
+var dodge_m: float = CombatData.DODGE_HOSTILE_M
+## Landed hits spark as well as raising dust (blades).
+var blade: bool = false
+## Sound remap {cue: cue} applied by _cue (the staff's clash instead of the punch...).
+var cue_map: Dictionary = {}
+## The cues _cue played (after the remap; last 32, tests).
+var cues: Array[String] = []
 
 
 func _ready() -> void:
@@ -149,6 +170,32 @@ func setup(opts: Dictionary) -> void:
 	hud.name = "CombatHUD"
 	hud.combat = self
 	add_child(hud)
+
+
+## Swap the move set. Keys (each optional; a missing key keeps the unarmed default): light (Array of moves), heavy,
+## counter (moves as in CombatData, plus an optional "pose"), controls, counter_text, block_pose, idle_pose, dodge_m, blade,
+## cues ({cue: cue}). The move in flight is dropped.
+func set_moveset(d: Dictionary) -> void:
+	if player != null and (state == St.LIGHT or state == St.HEAVY or state == St.COUNTER):
+		_cancel_move()
+	light_moves = d.get("light", CombatData.LIGHT)
+	heavy_move = d.get("heavy", CombatData.HEAVY)
+	counter_move = d.get("counter", CombatData.COUNTER)
+	controls_text = String(d.get("controls", CombatData.T_CONTROLS))
+	counter_text = String(d.get("counter_text", CombatData.T_COUNTER))
+	block_pose = String(d.get("block_pose", "block"))
+	idle_pose = String(d.get("idle_pose", ""))
+	dodge_m = float(d.get("dodge_m", CombatData.DODGE_HOSTILE_M))
+	blade = bool(d.get("blade", false))
+	cue_map = d.get("cues", {})
+	combo_i = -1
+	if pose:
+		pose.clear()
+
+
+## Back to the unarmed Vovinam move set.
+func reset_moveset() -> void:
+	set_moveset({})
 
 
 # ---------------------------------------------------------------------------
@@ -340,7 +387,7 @@ func _idle(light: bool, heavy: bool, fin: bool, blk: bool) -> void:
 	if ft != null:
 		_start_finisher(ft)
 	elif heavy:
-		_start_move(CombatData.HEAVY, St.HEAVY)
+		_start_move(heavy_move, St.HEAVY)
 	elif light:
 		_start_light(false)
 
@@ -375,9 +422,9 @@ func _attacking(light: bool, heavy: bool, fin: bool, blk: bool) -> void:
 				return
 			queued = ""
 		if queued == "heavy":
-			_start_move(CombatData.HEAVY, St.HEAVY)
+			_start_move(heavy_move, St.HEAVY)
 			return
-		if queued == "light" and state == St.LIGHT and combo_i < CombatData.LIGHT.size() - 1:
+		if queued == "light" and state == St.LIGHT and combo_i < light_moves.size() - 1:
 			_start_light(true)
 			return
 	if state_t >= float(move.get("dur", 0.3)):
@@ -387,7 +434,7 @@ func _attacking(light: bool, heavy: bool, fin: bool, blk: bool) -> void:
 		if q == "light":
 			_start_light(false)
 		elif q == "heavy":
-			_start_move(CombatData.HEAVY, St.HEAVY)
+			_start_move(heavy_move, St.HEAVY)
 
 
 ## Drop the move in flight (its hit never lands); a held finisher target is let go.
@@ -414,10 +461,10 @@ func _start_light(chain: bool) -> void:
 	var i: int = 0
 	if chain:
 		i = combo_i + 1
-	elif combo_i >= 0 and combo_i < CombatData.LIGHT.size() - 1 and _t - _last_end <= CombatData.COMBO_GRACE:
+	elif combo_i >= 0 and combo_i < light_moves.size() - 1 and _t - _last_end <= CombatData.COMBO_GRACE:
 		i = combo_i + 1
-	combo_i = clampi(i, 0, CombatData.LIGHT.size() - 1)
-	_start_move(CombatData.LIGHT[combo_i], St.LIGHT)
+	combo_i = clampi(i, 0, light_moves.size() - 1)
+	_start_move(light_moves[combo_i], St.LIGHT)
 
 
 func _start_move(m: Dictionary, st: int) -> void:
@@ -433,9 +480,8 @@ func _start_move(m: Dictionary, st: int) -> void:
 	_face(strike_target)
 	_chase_left = CombatData.LUNGE_MAX
 	_track(strike_target, float(m.get("reach", 1.5)))
-	CombatData.play_clip(player.model, String(m["clip"]), float(m["dur"]), float(m.get("from", 0.0)), float(m.get("hit_at", -1.0)), float(m["hit"]))
-	if pose:
-		pose.clear()
+	_move_clip(m)
+	_move_pose(m)
 	_cue("whoosh_down" if st == St.HEAVY else "swish", player.global_position + Vector3(0.0, 1.2, 0.0), -8.0)
 	var kind: String = String(m["id"])
 	attack_started.emit(kind, strike_target)
@@ -447,6 +493,25 @@ func _start_move(m: Dictionary, st: int) -> void:
 				(e as Object).call("on_player_attack", kind, eta)
 	elif strike_target != null and _alive(strike_target):
 		strike_target.call("on_player_attack", kind, eta)
+
+
+## The move's pack clip fitted to its impact; clip "" (a staff thrust: the punch clip's body twist would turn the staff
+## away) stops the one-shot clip and lets the code pose carry the move.
+func _move_clip(m: Dictionary) -> void:
+	if String(m["clip"]) == "":
+		CharacterBuilder.stop_clip(player.model)
+		return
+	CombatData.play_clip(player.model, String(m["clip"]), float(m["dur"]), float(m.get("from", 0.0)), float(m.get("hit_at", -1.0)), float(m["hit"]))
+
+
+## The move's code pose ("pose" key) played once over the move, else the pose layer eases out (unarmed moves).
+func _move_pose(m: Dictionary) -> void:
+	if pose == null:
+		return
+	if m.has("pose"):
+		pose.set_pose(String(m["pose"]), 0.0, float(m["dur"]))
+	else:
+		pose.clear()
 
 
 ## Hit frame: enemies first (the heavy kick hits every one in its arc; a light move the strike target if it is still in
@@ -501,9 +566,11 @@ func _strike(e: Node3D, info: Dictionary) -> String:
 		"dodged", "ignored":
 			_cue("swish", at, -4.0)
 		_:
-			var heavy: bool = String(info["kind"]) == "heavy" or r == "ko" or r == "knockdown" or r == "guard_break"
+			var heavy: bool = String(info["kind"]) == String(heavy_move["id"]) or r == "ko" or r == "knockdown" or r == "guard_break"
 			_cue("impact_heavy" if heavy else "impact_light", at, 0.0 if heavy else -3.0)
 			fx.burst("dust", at, Vector3.UP, 0.35 if heavy else 0.25)
+			if blade:
+				fx.burst("sparks", at, -player.facing_dir(), 0.3 if heavy else 0.2)
 			if r == "guard_break" and hud:
 				hud.popup(CombatData.T_GUARD_BREAK, CombatHUD.WARN)
 	hit_landed.emit(e, String(info["kind"]), r)
@@ -600,20 +667,19 @@ func _counter(attacker: Node3D) -> void:
 	blocking = false
 	state = St.COUNTER
 	state_t = 0.0
-	move = CombatData.COUNTER
+	move = counter_move
 	hit_done = true
 	queued = ""
 	strike_target = attacker
 	_face(attacker)
-	CombatData.play_clip(player.model, String(move["clip"]), float(move["dur"]), float(move["from"]), float(move["hit_at"]), float(move["hit"]))
-	if pose:
-		pose.clear()
+	_move_clip(move)
+	_move_pose(move)
 	if is_instance_valid(attacker) and attacker.has_method("take_strike"):
-		_strike(attacker, {"kind": "counter", "dmg": float(move["dmg"]), "stagger": float(move["stagger"]), "push": float(move["push"]),
+		_strike(attacker, {"kind": String(move["id"]), "dmg": float(move["dmg"]), "stagger": float(move["stagger"]), "push": float(move["push"]),
 			"stun": float(move["stun"]), "breaks_block": true, "from": player.global_position})
 	_cue("knife_hit", player.global_position + Vector3(0.0, 1.4, 0.0))
 	if hud:
-		hud.popup(CombatData.T_COUNTER, CombatHUD.GOLD)
+		hud.popup(counter_text, CombatHUD.GOLD)
 	countered.emit(attacker)
 
 
@@ -646,8 +712,8 @@ func _take_damage(dmg: float, attacker: Node3D, heavy: bool) -> void:
 		player.velocity.z += a.z * 2.5
 
 
-## ThirdPersonController.jump_filter: a jump press near a hostile (DODGE_HOSTILE_M) becomes a dodge-roll along the input
-## direction (no input: away from the nearest hostile). Returns true when the press was used.
+## ThirdPersonController.jump_filter: a jump press near a hostile (within dodge_m: DODGE_HOSTILE_M unarmed) becomes a
+## dodge-roll along the input direction (no input: away from the nearest hostile). Returns true when the press was used.
 func try_dodge() -> bool:
 	if state == St.DOWN:
 		return enabled                       # down in a fight: no jumping around either
@@ -657,7 +723,7 @@ func try_dodge() -> bool:
 		return false
 	if player.move_state != "GROUND" and player.move_state != "LAND_SOFT":
 		return false
-	var near: Node3D = _nearest_hostile(CombatData.DODGE_HOSTILE_M)
+	var near: Node3D = _nearest_hostile(dodge_m)
 	if near == null:
 		return false
 	var dir: Vector3 = _input_dir()
@@ -821,8 +887,10 @@ func _apply_body() -> void:
 		player.model.rotation.y = cur + clampf(wrapf(want - cur, -PI, PI), -10.0 * _dt, 10.0 * _dt)
 	if pose:
 		if blocking and state == St.IDLE:
-			pose.set_pose("block")
-		elif pose.pose_name == "block":
+			pose.set_pose(block_pose)
+		elif idle_pose != "" and state == St.IDLE and (not pose.active() or pose.pose_name == block_pose):
+			pose.set_pose(idle_pose)
+		elif pose.pose_name == block_pose:
 			pose.clear()
 
 
@@ -912,13 +980,24 @@ func _block_held(can: bool) -> bool:
 # ---------------------------------------------------------------------------
 # FX / LOG
 # ---------------------------------------------------------------------------
-## A sound at a world position: Phase W cues (WeaponAudio) or A1 cues (CineAudio: impacts, groan, body fall, whoosh).
+## A sound at a world position: Phase W cues (WeaponAudio), Phase C duel cues (SwordAudio: clashes, glint, katana, howl)
+## or A1 cues (CineAudio: impacts, groan, body fall, whoosh); cue_map remaps a cue first. Played cues: `cues` (last 32).
 func _cue(cue: String, at: Vector3, db: float = 0.0) -> void:
 	if _sfx.is_empty():
 		return
+	if not cue_map.is_empty():
+		cue = String(cue_map.get(cue, cue))
+	cues.append(cue)
+	if cues.size() > 32:
+		cues.pop_front()
 	var p: AudioStreamPlayer3D = _sfx[_sfx_i]
 	_sfx_i = (_sfx_i + 1) % _sfx.size()
-	p.stream = WeaponAudio.stream(cue) if WeaponAudio.CUES.has(cue) else CineAudio.sfx(cue)
+	if WeaponAudio.CUES.has(cue):
+		p.stream = WeaponAudio.stream(cue)
+	elif SwordAudio.is_cue(cue):
+		p.stream = SwordAudio.stream(cue)
+	else:
+		p.stream = CineAudio.sfx(cue)
 	p.volume_db = db
 	p.global_position = at
 	p.play()

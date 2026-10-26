@@ -6,7 +6,12 @@
 #   reactions: BLOCK / DODGE (side-step) against the player's attack, STAGGER (hit), DAZE (stagger meter full, 2.5 s,
 #   finisher window), KNOCKDOWN (heavy kick on a staggered enemy, counters... lie 1.2 s + getup 0.9 s), KO (stays down,
 #   stars), FLEE then FLED (Dolly at 30 % HP: runs 3 s, then gone), HELD (in the player's finisher), HOLD (ai off: stands
-#   in guard; tests), IDLE (fight over: stands down).
+#   in guard; tests), IDLE (fight over: stands down); Phase C: HOWL (stats "howl_at", Sói Xám: once under that HP fraction he
+#   howls for HOWL_S, armoured (hits hurt, never interrupt), then fights on with the "howl" buff: multipliers of speed,
+#   damage, wind-up, recovery, cooldown, +1 chain) and FINALE (a scripted boss finale: not hostile, not defeated, no AI;
+#   the subclass ends it with a knockout: KatanaBoss's broken katana).
+#   Stats "glow" (Sói Xám): LED eyes (the body's "LedEye*" meshes, else two built on the head) light up from the start of
+#   every wind-up / telegraph until the impact: the tell of each attack.
 # The attack token (MeleeFight.request_token / release_token) is held from ENGAGE to the start of RECOVER, so at most
 # max_attackers enemies commit at once; hit / daze / knockdown / KO release it. Hits on the player go through
 # PlayerCombat.receive_attack at the impact frame (reach + 0.45 m, within 75° of the facing). Strikes from the player come
@@ -25,9 +30,11 @@ signal ko(enemy: MeleeEnemy)
 signal fled(enemy: MeleeEnemy)
 
 enum St { APPROACH, CIRCLE, ENGAGE, WINDUP, TELEGRAPH, ATTACK, RECOVER, BLOCK, DODGE, STAGGER, DAZE, KNOCKDOWN, KO, FLEE, FLED,
-	HOLD, IDLE, HELD }
+	HOLD, IDLE, HELD, HOWL, FINALE }
 const ST_NAMES: Array[String] = ["approach", "circle", "engage", "windup", "telegraph", "attack", "recover", "block", "dodge",
-	"stagger", "daze", "knockdown", "ko", "flee", "fled", "hold", "idle", "held"]
+	"stagger", "daze", "knockdown", "ko", "flee", "fled", "hold", "idle", "held", "howl", "finale"]
+const GLOW_ON_ENERGY: float = 9.0
+const GLOW_OFF_ENERGY: float = 0.8
 const GRAVITY: float = 20.0
 const TURN_RATE: float = 10.0
 const PUSH_DECEL: float = 10.0
@@ -81,6 +88,19 @@ var _stuck_t: float = 0.0
 ## Spawn point (bind): where a stuck / fallen enemy is put back. respawns: how often that happened.
 var home: Vector3 = Vector3.ZERO
 var respawns: int = 0
+## Code poses of the stance and the guard (subclasses: KatanaBoss holds a katana).
+var guard_pose: String = "guard"
+var block_pose: String = "block"
+## LED-eye glow (stats "glow", Sói Xám): lit from the start of every wind-up / telegraph until the impact. glow_t: game time
+## it last lit (tests read the lead to the impact).
+var glow_on: bool = false
+var glow_t: float = -99.0
+var glow_nodes: Array[MeshInstance3D] = []
+var _glow_mat: StandardMaterial3D = null
+## Howl phase (stats "howl_at", Sói Xám): howled once, howls counted (tests).
+var howled: bool = false
+var howls: int = 0
+var _marks := PackedFloat32Array()
 static var _flash_mat: StandardMaterial3D = null
 
 
@@ -128,6 +148,64 @@ func setup(arch: String, opts: Dictionary = {}) -> void:
 	for mi: Node in body.find_children("*", "MeshInstance3D", true, false):
 		_meshes.append(mi as MeshInstance3D)
 	_anim = CharacterBuilder.get_animator(body)
+	if bool(stats.get("glow", false)):
+		_build_glow()
+	if stats.has("howl_at"):
+		_marks.append(float(stats["howl_at"]))
+	if stats.has("sfx"):
+		SwordAudio.warm(stats["sfx"])
+
+
+## The LED eyes: the body's own "LedEye*" meshes (a body_fn look), else two small spheres in front of the head; one
+## emissive material per enemy, dim until _set_glow(true).
+func _build_glow() -> void:
+	for n: Node in body.find_children("LedEye*", "MeshInstance3D", true, false):
+		glow_nodes.append(n as MeshInstance3D)
+	_glow_mat = StandardMaterial3D.new()
+	_glow_mat.albedo_color = Color(0.35, 0.02, 0.02)
+	_glow_mat.emission_enabled = true
+	_glow_mat.emission = Color(1.0, 0.12, 0.06)
+	_glow_mat.emission_energy_multiplier = GLOW_OFF_ENERGY
+	_glow_mat.set_meta("vice_done", true)    # ViceStyle must not flatten it
+	if glow_nodes.is_empty():
+		var head: Node3D = (body.get_meta("rig", {}) as Dictionary).get("head") as Node3D
+		var sm := SphereMesh.new()
+		sm.radius = 0.017
+		sm.height = 0.03
+		sm.radial_segments = 8
+		sm.rings = 4
+		for sx: float in [-1.0, 1.0]:
+			var mi := MeshInstance3D.new()
+			mi.name = "LedEyeL" if sx < 0.0 else "LedEyeR"
+			mi.mesh = sm
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if head != null:
+				mi.position = Vector3(sx * 0.042, 0.12, -(CharacterBuilder.HEAD_R * 1.18 + 0.016))
+				head.add_child(mi)
+			else:
+				mi.position = Vector3(sx * 0.042, 1.62, -0.16)
+				body.add_child(mi)
+			glow_nodes.append(mi)
+	for mi2: MeshInstance3D in glow_nodes:
+		mi2.material_override = _glow_mat
+
+
+func _set_glow(on: bool) -> void:
+	if _glow_mat == null or on == glow_on:
+		return
+	glow_on = on
+	if on:
+		glow_t = _t
+	_glow_mat.emission_energy_multiplier = GLOW_ON_ENERGY if on else GLOW_OFF_ENERGY
+	_glow_mat.albedo_color = Color(1.0, 0.3, 0.22) if on else Color(0.35, 0.02, 0.02)
+	for mi: MeshInstance3D in glow_nodes:
+		if is_instance_valid(mi):
+			mi.scale = Vector3.ONE * (1.7 if on else 1.0)
+
+
+## HP fractions the boss bar marks with a tick (the howl threshold; KatanaBoss: its phases). Cached: no allocation.
+func boss_marks() -> PackedFloat32Array:
+	return _marks
 
 
 ## Wire to the player's combat, the token director (MeleeFight; null = always allowed), the shared sibling list and the FX.
@@ -159,9 +237,9 @@ func is_down() -> bool:
 	return st == St.KO or st == St.KNOCKDOWN or st == St.FLEE or st == St.FLED
 
 
-## Still in the fight against the player (not knocked out, fleeing, fled or stood down).
+## Still in the fight against the player (not knocked out, fleeing, fled, stood down or in a scripted finale).
 func is_hostile() -> bool:
-	return st != St.KO and st != St.FLED and st != St.FLEE and st != St.IDLE
+	return st != St.KO and st != St.FLED and st != St.FLEE and st != St.IDLE and st != St.FINALE
 
 
 func is_ko() -> bool:
@@ -239,9 +317,11 @@ func _physics_process(delta: float) -> void:
 				_strike()
 			if st == St.ATTACK and st_t >= st_len:
 				_after_attack()
-		St.RECOVER, St.BLOCK, St.STAGGER:
+		St.RECOVER, St.BLOCK, St.STAGGER, St.HOWL:
 			if st_t >= st_len:
 				_to_idle_state()
+		St.FINALE:
+			face_player = false
 		St.DODGE:
 			want = _side * CombatData.DODGE_SIDE_SPEED
 			if st_t >= st_len:
@@ -261,6 +341,8 @@ func _physics_process(delta: float) -> void:
 				collision_layer = 1
 				if _should_flee():
 					_start_flee()
+				elif _should_howl():
+					_start_howl()
 				else:
 					_to_idle_state()
 		St.KO:
@@ -286,7 +368,7 @@ func _physics_process(delta: float) -> void:
 			if _taunt_left > 0.0:
 				_taunt_left -= delta
 				if _taunt_left <= 0.0:
-					pose.set_pose("guard")
+					pose.set_pose(guard_pose)
 	if st == St.APPROACH or st == St.CIRCLE or st == St.ENGAGE or st == St.HOLD or st == St.IDLE:
 		want += _separation(p, dist)
 	velocity.x = want.x + push_v.x
@@ -308,7 +390,7 @@ func _physics_process(delta: float) -> void:
 ## Wedged (wants >= 1 m/s, moves < a quarter of it), off the leash or fallen below its spawn point: after STUCK_S (1 s when
 ## fallen) it is put back at its spawn point; after RESPAWN_MAX of those it counts as knocked out (the wave never hangs).
 func _stuck_check(delta: float, want: Vector3, dist: float) -> void:
-	if st == St.KO or st == St.FLED or st == St.FLEE or st == St.IDLE:
+	if st == St.KO or st == St.FLED or st == St.FLEE or st == St.IDLE or st == St.FINALE:
 		_stuck_t = 0.0
 		return
 	var fallen: bool = global_position.y < home.y - CombatData.FALL_BELOW_M
@@ -361,7 +443,7 @@ func _circle(delta: float, p: Node3D, dist: float) -> Vector3:
 	if _taunt_left > 0.0:
 		_taunt_left -= delta
 		if _taunt_left <= 0.0:
-			pose.set_pose("guard")
+			pose.set_pose(guard_pose)
 	if _think_t <= 0.0:
 		var th: Vector2 = stats["think"]
 		_think_t = _rng.randf_range(th.x, th.y)
@@ -417,19 +499,24 @@ func _enter(s: int, length: float = 0.0) -> void:
 	st_len = length
 	if s != St.TELEGRAPH and s != St.ATTACK:
 		_set_flash(false)
+	if _glow_mat != null:
+		if s == St.WINDUP or s == St.TELEGRAPH:
+			_set_glow(true)
+		elif s != St.ATTACK:
+			_set_glow(false)
 	match s:
 		St.APPROACH, St.ENGAGE, St.HOLD:
-			pose.set_pose("guard")
+			pose.set_pose(guard_pose)
 		St.WINDUP:
 			pose.set_pose("jab_windup_l" if _alt else "jab_windup_r")   # the side of the coming punch
 		St.CIRCLE:
 			if _taunt_left <= 0.0:
-				pose.set_pose("guard")
+				pose.set_pose(guard_pose)
 			if combat and combat.player:
 				var d: Vector3 = global_position - combat.player.global_position
 				_slot_angle = atan2(d.x, d.z)
 		St.BLOCK:
-			pose.set_pose("block")
+			pose.set_pose(block_pose)
 		St.TELEGRAPH:
 			pose.set_pose("windup")
 			_set_flash(true)
@@ -439,7 +526,9 @@ func _enter(s: int, length: float = 0.0) -> void:
 			pose.set_pose("dodge_lean", 0.0, length)
 		St.IDLE:
 			pose.set_pose("taunt", 0.8)
-		St.ATTACK, St.STAGGER, St.KNOCKDOWN, St.FLEE, St.HELD:
+		St.HOWL:
+			pose.set_pose("howl", 0.6)
+		St.ATTACK, St.STAGGER, St.KNOCKDOWN, St.FLEE, St.HELD, St.FINALE:
 			pose.clear()
 		St.KO, St.FLED:
 			pose.reset()
@@ -472,13 +561,13 @@ func _begin_attack() -> void:
 		_enter(St.WINDUP, float(stats["windup"]))
 
 
-## Tests / scripted beats: attack now ("light" or "heavy"), without a token.
+## Tests / scripted beats: attack now ("light", "heavy" or "combo": the archetype's whole light chain), without a token.
 func force_attack(kind: String) -> void:
 	if not is_hostile() or st == St.DAZE or st == St.KNOCKDOWN or st == St.HELD:
 		return
 	_forced = true
-	attack_kind = kind
-	chain_left = 0
+	attack_kind = "light" if kind == "combo" else kind
+	chain_left = int(stats["chain"]) - 1 if kind == "combo" else 0
 	_begin_attack()
 
 
@@ -496,8 +585,8 @@ func _start_attack() -> void:
 	hit_done = false
 	var a: Dictionary = CombatData.ENEMY_HEAVY if attack_kind == "heavy" else (CombatData.ENEMY_LIGHT_ALT if _alt else CombatData.ENEMY_LIGHT)
 	_alt = not _alt
-	st_len = float(a["dur"])
 	_hit_t = float(a["hit"])
+	st_len = maxf(float(a["dur"]) / float(stats.get("attack_speed", 1.0)), _hit_t + 0.05)   # quicker follow-through (Sói Xám)
 	if attack_kind == "heavy":
 		_set_flash(true)                     # still red until the impact
 	CombatData.play_clip(body, String(a["clip"]), float(a["dur"]), float(a["from"]), float(a["hit_at"]), float(a["hit"]))
@@ -514,6 +603,7 @@ func _start_attack() -> void:
 func _strike() -> void:
 	hit_done = true
 	_set_flash(false)
+	_set_glow(false)
 	attacks += 1
 	var r: String = "miss"
 	var p: Node3D = combat.player if combat else null
@@ -578,7 +668,7 @@ func on_player_attack(_kind: String, eta: float) -> void:
 ## "breaks_block", "stun" (stagger seconds), "knockdown", "from". Returns "ignored" | "dodged" | "blocked" | "guard_break" |
 ## "hit" | "daze" | "knockdown" | "ko" | "flee".
 func take_strike(info: Dictionary) -> String:
-	if st == St.KO or st == St.FLED or st == St.FLEE or st == St.KNOCKDOWN:
+	if st == St.KO or st == St.FLED or st == St.FLEE or st == St.KNOCKDOWN or st == St.FINALE:
 		return "ignored"
 	if st == St.DODGE:
 		return "dodged"
@@ -608,8 +698,8 @@ func take_strike(info: Dictionary) -> String:
 	var r: String = _after_damage(away)
 	if r != "":
 		return r
-	if st == St.DAZE or st == St.HELD:
-		return "hit"
+	if st == St.DAZE or st == St.HELD or st == St.HOWL:
+		return "hit"                         # dazed / held / howling (armoured): hurt, not interrupted
 	stagger += float(info.get("stagger", 15.0))
 	if stagger >= stagger_max:
 		stagger = stagger_max
@@ -618,13 +708,18 @@ func take_strike(info: Dictionary) -> String:
 	if bool(info.get("knockdown", false)) or (kind == "heavy" and st == St.STAGGER):
 		_knockdown(away)
 		return "knockdown"
-	if st == St.TELEGRAPH:
+	if st == St.TELEGRAPH or _armored():
 		return "hit"                         # armoured wind-up: the heavy still comes (dodge it)
 	_stagger_for(float(info.get("stun", CombatData.STAGGER_S)))
 	return "hit"
 
 
-## HP checks after damage: flee threshold (Dolly) or knockout. "" = still fighting.
+## Hits that do not interrupt (besides a telegraph): none here; KatanaBoss armours its wind-ups and swings.
+func _armored() -> bool:
+	return false
+
+
+## HP checks after damage: flee threshold (Dolly), knockout or the howl threshold (Sói Xám). "" = still fighting.
 func _after_damage(away: Vector3) -> String:
 	if _should_flee():
 		hp = maxf(hp, 1.0)
@@ -634,7 +729,42 @@ func _after_damage(away: Vector3) -> String:
 		hp = 0.0
 		_knock_out(away)
 		return "ko"
+	if _should_howl() and st != St.HELD:
+		_start_howl()
+		return "howl"
 	return ""
+
+
+func _should_howl() -> bool:
+	return not howled and stats.has("howl_at") and hp <= max_hp * float(stats["howl_at"])
+
+
+## The howl (Sói Xám): stops, howls for HOWL_S (armoured, eyes lit, the howl cue and the archetype's line), and the "howl"
+## buff applies at once: float / Vector2 stats are multiplied, int stats (chain) get the value added.
+func _start_howl() -> void:
+	howled = true
+	howls += 1
+	_release_token()
+	stagger = 0.0
+	push_v = Vector3.ZERO
+	_enter(St.HOWL, CombatData.HOWL_S)
+	CharacterBuilder.stop_clip(body)
+	_set_glow(true)
+	var buff: Dictionary = stats.get("howl", {})
+	for k: String in buff.keys():
+		if not stats.has(k):
+			continue
+		var v: Variant = stats[k]
+		if v is int:
+			stats[k] = int(v) + int(buff[k])
+		elif v is Vector2:
+			stats[k] = (v as Vector2) * float(buff[k])
+		else:
+			stats[k] = float(v) * float(buff[k])
+	if combat:
+		combat._cue("howl", global_position + Vector3(0.0, 1.6, 0.0), 2.0)
+		if combat.hud and stats.has("howl_line"):
+			combat.hud.popup(String(stats["howl_line"]), CombatHUD.WARN)
 
 
 func _should_flee() -> bool:
@@ -746,7 +876,7 @@ func take_hit(info: Dictionary) -> String:
 
 ## The fight is over (player down / fight stopped): stand down, no more attacks.
 func stand_down() -> void:
-	if st == St.KO or st == St.FLED or st == St.FLEE:
+	if st == St.KO or st == St.FLED or st == St.FLEE or st == St.FINALE:
 		return
 	_release_token()
 	_enter(St.IDLE)

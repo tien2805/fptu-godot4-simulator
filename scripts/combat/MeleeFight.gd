@@ -20,7 +20,10 @@
 #   #   opts = MeleeEnemy opts: "body" (CharacterBuilder opts merged over the archetype look), "body_fn"
 #   #   (Callable(look) -> rigged Node3D: masks, cardigans), "label", "stats" (archetype overrides), "hp_scale".
 #   #   Archetypes: "courier" (helmet rider), "clone" (identical student, give it a sheep mask via body_fn), "dolly"
-#   #   (mini-boss: fast, side-steps, flees at 30 % HP; fled counts as beaten).
+#   #   (mini-boss: fast, side-steps, flees at 30 % HP; fled counts as beaten), "soi_xam" (Phase C mini-boss: fast 4-hit
+#   #   combos, LED-eye glow before every attack, a howl buff at 50 % HP; gets the boss bar).
+#   #   Optional spawn key "make": Callable() -> MeleeEnemy subclass to spawn instead (SwordDuel: KatanaBoss).
+#   #   The first enemy whose stats have "boss" becomes combat.boss (the HUD's boss bar) until it is removed.
 #   fight.won.connect(...)                      # last wave beaten (every enemy knocked out or fled); the knocked-out
 #                                               #   bodies stay until you stop() or queue_free() the fight
 #   fight.lost.connect(...)                     # the player's HP reached 0 (show "TOANG!", then call retry())
@@ -229,7 +232,7 @@ func _start_wave(i: int) -> void:
 	var spawns: Array = waves[i]
 	for s: Variant in spawns:
 		var d: Dictionary = s
-		var e := MeleeEnemy.new()
+		var e: MeleeEnemy = (d["make"] as Callable).call() if d.has("make") else MeleeEnemy.new()
 		e.name = "Enemy%d" % _spawned
 		var o: Dictionary = (d.get("opts", {}) as Dictionary).duplicate()
 		if not o.has("seed"):
@@ -252,6 +255,8 @@ func _start_wave(i: int) -> void:
 		e.fled.connect(_on_fled)
 		enemies.append(e)
 		combat.add_enemy(e)
+		if bool(e.stats.get("boss", false)) and combat.boss == null:
+			combat.boss = e
 		if player.cam_ray:
 			player.cam_ray.add_exception(e)
 	wave_started.emit(i)
@@ -259,6 +264,8 @@ func _start_wave(i: int) -> void:
 
 func _clear_enemies() -> void:
 	for e: Variant in enemies:
+		if combat.boss == e:
+			combat.boss = null
 		if is_instance_valid(e):
 			combat.remove_enemy(e)
 			if player and player.cam_ray:
@@ -380,6 +387,8 @@ func _exit_tree() -> void:
 	_revive_if_down()
 	if combat and is_instance_valid(combat):
 		for e: Variant in enemies:
+			if combat.boss == e:
+				combat.boss = null
 			if is_instance_valid(e):
 				combat.remove_enemy(e)
 			else:

@@ -26,12 +26,14 @@ Files: `PlayerCombat.gd`, `MeleeEnemy.gd`, `MeleeFight.gd`, `CombatHUD.gd`, `Com
   HUD boss bar; `_cue` remaps through `cue_map` and resolves `SwordAudio` cues. Defaults = today's unarmed behaviour.
 - `MeleeEnemy`: states `HOWL` and `FINALE` appended; `guard_pose` / `block_pose` vars; stats-driven LED-eye glow
   (`glow`: eyes light up for every wind-up / telegraph until the impact) and howl phase (`howl_at`, `howl` buff,
-  `howl_line`); `force_attack("combo")` (full chain, tests); `boss_marks()` for the boss bar; FINALE = scripted, not
-  hostile, not defeated (the subclass ends it with a knockout).
+  `howl_line`); `attack_speed` (shorter follow-through, same tell); `_armored()` hook (KatanaBoss armours its wind-ups);
+  `force_attack("combo")` (full chain, tests); `boss_marks()` for the boss bar; FINALE = scripted, not hostile, not
+  defeated (the subclass ends it with a knockout).
 - `MeleeFight`: spawn key `make` (Callable -> MeleeEnemy subclass); `combat.boss` = the first enemy whose stats have
   `boss`, cleared with the enemies.
-- `CombatHUD`: bottom-centre boss bar (label, HP, phase ticks from `boss_marks()`), `boss_shown` for tests; no head bar
-  for the boss; the control hint from `combat.controls_text`.
+- `CombatHUD`: a boss bar at the top centre under the HP bar (label, HP, phase ticks from `boss_marks()`; the bottom
+  belongs to the hint line, stamina, zone name and story objective), `boss_shown` for tests; no head bar for the boss;
+  the control hint from `combat.controls_text`.
 - `CombatData`: archetype `soi_xam` (fast 4-hit chains, light tell 0.38 s, glow, howl at 50 %: speed x1.25, damage
   x1.3, quicker wind-up / recovery, finisher not a KO, `boss`), pose `howl`, `sw_*` poses delegated to `SwordData`.
 
@@ -41,8 +43,10 @@ Files: `swords/SwordData.gd`, `swords/SwordProps.gd`, `swords/KatanaProp.gd`, `s
 - Staff moves: LMB 3 slashes (9 / 11 / 15 damage, 1.9 m reach), RMB thrust (20, 2.4 m, breaks blocks), hold Q block,
   perfect block = parry riposte (8 damage, the boss staggers 1.3 s, "GẠT ĐỠ"), Space dodge within 14 m. Landed hits
   spark and raise dust; clash, parry ring, whoosh and wood-hit cues replace the punch sounds.
-- Props are code-built and ride a pivot under the hand's BoneAttachment3D, aligned on the forearm at rest (staff along
-  it, katana tilted 25 degrees).
+- Props are code-built and ride a pivot at the fist under a BoneAttachment3D of the forearm (the clips' wrist turns
+  never twist them), aligned on the forearm at rest (staff along it, katana tilted 0.45 rad). Staff and katana poses are
+  authored from joint conventions measured on the rig; swings hold the hips / chest / wrist neutral, and the thrust,
+  parry riposte, lunge and spin use no pack clip (the punch clip's twist turned the blade sideways).
 - KatanaProp: grip, guard and a 6-segment blade; bend stages 0-3 at 75 / 50 / 25 % HP (0, 0.35, 0.8, 1.4 rad), a
   decaying wobble on each hit, a glint star (white = blockable, red = dodge it), `snap()` at 0 HP drops the outer half
   as a falling piece.
