@@ -88,6 +88,32 @@ static func canteen_stage(size: Vector2, tod: String) -> Dictionary:
 		"yaw_deg": 271.0}
 
 
+## Phase C stages (spec C-D5 / C-D9): explicit map points measured with FreeRoam.cine_stage (ring 0 at these sizes), each
+## with a landmark fallback; the lair scenes carry their own set dressing (props with "set": true, see drop_set):
+##   "duy_room"  Anh Duy's corner by the BE6 lobby of The Beverly (8 x 8)
+##   "bridge"    the bank under / beside the real Rạch Hầm bridge (14 x 10; the deck overhead is carried)
+##   "drive"     the road south of the Rạch Hầm bridge, heading to it (7 x 26)
+##   "yard"      the container yard by the canal east of the bridge (14 x 12; containers carried)
+##   "server"    the server basement under The Beverly tower (14 x 10; staged beside BE6 with carried walls: integration
+##               passes "xf" and "drop_set" inside the real basement scene)
+const PHASE_C_STAGES: Dictionary = {
+	"duy_room": {"at": Vector2(3895.0, -424.0), "size": Vector2(8.0, 8.0), "yaw_deg": 21.0, "landmark": "be6_center"},
+	"bridge": {"at": Vector2(2145.0, 150.0), "size": Vector2(14.0, 10.0), "yaw_deg": 0.0, "landmark": "be6_center"},
+	"drive": {"at": Vector2(2113.2, 110.87), "size": Vector2(7.0, 26.0), "yaw_deg": 195.6, "landmark": "be6_center"},
+	"yard": {"at": Vector2(2180.0, 160.0), "size": Vector2(14.0, 12.0), "yaw_deg": 0.0, "landmark": "be6_center"},
+	"server": {"at": Vector2(3930.0, -440.0), "size": Vector2(14.0, 10.0), "yaw_deg": 21.0, "landmark": "be6_center"},
+}
+
+
+static func phase_c_stage(place: String, tod: String = "night") -> Dictionary:
+	var d: Dictionary = (PHASE_C_STAGES[place] as Dictionary).duplicate()
+	d["near"] = 30.0
+	d["tod"] = tod
+	d["exposure"] = 1.4
+	d["ambient"] = 1.7
+	return d
+
+
 ## Yaw in degrees for an actor at `from` to face `to` (characters face -Z at yaw 0).
 static func face(from: Vector3, to: Vector3) -> float:
 	var d: Vector3 = to - from

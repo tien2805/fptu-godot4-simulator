@@ -46,7 +46,14 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	# stand, and the night corridor set (walls, ceiling, tube lamps that flicker like "lamp": opts "flicker")
 	"shiba", "table", "stool", "chair", "tray", "soup_pot", "counter", "laptop", "flyer", "corridor",
 	# Dolly's tells as held props (cuff on Wrist.L, keychain on Hips) and a lobby front with glass doors (cine_d4)
-	"wool_cuff", "sheep_keychain", "lobby_wall"]
+	"wool_cuff", "sheep_keychain", "lobby_wall",
+	# story Phase C (Days 2, 3, 5): wearables, hand props, sets and animated props, built by CinePropsC (see its header;
+	# this list = CinePropsC.KINDS, kept literal so it stays a constant)
+	"wolf_helmet", "wolf_mask", "fox_mask", "gold_shades", "round_glasses", "headphones", "key_lanyard", "turtleneck",
+	"hawaii_print", "belly", "energy_drink", "cigar_vape", "coffee_cup", "party_horn", "usb", "katana", "katana_blade",
+	"keyboard", "server_panel", "staff", "bike_mirror", "chain", "small_crate", "pallet", "pillar", "bridge_deck", "rope",
+	"motorbike", "container", "mannequins", "forklift", "server_rack", "server_room", "monitor_wall", "stonks_screen", "fire",
+	"keynote", "desk"]
 
 var _serial: int = 0
 var _parts: Array[Dictionary] = []     # {node: CPUParticles3D, s0, life}
@@ -542,7 +549,10 @@ static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 		"lobby_wall":
 			_build_lobby_wall(root, opts)
 		_:
-			push_warning("CineFX.build_prop: unknown kind '%s'" % kind)
+			if CinePropsC.has(kind):
+				CinePropsC.build(kind, root, opts)
+			else:
+				push_warning("CineFX.build_prop: unknown kind '%s'" % kind)
 	return root
 
 

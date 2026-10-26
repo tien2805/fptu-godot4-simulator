@@ -167,6 +167,16 @@ const MOVES: Dictionary = {
 	"ride": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "ride"}]},
 	"step_back": {"dur": 0.6, "src": [{"t": "code", "a": "step_back"}]},
 	"chair_smash": {"dur": 0.9, "hit_u": 0.5, "src": [{"t": "code", "a": "chair_smash", "hit": 0.5}]},
+	# --- story Phase C (Days 2, 3, 5): seated typing at three laptops (Anh Duy), sipping a coffee (Za Mẫn), a party horn at
+	# the mouth (Alexander), tied sitting against a pillar (Sói Xám), the keynote gesture and smug bow (ending C), a
+	# two-handed staff guard. Code poses on every tier.
+	"type_sit": {"dur": 1.0, "loop": true, "src": [{"t": "code", "a": "type_sit"}]},
+	"sip": {"dur": 2.4, "loop": true, "src": [{"t": "code", "a": "sip"}]},
+	"blow": {"dur": 1.2, "loop": true, "src": [{"t": "code", "a": "blow"}]},
+	"tied_sit": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "tied_sit"}]},
+	"present": {"dur": 2.4, "loop": true, "src": [{"t": "code", "a": "present"}]},
+	"bow_ceo": {"dur": 1.6, "src": [{"t": "code", "a": "bow_ceo"}]},
+	"staff_guard": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "staff_guard"}]},
 }
 
 ## Two-handed overhead smash (a chair or the soup pot held between both hands): wind up over the head, bring it down on
@@ -781,4 +791,49 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 			rd["torso"] = Vector3(-0.15, 0.0, 0.0)
 			rd["head"] = Vector3(-0.1, 0.0, 0.0)
 			return rd
+		"type_sit":   # seated at a desk, forearms forward over the keyboard, fingers going (loop phase u)
+			var ty: Dictionary = code_pose("sit_bench", u)
+			var tj: float = sin(u * TAU * 6.0) * 0.03
+			ty["shoulder_l"] = Vector3(0.7 + tj, 0.0, -0.06)
+			ty["elbow_l"] = Vector3(1.25, 0.0, 0.0)
+			ty["shoulder_r"] = Vector3(0.7 - tj, 0.0, 0.06)
+			ty["elbow_r"] = Vector3(1.25, 0.0, 0.0)
+			ty["torso"] = Vector3(0.14, 0.0, 0.0)
+			ty["head"] = Vector3(0.18 + 0.03 * sin(u * TAU), 0.0, 0.0)
+			return ty
+		"sip":        # standing, a cup in the right hand: up to the mouth and down again (loop phase u)
+			var sk: float = pow(maxf(sin(u * TAU), 0.0), 2.0)
+			return {"shoulder_r": Vector3(0.55 + 0.75 * sk, 0.0, 0.2 + 0.15 * sk), "elbow_r": Vector3(1.5 + 0.8 * sk, 0.0, 0.0),
+				"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0),
+				"torso": Vector3(-0.03, 0.0, 0.0), "head": Vector3(0.12 - 0.22 * sk, 0.0, 0.0)}
+		"blow":       # the right hand at the mouth (a party horn), the left arm flung out: ta-da (loop phase u)
+			var bw: float = sin(u * TAU) * 0.05
+			return {"shoulder_r": Vector3(0.95, 0.0, 0.3), "elbow_r": Vector3(2.35, 0.0, 0.0),
+				"shoulder_l": Vector3(1.2 + bw, 0.0, -1.0), "elbow_l": Vector3(0.3, 0.0, 0.0),
+				"torso": Vector3(-0.1, 0.0, 0.0), "head": Vector3(-0.08 + bw, 0.0, 0.0)}
+		"tied_sit":   # sitting against a pillar, hands tied behind it, head lolling (= slumped legs; loop phase u)
+			var ts: Dictionary = code_pose("slumped", u)
+			ts["shoulder_l"] = Vector3(-0.55, 0.0, -0.25)
+			ts["elbow_l"] = Vector3(0.9, 0.0, 0.0)
+			ts["shoulder_r"] = Vector3(-0.55, 0.0, 0.25)
+			ts["elbow_r"] = Vector3(0.9, 0.0, 0.0)
+			ts["head"] = Vector3(0.2, 0.15 * sin(u * TAU), 0.1)
+			return ts
+		"present":    # keynote: the right arm sweeps toward the screen, the left hand open (loop phase u)
+			var pr: float = sin(u * TAU)
+			return {"shoulder_r": Vector3(1.15 + 0.15 * pr, 0.0, 0.7), "elbow_r": Vector3(0.5, 0.0, 0.0),
+				"shoulder_l": Vector3(0.75, 0.0, -0.45 - 0.1 * pr), "elbow_l": Vector3(1.1, 0.0, 0.0),
+				"torso": Vector3(-0.05, 0.08 * pr, 0.0), "head": Vector3(-0.05, -0.1 * pr, 0.0)}
+		"bow_ceo":    # a smug little bow, the right hand on the chest
+			var bk: float = sin(clampf(u, 0.0, 1.0) * PI)
+			return {"torso": Vector3(0.55 * bk, 0.0, 0.0), "head": Vector3(0.15 * bk, 0.0, 0.0),
+				"shoulder_r": Vector3(0.6, 0.0, -0.55), "elbow_r": Vector3(2.0, 0.0, 0.0),
+				"shoulder_l": Vector3(0.2, 0.0, -0.2), "elbow_l": Vector3(0.3, 0.0, 0.0)}
+		"staff_guard":  # both hands on a staff held forward at waist height, knees soft (loop phase u)
+			var sg: float = sin(u * TAU) * 0.02
+			return {"shoulder_l": Vector3(0.95 + sg, 0.0, 0.3), "elbow_l": Vector3(1.0, 0.0, 0.0),
+				"shoulder_r": Vector3(0.75 + sg, 0.0, -0.05), "elbow_r": Vector3(1.35, 0.0, 0.0),
+				"torso": Vector3(0.1, 0.25, 0.0), "head": Vector3(-0.05, -0.25, 0.0),
+				"thigh_l": Vector3(0.25, 0.0, 0.08), "knee_l": Vector3(-0.4, 0.0, 0.0),
+				"thigh_r": Vector3(-0.1, 0.0, -0.08), "knee_r": Vector3(-0.3, 0.0, 0.0)}
 	return {}
