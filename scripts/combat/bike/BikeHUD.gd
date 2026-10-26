@@ -32,6 +32,13 @@ var popups: int = 0
 var warn_left: bool = false
 var warn_right: bool = false
 var _linger: float = -1.0
+## Texts rebuilt only when their number changes (no string building per frame).
+var left_text: String = ""
+var wave_text: String = ""
+var stab_text: String = ""
+var _left_n: int = -1
+var _wave_n: int = -1
+var _stab_n: int = -1
 
 
 func _ready() -> void:
@@ -127,6 +134,7 @@ func _process(delta: float) -> void:
 		popup_label.scale = Vector2.ONE * (1.0 + 0.25 * maxf(0.0, 1.0 - u * 6.0))
 		if popup_left <= 0.0:
 			popup_label.visible = false
+	_refresh_texts()
 	var m: int = chase.warn_mask() if chase and chase.state == "running" else 0
 	warn_left = (m & 1) != 0
 	warn_right = (m & 2) != 0
@@ -139,6 +147,23 @@ func _process(delta: float) -> void:
 			warn_l.queue_redraw()
 		if warn_right:
 			warn_r.queue_redraw()
+
+
+func _refresh_texts() -> void:
+	if chase == null or chase.combat == null:
+		return
+	var n: int = chase.remaining()
+	if n != _left_n:
+		_left_n = n
+		left_text = BikeCombatData.T_LEFT % n
+	var w: int = clampi(chase.wave + 1, 1, maxi(chase.waves.size(), 1))
+	if w != _wave_n:
+		_wave_n = w
+		wave_text = BikeCombatData.T_WAVE % [w, chase.waves.size()]
+	var st: int = int(ceil(chase.combat.stability))
+	if st != _stab_n:
+		_stab_n = st
+		stab_text = str(st)
 
 
 static func _text(ci: CanvasItem, f: Font, pos: Vector2, s: String, sz: int, col: Color, align: HorizontalAlignment, w: float) -> void:
@@ -168,12 +193,10 @@ class Panel_ extends Control:
 			col = col.lightened(0.45)
 		draw_rect(Rect2(r.position, Vector2(r.size.x * k, r.size.y)), col)
 		draw_rect(r, Color(1.0, 1.0, 1.0, 0.5), false, 1.0)
-		BikeHUD._text(self, f, Vector2(size.x - 50.0, 28.0), "%d" % int(ceil(c.stability)), 17, acc, HORIZONTAL_ALIGNMENT_RIGHT, 42.0)
-		var left: String = BikeCombatData.T_LEFT % ch.remaining()
-		BikeHUD._text(self, f, Vector2(12.0, 60.0), left, 17, CombatHUD.GOLD, HORIZONTAL_ALIGNMENT_LEFT, 240.0)
+		BikeHUD._text(self, f, Vector2(size.x - 50.0, 28.0), hud.stab_text, 17, acc, HORIZONTAL_ALIGNMENT_RIGHT, 42.0)
+		BikeHUD._text(self, f, Vector2(12.0, 60.0), hud.left_text, 17, CombatHUD.GOLD, HORIZONTAL_ALIGNMENT_LEFT, 240.0)
 		if ch.waves.size() > 1:
-			var wv: String = BikeCombatData.T_WAVE % [clampi(ch.wave + 1, 1, ch.waves.size()), ch.waves.size()]
-			BikeHUD._text(self, f, Vector2(size.x - 160.0, 60.0), wv, 17, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, 148.0)
+			BikeHUD._text(self, f, Vector2(size.x - 160.0, 60.0), hud.wave_text, 17, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, 148.0)
 
 
 ## "[Q] Đạp trái" / "[E] Đạp phải": dim in the cooldown, lit on the side kicking.

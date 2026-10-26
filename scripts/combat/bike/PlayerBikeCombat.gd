@@ -122,17 +122,21 @@ func kicking() -> bool:
 	return kick_t >= 0.0
 
 
-## Bike frame on the map plane: [forward, right] (unit Vector2).
-func bike_frame() -> Array[Vector2]:
+## Bike frame on the map plane (unit vectors, refreshed by update_frame(); no allocation).
+var fwd2: Vector2 = Vector2(0.0, -1.0)
+var right2: Vector2 = Vector2(1.0, 0.0)
+
+
+func update_frame() -> void:
 	var z: Vector3 = bike.global_transform.basis.z
 	var f := Vector2(-z.x, -z.z)
-	f = f.normalized() if f.length_squared() > 1e-6 else Vector2(0.0, -1.0)
-	return [f, Vector2(-f.y, f.x)]
+	fwd2 = f.normalized() if f.length_squared() > 1e-6 else Vector2(0.0, -1.0)
+	right2 = Vector2(-fwd2.y, fwd2.x)
 
 
 ## The kickable target the window would hit now on `side`, or null.
 func kick_target(side: int) -> Node3D:
-	var fr: Array[Vector2] = bike_frame()
+	update_frame()
 	var p := Vector2(bike.global_position.x, bike.global_position.z)
 	var best: Node3D = null
 	var best_score: float = INF
@@ -143,8 +147,8 @@ func kick_target(side: int) -> Node3D:
 		if absf(g.y - bike.global_position.y) > 2.5:
 			continue
 		var rel := Vector2(g.x, g.z) - p
-		var lat: float = rel.dot(fr[1]) * float(side)
-		var along: float = rel.dot(fr[0])
+		var lat: float = rel.dot(right2) * float(side)
+		var along: float = rel.dot(fwd2)
 		if lat < BikeCombatData.KICK_MIN or lat > BikeCombatData.KICK_REACH or absf(along) > BikeCombatData.KICK_ALONG:
 			continue
 		var score: float = absf(lat - 1.4) + absf(along) * 0.5
@@ -166,7 +170,8 @@ func damage(amount: float, cause: String, from_side: int = 0) -> bool:
 		if cause == "kick":
 			bike.current_speed_ms *= 0.85
 		if from_side != 0:
-			var r: Vector2 = bike_frame()[1] * -float(from_side)
+			update_frame()
+			var r: Vector2 = right2 * -float(from_side)
 			_shove = Vector3(r.x, 0.0, r.y) * (BikeCombatData.SHOVE_M / BikeCombatData.SHOVE_S)
 			_shove_t = BikeCombatData.SHOVE_S
 		_cue("impact_heavy", bike.global_position + Vector3(0.0, 0.9, 0.0), -2.0)
@@ -201,7 +206,8 @@ func knock_off() -> void:
 			_anchor.name = "KnockedStars"
 			_anchor.top_level = true
 			add_child(_anchor)
-			var r: Vector2 = bike_frame()[1]
+			update_frame()
+			var r: Vector2 = right2
 			_anchor.global_position = bike.global_position + Vector3(-r.x * 0.7, -1.5, -r.y * 0.7)
 			fx.stars(_anchor, 6.0)
 	knocked_off.emit()
@@ -259,7 +265,7 @@ func _physics_process(delta: float) -> void:
 				hits += 1
 				_log("hit")
 				var away := Vector2(t.global_position.x - bike.global_position.x, t.global_position.z - bike.global_position.z)
-				away = away.normalized() if away.length_squared() > 1e-4 else bike_frame()[1] * float(kick_side)
+				away = away.normalized() if away.length_squared() > 1e-4 else right2 * float(kick_side)
 				(t as Object).call("take_kick", away)
 				bike.add_camera_shake(0.3)
 				kick_hit.emit(t, kick_side)

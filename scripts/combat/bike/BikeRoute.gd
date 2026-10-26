@@ -2,7 +2,8 @@
 # Road path of a bike chase (spec C-D1) on the map plane (x east, z south as Vector2(x, z)): a polyline with arc length s
 # and a signed lateral offset d (positive = right of the travel direction). The AI places its targets with world(s, d)
 # and finds the player with project(p, s_hint), which only searches a window around the last s so two close parallel
-# legs never swap. nguyen_xien(md) builds the default Day 2 route from the real map data by road name.
+# legs never swap. nguyen_xien(md) builds the default Day 2 route from the real map data by road name; bridge_s is the
+# route distance of the Rạch Hầm bridge's middle (find_bridge_s for any route; -1 = not on it).
 class_name BikeRoute
 extends RefCounted
 
@@ -10,11 +11,14 @@ const RESAMPLE_M: float = 8.0
 const WINDOW_M: float = 60.0
 const NX_NAME: String = "Nguyễn Xiển"
 const DEFAULT_LEN: float = 2100.0
+const BRIDGE_NAME: String = "Rạch Hầm"
+const BRIDGE_MAX_D: float = 8.0
 
 var pts := PackedVector2Array()
 var cum := PackedFloat32Array()
 var length: float = 0.0
 var half_width: float = BikeCombatData.ROAD_HALF
+var bridge_s: float = -1.0
 
 
 ## Route from points (Vector2(x, z), Vector3 or [x, z] arrays), resampled to <= RESAMPLE_M segments. Duplicates dropped.
@@ -98,7 +102,27 @@ static func nguyen_xien(md: MapData, max_len: float = DEFAULT_LEN) -> BikeRoute:
 			break
 		out.append(route[i])
 		total += seg
-	return from_points(out)
+	var r: BikeRoute = from_points(out)
+	r.bridge_s = find_bridge_s(md, r)
+	return r
+
+
+## Route distance of the middle of the Rạch Hầm bridge (a map road marked bridge whose name has BRIDGE_NAME), -1 when the
+## route does not pass within BRIDGE_MAX_D m of it.
+static func find_bridge_s(md: MapData, r: BikeRoute) -> float:
+	if md == null or r == null or not r.valid():
+		return -1.0
+	for road: Dictionary in md.roads():
+		if not bool(road.get("bridge", false)) or String(road.get("name", "")).find(BRIDGE_NAME) < 0:
+			continue
+		var pts: PackedVector2Array = MapData.poly(road.get("points", []))
+		if pts.size() < 2:
+			continue
+		var mid: Vector2 = (pts[0] + pts[pts.size() - 1]) * 0.5
+		var pr: Vector2 = r.project(mid)
+		if absf(pr.y) <= BRIDGE_MAX_D:
+			return pr.x
+	return -1.0
 
 
 func _seg(s: float) -> int:

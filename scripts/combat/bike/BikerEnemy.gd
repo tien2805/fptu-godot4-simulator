@@ -6,10 +6,12 @@
 # (grey shell, cone ears, snout, red LED eyes) unless opts give a body / body_fn; a name label with short taunts.
 # AI states (BikeChase assigns the role FRONT / LEFT / RIGHT / BACK and the attack tokens):
 #   APPROACH (catch up to the slot) -> PACE (hold it) -> WINDUP (0.5 s telegraph: LED eyes flash, engine rev, HUD side
-#   warning; swerves in) -> KICK (hit check at 0.15 s through BikeChase.enemy_kick) -> RECOVER; BRAKE (the FRONT biker
+#   warning; swerves in; its last KICK_LOCK_S fix the kick line in world space, so steering away dodges) -> KICK (hit
+#   check at 0.15 s through BikeChase.enemy_kick, on that fixed line) -> RECOVER; BRAKE (the FRONT biker
 #   brake-checks the player); WOBBLE (kicked: 0.55 s, then CRASH, or RECOVER while hp is left); CRASH (the rider flies in a
 #   comic somersault, bounces once and slides; the bike slides on its side with sparks); DOWN (stars, no gore); LEAVE
-#   (after the player lost: rides off, then hidden); HOLD (ai off, tests: holds hold_along / hold_lat beside the player).
+#   (after `lost` or the chase's end: rides off ahead, or drops back at the route end, and is hidden once out of view);
+#   HOLD (ai off, tests: holds hold_along / hold_lat beside the player).
 # Traffic: every AVOID_EVERY frames it looks for the nearest car in its path and passes on the free side (within the
 # road) or brakes behind it; touching a car anyway (a kicked biker wobbling into one) is a crash.
 # opts: "label", "hp" (kicks to crash, default 1), "seed", "ai" (false = HOLD), "aggression" (0..1: shorter pacing),
@@ -74,6 +76,12 @@ var avoid_t: float = 0.0
 var avoids: int = 0
 var scrapes: int = 0
 var gone: bool = false
+## Spawned behind for an "ahead" slot (in view there): takes the FRONT role first.
+var prefer_front: bool = false
+var leave_along: float = 45.0
+var _line_locked: bool = false
+var _line_o: Vector2 = Vector2.ZERO
+var _line_t: Vector2 = Vector2(0.0, -1.0)
 var _rng := RandomNumberGenerator.new()
 var _sk: Skeleton3D = null
 var _anim: Node = null
@@ -230,6 +238,7 @@ func _enter(s: int) -> void:
 			pace_t = _rng.randf_range(BikeCombatData.PACE_MIN, BikeCombatData.PACE_MAX) * lerpf(1.25, 0.6, aggression)
 		St.WINDUP:
 			attacks += 1
+			_line_locked = false
 			if ch:
 				ch.cue("engine_roar", ground_pos(), -6.0)
 
@@ -302,6 +311,9 @@ func crash(cause: String, push: Vector2 = Vector2.ZERO) -> void:
 func stand_down() -> void:
 	if is_down() or st == St.LEAVE:
 		return
+	# the player still riding (or the route ending): they give up and drop back behind the camera; the player stopped
+	# (knocked off): they ride on far ahead, out of view
+	leave_along = 200.0 if ch == null or (ch.p_vel.length() <= 5.0 and ch.room_ahead(220.0)) else -70.0
 	_enter(St.LEAVE)
 
 
@@ -365,7 +377,12 @@ func _think(delta: float) -> void:
 		St.WINDUP:
 			var u: float = clampf(st_t / BikeCombatData.WINDUP_S, 0.0, 1.0)
 			var ui: float = clampf(u / BikeCombatData.WINDUP_IN, 0.0, 1.0)
-			target = ch.target_at(BikeCombatData.SLOT_ALONG * 0.5, side * lerpf(BikeCombatData.SLOT_LAT, BikeCombatData.SWERVE_LAT + 0.25, ui))
+			if not _line_locked and st_t >= BikeCombatData.WINDUP_S - BikeCombatData.KICK_LOCK_S:
+				_lock_line()
+			if _line_locked:
+				target = _on_line(BikeCombatData.SLOT_ALONG * 0.5)
+			else:
+				target = ch.target_at(BikeCombatData.SLOT_ALONG * 0.5, side * lerpf(BikeCombatData.SLOT_LAT, BikeCombatData.SWERVE_LAT + 0.25, ui))
 			gain = BikeCombatData.SWERVE_GAIN
 			pose_w = 0.25 * u
 			if _eye_mat:
@@ -373,7 +390,9 @@ func _think(delta: float) -> void:
 			if st_t >= BikeCombatData.WINDUP_S:
 				_enter(St.KICK)
 		St.KICK:
-			target = ch.target_at(0.0, side * BikeCombatData.SWERVE_LAT)
+			if not _line_locked:
+				_lock_line()
+			target = _on_line(0.0)
 			gain = BikeCombatData.SWERVE_GAIN
 			pose_w = BikeCombatData.kick_weight(st_t, 0.1, 0.25, BikeCombatData.ENEMY_KICK_S)
 			if not hit_done and st_t >= BikeCombatData.ENEMY_HIT_AT:
@@ -394,11 +413,11 @@ func _think(delta: float) -> void:
 					return
 				_enter(St.RECOVER)
 		St.LEAVE:
-			target = ch.target_at(45.0, side * 2.5)
-			max_rel = 10.0
-			if st_t >= BikeCombatData.LEAVE_S:
+			target = ch.target_at(leave_along, side * 2.5)
+			max_rel = BikeCombatData.LEAVE_SPEED
+			if (st_t >= BikeCombatData.LEAVE_S and not ch.in_view(ground_pos() + Vector3(0.0, 1.0, 0.0))) or st_t >= BikeCombatData.LEAVE_MAX_S:
 				gone = true
-				visible = false
+				visible = false              # out of view: no pop
 				return
 	if st != St.KICK and st != St.WINDUP and pose_w > 0.0:
 		pose_w = maxf(0.0, pose_w - delta * 4.0)
@@ -467,6 +486,18 @@ func slot_target() -> Vector2:
 			return ch.target_at(along, 0.0)
 	var lat: float = BikeCombatData.BACK_LAT if back_k % 2 == 0 else -BikeCombatData.BACK_LAT
 	return ch.target_at(-BikeCombatData.BACK_ALONG - 3.0 * float(back_k / 2), lat)
+
+
+## Fix the kick line in world space: through the point SWERVE_LAT beside the player now, along his travel direction.
+func _lock_line() -> void:
+	_line_locked = true
+	_line_o = ch.target_at(0.0, side * BikeCombatData.SWERVE_LAT)
+	_line_t = ch.p_fwd
+
+
+## Point on the fixed kick line level with the player (+ along metres ahead of him).
+func _on_line(along: float) -> Vector2:
+	return _line_o + _line_t * ((ch.p_pos - _line_o).dot(_line_t) + along)
 
 
 func _place_bike() -> void:
@@ -545,11 +576,10 @@ func _avoid_check() -> void:
 			avoid_t = BikeCombatData.AVOID_HOLD
 			return
 	# pass on the side nearer to where it is heading; the other side if that one leaves the road; else brake behind
-	var sides: Array[float] = [-1.0, 1.0]
-	if absf(best_lat + best_need - tl) < absf(best_lat - best_need - tl):
-		sides.reverse()
+	var first: float = 1.0 if absf(best_lat + best_need - tl) < absf(best_lat - best_need - tl) else -1.0
 	var oncoming: bool = best_v < -1.0     # braking does not help: squeeze past, even beside the player
-	for sd: float in sides:
+	for k: int in 2:
+		var sd: float = first if k == 0 else -first
 		var p: Vector2 = pos2 + r * (best_lat + sd * best_need) + f * maxf(best_along, 0.0)
 		if ch.on_road(p) and (oncoming or not ch.near_player(p, best_v)):
 			avoid_car = best_i

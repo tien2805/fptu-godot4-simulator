@@ -20,16 +20,24 @@
 #       "replay_slot": "seg_d2_chase",          # owner music file of the replay (none = silent)
 #       "auto_replay": true,                    # the replay plays by itself when the last biker falls
 #       "manual_replay": false,                 # tests: CineReplay.step() drives it
+#       "end_at_s": -1.0,                       # route distance where the chase ends at the latest (Day 2: a little past
+#                                               #   bridge_s()); -1 = END_MARGIN before the route end. Reached with bikers
+#                                               #   left: they ride off (out of view), no replay, `won` with escaped > 0
 #       "seed": 1,
 #       "waves": []})                           # optional: the waves right away (same as add_wave per entry)
 #   chase.add_wave([                            # once per wave, in order (BikeChase.day2_waves(): the Day 2 layout 3 + 3)
-#       {"from": "behind",                      # "behind" (default, ~16 m back, out of view) | "ahead" (~60 m ahead)
+#       {"from": "behind",                      # "behind" (default, ~16 m back, behind the camera) | "ahead" (60-150 m
+#                                               #   ahead where out of view, else from behind as the front blocker)
 #        "lane": -1,                            # -1 left, 0 middle, +1 right of the player
 #        "gap": 0.0, "delay": 0.0,              # extra spawn distance (m), seconds after the wave start
 #        "opts": {"label": "Sói Đen", "hp": 1, "aggression": 0.5, "eye_color": Color(...), "paint": Color(...),
 #                 "body": {...}, "body_fn": Callable}},   # BikerEnemy opts (look passed in by the caller)
 #       ...])
-#   chase.won.connect(...)                      # after the replay (at once with auto_replay false / no footage)
+#   chase.won.connect(...)                      # after the replay (at once with auto_replay false / no footage / an
+#                                               #   early end). The crashed and downed riders keep tumbling, sliding and
+#                                               #   lying with stars after `won`: the integration MUST call stop() or free
+#                                               #   the chase afterwards (clear_downed() only removes the downed riders,
+#                                               #   e.g. to clean the bridge area for the duel)
 #   chase.lost.connect(...)                     # stability 0, the player knocked off: show "TOANG!", then retry()
 #   chase.biker_down.connect(func(b: BikerEnemy, cause: String): ...)   # cause "kick" | "traffic" | ...
 #   chase.wave_started / wave_cleared (index)
@@ -38,8 +46,15 @@
 #   chase.retry()                               # bikers removed, stability full, bike back at the checkpoint, that wave
 #   chase.stop()                                # end without a result (bikers freed, bike unlocked, hooks cleared)
 #   chase.play_replay() -> CineReplay           # the replay by hand (auto_replay false); null without footage
+#   chase.clear_downed()                        # free every crashed / downed rider now (do it out of sight or in a fade)
+#   chase.bridge_s() -> float, chase.bridge_transform() -> Transform3D   # the Rạch Hầm bridge on the route (-1 / identity
+#                                               #   when the route does not cross it); the bike on the deck there
+#   chase.end_s, chase.end_position() -> Vector3  # where the chase ended (route distance / the bike), set at the finish
+#   chase.ended_early, chase.escaped            # ended at end_at_s / the route end with `escaped` bikers left
 #   chase.alive() -> Array, chase.remaining() -> int, chase.state, chase.wave, chase.combat (PlayerBikeCombat)
 #   state: "idle" | "running" | "finishing" (last biker down: 0.8 s more footage, then the replay) | "won" | "lost"
+# Off the route (the player off the road, past its ends) the AI's targets stay clamped to the route, so the bikers never
+# ride through buildings. Cleared waves' downed riders are removed only once out of view.
 # While it runs: Q / E kick (PlayerBikeCombat), FreeRoam's hint shows the kick keys (FreeRoam.riding_hint) and [F]
 # refuses to get off the bike (FreeRoam.dismount_refusal); the traffic brakes for the bikers
 # (RoamTraffic.extra_obstacles_fn). The phone and the emotes are already off while riding. stop(), lost and freeing the
@@ -57,7 +72,8 @@ signal wave_cleared(index: int)
 
 const BIKE_FLOOR_OFFSET: float = 0.13    # = FreeRoam.BIKE_FLOOR_OFFSET: the PlayerBike origin sits 0.13 m under the floor
 const BEHIND_M: float = 16.0
-const AHEAD_M: float = 60.0
+const AHEAD_M: float = 60.0              # "ahead" spawns: the first of these distances that is out of view ...
+const AHEAD_TRY: Array[float] = [60.0, 90.0, 120.0, 150.0]   # ... else from behind as the front blocker
 const SPAWN_STEP_M: float = 4.0
 const LANE_M: float = 2.2
 
@@ -122,6 +138,16 @@ var _act: Array = []
 var _sfx: Array[AudioStreamPlayer3D] = []
 var _sfx_i: int = 0
 var _hooks: bool = false
+var end_at_s: float = -1.0
+var end_s: float = -1.0
+var end_xf: Transform3D = Transform3D.IDENTITY
+var ended_early: bool = false
+var escaped: int = 0
+var _downed: Array = []                  # downed riders of cleared waves, freed once out of view
+var _obs_pool: Array = []                # reused look-ahead entries for RoamTraffic (no allocation per call)
+var _clean_t: float = 0.0
+var _hint: float = -1.0
+var _dying: bool = false
 
 
 func setup(opts: Dictionary) -> void:
@@ -160,6 +186,9 @@ func setup(opts: Dictionary) -> void:
 	auto_replay = bool(opts.get("auto_replay", true))
 	manual_replay = bool(opts.get("manual_replay", false))
 	chase_seed = int(opts.get("seed", 1))
+	end_at_s = float(opts.get("end_at_s", -1.0))
+	if route and route.bridge_s < 0.0 and roam and roam.get("md"):
+		route.bridge_s = BikeRoute.find_bridge_s(roam.get("md"), route)
 	var pc: Node = roam.get("combat") if roam else null
 	fx = pc.get("fx") as WeaponFX if pc else null
 	if fx == null:
@@ -205,14 +234,15 @@ func add_wave(spawns: Array) -> void:
 	waves.append(spawns.duplicate(true))
 
 
-## The default Day 2 layout (spec C-D6: 5-6 bikers in 2 waves): 3 bikers from behind, then 2 more from behind and a
-## tough one waiting ahead (the second wave's "Sói Phó" and "Sói Mập" take two kicks).
+## The default Day 2 layout (spec C-D6: 5-6 bikers in 2 waves): 3 bikers from behind (Sói Lửa takes two kicks), then 2
+## more from behind and the front blocker "Sói Mập", all three taking two kicks (10 kicks in all: a flanker in its slot is
+## always in reach, so the toughness is in the hp).
 static func day2_waves() -> Array:
 	return [
 		[{"from": "behind", "lane": -1, "opts": {"label": "Sói Đen"}},
-		{"from": "behind", "lane": 1, "opts": {"label": "Sói Lửa"}},
+		{"from": "behind", "lane": 1, "opts": {"label": "Sói Lửa", "hp": 2}},
 		{"from": "behind", "lane": 0, "gap": 6.0, "opts": {"label": "Sói Còi", "aggression": 0.3}}],
-		[{"from": "behind", "lane": 1, "opts": {"label": "Sói Bạc", "aggression": 0.7}},
+		[{"from": "behind", "lane": 1, "opts": {"label": "Sói Bạc", "hp": 2, "aggression": 0.7}},
 		{"from": "ahead", "lane": 0, "opts": {"label": "Sói Mập", "hp": 2}},
 		{"from": "behind", "lane": -1, "delay": 1.5, "opts": {"label": "Sói Phó", "hp": 2, "aggression": 0.8}}]]
 
@@ -223,6 +253,10 @@ func start() -> void:
 		return
 	state = "running"
 	downed_total = 0
+	ended_early = false
+	escaped = 0
+	end_s = -1.0
+	_clear_bikers()
 	var xf: Transform3D = route_transform(start_s) if (place_rider and route) else bike.global_transform
 	_ensure_riding(xf, place_rider and route != null)
 	if start_speed > 0.0:
@@ -231,7 +265,11 @@ func start() -> void:
 	combat.enabled = true
 	_set_hooks(true)
 	s_p = -1.0
+	_hint = -1.0
 	_update_frame()
+	wave = -1
+	_cp.clear()
+	checkpoint()                          # the start itself (auto_checkpoint off: retry() comes back here)
 	if hud:
 		hud.show_hud()
 		if start_line != "":
@@ -267,8 +305,10 @@ func retry() -> void:
 	_ensure_riding(xf, true, false)
 	combat.enabled = true
 	state = "running"
+	ended_early = false
 	_set_hooks(true)
 	s_p = -1.0
+	_hint = -1.0
 	_update_frame()
 	if hud:
 		hud.show_hud()
@@ -379,6 +419,7 @@ func on_biker_crash(b: BikerEnemy) -> void:
 	state = "finishing"
 	combat.enabled = false
 	_set_hooks(false)
+	_mark_end()
 	if rec:
 		rec.mark("blow")
 	_finish_left = BikeCombatData.REPLAY_AFTER
@@ -407,6 +448,8 @@ func _end_finishing() -> void:
 
 func _on_replay_done() -> void:
 	replay = null
+	if _is_dying():
+		return                             # freed mid-replay: no `won`
 	state = "won"
 	_finish()
 	if hud and win_line != "":
@@ -474,11 +517,18 @@ func _set_hooks(on: bool) -> void:
 ## RoamTraffic look-ahead obstacles: the riding bikers as small oriented boxes (kind "biker").
 func _traffic_obstacles() -> Array:
 	_obstacles.clear()
+	var k: int = 0
 	for b: Variant in bikers:
 		var e: BikerEnemy = b as BikerEnemy
 		if e == null or not is_instance_valid(e) or e.gone or not e.riding():
 			continue
-		_obstacles.append([e.pos2, 1.0, 0.45, "biker", null, Vector2(-sin(e.yaw), -cos(e.yaw))])
+		if k >= _obs_pool.size():
+			_obs_pool.append([Vector2.ZERO, 1.0, 0.45, "biker", null, Vector2.ZERO])
+		var o: Array = _obs_pool[k]
+		o[0] = e.pos2
+		o[5] = Vector2(-sin(e.yaw), -cos(e.yaw))
+		_obstacles.append(o)
+		k += 1
 	return _obstacles
 
 
@@ -521,7 +571,7 @@ func _ensure_riding(xf: Transform3D, place: bool, keep_speed: bool = false) -> v
 # WAVES
 # ---------------------------------------------------------------------------
 func _start_wave(i: int) -> void:
-	_clear_bikers()
+	_retire_wave()
 	_gap_left = -1.0
 	wave = i
 	_wave_spawned = 0
@@ -569,15 +619,34 @@ func _spawn(sp: Dictionary) -> BikerEnemy:
 	add_child(b)
 	var ahead: bool = String(sp.get("from", "behind")) == "ahead"
 	var lane: float = float(sp.get("lane", [-1, 1, 0][_wave_spawned % 3]))
-	var along: float = (AHEAD_M if ahead else -BEHIND_M) + (1.0 if ahead else -1.0) * (float(sp.get("gap", 0.0)) + SPAWN_STEP_M * float(_wave_spawned))
-	var p2: Vector2 = target_at(along, lane * LANE_M)
-	for k: int in 4:
-		if _clear_of_traffic(p2):
-			break
-		along += -8.0 if not ahead else 8.0
+	var gap: float = float(sp.get("gap", 0.0)) + SPAWN_STEP_M * float(_wave_spawned)
+	var base_y: float = bike.global_position.y + BIKE_FLOOR_OFFSET
+	var along: float = -BEHIND_M - gap
+	var p2: Vector2 = Vector2.ZERO
+	var placed: bool = false
+	if ahead:
+		# out of view ahead (pop-in) and still on the route; else it comes from behind and takes the front
+		for a: float in AHEAD_TRY:
+			if not room_ahead(a + gap + 5.0):
+				break
+			var q: Vector2 = target_at(a + gap, lane * LANE_M)
+			if not in_view(Vector3(q.x, base_y + 1.0, q.y)) and _clear_of_traffic(q):
+				along = a + gap
+				p2 = q
+				placed = true
+				break
+		if not placed:
+			ahead = false
+			b.prefer_front = true
+	if not placed:
 		p2 = target_at(along, lane * LANE_M)
-	var y: Variant = floor_at(Vector3(p2.x, bike.global_position.y + BIKE_FLOOR_OFFSET, p2.y))
-	var fy: float = float(y) if y is float else bike.global_position.y + BIKE_FLOOR_OFFSET
+		for k: int in 4:
+			if _clear_of_traffic(p2):
+				break
+			along -= 8.0
+			p2 = target_at(along, lane * LANE_M)
+	var y: Variant = floor_at(Vector3(p2.x, base_y, p2.y))
+	var fy: float = float(y) if y is float else base_y
 	var spd: float = p_vel.length() * (0.6 if ahead else 1.0)
 	b.place(Vector3(p2.x, fy, p2.y), atan2(-p_fwd.x, -p_fwd.y), spd)
 	b.side = -1.0 if lane < 0.0 else 1.0
@@ -605,17 +674,65 @@ func _clear_bikers() -> void:
 		if is_instance_valid(b):
 			(b as Node).queue_free()
 	bikers.clear()
+	for b2: Variant in _downed:
+		if is_instance_valid(b2):
+			(b2 as Node).queue_free()
+	_downed.clear()
 	_holders.clear()
+
+
+## Next wave: the cleared wave's downed riders stay (stars, groan) until out of view; anything else goes.
+func _retire_wave() -> void:
+	for b: Variant in bikers:
+		if not is_instance_valid(b):
+			continue
+		if (b as BikerEnemy).is_down():
+			_downed.append(b)
+		else:
+			(b as Node).queue_free()
+	bikers.clear()
+	_holders.clear()
+
+
+## Free every crashed / downed rider now (cleared waves and the current one), e.g. before the bridge duel.
+func clear_downed() -> void:
+	for b: Variant in _downed:
+		if is_instance_valid(b):
+			(b as Node).queue_free()
+	_downed.clear()
+	for i: int in range(bikers.size() - 1, -1, -1):
+		var e: BikerEnemy = bikers[i] as BikerEnemy
+		if e != null and is_instance_valid(e) and e.is_down():
+			e.queue_free()
+			bikers.remove_at(i)
+
+
+## Downed riders of cleared waves: freed once out of view (never mid-stars in front of the camera).
+func _clean_downed() -> void:
+	for i: int in range(_downed.size() - 1, -1, -1):
+		var e: BikerEnemy = _downed[i] as BikerEnemy
+		if e == null or not is_instance_valid(e):
+			_downed.remove_at(i)
+		elif not in_view(e.rider_pos + Vector3(0.0, 0.5, 0.0)) and not in_view(e.ground_pos() + Vector3(0.0, 0.5, 0.0)):
+			e.queue_free()
+			_downed.remove_at(i)
 
 
 # ---------------------------------------------------------------------------
 # PER FRAME
 # ---------------------------------------------------------------------------
 func _physics_process(delta: float) -> void:
-	if state == "idle" or state == "won" or bike == null or not is_instance_valid(bike):
+	if bike == null or not is_instance_valid(bike):
+		return
+	_update_frame()
+	_clean_t -= delta
+	if _clean_t <= 0.0:
+		_clean_t = 0.25
+		_clean_downed()
+	if state == "idle" or state == "won":
+		_tick_after(delta)
 		return
 	_t += delta
-	_update_frame()
 	if state == "running":
 		if combat.knocked:
 			_on_lost()
@@ -625,10 +742,16 @@ func _physics_process(delta: float) -> void:
 			if _role_t <= 0.0:
 				_role_t = BikeCombatData.ROLE_EVERY
 				_assign_roles()
+			_check_end()
+			if state != "running":
+				return
 	_box_cd -= delta
 	for b: Variant in bikers:
 		if is_instance_valid(b):
 			(b as BikerEnemy).tick(delta)
+	for b2: Variant in _downed:
+		if is_instance_valid(b2):
+			(b2 as BikerEnemy).tick(delta)
 	_player_contact()
 	_separate()
 	max_attackers_seen = maxi(max_attackers_seen, attackers())
@@ -641,6 +764,97 @@ func _physics_process(delta: float) -> void:
 		_gap_left -= delta
 		if _gap_left < 0.0:
 			_start_wave(wave + 1)
+
+
+## After `won` / stop: the crashed riders finish their tumble and slide, the downed ones keep their stars and groan, the
+## ones riding off keep going until out of view.
+func _tick_after(delta: float) -> void:
+	for b: Variant in bikers:
+		var e: BikerEnemy = b as BikerEnemy
+		if e != null and is_instance_valid(e) and (e.is_down() or (e.st == BikerEnemy.St.LEAVE and not e.gone)):
+			e.tick(delta)
+	for b2: Variant in _downed:
+		if is_instance_valid(b2):
+			(b2 as BikerEnemy).tick(delta)
+
+
+## The chase's last point: end_at_s, or END_MARGIN before the route end. Reached with bikers left, they ride off (out of
+## view), no replay, `won` with escaped = the bikers not beaten.
+func _check_end() -> void:
+	if route == null or s_p < 0.0 or absf(d_p) > route.half_width + 10.0:
+		return
+	var lim: float = end_at_s if end_at_s >= 0.0 else route.length - BikeCombatData.END_MARGIN
+	if s_p < lim:
+		return
+	escaped = alive_count() + pending.size()
+	for i: int in range(wave + 1, waves.size()):
+		escaped += (waves[i] as Array).size()
+	ended_early = true
+	pending.clear()
+	_gap_left = -1.0
+	for b: Variant in bikers:
+		if is_instance_valid(b):
+			(b as BikerEnemy).stand_down()
+	_holders.clear()
+	_mark_end()
+	state = "won"
+	_finish()
+	if hud and win_line != "":
+		hud.show_hud()
+		hud.popup(win_line, CombatHUD.GOLD, 2.2)
+		hud.linger(2.2)
+	won.emit()
+
+
+func _mark_end() -> void:
+	end_s = s_p
+	end_xf = bike.global_transform
+
+
+func end_position() -> Vector3:
+	return end_xf.origin
+
+
+## The Rạch Hầm bridge on the route (route distance), -1 when the route does not cross it.
+func bridge_s() -> float:
+	return route.bridge_s if route else -1.0
+
+
+## The bike on the bridge deck there, facing along the route (identity when there is no bridge).
+func bridge_transform() -> Transform3D:
+	return route_transform(bridge_s()) if bridge_s() >= 0.0 else Transform3D.IDENTITY
+
+
+## There is route ahead of the player (or no route at all).
+func room_ahead(m: float) -> bool:
+	if route == null or s_p < 0.0:
+		return true
+	var s: float = s_p + m * dir_sign
+	return s > 0.0 and s < route.length
+
+
+## In front of the current camera and nearer than VIEW_M (pop-in / pop-out checks).
+func in_view(p: Vector3) -> bool:
+	var vp: Viewport = get_viewport() if is_inside_tree() else null
+	var cam: Camera3D = vp.get_camera_3d() if vp else null
+	return cam != null and cam.global_position.distance_to(p) < BikeCombatData.VIEW_M and cam.is_position_in_frustum(p)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		_dying = true
+
+
+## Being freed (this node or an ancestor queued for deletion).
+func _is_dying() -> bool:
+	if _dying:
+		return true
+	var n: Node = self
+	while n != null:
+		if n.is_queued_for_deletion():
+			return true
+		n = n.get_parent()
+	return false
 
 
 ## The player's position, velocity and frame: on the route (route tangent, oriented with the player's travel, plus his
@@ -656,18 +870,16 @@ func _update_frame() -> void:
 	b_right = Vector2(-hf.y, hf.x)
 	on_route = false
 	if route:
-		var pr: Vector2 = route.project(p_pos, s_p)
+		var pr: Vector2 = route.project(p_pos, _hint)
 		s_p = pr.x
 		d_p = pr.y
 		on_route = absf(d_p) <= route.half_width + 6.0 and s_p > 0.5 and s_p < route.length - 0.5
-		if absf(d_p) > route.half_width + 30.0:
-			s_p = -1.0                     # far off: search the whole route next frame
-	if on_route:
+		_hint = s_p if absf(d_p) <= route.half_width + 30.0 else -1.0   # far off: search the whole route next frame
 		var t: Vector2 = route.tangent(s_p)
 		var hd: float = hf.dot(t)
-		if absf(hd) > 0.3:
+		if on_route and absf(hd) > 0.3:
 			dir_sign = signf(hd)
-		p_fwd = t * dir_sign
+		p_fwd = t * dir_sign               # off the road too: the AI stays in the route frame (clamped to the road)
 	else:
 		p_fwd = hf
 	p_right = Vector2(-p_fwd.y, p_fwd.x)
@@ -676,7 +888,7 @@ func _update_frame() -> void:
 ## World point (map plane) at `along` m ahead and `lat` m to the right of the player: on the route clamped to its
 ## half width, else in his heading frame.
 func target_at(along: float, lat: float) -> Vector2:
-	if on_route:
+	if route != null and s_p >= 0.0:
 		var s: float = clampf(s_p + along * dir_sign, 0.0, route.length)
 		var d: float = clampf(d_p + lat * dir_sign, -route.half_width, route.half_width)
 		return route.world(s, d)
@@ -686,7 +898,7 @@ func target_at(along: float, lat: float) -> Vector2:
 ## A flank slot on `side` has room: on the road (not squeezed past the edge by more than SLOT_SQUEEZE) and no car in it
 ## or running into it soon (a slower car ahead in that lane, an oncoming one, one alongside the player).
 func slot_fits(side: float) -> bool:
-	if on_route:
+	if route != null and s_p >= 0.0:
 		var d: float = d_p + side * BikeCombatData.SLOT_LAT * dir_sign
 		if absf(d) - route.half_width > BikeCombatData.SLOT_SQUEEZE:
 			return false
@@ -720,7 +932,7 @@ func lane_busy(side: float) -> bool:
 
 ## Point p (map plane) is on the road, within `tol` m past the AI's half width (always true off the route / without one).
 func on_road(p: Vector2, tol: float = 0.3) -> bool:
-	if not on_route:
+	if route == null or s_p < 0.0:
 		return true
 	var pr: Vector2 = route.project(p, s_p, 40.0)
 	return absf(pr.y) <= route.half_width + tol
@@ -776,18 +988,18 @@ func _assign_roles() -> void:
 	for e: BikerEnemy in _act:
 		if e == left or e == right:
 			continue
-		if e.role == BikerEnemy.Role.FRONT and front == null and _act.size() >= 3:
+		if e.role == BikerEnemy.Role.FRONT and front == null and (_act.size() >= 3 or e.prefer_front):
 			front = e
 		elif e.role == BikerEnemy.Role.LEFT and left == null and fit_l:
 			left = e
 		elif e.role == BikerEnemy.Role.RIGHT and right == null and fit_r:
 			right = e
-	if front == null and _act.size() >= 3:
+	if front == null:
 		var best: float = -INF
 		for e: BikerEnemy in _act:
-			if e == left or e == right:
+			if e == left or e == right or not (_act.size() >= 3 or e.prefer_front):
 				continue
-			var al: float = (e.pos2 - p_pos).dot(p_fwd)
+			var al: float = (e.pos2 - p_pos).dot(p_fwd) + (1000.0 if e.prefer_front else 0.0)
 			if al > best:
 				best = al
 				front = e
