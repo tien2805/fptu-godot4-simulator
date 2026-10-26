@@ -131,6 +131,35 @@ func _part_a() -> void:
 	duel.lost.connect(func(r: String) -> void: sig["lost_reason"] = r)
 	await _frames(2)
 	_check(duel._cone_mm.multimesh.instance_count == course.cones.size() and course.cones.size() >= 30, "%d cones placed (gates, slalom, islands)" % course.cones.size())
+	# the rival's floor ray: a pedestrian capsule is looked through, a box higher than 1 m over the current floor is no floor
+	var ped := CharacterBody3D.new()
+	var pcs := CollisionShape3D.new()
+	var cap := CapsuleShape3D.new()
+	cap.height = 1.8
+	cap.radius = 0.3
+	pcs.shape = cap
+	pcs.position = Vector3(0.0, 0.9, 0.0)
+	ped.add_child(pcs)
+	arena.add_child(ped)
+	ped.global_position = Vector3(2200.0, 0.0, 300.0)
+	var crate := StaticBody3D.new()
+	var ccs := CollisionShape3D.new()
+	var cbox := BoxShape3D.new()
+	cbox.size = Vector3(2.0, 1.5, 2.0)
+	ccs.shape = cbox
+	ccs.position = Vector3(0.0, 0.75, 0.0)
+	crate.add_child(ccs)
+	arena.add_child(crate)
+	crate.global_position = Vector3(2210.0, 0.0, 300.0)
+	await _frames(2)
+	duel.rival.floor_y = 0.0
+	var fy: Variant = duel.rival._floor_ray(Vector3(2200.0, 0.0, 300.0), 3.0, 6.0, DriftRival.MAX_RISE)
+	var fc: Variant = duel.rival._floor_ray(Vector3(2210.0, 0.0, 300.0), 3.0, 6.0, DriftRival.MAX_RISE)
+	var fc2: Variant = duel.rival._floor_ray(Vector3(2210.0, 0.0, 300.0), 3.0, 6.0)
+	_check(fy is float and absf(float(fy)) < 0.05 and duel.rival.ray_exclude.size() == 1, "the rival's floor ray looks through a pedestrian (floor %s, not the head)" % str(fy))
+	_check(fc == null and fc2 is float and absf(float(fc2) - 1.5) < 0.05, "a hit more than 1 m over the current floor is ignored (%s / %s)" % [str(fc), str(fc2)])
+	ped.free()
+	crate.free()
 	duel.start()
 	_check(duel.state == "countdown" and bike.staged and bike.is_controls_locked, "start(): the countdown, the bike staged on the line")
 	_check(is_equal_approx(bike.max_speed_ms, float(DriftDuel.DUEL_PROFILE["max_speed_ms"])) and bike.nitro_enabled and duel.hud.visible, "the duel profile (86 km/h), nitro on, the HUD")
@@ -428,9 +457,11 @@ func _part_music() -> void:
 		return
 	MusicDirector.test_streams[MissionDriftDuel.DRIFT_SLOT] = _silent(4.0)
 	MusicDirector.test_streams[MissionDriftDuel.CHASE_SLOT] = _silent(4.0)
-	for c: int in 2:
-		MissionDriftDuel.force_no_track = c == 1
-		md.play(MissionDriftDuel.CHASE_SLOT, 0.0)
+	MusicDirector.test_streams["mission_bike_chase_b"] = _silent(4.0)
+	for c: int in 3:
+		MissionDriftDuel.force_no_track = c >= 1
+		var chase_slot: String = "mission_bike_chase_b" if c == 2 else MissionDriftDuel.CHASE_SLOT
+		md.play(chase_slot, 0.0)
 		var m := MissionDriftDuel.new()
 		fr.add_child(m)
 		m.setup(fr, StoryMissions.beat("d2_drift"), {"intro": false})
@@ -440,8 +471,8 @@ func _part_music() -> void:
 			_check(MissionDriftDuel.drift_slot() == "race_d2_drift" and m.duel.state == "countdown" and m.music_fades == 1 and md.target_gain == 0.0,
 				"with the drift track: the chase track fades out over the countdown (no music under it)")
 		else:
-			_check(MissionDriftDuel.drift_slot() == "mission_bike_chase" and md.slot == "mission_bike_chase" and md.target_gain == 1.0 and m.music_fades == 0,
-				"without the drift track: the chase track keeps playing through the countdown")
+			_check(MissionDriftDuel.drift_slot() == "mission_bike_chase" and md.slot == chase_slot and md.target_gain == 1.0 and m.music_fades == 0,
+				"without the drift track: the chase track (%s) keeps playing through the countdown" % chase_slot)
 		var n: int = 0
 		while m.duel.state == "countdown" and n < 240:
 			await _frames(1)
@@ -453,7 +484,7 @@ func _part_music() -> void:
 			_check(bool(fr.get("mounted")) and String(fr.call("_hint_text")) == DriftDuel.T_RIDING and (fr.get("traffic") as RoamTraffic).active_count() == 0,
 				"during the duel: riding, the duel's hint, the traffic parked")
 		else:
-			_check(md.slot == "mission_bike_chase" and md.target_gain == 1.0, "GO without the drift track: still the chase track")
+			_check(md.slot == chase_slot and md.target_gain == 1.0, "GO without the drift track: still %s (no crossfade back)" % chase_slot)
 		m.abort()
 		await _frames(3)
 		_check(String(fr.get("riding_hint")) == "" and String(fr.get("dismount_refusal")) == "" and (fr.get("traffic") as RoamTraffic).is_physics_processing(),
@@ -461,6 +492,7 @@ func _part_music() -> void:
 	MissionDriftDuel.force_no_track = false
 	MusicDirector.test_streams.erase(MissionDriftDuel.DRIFT_SLOT)
 	MusicDirector.test_streams.erase(MissionDriftDuel.CHASE_SLOT)
+	MusicDirector.test_streams.erase("mission_bike_chase_b")
 	md.stop(false)
 
 

@@ -405,8 +405,8 @@ func _spin_hit() -> void:
 		bike.add_camera_shake(0.45)
 		_cue("impact_heavy", bike.global_position + Vector3(0.0, 0.9, 0.0), -1.0)
 		var gfx: Node = get_node_or_null("/root/GameFX") if is_inside_tree() else null
-		if gfx and gfx.has_method("hit_stop"):
-			gfx.call("hit_stop", SPIN_HITSTOP, 0.05)
+		if gfx and gfx.has_method("hit_stop") and RadialWheel.scale_owner == null:
+			gfx.call("hit_stop", SPIN_HITSTOP, 0.05)   # a chase slow motion owning the time scale is never cut short
 	_cue("swish", bike.global_position + Vector3(0.0, 0.8, 0.0), -3.0)
 
 

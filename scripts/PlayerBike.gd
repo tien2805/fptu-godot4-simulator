@@ -1384,8 +1384,8 @@ func _on_near_body_exited(body: Node3D) -> void:
 	if fx:
 		# Cao độ tăng theo chuỗi: 1.0 / 1.15 / 1.3 (Crazy Taxi "Crazy Through")
 		fx.play_sfx("whoosh", -4.0, [1.0, 1.15, 1.3][mini(near_miss_chain, 3) - 1])
-		if near_miss_chain >= 3:
-			fx.hit_stop(0.04, 0.1)
+		if near_miss_chain >= 3 and not (fx.has_method("time_scale_owned") and bool(fx.call("time_scale_owned"))):
+			fx.hit_stop(0.04, 0.1)   # never over a slow motion that owns the time scale (RadialWheel.scale_owner)
 	emit_signal("near_miss", near_miss_chain)
 
 # ---------------------------------------------------------------------------

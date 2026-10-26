@@ -48,7 +48,7 @@ func _start() -> void:
 	duel.ended.connect(_on_ended)
 	duel.start()   # mounts the player when on foot (FreeRoam then asks for the roam track)
 	if not has_drift_track():
-		_music(CHASE_SLOT, DriftDuel.FADE_S)   # no-op while the chase track already plays
+		_chase_track()
 
 
 ## The duel is ridden: the player stays on the bike from the chase (no dismount, so the chase track is not swapped for
@@ -74,7 +74,16 @@ func _on_music_cue() -> void:
 		if md:
 			md.call("play", DRIFT_SLOT, 0.0)   # restarts on every GO: the first bar lands on the launch
 	else:
-		_music(CHASE_SLOT, DriftDuel.FADE_S)
+		_chase_track()
+
+
+## The fallback: the chase music goes on. Nothing changes while a chase slot (mission_bike_chase or its wave 3 track
+## mission_bike_chase_b) already plays; otherwise (after Continue) mission_bike_chase starts.
+func _chase_track() -> void:
+	var md: Node = _director()
+	if md and String(md.get("slot")).begins_with(CHASE_SLOT):
+		return
+	_music(CHASE_SLOT, DriftDuel.FADE_S)
 
 
 func _music(slot: String, fade: float) -> void:

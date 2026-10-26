@@ -33,6 +33,7 @@ const LAT_BLEND_M: float = 60.0           # from his start offset onto the racin
 const RAY_EVERY: int = 6
 const REV_PITCH: float = 0.85
 const REV_DB_UNDER: float = 4.0
+const MAX_RISE: float = 1.0                # a floor hit higher than this above the current floor is ignored
 const TAUNT_EVERY: Vector2 = Vector2(5.0, 9.0)
 const TAUNT_S: float = 1.8
 
@@ -347,7 +348,7 @@ func tick(delta: float, gap: float) -> void:
 	lean = lerpf(lean, clampf(turn * 3.0, -1.0, 1.0) * LEAN_MAX * clampf(v / 15.0, 0.0, 1.0), minf(1.0, delta * 8.0))
 	if (_frame + 3) % RAY_EVERY == 0:
 		var p: Vector2 = course.world(s, d)
-		var y: Variant = _floor_ray(Vector3(p.x, floor_y, p.y), 3.0, 6.0)
+		var y: Variant = _floor_ray(Vector3(p.x, floor_y, p.y), 3.0, 6.0, MAX_RISE)
 		if y is float:
 			floor_y = lerpf(floor_y, float(y), 0.6) if absf(float(y) - floor_y) < 1.5 else float(y)
 	_place()
@@ -470,23 +471,41 @@ func _ride_exit(delta: float) -> void:
 		_exit_p += to.normalized() * step
 		yaw = lerp_angle(yaw, atan2(-to.x, -to.y), minf(1.0, delta * 6.0))
 	if (_frame + 3) % RAY_EVERY == 0:
-		var y: Variant = _floor_ray(Vector3(_exit_p.x, floor_y, _exit_p.y), 3.0, 8.0)
+		var y: Variant = _floor_ray(Vector3(_exit_p.x, floor_y, _exit_p.y), 3.0, 8.0, MAX_RISE)
 		if y is float:
 			floor_y = lerpf(floor_y, float(y), 0.5)
 	lean = lerpf(lean, 0.0, minf(1.0, delta * 4.0))
 	_place()
 
 
-## Floor height under p (a ray from `up` above to `down` below; not the player's bike). null = none.
-func _floor_ray(p: Vector3, up: float, down: float) -> Variant:
+## Floor height under p (a ray from `up` above to `down` below; not the player's bike). Character bodies (pedestrians,
+## the player on foot) are looked through; a hit more than max_rise above the current floor is not floor (a car roof, a
+## head). null = none.
+func _floor_ray(p: Vector3, up: float, down: float, max_rise: float = INF) -> Variant:
 	if not is_inside_tree():
 		return null
 	_ray_q.from = p + Vector3(0.0, up, 0.0)
 	_ray_q.to = p - Vector3(0.0, down, 0.0)
-	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(_ray_q)
-	if hit.is_empty() or (hit["normal"] as Vector3).y < 0.5:
-		return null
-	return (hit["position"] as Vector3).y
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var added: int = 0
+	var out: Variant = null
+	for k: int in 4:
+		var hit: Dictionary = space.intersect_ray(_ray_q)
+		if hit.is_empty():
+			break
+		if hit["collider"] is CharacterBody3D:
+			ray_exclude.append(hit["rid"])   # rare: only when a body stands in the ray
+			added += 1
+			_ray_q.exclude = ray_exclude
+			continue
+		var y: float = (hit["position"] as Vector3).y
+		if (hit["normal"] as Vector3).y >= 0.5 and y <= floor_y + max_rise:
+			out = y
+		break
+	if added > 0:
+		ray_exclude.resize(ray_exclude.size() - added)
+		_ray_q.exclude = ray_exclude
+	return out
 
 
 func ground_pos() -> Vector3:

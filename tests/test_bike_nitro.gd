@@ -116,6 +116,7 @@ func _run() -> void:
 	await _part_duck()
 	await _part_revs()
 	await _part_spin()
+	await _part_time_owner()
 	await _part_stages()
 	await _part_free_roam()
 	_finish()
@@ -431,6 +432,70 @@ func _part_spin() -> void:
 	combat.free()
 	for s4: Node in stubs:
 		s4.free()
+
+
+## A slow motion that owns the time scale (RadialWheel.scale_owner: the weapon wheel, a combat or chase slow motion) is
+## never cut short: no spin-kick or near-miss hit-stop writes over it, and GameFX's slow-motion timeout does not put 1.0
+## back while an owner exists.
+func _part_time_owner() -> void:
+	var fx: Node = root.get_node_or_null("GameFX")
+	var owner_obj := RefCounted.new()
+	_reset(Vector3(0.0, -0.12, 1200.0), 16.0)
+	var combat := PlayerBikeCombat.new()
+	combat.name = "Combat2"
+	arena.add_child(combat)
+	var tg: Array = []
+	combat.setup(bike, {"targets": tg})
+	combat.enabled = true
+	var stub := Stub.new()
+	stub.bike = bike
+	stub.lat = 2.4
+	arena.add_child(stub)
+	tg.append(stub)
+	Input.action_press("gas")
+	Input.action_press("steer_left")
+	Input.action_press("drift")
+	await _frames(4)
+	RadialWheel.scale_owner = owner_obj
+	Engine.time_scale = 0.5
+	var lo: float = 1.0
+	var hi: float = 0.0
+	_check(combat.kick(-1) and combat.spinning(), "test setup: a spin kick under a slow motion that owns the time scale")
+	for i: int in 30:
+		await _frames(1)
+		lo = minf(lo, Engine.time_scale)
+		hi = maxf(hi, Engine.time_scale)
+	_check(stub.kicked.size() == 1 and is_equal_approx(lo, 0.5) and is_equal_approx(hi, 0.5), "the spin hit lands but its hit-stop leaves the owner's time scale alone (%.2f..%.2f)" % [lo, hi])
+	_release_all()
+	var car := StaticBody3D.new()
+	car.add_to_group("traffic_obstacle")
+	arena.add_child(car)
+	bike.near_miss_chain = 2
+	bike.near_miss_chain_timer = 3.0
+	bike.current_speed_ms = 20.0
+	bike.is_controls_locked = false
+	bike._on_near_body_entered(car)
+	bike._on_near_body_exited(car)
+	await _frames(2)
+	_check(bike.near_miss_chain == 3 and is_equal_approx(Engine.time_scale, 0.5), "a 3-chain near miss under the owner: no hit-stop (time scale %.2f)" % Engine.time_scale)
+	car.free()
+	# GameFX: a hit-stop that started before the owner took over does not restore 1.0 over it
+	RadialWheel.scale_owner = null
+	Engine.time_scale = 1.0
+	if fx:
+		fx.call("hit_stop", 0.15, 0.05)
+		_check(is_equal_approx(Engine.time_scale, 0.05), "GameFX.hit_stop without an owner writes the time scale")
+		RadialWheel.scale_owner = owner_obj
+		Engine.time_scale = 0.4
+		await create_timer(0.35, true, false, true).timeout
+		_check(is_equal_approx(Engine.time_scale, 0.4), "its timeout keeps the owner's 0.4 (no 1.0 over it)")
+		fx.call("slow_motion", 0.2, 0.2)
+		_check(is_equal_approx(Engine.time_scale, 0.4), "GameFX.slow_motion writes nothing while an owner exists")
+	RadialWheel.scale_owner = null
+	Engine.time_scale = 1.0
+	combat.free()
+	stub.free()
+	await _frames(2)
 
 
 ## Stage 1 and Stage 2 never enable nitro.
