@@ -38,8 +38,10 @@ const ROOM_SOLID: Array[String] = ["BackWall", "SideWall"]
 const PHASE_C: Array[String] = ["cine_d2_intro", "cine_d2", "seg_d2_boss", "cine_d3_intro", "cine_d3_mannequins", "cine_d3", "seg_d3_boss",
 	"cine_d5_intro", "cine_d5_monitors", "cine_d5_choice", "cine_d5_choice_accept", "cine_d5_choice_refuse", "cine_d5", "seg_d5_boss", "end_c"]
 
-## Slots whose explicit point lies on the campus lawn: its grass (a MultiMesh) moves the stage to the game's baked spot.
-const GRASS_MOVED: Array[String] = ["cine_d1_intro", "cine_d4", "cine_d4_intro", "cine_d4_stare", "seg_d4_brawl", "end_c"]
+## Slots whose explicit point lies on the campus lawn: its grass (a MultiMesh) moves the stage to the game's baked spot, at
+## this distance (m) from the authored point when baked (2026-10-26); a drift of more than 2 m beyond it fails.
+const GRASS_MOVED: Dictionary = {"cine_d1_intro": 20.0, "cine_d4": 22.0, "cine_d4_intro": 24.0, "cine_d4_stare": 24.0,
+	"seg_d4_brawl": 86.9, "end_c": 86.9}
 var fails: Array[String] = []
 var phase: int = -1
 var frames: int = 0
@@ -480,8 +482,12 @@ func _process(_d: float) -> bool:
 					# the campus lawn grass (a MultiMesh, seen headless since plan 2026-10-26-cine-transition, as the windowed
 					# game always did) fills the explicit point: the stage is the baked spot of the game's own search
 					var bk: Dictionary = CineStage.baked(t.stage)
-					_check(String(info.get("source", "")) == "baked" and not bk.is_empty() and (bk["xf"] as Transform3D).is_equal_approx(xf),
-						"%s: staged at its baked spot off the lawn (got %s, ring %s)" % [slot, String(info.get("landmark", "")), str(info.get("ring"))])
+					var at: Vector2 = t.stage["at"]
+					var dist: float = Vector2((xf as Transform3D).origin.x, (xf as Transform3D).origin.z).distance_to(at)
+					_check(String(info.get("source", "")) == "baked" and not bk.is_empty() and (bk["xf"] as Transform3D).is_equal_approx(xf)
+						and dist <= float(GRASS_MOVED[slot]) + 2.0,
+						"%s: staged at its baked spot off the lawn, %.1f m from its point (bound %.1f m; got %s, ring %s)" % [slot, dist,
+						float(GRASS_MOVED[slot]) + 2.0, String(info.get("landmark", "")), str(info.get("ring"))])
 				elif xf is Transform3D:
 					_check(String(info.get("landmark", "")) == "@at" and float(info.get("ring", 99.0)) <= 4.0,
 						"%s: staged within 4 m of its explicit point (got %s, ring %s)" % [slot, String(info.get("landmark", "")), str(info.get("ring"))])

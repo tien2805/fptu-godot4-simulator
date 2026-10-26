@@ -4,18 +4,24 @@
 #      FreeRoam.cine_stage_search; cine_stage serves each from the table with no search (cine_search_tries == 0) after the
 #      static check. On a mismatch the test prints the replacement CineStageBake.gd (CINE_BAKE_WRITE=1 writes it).
 #      Headless sees multimesh clutter (kept instance transforms): the canteen point is cluttered by the campus grass.
-#   B. fallback search: a stage off the table searches under CINE_SEARCH_BUDGET_MS, returns a transform, and the repeat is
-#      served from the per-signature cache; the grid clutter test equals the flat one on random boxes.
+#   B. fallback search: a stage off the table searches under CINE_SEARCH_BUDGET_MS and returns a transform; a budget
+#      fallback is never cached (searched again), a full answer is (the repeat comes from the per-signature cache); the grid
+#      clutter test equals the flat one on random boxes.
 #   C. clone cache: a cloned CineActor equals a fresh build (nodes, meshes, transforms, metas remapped into its own body,
 #      bone poses after the same cues); unseeded opts are never cloned; CinePlayer.setup clones the Day 4 sheep.
-#   D. prepare ahead: FreeRoam.prepare_cinematic builds one actor per frame (none while paused), play_cinematic adopts the
-#      prepared actors (same nodes) and stage; a different slot is not adopted.
-#   E. fade then setup: play_cinematic (not manual) pauses, prerolls (nothing set up, the world still shown, black layer
-#      rising, the 2D card hidden), sets up only after a full black frame, then the cinematic starts from black; manual
-#      stays synchronous.
+#   D. prepare ahead: FreeRoam.prepare_cinematic only loads the timeline and resolves the stage (no actor during live
+#      play); play_cinematic takes the stage when slot, stage and opts "xf" match (both null, or the same xf).
+#   E. fade, then the work under black: play_cinematic (not manual) pauses, prerolls (nothing built, the world still shown,
+#      the black layer rising, the 2D card hidden from its first frame); under black one piece per frame: the hide / time of
+#      day, then at most one actor per frame (clone cache), then the setup adopting them; the cinematic starts from black;
+#      manual stays synchronous.
+#   G. hard cuts: a timeline with scare hits or no fade_in cuts in at once (synchronous setup, no black layer).
 #   F. dev path: F9 plays a timeline at its own (baked) stage and a hold-Esc skip restores the world.
+# The table is baked in the vice art style (the palms exist only there): the test pins GameFX to vice (not saved) and puts
+# the owner's style back at the end.
 # Run:  godot --headless --path . --script tests/test_cine_transition.gd
-# Every player built here passes {"music": false}: the test never depends on user://music; nothing touches user:// saves.
+# It only reads user:// (the owner's settings, the roam music FreeRoam loads), never writes it: no save or setting is
+# touched; the players built here pass {"music": false} and the F9 slot gets a silent test stream.
 extends SceneTree
 
 var fails: Array[String] = []
@@ -25,7 +31,6 @@ var fr: Node = null
 var story: StoryRoam = null
 var cp: CinePlayer = null
 var ended: Array = []
-var prep_built: Array[int] = []
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -34,9 +39,23 @@ func _check(ok: bool, msg: String) -> void:
 		print("  ✗ ", msg)
 
 
+var style0: String = ""
+
+
 func _initialize() -> void:
 	Engine.max_fps = 60
 	print("== test_cine_transition")
+	var gfx: Node = root.get_node_or_null("GameFX")
+	if gfx:
+		# the table is baked in the vice style (palms); not persisted. GameFX reads the owner's settings in its _ready, which
+		# runs before FreeRoam's (autoloads come first in the tree)
+		if gfx.is_inside_tree():
+			style0 = String(gfx.get("art_style"))
+			gfx.call("set_art_style", "vice", false)
+		else:
+			gfx.ready.connect(func() -> void:
+				style0 = String(gfx.get("art_style"))
+				gfx.call("set_art_style", "vice", false), CONNECT_ONE_SHOT)
 	var ps: PackedScene = load("res://scenes/FreeRoam.tscn")
 	fr = ps.instantiate()
 	fr.set("crowd_enabled", false)
@@ -170,9 +189,17 @@ func _part_b() -> void:
 	_check(xf is Transform3D and String(info.get("source", "")) == "search", "an off-table stage is searched and still gets a frame")
 	_check(bool(info.get("budget_hit", false)) and tries >= 1 and tries < 400, "the search stopped at its %.0f ms budget (%d tries)" % [float((fr.get_script() as GDScript).get_script_constant_map()["CINE_SEARCH_BUDGET_MS"]), tries])
 	_check(ms < 250, "a budgeted search returns quickly headless (%d ms, the clutter walk included)" % ms)
-	var xf2: Variant = fr.call("cine_stage", st)
-	_check(xf2 is Transform3D and xf is Transform3D and (xf2 as Transform3D).is_equal_approx(xf) and String((fr.get("cine_stage_info") as Dictionary).get("source", "")) == "cache"
-		and int(fr.get("cine_search_tries")) == 0, "the repeat is served from the per-signature cache (same frame, no tries)")
+	fr.call("cine_stage", st)
+	_check(String((fr.get("cine_stage_info") as Dictionary).get("source", "")) == "search", "a budget fallback is never cached: the repeat searches again")
+	# an easy off-table stage (found at ring 0 within the budget) is cached
+	var easy: Dictionary = {"landmark": "be6_center", "near": 70.0, "size": Vector2(6.0, 6.0), "tod": "morning"}
+	_check(CineStage.baked(easy).is_empty(), "the easy probe stage is not in the baked table")
+	var xe: Variant = fr.call("cine_stage", easy)
+	_check(xe is Transform3D and not bool((fr.get("cine_stage_info") as Dictionary).get("budget_hit", false)), "the easy stage is found within the budget")
+	var xe2: Variant = fr.call("cine_stage", easy)
+	_check(xe2 is Transform3D and xe is Transform3D and (xe2 as Transform3D).is_equal_approx(xe)
+		and String((fr.get("cine_stage_info") as Dictionary).get("source", "")) == "cache" and int(fr.get("cine_search_tries")) == 0,
+		"a full answer is served from the per-signature cache (same frame, no tries)")
 	# the grid gives the flat list's answer for any box (exact equivalence on random boxes around the canteen)
 	var c := Vector3(-31.17, 0.0, -4.51)
 	var items: Array = fr.call("_cine_clutter_items", c, 34.0)
@@ -311,136 +338,154 @@ func _meta_refs(v: Variant, own: Node, where: String, out: Array[String]) -> voi
 
 
 # ---------------------------------------------------------------------------
-# D. prepare ahead
+# D. prepare ahead (cheap work only)
 # ---------------------------------------------------------------------------
 var d_step: int = 0
-var d_paused_at: int = -1
+var d_body: CharacterBody3D = null
+var d_wall: StaticBody3D = null
 
 
 func _d_start() -> void:
-	print("-- D. prepare ahead")
+	print("-- D. prepare ahead (timeline + stage only)")
 	var tl: CineTimeline = CineTimeline.load_slot("cine_d4_stare")
+	var t0: int = Time.get_ticks_usec()
 	_check(bool(fr.call("prepare_cinematic", tl, {})), "prepare_cinematic accepts the timeline")
+	var us: int = Time.get_ticks_usec() - t0
 	var cpp: CinePrep = fr.get("cine_prep")
-	_check(cpp != null and cpp.built == 0 and cpp.xf is Transform3D and String(cpp.info.get("source", "")) == "baked",
-		"the prep resolves its stage at once (baked) and has built nothing yet")
-	_check(cpp != null and not cpp.visible, "prepared actors stay hidden")
-	prep_built.clear()
+	_check(cpp != null and cpp.xf is Transform3D and String(cpp.info.get("source", "")) == "baked" and cpp.opts_xf == null,
+		"the prep holds the timeline's baked stage frame")
+	_check(us < 20000, "preparing is cheap: no actor is built during live play (%d us)" % us)
+	var live: Array = fr.find_children("*", "CineActor", true, false).filter(func(n: Node) -> bool:
+		return not n.is_queued_for_deletion() and not n.get_parent().is_queued_for_deletion() and not n.get_parent().get_parent().is_queued_for_deletion())
+	_check(live.is_empty(), "no CineActor is built ahead (%d live)" % live.size())
+	# xf must match: a prep made without opts "xf" is not used by a play with one, and the other way round
+	var other := Transform3D(Basis.IDENTITY, Vector3(1.0, 0.0, 2.0))
+	_check(cpp != null and cpp.matches(tl, {}) and not cpp.matches(tl, {"xf": other}), "a prep without opts xf matches only plays without one")
+	var px: CinePrep = CinePrep.new(tl, other, other, {})
+	_check(px.matches(tl, {"xf": other}) and not px.matches(tl, {}) and not px.matches(tl, {"xf": Transform3D.IDENTITY}),
+		"a prep with opts xf matches only plays with the same xf")
+	# a knocked-out body and a set wall being freed lie in the baked canteen box: the static check must look through them
+	var bk: Dictionary = CineStage.baked(CineTimeline.canteen_stage(Vector2(14.0, 10.0), "sunset"))
+	var o: Vector3 = (bk["xf"] as Transform3D).origin
+	d_body = CharacterBody3D.new()
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(3.0, 0.6, 3.0)
+	cs.shape = bs
+	d_body.add_child(cs)
+	fr.add_child(d_body)
+	d_body.global_position = o + Vector3(0.0, 0.3, 0.0)
+	d_wall = StaticBody3D.new()
+	var cs2 := CollisionShape3D.new()
+	var bs2 := BoxShape3D.new()
+	bs2.size = Vector3(3.0, 0.6, 3.0)
+	cs2.shape = bs2
+	d_wall.add_child(cs2)
+	var holder := StoryMission.new()   # a mission's set
+	fr.add_child(holder)
+	holder.add_child(d_wall)
+	d_wall.global_position = o + Vector3(3.5, 0.3, 0.0)
 
 
 func _d_step() -> bool:
-	var cpp: CinePrep = fr.get("cine_prep")
-	if d_step == 0:
-		if cpp == null:
-			_check(false, "the prep vanished")
-			return _end()
-		prep_built.append(cpp.built)
-		if prep_built.size() == 3:
-			paused = true   # a paused tree (cinematic, call, video) builds nothing
-			d_paused_at = cpp.built
-		elif prep_built.size() == 6:
-			_check(cpp.built == d_paused_at, "nothing is built while the tree is paused (%d -> %d)" % [d_paused_at, cpp.built])
-			paused = false
-		if cpp.done() or frames > 120:
-			print("  built per frame: %s" % str(prep_built))
-			var grows: bool = true
-			for i: int in range(1, prep_built.size()):
-				grows = grows and prep_built[i] - prep_built[i - 1] <= 1
-			_check(grows and cpp.done(), "at most one actor per frame, until done (%s)" % str(prep_built))
-			var ids: Dictionary = {}
-			for id: String in cpp.actors.keys():
-				ids[id] = (cpp.actors[id] as Node).get_instance_id()
-			var tl2: CineTimeline = CineTimeline.load_slot("cine_d4_stare")   # a fresh load, as StoryRoam does at play time
-			cp = fr.call("play_cinematic", tl2, {"manual": true, "music": false})
-			_check(cp != null and cp.adopted == tl2.actors.size() and fr.get("cine_prep") == null,
-				"play_cinematic adopts every prepared actor (%d of %d) and drops the prep" % [cp.adopted if cp else -1, tl2.actors.size()])
-			var same: bool = cp != null
-			if cp:
-				for id2: String in ids.keys():
-					same = same and cp.actors.has(id2) and (cp.actors[id2] as Node).get_instance_id() == int(ids[id2]) \
-						and (cp.actors[id2] as Node).get_parent() == cp.stage
-			_check(same, "the cinematic plays the very nodes that were prepared, under its stage")
-			_check(bool((fr.get("cine_stage_info") as Dictionary).get("prepared", false)), "the stage frame came from the prep")
-			if cp:
-				cp.step(0.5)
-				cp.call("_finish", true)
-			d_step = 1
-			frames = 0
+	if d_step == 0 and frames < 3:
+		return false
+	if d_step == 0 and d_body != null:
+		var st: Dictionary = CineTimeline.canteen_stage(Vector2(14.0, 10.0), "sunset")
+		var bk: Dictionary = CineStage.baked(st)
+		var space: PhysicsDirectSpaceState3D = (fr as Node3D).get_world_3d().direct_space_state
+		var steps_any: Array = fr.call("_cine_floor_steps", space, bk["xf"], Vector2(14.0, 10.0), true)
+		_check(not steps_any.is_empty(), "the bodies really block the plain floor rays (the check below is not vacuous)")
+		fr.call("cine_stage", st)
+		_check(String((fr.get("cine_stage_info") as Dictionary).get("source", "")) == "baked",
+			"a knocked-out body and a mission wall in the box do not reject the baked spot (map floor only)")
+		d_body.queue_free()
+		d_wall.get_parent().queue_free()
+		d_body = null
+		var tl2: CineTimeline = CineTimeline.load_slot("cine_d4_stare")   # a fresh load, as StoryRoam does at play time
+		cp = fr.call("play_cinematic", tl2, {"manual": true, "music": false})
+		_check(cp != null and fr.get("cine_prep") == null and bool((fr.get("cine_stage_info") as Dictionary).get("prepared", false)),
+			"play_cinematic takes the prepared stage frame and drops the prep")
+		if cp:
+			cp.call("_finish", true)
+		fr.call("prepare_cinematic", CineTimeline.load_slot("cine_d4_intro"), {})
+		d_step = 1
+		frames = 0
 		return false
 	if d_step == 1:
 		if frames < 3:
 			return false
-		_check(fr.get("cine_player") == null and not paused, "the world is restored after the prepared cinematic")
-		# a prep for another slot is not adopted, and stays
-		fr.call("prepare_cinematic", CineTimeline.load_slot("cine_d4_intro"), {})
 		cp = fr.call("play_cinematic", CineTimeline.load_slot("cine_d4"), {"manual": true, "music": false})
-		var keep: CinePrep = fr.get("cine_prep")
-		_check(cp != null and cp.adopted == 0 and keep != null and keep.slot == "cine_d4_intro", "another slot builds its own actors; the prep is kept")
+		_check(cp != null and not bool((fr.get("cine_stage_info") as Dictionary).get("prepared", false)), "another slot resolves its own stage")
 		if cp:
 			cp.call("_finish", true)
-		fr.call("drop_cinematic_prep")
 		d_step = 2
 		frames = 0
 		return false
 	if frames < 3:
 		return false
-	_check(fr.get("cine_prep") == null, "drop_cinematic_prep clears the prep")
+	_check(fr.get("cine_player") == null and not paused, "the world is restored after the manual cinematics")
 	phase = 2
 	frames = 0
 	return false
 
 
 # ---------------------------------------------------------------------------
-# E. fade then setup
+# E. fade, then the work under black one piece per frame
 # ---------------------------------------------------------------------------
-var e_rows: Array = []        # per frame: [prerolling, black alpha, set up]
+var e_rows: Array = []        # per frame: [prerolling, black alpha, actors built, set up]
 var e_t0: int = 0
 var e_card: StoryDayCard = null
-var e_card_rows: Array = []   # per frame: [prerolling, card visible]
+var e_card_rows: Array = []   # [prerolling, card visible]; row 0 right after the card is added
 var e_step: int = 0
 
 
 func _e_step() -> bool:
 	if e_step == 0:
-		print("-- E. fade then setup (prepared first: the faded play adopts the prep)")
+		print("-- E. fade, then one piece of work per black frame")
 		fr.call("prepare_cinematic", CineTimeline.load_slot("cine_d4_stare"), {})
-		e_step = 5
-		return false
-	if e_step == 5:
-		var pp: CinePrep = fr.get("cine_prep")
-		if pp != null and not pp.done() and frames < 200:
-			return false
-		var tl: CineTimeline = CineTimeline.load_slot("cine_d4_stare")
 		var player_node: Node3D = fr.get("player")
 		e_t0 = Time.get_ticks_usec()
 		ended.clear()
 		fr.connect("cinematic_finished", func(slot: String, sk: bool) -> void: ended.append([slot, sk]), CONNECT_ONE_SHOT)
-		cp = fr.call("play_cinematic", tl, {"music": false})
-		_check(cp != null and cp.prerolling and cp.stage == null and cp.timeline == tl, "play_cinematic returns at once, prerolling, nothing set up")
+		cp = fr.call("play_cinematic", CineTimeline.load_slot("cine_d4_stare"), {"music": false})
+		_check(cp != null and cp.prerolling and cp.stage == null and cp.pre_built == 0, "play_cinematic returns at once, prerolling, nothing built or set up")
 		_check(paused and player_node.visible, "the game is frozen and the world still shown while the picture fades")
 		if cp == null:
 			return _end()
 		e_card = StoryDayCard.new()
 		e_card.player = cp
 		root.add_child(e_card)
+		e_card_rows.append([cp.prerolling, e_card.visible])   # row 0: before its first _process
 		e_step = 1
 		return false
 	if e_step == 1:
 		var pr: Variant = cp.get("_pre_rect")
 		var a: float = (pr as ColorRect).color.a if pr is ColorRect else -1.0
-		e_rows.append([cp.prerolling, snappedf(a, 0.01), cp.stage != null])
+		e_rows.append([cp.prerolling, snappedf(a, 0.01), cp.pre_built, cp.stage != null])
 		e_card_rows.append([cp.prerolling, e_card.visible])
 		if cp.stage != null:
+			var n_act: int = cp.timeline.actors.size()
 			var ms: float = float(Time.get_ticks_usec() - e_t0) / 1000.0
 			var first_black: int = -1
+			var first_build: int = -1
 			var first_setup: int = -1
+			var step_ok: bool = true
 			for i: int in e_rows.size():
 				if first_black < 0 and float(e_rows[i][1]) >= 1.0:
 					first_black = i
-				if first_setup < 0 and bool(e_rows[i][2]):
+				if first_build < 0 and int(e_rows[i][2]) > 0:
+					first_build = i
+				if first_setup < 0 and bool(e_rows[i][3]):
 					first_setup = i
+				if i > 0 and int(e_rows[i][2]) - int(e_rows[i - 1][2]) > 1:
+					step_ok = false
 			print("  preroll %.0f ms over %d frames: %s" % [ms, e_rows.size(), str(e_rows)])
-			_check(first_black >= 0 and first_setup > first_black, "setup ran only after a fully black frame (black at %d, setup at %d)" % [first_black, first_setup])
+			_check(first_black >= 0 and first_build > first_black + 1,
+				"the actors are built only under black, after the hide / time-of-day frame (black %d, first build %d)" % [first_black, first_build])
+			_check(step_ok and first_setup >= first_build + n_act - 1,
+				"at most one actor per black frame, then the setup (%d actors, setup at frame %d)" % [n_act, first_setup])
+			_check(cp.adopted == n_act and cp.clones >= 5, "setup adopted every actor built under black (%d of %d, %d cloned)" % [cp.adopted, n_act, cp.clones])
 			_check(ms >= CinePlayer.FADE_S * 1000.0 - 1.0, "the fade lasts CinePlayer.FADE_S (%.0f ms)" % ms)
 			var rising: bool = true
 			for j: int in range(1, maxi(first_black, 1)):
@@ -448,15 +493,14 @@ func _e_step() -> bool:
 			_check(rising, "the black layer rises monotonically")
 			_check(not (fr.get("player") as Node3D).visible and fr.get_viewport().get_camera_3d() == cp.camera, "under black: world hidden, cinematic camera current")
 			_check(cp.overlay != null and float(cp.overlay.get("_fade")) >= 0.99, "the cinematic itself starts from black")
-			_check(cp.adopted == cp.timeline.actors.size(), "the faded play adopted every prepared actor after the fade (%d of %d)" % [cp.adopted, cp.timeline.actors.size()])
 			var hid: bool = true
-			for k: int in range(1, e_card_rows.size()):
-				if bool(e_card_rows[k][0]) and bool(e_card_rows[k][1]):
+			for row: Array in e_card_rows:
+				if bool(row[0]) and bool(row[1]):
 					hid = false
-			_check(hid, "the 2D card stays hidden during the preroll (%s)" % str(e_card_rows))
+			_check(hid, "the 2D card never shows during the preroll, from its first frame (%s)" % str(e_card_rows.slice(0, 3)))
 			e_step = 2
 			frames = 0
-		elif frames > 200:
+		elif frames > 300:
 			_check(false, "the preroll never set up")
 			return _end()
 		return false
@@ -468,7 +512,6 @@ func _e_step() -> bool:
 		if not ended.is_empty():
 			_check(ended[0] == ["cine_d4_stare", true], "the faded cinematic skips and finishes: %s" % str(ended))
 			_check(not paused and (fr.get("player") as Node3D).visible, "world restored after the faded cinematic")
-			# manual stays synchronous
 			cp = fr.call("play_cinematic", CineTimeline.load_slot("cine_d1_intro"), {"manual": true, "music": false})
 			_check(cp != null and not cp.prerolling and cp.stage != null, "manual play_cinematic sets up at once (no fade)")
 			if cp:
@@ -481,9 +524,32 @@ func _e_step() -> bool:
 		return false
 	if frames < 3:
 		return false
+	_g_hard_cuts()
 	phase = 3
 	frames = 0
 	return false
+
+
+# ---------------------------------------------------------------------------
+# G. hard cuts: jump scares and fade_in 0 keep the immediate cut
+# ---------------------------------------------------------------------------
+func _g_hard_cuts() -> void:
+	print("-- G. hard cuts (scares, no fade_in)")
+	var sc: CineTimeline = CineTimeline.load_slot("cine_d0_midnight")
+	_check(not sc.scare_hits.is_empty() and not CinePlayer.wants_preroll(sc, {}), "a timeline with scare hits is a hard cut")
+	cp = fr.call("play_cinematic", sc, {"music": false})
+	_check(cp != null and not cp.prerolling and cp.stage != null and cp.get("_pre_layer") == null,
+		"the scare cinematic cuts in at once: synchronous setup, no black layer")
+	if cp:
+		cp.call("_finish", true)
+	var nf: CineTimeline = CineTimeline.load_slot("cine_d4")
+	nf.fade_in = 0.0
+	_check(not CinePlayer.wants_preroll(nf, {}) and CinePlayer.wants_preroll(CineTimeline.load_slot("cine_d4"), {}),
+		"fade_in 0 is a hard cut; the same slot with its fade_in prerolls")
+	cp = fr.call("play_cinematic", nf, {"music": false})
+	_check(cp != null and not cp.prerolling and cp.stage != null, "a fade_in 0 cinematic cuts in at once")
+	if cp:
+		cp.call("_finish", true)
 
 
 # ---------------------------------------------------------------------------
@@ -496,6 +562,7 @@ func _f_step() -> bool:
 	if f_step == 0:
 		print("-- F. dev path (F9) on a timeline's own stage")
 		fr.set("_cine_slot_i", CineTimeline.slots().find("cine_d2") - 1)
+		MusicDirector.test_streams["cine_d2"] = null   # silent: the F9 path never reads user://music
 		ended.clear()
 		fr.connect("cinematic_finished", func(slot: String, sk: bool) -> void: ended.append([slot, sk]), CONNECT_ONE_SHOT)
 		cp = fr.call("_play_next_cinematic")
@@ -518,11 +585,16 @@ func _f_step() -> bool:
 
 
 func _end() -> bool:
+	MusicDirector.test_streams.erase("cine_d2")
+	var gfx2: Node = root.get_node_or_null("GameFX")
+	if gfx2 and style0 != "":
+		gfx2.call("set_art_style", style0, false)
+	print("  art style during the test: vice (owner style %s restored)" % style0)
 	if story:
 		story.free()
 		story = null
 	if fails.is_empty():
-		print("✅ SUCCESS: CINE TRANSITION (baked stages, budgeted search + cache, clone cache, prepare ahead, fade then setup, dev path)")
+		print("✅ SUCCESS: CINE TRANSITION (baked stages, budgeted search + cache, clone cache, prepare ahead, fade then one piece per black frame, hard cuts, dev path)")
 		quit(0)
 	else:
 		print("❌ FAIL: CINE TRANSITION (%d)" % fails.size())
