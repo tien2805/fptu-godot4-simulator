@@ -48,10 +48,23 @@ var _face_ps2: bool = false
 var _expr_now: String = ""             # classic faces: expression last applied (texture swaps only on change)
 var _head_in_spin: Vector3 = Vector3(0.0, 1.5 - PIVOT_Y, 0.0)   # neutral Head bone point in the spin node's frame
 var _ankles: Array = []                # [LowerLeg bone, Foot bone, ankle in shin-rest frame, ankle in foot-rest frame]
+## The opts this actor was set up with (CinePlayer adopts a prepared actor only when they still match) and whether its
+## body was cloned from a template (clone cache) rather than built.
+var src_opts: Dictionary = {}
+var cloned: bool = false
+
+
+## Clone-cache key of actor opts: identical seeded opts build identical bodies, so the second one can be a duplicate of the
+## first ("" = never cloned: without a "seed" CharacterBuilder rolls a random look on every build).
+static func clone_key(opts: Dictionary) -> String:
+	return var_to_str(opts) if opts.has("seed") else ""
 
 
 ## Build the character (CharacterBuilder.build opts; always rigged, animate=false so no animator writes the bones).
-func setup(opts: Dictionary) -> void:
+## template: an actor set up with the same clone_key and no cues yet; its body is duplicated (about 1.5 ms instead of
+## 50-75 ms windowed) and the duplicate's node references (metas "rig", "skeleton") are remapped into the duplicate.
+func setup(opts: Dictionary, template: CineActor = null) -> void:
+	src_opts = opts
 	var o: Dictionary = opts.duplicate()
 	o["rigged"] = true
 	o["animate"] = false
@@ -59,7 +72,13 @@ func setup(opts: Dictionary) -> void:
 	spin.name = "Spin"
 	spin.position = Vector3(0.0, PIVOT_Y, 0.0)
 	add_child(spin)
-	body = CharacterBuilder.build(o)
+	if template != null and is_instance_valid(template) and template.body != null and clone_key(opts) != "" \
+			and clone_key(opts) == clone_key(template.src_opts):
+		body = template.body.duplicate() as Node3D
+		remap_refs(template.body, body)
+		cloned = true
+	else:
+		body = CharacterBuilder.build(o)
 	body.position = Vector3(0.0, -PIVOT_Y, 0.0)
 	spin.add_child(body)
 	sk = body.get_meta("skeleton") as Skeleton3D
@@ -101,6 +120,61 @@ func setup(opts: Dictionary) -> void:
 		face_mat = (face.material_override as StandardMaterial3D).duplicate()
 		face.material_override = face_mat
 		_face_ps2 = bool(face_mat.get_meta("ps2_face", false))
+
+
+## Point every node reference held in the metas of dup's subtree (a Node, or a Node inside a Dictionary / Array meta) from
+## src's subtree to the matching node of dup (Node.duplicate copies metas by reference). Nodes are matched by walking both
+## trees in child order (duplicate keeps it), else by path.
+static func remap_refs(src: Node, dup: Node) -> void:
+	var pairs: Dictionary = {}
+	_pair_nodes(src, dup, pairs)
+	for d: Node in pairs.values():
+		for k: StringName in d.get_meta_list():
+			var v: Variant = d.get_meta(k)
+			var nv: Variant = _remap_value(v, pairs, src, dup)
+			if not is_same(nv, v):
+				d.set_meta(k, nv)
+
+
+static func _pair_nodes(a: Node, b: Node, pairs: Dictionary) -> void:
+	pairs[a] = b
+	var n: int = mini(a.get_child_count(), b.get_child_count())
+	for i: int in n:
+		_pair_nodes(a.get_child(i), b.get_child(i), pairs)
+
+
+static func _remap_value(v: Variant, pairs: Dictionary, src: Node, dup: Node) -> Variant:
+	if v is Node:
+		if pairs.has(v):
+			return pairs[v]
+		if is_instance_valid(v) and src.is_ancestor_of(v):
+			return dup.get_node_or_null(src.get_path_to(v))
+		return v
+	if v is Dictionary:
+		var hit: bool = false
+		for x: Variant in (v as Dictionary).values():
+			if x is Node or x is Dictionary or x is Array:
+				hit = true
+				break
+		if not hit:
+			return v
+		var nd: Dictionary = {}
+		for k2: Variant in (v as Dictionary).keys():
+			nd[k2] = _remap_value(v[k2], pairs, src, dup)
+		return nd
+	if v is Array and not (v as Array).is_typed():
+		var hit2: bool = false
+		for x2: Variant in (v as Array):
+			if x2 is Node or x2 is Dictionary or x2 is Array:
+				hit2 = true
+				break
+		if not hit2:
+			return v
+		var na: Array = []
+		for x3: Variant in (v as Array):
+			na.append(_remap_value(x3, pairs, src, dup))
+		return na
+	return v
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +275,12 @@ func part_show(s: float, part: String, on: bool) -> void:
 			if n.has_meta(part + "_part"):
 				found.append(n)
 		_part_nodes[part] = found
+
+
+## No cue given yet (a prepared or template actor: CinePlayer dispatches the cues after adopting it).
+func cues_free() -> bool:
+	return moves.is_empty() and keys.is_empty() and exprs.is_empty() and looks.is_empty() and shows.is_empty() \
+		and holds.is_empty() and parts.is_empty() and overrides.is_empty()
 
 
 ## The move cue playing at s ({} before the first one).

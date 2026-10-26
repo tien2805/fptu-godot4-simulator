@@ -1315,6 +1315,7 @@ static func _build_trees(root: Node3D, pts: PackedVector2Array, o: Dictionary) -
 		mm.instance_count = g.size()
 		for i: int in range(g.size()):
 			mm.set_instance_transform(i, g[i])
+		mm.set_meta("cine_xforms", g)   # FreeRoam's cinematic clutter check (headless RenderingServer returns none)
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		mmi.name = "Trees_%d" % vi

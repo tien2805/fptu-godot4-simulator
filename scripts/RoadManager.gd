@@ -865,6 +865,7 @@ func _build_roadside_trees() -> void:
 		mm.instance_count = list.size()
 		for i: int in range(list.size()):
 			mm.set_instance_transform(i, list[i])
+		mm.set_meta("cine_xforms", list)   # FreeRoam's cinematic clutter check (headless RenderingServer returns none)
 		var mmi := MultiMeshInstance3D.new()
 		mmi.name = "RouteTrees_%d" % k
 		mmi.multimesh = mm

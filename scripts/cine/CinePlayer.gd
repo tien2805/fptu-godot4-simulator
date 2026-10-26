@@ -21,6 +21,7 @@ signal choice_made(id: String, key: String, timed_out: bool)
 const ESC_HOLD: float = 0.8
 const SKIP_FADE: float = 0.25
 const LETTERBOX_IN: float = 0.4
+const FADE_S: float = 0.18   # hosts fade gameplay to black over this before setup (preroll)
 const SFX_POOL: int = 6
 const AUTO_SFX: Dictionary = {"light": "impact_light", "medium": "impact_medium", "heavy": "impact_heavy", "finisher": "impact_heavy"}
 
@@ -66,6 +67,25 @@ var scare: CineScare = null              # jump scare v2 marks (scare_hit), null
 var _scare_twitch: Array[String] = []    # actor id per scare hit ("" = none)
 var _sfx_db: PackedFloat32Array = PackedFloat32Array()   # each pool player's own level (the duck goes on top)
 var _fov_off: float = 0.0
+## setup: actors adopted (built under the black frame, or opts "actors") and actors cloned from a seeded twin (clone cache).
+var adopted: int = 0
+var clones: int = 0
+## Preroll (hosts' fade to black before setup, plan 2026-10-26-cine-transition): true from the fade's start until setup
+## (timeline is set so hosts and cards can read it). The 2D cards stay hidden meanwhile. pre_built: actors built under the
+## black frame so far (one per frame).
+var prerolling: bool = false
+var pre_built: int = 0
+var _pre_len: float = 0.0
+var _pre_t: float = 0.0
+var _pre_black: int = 0              # 0 fading, 1 fully black (drawn this frame), 2 working under black
+var _pre_under: Callable = Callable()
+var _pre_go: Callable = Callable()
+var _pre_ids: Array[String] = []
+var _pre_actors: Dictionary = {}     # id -> CineActor built under black (adopted by setup)
+var _pre_templates: Dictionary = {}  # CineActor.clone_key -> first actor built with those opts
+var _pre_hold: Node3D = null
+var _pre_layer: CanvasLayer = null
+var _pre_rect: ColorRect = null
 
 
 ## Build everything for tl at stage_xf. Returns the validation errors (empty = ready); an invalid timeline builds nothing.
@@ -83,13 +103,38 @@ func setup(tl: CineTimeline, xf: Transform3D = Transform3D.IDENTITY, opts: Dicti
 	stage.name = "Stage"
 	add_child(stage)
 	stage.transform = xf
+	# actors built under the black frame (preroll) or given in opts "actors" are adopted when their opts still match; the
+	# others are built, seeded duplicates cloned from the first actor with the same opts (CineActor.clone_key)
+	var prepared: Dictionary = _pre_actors.duplicate()   # built under the black frame (preroll)
+	prepared.merge(opts.get("actors", {}), true)
+	_pre_actors.clear()
+	_pre_templates.clear()
+	var templates: Dictionary = {}
+	for pa: Variant in prepared.values():
+		if is_instance_valid(pa) and pa is CineActor and CineActor.clone_key((pa as CineActor).src_opts) != "":
+			templates[CineActor.clone_key((pa as CineActor).src_opts)] = pa
 	for id: String in tl.actors.keys():
-		var a := CineActor.new()
-		a.name = id
-		stage.add_child(a)
-		a.setup(tl.actors[id]["opts"])
+		var ao: Dictionary = tl.actors[id]["opts"]
+		var pv: Variant = prepared.get(id)
+		var a: CineActor = pv as CineActor if is_instance_valid(pv) and pv is CineActor else null
+		if a != null and is_instance_valid(a) and a.src_opts == ao and a.cues_free():
+			a.reparent(stage, false)
+			adopted += 1
+		else:
+			var key: String = CineActor.clone_key(ao)
+			a = CineActor.new()
+			a.name = id
+			stage.add_child(a)
+			a.setup(ao, templates.get(key))
+			if a.cloned:
+				clones += 1
+			if key != "" and not templates.has(key):
+				templates[key] = a
 		a.display_name = String(tl.actors[id]["name"])
 		actors[id] = a
+	for pa2: Variant in prepared.values():
+		if is_instance_valid(pa2) and pa2 is CineActor and not actors.values().has(pa2):
+			(pa2 as CineActor).queue_free()   # prepared for opts that changed since: not used
 	# Phase B: drop_set (setup opt, or tl.stage["drop_set"]) leaves out the carried set dressing (props with opts "set": true,
 	# e.g. the corridor walls) when the integration stages the scene inside the real building or the Night Building
 	var drop_set: bool = bool(opts.get("drop_set", tl.stage.get("drop_set", false)))
@@ -160,6 +205,96 @@ func setup(tl: CineTimeline, xf: Transform3D = Transform3D.IDENTITY, opts: Dicti
 	_seeking = false
 	overlay.set_fade(1.0)
 	return PackedStringArray()
+
+
+## Whether a host should fade to black before this cinematic (default of the hosts' opts "fade"): not in manual mode
+## (tests drive the clock), and not for a hard cut: a timeline with no fade_in or with scare hits keeps the old immediate
+## cut with a synchronous setup (a fade would telegraph the jump scare; those casts are small).
+static func wants_preroll(tl: CineTimeline, opts: Dictionary = {}) -> bool:
+	return not bool(opts.get("manual", false)) and tl != null and tl.fade_in > 0.0 and tl.scare_hits.is_empty()
+
+
+## Fade to black over fade_s REAL seconds (runs while the host pauses the tree). Then, under the black frame, one piece of
+## work per frame so no frame blocks for long: the frame after the screen is fully black runs under_black (the host hides
+## the world and switches the time of day), then each frame builds one actor (CineActor clone cache: a seeded twin is a
+## duplicate) hidden under this player, then go (the host's setup, which adopts those actors, and start). The layer goes
+## after go; setup leaves the overlay black, so the cinematic still fades in from black on its own fade_in.
+func preroll(tl: CineTimeline, fade_s: float, under_black: Callable, go: Callable) -> void:
+	timeline = tl
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	prerolling = true
+	_pre_len = maxf(fade_s, 0.0)
+	_pre_t = 0.0
+	_pre_black = 0
+	_pre_under = under_black
+	_pre_go = go
+	_pre_ids.clear()
+	for id: String in tl.actors.keys():
+		_pre_ids.append(id)
+	_pre_layer = CanvasLayer.new()
+	_pre_layer.name = "PreFade"
+	_pre_layer.layer = 127
+	add_child(_pre_layer)
+	_pre_rect = ColorRect.new()
+	_pre_rect.color = Color(0.0, 0.0, 0.0, 0.0)
+	_pre_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pre_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_pre_layer.add_child(_pre_rect)
+	_last_us = Time.get_ticks_usec()
+	_set_flag(true)   # Esc must not open the pause menu during the fade
+
+
+func _preroll_step() -> void:
+	if _pre_black == 0:
+		var now: int = Time.get_ticks_usec()
+		_pre_t += float(now - _last_us) / 1e6
+		_last_us = now
+		var a: float = 1.0 if _pre_len <= 0.0 else clampf(_pre_t / _pre_len, 0.0, 1.0)
+		_pre_rect.color = Color(0.0, 0.0, 0.0, a)
+		if a >= 1.0:
+			_pre_black = 1   # this frame draws the full black; the work starts in the next one
+		return
+	if _pre_black == 1:
+		_pre_black = 2
+		var ub: Callable = _pre_under
+		_pre_under = Callable()
+		if ub.is_valid():
+			ub.call()
+		return
+	if pre_built < _pre_ids.size():
+		_pre_build_one(_pre_ids[pre_built])
+		pre_built += 1
+		return
+	prerolling = false
+	var go: Callable = _pre_go
+	_pre_go = Callable()
+	go.call()
+	if is_instance_valid(_pre_layer):
+		_pre_layer.queue_free()
+	_pre_layer = null
+	_pre_rect = null
+	if is_instance_valid(_pre_hold):
+		_pre_hold.queue_free()   # its actors were reparented under the stage by setup
+	_pre_hold = null
+
+
+func _pre_build_one(id: String) -> void:
+	if _pre_hold == null:
+		_pre_hold = Node3D.new()
+		_pre_hold.name = "PreBuild"
+		_pre_hold.visible = false
+		add_child(_pre_hold)
+	var o: Dictionary = timeline.actors[id]["opts"]
+	var key: String = CineActor.clone_key(o)
+	var a := CineActor.new()
+	a.name = id
+	_pre_hold.add_child(a)
+	a.setup(o, _pre_templates.get(key))
+	if a.cloned:
+		clones += 1
+	if key != "" and not _pre_templates.has(key):
+		_pre_templates[key] = a
+	_pre_actors[id] = a
 
 
 static func _bus(nm: String) -> StringName:
@@ -249,6 +384,9 @@ func start() -> void:
 
 
 func _process(_d: float) -> void:
+	if prerolling:
+		_preroll_step()
+		return
 	if manual or not _playing or _done:
 		return
 	var now: int = Time.get_ticks_usec()
@@ -527,7 +665,8 @@ func _skip_logic(dt: float) -> void:
 func _finish(skipped: bool) -> void:
 	_done = true
 	_playing = false
-	music.stop()
+	if music:
+		music.stop()
 	if scare != null:   # a skip mid-scare: the overlay goes, the camera and the audio levels come back
 		scare.cleanup()
 		if camera != null:
@@ -559,6 +698,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _exit_tree() -> void:
+	if prerolling and not _done:
+		prerolling = false   # removed during the fade: the host hears the end like a skip (nothing was built)
+		leaving_tree = true
+		_finish(true)
+		return
 	if _playing and not _done:
 		# freed / removed mid-cinematic: Esc must open the pause menu again (plan review Minor 3) and an awaiting host must
 		# hear the end (Tasks 5+6 review): finished(true) with leaving_tree set

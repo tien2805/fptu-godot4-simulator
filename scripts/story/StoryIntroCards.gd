@@ -54,6 +54,8 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build()
 	update(0.0)
+	if player and is_instance_valid(player):
+		visible = not bool(player.get("prerolling"))   # no one-frame flash over gameplay before the first _process
 
 
 func _panel(bg: Color, border: Color, radius: int) -> StyleBoxFlat:
@@ -183,4 +185,5 @@ func update(r: float) -> void:
 
 func _process(_d: float) -> void:
 	if player and is_instance_valid(player):
+		visible = not bool(player.get("prerolling"))   # hidden while the host fades to black before the cinematic
 		update(float(player.get("r")))

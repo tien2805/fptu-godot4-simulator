@@ -507,10 +507,14 @@ static func build_motorbike_multimesh(parent: Node3D, xforms: Array[Transform3D]
 		mm.mesh = mesh
 		mm.instance_count = xforms.size()
 		var local: Transform3D = _bike_part_xform(part)
+		var kept: Array[Transform3D] = []
 		for i: int in range(xforms.size()):
-			mm.set_instance_transform(i, xforms[i] * local)
+			kept.append(xforms[i] * local)
+			mm.set_instance_transform(i, kept[i])
 			if is_paint:
 				mm.set_instance_color(i, colors[i])
+		# instance transforms kept for FreeRoam's cinematic clutter check (headless RenderingServer returns none)
+		mm.set_meta("cine_xforms", kept)
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		holder.add_child(mmi)
@@ -748,6 +752,7 @@ static func build_module_wing(parent: Node3D, p_start: Vector3, p_end: Vector3, 
 		mm.instance_count = bush_xforms.size()
 		for bi: int in range(bush_xforms.size()):
 			mm.set_instance_transform(bi, bush_xforms[bi])
+		mm.set_meta("cine_xforms", bush_xforms)   # FreeRoam's cinematic clutter check (headless too)
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		wing.add_child(mmi)
@@ -1629,6 +1634,7 @@ static func _build_grass(root: Node3D, m: Dictionary) -> void:
 	mm.instance_count = xforms.size()
 	for i: int in range(xforms.size()):
 		mm.set_instance_transform(i, xforms[i])
+	mm.set_meta("cine_xforms", xforms)   # FreeRoam's cinematic clutter check (headless RenderingServer returns none)
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

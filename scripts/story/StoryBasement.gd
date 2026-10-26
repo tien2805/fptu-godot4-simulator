@@ -379,34 +379,60 @@ func _cine_opts() -> Dictionary:
 
 
 ## Plays a Day 5 cinematic here (the tree paused, the player and HUD hidden, the level's own copies of what the timeline
-## brings hidden, the stage's exposure / ambient factors applied); restores everything on finished.
+## brings hidden, the stage's exposure / ambient factors applied); restores everything on finished. Like
+## FreeRoam.play_cinematic, it fades to black first and builds under the black frame, one piece per frame
+## (CinePlayer.preroll), unless manual, opts "fade": false or a hard cut (CinePlayer.wants_preroll: no fade_in, or scare
+## hits); the player is returned at once.
 func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 	if tl == null or cine_player != null:
+		return null
+	var errs: PackedStringArray = tl.validate()
+	if not errs.is_empty():
+		push_error("CinePlayer: timeline %s is invalid:\n  %s" % [tl.slot, "\n  ".join(errs)])
 		return null
 	var xf: Transform3D = opts.get("xf", level.room_xf())
 	var p := CinePlayer.new()
 	p.name = "CinePlayer"
 	add_child(p)
-	if not p.setup(tl, xf, opts).is_empty():
-		p.queue_free()
-		return null
 	StoryChapters.mark_cine(tl.slot)
 	_cine_saved = {"vis": {}, "env": [env.environment.tonemap_exposure, env.environment.ambient_light_energy]}
+	var fx: Node = get_node_or_null("/root/GameFX")
+	if fx and fx.has_method("music_stop"):
+		fx.call("music_stop", true)
+	get_tree().paused = true
+	cine_player = p
+	p.finished.connect(_on_cine_finished.bind(tl.slot), CONNECT_ONE_SHOT)
+	var black: Callable = _cine_black.bind(p, tl)
+	var go: Callable = _cine_go.bind(p, tl, xf, opts)
+	if bool(opts.get("fade", CinePlayer.wants_preroll(tl, opts))):
+		p.preroll(tl, CinePlayer.FADE_S, black, go)
+	else:
+		black.call()
+		go.call()
+	return p
+
+
+## Under the black frame (or at once for a hard cut): the player and HUD hidden, the level's copies hidden, the exposure.
+func _cine_black(p: CinePlayer, tl: CineTimeline) -> void:
+	if not is_instance_valid(p):
+		return
 	for n: Variant in [player, weapon_hud, ui, combat.hud if combat else null]:
 		if n is Node and is_instance_valid(n) and "visible" in n:
 			_cine_saved["vis"][n] = n.visible
 			n.visible = false
 	level.hide_for_cine(true, tl.slot == "cine_d5_monitors")
-	var fx: Node = get_node_or_null("/root/GameFX")
-	if fx and fx.has_method("music_stop"):
-		fx.call("music_stop", true)
 	env.environment.tonemap_exposure *= float(tl.stage.get("exposure", 1.0))
 	env.environment.ambient_light_energy *= float(tl.stage.get("ambient", 1.0))
-	get_tree().paused = true
-	cine_player = p
-	p.finished.connect(_on_cine_finished.bind(tl.slot), CONNECT_ONE_SHOT)
+
+
+## Setup and start (the actors built under black are adopted by CinePlayer.setup).
+func _cine_go(p: CinePlayer, tl: CineTimeline, xf: Transform3D, opts: Dictionary) -> void:
+	if not is_instance_valid(p):
+		return
+	if cine_player != p or not p.setup(tl, xf, opts).is_empty():
+		p.call("_finish", true)   # never leave the tree paused without finished
+		return
 	p.start()
-	return p
 
 
 func _on_cine_finished(skipped: bool, slot: String) -> void:

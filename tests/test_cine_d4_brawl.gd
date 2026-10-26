@@ -8,8 +8,9 @@
 # (<= 0.08 m per frame) through lie / sit transitions; bodies never sink into each other or the props (bone capsules,
 # tests/support/cine_bodies.gd, every 1/60 s on every tier): <= 0.03 m, or within 0.08 story s of a hit <= 0.06 m for a
 # striking limb and <= 0.04 m torso / head into torso / head; feet never more than 3 cm under the floor. Tiers: cap 0
-# Mixamo when present, 1 UAL, 2 native, 3 code. Then in FreeRoam: cine_stage finds a spot for every Phase B slot, and
-# play_cinematic stages seg_d4_brawl at the canteen, a hold-Esc skip restores the world.
+# Mixamo when present, 1 UAL, 2 native, 3 code. Then in FreeRoam: cine_stage finds a spot for every Phase B slot (within
+# 4 m of its explicit point; GRASS_MOVED: at the baked spot off the campus lawn), and play_cinematic stages seg_d4_brawl,
+# a hold-Esc skip restores the world.
 # Run:  godot --headless --path . --script tests/test_cine_d4_brawl.gd
 # CINE_NO_MIXAMO=1 sets CineRetarget.disabled = ["mixamo"] (covers the fallback tiers with files present).
 # Every player built here passes {"music": false}: the test never depends on user://music.
@@ -39,6 +40,10 @@ const FOOT_FLOOR: float = -0.03
 const PHASE_B: Array[String] = ["cine_d1_intro", "cine_d1_corridor", "cine_d1_choice", "cine_d1_choice_cover", "cine_d1_choice_report",
 	"cine_d1", "cine_d4_intro", "cine_d4_stare", "seg_d4_brawl", "cine_d4"]
 
+## Slots whose explicit point lies on the campus lawn: its grass (a MultiMesh) moves the stage to the game's baked spot, at
+## this distance (m) from the authored point when baked (2026-10-26); a drift of more than 2 m beyond it fails.
+const GRASS_MOVED: Dictionary = {"cine_d1_intro": 20.0, "cine_d4": 22.0, "cine_d4_intro": 24.0, "cine_d4_stare": 24.0,
+	"seg_d4_brawl": 86.9, "end_c": 86.9}
 var fails: Array[String] = []
 var phase: int = -1
 var frames: int = 0
@@ -409,7 +414,17 @@ func _process(_d: float) -> bool:
 				var info: Dictionary = fr.get("cine_stage_info")
 				print("  stage %-22s %s" % [slot, str(info)])
 				_check(xf is Transform3D, "%s: a clear %s m stage spot in FreeRoam" % [slot, str(t.stage.get("size"))])
-				if xf is Transform3D:
+				if xf is Transform3D and GRASS_MOVED.has(slot):
+					# the campus lawn grass (a MultiMesh, seen headless since plan 2026-10-26-cine-transition, as the windowed
+					# game always did) fills the explicit point: the stage is the baked spot of the game's own search
+					var bk: Dictionary = CineStage.baked(t.stage)
+					var at: Vector2 = t.stage["at"]
+					var dist: float = Vector2((xf as Transform3D).origin.x, (xf as Transform3D).origin.z).distance_to(at)
+					_check(String(info.get("source", "")) == "baked" and not bk.is_empty() and (bk["xf"] as Transform3D).is_equal_approx(xf)
+						and dist <= float(GRASS_MOVED[slot]) + 2.0,
+						"%s: staged at its baked spot off the lawn, %.1f m from its point (bound %.1f m; got %s, ring %s)" % [slot, dist,
+						float(GRASS_MOVED[slot]) + 2.0, String(info.get("landmark", "")), str(info.get("ring"))])
+				elif xf is Transform3D:
 					_check(String(info.get("landmark", "")) == "@at" and float(info.get("ring", 99.0)) <= 4.0,
 						"%s: staged within 4 m of its explicit point (got %s, ring %s)" % [slot, String(info.get("landmark", "")), str(info.get("ring"))])
 			ended.clear()

@@ -494,6 +494,60 @@ func refresh() -> void:
 	warm_mission_music(director.call("beat"))   # the marker is up: load its track ahead
 	_update_chip()
 	show_objective(String(director.get("objective")))
+	_prepare_upcoming()
+
+
+## The next cinematic the current beat b will play, as [slot, anchor id] ([] = none): a cine beat's slot (not a choice
+## already recorded), a video beat's fallback cinematic when the owner's clip is missing, an intro not seen yet, a mission
+## or fight's "after" cinematic, or the auto cine beat that follows a mission / fight. Lair scenes play their own.
+func upcoming_cinematic(b: Dictionary) -> Array:
+	if b.is_empty() or director == null:
+		return []
+	var kind: String = String(b.get("kind", ""))
+	var intro: String = String(b.get("intro", ""))
+	var intro_due: bool = intro != "" and not bool((director.get("flags") as Dictionary).get("intro_" + intro, false))
+	if StoryMissions.lair_scene(b) != "":
+		return [intro, ""] if intro_due and mission_node == null else []
+	match kind:
+		"cine":
+			var choice_id: String = String(b.get("choice", ""))
+			if choice_id != "" and String(director.call("choice_of", choice_id)) != "":
+				return []
+			return [cine_slot(b), String(b.get("at", ""))]
+		"video":
+			var female: bool = bool((director.get("protagonist") as Dictionary).get("female", false))
+			if StoryVideo.video_file(String(b.get("slot", "")), female) != "":
+				return []
+			return [String(b.get("slot", "")), String(b.get("at", ""))]
+		"stage", "mission", "fight":
+			if intro_due and mission_node == null:
+				return [intro, String(b.get("anchor", "")) if kind == "stage" else ""]
+			if kind == "stage":
+				return []
+			if b.has("after"):
+				return [String(b["after"]), String(b.get("after_at", ""))]
+			var nb: Dictionary = StoryMissions.beat(String(b.get("next", "")))
+			if String(nb.get("kind", "")) == "cine" and not nb.has("anchor") and StoryMissions.lair_scene(nb) == "":
+				return [cine_slot(nb), String(nb.get("at", ""))]
+	return []
+
+
+## Prepares the upcoming cinematic ahead (FreeRoam.prepare_cinematic: the timeline and its stage only; no actor is built
+## during live play, they are built under the black frame) (plan 2026-10-26-cine-transition).
+func _prepare_upcoming() -> void:
+	if director == null or roam == null or not roam.has_method("prepare_cinematic"):
+		return
+	var up: Array = upcoming_cinematic(director.call("beat"))
+	if up.is_empty() or String(up[0]) == "":
+		if roam.get("cine_player") == null:
+			roam.call("drop_cinematic_prep")   # nothing coming: free a stale prep (an aborted mission's "after")
+		return
+	var tl: CineTimeline = CineTimeline.load_slot(String(up[0]))
+	if tl == null:
+		return
+	var o: Dictionary = {}
+	stage_cinematic(tl, String(up[1]), o)
+	roam.call("prepare_cinematic", tl, o)
 
 
 func run_step() -> void:
@@ -562,20 +616,15 @@ func _start_cinematic(slot: String, at_id: String) -> CinePlayer:
 	var tl: CineTimeline = CineTimeline.load_slot(slot)
 	if tl == null:
 		return null
-	var a: Dictionary = anchors.get(at_id, {})
 	var o: Dictionary = cine_opts.duplicate()
-	if a.get("xf") is Transform3D:
-		o["xf"] = a["xf"]   # Phase C: the yard pad (no stage search onto the yard's own boxes)
-	elif not a.is_empty():
-		var at: Vector3 = a.get("stage_pos", a["pos"])
-		tl.stage["at"] = Vector2(at.x, at.z)
-		tl.stage["yaw_deg"] = rad_to_deg(float(a["yaw"]))
+	stage_cinematic(tl, at_id, o)
 	if yard:
-		yard.hide_for_cine(true)   # the cinematic brings its own stack / forklift
+		var y: LairYard = yard
+		o["on_black"] = func() -> void:
+			if is_instance_valid(y):
+				y.hide_for_cine(true)   # the cinematic brings its own stack / forklift (hidden under the black frame)
 	var cp: Variant = roam.call("play_cinematic", tl, o)
 	if cp == null:
-		if yard:
-			yard.hide_for_cine(false)
 		return null
 	if yard:
 		roam.connect("cinematic_finished", func(_s: String, _k: bool) -> void:
@@ -597,6 +646,39 @@ func _start_cinematic(slot: String, at_id: String) -> CinePlayer:
 		cards = dc
 		add_child(dc)
 	return cp
+
+
+## Stages tl at anchor at_id: its "stage_pos" or spot and its yaw into tl.stage ("at", "yaw_deg"), or the anchor's fixed
+## "xf" into opts (Phase C: the yard pad, no stage search onto the yard's own boxes). No anchor: the timeline's own stage.
+## Shared with the stage bake (CineStage.requests).
+func stage_cinematic(tl: CineTimeline, at_id: String, o: Dictionary) -> void:
+	var a: Dictionary = anchors.get(at_id, {})
+	if a.get("xf") is Transform3D:
+		o["xf"] = a["xf"]
+	elif not a.is_empty():
+		var at: Vector3 = a.get("stage_pos", a["pos"])
+		tl.stage["at"] = Vector2(at.x, at.z)
+		tl.stage["yaw_deg"] = rad_to_deg(float(a["yaw"]))
+
+
+## Every cinematic the story plays in free roam, as [slot, anchor id]: cine / video beats (and their choice tails) at "at",
+## intros at the marker anchor for stage beats (else their own stage), "after" cinematics at "after_at".
+static func cine_requests() -> Array:
+	var out: Array = []
+	for id: String in StoryMissions.all_ids():
+		var b: Dictionary = StoryMissions.beat(id)
+		var kind: String = String(b.get("kind", ""))
+		if kind == "cine" or kind == "video":
+			out.append([String(b.get("slot", "")), String(b.get("at", ""))])
+			var by: Dictionary = b.get("slot_by_choice", {})
+			for k: Variant in by.keys():
+				if String(k) != "id":
+					out.append([String(by[k]), String(b.get("at", ""))])
+		if b.has("intro"):
+			out.append([String(b["intro"]), String(b.get("anchor", "")) if kind == "stage" else ""])
+		if b.has("after"):
+			out.append([String(b["after"]), String(b.get("after_at", ""))])
+	return out
 
 
 func _play_cine(b: Dictionary) -> bool:
@@ -824,6 +906,7 @@ func start_mission(b: Dictionary) -> bool:
 	m.begin()
 	_mission_music(b)
 	warm_mission_music(StoryMissions.beat(String(b.get("next", ""))))   # an auto mission may follow right after
+	_prepare_upcoming()   # its "after" cinematic, or the cine beat that follows
 	return true
 
 
