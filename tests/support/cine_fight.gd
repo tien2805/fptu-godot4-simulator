@@ -8,7 +8,8 @@
 # lying bodies on the floor; no hips skating (<= 0.08 m per frame) through lie / sit transitions; bodies never sink into
 # each other or the solid props (<= 0.03 m, near a hit <= 0.06 m limb / 0.04 m core), feet never 3 cm under the floor.
 # Tiers: cap 0 Mixamo when present, 1 UAL, 2 native, 3 code. Then in FreeRoam: cine_stage finds a spot within 4 m of its
-# explicit point for every Phase C slot, play_cinematic stages the fight, a hold-Esc skip restores the world.
+# explicit point for every Phase C slot (GRASS_MOVED: at the baked spot off the campus lawn), play_cinematic stages the
+# fight, a hold-Esc skip restores the world.
 # A test extends this script and overrides _conf() -> {"slot", "label", "checks": Callable(pl) for its own gags}.
 # Env: CINE_NO_MIXAMO=1 (fallback tiers with files present), CINE_FAST=1 (no penetration sweep), CINE_NO_FREEROAM=1.
 # Every player built here passes {"music": false}: the test never depends on user://music.
@@ -37,6 +38,8 @@ const ROOM_SOLID: Array[String] = ["BackWall", "SideWall"]
 const PHASE_C: Array[String] = ["cine_d2_intro", "cine_d2", "seg_d2_boss", "cine_d3_intro", "cine_d3_mannequins", "cine_d3", "seg_d3_boss",
 	"cine_d5_intro", "cine_d5_monitors", "cine_d5_choice", "cine_d5_choice_accept", "cine_d5_choice_refuse", "cine_d5", "seg_d5_boss", "end_c"]
 
+## Slots whose explicit point lies on the campus lawn: its grass (a MultiMesh) moves the stage to the game's baked spot.
+const GRASS_MOVED: Array[String] = ["cine_d1_intro", "cine_d4", "cine_d4_intro", "cine_d4_stare", "seg_d4_brawl", "end_c"]
 var fails: Array[String] = []
 var phase: int = -1
 var frames: int = 0
@@ -473,7 +476,13 @@ func _process(_d: float) -> bool:
 				var info: Dictionary = fr.get("cine_stage_info")
 				print("  stage %-24s %s" % [slot, str(info)])
 				_check(xf is Transform3D, "%s: a clear %s m stage spot in FreeRoam" % [slot, str(t.stage.get("size"))])
-				if xf is Transform3D:
+				if xf is Transform3D and GRASS_MOVED.has(slot):
+					# the campus lawn grass (a MultiMesh, seen headless since plan 2026-10-26-cine-transition, as the windowed
+					# game always did) fills the explicit point: the stage is the baked spot of the game's own search
+					var bk: Dictionary = CineStage.baked(t.stage)
+					_check(String(info.get("source", "")) == "baked" and not bk.is_empty() and (bk["xf"] as Transform3D).is_equal_approx(xf),
+						"%s: staged at its baked spot off the lawn (got %s, ring %s)" % [slot, String(info.get("landmark", "")), str(info.get("ring"))])
+				elif xf is Transform3D:
 					_check(String(info.get("landmark", "")) == "@at" and float(info.get("ring", 99.0)) <= 4.0,
 						"%s: staged within 4 m of its explicit point (got %s, ring %s)" % [slot, String(info.get("landmark", "")), str(info.get("ring"))])
 			ended.clear()
