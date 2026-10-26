@@ -3,7 +3,8 @@
 # Day 1: the call N = 6 -> the Day 2 morning (Anh Duy's text with its Dịch: line, CÒN 6 NGÀY) -> the marker at Anh Duy's
 # corner of the BE6 lobby -> cine_d2_intro -> the bike chase on Nguyễn Xiển southbound (the reversed route ending just past
 # the Rạch Hầm bridge, "Tới công chuyện luôn!", knocked off = TOANG! -> THỬ LẠI, the Bầy Sói crashed wave after wave, the
-# seg_d2_chase replay) -> the bridge horror beat (fog, howl, LED eyes going out, the snap, the synth ringtone, the Sói Xám
+# seg_d2_chase replay) -> the drift duel with Sói Xám (Tokyo Drift: his intro line, 3-2-1, a loss = a quick retry with no
+# fail card, the win, his ending) -> the bridge horror beat (fog, howl, LED eyes going out, the snap, the synth ringtone, the Sói Xám
 # villain card) -> the duel (soi_xam, the boss bar, down = TOANG! -> retry, KO) -> seg_d2_boss -> the pillar marker with the
 # optional E3 ledger (taken) -> cine_d2 -> bed -> the call N = 5 -> Day 3. Then Continue at d2_end with E3 skipped (no E3
 # after the call), Continue at d2_duel (the bank marker, the fight does not start by itself) and Chọn cảnh: the new beats
@@ -204,12 +205,55 @@ func _process(_d: float) -> bool:
 					while ch6.replay != null and n6 < 1200:
 						ch6.replay.step(DT)
 						n6 += 1
-			if String(sd.get("step")) != "d2_bridge":
+			if String(sd.get("step")) != "d2_drift":
 				if frames > 3000:
 					_check(false, "the chase was not won (state %s)" % (ch6.state if ch6 else "gone"))
 					phase = 999
 				return false
 			_check(mark.has("replay"), "the last fall: the seg_d2_chase replay")
+			_next(60)
+		# ----- Tokyo Drift (plan 2026-10-27-d2x-drift.md): the drift duel with Sói Xám, then the bridge -----
+		60:
+			m = _wait_mission("MissionDriftDuel")
+			if m == null:
+				return false
+			var md60: MissionDriftDuel = m
+			var du: DriftDuel = md60.duel
+			_check(String(sd.get("step")) == "d2_drift" and du != null and du.state == "intro" and du.rival.standing, "d2_drift: the duel starts with Sói Xám standing beside his bike")
+			_check(du.subtitle_text.contains(DriftDuel.T_START) and bool(fr.get("mounted")) and String(fr.call("_hint_text")) == DriftDuel.T_RIDING, "his line, the player still riding, the duel's hint")
+			_check(StoryRoam.mission_slot(sd.call("beat")) == "race_d2_drift" and StoryRoam.SELF_MUSIC.has("drift_duel"), "the drift track slot, started by the duel itself")
+			_check(fr.get("bike").nitro_enabled and is_equal_approx(fr.get("bike").max_speed_ms, float(DriftDuel.DUEL_PROFILE["max_speed_ms"])), "nitro on, the duel profile")
+			_next(61)
+		61:
+			var du61: DriftDuel = (m as MissionDriftDuel).duel
+			if du61.state != "racing":
+				if frames > 600:
+					_check(false, "the duel never raced (%s)" % du61.state)
+					phase = 999
+				return false
+			_check(du61.rival.racing and not fr.get("bike").staged, "3-2-1-ĐI: racing")
+			du61.call("_lose", "gap")
+			_next(62)
+		62:
+			var du62: DriftDuel = (m as MissionDriftDuel).duel
+			if du62.state != "countdown":
+				if frames > 300:
+					_check(false, "no quick retry after the loss (%s)" % du62.state)
+					phase = 999
+				return false
+			_check(du62.losses == 1 and du62.retry_count and not (sr.fail_ui and sr.fail_ui.visible) and m.state == "running", "lost: a quick retry on the grid, no fail card")
+			_next(63)
+		63:
+			var du63: DriftDuel = (m as MissionDriftDuel).duel if is_instance_valid(m) else null
+			if du63 and du63.state == "racing":
+				du63.points = du63.target
+				du63.call("_win", "points")
+			if String(sd.get("step")) != "d2_bridge":
+				if frames > 1500:
+					_check(false, "the duel did not end (%s)" % (du63.state if du63 else "gone"))
+					phase = 999
+				return false
+			_check(StoryChapters.is_beat_unlocked("d2_drift") and not StoryChapters.snapshot("d2_drift").is_empty(), "Chọn cảnh: d2_drift unlocked and snapshotted")
 			_next(7)
 		7:
 			m = _wait_mission("MissionBridge")
@@ -294,7 +338,7 @@ func _process(_d: float) -> bool:
 			if frames < 5:
 				return false
 			_check(String(sd.get("step")) == "d2_bed" and sr.markers.has("d2_bed") and not sr.markers.has("d2_ledger"), "bed marker, the ledger taken")
-			for id: String in ["d2_chase", "d2_bridge", "d2_duel", "d2_end"]:
+			for id: String in ["d2_chase", "d2_drift", "d2_bridge", "d2_duel", "d2_end"]:
 				_check(StoryChapters.is_beat_unlocked(id) and not StoryChapters.snapshot(id).is_empty(), "Chọn cảnh: %s unlocked and snapshotted" % id)
 			_check(StoryChapters.is_cine_unlocked("cine_d2_intro") and StoryChapters.is_cine_unlocked("seg_d2_boss") and StoryChapters.is_cine_unlocked("cine_d2"), "the gallery lists the Day 2 cinematics")
 			_check(sr.start_marker("d2_bed"), "bed")

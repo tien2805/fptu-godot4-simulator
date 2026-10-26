@@ -26,6 +26,8 @@
 #   ending: the story ends after this beat's cinematic (the save is marked finished, then the main menu);
 #   after_at: anchor of an "after" cinematic (yard: the cine pad); flag_by_info {info key: flag}: set from the mission's
 #   result (d3_all_crates opens the optional E4).
+# Day 2 "Tokyo Drift" (plan 2026-10-27-d2x-drift.md) adds mission drift_duel: the beat d2_drift (the drift race against
+# Sói Xám on the Rạch Hầm bridge course) between d2_chase and d2_bridge; saves at d2_bridge or later are unchanged.
 # Days 0-5 are implemented, Day 6 ends on a locked placeholder; old saves at a placeholder of a day that is now playable
 # resume at that day's first beat (migrate). Anchors are resolved by StoryRoam.
 class_name StoryMissions
@@ -34,7 +36,7 @@ extends RefCounted
 const FIRST: String = "d0_wake"
 const KINDS: Array[String] = ["cine", "stage", "bed", "call", "video", "day", "locked", "mission", "fight", "horror", "lair"]
 const MISSIONS: Array[String] = ["stakeout", "chase", "corridor", "canteen", "bike_chase", "bridge", "sneak", "gunfight",
-	"crates", "forklift"]
+	"crates", "forklift", "drift_duel"]
 const FIGHTS: Array[String] = ["d1", "d4", "d2"]
 ## Phase C: tasks of a "lair" beat (run by the lair scene) and the scene of each dedicated lair.
 const LAIR_TASKS: Array[String] = ["stealth", "gunfight", "hack", "duel"]
@@ -133,8 +135,11 @@ const BEATS: Dictionary = {
 		"tod": "morning", "next": "d2_chase", "objective": "Ngày mới... còn 6 ngày",
 		"texts": [["Anh Duy", "Ok e, a là Duy bên Khảo thí, Mr.T nhờ a support. Tối nay a trace route Bầy Sói, e qua lobby BE6 sync nhé. (Dịch: Tối nay qua sảnh BE6 gặp anh.)"]]},
 	"d2_chase": {"day": 2, "title": "Bầy Sói", "kind": "mission", "mission": "bike_chase", "anchor": "duy_corner",
-		"intro": "cine_d2_intro", "replay": "seg_d2_chase", "tod": "night", "next": "d2_bridge",
+		"intro": "cine_d2_intro", "replay": "seg_d2_chase", "tod": "night", "next": "d2_drift",
 		"objective": "Anh Duy đợi ở góc sảnh BE6: cột hồng, bấm [E]"},
+	"d2_drift": {"day": 2, "title": "Đua drift với Sói Xám", "kind": "mission", "mission": "drift_duel", "anchor": "bridge_road",
+		"auto": true, "tod": "night", "next": "d2_bridge",
+		"objective": "Sói Xám thách đua một vòng quanh cầu Rạch Hầm. Bám đuôi hắn, drift lấy điểm!"},
 	"d2_bridge": {"day": 2, "title": "Gầm cầu Rạch Hầm", "kind": "mission", "mission": "bridge", "anchor": "bridge_road",
 		"auto": true, "tod": "night", "next": "d2_duel", "objective": "Sương mù dưới gầm cầu Rạch Hầm... lại gần xem"},
 	"d2_duel": {"day": 2, "title": "Sói Xám", "kind": "fight", "fight": "d2", "anchor": "bridge_bank", "auto": true,

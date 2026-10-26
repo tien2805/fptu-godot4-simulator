@@ -125,7 +125,7 @@ func _registry() -> void:
 		cur = String(StoryMissions.beat(cur).get("next", ""))
 	var want: Array[String] = ["d0_wake", "d0_race", "d0_exam", "d0_exam_end", "d0_bed", "d0_midnight", "d0_call", "d0_intro", "d1_start", "d1_morning",
 		"d1_stakeout", "d1_chase", "d1_brawl", "d1_corridor", "d1_choice", "d1_choice_tail", "d1_end", "d1_bed", "d1_call",
-		"d2_start", "d2_morning", "d2_chase", "d2_bridge", "d2_duel", "d2_end", "d2_bed", "d2_call",
+		"d2_start", "d2_morning", "d2_chase", "d2_drift", "d2_bridge", "d2_duel", "d2_end", "d2_bed", "d2_call",
 		"d3_start", "d3_morning", "d3_sneak", "d3_mannequins", "d3_gunfight", "d3_crates", "d3_boss", "d3_end", "d3_bed", "d3_call",
 		"d4_start", "d4_morning", "d4_canteen", "d4_stare", "d4_brawl", "d4_escape", "d4_end", "d4_bed", "d4_call",
 		"d5_start", "d5_morning", "d5_stealth", "d5_monitors", "d5_gunfight", "d5_hack", "d5_choice", "d5_choice_tail", "d5_duel",
@@ -256,6 +256,9 @@ func _phase_c() -> void:
 	_check(String(StoryMissions.beat("d2_chase")["mission"]) == "bike_chase" and String(StoryMissions.beat("d2_chase")["intro"]) == "cine_d2_intro"
 		and String(StoryMissions.beat("d2_chase")["replay"]) == "seg_d2_chase", "Day 2: the bike chase, its intro and replay")
 	_check(String(StoryMissions.beat("d2_duel")["fight"]) == "d2" and String(StoryMissions.beat("d2_duel")["after"]) == "seg_d2_boss", "Day 2: the Sói Xám duel, seg_d2_boss")
+	_check(String(StoryMissions.beat("d2_drift")["mission"]) == "drift_duel" and bool(StoryMissions.beat("d2_drift")["auto"])
+		and String(StoryMissions.beat("d2_chase")["next"]) == "d2_drift" and String(StoryMissions.beat("d2_drift")["next"]) == "d2_bridge",
+		"Day 2 Tokyo Drift: the drift duel d2_drift between the chase and the bridge")
 	_check(String(StoryMissions.beat("d3_boss")["after"]) == "seg_d3_boss" and String(StoryMissions.beat("d5_duel")["after"]) == "seg_d5_boss", "Day 3 / 5 boss cinematics")
 	for r: Array in [["d3_gunfight", "seg_d3_gunfight"], ["d3_crates", "seg_d3_crates"], ["d5_gunfight", "seg_d5_gunfight"], ["d5_hack", "seg_d5_hack"]]:
 		_check(String(StoryMissions.beat(String(r[0])).get("replay", "")) == String(r[1]), "%s replays %s" % [String(r[0]), String(r[1])])

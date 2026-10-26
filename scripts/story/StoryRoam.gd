@@ -23,6 +23,9 @@
 # a dedicated lair scene (the Day 5 basement) are markers here: [E] (intro once) -> StoryDirector.launch_lair_beat. New
 # anchors: duy_corner (BE6 lobby), bridge_road, bridge_bank, bridge_pillar, bridge_ledger (the Rạch Hầm bridge), yard_gate,
 # yard_pad, yard_mid, yard_manifest. Mission results set flag_by_info flags; "after_at" stages an after cinematic.
+# Day 2 "Tokyo Drift" (plan 2026-10-27-d2x-drift.md): mission drift_duel (MissionDriftDuel, beat d2_drift); its slot
+# race_d2_drift is in MISSION_MUSIC for the catalogue, but SELF_MUSIC missions start their own track (the duel: silence
+# under the countdown, the track on GO); the chase track is never replaced by the roam track between the two beats.
 class_name StoryRoam
 extends Node
 
@@ -94,12 +97,16 @@ const MISSION_SCRIPTS: Dictionary = {"stakeout": "res://scripts/story/missions/M
 	"canteen": "res://scripts/story/missions/MissionCanteen.gd", "fight": "res://scripts/story/missions/MissionFight.gd",
 	"bike_chase": "res://scripts/story/missions/MissionBikeChase.gd", "bridge": "res://scripts/story/missions/MissionBridge.gd",
 	"sneak": "res://scripts/story/missions/MissionSneak.gd", "gunfight": "res://scripts/story/missions/MissionGunfight.gd",
-	"crates": "res://scripts/story/missions/MissionCrates.gd", "forklift": "res://scripts/story/missions/MissionForklift.gd"}
+	"crates": "res://scripts/story/missions/MissionCrates.gd", "forklift": "res://scripts/story/missions/MissionForklift.gd",
+	"drift_duel": "res://scripts/story/missions/MissionDriftDuel.gd"}
 ## H-D8: owner music slot per mission (the Day 1 and Day 4 fights share mission_fight; Phase C C-D11: the Day 2 bridge
 ## horror beat plays the night building's tense track, the crates start on the coffin-dance meme).
 const MISSION_MUSIC: Dictionary = {"stakeout": "mission_stakeout", "chase": "mission_chase", "corridor": "mission_corridor",
 	"canteen": "mission_canteen", "fight": "mission_fight", "bike_chase": "mission_bike_chase", "bridge": "night_tense",
-	"sneak": "mission_sneak", "gunfight": "mission_gunfight", "crates": "meme_coffin_dance", "forklift": "boss_d3"}
+	"sneak": "mission_sneak", "gunfight": "mission_gunfight", "crates": "meme_coffin_dance", "forklift": "boss_d3",
+	"drift_duel": "race_d2_drift"}
+## Missions that start their own music (MissionDriftDuel: the chase track or silence under the countdown, its slot on GO).
+const SELF_MUSIC: Array[String] = ["drift_duel"]
 ## Phase C: a fight's own slot (the Sói Xám duel), else MISSION_MUSIC.fight.
 const FIGHT_MUSIC: Dictionary = {"d2": "boss_d2"}
 ## Phase C: the yard missions run on the yard level (mission -> LairYard.mission_points task).
@@ -828,6 +835,8 @@ func _music(on: bool) -> void:
 
 ## H-D8: the story mission's owner track (MISSION_MUSIC) while the mission runs; no file = silence.
 func _mission_music(b: Dictionary) -> void:
+	if String(b.get("mission", "")) in SELF_MUSIC:
+		return
 	var ms: String = mission_slot(b)
 	var fx: Node = get_node_or_null("/root/GameFX")
 	if fx and fx.has_method("music_play") and ms != "":

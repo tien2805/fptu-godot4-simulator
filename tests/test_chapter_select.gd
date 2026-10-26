@@ -265,8 +265,62 @@ func _process(_d: float) -> bool:
 				(cur as ChapterSelect).go_back()
 				_check(String(sd.get("last_nav")) == "roam" and (cur as ChapterSelect).last_nav == "story" and not ChapterSelect.from_story, "QUAY LẠI resumes the story (Continue)")
 			_phase_c()
+			_tokyo_drift()
 			return _end()
 	return false
+
+
+## Day 2 Tokyo Drift (plan 2026-10-27-d2x-drift.md): the drift duel d2_drift is a chapter between the chase and the bridge,
+## snapshotted on entry; an old unlock file that reached d2_bridge without it lists it open with a snapshot derived from
+## d2_bridge's and rewinds to it; a save at d2_bridge stays valid.
+func _tokyo_drift() -> void:
+	sm.set("story_context", {})
+	for p: String in [TMP_U, TMP_C, TMP_B, TMP_SAVE]:
+		_rm(p)
+	sd.call("reset_state")
+	_check(StoryChapters.is_replayable("d2_drift"), "Tokyo Drift: d2_drift is a chapter")
+	var listed: Array = []
+	for row: Dictionary in StoryChapters.chapters():
+		listed.append(String(row["id"]))
+	_check(listed.find("d2_chase") + 1 == listed.find("d2_drift") and listed.find("d2_drift") + 1 == listed.find("d2_bridge"), "the chapter list: d2_chase, d2_drift, d2_bridge")
+	sd.call("new_story", P)
+	_walk_to("d2_bridge")
+	var dsn: Dictionary = _snap("d2_drift")
+	_check(String(dsn.get("step", "")) == "d2_drift" and String(dsn.get("tod", "")) == "night" and int(dsn.get("day", 0)) == 2, "d2_drift snapshotted on entry (Day 2, night)")
+	# an old player: unlocks and snapshots up to d2_bridge, none for d2_drift
+	for p2: String in [TMP_U, TMP_C]:
+		_rm(p2)
+	var old_beats: Array = []
+	for id: String in StoryChapters.chain():
+		if id == "d2_drift":
+			continue
+		old_beats.append(id)
+		if id == "d2_bridge":
+			break
+	var cfg := ConfigFile.new()
+	cfg.set_value("unlocks", "beats", old_beats)
+	cfg.set_value("unlocks", "cines", [])
+	cfg.save(TMP_U)
+	var bridge: Dictionary = sd.call("to_dict")
+	bridge["step"] = "d2_bridge"
+	bridge["objective"] = "Sương mù dưới gầm cầu Rạch Hầm... lại gần xem"
+	StoryChapters.save_snapshots({"d2_bridge": bridge, "d2_chase": bridge.duplicate(true)})
+	_check(StoryChapters.is_beat_unlocked("d2_drift") and StoryChapters.unlocked_beats().has("d2_drift"), "an old unlock file at d2_bridge: d2_drift counts as unlocked")
+	var state: String = ""
+	for row2: Dictionary in StoryChapters.chapters():
+		if String(row2["id"]) == "d2_drift":
+			state = String(row2["state"])
+	_check(state == "open", "Chọn cảnh lists d2_drift open for that old player (%s)" % state)
+	var der: Dictionary = _snap("d2_drift")
+	_check(String(der.get("step", "")) == "d2_drift" and String(der.get("objective", "")) == String(StoryMissions.beat("d2_drift")["objective"])
+		and der.get("evidence", []) == bridge.get("evidence", []) and String(der.get("tod", "")) == "night", "its snapshot is d2_bridge's state with its own step, objective and time of day")
+	sd.call("save_game")
+	_check(bool(StoryChapters.rewind(sd, "d2_drift")) and String(sd.get("step")) == "d2_drift" and String(sd.get("last_nav")) == "roam", "rewind to d2_drift works for the old player")
+	sd.call("from_dict", bridge)
+	_check(String(sd.get("step")) == "d2_bridge", "a save at d2_bridge stays valid (no migration)")
+	sd.call("reset_state")
+	for p3: String in [TMP_U, TMP_C, TMP_B, TMP_SAVE]:
+		_rm(p3)
 
 
 func _read_save(path: String) -> Dictionary:

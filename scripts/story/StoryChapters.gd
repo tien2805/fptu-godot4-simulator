@@ -8,6 +8,9 @@
 # continues the story from it (the TIẾP TỤC path); restore_backup puts the backup back. Settings (Giảm hù dọa...) live in
 # GameFX and are never part of a snapshot. Old saves (no unlock file yet) are seeded once (ensure_seeded).
 # The real user:// files are never read or written headless: tests point the static paths at temp files.
+# Beats added after players already had saves (INSERTED, e.g. the Day 2 drift duel d2_drift): an unlock file that
+# reached the beat after one of them lists it unlocked, and its snapshot is derived from that next beat's snapshot (the
+# same state, its own step, objective and time of day), so Chọn cảnh can rewind to it.
 class_name StoryChapters
 extends RefCounted
 
@@ -19,6 +22,8 @@ const REAL_SAVE_PATH: String = "user://story_save.cfg"
 ## Phase C: "lair" (a task inside the basement scene; its snapshot resumes at the marker that launches the scene).
 const REPLAY_KINDS: Array[String] = ["cine", "video", "stage", "mission", "fight", "horror", "lair"]
 const NEED_PLAY_LINE: String = "Chơi tới cảnh này một lần để mở"
+## Beat -> the beat right after it, for beats inserted into the chain after release (old unlock files never saw them).
+const INSERTED: Dictionary = {"d2_drift": "d2_bridge"}
 ## Story cinematics of the gallery, in story order: [slot, day, title].
 const GALLERY: Array = [
 	["cine_d0_wake", 0, "Tôi là ai, đây là đâu?"],
@@ -99,7 +104,11 @@ static func day_header(day: int) -> String:
 # Unlocks
 # ---------------------------------------------------------------------------
 static func unlocked_beats() -> Array:
-	return _load(unlocks_path).get_value("unlocks", "beats", [])
+	var have: Array = _load(unlocks_path).get_value("unlocks", "beats", [])
+	for id: String in INSERTED.keys():
+		if not (id in have) and String(INSERTED[id]) in have:
+			have.append(id)   # an old file reached the beat after it
+	return have
 
 
 static func unlocked_cines() -> Array:
@@ -152,7 +161,28 @@ static func _add_unlocks(beats: Array, cines: Array) -> void:
 # ---------------------------------------------------------------------------
 static func snapshot(id: String) -> Dictionary:
 	var v: Variant = str_to_var(String(_load(chapters_path).get_value("chapters", id, "")))
-	return v if v is Dictionary and (v as Dictionary).has("step") else {}
+	if v is Dictionary and (v as Dictionary).has("step"):
+		return v
+	return derived_snapshot(id) if INSERTED.has(id) else {}
+
+
+## An inserted beat's state rebuilt from the next beat's snapshot: nothing happens between them but the beat itself, so
+## only the step, the objective and the time of day change. {} without that snapshot.
+static func derived_snapshot(id: String) -> Dictionary:
+	var nxt: Dictionary = snapshot(String(INSERTED.get(id, ""))) if INSERTED.has(id) else {}
+	if nxt.is_empty():
+		return {}
+	var b: Dictionary = StoryMissions.beat(id)
+	var d: Dictionary = nxt.duplicate(true)
+	var who: String = String((d.get("protagonist", {}) as Dictionary).get("name", "")) if d.get("protagonist", {}) is Dictionary else ""
+	if who == "":
+		who = StoryUtil.DEFAULT_NAME
+	d["step"] = id
+	d["day"] = int(b.get("day", d.get("day", 0)))
+	d["tod"] = String(b.get("tod", d.get("tod", "night")))
+	d["objective"] = String(b.get("objective", "")).replace("{name}", who)
+	d["spawn"] = null
+	return d
 
 
 static func save_snapshots(snaps: Dictionary) -> void:
@@ -238,7 +268,7 @@ static func chapters() -> Array[Dictionary]:
 			continue
 		var state: String = "locked"
 		if id in beats:
-			state = "open" if snaps.has_section_key("chapters", id) else "need_play"
+			state = "open" if snaps.has_section_key("chapters", id) or (INSERTED.has(id) and not snapshot(id).is_empty()) else "need_play"
 		out.append({"id": id, "day": int(b["day"]), "title": String(b["title"]), "state": state})
 	return out
 
