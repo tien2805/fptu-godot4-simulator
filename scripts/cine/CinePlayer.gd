@@ -67,16 +67,23 @@ var scare: CineScare = null              # jump scare v2 marks (scare_hit), null
 var _scare_twitch: Array[String] = []    # actor id per scare hit ("" = none)
 var _sfx_db: PackedFloat32Array = PackedFloat32Array()   # each pool player's own level (the duck goes on top)
 var _fov_off: float = 0.0
-## setup: prepared actors adopted (opts "actors") and actors cloned from a seeded twin (CineActor clone cache).
+## setup: actors adopted (built under the black frame, or opts "actors") and actors cloned from a seeded twin (clone cache).
 var adopted: int = 0
 var clones: int = 0
-## Preroll (hosts' fade to black before setup, plan 2026-10-26-cine-transition): true while the black layer rises; nothing
-## is built yet (timeline is set so hosts and cards can read it). The 2D cards stay hidden meanwhile.
+## Preroll (hosts' fade to black before setup, plan 2026-10-26-cine-transition): true from the fade's start until setup
+## (timeline is set so hosts and cards can read it). The 2D cards stay hidden meanwhile. pre_built: actors built under the
+## black frame so far (one per frame).
 var prerolling: bool = false
+var pre_built: int = 0
 var _pre_len: float = 0.0
 var _pre_t: float = 0.0
-var _pre_black: int = 0
+var _pre_black: int = 0              # 0 fading, 1 fully black (drawn this frame), 2 working under black
+var _pre_under: Callable = Callable()
 var _pre_go: Callable = Callable()
+var _pre_ids: Array[String] = []
+var _pre_actors: Dictionary = {}     # id -> CineActor built under black (adopted by setup)
+var _pre_templates: Dictionary = {}  # CineActor.clone_key -> first actor built with those opts
+var _pre_hold: Node3D = null
 var _pre_layer: CanvasLayer = null
 var _pre_rect: ColorRect = null
 
@@ -96,9 +103,12 @@ func setup(tl: CineTimeline, xf: Transform3D = Transform3D.IDENTITY, opts: Dicti
 	stage.name = "Stage"
 	add_child(stage)
 	stage.transform = xf
-	# prepared actors (opts "actors": CinePrep.take_actors) are adopted when their opts still match; the others are built,
-	# seeded duplicates cloned from the first actor with the same opts (CineActor.clone_key)
-	var prepared: Dictionary = opts.get("actors", {})
+	# actors built under the black frame (preroll) or given in opts "actors" are adopted when their opts still match; the
+	# others are built, seeded duplicates cloned from the first actor with the same opts (CineActor.clone_key)
+	var prepared: Dictionary = _pre_actors.duplicate()   # built under the black frame (preroll)
+	prepared.merge(opts.get("actors", {}), true)
+	_pre_actors.clear()
+	_pre_templates.clear()
 	var templates: Dictionary = {}
 	for pa: Variant in prepared.values():
 		if is_instance_valid(pa) and pa is CineActor and CineActor.clone_key((pa as CineActor).src_opts) != "":
@@ -197,17 +207,30 @@ func setup(tl: CineTimeline, xf: Transform3D = Transform3D.IDENTITY, opts: Dicti
 	return PackedStringArray()
 
 
-## Fade to black over fade_s REAL seconds (runs while the host pauses the tree), then, one frame after the screen is fully
-## black, call on_black (the host's setup + start: the heavy work lands under the black frame) and drop the layer
-## (setup leaves the overlay black, so the cinematic still fades in from black on its own fade_in).
-func preroll(tl: CineTimeline, fade_s: float, on_black: Callable) -> void:
+## Whether a host should fade to black before this cinematic (default of the hosts' opts "fade"): not in manual mode
+## (tests drive the clock), and not for a hard cut: a timeline with no fade_in or with scare hits keeps the old immediate
+## cut with a synchronous setup (a fade would telegraph the jump scare; those casts are small).
+static func wants_preroll(tl: CineTimeline, opts: Dictionary = {}) -> bool:
+	return not bool(opts.get("manual", false)) and tl != null and tl.fade_in > 0.0 and tl.scare_hits.is_empty()
+
+
+## Fade to black over fade_s REAL seconds (runs while the host pauses the tree). Then, under the black frame, one piece of
+## work per frame so no frame blocks for long: the frame after the screen is fully black runs under_black (the host hides
+## the world and switches the time of day), then each frame builds one actor (CineActor clone cache: a seeded twin is a
+## duplicate) hidden under this player, then go (the host's setup, which adopts those actors, and start). The layer goes
+## after go; setup leaves the overlay black, so the cinematic still fades in from black on its own fade_in.
+func preroll(tl: CineTimeline, fade_s: float, under_black: Callable, go: Callable) -> void:
 	timeline = tl
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	prerolling = true
 	_pre_len = maxf(fade_s, 0.0)
 	_pre_t = 0.0
 	_pre_black = 0
-	_pre_go = on_black
+	_pre_under = under_black
+	_pre_go = go
+	_pre_ids.clear()
+	for id: String in tl.actors.keys():
+		_pre_ids.append(id)
 	_pre_layer = CanvasLayer.new()
 	_pre_layer.name = "PreFade"
 	_pre_layer.layer = 127
@@ -222,16 +245,26 @@ func preroll(tl: CineTimeline, fade_s: float, on_black: Callable) -> void:
 
 
 func _preroll_step() -> void:
-	var now: int = Time.get_ticks_usec()
-	_pre_t += float(now - _last_us) / 1e6
-	_last_us = now
-	var a: float = 1.0 if _pre_len <= 0.0 else clampf(_pre_t / _pre_len, 0.0, 1.0)
-	_pre_rect.color = Color(0.0, 0.0, 0.0, a)
-	if a < 1.0:
+	if _pre_black == 0:
+		var now: int = Time.get_ticks_usec()
+		_pre_t += float(now - _last_us) / 1e6
+		_last_us = now
+		var a: float = 1.0 if _pre_len <= 0.0 else clampf(_pre_t / _pre_len, 0.0, 1.0)
+		_pre_rect.color = Color(0.0, 0.0, 0.0, a)
+		if a >= 1.0:
+			_pre_black = 1   # this frame draws the full black; the work starts in the next one
 		return
-	_pre_black += 1
-	if _pre_black < 2:
-		return   # this frame draws the full black; the work goes into the next one
+	if _pre_black == 1:
+		_pre_black = 2
+		var ub: Callable = _pre_under
+		_pre_under = Callable()
+		if ub.is_valid():
+			ub.call()
+		return
+	if pre_built < _pre_ids.size():
+		_pre_build_one(_pre_ids[pre_built])
+		pre_built += 1
+		return
 	prerolling = false
 	var go: Callable = _pre_go
 	_pre_go = Callable()
@@ -240,6 +273,28 @@ func _preroll_step() -> void:
 		_pre_layer.queue_free()
 	_pre_layer = null
 	_pre_rect = null
+	if is_instance_valid(_pre_hold):
+		_pre_hold.queue_free()   # its actors were reparented under the stage by setup
+	_pre_hold = null
+
+
+func _pre_build_one(id: String) -> void:
+	if _pre_hold == null:
+		_pre_hold = Node3D.new()
+		_pre_hold.name = "PreBuild"
+		_pre_hold.visible = false
+		add_child(_pre_hold)
+	var o: Dictionary = timeline.actors[id]["opts"]
+	var key: String = CineActor.clone_key(o)
+	var a := CineActor.new()
+	a.name = id
+	_pre_hold.add_child(a)
+	a.setup(o, _pre_templates.get(key))
+	if a.cloned:
+		clones += 1
+	if key != "" and not _pre_templates.has(key):
+		_pre_templates[key] = a
+	_pre_actors[id] = a
 
 
 static func _bus(nm: String) -> StringName:

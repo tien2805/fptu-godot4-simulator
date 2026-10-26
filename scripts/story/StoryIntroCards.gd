@@ -54,6 +54,8 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build()
 	update(0.0)
+	if player and is_instance_valid(player):
+		visible = not bool(player.get("prerolling"))   # no one-frame flash over gameplay before the first _process
 
 
 func _panel(bg: Color, border: Color, radius: int) -> StyleBoxFlat:

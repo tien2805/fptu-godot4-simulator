@@ -532,8 +532,8 @@ func upcoming_cinematic(b: Dictionary) -> Array:
 	return []
 
 
-## Prepares the upcoming cinematic ahead (FreeRoam.prepare_cinematic: the stage now, the actors one per frame), so the
-## cut into it costs about a frame of work (plan 2026-10-26-cine-transition).
+## Prepares the upcoming cinematic ahead (FreeRoam.prepare_cinematic: the timeline and its stage only; no actor is built
+## during live play, they are built under the black frame) (plan 2026-10-26-cine-transition).
 func _prepare_upcoming() -> void:
 	if director == null or roam == null or not roam.has_method("prepare_cinematic"):
 		return

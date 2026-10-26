@@ -163,7 +163,7 @@ const CINE_BIG_MESH: float = 30.0        # mesh gộp rộng hơn 30 m: xét t�
 const CINE_SEARCH_BUDGET_MS: float = 6.0 # stage search off the baked table (dev, new content): wall-clock cap of the tries
 const CINE_CELL: float = 4.0             # XZ grid over the clutter items: a try only tests the items near its box
 var cine_player: CinePlayer = null
-## The cinematic being prepared ahead (prepare_cinematic): stage resolved, actors built one per frame; null when none.
+## The cinematic prepared ahead (prepare_cinematic: its timeline and stage frame, no actors); null when none.
 var cine_prep: CinePrep = null
 ## Chỗ diễn vừa tìm được (báo cáo / test): landmark, tâm dò, vòng, yaw, sàn, mặt đất landmark, source (baked / cache /
 ## search), budget_hit.
@@ -1472,19 +1472,38 @@ func cine_stage(stage: Dictionary) -> Variant:
 			return hit[0]
 	var xf: Variant = cine_stage_search(stage, CINE_SEARCH_BUDGET_MS)
 	cine_stage_info["source"] = "search"
-	if xf is Transform3D:
-		_cine_stage_cache[sig] = [xf, cine_stage_info.duplicate()]   # the same spot on every replay of this stage
+	var hit_budget: bool = bool(cine_stage_info.get("budget_hit", false))
+	# every story stage is baked: a search here is a stage missing from the table (dev entry, new content, stale table)
+	push_warning("FreeRoam: cinematic stage %s is not baked: searched %d tries%s (add it to CineStage.requests and re-run tests/test_cine_transition.gd)"
+		% [sig, cine_search_tries, ", budget hit: unchecked fallback spot" if hit_budget else ""])
+	if xf is Transform3D and not hit_budget:
+		_cine_stage_cache[sig] = [xf, cine_stage_info.duplicate()]   # the same spot on every replay (never a budget fallback)
 	return xf
 
 
 ## Cheap static check of a known stage frame: the floor-ray grid (CINE_GRID_STEP) finds the stage floor everywhere in the
-## box (no missing floor, no step, no slope). No mesh scan and no body query: those are static map content (bake test) or
-## transient bodies (a fight's knocked-out enemies, a set being freed) that never moved a stage.
+## box (no missing floor, no step, no slope), on the map's own static floor only (every body shares collision layer 1, so
+## the rays skip anything that is not a StaticBody3D of the map: knocked-out enemies, officers, a mission's set walls,
+## bodies being freed). No mesh scan and no body query: the visual clutter is static map content the bake test verifies.
+## Art style: the table is baked in the vice style; the classic style only drops the palms (clutter and their colliders),
+## so a baked spot stays clear and flat there too.
 func cine_stage_ok(xf: Transform3D, stage: Dictionary) -> bool:
 	if not is_inside_tree():
 		return false
 	var size: Vector2 = stage.get("size", Vector2(14.0, 10.0))
-	return _cine_floor_steps(get_world_3d().direct_space_state, xf, size, true).is_empty()
+	return _cine_floor_steps(get_world_3d().direct_space_state, xf, size, true, true).is_empty()
+
+
+## A map floor body: a StaticBody3D not being freed and not part of a story mission's set.
+func _cine_map_static(c: Object) -> bool:
+	if not (c is StaticBody3D) or (c as Node).is_queued_for_deletion():
+		return false
+	var n: Node = (c as Node).get_parent()
+	while n != null and n != self:
+		if n is StoryMission or n.is_queued_for_deletion():
+			return false
+		n = n.get_parent()
+	return true
 
 
 ## Clear, flat stage frame near a landmark (spec A1-D19, plan review M4): the full search. stage: {"landmark", "near" (m),
@@ -1653,7 +1672,7 @@ func cine_clutter(xf: Transform3D, size: Vector2) -> Array:
 ## Floor steps inside the box: a downward ray every ~CINE_GRID_STEP m from CINE_FLOOR_UP above the floor; a missing floor,
 ## a steep hit or one more than CINE_CLUTTER_H (+1 cm) off the floor height is a step. Catches wide merged slabs (the
 ## 0.28 m campus sidewalk) that cross the box with no vertex inside it. first_only: stop at the first step (search).
-func _cine_floor_steps(space: PhysicsDirectSpaceState3D, xf: Transform3D, size: Vector2, first_only: bool) -> Array:
+func _cine_floor_steps(space: PhysicsDirectSpaceState3D, xf: Transform3D, size: Vector2, first_only: bool, map_only: bool = false) -> Array:
 	var excl: Array[RID] = _cine_exclusions()
 	if water_floor:
 		excl.append(water_floor.get_rid())
@@ -1667,6 +1686,13 @@ func _cine_floor_steps(space: PhysicsDirectSpaceState3D, xf: Transform3D, size: 
 			var q := PhysicsRayQueryParameters3D.create(w + Vector3(0.0, CINE_FLOOR_UP, 0.0), w - Vector3(0.0, 1.0, 0.0))
 			q.exclude = excl
 			var hit: Dictionary = space.intersect_ray(q)
+			var skip: int = 0
+			while map_only and not hit.is_empty() and not _cine_map_static(hit["collider"]) and skip < 8:
+				var ex2: Array[RID] = q.exclude
+				ex2.append(hit["rid"])   # not the map's floor (cine_stage_ok): look through it
+				q.exclude = ex2
+				hit = space.intersect_ray(q)
+				skip += 1
 			var bad: bool = hit.is_empty() or (hit["normal"] as Vector3).y < 0.7 \
 				or absf((hit["position"] as Vector3).y - xf.origin.y) > CINE_CLUTTER_H + 0.01
 			if bad:
@@ -1841,38 +1867,33 @@ func _cine_grid_hit(grid: Dictionary, xf: Transform3D, size: Vector2) -> bool:
 	return not near.is_empty() and not _cine_clutter_in(near, xf, size, true).is_empty()
 
 
-## Prepare tl ahead (plan 2026-10-26-cine-transition): one CinePrep child resolves its stage now (opts "xf" wins, as in
-## play_cinematic) and builds its actors one per unpaused frame. A prep for the same slot and stage is kept; another one
-## is replaced. false when tl is null.
+## Prepare tl ahead (plan 2026-10-26-cine-transition): only the cheap work, the loaded timeline and its stage frame (opts
+## "xf" wins, as in play_cinematic), kept in cine_prep. No actor is built during live play: CinePlayer.preroll builds them
+## under the black frame, one per frame. A prep for the same slot, stage and opts "xf" is kept; another one is replaced.
+## false when tl is null.
 func prepare_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> bool:
 	if tl == null:
 		return false
-	var sig: String = CineStage.signature(tl.stage)
-	if cine_prep != null and is_instance_valid(cine_prep) and cine_prep.slot == tl.slot and cine_prep.stage_sig == sig \
-			and (not (opts.get("xf") is Transform3D) or cine_prep.xf == opts["xf"]):
+	if cine_prep != null and cine_prep.matches(tl, opts):
 		return true
-	drop_cinematic_prep()
 	var xf: Variant = opts["xf"] if opts.get("xf") is Transform3D else (cine_stage(tl.stage) if not tl.stage.is_empty() else null)
-	cine_prep = CinePrep.new()
-	add_child(cine_prep)
-	cine_prep.begin(tl, xf)
-	cine_prep.info = cine_stage_info.duplicate()
+	cine_prep = CinePrep.new(tl, opts.get("xf"), xf, cine_stage_info.duplicate())
 	return true
 
 
 func drop_cinematic_prep() -> void:
-	if cine_prep != null and is_instance_valid(cine_prep):
-		cine_prep.queue_free()
 	cine_prep = null
 
 
 ## Play a cinematic at its stage: pauses the game (game clock frozen), hides the roam player / bike / HUD / map / crowd /
 ## traffic, stops the roam music, switches the time of day, and restores everything (camera, music) on finished. opts go
-## to CinePlayer.setup (manual, debug, music, drop_set); "fade" (default: not manual) fades to black over CinePlayer.FADE_S
-## first and does the setup, the hiding, the time of day and the exposure under the black frame (CinePlayer.preroll);
-## "on_black" (Callable) runs there too, before the setup (StoryRoam hides the yard's copies). A prepared cinematic
-## (prepare_cinematic) with the same slot and stage hands over its stage frame and actors. Returns the player at once
-## (during the fade its timeline is set, nothing else), or null (invalid timeline, no stage spot, one already playing).
+## to CinePlayer.setup (manual, debug, music, drop_set). "fade" (default CinePlayer.wants_preroll: not manual, and not a
+## hard cut: the timeline has a fade_in and no scare hit) fades to black over CinePlayer.FADE_S and then, under the black
+## frame, hides the world and switches the time of day (one frame), builds the actors one per frame and sets up (one
+## frame) (CinePlayer.preroll); otherwise everything runs now, as a hard cut. "on_black" (Callable) runs with the hiding
+## (StoryRoam hides the yard's copies). A prepared cinematic (prepare_cinematic) with the same slot, stage and opts "xf"
+## hands over its stage frame. Returns the player at once (during the fade its timeline is set, nothing else), or null
+## (invalid timeline, no stage spot, one already playing).
 func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 	if tl == null or cine_player != null:
 		return null
@@ -1882,28 +1903,20 @@ func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 		return null
 	var o: Dictionary = opts.duplicate()
 	var xf: Variant = null
-	var adopt: CinePrep = null
-	if cine_prep != null and is_instance_valid(cine_prep) and cine_prep.slot == tl.slot \
-			and cine_prep.stage_sig == CineStage.signature(tl.stage) and (not (opts.get("xf") is Transform3D) or cine_prep.xf == opts["xf"]):
+	if cine_prep != null and cine_prep.matches(tl, opts):
 		xf = cine_prep.xf
 		if cine_prep.xf is Transform3D:
 			cine_stage_info = cine_prep.info.duplicate()
 			cine_stage_info["prepared"] = true
-		adopt = cine_prep
-		o["actors"] = adopt.take_actors()
-		cine_prep = null   # the prep node (its hidden actors) goes with the player until the setup reparents them
+	cine_prep = null
 	if not (xf is Transform3D):
 		xf = opts["xf"] if opts.get("xf") is Transform3D else (cine_stage(tl.stage) if not tl.stage.is_empty() else Transform3D(Basis.IDENTITY, roam_position()))
 	if xf == null:
-		if adopt != null:
-			adopt.queue_free()
 		flash_hint("Không tìm được chỗ trống để diễn cinematic %s" % tl.slot)
 		return null
 	var p := CinePlayer.new()
 	p.name = "CinePlayer"
 	add_child(p)
-	if adopt != null:
-		adopt.reparent(p, false)   # freed with the player; setup moves its actors under the stage
 	cine_player = p
 	_cine_saved = {"tod": tod_preset, "vis": {}, "proc": {}, "cam": get_viewport().get_camera_3d()}
 	get_tree().paused = true   # the game freezes now (also through the fade)
@@ -1911,26 +1924,25 @@ func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 	if fx and fx.has_method("music_stop"):
 		fx.call("music_stop", true)   # before the time of day changes, so the other roam track is not started for nothing
 	p.finished.connect(_on_cine_finished.bind(tl.slot), CONNECT_ONE_SHOT)
+	var black: Callable = _cine_black.bind(p, tl, o)
 	var go: Callable = _cine_go.bind(p, tl, xf, o)
-	if bool(opts.get("fade", not bool(opts.get("manual", false)))):
-		p.preroll(tl, CinePlayer.FADE_S, go)
+	if bool(opts.get("fade", CinePlayer.wants_preroll(tl, opts))):
+		p.preroll(tl, CinePlayer.FADE_S, black, go)
 	else:
+		black.call()
 		go.call()
 	return p
 
 
-## Setup and start (under the black frame when faded): the actors, props and camera, then the world hidden, the crowd and
-## traffic stopped, the stage's time of day and exposure.
-func _cine_go(p: CinePlayer, tl: CineTimeline, xf: Transform3D, o: Dictionary) -> void:
-	if not is_instance_valid(p) or cine_player != p:
+## Under the black frame (or at once for a hard cut): the world hidden, the crowd and traffic stopped, the stage's time of
+## day and exposure, opts "on_black".
+func _cine_black(p: CinePlayer, tl: CineTimeline, o: Dictionary) -> void:
+	if not is_instance_valid(p):
 		return
 	var ob: Variant = o.get("on_black")
 	if ob is Callable and (ob as Callable).is_valid():
 		(ob as Callable).call()
 	o.erase("on_black")
-	if not p.setup(tl, xf, o).is_empty():
-		p.call("_finish", true)   # validated in play_cinematic: not expected; the host restores as after a skip
-		return
 	for n: Node in [player, bike, hint_holder, tod_holder, stats_holder, vice_hud, stamina_bar, map_overlay, pedestrians, traffic, weapon_hud, wanted, classic_stars]:
 		if n and "visible" in n:
 			_cine_saved["vis"][n] = n.visible
@@ -1947,6 +1959,15 @@ func _cine_go(p: CinePlayer, tl: CineTimeline, xf: Transform3D, o: Dictionary) -
 		_cine_saved["env"] = [env, env.tonemap_exposure, env.ambient_light_energy]
 		env.tonemap_exposure *= float(tl.stage.get("exposure", 1.0))
 		env.ambient_light_energy *= float(tl.stage.get("ambient", 1.0))
+
+
+## Setup and start (the actors built under black are adopted by CinePlayer.setup).
+func _cine_go(p: CinePlayer, tl: CineTimeline, xf: Transform3D, o: Dictionary) -> void:
+	if not is_instance_valid(p):
+		return
+	if cine_player != p or not p.setup(tl, xf, o).is_empty():
+		p.call("_finish", true)   # never leave the tree paused without finished (the host restores as after a skip)
+		return
 	p.start()
 
 

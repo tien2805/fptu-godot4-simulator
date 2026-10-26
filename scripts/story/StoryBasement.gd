@@ -380,8 +380,9 @@ func _cine_opts() -> Dictionary:
 
 ## Plays a Day 5 cinematic here (the tree paused, the player and HUD hidden, the level's own copies of what the timeline
 ## brings hidden, the stage's exposure / ambient factors applied); restores everything on finished. Like
-## FreeRoam.play_cinematic, unless manual (or opts "fade": false) it fades to black first and builds under the black frame
-## (CinePlayer.preroll); the player is returned at once.
+## FreeRoam.play_cinematic, it fades to black first and builds under the black frame, one piece per frame
+## (CinePlayer.preroll), unless manual, opts "fade": false or a hard cut (CinePlayer.wants_preroll: no fade_in, or scare
+## hits); the player is returned at once.
 func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 	if tl == null or cine_player != null:
 		return null
@@ -401,20 +402,19 @@ func play_cinematic(tl: CineTimeline, opts: Dictionary = {}) -> CinePlayer:
 	get_tree().paused = true
 	cine_player = p
 	p.finished.connect(_on_cine_finished.bind(tl.slot), CONNECT_ONE_SHOT)
+	var black: Callable = _cine_black.bind(p, tl)
 	var go: Callable = _cine_go.bind(p, tl, xf, opts)
-	if bool(opts.get("fade", not bool(opts.get("manual", false)))):
-		p.preroll(tl, CinePlayer.FADE_S, go)
+	if bool(opts.get("fade", CinePlayer.wants_preroll(tl, opts))):
+		p.preroll(tl, CinePlayer.FADE_S, black, go)
 	else:
+		black.call()
 		go.call()
 	return p
 
 
-## Setup and start (under the black frame when faded).
-func _cine_go(p: CinePlayer, tl: CineTimeline, xf: Transform3D, opts: Dictionary) -> void:
-	if not is_instance_valid(p) or cine_player != p:
-		return
-	if not p.setup(tl, xf, opts).is_empty():
-		p.call("_finish", true)   # validated in play_cinematic: not expected
+## Under the black frame (or at once for a hard cut): the player and HUD hidden, the level's copies hidden, the exposure.
+func _cine_black(p: CinePlayer, tl: CineTimeline) -> void:
+	if not is_instance_valid(p):
 		return
 	for n: Variant in [player, weapon_hud, ui, combat.hud if combat else null]:
 		if n is Node and is_instance_valid(n) and "visible" in n:
@@ -423,6 +423,15 @@ func _cine_go(p: CinePlayer, tl: CineTimeline, xf: Transform3D, opts: Dictionary
 	level.hide_for_cine(true, tl.slot == "cine_d5_monitors")
 	env.environment.tonemap_exposure *= float(tl.stage.get("exposure", 1.0))
 	env.environment.ambient_light_energy *= float(tl.stage.get("ambient", 1.0))
+
+
+## Setup and start (the actors built under black are adopted by CinePlayer.setup).
+func _cine_go(p: CinePlayer, tl: CineTimeline, xf: Transform3D, opts: Dictionary) -> void:
+	if not is_instance_valid(p):
+		return
+	if cine_player != p or not p.setup(tl, xf, opts).is_empty():
+		p.call("_finish", true)   # never leave the tree paused without finished
+		return
 	p.start()
 
 

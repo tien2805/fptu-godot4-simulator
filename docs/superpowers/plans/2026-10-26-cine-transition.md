@@ -39,31 +39,38 @@ windowed (1280x720): the whole freeze is the synchronous `FreeRoam.play_cinemati
    - `StoryRoam.stage_cinematic(tl, at_id, opts)`: the anchor rule `_start_cinematic` used, shared with the bake.
 4. **Clone cache** (`CineActor`, `CinePlayer`): `CineActor.clone_key(opts)`, `setup(opts, template)` duplicates the
    template's body and remaps its node references; `CinePlayer.setup` clones seeded duplicates within one cinematic.
-5. **Prepare ahead** (`scripts/cine/CinePrep.gd`, `FreeRoam`, `StoryRoam`):
-   - `FreeRoam.prepare_cinematic(tl, opts)`: one `CinePrep` child resolves the stage now and builds one actor per frame,
-     hidden, only while the tree is not paused (never during a cinematic, call or video).
-   - `play_cinematic` adopts the prep when slot and stage match (actors whose opts still match; the rest are built).
+5. **Prepare ahead, cheap work only** (`scripts/cine/CinePrep.gd`, `FreeRoam`, `StoryRoam`):
+   - `FreeRoam.prepare_cinematic(tl, opts)`: a `CinePrep` (RefCounted) keeps the loaded timeline and its resolved stage.
+     No actor is built during live play: a build costs 50-80 ms windowed and would stutter the game.
+   - `play_cinematic` takes the prepared stage when slot, stage signature and opts "xf" match (both null, or the same xf).
    - `StoryRoam.upcoming_cinematic(b)`: the next cinematic the current beat will play (cine beat, unseen intro, a mission's
      "after", or the auto cine beat after a mission); `_prepare_upcoming()` runs on refresh and when a mission starts.
 6. **Mask the rest** (`CinePlayer`, `FreeRoam`, `StoryBasement`, `StoryIntroCards`, `StoryDayCard`):
-   - `CinePlayer.preroll(tl, fade_s, on_black)`: the tree is paused, a black layer fades in over `FADE_S` (0.18 s real
-     time); one frame after it is fully black, `on_black` runs setup, hides the world, switches the time of day, applies
-     the exposure and starts the cinematic, which fades in from black as before. Music sync is unchanged (r starts at
-     `start()`).
-   - Hosts fade only when not manual (tests with `manual` keep the synchronous path); opt "fade": false forces it off.
-   - The 2D cards stay hidden while the player prerolls. StoryRoam hides the yard's copies under black (opt "on_black").
-7. **Existing tests**: the Phase B / Phase C "within 4 m of the explicit point" checks become "at the baked spot" where
-   the real game (grass, palms) moves the stage; the reason is printed.
+   - `CinePlayer.preroll(tl, fade_s, under_black, go)`: the tree is paused, a black layer fades in over `FADE_S` (0.18 s
+     real time). Under black, one piece of work per frame: `under_black` (the host hides the world, switches the time of
+     day, applies the exposure), then one actor per frame (clone cache), then `go` (setup adopting those actors, start).
+     The cinematic fades in from black as before; music sync is unchanged (r starts at `start()`).
+   - `CinePlayer.wants_preroll(tl, opts)`: the hosts' default for opts "fade". No fade when manual (tests), and none for a
+     hard cut: a timeline with fade_in 0 or with scare hits keeps the immediate cut with a synchronous setup.
+   - The 2D cards are hidden from `_ready` while the player prerolls. StoryRoam hides the yard's copies under black.
+   - `_cine_go` never returns without `finished` (it calls `_finish(true)` on any failure).
+7. **Stage robustness**: a budget fallback is never cached; every off-table resolution warns (all story stages are baked).
+   `cine_stage_ok` reads only the map's static floor (every body shares collision layer 1, so it looks through anything
+   that is not a map StaticBody3D: knocked-out enemies, officers, mission sets, bodies being freed). The table is baked in
+   the vice art style; classic only removes the palms, so baked spots stay valid there.
+8. **Existing tests**: the Phase B / Phase C "within 4 m of the explicit point" checks keep a real bound for the six lawn
+   slots: the baked origin stays within its bake-time distance (+2 m) of the authored point.
 
 ## Interfaces
 
-- `FreeRoam.cine_stage(stage) -> Variant`, `cine_stage_search(stage, budget_ms) -> Variant`, `cine_stage_info`,
-  `cine_search_tries`, `prepare_cinematic(tl, opts) -> bool`, `cine_prep`, `play_cinematic(tl, opts)` (opts: "fade",
-  "on_black").
+- `FreeRoam.cine_stage(stage) -> Variant`, `cine_stage_search(stage, budget_ms) -> Variant`, `cine_stage_ok`,
+  `cine_stage_info`, `cine_search_tries`, `prepare_cinematic(tl, opts) -> bool`, `drop_cinematic_prep()`, `cine_prep`,
+  `play_cinematic(tl, opts)` (opts: "fade", "on_black").
 - `CineStage.signature / baked / requests`, `CineStageBake.TABLE`.
 - `CineActor.clone_key(opts)`, `CineActor.setup(opts, template = null)`.
-- `CinePrep.begin(tl, xf)`, `done()`, `take_actors()`, `built`.
-- `CinePlayer.setup` opt "actors" (prepared CineActors), `CinePlayer.preroll(...)`, `prerolling`, `clones`.
+- `CinePrep.new(tl, opts_xf, xf, info)`, `matches(tl, opts)`.
+- `CinePlayer.wants_preroll`, `preroll(tl, fade_s, under_black, go)`, `prerolling`, `pre_built`, `adopted`, `clones`;
+  `setup` opt "actors".
 - `StoryRoam.stage_cinematic`, `upcoming_cinematic`.
 
 ## Tests: `tests/test_cine_transition.gd`
@@ -71,12 +78,15 @@ windowed (1280x720): the whole freeze is the synchronous `FreeRoam.play_cinemati
 - Every stage request resolves from the baked table (no search, `cine_search_tries == 0`), and the static check passes.
 - The baked table matches a full search for every request (prints the replacement table and fails when the map changed).
 - Headless sees multimesh clutter (the canteen box is cluttered by the campus grass).
-- A budgeted search stops within its budget and still returns a transform; the per-signature cache serves the repeat.
+- A budgeted search stops within its budget and still returns a transform, and is not cached; a full answer is cached.
+- A knocked-out body and a mission wall in a baked box do not reject it.
 - Clone cache: a cloned actor equals a fresh build (nodes, meshes, transforms, metas remapped inside its own body, poses
   after the same cues); unseeded opts are never cloned.
-- Prepared actors are adopted by `play_cinematic` (same nodes, no build); a mismatched slot builds fresh.
-- Fade ordering: during the preroll nothing is set up and the world is still shown; setup runs only after a black frame.
-- The gallery path (timeline stage) and the F9 dev path still play.
+- Prepare ahead builds no actor; play takes the prepared stage only with matching slot, stage and opts "xf".
+- Fade ordering: during the fade nothing is built and the world is still shown; under black at most one actor per frame,
+  then the setup adopts them all; the 2D card never shows during the preroll, from its first frame.
+- Hard cuts: a scare timeline and a fade_in 0 timeline set up at once with no black layer.
+- The F9 dev path still plays (with a silent test stream).
 
 Then check-only, smoke, the cine_* tests, test_story_cines, test_story_day0-5, test_story_director, test_chapter_select,
 test_busted, test_story_stages. Windowed probe before and after per Day 4 slot plus cine_d1_intro and seg_d2_boss.

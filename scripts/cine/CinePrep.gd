@@ -1,66 +1,36 @@
 # File: res://scripts/cine/CinePrep.gd
-# A cinematic prepared ahead (plan 2026-10-26-cine-transition): FreeRoam.prepare_cinematic creates one as its child with the
-# timeline and the resolved stage frame; it builds the timeline's actors one per frame (CineActor.setup with the clone
-# cache: seeded duplicates are cloned from the first one) under itself, hidden. Building only runs while the tree is not
-# paused (the node inherits FreeRoam's pausable process mode), so it never stutters a cinematic, the 3 a.m. call or the
-# owner's video. play_cinematic adopts the actors (take_actors) when the slot and the stage match; whatever is not built
-# yet is built by CinePlayer.setup. Nothing is allocated per frame beyond the actor builds; processing stops when done.
+# A cinematic prepared ahead (plan 2026-10-26-cine-transition): FreeRoam.prepare_cinematic keeps one with the loaded
+# timeline and its resolved stage frame, so play_cinematic skips that work. Only cheap work happens ahead: no actor is
+# built during live play (a CharacterBuilder.build costs 50-80 ms windowed and would stutter the game); the actors are
+# built under the black frame, one per frame (CinePlayer.preroll). play_cinematic adopts the stage frame when the slot, the
+# stage signature and the opts "xf" match.
 class_name CinePrep
-extends Node3D
+extends RefCounted
 
 var slot: String = ""
 var timeline: CineTimeline = null
 var stage_sig: String = ""
+## The opts "xf" the prep was made with (null = none): play_cinematic adopts only with the same opts "xf".
+var opts_xf: Variant = null
 ## Resolved stage frame (Transform3D) or null (no clear spot: play_cinematic decides).
 var xf: Variant = null
 ## FreeRoam.cine_stage_info of that resolution (play_cinematic reports it when it adopts this prep).
 var info: Dictionary = {}
-## actor id -> CineActor (setup done, no cues yet), in timeline order.
-var actors: Dictionary = {}
-## Builds done so far (tests: one per unpaused frame).
-var built: int = 0
-var _ids: Array[String] = []
-var _templates: Dictionary = {}   # CineActor.clone_key -> first CineActor built with those opts
 
 
-## Start preparing tl at stage frame stage_xf (Transform3D or null).
-func begin(tl: CineTimeline, stage_xf: Variant) -> void:
-	name = "CinePrep"
+func _init(tl: CineTimeline = null, given_xf: Variant = null, stage_xf: Variant = null, stage_info: Dictionary = {}) -> void:
+	if tl == null:
+		return
 	timeline = tl
 	slot = tl.slot
 	stage_sig = CineStage.signature(tl.stage)
+	opts_xf = given_xf
 	xf = stage_xf
-	visible = false
-	for id: String in tl.actors.keys():
-		_ids.append(id)
-	set_process(not _ids.is_empty())
+	info = stage_info
 
 
-func done() -> bool:
-	return built >= _ids.size()
-
-
-func _process(_d: float) -> void:
-	if done():
-		set_process(false)
-		return
-	var id: String = _ids[built]
-	var o: Dictionary = timeline.actors[id]["opts"]
-	var key: String = CineActor.clone_key(o)
-	var a := CineActor.new()
-	a.name = id
-	add_child(a)
-	a.setup(o, _templates.get(key))
-	if key != "" and not _templates.has(key):
-		_templates[key] = a
-	actors[id] = a
-	built += 1
-
-
-## The built actors (id -> CineActor), handed over once: the caller reparents them; the rest stay to be freed with this node.
-func take_actors() -> Dictionary:
-	var out: Dictionary = actors
-	actors = {}
-	_templates.clear()
-	set_process(false)
-	return out
+## true when a play of tl with opts can use this prep.
+func matches(tl: CineTimeline, opts: Dictionary) -> bool:
+	var ox: Variant = opts.get("xf")
+	var same_xf: bool = typeof(ox) == typeof(opts_xf) and (typeof(ox) == TYPE_NIL or ox == opts_xf)
+	return tl != null and tl.slot == slot and CineStage.signature(tl.stage) == stage_sig and same_xf
