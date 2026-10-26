@@ -205,6 +205,7 @@ var set_pieces: BikeSetPieces
 var cameo: BikeCameo
 var cameo_opts: Dictionary = {}
 var cameo_state: String = ""             # "" | "waiting" | "running" | "done"
+var cameo_card_seen: bool = false        # Sói Xám's card has been shown (a retry before it replays the cameo)
 var cops: Array = []                     # police riders (BikerEnemy kind "police"), not wave members
 var d_lo: float = -INF                   # extra clamp of the AI's lateral targets (route frame; the wrong-way set piece)
 var d_hi: float = INF
@@ -398,6 +399,7 @@ func start() -> void:
 	checkpoint()                          # the start itself (auto_checkpoint off: retry() comes back here)
 	takedowns = 0
 	cameo_state = ""
+	cameo_card_seen = false
 	_rt = 0.0
 	drop_at = -1.0
 	if nitro_on_start and bike.has_method("set_nitro_enabled"):
@@ -419,6 +421,18 @@ func checkpoint() -> void:
 	if bike == null:
 		return
 	_cp = {"wave": maxi(wave, 0), "xf": bike.global_transform, "s": s_p}
+	_clamp_checkpoint()
+
+
+## A checkpoint inside a barrier's warning stretch (BARRIER_WARN_M before it) moves back to the first sign, so a retry
+## starts with the full warning.
+func _clamp_checkpoint() -> void:
+	if set_pieces == null or route == null or float(_cp.get("s", -1.0)) < 0.0:
+		return
+	var safe: float = set_pieces.safe_checkpoint_s(float(_cp["s"]))
+	if safe < float(_cp["s"]) - 0.5:
+		_cp["s"] = safe
+		_cp["xf"] = route_transform(safe)
 
 
 func has_checkpoint() -> bool:
@@ -451,10 +465,17 @@ func retry() -> void:
 	if hud:
 		hud.show_hud()
 	var cw: int = int(keep["wave"])
-	cameo_state = "done" if bool(wave_opt(cw, "after_cameo", false)) else ""   # the cameo comes again unless past it
+	var after: bool = bool(wave_opt(cw, "after_cameo", false))
 	if set_pieces:
 		set_pieces.rearm(float(keep.get("s", -INF)))
-	_start_wave(cw)
+	if after and not cameo_opts.is_empty() and not cameo_card_seen:
+		# knocked off before Sói Xám's card: his cameo again from its checkpoint, then that wave (_on_cameo_done)
+		wave = cw - 1
+		_retire_wave()
+		_begin_cameo()
+	else:
+		cameo_state = "done" if after else ""   # the cameo comes again unless past it
+		_start_wave(cw)
 	_cp = keep
 
 
@@ -1590,9 +1611,8 @@ func _tick_slow(rdt: float) -> void:
 	_slow_left -= rdt
 	if _slow_left > 0.0:
 		return
-	var k: String = slow_kind
 	end_slow_motion()
-	if k == "td":
+	if cam_mode == "td":                     # a takedown cut ends with its slow motion (or the jump that replaced it)
 		_cam_restore()
 	if jump_left > 0.05 and state == "running":
 		slow_motion(BikeCombatData.JUMP_SCALE, jump_left, "jump")
@@ -1708,10 +1728,13 @@ func _end_opening_visuals() -> void:
 		hud.letterbox(false)
 
 
+## A knock-off from the cameo start on retries at its point: with the card not seen yet the cameo comes again (retry()),
+## after the card the next wave starts at once.
 func _begin_cameo() -> void:
 	cameo_state = "running"
-	if auto_checkpoint and bike:              # a knock-off from here on retries at the next wave, not the cameo again
+	if auto_checkpoint and bike:
 		_cp = {"wave": wave + 1, "xf": bike.global_transform, "s": s_p}
+		_clamp_checkpoint()
 	if cameo and is_instance_valid(cameo):
 		cameo.queue_free()
 	cameo = BikeCameo.new()
@@ -1719,6 +1742,7 @@ func _begin_cameo() -> void:
 	add_child(cameo)
 	cameo.setup(self, cameo_opts)
 	cameo.finished.connect(_on_cameo_done, CONNECT_ONE_SHOT)
+	cameo.card_done.connect(func() -> void: cameo_card_seen = true, CONNECT_ONE_SHOT)
 	cameo.begin()
 	cameo_started.emit()
 	set_piece.emit("cameo", "start")
@@ -1824,6 +1848,8 @@ func _tick_helmets(delta: float) -> void:
 ## The ramp (BikeSetPieces): a scripted jump of JUMP_REAL_S real seconds in slow motion; riders alongside fly too (a kick
 ## on one in the air is an "air" takedown). The landing is always safe.
 func start_jump() -> void:
+	if cam_mode == "td":
+		_cam_restore()                       # the jump is seen from the bike's own camera
 	jump_len = BikeCombatData.JUMP_REAL_S
 	jump_left = jump_len
 	_air.clear()
@@ -1877,6 +1903,8 @@ func _land() -> void:
 			bike.visual_pivot.position.y = 0.0
 	if slow_kind == "jump":
 		end_slow_motion()
+	if cam_mode == "td":
+		_cam_restore()
 
 
 ## Day 2 state back to neutral: normal time, the bike's camera, no opening, no jump, no helmet in the air, no lane clamp,

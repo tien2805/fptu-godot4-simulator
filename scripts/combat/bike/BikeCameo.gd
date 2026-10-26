@@ -13,6 +13,7 @@ class_name BikeCameo
 extends Node3D
 
 signal finished
+signal card_done                          # the villain card is over (BikeChase: a retry no longer replays the cameo)
 
 const REAR := Vector3(0.0, 0.0, 0.62)    # the rear wheel's contact point (the wheelie pivot)
 const CARD_FALLBACK_S: float = 2.4
@@ -180,6 +181,7 @@ func on_card_done() -> void:
 		return
 	phase = "taunt"
 	_t = 0.0
+	card_done.emit()
 	bubble.text = BikeCombatData.T_CAMEO_TAUNT
 	bubble.visible = true
 	if ch.hud:

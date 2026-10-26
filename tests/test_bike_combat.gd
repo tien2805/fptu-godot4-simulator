@@ -271,6 +271,10 @@ func _on_physics() -> void:
 			_phase_c9(t)
 		"c10":
 			_phase_c10(t)
+		"c9b":
+			_phase_c9b(t)
+		"c11b":
+			_phase_c11b(t)
 		"c11":
 			_phase_c11(t)
 		"b":
@@ -1453,6 +1457,8 @@ func _phase_c8(t: int) -> void:
 		_check(chase.bikers.is_empty() and chase.remaining() == 2 and chase.hud.popup_text == BikeCombatData.T_START_D2, "opening: the start line, no biker yet")
 		_check(not bike.is_controls_locked, "opening: the player can steer")
 		return
+	if round_i == 0 and t == 32:
+		_check(absf(chase.hud.popup_left - 0.5) < 0.1, "the start line counts real seconds under slow motion (%.2f s left of 1.0)" % chase.hud.popup_left)
 	if round_i == 1:
 		if t == 10:
 			mark["mpos"] = 0.5
@@ -1517,7 +1523,7 @@ func _phase_c9(t: int) -> void:
 		chase.queue_free()
 	if t == 42:
 		_check(is_equal_approx(Engine.time_scale, 1.0) and is_equal_approx(bike.visual_pivot.position.y, 0.0) and RadialWheel.scale_owner == null, "freed in the air: time 1, the bike on the ground")
-		_next("c10")
+		_next("c9b")
 
 
 # C10: the set pieces on the arena route, ridden for real: each triggers at its distance (drift curb, melons, the ramp, the
@@ -1629,6 +1635,11 @@ func _phase_c10(t: int) -> void:
 				if String(p["phase"]) == "armed":
 					armed += 1
 			_check(armed == sp.pieces.size() and chase.cops.is_empty() and sp.melon_t < 0.0, "retry(): every set piece is armed again (%d / %d)" % [armed, sp.pieces.size()])
+			_check(is_equal_approx(sp.safe_checkpoint_s(660.0), 620.0) and is_equal_approx(sp.safe_checkpoint_s(600.0), 600.0) and is_equal_approx(sp.safe_checkpoint_s(720.0), 720.0),
+				"a checkpoint inside the barrier's warning stretch moves back to its first sign")
+			sp.rearm(1200.0)
+			_check(is_equal_approx(float(sp.pieces[5].get("at", -1.0)), 1200.0 + BikeSetPieces.POLICE_REJOIN_M), "a retry past the police start: they rejoin 80 m later, not on top of it")
+			sp.rearm(60.0)
 			bike.global_transform = chase.route_transform(650.0)
 			bike.current_speed_ms = 17.0
 			mark["lost0"] = lost_n
@@ -1710,12 +1721,81 @@ func _phase_c11(t: int) -> void:
 			chase.queue_free()
 			t0 = frames
 		else:
-			_end_chase("b")
-			arena.queue_free()
+			_end_chase("c11b")
 	if t > 60 * 40:
 		_check(false, "C11 timed out (%s, s %.0f)" % [chase.cameo_state, chase.s_p])
+		_end_chase("c11b")
+
+# C9b: a ramp jump started inside a takedown cut gives the bike's camera back at once (and after the jump), so the downed
+# rider is judged out of view by the bike's camera again.
+func _phase_c9b(t: int) -> void:
+	if t < 2:
+		return
+	if t == 2:
+		chase = _kind_chase([[{"lane": -1, "opts": {"ai": false, "hp": 99, "label": "J0"}}, {"lane": 1, "opts": {"ai": false, "hp": 99, "label": "J1"}}]])
+		chase.start()
+		return
+	if t == 4:
+		_hold(chase.bikers[0], -6.0, -5.0)
+		_hold(chase.bikers[1], -9.0, 5.0)
+	if t == 6:
+		(chase.bikers[0] as BikerEnemy).crash("traffic")
+		_check(chase.cam_mode == "td" and chase.cam.current, "test setup: a takedown cut")
+	if t == 9:
+		chase.start_jump()
+		_check(chase.cam_mode == "" and bike.chase_cam.current and chase.slow_kind == "jump", "a jump inside a takedown cut: the bike's camera at once (%s)" % chase.cam_mode)
+	if t == 9 + 90:
+		_check(not chase.jumping() and chase.cam_mode == "" and bike.chase_cam.current and is_equal_approx(Engine.time_scale, 1.0) and RadialWheel.scale_owner == null,
+			"after that jump: normal time, the bike's camera")
+		_end_chase("c10")
+
+
+# C11b: knocked off during the cameo before his card: the retry replays the cameo (card shown once); knocked off after the
+# card: the retry starts the next wave at once.
+func _phase_c11b(t: int) -> void:
+	if t < 2:
+		return
+	if t == 2:
+		mark["cards"] = 0
+		var cf := func(done: Callable) -> void:
+			mark["cards"] = int(mark["cards"]) + 1
+			mark["done_cb"] = done
+			mark["card_f"] = frames
+		chase = _kind_chase([[{"lane": -1, "opts": {"ai": false, "hp": 99, "label": "W0"}}], [{"lane": 1, "opts": {"ai": false, "hp": 99, "label": "W1"}}]],
+			{"cameo": {"s": 150.0, "force_s": 300.0, "card_fn": cf}, "start_s": 60.0, "seed": 33}, [{}, {"after_cameo": true}])
+		chase.start()
+		_ride(true)
+		autopilot = true
+		return
+	if chase == null or not is_instance_valid(chase):
+		return
+	if t == 4:
+		_hold(chase.bikers[0], -8.0, -5.0)
+	if t == 20:
+		(chase.bikers[0] as BikerEnemy).crash("test")
+	if not mark.has("ko1") and chase.cameo_state == "running" and chase.cameo and is_instance_valid(chase.cameo) and chase.cameo.phase == "approach" and chase.cameo.along > -15.0:
+		mark["ko1"] = frames
+		chase.combat.damage(999.0, "test")
+	if mark.has("ko1") and frames == int(mark["ko1"]) + 3:
+		_check(chase.state == "lost", "test setup: knocked off during the cameo approach")
+		chase.retry()
+		_check(chase.cameo_state == "running" and chase.wave == 0 and chase.bikers.is_empty() and chase.cameo != null and chase.cameo.phase == "approach" and int(mark["cards"]) == 0,
+			"knocked off before his card: the retry replays the cameo, not wave 1 (%s, wave %d)" % [chase.cameo_state, chase.wave])
+	if mark.has("ko1") and mark.has("card_f") and not mark.has("ko2"):
+		(mark["done_cb"] as Callable).call()
+		_check(chase.cameo_card_seen and int(mark["cards"]) == 1, "the replayed cameo shows the card")
+		mark["ko2"] = frames
+		chase.combat.damage(999.0, "test")
+	if mark.has("ko2") and frames == int(mark["ko2"]) + 3:
+		chase.retry()
+		_check(chase.cameo_state == "done" and chase.wave == 1 and chase.bikers.size() == 1 and int(mark["cards"]) == 1, "knocked off after the card: the retry starts the next wave at once (%s, wave %d)" % [chase.cameo_state, chase.wave])
 		_end_chase("b")
 		arena.queue_free()
+	if t > 60 * 40:
+		_check(false, "C11b timed out (%s)" % chase.cameo_state)
+		_end_chase("b")
+		arena.queue_free()
+
 
 
 func _finish() -> void:

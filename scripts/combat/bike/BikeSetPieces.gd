@@ -15,9 +15,12 @@
 #             way; riding through the cones costs CONE_DMG.
 #   ramp      {"s", "d"}: a marked sand ramp in one lane (d m right of the centre line) by a construction site: over it
 #             faster than RAMP_MIN_SPEED = BikeChase.start_jump() (riders alongside fly too: air kick).
-#   police    {"s", "end_s", "dur"}: BikeChase.spawn_police(POLICE_N) at s; they drop back after dur s or at end_s.
-#   drift     {"s", "len"}: a real turn marked with chevrons and the prompt "DRIFT!"; through it faster than DRIFT_FAST
-#             without drifting = into the curb (CURB_DMG, speed x CURB_SLOW); drifting in it adds DRIFT_ZONE_BONUS charge/s.
+#   police    {"s", "end_s", "dur"}: BikeChase.spawn_police(POLICE_N) at s (a retry from past s: POLICE_REJOIN_M after the
+#             checkpoint); they drop back after dur s or at end_s. safe_checkpoint_s keeps checkpoints out of a barrier's
+#             warning stretch.
+#   drift     {"s", "len"}: a real turn marked with chevrons and the prompt "DRIFT!"; through its middle faster than
+#             DRIFT_FAST without drifting = into the curb (CURB_DMG, speed x CURB_SLOW: braking into the turn is fine);
+#             drifting in it adds DRIFT_ZONE_BONUS charge/s.
 # State for tests: pieces (each a Dictionary with "phase": armed | tele | active | done and its own fields), fired(kind),
 # melon_hits, cone_hits, curb_hits, results (barrier outcomes). No per-frame allocation; the props are pooled and built
 # once in setup().
@@ -27,6 +30,8 @@ extends Node3D
 const TRUCK_HALF := Vector2(1.15, 3.4)
 const MELON_RAD: float = 0.24
 const SPLASH_N: int = 2
+const POLICE_REJOIN_M: float = 80.0
+const ONCOMING_AT: Array[float] = [168.0, 182.0, 196.0]   # beyond the camera's view range (160 m), inside the despawn (200)
 
 var ch: BikeChase
 var pieces: Array = []
@@ -97,15 +102,33 @@ func _fire(p: Dictionary, phase: String) -> void:
 
 
 ## Back to "armed" every piece that ends after cp_s (the checkpoint's route distance; -INF = all), props reset.
+## The police: a checkpoint past their start makes them join POLICE_REJOIN_M after it (never on top of the retry).
 func rearm(cp_s: float) -> void:
 	for p: Dictionary in pieces:
 		if _end_s(p) > cp_s + 0.5:
 			p["phase"] = "armed"
 			p.erase("t")
 			p.erase("drifted")
-			p.erase("vmax")
+			p.erase("vmid")
 			p.erase("bikers_s")
+			p.erase("at")
+			if String(p.get("kind", "")) == "police" and cp_s > float(p["s"]):
+				p["at"] = cp_s + POLICE_REJOIN_M
+				if float(p["at"]) >= _end_s(p) - 40.0:
+					p["phase"] = "done"          # too little road left for them
 	_reset_props()
+
+
+## A checkpoint at route distance s moved back out of any barrier's warning stretch (to its first sign), else s.
+func safe_checkpoint_s(s: float) -> float:
+	var out: float = s
+	for p: Dictionary in pieces:
+		if String(p.get("kind", "")) != "barrier":
+			continue
+		var bs: float = float(p["s"])
+		if s > bs - BikeCombatData.BARRIER_WARN_M and s <= bs + 1.0:
+			out = minf(out, bs - BikeCombatData.BARRIER_WARN_M)
+	return out
 
 
 ## Everything off (stop).
@@ -220,7 +243,7 @@ func tick(delta: float, _rdt: float) -> void:
 						ch.bike.add_camera_shake(0.35)
 					_fire(p, "done")
 			"police":
-				if ph == "armed" and s >= ps:
+				if ph == "armed" and s >= float(p.get("at", ps)):
 					p["phase"] = "active"
 					p["t"] = 0.0
 					_fire(p, "active")
@@ -238,7 +261,6 @@ func tick(delta: float, _rdt: float) -> void:
 				if ph == "armed" and s >= ps - 45.0:
 					p["phase"] = "tele"
 					p["drifted"] = false
-					p["vmax"] = 0.0
 					_fire(p, "tele")
 				if p["phase"] == "tele" and s >= ps:
 					p["phase"] = "active"
@@ -248,13 +270,14 @@ func tick(delta: float, _rdt: float) -> void:
 						want = BikeCombatData.T_DRIFT
 						want_pri = 1
 				if p["phase"] == "active":
-					p["vmax"] = maxf(float(p["vmax"]), absf(ch.bike.current_speed_ms))
+					if not p.has("vmid") and s >= ps + ln2 * 0.5:
+						p["vmid"] = absf(ch.bike.current_speed_ms)   # the apex: braking into the turn is fine
 					if ch.bike.is_drifting:
 						p["drifted"] = true
 						ch.add_charge(BikeCombatData.DRIFT_ZONE_BONUS * delta)
 					if s >= ps + ln2:
 						p["phase"] = "done"
-						if not bool(p["drifted"]) and float(p["vmax"]) > BikeCombatData.DRIFT_FAST:
+						if not bool(p["drifted"]) and float(p.get("vmid", absf(ch.bike.current_speed_ms))) > BikeCombatData.DRIFT_FAST:
 							curb_hits += 1
 							if ch.combat.damage(BikeCombatData.CURB_DMG, "curb"):
 								ch.bike.current_speed_ms *= BikeCombatData.CURB_SLOW
@@ -330,14 +353,22 @@ func _barrier_bikers(p: Dictionary, ps: float, delta: float) -> void:
 
 
 # ----- wrong way: a few cars the other way -----
+## RoamTraffic has no public "spawn here" call (only spawn_police), so this uses its internal _activate / _park the way its
+## own _maintain does: each car appears ONCOMING_AT m ahead (beyond the 160 m view range both RoamTraffic and BikeChase use
+## for "in view", so no pop-in), and a civil car out of view behind the player is parked for it so the active count stays
+## at RoamTraffic's target (its _maintain would park the farthest car otherwise, maybe this one).
 func _oncoming(ps: float, _ln: float) -> void:
 	var tr: RoamTraffic = ch.traffic
 	if tr == null or ch.route == null:
 		return
 	var n: int = 0
-	for k: int in 3:
-		var at: float = ps + (50.0 + 45.0 * float(k)) * ch.dir_sign
+	for k: int in ONCOMING_AT.size():
+		var at: float = clampf(ch.s_p + ONCOMING_AT[k] * ch.dir_sign, 0.0, ch.route.length)
+		if (at - ps) * ch.dir_sign < 20.0:
+			continue
 		var want: Vector2 = ch.route.world(at, -1.5 * ch.dir_sign)
+		if ch.in_view(Vector3(want.x, ch.bike.global_position.y + 1.0, want.y)):
+			continue
 		var opp: Vector2 = -ch.route.tangent(at) * ch.dir_sign
 		var best_l: int = -1
 		var best_s: float = 0.0
@@ -358,12 +389,24 @@ func _oncoming(ps: float, _ln: float) -> void:
 					best_s = cum[i] + ab.length() * u
 		if best_l < 0:
 			continue
+		var spare: RoamTraffic.Vehicle = null
+		var far: RoamTraffic.Vehicle = null
+		var far_d: float = 60.0
 		for v: Variant in tr.vehicles:
 			var c: RoamTraffic.Vehicle = v
-			if not c.active and not c.police and c.kind == RoamTraffic.Kind.CAR:
-				tr._activate(c, best_l, best_s)
-				n += 1
-				break
+			if c.police:
+				continue
+			if not c.active and c.kind == RoamTraffic.Kind.CAR and spare == null:
+				spare = c
+			elif c.active and (c.pos - ch.p_pos).dot(ch.p_fwd) < 0.0 and c.pos.distance_to(ch.p_pos) > far_d 					and not ch.in_view(Vector3(c.pos.x, ch.bike.global_position.y + 1.0, c.pos.y)):
+				far_d = c.pos.distance_to(ch.p_pos)
+				far = c
+		if spare == null:
+			continue
+		if far != null:
+			tr._park(far)
+		tr._activate(spare, best_l, best_s)
+		n += 1
 	oncoming_cars = n
 
 

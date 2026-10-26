@@ -23,7 +23,8 @@
 #   pickup   the gang's pickup truck: cannot be kicked; paces one lane over; horn + headlight flash for 1.0 s, then a
 #            side ram whose line and speed lock 0.5 s before it (brake, speed up or steer out); PICKUP_STRIKES dodged rams,
 #            its PICKUP_MAX_RAMS-th ram (or a car) and it loses it and hits a pole (cause "pole": a takedown);
-#   police   (BikeChase.spawn_police) cannot be kicked, never crashes; rams a biker (crash "police") or the player.
+#   police   (BikeChase.spawn_police) cannot be kicked, never crashes; rams a biker (crash "police") or the player (with an
+#            attack token, like the gang: the cap and ATTACK_GAP_S hold).
 # Traffic: every AVOID_EVERY frames it looks for the nearest car in its path and passes on the free side (within the
 # road) or brakes behind it; touching a car anyway (a kicked biker wobbling into one) is a crash.
 # opts: "kind", "label", "hp" (kicks to crash, default the kind's), "seed", "ai" (false = HOLD), "aggression" (0..1:
@@ -812,9 +813,11 @@ func _police_pace(delta: float) -> Vector2:
 	else:
 		p = ch.target_at(BikeCombatData.SLOT_ALONG, side * float(kp["slot_lat"]))
 	if pos2.distance_to(p) < 1.2:
-		_approach_t = 0.0
 		if ram_target == null:
-			has_token = false
+			if not ch.request_token(self):   # at the player: within the attacker cap and ATTACK_GAP_S like the gang
+				return p                      # (keeps pacing beside him until a token frees up or the approach times out)
+			has_token = true
+		_approach_t = 0.0
 		_enter(St.WINDUP)
 	elif _approach_t <= 0.0:
 		ram_target = null

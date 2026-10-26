@@ -10,6 +10,7 @@
 # Day 2 (spec 2026-10-27): a third panel row "Hạ gục: N" (takedowns), the film letterbox (letterbox(on): two black bars
 # slide in, the panel and the kick hints hide), and a blinking prompt line for the set pieces (set_prompt(text): "[CTRL]
 # CÚI XUỐNG", "DRIFT!", the wrong way warning; "" hides it).
+# Popup, linger and letterbox timers run on real time (slow motion does not stretch them).
 # State for tests: popup_text, popups, warn_left, warn_right, prompt_text, letterboxed.
 class_name BikeHUD
 extends CanvasLayer
@@ -182,7 +183,8 @@ func popup(text: String, col: Color = Color(0.0, 0.0, 0.0, 0.0), secs: float = 1
 	popup_label.modulate.a = 1.0
 
 
-func _process(delta: float) -> void:
+func _process(delta_scaled: float) -> void:
+	var delta: float = delta_scaled / maxf(Engine.time_scale, 0.01)   # real seconds: popups and the letterbox ignore slow motion
 	if _linger >= 0.0:
 		_linger -= delta
 		if _linger < 0.0:
