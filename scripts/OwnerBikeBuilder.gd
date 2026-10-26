@@ -25,6 +25,10 @@ const GLOSS_BLACK: Color = Color("#121417")
 const ENGINE_GREY: Color = Color("#3B3E43")
 const WHEEL_R: float = 0.3
 const TYRE_TUBE: float = 0.034
+## Lamp material look (PlayerBike.refresh_lamp_materials puts it back after a ViceStyle pass).
+const LAMP_ROUGHNESS: float = 0.12
+const LAMP_METALLIC: float = 0.1
+const POS_LAMP_ENERGY: float = 1.2
 ## Named parts every build has (tests).
 const PART_NAMES: Array[String] = ["Cowl", "HeadlampUpper", "HeadlampLower", "Visor", "SignalL", "SignalR", "GripL",
 	"GripR", "LegShieldV", "LegShieldL", "LegShieldR", "PositionLampL", "PositionLampR", "EmblemDisc", "FrontFender",
@@ -60,7 +64,7 @@ static func _light_materials() -> Dictionary:
 	return {
 		"headlamp": _lamp(Color(0.95, 0.96, 1.0), Color("#FFF5DC"), 2.6),
 		"tail": _lamp(Color("#B71C1C"), Color("#FF2A1F"), 1.4),
-		"pos": _lamp(Color("#C62828"), Color("#FF3B30"), 1.2),
+		"pos": _lamp(Color("#C62828"), Color("#FF3B30"), POS_LAMP_ENERGY),
 		"strobe_red": _lamp(Color("#4A0D0D"), Color("#FF1E1E"), 0.0),
 		"strobe_blue": _lamp(Color("#0D1A4A"), Color("#2F62FF"), 0.0),
 	}
@@ -69,8 +73,8 @@ static func _light_materials() -> Dictionary:
 static func _lamp(albedo: Color, glow: Color, energy: float) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = albedo
-	m.roughness = 0.12
-	m.metallic = 0.1
+	m.roughness = LAMP_ROUGHNESS
+	m.metallic = LAMP_METALLIC
 	m.emission_enabled = true
 	m.emission = glow
 	m.emission_energy_multiplier = energy

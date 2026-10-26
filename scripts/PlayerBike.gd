@@ -141,6 +141,8 @@ var _scan_t: float = 0.0
 var _owner_pending: bool = false
 var _ducked: bool = false
 var _fade_tw: Tween
+## Stage 1 finish / Stage 2 parking (park()): locked for good, strobe off, headlight off, melody stopped.
+var parked: bool = false
 
 @onready var visual_pivot: Node3D = $VisualPivot
 @onready var front_wheel: Node3D = $VisualPivot/FrontWheel
@@ -161,6 +163,8 @@ func _ready() -> void:
 	var fx_node: Node = get_node_or_null("/root/GameFX")
 	if fx_node:
 		fx_node.route_audio_to_bus(self, "SFX")
+		if fx_node.has_signal("art_style_changed"):
+			fx_node.connect("art_style_changed", _on_art_style_changed)
 	_setup_drift_smoke()
 	_auto_time_of_day.call_deferred()
 	slipstream_ray.target_position = Vector3(0.0, 0.0, -8.5) # Quét cự ly 8.5m phía trước
@@ -431,9 +435,62 @@ func _apply_beam() -> void:
 		headlight.spot_angle = float(b["angle"])
 		headlight.light_energy = float(b["energy"])
 		headlight.rotation_degrees = Vector3(float(b["tilt"]), 0.0, 0.0)
+		if headlight_haze:
+			# the haze cones were built for the low beam's angle: follow the beam's tilt and narrow with its angle
+			var k: float = tan(deg_to_rad(float(b["angle"]))) / tan(deg_to_rad(float(LOW_BEAM["angle"])))
+			headlight_haze.transform = headlight.transform.scaled_local(Vector3(k, k, 1.0))
 	var lens: StandardMaterial3D = bike_parts.get("headlamp_mat") as StandardMaterial3D
 	if lens:
 		lens.emission_energy_multiplier = float(b["lens"])
+
+
+## The lamp materials must never be restyled: ViceStyle's classic pass strips their "vice_done" tag, a later vice pass
+## then restyles them and snapshots their energy at that moment (the next classic pass would bring a stale strobe or
+## brake energy back). After every style change (GameFX.art_style_changed) and every time-of-day change: tag them again,
+## drop the snapshot, put the lamp look back and rewrite every energy from the bike's state.
+func refresh_lamp_materials() -> void:
+	for key: String in ["headlamp_mat", "tail_mat", "pos_lamp_mat", "strobe_red_mat", "strobe_blue_mat"]:
+		var m: StandardMaterial3D = bike_parts.get(key) as StandardMaterial3D
+		if m == null:
+			continue
+		for tag: StringName in [&"vice_orig", &"vice_soft_emitter", &"vice_window"]:
+			if m.has_meta(tag):
+				m.remove_meta(tag)
+		m.set_meta("vice_done", true)
+		m.roughness = OwnerBikeBuilder.LAMP_ROUGHNESS
+		m.metallic = OwnerBikeBuilder.LAMP_METALLIC
+		m.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+		m.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+		m.normal_enabled = false
+		m.next_pass = null
+		m.emission_enabled = true
+	var pos: StandardMaterial3D = bike_parts.get("pos_lamp_mat") as StandardMaterial3D
+	if pos:
+		pos.emission_energy_multiplier = OwnerBikeBuilder.POS_LAMP_ENERGY
+	_apply_beam()
+	_apply_strobe(strobe_color, true)
+	_update_tail(true)
+
+
+func _on_art_style_changed(_style: String) -> void:
+	refresh_lamp_materials()
+
+
+## Stage 1 finish, Stage 2 parked: the bike stays where it is for good (locked, never disabled). Strobe and headlight
+## off, tail back to normal, the horn melody stops at once (the music comes back up).
+func park() -> void:
+	parked = true
+	is_controls_locked = true
+	_park_lights_and_horn()
+
+
+func _park_lights_and_horn() -> void:
+	braking = false
+	if not bike_parts.is_empty():
+		_apply_strobe(0, true)
+		_update_tail(true)
+	stop_horn_melody(false)
+	_apply_lights_visibility()
 
 
 ## [L]: low beam <-> high beam.
@@ -448,6 +505,7 @@ func set_time_of_day(preset: String) -> void:
 	_tod_set = true
 	lights_preset = preset
 	lights_dark = preset in DARK_PRESETS
+	refresh_lamp_materials()   # the time-of-day pass may have run ViceStyle over the scene
 	_apply_lights_visibility()
 
 
@@ -462,11 +520,17 @@ func _auto_time_of_day() -> void:
 		n = n.get_parent()
 
 
+## The headlight and the haze shine only at dark presets while the bike is ridden (not parked, not disabled).
+func headlight_on() -> bool:
+	return lights_dark and not parked and (not is_inside_tree() or can_process())
+
+
 func _apply_lights_visibility() -> void:
+	var on: bool = headlight_on()
 	if headlight:
-		headlight.visible = lights_dark
+		headlight.visible = on
 	if headlight_haze:
-		headlight_haze.visible = lights_preset == "night"
+		headlight_haze.visible = on and lights_preset == "night"
 	if strobe_glow:
 		strobe_glow.visible = lights_dark and strobe_color != 0
 
@@ -517,19 +581,18 @@ func _tick_extras(delta: float) -> void:
 	if _owner_pending:
 		_poll_owner_sfx()
 	strobe_t = fposmod(strobe_t + delta, STROBE_CYCLE)
-	_apply_strobe(strobe_state(strobe_t))
+	_apply_strobe(0 if parked else strobe_state(strobe_t))
 	_update_tail()
 	_tick_horn(delta)
 
 
-## Parked (FreeRoam disables the bike): strobe off, tail back to normal, the melody stops at once.
+## Parked (FreeRoam disables the bike): strobe and headlight off, tail back to normal, the melody stops at once.
+## Enabled again (mounted): the headlight follows the time of day again.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_DISABLED:
-		braking = false
-		if not bike_parts.is_empty():
-			_apply_strobe(0, true)
-			_update_tail(true)
-		stop_horn_melody(false)
+		_park_lights_and_horn()
+	elif what == NOTIFICATION_ENABLED:
+		_apply_lights_visibility()
 
 
 func _exit_tree() -> void:
@@ -611,7 +674,18 @@ static func _adopt_owner(p: String, wait: bool) -> void:
 	var st: AudioStream = (t["box"] as Array)[0]
 	if st and p.get_file().get_basename() == SFX_EXHAUST:
 		StoryAudio._set_loop(st, true)
+	elif st:
+		_set_no_loop(st)   # the horn melody plays once (an owner WAV may carry loop points)
 	_owner_cache[p] = st
+
+
+static func _set_no_loop(st: AudioStream) -> void:
+	if st is AudioStreamWAV:
+		(st as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_DISABLED
+	elif st is AudioStreamOggVorbis:
+		(st as AudioStreamOggVorbis).loop = false
+	elif st is AudioStreamMP3:
+		(st as AudioStreamMP3).loop = false
 
 
 ## Waits for every loading task and empties the cache (tests, exit).
@@ -654,8 +728,8 @@ static func exhaust_db(gas: float) -> float:
 ## The horn key: with the owner's melody a tap plays it from the start and a tap while it plays stops it (0.15 s fade);
 ## without it the short wav horn plays as before.
 func horn_tap() -> void:
-	if melody_stream == null and owner_sfx_state(SFX_HORN) == 1:
-		melody_stream = owner_sfx(SFX_HORN, true)   # a short file, normally loaded long before the first tap
+	if melody_stream == null and owner_sfx_state(SFX_HORN) == 2:
+		melody_stream = owner_sfx(SFX_HORN, false)   # still loading: never wait on the main thread, the wav horn plays
 	if melody_stream:
 		if melody_left > 0.0:
 			stop_horn_melody(true)
@@ -708,6 +782,8 @@ func _tick_horn(delta: float) -> void:
 		melody_left = 0.0
 		_dancers.clear()   # their reaction ends with the melody by itself
 		_duck_music(false)
+		if melody_player:
+			melody_player.stop()
 		return
 	_scan_t -= delta
 	if _scan_t <= 0.0:

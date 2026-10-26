@@ -1147,5 +1147,6 @@ func stars(anchor: Node3D, secs: float) -> void:
 		fx.stars(anchor, secs)
 
 
+## Freed or removed without stop(): the hooks go, and with them the speed cap (the bike gets its own profile back).
 func _exit_tree() -> void:
 	_set_hooks(false)

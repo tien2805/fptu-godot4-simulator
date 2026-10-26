@@ -824,6 +824,8 @@ func _on_parked() -> void:
 	has_parked = true
 	park_time_left = maxf(0.0, time_left)
 	player_bike.set("is_controls_locked", true)
+	if player_bike.has_method("park"):
+		player_bike.call("park")   # strobe / headlight off, horn melody stopped (owner-bike fix round)
 	GameFX.play_sfx("success")
 	GameFX.flash(GameFX.FPT_GREEN, 0.35, 0.4)
 	_say("ĐÃ GỬI XE! THANG MÁY KẸT CỨNG → CHẠY BỘ XUYÊN CAMPUS, LEO CẦU THANG NGOÀI TRỜI LÊN LAB 402!", GameFX.FPT_GREEN, 2.0)
