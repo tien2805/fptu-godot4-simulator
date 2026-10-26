@@ -9,9 +9,12 @@
 #     unblockable heavy); "[E] Hạ gục" over the dazed enemy the finisher would take;
 #   - an edge-of-screen marker (pointing out) for every attack on its way from an enemy behind the camera or off screen:
 #     amber for a light wind-up / swing, red for a telegraphed heavy;
-#   - centre popups (popup(text, colour)): "PHẢN ĐÒN", "HẠ GỤC", "PHÁ THẾ THỦ", a fight's start line, the force-unarmed line.
+#   - centre popups (popup(text, colour)): "PHẢN ĐÒN", "HẠ GỤC", "PHÁ THẾ THỦ", a fight's start line, the force-unarmed line;
+#   - top centre under the HP bar, while a fight runs, the boss bar (Phase C) for combat.boss: its label, a wide HP bar
+#     and a tick at each of its boss_marks() (phase / howl thresholds); the boss gets no bar over its head (the bottom belongs to the hint line,
+#     the stamina bar, the zone name and the story objective).
 # State for tests (computed in _process, not in _draw): finisher_shown, telegraph_shown, edge_markers, popup_text,
-# popup_left. The style (GameFX lookup) and the font are read once per frame.
+# popup_left, boss_shown. The style (GameFX lookup) and the font are read once per frame.
 class_name CombatHUD
 extends CanvasLayer
 
@@ -33,6 +36,8 @@ const HEAD_Y: float = 2.05
 const POPUP_S: float = 1.0
 const LIGHT_WARN := Color("#FFB23C")
 const EDGE_INSET: float = 46.0
+const BOSS_SIZE := Vector2(620.0, 46.0)
+const BOSS_TOP: float = 86.0             # under the player's HP bar (18 + 58 + 10)
 static var _vice_cache: bool = true
 static var _vice_frame: int = -1
 static var _vice_font: Font = null
@@ -51,6 +56,8 @@ var edge_markers: int = 0
 var edge_pos := PackedVector2Array()
 var edge_dir := PackedVector2Array()
 var edge_kind := PackedInt32Array()
+var boss_bar: Control
+var boss_shown: bool = false
 
 
 func _ready() -> void:
@@ -73,6 +80,18 @@ func _ready() -> void:
 	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(b)
 	bar = b
+	var bb := BossBar.new()
+	bb.name = "CombatBoss"
+	bb.hud = self
+	bb.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	bb.offset_left = -BOSS_SIZE.x * 0.5
+	bb.offset_right = BOSS_SIZE.x * 0.5
+	bb.offset_top = BOSS_TOP
+	bb.offset_bottom = BOSS_TOP + BOSS_SIZE.y
+	bb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bb.visible = false
+	add_child(bb)
+	boss_bar = bb
 	popup_label = Label.new()
 	popup_label.name = "CombatPopup"
 	popup_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -146,9 +165,15 @@ func _process(delta: float) -> void:
 		if is_instance_valid(e) and bool((e as Object).get("flash_on")):
 			telegraph_shown += 1
 	_edge_markers()
+	var bs: Node3D = combat.boss
+	boss_shown = visible and combat.fight_active and bs != null and is_instance_valid(bs) and bs.is_inside_tree() and bs.visible
+	if boss_bar.visible != boss_shown:
+		boss_bar.visible = boss_shown
 	if visible:
 		bar.queue_redraw()
 		world.queue_redraw()
+		if boss_shown:
+			boss_bar.queue_redraw()
 
 
 ## Attacks on their way (MeleeEnemy.incoming) from enemies behind the camera or off screen: a point on the screen border
@@ -218,11 +243,38 @@ class HPBar extends Control:
 		draw_rect(r, Color(1.0, 1.0, 1.0, 0.5), false, 1.0)
 		_text(f, Vector2(size.x - 52.0, 29.0), "%d" % int(ceil(c.hp)), 18, acc, HORIZONTAL_ALIGNMENT_RIGHT, 44.0)
 		if c.fight_active:
-			_text(ThemeDB.fallback_font, Vector2(12.0, 49.0), CombatData.T_CONTROLS, 11, Color(0.85, 0.85, 0.9), HORIZONTAL_ALIGNMENT_CENTER, size.x - 24.0)
+			_text(ThemeDB.fallback_font, Vector2(12.0, 49.0), c.controls_text, 11, Color(0.85, 0.85, 0.9), HORIZONTAL_ALIGNMENT_CENTER, size.x - 24.0)
 
 	func _text(f: Font, pos: Vector2, s: String, sz: int, col: Color, align: HorizontalAlignment, w: float) -> void:
 		draw_string_outline(f, pos, s, align, w, sz, 4, CombatHUD.INK)
 		draw_string(f, pos, s, align, w, sz, col)
+
+
+## The boss bar (top centre, under the HP bar): the boss's label, its HP over a dark track, a tick at each boss_marks()
+## fraction.
+class BossBar extends Control:
+	var hud: CombatHUD
+
+	func _draw() -> void:
+		var b: Node3D = hud.combat.boss if hud.combat else null
+		if b == null or not is_instance_valid(b):
+			return
+		var f: Font = CombatHUD.font()
+		var acc: Color = CombatHUD.accent()
+		var k: float = clampf(float(b.get("hp")) / maxf(float(b.get("max_hp")), 1.0), 0.0, 1.0)
+		var lbl: String = String(b.get("label"))
+		draw_string_outline(f, Vector2(0.0, 14.0), lbl, HORIZONTAL_ALIGNMENT_CENTER, size.x, 18, 5, CombatHUD.INK)
+		draw_string(f, Vector2(0.0, 14.0), lbl, HORIZONTAL_ALIGNMENT_CENTER, size.x, 18, Color.WHITE)
+		var r := Rect2(Vector2(0.0, 22.0), Vector2(size.x, 16.0))
+		draw_rect(r.grow(3.0), CombatHUD.INK)
+		draw_rect(r, Color(0.0, 0.0, 0.0, 0.6))
+		draw_rect(Rect2(r.position, Vector2(r.size.x * k, r.size.y)), CombatHUD.hp_color())
+		if b.has_method("boss_marks"):
+			for m: float in b.call("boss_marks"):
+				var x: float = r.position.x + r.size.x * m
+				draw_line(Vector2(x, r.position.y - 3.0), Vector2(x, r.end.y + 3.0), CombatHUD.INK, 3.0)
+				draw_line(Vector2(x, r.position.y), Vector2(x, r.end.y), Color(acc, 0.9), 1.0)
+		draw_rect(r, Color(acc, 0.8), false, 2.0)
 
 
 ## World-anchored enemy widgets (bars, label, lock marker, telegraph ring, finisher prompt).
@@ -260,12 +312,16 @@ class WorldLayer extends Control:
 			if hostile:
 				var w: float = CombatHUD.ENEMY_BAR_W
 				var x0: float = sp.x - w * 0.5
-				var hp_k: float = clampf(float(e.get("hp")) / maxf(float(e.get("max_hp")), 1.0), 0.0, 1.0)
+				var is_boss: bool = e == c.boss        # the boss bar shows its HP and name
+				if not is_boss:
+					var hp_k: float = clampf(float(e.get("hp")) / maxf(float(e.get("max_hp")), 1.0), 0.0, 1.0)
+					draw_rect(Rect2(x0 - 1.0, sp.y - 1.0, w + 2.0, 11.0), CombatHUD.INK)
+					draw_rect(Rect2(x0, sp.y, w * hp_k, 6.0), CombatHUD.hp_color())
 				var st_k: float = clampf(float(e.get("stagger")) / maxf(float(e.get("stagger_max")), 1.0), 0.0, 1.0)
-				draw_rect(Rect2(x0 - 1.0, sp.y - 1.0, w + 2.0, 11.0), CombatHUD.INK)
-				draw_rect(Rect2(x0, sp.y, w * hp_k, 6.0), CombatHUD.hp_color())
+				if is_boss:
+					draw_rect(Rect2(x0 - 1.0, sp.y + 6.0, w + 2.0, 5.0), CombatHUD.INK)
 				draw_rect(Rect2(x0, sp.y + 7.0, w * st_k, 3.0), CombatHUD.STAGGER_COL)
-				var lbl: String = String(e.get("label"))
+				var lbl: String = "" if is_boss else String(e.get("label"))
 				if lbl != "":
 					draw_string_outline(f, Vector2(x0 - 40.0, sp.y - 6.0), lbl, HORIZONTAL_ALIGNMENT_CENTER, w + 80.0, 14, 4, CombatHUD.INK)
 					draw_string(f, Vector2(x0 - 40.0, sp.y - 6.0), lbl, HORIZONTAL_ALIGNMENT_CENTER, w + 80.0, 14, Color.WHITE)
