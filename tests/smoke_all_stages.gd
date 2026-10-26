@@ -16,6 +16,7 @@ const SCENES: Array[String] = [
 	"res://scenes/StageExtra_EOSExam.tscn",
 	"res://scenes/FreeRoam.tscn",
 	"res://scenes/story/NightBuilding.tscn",
+	"res://scenes/story/StoryBasement.tscn",
 ]
 const FRAMES_PER_SCENE: int = 75
 

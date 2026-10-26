@@ -7,7 +7,7 @@
 # won -> seg_d1_brawl, the locker key flag) -> the corridor marker -> the horror walk (flicker, figure, blackout, gone,
 # bleat, not before 30 s) -> cine_d1_corridor -> the bench marker + the optional locker (E2 taken) -> the choice scene
 # timed out (the honest "cover", recorded) -> the cover tail -> cine_d1 -> bed -> the call N = 6 -> Day 2 morning -> the
-# Day 2 placeholder (sleepable). Then Continue from the autosave taken after the brawl (corridor marker, no mission
+# Day 2 chase marker (Phase C: Day 2 is playable, test_story_day2). Then Continue from the autosave taken after the brawl (corridor marker, no mission
 # started by itself, night, key flag kept) and the choice recorded once (a set choice skips the scene: the report tail).
 # Missions run on manual clocks (StoryRoam.mission_opts), cinematics / calls / replays are stepped. FreeRoam runs with
 # mayhem on (weapons, wanted, combat; crowd off). Real key events (Input.parse_input_event) press [E] at the gate marker,
@@ -450,8 +450,8 @@ func _process(_d: float) -> bool:
 		17:
 			if frames < 5:
 				return false
-			_check(String(sd.get("step")) == "d2_wait" and sr.markers.has("d2_wait"), "Day 2 placeholder with the bed marker")
-			_check(String(sd.get("objective")) == "Ngày 2: Bầy Sói – sắp có trong bản cập nhật sau. Về BE6 ngủ để sang ngày tiếp.", "B-D6 objective: %s" % String(sd.get("objective")))
+			_check(String(sd.get("step")) == "d2_chase" and sr.markers.has("d2_chase"), "Day 2: the chase marker (Phase C)")
+			_check(String(sd.get("objective")).contains("Anh Duy"), "Day 2 objective: %s" % String(sd.get("objective")))
 			_check(String(sd.call("day_chip_text")) == "NGÀY 2 · CÒN 6 NGÀY", "Day 2 chip")
 			# Continue from the autosave after the brawl
 			sd.call("on_leave_to_menu")

@@ -6,6 +6,9 @@
 # its marker, its day and time of day; a cinematic beat plays), the restore of the backup, the gallery rows and a playback
 # that returns to the gallery without touching the save, old-save seeding (best-effort snapshots, "???" and "Chơi tới cảnh
 # này một lần để mở" rows), the pause-menu entry in story mode only, and no emoji in the new texts.
+# Phase C: the new beat kinds are replayable (the Day 2 / 3 missions and fight, the Day 5 lair tasks and basement
+# cinematics), snapshotted on entry with the best-effort rebuild keeping the E4 flag, and the gallery lists the Phase C
+# cinematics by day.
 # Every file is a temp file (StoryDirector.save_path, StoryChapters paths): the owner's user:// files are never touched.
 # Run:  godot --headless --path . --script tests/test_chapter_select.gd
 extends SceneTree
@@ -261,6 +264,7 @@ func _process(_d: float) -> bool:
 				sd.set("last_nav", "")
 				(cur as ChapterSelect).go_back()
 				_check(String(sd.get("last_nav")) == "roam" and (cur as ChapterSelect).last_nav == "story" and not ChapterSelect.from_story, "QUAY LẠI resumes the story (Continue)")
+			_phase_c()
 			return _end()
 	return false
 
@@ -448,6 +452,40 @@ func _pause_entry() -> void:
 	_check(btn != null and btn.visible and not hub.visible, "pause menu: CHỌN CẢNH in story mode")
 	_check(_clean(btn.text), "pause button text without emoji")
 	btn.pressed.emit()
+
+
+## Phase C kinds: replayable, listed, snapshotted; the gallery's Phase C rows; best_effort keeps the crates flag (E4).
+func _phase_c() -> void:
+	sm.set("story_context", {})
+	for p: String in [TMP_U, TMP_C, TMP_B]:
+		_rm(p)
+	for id: String in ["d2_chase", "d2_bridge", "d2_duel", "d2_end", "d3_sneak", "d3_mannequins", "d3_gunfight", "d3_crates", "d3_boss",
+			"d5_stealth", "d5_monitors", "d5_gunfight", "d5_hack", "d5_choice", "d5_choice_tail", "d5_duel", "d5_end"]:
+		_check(StoryChapters.is_replayable(id), "Phase C: %s is replayable" % id)
+	for id2: String in ["d2_bed", "d2_call", "d3_bed", "d5_call", "d6_start"]:
+		_check(not StoryChapters.is_replayable(id2), "Phase C: %s is not a chapter" % id2)
+	var listed: Array = []
+	for row: Dictionary in StoryChapters.chapters():
+		listed.append(String(row["id"]))
+	_check(listed.has("d5_hack") and listed.has("d3_crates") and listed.has("d2_duel") and not listed.has("d5_end_c"), "the chapter list has the Phase C beats in story order")
+	_check(listed.find("d2_chase") < listed.find("d3_sneak") and listed.find("d3_end") < listed.find("d4_canteen") and listed.find("d4_end") < listed.find("d5_stealth"), "Phase C chapters in story order")
+	sd.call("new_story", P)
+	_walk_to("d5_hack")
+	for id3: String in ["d2_chase", "d3_crates", "d5_stealth", "d5_hack"]:
+		var sn: Dictionary = _snap(id3)
+		_check(not sn.is_empty() and String(sn.get("step", "")) == id3, "Phase C: %s snapshotted on entry" % id3)
+	var days: Dictionary = {}
+	for row2: Dictionary in StoryChapters.gallery():
+		days[int(row2["day"])] = true
+	for sl: String in ["cine_d2_intro", "seg_d2_boss", "cine_d2", "cine_d3_intro", "cine_d3_mannequins", "seg_d3_boss", "cine_d3",
+			"cine_d5_intro", "cine_d5_monitors", "cine_d5_choice", "seg_d5_boss", "cine_d5", "end_c"]:
+		_check(StoryChapters.gallery_title(sl) != sl, "the gallery lists %s" % sl)
+	_check(days.has(2) and days.has(3) and days.has(5), "gallery days 2, 3 and 5")
+	var save: Dictionary = {"active": true, "day": 3, "tod": "night", "step": "d3_end", "evidence": ["E1", "E3", "E4"], "choices": {},
+		"flags": {"d3_all_crates": true, "d3_manifest": true}, "protagonist": P, "texts": [], "objective": "", "spawn": null}
+	var be: Dictionary = StoryChapters.best_effort(save, "d3_boss")
+	_check(bool((be["flags"] as Dictionary).get("d3_all_crates", false)) and not (be["evidence"] as Array).has("E4"), "best effort at d3_boss: the crates flag kept, E4 offered again")
+	sd.call("reset_state")
 
 
 func _end() -> bool:

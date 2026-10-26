@@ -1,12 +1,12 @@
 # File: res://tests/test_story_day4.gd
-# Headless end-to-end test of story Days 2-4 (spec B-D6, B-D7; plan 2026-10-25-phase-b-integration.md), from the end of
-# Day 1 with the optional E2 skipped: the call N = 6 -> Day 2 morning -> the Day 2 placeholder (bed) -> the call N = 5 ->
-# Day 3 the same (N = 4), no evidence or choice recorded -> Day 4 morning (Linh's text) -> the canteen marker ->
+# Headless end-to-end test of story Day 4 (spec B-D7; plan 2026-10-25-phase-b-integration.md), from the end of Day 3 (Days
+# 2 and 3 are playable since Phase C: test_story_day2 / test_story_day3) with the optional E2 skipped: the call N = 4 ->
+# Day 4 morning (Linh's text) -> the canteen marker ->
 # cine_d4_intro -> the undercover (12 identical students + the disguised Dolly with her tells and the music-box hum, the
 # tray carried, a student's note and [E] Tố cáo, a wrong accusation, the tray dropped by sprinting, a new tray at the
 # counter, "BỊ LỘ" -> THỬ LẠI (Dolly elsewhere), the right accusation) -> cine_d4_stare -> the clone waves + Dolly, who
 # flees -> seg_d4_brawl -> the lobby marker -> the night escape scene (caught once: no E5; a clean run: E5) with the
-# seg_d4_escape replay -> cine_d4 -> bed -> the call N = 3 -> Day 5 morning -> the Day 5 placeholder. Then Continue from
+# seg_d4_escape replay -> cine_d4 -> bed -> the call N = 3 -> Day 5 morning -> the Day 5 basement marker. Then Continue from
 # the autosave taken after the brawl (the lobby marker at night, nothing starts by itself) and at d4_brawl (the canteen
 # marker, the fight does not start by itself). The night escape's catches are saved at once (no E5 by quitting).
 # Run:  godot --headless --path . --script tests/test_story_day4.gd
@@ -27,7 +27,6 @@ var sr: StoryRoam
 var m: StoryMission
 var esc: StoryNightEscape
 var mark: Dictionary = {}
-var day_cycle: int = 2
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -37,7 +36,7 @@ func _check(ok: bool, msg: String) -> void:
 
 
 func _initialize() -> void:
-	print("--- TEST STORY DAY 4 (Days 2-3 placeholders, Day 4 end to end) ---")
+	print("--- TEST STORY DAY 4 (Day 4 end to end, from the end of Day 3) ---")
 	Engine.max_fps = 60
 	sd = root.get_node("StoryDirector")
 	sm = root.get_node("StageManager")
@@ -122,55 +121,27 @@ func _process(_d: float) -> bool:
 	match phase:
 		0:
 			sd.call("new_story", {"female": true, "name": "Thảo", "variant": 0, "hair_style": "bob", "hair_color": 0, "skin": 2})
-			sd.set("day", 1)
+			sd.set("day", 3)
 			(sd.get("evidence") as Array).append("E1")
 			(sd.get("flags") as Dictionary)["d1_key"] = true   # the locker key was dropped, E2 was skipped
 			(sd.get("choices") as Dictionary)["phuc"] = "report"
-			sd.call("_enter", "d1_call")
-			_check(String(sd.get("step")) == "d1_call", "the story is at the end of Day 1 (E2 skipped)")
+			sd.call("_enter", "d3_call")
+			_check(String(sd.get("step")) == "d3_call", "the story is at the end of Day 3 (E2 skipped)")
 			_roam()
 			_next(1)
 		1:
 			var n: int = _do_call()
 			if n < 0:
 				if frames > 150:
-					_check(false, "the Day 1 call did not start")
+					_check(false, "the Day 3 call did not start")
 					phase = 999
 				return false
-			_check(n == 6, "the call after Day 1 says 6")
-			_next(2)
-		2:
-			# Days 2 and 3: morning card, the placeholder bed, the call
-			if not _cine_started("Day %d morning" % day_cycle):
-				return false
-			var dc: StoryDayCard = sr.cards as StoryDayCard
-			_check(dc != null and dc.days == day_cycle and dc.left == 8 - day_cycle, "Day %d morning card (CÒN %d NGÀY)" % [day_cycle, 8 - day_cycle])
-			_finish_cine()
-			_next(3)
-		3:
-			if frames < 5:
-				return false
-			var wid: String = "d%d_wait" % day_cycle
-			_check(String(sd.get("step")) == wid and sr.markers.has(wid) and String(sd.get("objective")).ends_with("Về BE6 ngủ để sang ngày tiếp."), "Day %d placeholder: bed marker and objective" % day_cycle)
-			_check(sr.start_marker(wid) and String(sd.get("step")) == "d%d_call" % day_cycle, "Day %d: bed -> call" % day_cycle)
-			_next(4)
-		4:
-			var n2: int = _do_call()
-			if n2 < 0:
-				if frames > 150:
-					_check(false, "the Day %d call did not start" % day_cycle)
-					phase = 999
-				return false
-			_check(n2 == 7 - day_cycle, "the call after Day %d says %d" % [day_cycle, 7 - day_cycle])
-			day_cycle += 1
-			if day_cycle <= 3:
-				_next(2)
-			else:
-				_next(5)
+			_check(n == 4, "the call after Day 3 says 4")
+			_next(5)
 		5:
 			if not _cine_started("Day 4 morning"):
 				return false
-			_check((sd.get("evidence") as Array).size() == 1 and sd.call("has_evidence", "E1") and String(sd.call("choice_of", "phuc")) == "report", "the placeholders recorded no evidence or choice")
+			_check((sd.get("evidence") as Array).size() == 1 and sd.call("has_evidence", "E1") and String(sd.call("choice_of", "phuc")) == "report", "the evidence and choice carried over")
 			var dc4: StoryDayCard = sr.cards as StoryDayCard
 			_check(dc4 != null and dc4.days == 4 and dc4.left == 4, "Day 4 morning card")
 			_finish_cine()
@@ -335,7 +306,7 @@ func _process(_d: float) -> bool:
 		20:
 			if frames < 5:
 				return false
-			_check(String(sd.get("step")) == "d5_locked" and String(sd.get("objective")) == "Ngày 5: Hầm server – sắp có trong bản cập nhật sau" and sr.markers.is_empty(), "Day 5 placeholder (sắp có), no marker")
+			_check(String(sd.get("step")) == "d5_stealth" and sr.markers.has("d5_stealth") and String(sd.get("objective")).contains("Anh Duy"), "Day 5: the basement marker at Anh Duy's corner")
 			_check(String(sd.call("day_chip_text")) == "NGÀY 5 · CÒN 3 NGÀY", "Day 5 chip")
 			sd.call("on_leave_to_menu")
 			fr.queue_free()
@@ -436,7 +407,7 @@ func _end() -> bool:
 	sd.call("reset_state")
 	sd.set("save_path", "user://story_save.cfg")
 	if fails.is_empty():
-		print("✅ SUCCESS: STORY DAYS 2-4 (placeholders, canteen undercover, clone waves + Dolly, night escape E5, call, Day 5, continue)")
+		print("✅ SUCCESS: STORY DAY 4 (canteen undercover, clone waves + Dolly, night escape E5, call, Day 5, continue)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())

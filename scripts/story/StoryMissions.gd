@@ -148,7 +148,7 @@ const BEATS: Dictionary = {
 		"side": [LEDGER_SIDE], "objective": "Hàng về bến container của Alexander. Về BE6 ngủ: cột hồng trước sảnh, bấm [E]",
 		"texts": [["Anh Duy", "Log của Sói Xám a parse xong r, toàn ship về bến container. Mai a brief tiếp. (Dịch: Mai tính tiếp, ngủ đi em.)"]]},
 	"d2_call": {"day": 2, "title": "Cuộc gọi 3 giờ sáng", "kind": "call", "days": 5, "tod": "night", "next": "d3_start",
-		"objective": "Lại là số lạ…"},
+		"objective": "Lại là số lạ..."},
 	# ----- Day 3 "Bến container" (C-D7), night in the container yard by the canal (FreeRoam, LairYard) -----
 	"d3_start": {"day": 3, "title": "Ngày 3", "kind": "day", "tod": "morning", "next": "d3_morning"},
 	"d3_morning": {"day": 3, "title": "Sáng Ngày 3", "kind": "cine", "slot": "cine_day_start", "at": "be6_door",
@@ -175,7 +175,7 @@ const BEATS: Dictionary = {
 		"objective": "Có USB Za Mẫn Labs rồi. Về BE6 ngủ: cột hồng trước sảnh, bấm [E]",
 		"texts": [["Anh Duy", "USB Za Mẫn Labs à? Để a decrypt qua đêm. (Dịch: Để anh mở USB.)"]]},
 	"d3_call": {"day": 3, "title": "Cuộc gọi 3 giờ sáng", "kind": "call", "days": 4, "tod": "night", "next": "d4_start",
-		"objective": "Lại là số lạ…"},
+		"objective": "Lại là số lạ..."},
 	# ----- Day 4 "Cừu nhân bản" (B-D7) -----
 	"d4_start": {"day": 4, "title": "Ngày 4", "kind": "day", "tod": "morning", "next": "d4_morning"},
 	"d4_morning": {"day": 4, "title": "Sáng Ngày 4", "kind": "cine", "slot": "cine_day_start", "at": "be6_door",
@@ -236,7 +236,7 @@ const BEATS: Dictionary = {
 		"objective": "Lọ Thần 9.0 sập rồi. Về BE6 ngủ: cột hồng trước sảnh, bấm [E]",
 		"texts": [["Anh Duy", "Log giao dịch chỉ về Trà Sữa Lọ. A trace tiếp, e ngủ đi. (Dịch: Mai đi Trà Sữa Lọ.)"]]},
 	"d5_call": {"day": 5, "title": "Cuộc gọi 3 giờ sáng", "kind": "call", "days": 2, "tod": "night", "next": "d6_start",
-		"objective": "Lại là số lạ…"},
+		"objective": "Lại là số lạ..."},
 	"d6_start": {"day": 6, "title": "Ngày 6", "kind": "day", "tod": "morning", "next": "d6_morning"},
 	"d6_morning": {"day": 6, "title": "Sáng Ngày 6", "kind": "cine", "slot": "cine_day_start", "at": "be6_door",
 		"tod": "morning", "next": "d6_locked", "objective": "Ngày mới... còn 2 ngày",

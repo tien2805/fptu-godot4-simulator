@@ -6,6 +6,10 @@
 # Phase B: every beat valid for its kind (mission / fight / horror fields, slots that exist), the Days 1-5 chain, the
 # Days 2-3 placeholder objectives, the calls' N, an A2 save at d1_locked resuming at d1_stakeout, side markers granted
 # once, beat flags, the horror result (E5 only with no catch).
+# Phase C (plan 2026-10-26-phase-c-integration.md): the chain through Days 2, 3, 5 to the Day 6 placeholder, the lair beats
+# (task + scene), old placeholder saves (d2_wait, d3_wait, d5_locked) resuming at the new first beats, choice 2's
+# next_by_choice (accept -> d5_end_c, refuse -> d5_duel), finish_story (ending C: the save is marked, Continue refuses it),
+# launch_lair_beat / leave_lair, the optional E3 / E4 sides and the guaranteed E6.
 # Horror polish (H-D7): the free-roam night events (StoryNightEvents) on stub roam / story nodes: only at night from Day 1,
 # never during a mission, a cinematic, a busy beat, a police chase (stars, state still "free"), with the phone or the map
 # open; the first one 45-90 s into the night, then at most one per 3 minutes (mission time does not count, and nothing
@@ -72,12 +76,13 @@ func _initialize() -> void:
 	_state()
 	_save_load()
 	_phase_b()
+	_phase_c()
 	_guard()
 	_endings()
 	_night_events()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))
 	if fails.is_empty():
-		print("✅ SUCCESS: STORY DIRECTOR (state, signals, story chain to Day 5, Phase B beats, save/load, migration, version guard, endings)")
+		print("✅ SUCCESS: STORY DIRECTOR (state, signals, story chain to Day 6, Phase B / C beats, save/load, migration, version guard, endings)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())
@@ -105,6 +110,11 @@ func _registry() -> void:
 			_check(String(b.get("fight", "")) in StoryMissions.FIGHTS and b.has("anchor"), "fight beat %s has a known fight + anchor" % id)
 		if String(b["kind"]) == "horror":
 			_check(b.has("anchor") and ResourceLoader.exists(String(b.get("scene", ""))), "horror beat %s has an anchor and its scene" % id)
+		if String(b["kind"]) == "lair":
+			_check(String(b.get("task", "")) in StoryMissions.LAIR_TASKS and b.has("anchor") and ResourceLoader.exists(StoryMissions.lair_scene(b)),
+				"lair beat %s has a known task, an anchor and its scene" % id)
+		if String(b.get("lair", "")) == "basement":
+			_check(b.has("anchor"), "basement beat %s has the marker that launches the scene" % id)
 		for k2: String in ["intro", "after"]:
 			if b.has(k2):
 				_check(CineTimeline.load_slot(String(b[k2])) != null, "beat %s: %s %s exists" % [id, k2, String(b[k2])])
@@ -115,17 +125,18 @@ func _registry() -> void:
 		cur = String(StoryMissions.beat(cur).get("next", ""))
 	var want: Array[String] = ["d0_wake", "d0_race", "d0_exam", "d0_exam_end", "d0_bed", "d0_midnight", "d0_call", "d0_intro", "d1_start", "d1_morning",
 		"d1_stakeout", "d1_chase", "d1_brawl", "d1_corridor", "d1_choice", "d1_choice_tail", "d1_end", "d1_bed", "d1_call",
-		"d2_start", "d2_morning", "d2_wait", "d2_call", "d3_start", "d3_morning", "d3_wait", "d3_call",
+		"d2_start", "d2_morning", "d2_chase", "d2_bridge", "d2_duel", "d2_end", "d2_bed", "d2_call",
+		"d3_start", "d3_morning", "d3_sneak", "d3_mannequins", "d3_gunfight", "d3_crates", "d3_boss", "d3_end", "d3_bed", "d3_call",
 		"d4_start", "d4_morning", "d4_canteen", "d4_stare", "d4_brawl", "d4_escape", "d4_end", "d4_bed", "d4_call",
-		"d5_start", "d5_morning", "d5_locked"]
+		"d5_start", "d5_morning", "d5_stealth", "d5_monitors", "d5_gunfight", "d5_hack", "d5_choice", "d5_choice_tail", "d5_duel",
+		"d5_end", "d5_bed", "d5_call", "d6_start", "d6_morning", "d6_locked"]
 	_check(chain == want, "story chain is %s (got %s)" % [str(want), str(chain)])
-	var calls: Dictionary = {"d1_call": 6, "d2_call": 5, "d3_call": 4, "d4_call": 3}
+	var calls: Dictionary = {"d1_call": 6, "d2_call": 5, "d3_call": 4, "d4_call": 3, "d5_call": 2}
 	for cid: String in calls.keys():
 		_check(int(StoryMissions.beat(cid)["days"]) == int(calls[cid]), "%s says %d days" % [cid, int(calls[cid])])
-	for n2: int in [2, 3]:
-		var w: Dictionary = StoryMissions.beat("d%d_wait" % n2)
-		_check(String(w["kind"]) == "bed" and String(w["objective"]) == "Ngày %d: %s – sắp có trong bản cập nhật sau. Về BE6 ngủ để sang ngày tiếp." % [n2, StoryMissions.DAY_TITLES[n2]]
-			and not w.has("evidence") and not w.has("choice"), "Day %d placeholder: sleepable, B-D6 objective, no evidence or choice" % n2)
+	_check(StoryMissions.beat("d2_wait").is_empty() and StoryMissions.beat("d3_wait").is_empty(), "Phase C: the Day 2 / Day 3 placeholders are gone")
+	for pair: Array in [["d2_wait", "d2_chase"], ["d3_wait", "d3_sneak"], ["d2_locked", "d2_chase"], ["d3_locked", "d3_sneak"], ["d5_locked", "d5_stealth"]]:
+		_check(StoryMissions.migrate(String(pair[0])) == String(pair[1]), "an old save at %s resumes at %s" % [String(pair[0]), String(pair[1])])
 	_check(String(StoryMissions.beat("d1_stakeout")["intro"]) == "cine_d1_intro" and String(StoryMissions.beat("d4_canteen")["intro"]) == "cine_d4_intro", "mission intros")
 	_check(String(StoryMissions.beat("d1_brawl")["after"]) == "seg_d1_brawl" and String(StoryMissions.beat("d4_brawl")["after"]) == "seg_d4_brawl" and String(StoryMissions.beat("d1_corridor")["after"]) == "cine_d1_corridor", "after cinematics")
 	_check(String(StoryMissions.beat("d1_chase")["replay"]) == "seg_d1_chase" and String(StoryMissions.beat("d4_escape")["replay"]) == "seg_d4_escape", "short replays")
@@ -235,6 +246,65 @@ func _phase_b() -> void:
 	sd.set("step", "d4_escape")
 	_check(bool(sd.call("launch_horror_beat", "d4_escape")) and String(sd.get("last_nav")) == "horror:" + StoryMissions.HORROR_SCENE, "launch_horror_beat navigates to the night escape scene")
 	_check(String(sd.call("choice_of", "phuc")) == "", "no choice recorded yet")
+	sd.call("reset_state")
+
+
+func _phase_c() -> void:
+	sd.call("reset_state")
+	sd.set("active", true)
+	# beat data
+	_check(String(StoryMissions.beat("d2_chase")["mission"]) == "bike_chase" and String(StoryMissions.beat("d2_chase")["intro"]) == "cine_d2_intro"
+		and String(StoryMissions.beat("d2_chase")["replay"]) == "seg_d2_chase", "Day 2: the bike chase, its intro and replay")
+	_check(String(StoryMissions.beat("d2_duel")["fight"]) == "d2" and String(StoryMissions.beat("d2_duel")["after"]) == "seg_d2_boss", "Day 2: the Sói Xám duel, seg_d2_boss")
+	_check(String(StoryMissions.beat("d3_boss")["after"]) == "seg_d3_boss" and String(StoryMissions.beat("d5_duel")["after"]) == "seg_d5_boss", "Day 3 / 5 boss cinematics")
+	for r: Array in [["d3_gunfight", "seg_d3_gunfight"], ["d3_crates", "seg_d3_crates"], ["d5_gunfight", "seg_d5_gunfight"], ["d5_hack", "seg_d5_hack"]]:
+		_check(String(StoryMissions.beat(String(r[0])).get("replay", "")) == String(r[1]), "%s replays %s" % [String(r[0]), String(r[1])])
+	_check(String(StoryMissions.beat("d5_duel").get("evidence", "")) == "E6", "E6 is guaranteed with the duel")
+	for n3: int in [2, 3, 5]:
+		var tx: Array = StoryMissions.day_start_text(n3)
+		_check(String(tx[1]) != "", "Day %d has a morning text" % n3)
+	for id3: String in StoryMissions.BEATS.keys():
+		for t3: Variant in (StoryMissions.beat(id3).get("texts", []) as Array):
+			if String(t3[0]) == "Anh Duy":
+				_check(String(t3[1]).contains("(Dịch: "), "Anh Duy's text in %s carries a Dịch: line" % id3)
+	# next_by_choice: choice 2
+	var tail: Dictionary = StoryMissions.beat("d5_choice_tail")
+	_check(String(sd.call("next_of", tail)) == "d5_duel", "no answer yet: the tail goes on to the duel")
+	(sd.get("choices") as Dictionary)["zaman_offer"] = "refuse"
+	_check(String(sd.call("next_of", tail)) == "d5_duel", "refuse -> d5_duel")
+	(sd.get("choices") as Dictionary)["zaman_offer"] = "accept"
+	_check(String(sd.call("next_of", tail)) == "d5_end_c", "accept -> d5_end_c (ending C)")
+	sd.set("step", "d5_choice_tail")
+	sd.call("complete_step", "d5_choice_tail")
+	_check(String(sd.get("step")) == "d5_end_c", "complete_step follows next_by_choice")
+	# ending C: the save is marked finished, the story stops, Continue refuses it
+	sd.call("complete_step", "d5_end_c")
+	_check(String(sd.get("ending")) == "C" and not bool(sd.get("active")) and String(sd.get("last_nav")) == "menu", "ending C: finished, story off, main menu")
+	var sv: Dictionary = sd.call("read_save", TMP)
+	_check(String(sv.get("ending", "")) == "C" and String(sv.get("step", "")) == "d5_end_c", "the save is marked finished with ending C")
+	_check(String(sd.call("evaluate_ending", sv)) == "C", "the saved state evaluates to ending C")
+	sd.call("reset_state")
+	_check(not bool(sd.call("continue_story")) and not bool(sd.get("active")), "Continue refuses a finished save")
+	# lair beats
+	sd.call("reset_state")
+	sd.set("active", true)
+	sd.set("step", "d5_hack")
+	var xf := Transform3D(Basis.IDENTITY, Vector3(3900.0, 0.0, -420.0))
+	_check(not bool(sd.call("launch_lair_beat", "d5_gunfight", xf)), "launch_lair_beat only for the current beat")
+	_check(bool(sd.call("launch_lair_beat", "d5_hack", xf)) and String(sd.get("last_nav")) == "lair:" + String(StoryMissions.LAIR_SCENES["basement"]),
+		"launch_lair_beat navigates to the basement scene")
+	_check(sd.get("spawn") is Transform3D and String((sd.call("read_save", TMP) as Dictionary).get("step", "")) == "d5_hack", "the save resumes beside the marker at d5_hack")
+	sd.set("step", "d3_crates")
+	_check(not bool(sd.call("launch_lair_beat", "d3_crates", xf)), "the yard is not a lair scene (FreeRoam)")
+	sd.call("leave_lair")
+	_check(String(sd.get("last_nav")) == "roam", "leave_lair goes back to story free roam")
+	# optional sides
+	sd.call("reset_state")
+	sd.set("active", true)
+	_check(bool(sd.call("side_available", StoryMissions.LEDGER_SIDE)) and bool(sd.call("grant_side", StoryMissions.LEDGER_SIDE)) and sd.call("has_evidence", "E3"), "E3: the ledger page under the bridge")
+	_check(not bool(sd.call("side_available", StoryMissions.MANIFEST_SIDE)), "E4 needs every crate destroyed")
+	(sd.get("flags") as Dictionary)["d3_all_crates"] = true
+	_check(bool(sd.call("grant_side", StoryMissions.MANIFEST_SIDE)) and sd.call("has_evidence", "E4"), "E4: the manifest")
 	sd.call("reset_state")
 
 
