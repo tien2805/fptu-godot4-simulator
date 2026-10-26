@@ -1,6 +1,6 @@
 # Story Phase C "Ngày 2, 3 và 5": Design
 
-Date: 2026-10-26. Status: written by Claude from the approved story spec after the owner said "làm thêm 1 phase nữa đi". Decisions were taken without a separate review round, as in A2 and B.
+Date: 2026-10-26. Status: written by Claude from the approved story spec after the owner said "làm thêm 1 phase nữa đi". Decisions were taken without a separate review round, as in A2 and B. Implemented on branch `phase-c` (plans `2026-10-26-phase-c-bike.md`, `-guns.md`, `-swords.md`, `-cine.md` and `-integration.md`): Days 2, 3 and 5 play from the Day 2 morning to the Day 6 placeholder, or to ending C and the main menu. Integration choices: the Day 2 chase runs Nguyễn Xiển southbound and ends at the Rạch Hầm bridge; the container yard is a FreeRoam level on the waterfront by the canal east of the bridge; the server basement is its own scene.
 
 Parents:
 - the story spec `docs/superpowers/specs/2026-10-22-story-tool-den-design.md` (sections 3.3, 4 Days 2/3/5, 6, 7, 8.3, 8.4, 9.4-9.6);
