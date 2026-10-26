@@ -91,6 +91,21 @@ func _part_a() -> void:
 	_check(pe.x > course.length, "project_near unwraps over the finish (%.1f > %.1f)" % [pe.x, course.length])
 	_check(DriftDuel.band_for(35.0, false) < 0.6 and DriftDuel.band_for(20.0, false) == 1.0 and DriftDuel.band_for(-3.0, false) > 1.05 and DriftDuel.band_for(10.0, true) < 0.5,
 		"the rubber band: he waits past 30 m, fights back when passed, waits during a reset's grace")
+	var texts: Array[String] = [DriftDuel.T_START, DriftDuel.T_END, DriftDuel.T_GO, DriftDuel.T_TAIL, DriftDuel.T_OVERTAKE, DriftDuel.T_FAR,
+		DriftDuel.T_LOSE_GAP, DriftDuel.T_LOSE_POINTS, DriftDuel.T_WIN_POINTS, DriftDuel.T_OFF, DriftDuel.T_WRONG, DriftDuel.T_GATE,
+		DriftDuel.T_ZONE, DriftDuel.T_CONE, DriftDuel.T_POINTS, DriftDuel.T_GAP, DriftDuel.T_AHEAD, DriftDuel.T_RIDING,
+		DriftDuel.T_NO_DISMOUNT, DriftRival.NAME, DriftRival.T_CLOSE, DriftRival.T_FAR, NitroGauge.T_TITLE, NitroGauge.T_READY,
+		NitroGauge.T_HINT, String(StoryMissions.beat("d2_drift")["objective"]), String(StoryMissions.beat("d2_drift")["title"])]
+	texts.append_array(DriftRival.TAUNTS)
+	for z: Array in course.zones:
+		texts.append(String(z[2]))
+	var odd: Array = []
+	for tx: String in texts:
+		for i: int in tx.length():
+			if tx.unicode_at(i) >= 0x2000:
+				odd.append(tx)
+				break
+	_check(odd.is_empty(), "every duel / gauge text is plain Vietnamese, no emoji or decorative symbols %s" % str(odd))
 	arena = Node3D.new()
 	arena.name = "Arena"
 	root.add_child(arena)

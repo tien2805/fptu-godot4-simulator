@@ -245,7 +245,7 @@ func place_at(s0: float, lat0: float) -> void:
 	yaw = course.yaw_at(s)
 	lean = 0.0
 	var p: Vector2 = course.world(s, d)
-	var y: Variant = _floor_ray(Vector3(p.x, 0.0, p.y), 40.0, 20.0)
+	var y: Variant = _floor_ray(Vector3(p.x, 0.0, p.y), 6.0, 6.0)
 	floor_y = float(y) if y is float else 0.05
 	_place()
 	if engine and engine.stream and engine.is_inside_tree() and not engine.playing:

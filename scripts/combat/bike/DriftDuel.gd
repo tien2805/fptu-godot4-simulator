@@ -538,7 +538,7 @@ func _tick_ending(delta: float) -> void:
 ## The bike on the line at progress s, lateral d, facing along it, stopped (mounting the player when on foot).
 func _place_player(s: float, d: float) -> void:
 	var p: Vector2 = course.world(s, d)
-	var y: Variant = floor_at(Vector3(p.x, 0.0, p.y), 40.0, 20.0)
+	var y: Variant = floor_at(Vector3(p.x, 0.0, p.y), 6.0, 6.0)
 	var fy: float = float(y) if y is float else 0.05
 	var yaw: float = course.yaw_at(s)
 	var origin := Vector3(p.x, fy - BIKE_FLOOR_OFFSET, p.y)
@@ -859,7 +859,7 @@ func _build_props() -> void:
 	_cone_state.resize(n)
 	for i: int in n:
 		var c: Vector2 = course.cones[i]
-		var y: Variant = floor_at(Vector3(c.x, 0.0, c.y), 40.0, 20.0)
+		var y: Variant = floor_at(Vector3(c.x, 0.0, c.y), 6.0, 6.0)
 		_cone_xf.append(Transform3D(Basis(), Vector3(c.x, (float(y) if y is float else 0.05), c.y)))
 		_cone_vel.append(Vector3.ZERO)
 		_cone_state[i] = -1.0
@@ -888,7 +888,7 @@ func _build_props() -> void:
 		var len: float = a.distance_to(e)
 		var dir: Vector2 = (e - a) / maxf(len, 0.01)
 		var yaw: float = atan2(-dir.y, dir.x)
-		var my: Variant = floor_at(Vector3(mid.x, 0.0, mid.y), 40.0, 20.0)
+		var my: Variant = floor_at(Vector3(mid.x, 0.0, mid.y), 6.0, 6.0)
 		var fy: float = float(my) if my is float else 0.05
 		var sb := StaticBody3D.new()
 		sb.name = "Barrier"
@@ -926,7 +926,7 @@ func _build_props() -> void:
 		var gs: float = course.gates[gi]
 		for side: float in [-5.2, 5.2]:
 			var pp: Vector2 = course.world(gs, side)
-			var py: Variant = floor_at(Vector3(pp.x, 0.0, pp.y), 40.0, 20.0)
+			var py: Variant = floor_at(Vector3(pp.x, 0.0, pp.y), 6.0, 6.0)
 			poles.append(Transform3D(Basis(), Vector3(pp.x, (float(py) if py is float else 0.05) + 1.1, pp.y)))
 	var pole := CylinderMesh.new()
 	pole.top_radius = 0.06
@@ -969,7 +969,7 @@ func _chevron(at: Vector2, travel_yaw: float) -> void:
 	var root := Node3D.new()
 	root.name = "Chevron"
 	_props.add_child(root)
-	var y: Variant = floor_at(Vector3(at.x, 0.0, at.y), 40.0, 20.0)
+	var y: Variant = floor_at(Vector3(at.x, 0.0, at.y), 6.0, 6.0)
 	root.global_transform = Transform3D(Basis(Vector3.UP, travel_yaw), Vector3(at.x, (float(y) if y is float else 0.05), at.y))
 	var black := _emissive(Color("#15151A"), 0.0)
 	var yellow := _emissive(Color("#FFD21F"), 1.6)
