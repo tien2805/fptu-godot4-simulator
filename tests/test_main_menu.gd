@@ -1,6 +1,6 @@
 # File: res://tests/test_main_menu.gd
 # Test headless MENU CHÍNH: scene nạp được, đủ nút (story Phase A2, A2-D6: TIẾP TỤC chỉ hiện khi có bản lưu, CỐT TRUYỆN
-# MỚI hỏi ghi đè khi có bản lưu, không còn Bắt đầu ngày mới / Chọn màn / nhật ký), mở/đóng Hướng dẫn (có khối "Nguồn dữ liệu bản đồ" OSM +
+# MỚI hỏi ghi đè khi có bản lưu, CHỌN CẢNH chỉ hiện khi đã mở cảnh, không còn Bắt đầu ngày mới / Chọn màn / nhật ký), mở/đóng Hướng dẫn (có khối "Nguồn dữ liệu bản đồ" OSM +
 # Microsoft, cả bảng nằm gọn trong viewport), đổi mức đồ hoạ (lưu user://settings.cfg), bảng cài đặt có hàng
 # "Phong cách đồ hoạ" (Vice City / Cổ điển, đổi qua UI áp lại nền menu; chú thích nút mức đồ hoạ ở menu chính và menu
 # tạm dừng đổi theo phong cách, vice không quảng cáo SDFGI / SSAO) + "Vệt sáng (trails)", thẻ tạm dừng mở
@@ -17,6 +17,8 @@ var sm: Node
 var fx: Node
 var sd: Node
 const TMP_SAVE: String = "user://test_main_menu_story.cfg"
+const TMP_UNLOCKS: String = "user://test_main_menu_unlocks.cfg"
+const TMP_CHAPTERS: String = "user://test_main_menu_chapters.cfg"
 
 func _initialize() -> void:
 	for pair: Array in [["StageManager", "res://scripts/StageManager.gd"], ["GameFX", "res://scripts/GameFX.gd"]]:
@@ -30,6 +32,10 @@ func _initialize() -> void:
 	sd = root.get_node("StoryDirector")
 	sd.set("save_path", TMP_SAVE)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP_SAVE))
+	StoryChapters.unlocks_path = TMP_UNLOCKS   # chapter select records on temp files too
+	StoryChapters.chapters_path = TMP_CHAPTERS
+	for p: String in [TMP_UNLOCKS, TMP_CHAPTERS]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 	var packed: PackedScene = load("res://scenes/MainMenu.tscn")
 	menu = packed.instantiate()
 	root.add_child(menu)
@@ -47,7 +53,7 @@ func _process(_d: float) -> bool:
 	frames += 1
 	match frames:
 		10:
-			for key: String in ["btn_continue", "btn_story", "btn_roam", "btn_guide", "btn_settings", "btn_quit"]:
+			for key: String in ["btn_continue", "btn_story", "btn_chapters", "btn_roam", "btn_guide", "btn_settings", "btn_quit"]:
 				if menu.get(key) == null:
 					_fail("thiếu nút " + key)
 					return true
@@ -55,6 +61,9 @@ func _process(_d: float) -> bool:
 				if menu.get(gone) != null:
 					_fail("A2-D6: %s phải bị bỏ" % gone)
 					return true
+			if (menu.get("btn_chapters") as Button).visible:
+				_fail("chưa mở cảnh nào mà vẫn hiện CHỌN CẢNH")
+				return true
 			if (menu.get("btn_continue") as Button).visible:
 				_fail("không có bản lưu mà vẫn hiện TIẾP TỤC")
 				return true
@@ -207,6 +216,9 @@ func _process(_d: float) -> bool:
 			if not bc.visible or bc.text != "TIẾP TỤC – NGÀY 0":
 				_fail("có bản lưu mà TIẾP TỤC không hiện đúng: %s" % bc.text)
 				return true
+			if not (menu.get("btn_chapters") as Button).visible:
+				_fail("đã mở cảnh d0_wake mà CHỌN CẢNH không hiện")
+				return true
 			(menu.get("btn_story") as Button).emit_signal("pressed")
 			var cp: Control = menu.get("confirm_panel")
 			if not cp.visible or (menu.get("confirm_label") as Label).text != "Ghi đè bản lưu Ngày 0?":
@@ -240,6 +252,10 @@ func _process(_d: float) -> bool:
 				_fail("Esc mở menu tạm dừng ở màn tạo nhân vật")
 				return true
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP_SAVE))
+			for p: String in [TMP_UNLOCKS, TMP_CHAPTERS]:
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+			StoryChapters.unlocks_path = StoryChapters.UNLOCKS_PATH
+			StoryChapters.chapters_path = StoryChapters.CHAPTERS_PATH
 			print("✅ SUCCESS: MAIN MENU → GUIDE/SETTINGS WORK, CONTINUE ONLY WITH A SAVE, NEW STORY OPENS THE CREATOR")
 			quit(0)
 			return true
