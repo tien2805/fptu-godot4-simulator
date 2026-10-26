@@ -51,6 +51,42 @@ Lúc đang trốn, nhạc tắt hẳn, chỉ còn tiếng tim đập và tiếng
 | [x] | Linh bày kế ở căn tin | `cine_d4_intro_` | *Stayin' Alive*, Bee Gees |
 | [x] | Cả căn tin nhìn bạn, Dolly lộ diện | `cine_d4_stare_` | *The Lonely Shepherd*, Gheorghe Zamfir |
 
+## Phase C: Ngày 2, 3 và 5 (mới, 2026-10-26)
+
+Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột thứ ba rồi báo Claude.
+
+**Đoạn phim**
+
+| | Chỗ dùng | Tên file bắt đầu bằng | Bài |
+|---|---|---|---|
+| [ ] | Anh Duy dò đường Bầy Sói trên ba laptop (Ngày 2) | `cine_d2_intro_` | *Who Let the Dogs Out*, Baha Men |
+| [ ] | Chạy xe đêm tới kênh, Anh Duy nói qua bộ đàm (Ngày 3) | `cine_d3_intro_` | *A Real Hero*, College & Electric Youth |
+| [ ] | Cửa container mở, hàng trăm ma-nơ-canh quay đầu (Ngày 3) | `cine_d3_mannequins_` | *Toccata and Fugue in D minor*, J. S. Bach |
+| [ ] | Anh Duy giải mã USB, tìm ra server dưới hầm The Beverly (Ngày 5) | `cine_d5_intro_` | *Technologic*, Daft Punk |
+| [ ] | Mặt Za Mẫn cười trên 50 màn hình (Ngày 5) | `cine_d5_monitors_` | *Mr. Roboto*, Styx |
+| [ ] | Phòng server cháy, "Ổn mà", lựa chọn 2 (Ngày 5; hai đoạn đuôi Nhận lời / Từ chối dùng chung bài này) | `cine_d5_choice_` | *Don't Worry, Be Happy*, Bobby McFerrin |
+
+**Nhiệm vụ và trùm**
+
+| | Chỗ dùng | Tên file bắt đầu bằng | Bài |
+|---|---|---|---|
+| [ ] | Rượt xe đá Bầy Sói trên Nguyễn Xiển (Ngày 2) | `mission_bike_chase_` | *Gas Gas Gas*, Manuel |
+| [ ] | Đấu tay đôi với Sói Xám dưới cầu (Ngày 2) | `boss_d2_` | *Hungry Like the Wolf*, Duran Duran |
+| [ ] | Lẻn vào bến container (Ngày 3) | `mission_sneak_` | *Sneaky Snitch*, Kevin MacLeod |
+| [ ] | Đấu súng ở bến container (Ngày 3) | `mission_gunfight_` | *Bang Bang (My Baby Shot Me Down)*, Nancy Sinatra |
+| [ ] | Bảo vệ khiêng thùng kính kiểu "coffin dance" (Ngày 3) | `meme_coffin_dance_` | *Astronomia*, Vicetone & Tony Igy |
+| [ ] | Trùm xe nâng Alexander (Ngày 3) | `boss_d3_` | *Copacabana*, Barry Manilow |
+| [ ] | Đi lén dưới hầm server (Ngày 5) | `mission_basement_` | *Oxygène (Part IV)*, Jean-Michel Jarre |
+| [ ] | Đấu súng dưới hầm (Ngày 5) | `mission_gunfight_d5_` | *Blue (Da Ba Dee)*, Eiffel 65 |
+| [ ] | Gõ phím xoá "Lọ Thần 9.0" (Ngày 5) | `mission_typing_` | *Around the World*, Daft Punk |
+| [ ] | Đấu kiếm với Za Mẫn (Ngày 5) | `boss_d5_` | *Battle Without Honor or Humanity*, Tomoyasu Hotei |
+
+**Đã có trên máy, không cần tải:** `seg_d2_chase`, `seg_d2_boss` (*Heartbreaker*), `seg_d3_gunfight`, `seg_d3_crates`,
+`seg_d3_boss` (*Straighten Up and Fly Right*), `seg_d5_gunfight`, `seg_d5_hack`, `seg_d5_boss` (*The Good Life*), `cine_d2`,
+`cine_d3`, `cine_d5`, `end_c` (*Money, Money, Money*). Độ dài và các nhịp đánh của từng cảnh nằm trong
+`docs/cinematics/<tên cảnh>.txt`: 3 cảnh đánh lớn 25 s đặt các cú chậm theo một lưới nhịp chung, Claude sẽ dời cho khớp
+nhịp bài khi bạn báo.
+
 ## Các màn cũ (vào từ cột sáng khi đi tự do)
 
 | | Chỗ dùng | Tên file bắt đầu bằng | Bài |

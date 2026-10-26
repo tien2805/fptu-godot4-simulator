@@ -370,8 +370,9 @@ func _update_props(ss: float) -> void:
 		if pn == null:
 			continue
 		if po.has("anim"):
-			# Phase B: an animated prop (the shiba) poses itself from story time (seekable)
-			var an: Node = pn.get_meta("shiba", pn)
+			# Phase B: an animated prop (the shiba) poses itself from story time (seekable); Phase C: the node in meta
+			# "anim_node" (mannequins, monitor wall, STONKS chart, fire, container doors)
+			var an: Node = pn.get_meta("anim_node", pn.get_meta("shiba", pn))
 			if an.has_method("cine_eval"):
 				an.call("cine_eval", ss, po)
 		if po.has("flicker") or po.has("dark"):

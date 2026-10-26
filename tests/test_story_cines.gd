@@ -6,6 +6,13 @@
 # camera punch and the lamp flicker, each plays to its exact end in a CinePlayer (empty world, manual steps, no music) with
 # its new props built, the lamp flicker is seekable, StoryIntroCards shows the email / TOANG stamp / Mr.T text / countdown
 # 7 / title at their times, and StoryVideo only picks user://video/ai_intro_m|f.ogv when the file exists (temp dir).
+# Phase C (spec C-D9 to C-D13): the 15 new slots (intros, discovery beats with v2 jump scares and their reduced variants,
+# choice 2 and its tails with the honest default "Từ chối", end cinematics, ending C with its credits, the three fights)
+# validate at their exact lengths with beat sheets in sync, staged at explicit measured points; the new cast (gear on the
+# bodies, the wolf helmets hide the rider helmet, Za Mẫn's white sneakers, the mannequin crowd); the villain cards for Sói
+# Xám, Alexander (the endless name runs off and shrinks to fit) and Za Mẫn keep their widths in the lower-left band; the
+# animated props (mannequin heads, monitor wall, STONKS, container doors); the radio / flow / credits screen cards; no
+# emoji anywhere; no actor hidden behind another in any Phase C dialogue shot.
 # Run:  godot --headless --path . --script tests/test_story_cines.gd
 extends SceneTree
 
@@ -13,7 +20,14 @@ const SLOTS: Dictionary = {"cine_d0_wake": 8.0, "cine_d0_exam": 18.0, "cine_d0_m
 	"cine_d0_brief": 12.0, "cine_day_start": 9.0,   # A2-D17: mission intro + day start
 	# Phase B (B-D8 / B-D10): Day 1 and Day 4 intros, discovery beats, the choice scene and its tails, end cinematics, the brawl
 	"cine_d1_intro": 14.0, "cine_d1_corridor": 7.5, "cine_d1_choice": 12.0, "cine_d1_choice_cover": 4.0,
-	"cine_d1_choice_report": 4.5, "cine_d1": 18.0, "cine_d4_intro": 14.0, "cine_d4_stare": 10.0, "seg_d4_brawl": 25.0, "cine_d4": 18.0}
+	"cine_d1_choice_report": 4.5, "cine_d1": 18.0, "cine_d4_intro": 14.0, "cine_d4_stare": 10.0, "seg_d4_brawl": 25.0, "cine_d4": 18.0,
+	# Phase C (C-D9): Days 2, 3, 5 intros, discovery beats, choice 2 and its tails, end cinematics, ending C, the three fights
+	"cine_d2_intro": 14.0, "cine_d2": 18.0, "cine_d3_intro": 14.0, "cine_d3_mannequins": 10.0, "cine_d3": 18.0, "cine_d5_intro": 14.0,
+	"cine_d5_monitors": 10.0, "cine_d5_choice": 14.0, "cine_d5_choice_accept": 4.0, "cine_d5_choice_refuse": 4.0, "cine_d5": 18.0,
+	"end_c": 26.0, "seg_d2_boss": 25.0, "seg_d3_boss": 25.0, "seg_d5_boss": 25.0}
+## Phase C dialogue slots (the fights have their own tests: tests/test_cine_d2_boss.gd etc.).
+const C_DIALOGUE: Array[String] = ["cine_d2_intro", "cine_d2", "cine_d3_intro", "cine_d3_mannequins", "cine_d3", "cine_d5_intro",
+	"cine_d5_monitors", "cine_d5_choice", "cine_d5_choice_accept", "cine_d5_choice_refuse", "cine_d5", "end_c"]
 ## Phase B slots whose shots are checked for an actor hidden behind another (the brawl has its own test).
 const B_DIALOGUE: Array[String] = ["cine_d1_intro", "cine_d1_corridor", "cine_d1_choice", "cine_d1_choice_cover", "cine_d1_choice_report",
 	"cine_d1", "cine_d4_intro", "cine_d4_stare", "cine_d4"]
@@ -60,13 +74,19 @@ func _process(_d: float) -> bool:
 	_screen_card()
 	_occlusion()
 	_fix_round()
+	_phase_c_slots()
+	_phase_c_scares()
+	_phase_c_choice()
+	_phase_c_cards()
+	_phase_c_props()
+	_phase_c_cast()
 	# the same shots with a male (taller, spiky-haired) protagonist
 	sd.call("new_story", {"female": false, "name": "Minh", "hair_style": "spiky", "variant": 0, "skin": 1, "hair_color": 0})
 	_occlusion()
 	sd.call("reset_state")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_story_cines.cfg"))
 	if fails.is_empty():
-		print("✅ SUCCESS: STORY CINEMATICS (16 Day-0 + Phase B slots valid + in sync, reduce scares, playback, cards, video, cast, shiba, choice, villain card, screen card, occlusion)")
+		print("✅ SUCCESS: STORY CINEMATICS (Day 0, Phase B and Phase C slots valid + in sync, reduce scares, playback, cards, video, cast, shiba, choice 1 and 2, villain cards, screen cards, occlusion, scares, props)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())
@@ -90,7 +110,8 @@ func _timelines() -> void:
 		_check(bool(ho.get("female", false)) and String(ho.get("hair_style", "")) == "bun" and int(ho.get("variant", -1)) == 1 and String(hero["name"]) == "Minh Thư",
 			"%s: the hero is the protagonist (%s)" % [s, str(ho)])
 		for sb: Dictionary in tl.subs:
-			_check(float(sb["dur"]) >= 0.06 * float(String(sb["text"]).length()) - 1e-6, "%s: '%s' reads at >= 0.06 s per character (%.2f s)" % [s, String(sb["text"]), float(sb["dur"])])
+			var chars: int = String(sb["text"]).length() + String(sb["tr"]).length()   # a Dịch line shows with it: read both
+			_check(float(sb["dur"]) >= 0.06 * chars - 1e-6, "%s: '%s' reads at >= 0.06 s per character, Dịch line included (%.2f s)" % [s, String(sb["text"]), float(sb["dur"])])
 			var line: String = String(sb["text"]).to_lower()
 			_check(not line.contains("{name}"), "%s: {name} formatted in '%s'" % [s, String(sb["text"])])
 			for w: String in BANNED:
@@ -196,7 +217,7 @@ func _play_all() -> void:
 		while done.is_empty() and n < int(tl.length * 60.0) + 30 + held:
 			if p.choice_node != null:
 				held += 1
-				p.choice_node.pick("report")   # the choice scene: a pick (the timeout default has its own check)
+				p.choice_node.pick(1)   # the choice scenes: the second option (the timeout defaults have their own checks)
 				p.step(1.0 / 60.0)
 				continue
 			p.step(1.0 / 60.0)
@@ -502,13 +523,15 @@ func _scare_hits() -> void:
 func _cast() -> void:
 	for id: String in StoryCast.IDS:
 		var o: Dictionary = StoryCast.opts(id)
-		_check(id == "shiba" or not o.is_empty(), "cast %s has opts" % id)
+		_check(id in StoryCast.NOT_PEOPLE or not o.is_empty(), "cast %s has opts" % id)
 		var b: Node3D = StoryCast.build(id)
 		_check(b != null, "cast %s builds" % id)
 		if b == null:
 			continue
 		if id == "shiba":
 			_check(b is StoryShiba, "shiba builds a StoryShiba")
+		elif id == "mannequins":
+			_check(b is CineCrowd and (b as CineCrowd).count() >= 40, "mannequins build a CineCrowd")
 		else:
 			_check(bool(b.get_meta("rigged", false)), "cast %s is a rigged body" % id)
 			_check(b.has_meta("sheep_mask") == StoryCast.masked(id), "cast %s: sheep mask %s" % [id, str(StoryCast.masked(id))])
@@ -706,7 +729,7 @@ const OCCLUDE_R: float = 0.2
 func _occlusion() -> void:
 	var world := Node3D.new()
 	root.add_child(world)
-	for s: String in B_DIALOGUE:
+	for s: String in B_DIALOGUE + C_DIALOGUE:
 		var tl: CineTimeline = CineTimeline.load_slot(s)
 		var p := CinePlayer.new()
 		world.add_child(p)
@@ -860,3 +883,371 @@ func _fix_round() -> void:
 	_check(String((sd.get("choices") as Dictionary)["phuc"]) == "untouched", "record: false leaves StoryDirector.choices alone")
 	world.queue_free()
 	paused = false
+
+
+
+# ---------------------------------------------------------------------------
+# Phase C (spec C-D9 to C-D13)
+# ---------------------------------------------------------------------------
+const C_STAGES: Dictionary = {"cine_d2_intro": "duy_room", "cine_d5_intro": "duy_room", "cine_d2": "bridge", "seg_d2_boss": "bridge",
+	"cine_d3_intro": "drive", "cine_d3_mannequins": "yard", "cine_d3": "yard", "seg_d3_boss": "yard", "cine_d5_monitors": "server",
+	"cine_d5_choice": "server", "cine_d5_choice_accept": "server", "cine_d5_choice_refuse": "server", "cine_d5": "server", "seg_d5_boss": "server"}
+
+
+## Every string in a card's data, arrays included (credits lines, flow nodes).
+func _card_strings(data: Dictionary) -> PackedStringArray:
+	var out := PackedStringArray()
+	for v: Variant in data.values():
+		if v is String:
+			out.append(String(v))
+		elif v is Array:
+			for x: Variant in v:
+				if x is String:
+					out.append(String(x))
+	return out
+
+
+func _phase_c_slots() -> void:
+	for s: String in SLOTS.keys():
+		if not (s in C_DIALOGUE or s.begins_with("seg_d2") or s.begins_with("seg_d3") or s.begins_with("seg_d5")):
+			continue
+		var tl: CineTimeline = CineTimeline.load_slot(s)
+		_check(tl.stage.get("at") is Vector2 and tl.stage.has("landmark") and String(tl.stage.get("tod", "")) == "night",
+			"%s: staged at night at an explicit map point with a landmark fallback" % s)
+		if C_STAGES.has(s):
+			var want: Dictionary = CineTimeline.PHASE_C_STAGES[C_STAGES[s]]
+			_check((tl.stage["at"] as Vector2).is_equal_approx(want["at"]) and (tl.stage["size"] as Vector2).x <= (want["size"] as Vector2).x + 0.01
+				and (tl.stage["size"] as Vector2).y <= (want["size"] as Vector2).y + 0.01, "%s: at the measured %s spot, inside its clear box" % [s, C_STAGES[s]])
+		for cd: Dictionary in tl.cards:
+			for t: String in _card_strings(cd["data"]):
+				_check(_plain(t) and not t.contains("…"), "%s: card text '%s' is plain ('...' not the ellipsis glyph)" % [s, t])
+		for sb: Dictionary in tl.subs:
+			_check(not String(sb["text"]).contains("…") and not String(sb["tr"]).contains("…"), "%s: '...' not the ellipsis glyph in '%s'" % [s, String(sb["text"])])
+			_check(_plain(String(sb["tr"])), "%s: the Dịch line is plain in '%s'" % [s, String(sb["tr"])])
+		_check(tl.music_slot == s, "%s: its own music slot (no synthesized default)" % s)
+		var heroes: Array = tl.subs.filter(func(sb: Dictionary) -> bool: return String(sb["text"]).contains("Minh Thư"))
+		for sb2: Dictionary in heroes:
+			_check(float(sb2["dur"]) >= 0.06 * (String(sb2["text"]).length() + 8) - 1e-6, "%s: '%s' still reads with a 16-letter name" % [s, String(sb2["text"])])
+	# Anh Duy: every line carries its Dịch translation (validator), and he speaks in all three intros
+	for s2: String in ["cine_d2_intro", "cine_d3_intro", "cine_d5_intro"]:
+		var t2: CineTimeline = CineTimeline.load_slot(s2)
+		var duy: Array = t2.subs.filter(func(sb: Dictionary) -> bool: return t2.speaker_name(String(sb["speaker"])) == "Anh Duy")
+		_check(duy.size() >= 2 and duy.all(func(sb: Dictionary) -> bool: return String(sb["tr"]).begins_with("Dịch: ")), "%s: Anh Duy's jargon lines carry Dịch: (%d)" % [s2, duy.size()])
+	_check(_said("cine_d2").contains("Hàng về bến container của ngài Alexander"), "cine_d2: Sói Xám gives up the container yard of ngài Alexander")
+	var d3: CineTimeline = CineTimeline.load_slot("cine_d3")
+	_check(_said("cine_d3").contains("Alexander ABCXYZ") and d3.props.any(func(pr: Dictionary) -> bool: return String(pr["kind"]) == "usb")
+		and d3.cues.any(func(c: Dictionary) -> bool: return c["type"] == "hold" and c["actor"] == "hero" and String(c["kind"]) == "usb"),
+		"cine_d3: the endless name is cut off, the USB drops and is picked up")
+	var usb: Node3D = CineFX.build_prop("usb")
+	_check((usb.find_child("UsbLabel", true, false) as Label3D).text == "ZA MẪN LABS", "the USB reads ZA MẪN LABS")
+	usb.free()
+	_check(_said("cine_d5_intro").contains("The Beverly"), "cine_d5_intro: the server under The Beverly tower")
+	var d5: CineTimeline = CineTimeline.load_slot("cine_d5")
+	_check(d5.cards.size() == 1 and String(d5.cards[0]["data"]["kind"]) == "flow" and (d5.cards[0]["data"]["nodes"] as Array).has("TRÀ SỮA LỌ")
+		and _said("cine_d5").contains("Trà Sữa Lọ"), "cine_d5: the money flow points to Trà Sữa Lọ")
+	var ec: CineTimeline = CineTimeline.load_slot("end_c")
+	_check(ec.cards.size() == 1 and String(ec.cards[0]["data"]["kind"]) == "credits" and _said("end_c").contains("CEO Lọ Thần 10.0")
+		and _said("end_c").contains("Minh Thư"), "end_c: the CEO of Lọ Thần 10.0 ({name}), then the credits")
+	_check(ec.props.any(func(pr: Dictionary) -> bool: return String(pr["kind"]) == "keynote" and bool(pr["opts"].get("set", false))), "end_c: the keynote set is set dressing")
+	var kn: Dictionary = ec.props.filter(func(pr: Dictionary) -> bool: return String(pr["kind"]) == "keynote")[0]
+	var kp: Node3D = CineFX.build_prop("keynote", kn["opts"])
+	var podium: Vector3 = (kn["pos"] as Vector3) + Basis(Vector3.UP, deg_to_rad(float(kn["yaw"]))) * (kp.find_child("Podium", true, false) as Node3D).position
+	kp.free()
+	_check(podium.x > 1.5, "end_c: the podium stands on the right, off the CEO's walk-on and Za Mẫn's entry from the left (x %.2f)" % podium.x)
+	var d2: CineTimeline = CineTimeline.load_slot("cine_d2")
+	_check(d2.cues.filter(func(c: Dictionary) -> bool: return c["type"] == "hold" and c["actor"] == "soi" and String(c["kind"]) == "wolf_helmet").all(
+		func(c: Dictionary) -> bool: return not bool((c["opts"] as Dictionary).get("led_on", true))), "cine_d2: Sói Xám's LED eyes stay dark (as at the end of seg_d2_boss)")
+	var rf: CineTimeline = CineTimeline.load_slot("cine_d5_choice_refuse")
+	var take: float = float(rf.props.filter(func(pr: Dictionary) -> bool: return pr["id"] == "katana_desk")[0]["opts"]["hide_at"])
+	var reaches: Array = rf.cues.filter(func(c: Dictionary) -> bool: return c["type"] == "strike" and c["actor"] == "za" and String(c["move"]) == "shove")
+	_check(reaches.size() == 2 and reaches.any(func(c: Dictionary) -> bool: return absf(float(c["at"]) - take) < 1e-6),
+		"cine_d5_choice_refuse: Za Mẫn reaches to put the cup down and to take the katana off the desk")
+	var ch: CineTimeline = CineTimeline.load_slot("cine_d5_choice")
+	_check(_said("cine_d5_choice").contains("Ổn mà, mọi thứ vẫn ổn.") and _said("cine_d5_choice").contains("equity 0,01%")
+		and ch.props.any(func(pr: Dictionary) -> bool: return String(pr["kind"]) == "stonks_screen"), "cine_d5_choice: the coffee among the fires, STONKS, the equity offer")
+
+
+## The two v2 jump scares of Phase C: one mark each, fired at its time in a CinePlayer, the reduced soft variant.
+func _phase_c_scares() -> void:
+	var was: bool = bool(fx.get("reduce_scares"))
+	var world := Node3D.new()
+	root.add_child(world)
+	for e: Array in [["cine_d3_mannequins", 1.6], ["cine_d5_monitors", 3.3]]:
+		for calm: bool in [false, true]:
+			fx.set("reduce_scares", calm)
+			var tl: CineTimeline = CineTimeline.load_slot(String(e[0]))
+			_check(tl.validate().is_empty() and tl.scare_hits.size() == 1 and absf(tl.story_time(tl.scare_hits[0]["at"]) - float(e[1])) < 1e-6,
+				"%s%s: one v2 scare mark at %.1f" % [String(e[0]), " (reduced)" if calm else "", float(e[1])])
+			var p := CinePlayer.new()
+			world.add_child(p)
+			p.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false})
+			p.start()
+			var rh: float = tl.clock.real_at(float(e[1]))
+			p.seek(rh - 0.6)
+			while p.r < rh + 0.6:
+				p.step(1.0 / 60.0)
+			_check(p.scare != null and p.scare.fired.size() == 1 and absf(float(p.scare.fired[0]) - rh) < 0.02 and p.scare.soft == calm,
+				"%s%s: the scare fires at %.2f (%s)" % [String(e[0]), " (reduced: soft)" if calm else "", rh, str(p.scare.fired if p.scare else [])])
+			p.queue_free()
+	fx.set("reduce_scares", false)
+	var m: CineTimeline = CineTimeline.load_slot("cine_d3_mannequins")
+	fx.set("reduce_scares", true)
+	var mc: CineTimeline = CineTimeline.load_slot("cine_d3_mannequins")
+	var mo: CineTimeline = CineTimeline.load_slot("cine_d5_monitors")
+	fx.set("reduce_scares", was)
+	var turn: float = float(m.props.filter(func(pr: Dictionary) -> bool: return pr["id"] == "crowd01")[0]["opts"]["turn_dur"])
+	var turn_c: float = float(mc.props.filter(func(pr: Dictionary) -> bool: return pr["id"] == "crowd01")[0]["opts"]["turn_dur"])
+	_check(turn < 0.2 and turn_c >= 0.9 and not _cues_of(mc).has("door_bang") and _cues_of(m).has("door_bang"),
+		"Giảm hù dọa: the mannequin heads turn slowly (%.2f -> %.2f s), no door bangs" % [turn, turn_c])
+	_check(not mo.shots.any(func(sh: Dictionary) -> bool: return ((sh["params"] as Dictionary).get("pos", Vector3.ZERO) as Vector3).z < -3.5),
+		"Giảm hù dọa: no close snap on a monitor face in cine_d5_monitors")
+	world.queue_free()
+
+
+## Choice 2: the options, the honest default on timeout (recorded), both tails.
+func _phase_c_choice() -> void:
+	var tl: CineTimeline = CineTimeline.load_slot("cine_d5_choice")
+	var labels: Array = (tl.choice_def["options"] as Array).map(func(o: Dictionary) -> String: return String(o["label"]))
+	var keys: Array = (tl.choice_def["options"] as Array).map(func(o: Dictionary) -> String: return String(o["key"]))
+	_check(String(tl.choice_def["id"]) == "zaman_offer" and labels == ["Nhận lời", "Từ chối"] and keys == ["accept", "refuse"]
+		and String(tl.choice_def["honest"]) == "refuse" and absf(float(tl.choice_def["r"]) - 13.6) < 1e-6,
+		"choice 2: Nhận lời / Từ chối at 13.6 s, honest default = refuse")
+	var ct: String = String(tl.choice_def["prompt"]) + String(tl.choice_def["timeout_line"]) + String(tl.choice_def.get("title", ""))
+	_check(_plain(ct) and not ct.contains("…"), "choice 2 texts are plain")
+	var choices: Dictionary = sd.get("choices")
+	_check(choices.has("zaman_offer"), "StoryDirector.choices has the zaman_offer key (ending C reads it)")
+	var old: Variant = choices.get("zaman_offer", "")
+	if choices.has("zaman_offer"):
+		choices["zaman_offer"] = ""   # a fresh answer (the key itself is StoryDirector's own)
+	var world := Node3D.new()
+	root.add_child(world)
+	var p := CinePlayer.new()
+	world.add_child(p)
+	p.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false})
+	var made: Array = []
+	var done: Array = []
+	p.choice_made.connect(func(id: String, k: String, t: bool) -> void: made.append([id, k, t]))
+	p.finished.connect(func(sk: bool) -> void: done.append(sk))
+	p.start()
+	var n: int = 0
+	while done.is_empty() and n < 3000:
+		p.step(1.0 / 60.0)
+		n += 1
+	_check(made == [["zaman_offer", "refuse", true]] and done == [false] and String(choices.get("zaman_offer", "")) == "refuse",
+		"no answer: choice_made(zaman_offer, refuse, timed out), recorded in StoryDirector.choices (%s)" % str(made))
+	world.queue_free()
+	paused = false
+	if choices.has("zaman_offer"):
+		choices["zaman_offer"] = old
+	var acc: CineTimeline = CineTimeline.load_slot("cine_d5_choice_accept")
+	var ref: CineTimeline = CineTimeline.load_slot("cine_d5_choice_refuse")
+	_check(acc.length >= 3.0 and acc.length <= 5.0 and ref.length >= 3.0 and ref.length <= 5.0, "choice 2 branch tails are 3-5 s")
+	_check(_said("cine_d5_choice_accept").contains("Chào mừng sếp mới") and _said("cine_d5_choice_refuse").contains("Không.")
+		and ref.cues.any(func(c: Dictionary) -> bool: return c["type"] == "hold" and c["actor"] == "za" and String(c["kind"]) == "katana"),
+		"tails: the handshake / the refusal and the drawn katana")
+	_check(String(CineAudio.SLOT_FALLBACK.get("cine_d5_choice_accept", "")) == "cine_d5_choice" and String(CineAudio.SLOT_FALLBACK.get("cine_d5_choice_refuse", "")) == "cine_d5_choice",
+		"the tails fall back to the cine_d5_choice music")
+
+
+## The Phase C villain cards: widths, the lower-left band, reading time, Alexander's running name, show_for.
+func _phase_c_cards() -> void:
+	for id: String in ["soi_xam", "alexander", "za_man"]:
+		var d: Dictionary = StoryCast.villain_data(id)
+		var chars: int = String(d["name"]).length() + String(d["nick"]).length() + String(d["joke"]).length()
+		var ln: float = StoryCast.card_len(id)
+		_check(ln >= 0.06 * chars - 1e-6 and ln <= CineClock.CARD_FREEZE.y + 1e-6, "%s card reads in %.1f s (%d characters, fits a 4 s card freeze)" % [id, ln, chars])
+		var all: String = String(d["name"]) + String(d["nick"]) + String(d["joke"]) + String(d.get("name_run", ""))
+		_check(_plain(all) and not all.contains("…"), "%s card text is plain" % id)
+		var vc := StoryVillainCard.new()
+		vc.data = d
+		vc.r0 = 0.0
+		vc.dur = ln
+		root.add_child(vc)
+		vc.update(ln * 0.8)
+		var vs: Vector2 = vc._vp()
+		var nw: float = vc.name_label.get_combined_minimum_size().x * vc.name_label.scale.x
+		print("  card %s: name %.0f px (scale %.2f), nick %.0f, joke %.0f" % [id, nw, vc.name_label.scale.x, vc.nick_label.get_combined_minimum_size().x,
+			vc.joke_label.get_combined_minimum_size().x])
+		_check(nw > 150.0 and vc.nick_label.get_combined_minimum_size().x > 150.0 and vc.joke_label.get_combined_minimum_size().x >= 600.0,
+			"%s card keeps its widths (no one-letter lines)" % id)
+		_check(vc.box.position.x + nw <= 0.56 * vs.x + 1.0 and vc.box.position.y >= 0.59 * vs.y, "%s card: the name fits the lower-left band" % id)
+		if id == "alexander":
+			var nb: int = String(d["name"]).length()
+			vc.update(0.05 * ln)
+			var c0: int = vc.name_label.text.length()
+			vc.update(0.4 * ln)
+			var c1: int = vc.name_label.text.length()
+			var w1: float = vc.name_label.get_combined_minimum_size().x * vc.name_label.scale.x
+			vc.update(0.9 * ln)
+			var c2: int = vc.name_label.text.length()
+			print("  alexander's name: %d -> %d -> %d characters, %.0f px running, scale %.2f at the end" % [c0, c1, c2, w1, vc.name_label.scale.x])
+			_check(c0 == nb and c1 > nb + 10 and c2 == vc.name_full.length(), "Alexander's endless name types on after the name")
+			var fs: int = vc.name_label.get_theme_font_size("font_size")
+			_check(vc.box.position.x + w1 > 0.56 * vs.x and fs < 57, "it runs off the band, then shrinks to fit (font %d px)" % fs)
+			_check(vc.name_label.get_combined_minimum_size().y < 60.0, "the shrunk name leaves no gap above the nick (%.0f px tall)" % vc.name_label.get_combined_minimum_size().y)
+		vc.queue_free()
+	for id2: String in ["soi_xam", "za_man"]:
+		paused = false
+		var fin: Array = []
+		var g := StoryVillainCard.show_for(root, StoryCast.villain_data(id2), StoryCast.card_len(id2))
+		g.manual = true
+		g.finished.connect(func() -> void: fin.append(true))
+		_check(paused, "show_for(%s) freezes the game" % id2)
+		g.step(StoryCast.card_len(id2) + 0.1)
+		_check(fin == [true] and not paused, "show_for(%s) ends, unpauses" % id2)
+	var st: CineTimeline = CineTimeline.load_slot("cine_d3_mannequins")
+	_check(st.cards.size() == 1 and String(st.cards[0]["data"]["name"]) == "Alexander ABCXYZ" and st.cards[0]["data"].has("name_run")
+		and st.clock.beat_rows().any(func(row: Dictionary) -> bool: return String(row["preset"]) == "card"), "cine_d3_mannequins: Alexander's card over a freeze frame")
+	# the screen cards: radio, flow, credits
+	for e: Array in [["cine_d3_intro", "radio"], ["cine_d5", "flow"], ["end_c", "credits"], ["cine_d2", "phone"]]:
+		var tl: CineTimeline = CineTimeline.load_slot(String(e[0]))
+		var cd: Dictionary = tl.cards[0]
+		var sc := StoryScreenCard.new()
+		sc.data = cd["data"]
+		sc.r0 = float(cd["r"])
+		sc.dur = float(cd["dur"])
+		root.add_child(sc)
+		sc.update(sc.r0 + sc.dur * 0.5)
+		_check(String(cd["data"]["kind"]) == String(e[1]) and sc.frame.visible and sc.screen.get_combined_minimum_size().x >= 300.0, "%s: the %s card shows" % [String(e[0]), String(e[1])])
+		if String(e[1]) in ["credits", "radio"]:
+			var area: Control = sc.find_child("Area", true, false) as Control
+			var vh: float = sc.get_viewport().get_visible_rect().size.y
+			_check(area != null and area.anchor_top >= 0.128 and sc.frame.get_combined_minimum_size().y <= (area.anchor_bottom - area.anchor_top) * vh,
+				"the %s card sits between the letterbox bars" % String(e[1]))
+		if String(e[1]) == "credits":
+			var y0: float = sc.roll.position.y
+			sc.update(sc.r0 + sc.dur * 0.8)
+			_check(sc.roll.position.y < y0 and sc.title_label.get_combined_minimum_size().x > 300.0, "the credits roll up")
+		if String(e[1]) == "flow":
+			_check(sc.flow_labels.size() == 5 and sc.flow_labels.all(func(l: Label) -> bool: return l.get_combined_minimum_size().x > 40.0), "the flow card labels keep their width")
+		sc.update(sc.r0 + sc.dur + 1.0)
+		_check(not sc.frame.visible, "%s: the %s card is gone after its window" % [String(e[0]), String(e[1])])
+		sc.queue_free()
+	paused = false
+
+
+## Animated props: mannequin heads, monitor wall, STONKS, container doors, the crowd size; the forklift and sets build.
+func _phase_c_props() -> void:
+	var world := Node3D.new()
+	root.add_child(world)
+	var tl: CineTimeline = CineTimeline.load_slot("cine_d3_mannequins")
+	var p := CinePlayer.new()
+	world.add_child(p)
+	p.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false})
+	var total: int = 0
+	for k: String in p.prop_nodes.keys():
+		if k.begins_with("crowd"):
+			total += ((p.prop_nodes[k] as Node3D).get_meta("anim_node") as CineCrowd).count()
+	_check(total >= 300, "cine_d3_mannequins: hundreds of mannequins (%d)" % total)
+	var crowd: CineCrowd = (p.prop_nodes["crowd01"] as Node3D).get_meta("anim_node")
+	var door: CineAnimProp = (p.prop_nodes["box01"] as Node3D).get_meta("anim_node")
+	p.seek(0.2)
+	var shut: String = door.state
+	p.seek(1.5)
+	var away: float = crowd.head_turn
+	var dst: String = door.state
+	p.seek(2.0)
+	var front: float = crowd.head_turn
+	_check(shut == "shut" and dst in ["opening", "open"] and rad_to_deg(away) > 60.0 and rad_to_deg(front) < 1.0,
+		"the middle door creaks open, the heads face away (%.0f deg), then all snap to the front (%.1f deg)" % [rad_to_deg(away), rad_to_deg(front)])
+	var other: CineAnimProp = (p.prop_nodes["box10"] as Node3D).get_meta("anim_node")
+	p.seek(1.5)
+	var o0: String = other.state
+	p.seek(2.4)
+	_check(o0 == "shut" and other.state == "open", "the other containers bang open at the scare")
+	p.queue_free()
+	var mt: CineTimeline = CineTimeline.load_slot("cine_d5_monitors")
+	var pm := CinePlayer.new()
+	world.add_child(pm)
+	pm.setup(mt, Transform3D.IDENTITY, {"manual": true, "music": false})
+	var wall: CineAnimProp = (pm.prop_nodes["wall"] as Node3D).get_meta("anim_node")
+	var states: Array = []
+	for r: float in [1.0, 2.5, 2.62, 7.0]:
+		pm.seek(r)
+		states.append(wall.state)
+	_check(states[0] == "off" and String(states[1]).begins_with("face") and states[1] != states[2] and states[3] == "error" and wall.error_label.visible
+		and wall.error_label.text == "Lọ Thần đã gặp sự cố" and wall.find_children("Screen*", "MeshInstance3D", true, false).size() == 50,
+		"50 monitors: off, Za Mẫn's face laughing (frames swap), then frozen on the error (%s)" % str(states))
+	pm.queue_free()
+	var ct: CineTimeline = CineTimeline.load_slot("cine_d5_choice")
+	var pc := CinePlayer.new()
+	world.add_child(pc)
+	pc.setup(ct, Transform3D.IDENTITY, {"manual": true, "music": false})
+	var stonks: CineAnimProp = (pc.prop_nodes["stonks"] as Node3D).get_meta("anim_node")
+	pc.seek(3.0)
+	var up: String = stonks.state
+	var y_end0: float = stonks.segs[stonks.segs.size() - 1].position.y
+	pc.seek(8.0)
+	_check(up == "up" and stonks.state == "dive" and stonks.ticker.visible and stonks.segs[stonks.segs.size() - 1].position.y < y_end0 - 0.3,
+		"the STONKS chart climbs, then dives with a red ticker")
+	var fire: CineAnimProp = (pc.prop_nodes["fire0"] as Node3D).get_meta("anim_node")
+	_check(fire.state == "burning" and fire.light.light_energy > 1.0, "the server room is burning")
+	pc.queue_free()
+	world.queue_free()
+	for k2: String in CinePropsC.KINDS:
+		_check(CineFX.PROP_KINDS.has(k2), "prop kind %s is known to the validator" % k2)
+		var n: Node3D = CineFX.build_prop(k2, {})
+		_check(n.get_child_count() > 0, "prop %s builds" % k2)
+		n.free()
+	var helm_on: Node3D = CineFX.build_prop("wolf_helmet", {})
+	var helm_off: Node3D = CineFX.build_prop("wolf_helmet", {"led_on": false})
+	_check(bool(helm_on.get_meta("led_on")) and not bool(helm_off.get_meta("led_on")), "wolf helmet LED eyes on / off")
+	helm_on.free()
+	helm_off.free()
+
+
+## The Phase C cast: gear on the gameplay bodies, wolf helmets hide the rider helmet, looks from the spec, gear placement.
+func _phase_c_cast() -> void:
+	var world := Node3D.new()
+	root.add_child(world)
+	for id: String in StoryCast.PHASE_C:
+		if id == "mannequins":
+			continue
+		var b: Node3D = StoryCast.build(id)
+		world.add_child(b)
+		var gear: Array = b.get_meta("gear", [])
+		_check(gear.size() == StoryCast.gear(id).size() + StoryCast.hand_props(id).size() and gear.size() > 0, "%s wears its gear (%d)" % [id, gear.size()])
+		if id in StoryCast.WOLF_HELMET:
+			var shown: Array = b.find_children("*", "MeshInstance3D", true, false).filter(func(mi: Node) -> bool: return mi.has_meta("helmet_part") and (mi as MeshInstance3D).visible)
+			_check(shown.is_empty(), "%s: the rider helmet is hidden under the wolf helmet" % id)
+		if id == "za_man":
+			var feet: String = ""
+			for mi2: Node in b.find_children("*", "MeshInstance3D", true, false):
+				if String(mi2.name).ends_with("_Feet"):
+					var fm: Material = (mi2 as MeshInstance3D).get_surface_override_material(0)
+					feet = (fm as StandardMaterial3D).albedo_color.to_html(false) if fm is StandardMaterial3D else ""
+			_check(feet == "f2f2f2", "Za Mẫn wears white sneakers (%s)" % feet)
+		b.queue_free()
+	var o: Dictionary = StoryCast.opts("za_man")
+	_check((o["shirt_color"] as Color).is_equal_approx(StoryCast.ZA_BLACK) and String(o["hair_style"]) == "bun", "Za Mẫn: black turtleneck, man bun")
+	_check(StoryCast.gear("za_man").map(func(g: Dictionary) -> String: return String(g["kind"])) == ["round_glasses", "turtleneck"], "Za Mẫn: round glasses, the turtleneck collar")
+	_check(StoryCast.gear("alexander").map(func(g: Dictionary) -> String: return String(g["kind"])) == ["gold_shades", "hawaii_print"]
+		and String(StoryCast.opts("alexander")["hair_style"]) == "side_part" and StoryCast.hand_props("alexander")[0]["kind"] == "cigar_vape",
+		"Alexander: gold sunglasses, Hawaiian flowers, slicked hair, the cigar vape")
+	_check(StoryCast.gear("anh_duy").map(func(g: Dictionary) -> String: return String(g["kind"])) == ["headphones", "belly", "key_lanyard"]
+		and float(StoryCast.opts("anh_duy")["body_width"]) >= 1.25 and StoryCast.hand_props("anh_duy")[0]["kind"] == "energy_drink",
+		"Anh Duy: headphones, a big belly, the key lanyard, an energy drink")
+	_check(StoryCast.gear("guard_fox")[0]["kind"] == "fox_mask" and StoryCast.gear("guard_wolf")[0]["kind"] == "wolf_mask"
+		and StoryCast.gear("guard_sheep")[0]["kind"] == "sheep_mask" and (StoryCast.opts("guard_fox")["shirt_color"] as Color).is_equal_approx(StoryCast.GUARD_BLACK),
+		"lair guards in black with fox, wolf and sheep masks")
+	_check(StoryCast.speaker("soi_xam") == "Sói Xám" and StoryCast.speaker("alexander") == "Alexander" and StoryCast.speaker("za_man") == "Za Mẫn"
+		and StoryCast.speaker("anh_duy") == "Anh Duy", "Phase C speaker names")
+	# eye-level gear lines up with the PS2 head's own glasses frame (front pieces), within 2.5 cm
+	var a := CineActor.new()
+	world.add_child(a)
+	a.setup({"preset": "student_m", "seed": 6161, "body": "casual", "glasses": true, "body_width": 0.95, "height": 1.02})
+	a.move(0.0, "idle")
+	a.evaluate(0.0)
+	var hb: Vector3 = a.to_local(a.bone_world("Head"))
+	var acc := Vector3.ZERO
+	var n: int = 0
+	for mi3: Node in a.find_children("*", "MeshInstance3D", true, false):
+		var mm: MeshInstance3D = mi3
+		if mm.mesh is BoxMesh and (mm.mesh as BoxMesh).size.z <= 0.0045 and mm.material_override is StandardMaterial3D \
+				and (mm.material_override as StandardMaterial3D).albedo_color.is_equal_approx(Color("#16161A")):
+			acc += a.to_local(mm.global_position) - hb
+			n += 1
+	var frame: Vector3 = acc / maxf(n, 1)
+	print("  PS2 glasses frame %s from the Head bone (gear eyes %.3f, %.3f)" % [str(frame), StoryCast.EYE_UP, StoryCast.EYE_FRONT])
+	_check(n >= 8 and Vector2(frame.y, frame.z).distance_to(Vector2(StoryCast.EYE_UP, StoryCast.EYE_FRONT)) < 0.025, "eye-level gear sits on the glasses line (%d pieces)" % n)
+	world.queue_free()

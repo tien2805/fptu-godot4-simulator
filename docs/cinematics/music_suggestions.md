@@ -97,6 +97,36 @@ Hai đuôi lựa chọn không có file riêng thì phát file của `cine_d1_ch
 
 Không có nhạc riêng (chỉ âm thanh hiệu ứng): cuộc gọi 3 giờ sáng (nhạc chuông, tiếng thì thầm), lao động công ích, thẻ giới thiệu, thẻ ngày. Loa kẹo kéo là vũ khí: file `sfx\loa_keo_keo` của bạn.
 
+**Phase C: Ngày 2, 3 và 5 (2026-10-26, spec C-D11)**
+
+| Slot | Phát khi | Bài |
+|---|---|---|
+| `cine_d2_intro` | Anh Duy dò đường Bầy Sói (14 s) | *Who Let the Dogs Out*, Baha Men |
+| `mission_bike_chase` | rượt xe đá Bầy Sói, Nguyễn Xiển | *Gas Gas Gas*, Manuel |
+| `boss_d2` | đấu tay đôi Sói Xám dưới cầu Rạch Hầm | *Hungry Like the Wolf*, Duran Duran |
+| `cine_d2` | Sói Xám bị trói vào cột (18 s) | đã có |
+| `seg_d2_boss` | cảnh đánh lớn 25 s dưới cầu | *Heartbreaker*, Pat Benatar (đã có) |
+| `cine_d3_intro` | chạy xe đêm tới kênh (14 s) | *A Real Hero*, College & Electric Youth |
+| `mission_sneak` | lẻn vào bến container | *Sneaky Snitch*, Kevin MacLeod |
+| `cine_d3_mannequins` | cửa container mở, ma-nơ-canh quay đầu, "Surprise!" (10 s) | *Toccata and Fugue in D minor*, J. S. Bach |
+| `mission_gunfight` | đấu súng ở bến container | *Bang Bang (My Baby Shot Me Down)*, Nancy Sinatra |
+| `meme_coffin_dance` | bảo vệ khiêng thùng kính | *Astronomia*, Vicetone & Tony Igy |
+| `boss_d3` | trùm xe nâng Alexander | *Copacabana*, Barry Manilow |
+| `cine_d3` | cái tên vô tận bị cắt ngang, USB rơi (18 s) | đã có |
+| `seg_d3_boss` | cảnh đánh lớn 25 s ở bến container | *Straighten Up and Fly Right* (đã có) |
+| `cine_d5_intro` | Anh Duy giải mã USB (14 s) | *Technologic*, Daft Punk |
+| `mission_basement` | đi lén dưới hầm server | *Oxygène (Part IV)*, Jean-Michel Jarre |
+| `cine_d5_monitors` | mặt Za Mẫn cười trên 50 màn hình (10 s) | *Mr. Roboto*, Styx |
+| `mission_gunfight_d5` | đấu súng dưới hầm | *Blue (Da Ba Dee)*, Eiffel 65 |
+| `mission_typing` | gõ phím xoá Lọ Thần 9.0 | *Around the World*, Daft Punk |
+| `cine_d5_choice` | phòng server cháy, lựa chọn 2 (14 s); đuôi `cine_d5_choice_accept` / `cine_d5_choice_refuse` dùng chung bài này | *Don't Worry, Be Happy*, Bobby McFerrin |
+| `boss_d5` | đấu kiếm Za Mẫn | *Battle Without Honor or Humanity*, Tomoyasu Hotei |
+| `seg_d5_boss` | cảnh đánh lớn 25 s trong phòng server | *The Good Life*, José James (đã có) |
+| `cine_d5` | dòng tiền chỉ về Trà Sữa Lọ (18 s) | đã có |
+| `end_c` | kết C "Kẻ phản diện mới" (26 s, có credits) | *Money, Money, Money*, ABBA (đã có) |
+
+Nhạc chuông của Sói Xám là âm thanh tự tạo (`ringtone_synth`), không phải nhạc nền.
+
 ## Đã chốt
 
 | Cảnh | Bài | Ghi chú |

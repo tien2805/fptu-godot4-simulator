@@ -4,7 +4,9 @@
 # `point_wrong` first with `wrong_line` beside it ("…à nhầm, con kia"), then swings to `point_right`. Plain text only.
 #
 # data: {"name": "Cừu Dolly", "nick": "trùm thi hộ", "joke": "...", "color": Color, "point_wrong": Vector2 (screen fraction),
-#        "point_right": Vector2, "wrong_line": "…à nhầm, con kia", "switch_u": 0.45 (card fraction where the pointer moves)}
+#        "point_right": Vector2, "wrong_line": "…à nhầm, con kia", "switch_u": 0.45 (card fraction where the pointer moves),
+#        "name_run": " DEFGH IJKLMN ..." (Phase C, Alexander: the rest of an endless name types on after the name and runs off
+#        the band, then the whole name shrinks to fit: name_chars_at / name_scale_at)}
 #
 # In a timeline: CineTimeline.villain(name, r, dur, data) adds a "card" clock ramp (story time stops for dur real seconds)
 # and this card on [r, r + dur); CinePlayer calls update(r) every frame (pure: state_at(u)). In gameplay:
@@ -21,6 +23,12 @@ const TEXT_W: float = 600.0
 ## the pointed-at villain stay visible; the bottom letterbox bar starts at about y 0.87.
 const BAND_Y0: float = 0.6
 const BAND_X1: float = 0.55
+## Phase C endless name: types on over [RUN_U0, RUN_U1), then shrinks to fit over [RUN_U1, SHRINK_U1).
+const RUN_U0: float = 0.14
+const RUN_U1: float = 0.5
+const SHRINK_U1: float = 0.62
+## Width the shrunk name fits in (px at the 1280-wide reference; inside the band).
+const FIT_W: float = 560.0
 
 var data: Dictionary = {}
 var r0: float = 0.0
@@ -36,6 +44,8 @@ var joke_label: Label
 var pointer: Node2D
 var wrong_label: Label
 var last_state: Dictionary = {}
+var name_full: String = ""          # name + name_run, upper case (Phase C)
+var name_fit: float = 1.0           # scale of the whole long name that fits FIT_W
 var _t: float = 0.0
 var _was_paused: bool = false
 var _last_us: int = 0
@@ -54,6 +64,18 @@ static func state_at(u: float, has_pointer: bool, switch_u: float = 0.45) -> Dic
 		st["pointer"] = m * m * (3.0 - 2.0 * m)
 		st["wrong_line"] = u >= switch_u - 0.2 and u < switch_u + 0.22
 	return st
+
+
+## Characters of the endless name shown at card fraction u (n_base: the name, n_run: the rest).
+static func name_chars_at(u: float, n_base: int, n_run: int) -> int:
+	var k: float = clampf((u - RUN_U0) / (RUN_U1 - RUN_U0), 0.0, 1.0)
+	return n_base + int(floor(float(n_run) * k))
+
+
+## Scale of the name label at card fraction u: 1 while it runs on, then down to fit (the whole name inside FIT_W).
+static func name_scale_at(u: float, fit: float) -> float:
+	var k: float = clampf((u - RUN_U1) / (SHRINK_U1 - RUN_U1), 0.0, 1.0)
+	return lerpf(1.0, minf(fit, 1.0), k * k * (3.0 - 2.0 * k))
 
 
 static func show_for(parent: Node, d: Dictionary, length: float = 2.6) -> StoryVillainCard:
@@ -102,6 +124,11 @@ func _build() -> void:
 	name_label = _lbl(String(data.get("name", "???")).to_upper(), 60, Color.WHITE, false)
 	name_label.name = "Name"
 	box.add_child(name_label)
+	if data.has("name_run"):
+		name_full = (String(data.get("name", "")) + String(data["name_run"])).to_upper()
+		name_label.text = name_full
+		name_fit = FIT_W / maxf(name_label.get_combined_minimum_size().x, 1.0)
+		name_label.text = String(data.get("name", "???")).to_upper()
 	nick_label = _lbl(String(data.get("nick", "")), 30, col().lightened(0.35), false)
 	nick_label.name = "Nick"
 	box.add_child(nick_label)
@@ -168,6 +195,16 @@ func update(r: float) -> void:
 	band.color = Color(col().darkened(0.45).r, col().darkened(0.45).g, col().darkened(0.45).b, 0.92 * a)
 	box.position = Vector2(off + vs.x * 0.035, vs.y * (BAND_Y0 + 0.015))
 	box.modulate.a = a
+	if name_full != "":
+		var nb: int = String(data.get("name", "")).length()
+		name_label.text = name_full.substr(0, name_chars_at(u, nb, name_full.length() - nb))
+		var k: float = name_scale_at(u, name_fit * vs.x / 1280.0)
+		var fs: int = maxi(8, int(round(60.0 * k)))   # shrink by font size: the layout shrinks too (no gap above the nick)
+		if fs != name_label.get_theme_font_size("font_size"):
+			name_label.add_theme_font_size_override("font_size", fs)
+		st["name_scale"] = k
+		st["name_size"] = fs
+		st["name_chars"] = name_label.text.length()
 	var pv: float = float(st["pointer"])
 	pointer.visible = pv >= 0.0
 	if pv >= 0.0:
