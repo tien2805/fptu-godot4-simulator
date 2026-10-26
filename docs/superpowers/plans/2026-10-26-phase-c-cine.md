@@ -104,4 +104,51 @@ events and their reduced variant, choice 2 timeout default, villain card widths 
 
 ## API for the integration agent (as built)
 
-Filled in at the end of the work (see the final section added with the last commit).
+Details live in the header comments of `StoryCast.gd`, `CinePropsC.gd`, `CineCrowd.gd`, `CineAnimProp.gd`, `CineFightC.gd`,
+`StoryVillainCard.gd`, `StoryScreenCard.gd` and each timeline. As built, the plan changed in three places: the animated
+props live in `CineAnimProp` (not "CineScreens"), the three fights share the base `CineFightC` (seg_d4_brawl's tuned
+blocking with a per-fight beat table, cast, weapons and set), and both Phase C villain cards outside cine_d3_mannequins are
+`show_for` cards (a timeline card needs a 3-4 s tail after it, which a 3-5 s choice tail cannot give).
+
+- **Cast.** `StoryCast.opts(id, extra)`, `build(id, extra)` (gear attached; `mannequins` returns a `CineCrowd` laid out
+  `extra.cols` x `extra.rows`), `gear(id)`, `hand_props(id)`, `dress(tl, actor, id, s0, s1, opts_over)`, `villain_data(id)`,
+  `card_len(id)`. New ids: `soi_xam`, `bay_soi` (extra `seed` per biker), `alexander`, `za_man`, `anh_duy`, `guard_sheep`,
+  `guard_wolf`, `guard_fox`, `mannequins`.
+- **Villain cards.**
+  - Alexander: inside `cine_d3_mannequins` (3.6-6.9 s real, freeze, the running name).
+  - Sói Xám, before the duel: `StoryVillainCard.show_for(parent, StoryCast.villain_data("soi_xam"), StoryCast.card_len("soi_xam"))`.
+  - Za Mẫn, after `cine_d5_choice_refuse`: the same call with `"za_man"`.
+- **Choice 2.** `cine_d5_choice` asks at 13.6 s: id `za_man`, `accept` "Nhận lời" / `refuse` "Từ chối", honest `refuse`.
+  `CinePlayer.choice_made("za_man", key, timed_out)` fires before `finished`. StoryChoice records the answer only when
+  `StoryDirector.choices` already has the key `za_man`: the integration adds it to the defaults.
+  Then play `cine_d5_choice_accept` followed by `end_c`, or `cine_d5_choice_refuse` followed by the card and the duel.
+- **Slots** (real length, stage):
+
+  | Slot | Length (s) | Stage |
+  |---|---|---|
+  | `cine_d2_intro` | 14 | duy_room |
+  | `cine_d2` | 18 | bridge |
+  | `seg_d2_boss` | 25 | bridge |
+  | `cine_d3_intro` | 14 | drive |
+  | `cine_d3_mannequins` | 10 | yard (scare 1.9, card 3.6-6.9) |
+  | `cine_d3` | 18 | yard |
+  | `seg_d3_boss` | 25 | yard |
+  | `cine_d5_intro` | 14 | duy_room |
+  | `cine_d5_monitors` | 10 | server (scare 3.3) |
+  | `cine_d5_choice` | 14 | server (choice at 13.6) |
+  | `cine_d5_choice_accept` | 4 | server |
+  | `cine_d5_choice_refuse` | 4 | server |
+  | `cine_d5` | 18 | server |
+  | `seg_d5_boss` | 25 | server |
+  | `end_c` | 26 | campus (`canteen_stage`), credits 18-26 |
+
+  Every slot plays its own music slot; the two tails fall back to `cine_d5_choice`.
+- **Staging.** `CineTimeline.PHASE_C_STAGES` / `phase_c_stage(place)` give explicit map points measured with
+  `FreeRoam.cine_stage` (ring 0); the boss tests check every Phase C slot. The lair scenes carry their own set dressing
+  (props with `"set": true`): pass `play_cinematic(tl, {"xf": ..., "drop_set": true})` inside the real yard, bridge or
+  basement scenes. The choreography props stay: pillars, bike, mannequins, forklift, surface racks, crash props, pickups.
+- **Props.** CineFX kinds from `CinePropsC.KINDS`. Animated props take opts `"anim": true` and are posed through meta
+  `anim_node` (CinePlayer).
+- **SFX.** New synthesized cues (`CineAudio.SFX_CUES`): `party_horn`, `wolf_howl`, `ringtone_synth` (Sói Xám's ringtone,
+  also for the gameplay bridge beat), `door_bang`, `keyboard_clack`, `glass_crack`, `sword_clang`, `blade_snap`,
+  `fire_crackle`, `evil_laugh`, `applause`, `chain_rattle`.
