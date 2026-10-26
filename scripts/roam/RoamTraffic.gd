@@ -138,6 +138,7 @@ var _rot: int = 0
 var stop_zones: Array = []               # Phase W: [Vector2 centre, float radius, float seconds left] (stink clouds)
 var fleer_fn: Callable                   # Phase W: (at: Vector3, away_from: Vector3) -> Pedestrian (spawn_fleer)
 var police_target_fn: Callable           # Phase W: -> Vector3 where police bikes ride to (WantedDirector.target_pos)
+var extra_obstacles_fn: Callable         # Phase C: -> Array of look-ahead obstacles (BikeChase bikers, kind "biker")
 
 
 func setup(map_data: MapData, player_node: Node3D, opts: Dictionary = {}) -> void:
@@ -384,6 +385,8 @@ func _obstacles() -> Array:
 		if c.active:
 			out.append([c.pos, c.half_len, c.half_w, "car", c, c.dir])
 	_append_people(out)
+	if extra_obstacles_fn.is_valid():
+		out.append_array(extra_obstacles_fn.call())
 	return out
 
 

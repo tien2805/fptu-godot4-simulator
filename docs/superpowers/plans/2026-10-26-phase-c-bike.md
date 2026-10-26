@@ -43,13 +43,17 @@ hits a dead end; cut at 2.1 km. The integration can pass its own points or `rout
   0.55 s, then CRASH, or RECOVER while hp is left); CRASH (the rider flies and tumbles in a comic arc, lands with a bounce
   and slides; the bike slides on its side with sparks); DOWN (stars, no gore); LEAVE (after `lost`: rides off); HOLD
   (ai off: tests). Motion: a kinematic follower of a target point (player velocity feed-forward, catch-up and accel
-  limits), floor height from a 10 Hz ray (the bridge), traffic avoidance (pass on the free side or brake behind) and a
-  crash when it touches a car anyway (a kicked biker wobbling into a car is a bonus knockdown).
+  limits, a quicker lunge while swerving in), floor height from a 10 Hz ray (the bridge), traffic avoidance (the nearest
+  car across its path: pass on the side with road room that is not through the player, keeping that side once chosen,
+  or brake behind; oncoming cars are always squeezed past). Touching a car slowly is a scrape (pushed out); hitting it
+  faster than 6 m/s, or wobbling into it after a kick, is a crash (a bonus knockdown).
 - `BikeChase` (Node3D): the encounter API (below). Owns the PlayerBikeCombat and the BikeHUD; every physics frame it
-  projects the player on the route (or uses the player's heading frame off the route / without one), assigns roles
-  (FRONT box-in blocker, LEFT / RIGHT flankers, BACK reserves; a flank slot with no room on that side becomes BACK),
-  hands out attack tokens (max 2, 0.8 s apart), ticks the bikers, runs the waves, the checkpoint / retry and the replay.
-  Gives RoamTraffic the bikers as obstacles so cars brake for them.
+  projects the player on the route (or uses the player's heading frame off the route / without one), assigns sticky
+  roles (FRONT box-in blocker, LEFT / RIGHT flankers 2.35 m out, BACK reserves just off the player's line; a flank side
+  with no road room, or with a car in or running into its slot, stays empty), hands out attack tokens (max 2, 0.8 s
+  apart), ticks the bikers, resolves contacts with the player's bike (a ram from behind, a side push), runs the waves
+  (spawns 16 m behind, out of view, or 60 m ahead), the checkpoint / retry and the replay. Gives RoamTraffic the bikers
+  as obstacles so cars brake for them.
 - `BikeHUD` (CanvasLayer, CombatHUD styles): top centre "Độ vững xe" bar + number, "Bầy Sói còn: N", "Đợt i/n"; kick
   hints "[Q] Đạp trái · [E] Đạp phải" dimmed during the cooldown; a red edge arrow + "BÊN TRÁI" / "BÊN PHẢI" while a
   biker on that side winds up; centre popups (start line, "ĐẠP BAY!", "BỊ VÂY!", knocked off, win line).
@@ -59,10 +63,11 @@ hits a dead end; cut at 2.1 km. The integration can pass its own points or `rout
     var chase := BikeChase.new(); roam.add_child(chase)
     chase.setup({"roam": roam,            # or "bike" (+ "player", "traffic") without FreeRoam
         "route": null,                    # default BikeRoute.nguyen_xien(roam.md); BikeRoute / points / [] (free mode)
-        "start_s": 30.0, "place": true,   # put the rider at that route distance, facing along the route
+        "start_s": 60.0, "place": true,   # put the rider at that route distance, facing along the route
         "max_attackers": 2, "auto_checkpoint": true,
         "start_line": "", "win_line": "", # Day 2: BikeCombatData.T_START_D2 / T_WIN_D2
-        "replay_slot": "seg_d2_chase", "auto_replay": true, "manual_replay": false, "seed": 1})
+        "replay_slot": "seg_d2_chase", "auto_replay": true, "manual_replay": false, "seed": 1,
+        "waves": []})                     # optional, same as add_wave per entry
     chase.add_wave([{"from": "behind" | "ahead", "lane": -1 | 0 | 1, "gap": 0.0, "delay": 0.0,
         "opts": {"label": "Sói Đen", "hp": 1, "eye_color": Color, "body": {...}, "body_fn": Callable, "aggression": 0.5}}])
     # BikeChase.day2_waves() returns the default Day 2 layout (3 + 3 bikers)
@@ -98,10 +103,11 @@ The slot must be listed in `MusicDirector.REPLAY_SLOTS` by the integration (not 
   route maths and the real Nguyễn Xiển route; kick hit (wobble -> crash -> tumble -> down, rider away from the slid
   bike, `biker_down`), misses (wrong side, too far, ahead, after the window), cooldown refusal, hp 2; the AI kick
   (telegraph >= 0.45 s before the hit, -20) and a dodge; traffic crash -25 with invulnerability; stability 0 -> knocked
-  off -> `lost`, bikers leave; `retry()`; two waves, auto checkpoint, replay trigger and `won`; traffic avoidance and
-  the traffic hook; AI pacing and box-in with 3 bikers; input refusals when not riding; `stop()` / free restore.
-  B (FreeRoam, night, no crowd): start places and mounts the rider on Nguyễn Xiển, the hint and [F] refusal, bikers
-  follow on the road and over the bridge deck, `stop()` restores [F].
+  off -> `lost`, bikers leave; `retry()`; two waves, auto checkpoint, replay trigger and `won`; traffic avoidance, a
+  scrape, a kicked biker wobbling into a car, the traffic hook; AI pacing and box-in with 3 bikers; input refusals
+  when not riding; `stop()` / free restore.
+  B (FreeRoam at night, crowd and traffic, no weapons): start places and mounts the rider on Nguyễn Xiển, the hint and
+  [F] refusal, bikers follow on the road and over the bridge deck, `stop()` restores [F].
 - `tests/test_bike_perf.gd`: FreeRoam with the full crowd and traffic, the player riding Nguyễn Xiển on autopilot, 6
   AI bikers (god mode, tough), kicks every 0.6 s; chase-only and chase + crowd + traffic costs < 3 ms per physics frame,
   median and 5 %-trimmed mean (method of `test_combat_perf`).
