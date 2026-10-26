@@ -613,15 +613,29 @@ func hit_stop(duration: float = 0.07, scale: float = 0.05) -> void:
 	slow_motion(scale, duration)
 
 ## Làm chậm thời gian trong `real_seconds` giây thực, rồi tự khôi phục.
+## A RadialWheel.scale_owner (an open weapon wheel, a combat or chase slow motion) owns Engine.time_scale: while one
+## exists, slow_motion writes nothing, and a running one's timeout does not put 1.0 back over the owner's scale.
 func slow_motion(scale: float = 0.3, real_seconds: float = 1.2) -> void:
+	if time_scale_owned():
+		return
 	_slowmo_token += 1
 	var my_token: int = _slowmo_token
 	Engine.time_scale = clampf(scale, 0.02, 1.0)
 	var timer := get_tree().create_timer(real_seconds, true, false, true)
 	timer.timeout.connect(func() -> void:
-		if my_token == _slowmo_token:
+		if my_token == _slowmo_token and not time_scale_owned():
 			Engine.time_scale = 1.0
 	)
+
+
+var _wheel_script: Script = null
+
+
+## RadialWheel.scale_owner is set (the script is loaded by path: GameFX keeps no compile-time dependency on it).
+func time_scale_owned() -> bool:
+	if _wheel_script == null:
+		_wheel_script = load("res://scripts/weapons/RadialWheel.gd")
+	return _wheel_script != null and _wheel_script.get("scale_owner") != null
 
 # ---------------------------------------------------------------------------
 # TEXT POPUPS

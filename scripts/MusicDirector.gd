@@ -28,7 +28,9 @@ const SLOTS: Array[String] = ["menu", "roam_day", "roam_night",
 	"mission_bike_chase", "boss_d2", "mission_sneak", "mission_gunfight", "meme_coffin_dance", "boss_d3", "mission_basement",
 	"mission_gunfight_d5", "mission_typing", "boss_d5",
 	# Day 2 "Tokyo Drift" (spec 2026-10-27 D2X-3): the chase's wave 3 after the Sói Xám cameo (else the chase track goes on)
-	"mission_bike_chase_b"]
+	"mission_bike_chase_b",
+	# Day 2 Tokyo Drift (plan 2026-10-27-d2x-drift.md): the drift duel with Sói Xám
+	"race_d2_drift"]
 ## Night Building tracks (NightMusic).
 const NIGHT_SLOTS: Array[String] = ["night_stealth", "night_tense", "night_chase", "night_escape"]
 ## Short replays (CineReplay through StoryStage.play_replay; they have no timeline file).
