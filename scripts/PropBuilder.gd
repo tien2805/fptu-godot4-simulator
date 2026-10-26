@@ -99,12 +99,13 @@ static func lens(color: Color, energy: float = 1.6) -> StandardMaterial3D:
 	return m
 
 ## Đèn xe giao thông (OB-D6): 4 vật liệu dùng chung cho mọi xe chạy (ô tô / xe buýt: "head", "tail"; xe máy:
-## "moto_head", "moto_tail"). Năng lượng ban ngày = đúng số của lens() cũ nên ban ngày trông như trước (cả Màn 1).
+## "moto_head", "moto_tail"). Năng lượng ban ngày = năng lượng lens() cũ thực tế (cache theo màu do xe máy menu tạo trước:
+## 1,8 / 1,2) nên ban ngày trông như trước (cả Màn 1).
 ## Giữ trong biến tĩnh riêng (không phải CharacterBuilder._mat_cache, bị ViceStyle thay mới khi đổi phong cách) để
 ## set_traffic_lamps() luôn tới được mọi xe đã bake trước đó. Năng lượng ngày > 0,5 nên ViceStyle không coi là soft emitter.
 const TRAFFIC_LAMPS: Dictionary = {
-	"head": [Color("#FFF4C8"), 1.4, 4.0],        # [màu, năng lượng ngày, năng lượng đêm]
-	"tail": [Color("#E53935"), 1.0, 3.0],
+	"head": [Color("#FFF4C8"), 1.8, 4.5],        # [màu, năng lượng ngày, năng lượng đêm]
+	"tail": [Color("#E53935"), 1.2, 3.0],
 	"moto_head": [Color("#FFF4C8"), 1.8, 4.5],
 	"moto_tail": [Color("#E53935"), 1.2, 3.0],
 }
@@ -125,14 +126,22 @@ static func traffic_lamp(kind: String) -> StandardMaterial3D:
 	return m
 
 ## Bật (đêm) / tắt (ngày, mờ như cũ) đèn của mọi xe giao thông: chỉ đổi 4 vật liệu dùng chung, không đụng từng xe.
-## Luôn ghi lại giá trị (không return sớm) để một lần ViceStyle trả vật liệu về giá trị cũ không làm lệch trạng thái.
+## Luôn ghi lại giá trị (không return sớm). Giá trị gốc ViceStyle đã lưu (meta "vice_orig", _unstylize ghi lại khi về
+## đồ hoạ cổ điển) cũng được cập nhật theo trạng thái hiện tại: không thì năng lượng đêm lưu lúc chuyển kiểu sẽ quay lại
+## ban ngày (vd. đêm FreeRoam vice -> menu đổi cổ điển -> đèn xe buýt Màn 1 sáng rực).
 static func set_traffic_lamps(on: bool) -> void:
 	_traffic_lamps_lit = on
 	for kind: String in TRAFFIC_LAMPS.keys():
 		var spec: Array = TRAFFIC_LAMPS[kind]
 		var m: StandardMaterial3D = traffic_lamp(kind)
+		var e: float = float(spec[2] if on else spec[1])
 		m.emission_enabled = true
-		m.emission_energy_multiplier = float(spec[2] if on else spec[1])
+		m.emission_energy_multiplier = e
+		if m.has_meta("vice_orig"):
+			var o: Dictionary = m.get_meta("vice_orig")
+			o["emission_energy_multiplier"] = e
+			o["emission_enabled"] = true
+			m.set_meta("vice_orig", o)
 
 static func traffic_lamps_on() -> bool:
 	return _traffic_lamps_lit

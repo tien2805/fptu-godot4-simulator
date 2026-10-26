@@ -76,6 +76,7 @@ const SIREN_MS: int = 166                   # red / blue swap
 # get a soft additive light pool on the road ahead, drawn only within LAMP_POOL_RANGE of the camera (visibility range).
 const DARK_PRESETS: Array[String] = ["night", "sunset", "dawn"]
 const LAMP_POOL_RANGE: float = 40.0
+const LAMP_POOL_FADE: float = 5.0
 const LAMP_POOL_COLOR := Color(1.0, 0.93, 0.76, 0.32)
 const LAMP_POOL: Dictionary = {Kind.CAR: [Vector2(3.0, 6.5), -5.3], Kind.BUS: [Vector2(3.4, 7.0), -7.3]}   # [size, centre z]
 static var _pool_mat: StandardMaterial3D = null
@@ -885,6 +886,8 @@ func _add_lamp_pool(b: Node3D, kind: int) -> MeshInstance3D:
 	mi.material_override = _lamp_pool_material()
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.visibility_range_end = LAMP_POOL_RANGE
+	mi.visibility_range_end_margin = LAMP_POOL_FADE
+	mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF   # fade out, no pop from the fast bike
 	mi.position = Vector3(0.0, 0.06, float(spec[1]))
 	mi.visible = lamps_on
 	b.add_child(mi)
