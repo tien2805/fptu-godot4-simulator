@@ -57,6 +57,7 @@ Chọn **CỐT TRUYỆN** trong menu chính (đã có bản lưu thì game hỏi
   - **Game không có nhạc dựng sẵn.** Mọi chỗ có nhạc (menu, thế giới mở ngày / đêm, các màn, nhiệm vụ, tòa nhà đêm, cinematic, replay) phát `music\<slot>.ogg` hoặc `.mp3` (`user://music/<slot>`); thiếu file thì chỗ đó im lặng. Danh sách đủ các slot và bài gợi ý: `docs/cinematics/music_suggestions.md`;
   - `music\<slot>.ogg` hoặc `.mp3` cho nhạc cinematic: `cine_d0_wake`, `cine_d0_brief`, `cine_d0_exam`, `cine_d0_midnight`, `ai_intro`, `cine_day_start`, `seg_d0_race`, `seg_d0_exam`, `cine_d1_intro`, `cine_d1_corridor`, `cine_d1_choice`, `cine_d1_choice_cover` / `cine_d1_choice_report` (không có file riêng thì dùng file của `cine_d1_choice`), `cine_d1`, `seg_d1_chase`, `seg_d1_brawl`, `cine_d4_intro`, `cine_d4_stare`, `seg_d4_brawl`, `seg_d4_escape`, `cine_d4`;
   - `sfx\<tên>.ogg`, `.mp3` hoặc `.wav` thay âm meme / kinh dị: `boom`, `sad_trombone`, `record_scratch`, `ba_dum_tss`, `bonk`, `dun_dun_duun`, `success_fanfare`, `toang_sting`, `heartbeat`, `breath`, `whisper_bed`, `violin_screech`, `music_box`, `metal_creak`, `sheep_bleat_distorted`, `phone_ring_3am`, `static_burst`;
+  - `sfx\bike_exhaust.ogg` (hoặc `.mp3`, `.wav`): tiếng pô xe của bạn, một đoạn lặp liền mạch, cao độ lên theo tốc độ và ga; `sfx\bike_horn.ogg` (hoặc `.mp3`, `.wav`): còi nhạc, bấm `H` phát từ đầu, bấm lại để tắt. Thiếu file thì dùng tiếng máy và còi cũ;
   - `video\ai_intro_m.ogv` (nhân vật nam) hoặc `video\ai_intro_f.ogv` (nữ): clip mở đầu tự làm, phát thay đoạn dựng trong game (đổi MP4 sang Ogg Theora: `ffmpeg -i in.mp4 -c:v libtheora -q:v 7 -c:a libvorbis -q:a 5 out.ogv`).
 
 Mọi nhân vật đều hư cấu (Mr.T, Phúc, Anh Duy, Linh, Chú Bảy, Cừu Dolly…); không dùng tên, mặt hay giọng người thật, không dùng bài hát có bản quyền. Thời điểm các cú hù / câu thoại của từng cinematic nằm trong `docs/cinematics/<slot>.txt`.
@@ -69,7 +70,7 @@ Chọn **KHÁM PHÁ CAMPUS** trong menu chính. Bạn xuất phát ngay trước
 | :---: | :---: |
 | ![](docs/preview/roam_01_spawn_be6.png) | ![](docs/preview/roam_08_map.png) |
 
-**Điều khiển:** `WASD` chạy bộ · `Shift` chạy nước rút (có thể lực) · `Ctrl` đi bộ · `Space` nhảy (trên xe vẫn là drift) · `Z`/`C` xoay camera · chuột nhìn (bấm chuột để bắt, `ESC` thả) · giữ chuột giữa: vòng vũ khí · chuột phải ngắm, chuột trái bắn, `R` nạp đạn · giữ `B`: vòng biểu cảm · `F` lên/xuống xe máy (khi lái: `W/S` ga/phanh, `A/D` lái, `SPACE` drift, `H` còi) · `E` vào điểm nóng để chơi màn · `T` đổi giờ (bình minh, sáng, trưa, đêm) · `M` bản đồ · `ESC` tạm dừng.
+**Điều khiển:** `WASD` chạy bộ · `Shift` chạy nước rút (có thể lực) · `Ctrl` đi bộ · `Space` nhảy (trên xe vẫn là drift) · `Z`/`C` xoay camera · chuột nhìn (bấm chuột để bắt, `ESC` thả) · giữ chuột giữa: vòng vũ khí · chuột phải ngắm, chuột trái bắn, `R` nạp đạn · giữ `B`: vòng biểu cảm · `F` lên/xuống xe máy (khi lái: `W/S` ga/phanh, `A/D` lái, `SPACE` drift, `H` còi nhạc, `L` đèn xa) · `E` vào điểm nóng để chơi màn · `T` đổi giờ (bình minh, sáng, trưa, đêm) · `M` bản đồ · `ESC` tạm dừng.
 
 **6 điểm nóng** (cột sáng màu, đứng vào vòng sáng rồi bấm `E`):
 
@@ -82,6 +83,8 @@ Chọn **KHÁM PHÁ CAMPUS** trong menu chính. Bạn xuất phát ngay trước
 | Căn tin tầng trệt | Màn 5 · Căn tin |
 | Sân trong, trước phòng 311 | Extra · Giám thị EOS |
 
+**Xe của bạn.** Xe người chơi là chiếc xe số bạc đen dựng bằng code theo ảnh xe của chủ game (biển số giả `FPTU 28.05`, không logo). Ở thế giới mở và cốt truyện xe chạy tới 120 km/h (130 km/h khi núp gió); Màn 1, Màn 2 và trận rượt đuổi trên xe ở Ngày 2 giữ tốc độ cũ. Đèn pha chiếu tới trước, chỉ bật thật khi trời tối (đêm, hoàng hôn, bình minh), `L` chuyển đèn cos / đèn xa. Đuôi xe có đèn hậu sáng hơn khi phanh và thanh đèn nháy đỏ xanh khi đang chạy. Có file còi nhạc thì bấm `H` phát cả bài, nhạc nền nhỏ lại, người đi đường trong khoảng 14 m giơ hai tay lên trời nhún nhảy tới hết bài; bấm `H` lần nữa để tắt.
+
 Chơi xong một màn mở từ điểm nóng, bảng kết quả có nút **VỀ CAMPUS** để quay lại thế giới mở ngay cạnh điểm nóng đó (Màn 1 đưa bạn về BE6). Bấm *Chơi lại* thì nút này vẫn hiện ở lượt sau. Xe máy đang đỗ hiện trên bản đồ, đi xa thì dòng gợi ý báo xe cách bao nhiêu mét; lỡ rơi xuống kênh thì sau 1 giây bạn được đưa lên chỗ khô gần nhất.
 
 Ở phong cách Vice City, mọi nhân vật là người kiểu PS2: tỉ lệ người thật, đầu ít mặt với gương mặt vẽ tay bằng code (8 biểu cảm), quần áo giữ nguyên. Ở cả hai phong cách, thế giới mở đông người hơn: sinh viên kín sân trường, cư dân dạo phố Vinhomes (có người chạy bộ, người tản bộ), người đi bộ trên lề các tuyến đường, nhìn xa vẫn thấy dòng người; xe máy, ô tô và xe buýt chạy đúng làn bên phải và dừng lại khi có người chắn đường. Ban đêm vắng hơn. Va nhẹ thì người đi đường lảo đảo càu nhàu, chạy nước rút hay đi xe tông thì họ ngã rồi đứng dậy bỏ chạy. Rơi từ cao không mất máu: dưới 2,5 m nhún gối, 2,5-6 m lăn, cao hơn thì nằm một lúc rồi đứng dậy.
@@ -93,7 +96,7 @@ Bản đồ thế giới mở dựng từ dữ liệu **OpenStreetMap** (© Open
 ## 🕹️ Điều khiển
 
 * **Chung:** `M` mở Campaign Hub chọn màn · `ESC` đóng cửa sổ · chuột hoặc `↑↓ Enter` trong menu.
-* **Màn 1:** `W` ga · `S` phanh/lùi · `A/D` lái · `SPACE`+`A/D` drift (thả để boost) · `H` còi.
+* **Màn 1:** `W` ga · `S` phanh/lùi · `A/D` lái · `SPACE`+`A/D` drift (thả để boost) · `H` còi · `L` đèn xa.
 * **Màn 2:** `E` quét thẻ · `H` còi · `S` lùi · pha chạy: `A/D` làn, `SPACE` nhảy, `S` trượt, `SHIFT` sprint, `Q` Monster.
 * **Màn 3:** gõ mã + `ENTER` · `TAB` 4G · `SPACE` đúng nhịp · `C` cà phê · `B` bánh bao · `F` úp điện thoại.
 * **Màn 4:** `←→↑↓ SPACE` theo nốt · hít đất mash `SPACE` · finisher theo hướng dẫn trên màn hình.
@@ -101,7 +104,7 @@ Bản đồ thế giới mở dựng từ dữ liệu **OpenStreetMap** (© Open
 * **Màn 6:** gõ chữ trên đạn · `TAB` đổi người · `ENTER` skill / gọi điện · `←/→` chọn khối code.
 * **Extra:** `WASD` đi tuần (theo hướng camera) · `C` CCTV · `S` chụp · `E` soi / lập biên bản.
 * **Cốt truyện (Ngày 1-5):** đánh tay không: chuột trái combo · chuột phải đá tạt · giữ `Q` đỡ · `Space` lăn né · `E` hạ gục · `E` chụp ảnh khi rình · `E` tố cáo / lấy khay ở căn tin · tòa nhà tối: `F` đèn pin, `E` trốn / ra / nhặt / lắp cầu chì, `Ctrl` đi rón rén · rượt xe: `Q` đạp trái, `E` đạp phải · đấu súng: giữ `Ctrl` cạnh vật thấp để núp, chuột phải ngắm (ló ra), chuột trái bắn, `R` nạp đạn · đấu gậy: chuột trái chém, chuột phải đâm, giữ `Q` đỡ / gạt, `Space` né · gõ phím xóa tool: gõ tên tiến trình, `Backspace` xóa · thua nhiệm vụ: `Enter` thử lại.
-* **Thế giới mở:** `WASD` chạy bộ · `Shift` chạy nước rút (có thể lực) · `Ctrl` đi bộ · `Space` nhảy (trên xe vẫn là drift) · `Z/C` xoay camera · chuột nhìn · giữ chuột giữa: vòng vũ khí · lăn chuột: đổi vũ khí · chuột phải: ngắm · chuột trái: bắn · `R` nạp đạn · giữ `B`: vòng biểu cảm · `F` lên/xuống xe máy · `E` vào điểm nóng chơi màn · `T` đổi giờ · `M` bản đồ · `ESC` tạm dừng.
+* **Thế giới mở:** `WASD` chạy bộ · `Shift` chạy nước rút (có thể lực) · `Ctrl` đi bộ · `Space` nhảy (trên xe vẫn là drift) · `Z/C` xoay camera · chuột nhìn · giữ chuột giữa: vòng vũ khí · lăn chuột: đổi vũ khí · chuột phải: ngắm · chuột trái: bắn · `R` nạp đạn · giữ `B`: vòng biểu cảm · `F` lên/xuống xe máy (khi lái: `H` còi nhạc, `L` đèn xa) · `E` vào điểm nóng chơi màn · `T` đổi giờ · `M` bản đồ · `ESC` tạm dừng.
 
 ## 🛠️ Chạy từ mã nguồn / tự build
 
