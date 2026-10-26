@@ -16,6 +16,9 @@
 # must be released once before it fires (the capturing click never shoots).
 # Phase B: with an unarmed_owner (scripts/combat/PlayerCombat) the Tay không slot belongs to it: no Phase W punch and no
 # right-mouse aim while unarmed (the owner reads the mouse); without one the Phase W punch below is unchanged.
+# Phase C lairs (scripts/combat/guns/GunFight): `reserve` = finite spare rounds per slot (empty / -1 = unlimited, W-D9): a
+# reload takes what it needs from it, "12 / 36" in the HUD; add_reserve() for ammo pickups. set_locked_slots(): slots that
+# cannot be equipped (equip refuses, scroll skips them, the wheel greys them with its own text).
 class_name WeaponDirector
 extends Node3D
 
@@ -81,6 +84,8 @@ var held_hide: Dictionary = {}           # reason -> true: the hand prop is hidd
 var _need_release: bool = true           # the fire button must be up once before an edge counts
 var _was_captured: bool = false
 var unarmed_owner: Object = null         # Phase B PlayerCombat: owns the unarmed slot (moves, aim off)
+var reserve: PackedInt32Array = PackedInt32Array()   # Phase C: spare rounds per slot (-1 or missing = unlimited)
+var locked_slots: Dictionary = {}        # Phase C: slot -> true, cannot be equipped
 
 
 func _ready() -> void:
@@ -132,12 +137,46 @@ func is_firing() -> bool:
 
 
 func ammo_text(slot: int) -> String:
+	var r: int = reserve_of(slot)
+	if r >= 0 and WeaponData.mag_of(slot) > 0:
+		return "%d / %d" % [ammo[slot], r]
 	return WeaponData.ammo_text(slot, ammo[slot])
+
+
+## Spare rounds of a slot (-1 = unlimited).
+func reserve_of(slot: int) -> int:
+	return reserve[slot] if slot >= 0 and slot < reserve.size() else -1
+
+
+## Phase C ammo pickup: n more spare rounds for a slot with a finite reserve (an empty magazine reloads at once).
+func add_reserve(slot: int, n: int) -> void:
+	if reserve_of(slot) < 0 or n <= 0:
+		return
+	reserve[slot] += n
+	if slot == current and ammo[slot] <= 0:
+		start_reload()
+	_refresh_hud()
+
+
+## Phase C: these slots cannot be equipped (the equipped one switches to Tay không); the wheel greys them with off_text.
+## An empty list unlocks everything.
+func set_locked_slots(slots: Array, off_text: String = "") -> void:
+	locked_slots.clear()
+	for s: Variant in slots:
+		if int(s) != WeaponData.Slot.UNARMED:
+			locked_slots[int(s)] = true
+	if wheel:
+		for i: int in mini(wheel.slots.size(), WeaponData.COUNT):
+			wheel.slots[i]["enabled"] = not locked_slots.has(i)
+			wheel.slots[i]["off_text"] = off_text
+	if locked_slots.has(current):
+		equip(WeaponData.Slot.UNARMED)
+	_refresh_hud()
 
 
 func equip(slot: int) -> void:
 	slot = posmod(slot, WeaponData.COUNT)
-	if slot == current:
+	if slot == current or locked_slots.has(slot):
 		return
 	_on_unequip()
 	current = slot
@@ -152,7 +191,12 @@ func equip(slot: int) -> void:
 
 
 func cycle(step: int) -> void:
-	equip(current + step)
+	var s: int = current
+	for i: int in WeaponData.COUNT:
+		s = posmod(s + step, WeaponData.COUNT)
+		if not locked_slots.has(s):
+			break
+	equip(s)
 	toast.emit(WeaponData.name_of(current))
 	if hud:
 		hud.show_toast(WeaponData.name_of(current))
@@ -160,7 +204,7 @@ func cycle(step: int) -> void:
 
 func start_reload() -> void:
 	var mag: int = WeaponData.mag_of(current)
-	if mag <= 0 or ammo[current] >= mag or reload_left > 0.0:
+	if mag <= 0 or ammo[current] >= mag or reload_left > 0.0 or reserve_of(current) == 0:
 		return
 	reload_left = float(WeaponData.SLOTS[current]["reload"])
 	play_cue("reload", hand_position())
@@ -176,7 +220,12 @@ func _physics_process(delta: float) -> void:
 		reload_left -= delta
 		if reload_left <= 0.0:
 			reload_left = 0.0
-			ammo[current] = WeaponData.mag_of(current)
+			var need: int = WeaponData.mag_of(current) - ammo[current]
+			var r: int = reserve_of(current)
+			if r >= 0:
+				need = mini(need, r)
+				reserve[current] = r - need
+			ammo[current] += need
 			_refresh_hud()
 	var blocked: bool = is_blocked() or not player.visible
 	var wheel_open: bool = wheel != null and wheel.is_open()
@@ -252,6 +301,9 @@ func try_fire() -> void:
 	if kind == "cone" or (kind == "boomerang" and dep_in_flight):
 		return
 	if mag > 0 and ammo[current] <= 0:
+		if reserve_of(current) == 0:         # Phase C: out of spare rounds - a dry click, no reload
+			cooldown = 0.3
+			play_cue("dry_click", hand_position(), -4.0)
 		start_reload()
 		return
 	if not aiming:

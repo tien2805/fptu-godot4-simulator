@@ -3,7 +3,7 @@
 # (EmoteWheel, W-D10, section 9). Subclasses only fill the slot list and the trigger:
 #   - slots: up to 8 {"name": String, "icon": int, "enabled": bool}, one wedge each (slot 0 at the top, clockwise); icons
 #     drawn in code by icon_fn(ci, icon, center, size, col, dark) (empty = WeaponIcons.draw); disabled slots are drawn
-#     greyed with "Sắp có" and cannot be chosen;
+#     greyed with their "off_text" (default "Sắp có") and cannot be chosen;
 #   - hold trigger_mouse (a mouse button) or trigger_key (a physical key) >= HOLD_S real seconds to open; a tap is ignored;
 #   - the mouse delta accumulates into a virtual stick (clamped to STICK_MAX px): inside DEAD_ZONE px nothing new is
 #     highlighted (keep_current: the current slot stays highlighted; otherwise none); outside it, the enabled wedge under
@@ -305,7 +305,8 @@ class WheelView extends Control:
 			else:
 				WeaponIcons.draw(self, icon, ic, RadialWheel.ICON_SIZE, col, RadialWheel.ICON_DARK)
 			if not on:
-				draw_string(font, ic + Vector2(-40.0, 40.0), RadialWheel.SOON, HORIZONTAL_ALIGNMENT_CENTER, 80.0, 12, RadialWheel.ICON_OFF)
+				var off: String = String(wheel.slots[i].get("off_text", ""))
+				draw_string(font, ic + Vector2(-40.0, 40.0), off if off != "" else RadialWheel.SOON, HORIZONTAL_ALIGNMENT_CENTER, 80.0, 12, RadialWheel.ICON_OFF)
 		draw_arc(c, RadialWheel.R_OUT + 2.0, 0.0, TAU, 96, rim, 3.0, true)
 		draw_circle(c, RadialWheel.R_IN - 6.0, Color(0.02, 0.01, 0.05, 0.85))
 		var h: int = wheel.highlight

@@ -573,7 +573,8 @@ func _heat(amount: float, at: Vector3, cause: String) -> void:
 # ---------------------------------------------------------------------------
 # DEFENCE
 # ---------------------------------------------------------------------------
-## An enemy's hit lands (called by MeleeEnemy at its impact frame). info: "damage", "heavy" (telegraphed, unblockable).
+## An enemy's hit lands (called by MeleeEnemy at its impact frame). info: "damage", "heavy" (telegraphed, unblockable),
+## "unblockable" (Phase C gunfire: a block never stops it, no knock-down).
 ## Returns "ignored" (down / knocked down) | "dodged" (invulnerable: roll, finisher) | "blocked" | "perfect" (counter) | "hit".
 func receive_attack(attacker: Node3D, info: Dictionary) -> String:
 	if player == null or state == St.DOWN or player.is_knocked_down() or not player.visible:
@@ -582,7 +583,7 @@ func receive_attack(attacker: Node3D, info: Dictionary) -> String:
 		_log("enemy", attacker, "dodged")
 		return "dodged"
 	var heavy: bool = bool(info.get("heavy", false))
-	if blocking and not heavy:
+	if blocking and not heavy and not bool(info.get("unblockable", false)):
 		if _t - _block_press_t <= CombatData.PERFECT_BLOCK_S + 1e-4:
 			_counter(attacker)
 			_log("enemy", attacker, "perfect")

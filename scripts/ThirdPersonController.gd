@@ -23,6 +23,7 @@
 # Phase B (scripts/combat/PlayerCombat): combat_speed_cap caps the ground speed while attacking / blocking; jump_filter is
 # asked on each jump press (true = the press became a dodge-roll, no jump); dodge_roll() is the LAND_ROLL state with its own
 # duration and speed.
+# Phase C (scripts/combat/guns/PlayerCover): move_lock = no walking input while crouched in cover (the cover holds the spot).
 class_name ThirdPersonController
 extends CharacterBody3D
 
@@ -112,6 +113,8 @@ var aim_blend: float = 0.0
 ## Phase B: ground speed cap set by PlayerCombat (INF = none) and the jump-press filter (-> bool, true = consumed).
 var combat_speed_cap: float = INF
 var jump_filter: Callable
+## Phase C: true while PlayerCover holds the player crouched behind cover (movement input reads as zero).
+var move_lock: bool = false
 var _roll_time: float = ROLL_TIME
 var _exhausted: bool = false
 var _stamina_wait: float = 0.0
@@ -264,6 +267,8 @@ func teleport(pos: Vector3, yaw_rad: float) -> void:
 
 
 func _read_input() -> Vector2:
+	if move_lock:
+		return Vector2.ZERO
 	if input_override is Vector2:
 		return input_override
 	if not controls_enabled:
