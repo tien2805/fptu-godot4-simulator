@@ -150,6 +150,7 @@ func _enter(id: String) -> void:
 	if b.has("objective"):
 		set_objective(fmt(String(b["objective"])))
 	set_step(id)
+	StoryChapters.on_enter(self, id)   # chapter select: the beat is reached, a replayable beat keeps its start state
 	if is_day:
 		_enter(String(b["next"]))   # no save of the transient "day" step: complete_step saves the next beat
 
@@ -312,6 +313,7 @@ func load_game(path: String = "") -> bool:
 	var d: Dictionary = read_save(path if path != "" else save_path)
 	if d.is_empty():
 		return false
+	StoryChapters.ensure_seeded(d)   # a save from before the chapter select: unlock what it has played so far
 	from_dict(d)
 	active = true
 	if migrated:

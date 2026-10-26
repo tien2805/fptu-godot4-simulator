@@ -39,6 +39,7 @@ var campus_mats: Dictionary = {}
 
 var btn_continue: Button
 var btn_story: Button
+var btn_chapters: Button
 var btn_roam: Button
 var btn_guide: Button
 var btn_settings: Button
@@ -222,6 +223,11 @@ func _build_ui() -> void:
 	btn_story.name = "NewStoryButton"
 	btn_story.pressed.connect(_on_story_pressed)
 	col.add_child(btn_story)
+	btn_chapters = _menu_button("CHỌN CẢNH  (tua lại · xem lại phim)", Color("#3FF2FF"))
+	btn_chapters.name = "ChaptersButton"
+	btn_chapters.pressed.connect(_on_chapters_pressed)
+	btn_chapters.visible = false
+	col.add_child(btn_chapters)
 	btn_roam = _menu_button("KHÁM PHÁ CAMPUS  (chơi tự do · BE6 → FPTU)", Color("#1ABC9C"))
 	btn_roam.pressed.connect(_on_roam_pressed)
 	col.add_child(btn_roam)
@@ -444,6 +450,8 @@ func _refresh_story_buttons() -> void:
 	btn_continue.visible = not info.is_empty()
 	if not info.is_empty():
 		btn_continue.text = "TIẾP TỤC – NGÀY %d" % int(info.get("day", 0))
+	StoryChapters.ensure_seeded(info)   # a save from before the chapter select unlocks what it has played
+	btn_chapters.visible = StoryChapters.has_unlocks()
 
 func _first_button() -> Button:
 	return btn_continue if btn_continue.visible else btn_story
@@ -516,6 +524,12 @@ func _open_creator() -> void:
 		sd.call("open_creator")
 	else:
 		get_tree().change_scene_to_file("res://scenes/story/CharacterCreator.tscn")
+
+## "CHỌN CẢNH" (plan 2026-10-26-chapter-select.md): the chapter select / gallery screen; QUAY LẠI comes back here.
+func _on_chapters_pressed() -> void:
+	GameFX.play_sfx("pop", -4.0)
+	ChapterSelect.from_story = false
+	get_tree().change_scene_to_file(ChapterSelect.SCENE)
 
 ## Thế giới mở: spawn mặc định ở BE6 (Vinhomes Grand Park), đi bộ / xe máy 5,5 km tới campus FPTU.
 func _on_roam_pressed() -> void:
