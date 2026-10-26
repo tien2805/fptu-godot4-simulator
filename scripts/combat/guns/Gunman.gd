@@ -1,0 +1,719 @@
+# File: res://scripts/combat/guns/Gunman.gd
+# One enemy gunman of the Phase C lair gunfights (spec C-D2): a lair guard in black with a sheep, wolf or fox mask (PS2
+# rigged body from CharacterBuilder, or the caller's body_fn) holding a pistol, and an AI state machine:
+#   PATROL    walks its patrol points (or stands guard looking around) until it sees the player (120° cone, 28 m, clear
+#             ray) or hears him (gunfire 30 m through walls, sprint 9 m, jog 4 m) or an alerted guard calls (14 m);
+#   ALERT     "Có biến!" over the head, turns to the noise for 0.6 s;
+#   TO_COVER  runs to the best free CoverMap slot whose obstacle stands between it and the player (CoverMap.candidates);
+#   COVER     crouched behind it (hit capsule lowered); waits 0.7-1.8 s, then asks the fight for a shooting token (at most
+#             GunData.MAX_SHOOTERS at once); the cover stops protecting (the player moved round) -> new cover;
+#   PEEK      stands up and aims (0.3 s); each bullet = a muzzle GLINT for GunData.TELEGRAPH_S (0.4 s) and only then the shot
+#             (a burst of 1-3); the shot needs a clear ray from the muzzle at the moment it resolves: a wall or the cover the
+#             player ducked behind stops it (sparks, no damage); a readable red tracer; hit chance from GunData.hit_chance
+#             (distance, player speed, popping out of cover, first shot); no clear ray for 1.2 s -> back down;
+#   FLANK     after 2-3 peeks from one slot: runs to a slot at least 50° round the player (CoverMap.flank_candidates);
+#   OPEN      no usable cover: walks to about 11 m and shoots standing, looking for cover every 2 s;
+#   STAGGER   a hit that does not knock out: flinch 0.45 s, the telegraph and the token are lost;
+#   KO        knocked out (comic fall, stars from WeaponDirector.hit_target, no blood): stays down, never hit again;
+#   HOLD      ai off (tests, scripted beats): stands still; IDLE: the fight was lost, stands down.
+# Plain Node3D like HorrorStalker (no physics body: bullets test it analytically, WeaponDirector.first_hit; moves along
+# straight clear lines or the fight's HorrorNavGraph). The root never rotates (the body child carries the yaw). The hit
+# capsule base (the root) is lowered by `drop` while crouched (GunData.CROUCH_DROP) or knocked out (KO_DROP); feet() is
+# the floor point. Senses run at 10 Hz (staggered), one ray each; no allocation per frame except on decisions.
+# Usage (GunFight does this): var g := Gunman.new(); g.setup(opts); g.position = at; parent.add_child(g); g.bind(fight).
+# opts: "body" (CharacterBuilder opts over GunData.GUARD_LOOK), "body_fn" (Callable(look) -> rigged Node3D), "mask"
+# ("sheep" | "wolf" | "fox" | "none"; default by seed), "label", "hp", "accuracy" (scale), "patrol" (Array of Vector3),
+# "ai" (false = HOLD), "alerted" (start alerted), "seed", "yaw".
+class_name Gunman
+extends Node3D
+
+signal ko(g: Gunman)
+signal alerted(g: Gunman)
+signal telegraph_started(g: Gunman)
+signal shot(g: Gunman, result: String)
+
+enum St { PATROL, ALERT, TO_COVER, COVER, PEEK, OPEN, FLANK, STAGGER, KO, HOLD, IDLE }
+const ST_NAMES: Array[String] = ["patrol", "alert", "to_cover", "cover", "peek", "open", "flank", "stagger", "ko", "hold", "idle"]
+const LOG_MAX: int = 48
+const SHOUT_S: float = 1.2
+
+var fight: Object = null
+var body: Node3D
+var pose: GunPose
+var gun: Node3D = null
+var glint: MeshInstance3D
+var shout: Label3D
+var label: String = ""
+var mask_kind: String = ""
+var hp: float = GunData.GUNMAN_HP
+var max_hp: float = GunData.GUNMAN_HP
+var accuracy_k: float = 1.0
+## Tests: >= 0 replaces the hit chance of every shot.
+var accuracy_override: float = -1.0
+var ai: bool = true
+var start_alerted: bool = false
+var st: int = St.HOLD
+var st_t: float = 0.0
+var state_log: Array[String] = []
+var yaw: float = 0.0
+var floor_y: float = 0.0
+var drop: float = 0.0
+var slot: int = -1
+var has_token: bool = false
+var telegraphing: bool = false
+var tele_t: float = 0.0
+var burst_left: int = 0
+var peeks: int = 0
+var peeks_max: int = 2
+var patrol: PackedVector3Array = PackedVector3Array()
+var sees: bool = false
+var last_seen: Vector3 = Vector3.ZERO
+var is_alerted: bool = false
+var first_shot: bool = true
+var shots: int = 0
+var hits: int = 0
+var tele_starts: int = 0
+## Telegraph seconds actually shown before each resolved shot (tests: every value >= TELEGRAPH_S).
+var tele_before_shot: Array[float] = []
+var ko_left: float = GunData.KO_STARS_S
+var speed_now: float = 0.0
+var _patrol_i: int = 0
+var _path: PackedVector3Array = PackedVector3Array()
+var _path_i: int = 0
+var _wait: float = 0.0
+var _gap: float = 0.0
+var _sense_acc: float = 0.0
+var _recheck: float = 0.0
+var _stuck_t: float = 0.0
+var _last_pos: Vector3 = Vector3.ZERO
+var _since_seen: float = 99.0
+var _shout_left: float = 0.0
+var _open_look: float = 0.0
+var _rng := RandomNumberGenerator.new()
+var _anim: Node = null
+var _sk: Skeleton3D = null
+var _wrist: int = -1
+var _gun_att: BoneAttachment3D = null
+
+
+## Build the body, mask, pistol, glint and shout label (before add_child). See the header for opts.
+func setup(opts: Dictionary = {}) -> void:
+	_rng.seed = int(opts.get("seed", 1))
+	label = String(opts.get("label", ""))
+	max_hp = float(opts.get("hp", GunData.GUNMAN_HP))
+	hp = max_hp
+	accuracy_k = float(opts.get("accuracy", 1.0))
+	accuracy_override = float(opts.get("accuracy_override", -1.0))
+	ai = bool(opts.get("ai", true))
+	start_alerted = bool(opts.get("alerted", false))
+	yaw = float(opts.get("yaw", 0.0))
+	peeks_max = _rng.randi_range(GunData.PEEKS_BEFORE_FLANK.x, GunData.PEEKS_BEFORE_FLANK.y)
+	_sense_acc = _rng.randf() * GunData.SENSE_DT
+	for v: Variant in opts.get("patrol", []):
+		patrol.append(v)
+	var look: Dictionary = GunData.GUARD_LOOK.duplicate()
+	look["seed"] = 7000 + _rng.randi_range(0, 999)
+	var bo: Dictionary = opts.get("body", {})
+	for k: String in bo.keys():
+		look[k] = bo[k]
+	look["rigged"] = true
+	look["name"] = "Body"
+	var bf: Callable = opts.get("body_fn", Callable())
+	body = bf.call(look) if bf.is_valid() else CharacterBuilder.build(look)
+	body.name = "Body"
+	add_child(body)
+	body.rotation.y = yaw
+	mask_kind = String(opts.get("mask", GunData.MASKS[_rng.randi_range(0, GunData.MASKS.size() - 1)]))
+	if mask_kind != "none" and mask_kind != "":
+		GunProps.attach_mask(body, mask_kind)
+	pose = GunPose.attach(body)
+	_anim = CharacterBuilder.get_animator(body)
+	_attach_gun()
+	glint = GunProps.glint()
+	add_child(glint)
+	shout = Label3D.new()
+	shout.name = "Shout"
+	shout.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	shout.no_depth_test = true
+	shout.font_size = 44
+	shout.outline_size = 10
+	shout.modulate = Color("#FFE14D")
+	shout.outline_modulate = Color("#1B0F33")
+	shout.pixel_size = 0.006
+	shout.visible = false
+	shout.position = Vector3(0.0, 2.25, 0.0)
+	add_child(shout)
+
+
+func _attach_gun() -> void:
+	gun = WeaponProps.build(WeaponData.Slot.PISTOL)
+	if gun == null:
+		return
+	_sk = body.get_meta("skeleton", null) as Skeleton3D
+	_wrist = _sk.find_bone("Wrist.R") if _sk else -1
+	if _wrist >= 0:
+		_gun_att = BoneAttachment3D.new()
+		_gun_att.name = "GunHold"
+		_gun_att.bone_name = "Wrist.R"
+		_sk.add_child(_gun_att)
+		_gun_att.add_child(gun)
+	else:
+		body.add_child(gun)
+		gun.position = Vector3(0.25, 1.05, -0.25)
+
+
+## Wire to the fight (GunFight); the spawn height is the floor.
+func bind(f: Object) -> void:
+	fight = f
+	floor_y = global_position.y
+	_last_pos = global_position
+	if not ai:
+		_enter(St.HOLD)
+		return
+	_enter(St.PATROL)
+	if start_alerted:
+		alert(f.call("player_feet"))
+
+
+func state_name() -> String:
+	return ST_NAMES[st]
+
+
+func feet() -> Vector3:
+	return Vector3(global_position.x, floor_y, global_position.z)
+
+
+func forward() -> Vector3:
+	return Vector3(-sin(yaw), 0.0, -cos(yaw))
+
+
+## The pistol's muzzle (standing aim), for the glint, the flash and the ray.
+func muzzle_pos() -> Vector3:
+	var f: Vector3 = forward()
+	return feet() + Vector3(0.0, GunData.MUZZLE_Y, 0.0) + f * 0.55 + Vector3(-f.z, 0.0, f.x) * 0.12
+
+
+func is_down() -> bool:
+	return st == St.KO
+
+
+## The node the player's weapons test (WeaponDirector targets): the gunman itself.
+func hit_node() -> Node3D:
+	return self
+
+
+func is_hostile() -> bool:
+	return st != St.KO and st != St.IDLE
+
+
+func is_defeated() -> bool:
+	return st == St.KO
+
+
+## Holding a shooting token (peeking / telegraphing / firing).
+func is_shooting() -> bool:
+	return has_token
+
+
+func crouched() -> bool:
+	return drop > 0.01 and st != St.KO
+
+
+# ---------------------------------------------------------------------------
+# FRAME
+# ---------------------------------------------------------------------------
+func _physics_process(delta: float) -> void:
+	if fight == null:
+		return
+	st_t += delta
+	_since_seen += delta
+	if _shout_left > 0.0:
+		_shout_left -= delta
+		if _shout_left <= 0.0:
+			shout.visible = false
+	if st == St.KO or st == St.IDLE or st == St.HOLD:
+		_apply_drop()
+		if _anim:
+			_anim.set("speed", 0.0)
+		return
+	_sense_acc += delta
+	if _sense_acc >= GunData.SENSE_DT:
+		_sense_acc -= GunData.SENSE_DT
+		_sense()
+	speed_now = 0.0
+	match st:
+		St.PATROL:
+			_do_patrol(delta)
+		St.ALERT:
+			_turn_toward(last_seen - feet(), delta)
+			if st_t >= GunData.REACT_S:
+				_seek_cover(false)
+		St.TO_COVER, St.FLANK:
+			_do_travel(delta)
+		St.COVER:
+			_do_cover(delta)
+		St.PEEK:
+			_do_peek(delta)
+		St.OPEN:
+			_do_open(delta)
+		St.STAGGER:
+			if st_t >= GunData.STAGGER_S:
+				_after_hit()
+	_apply_drop()
+	if _anim:
+		_anim.set("speed", speed_now)
+	_update_gun()
+
+
+func _enter(s: int) -> void:
+	st = s
+	st_t = 0.0
+	state_log.append(ST_NAMES[s])
+	if state_log.size() > LOG_MAX:
+		state_log.pop_front()
+	match s:
+		St.COVER:
+			_wait = _rng.randf_range(GunData.COVER_WAIT.x, GunData.COVER_WAIT.y)
+			_recheck = GunData.RECHECK_S
+			pose.set_pose("cover_crouch")
+		St.PEEK:
+			pose.set_pose("aim")
+			_gap = 0.0
+			burst_left = _rng.randi_range(GunData.BURST.x, GunData.BURST.y)
+		St.OPEN:
+			_wait = _rng.randf_range(GunData.COVER_WAIT.x, GunData.COVER_WAIT.y)
+			_open_look = 2.0
+			pose.set_pose("aim")
+		St.STAGGER:
+			pose.clear()
+			CharacterBuilder.play(body, "flinch", GunData.STAGGER_S)
+		St.TO_COVER, St.FLANK, St.PATROL, St.ALERT:
+			pose.clear()
+		St.IDLE, St.HOLD:
+			pose.clear()
+
+
+## Crouched in cover (not peeking) = the hit capsule lowered; standing otherwise; KO on the floor.
+func _apply_drop() -> void:
+	var want: float = 0.0
+	if st == St.KO:
+		want = GunData.KO_DROP
+	elif st == St.COVER or (st == St.STAGGER and slot >= 0):
+		want = GunData.CROUCH_DROP
+	if not is_equal_approx(want, drop):
+		drop = want
+	var p: Vector3 = global_position
+	if not is_equal_approx(p.y, floor_y - drop):
+		global_position = Vector3(p.x, floor_y - drop, p.z)
+		body.position.y = drop
+		glint.position.y = drop
+		shout.position.y = drop + 2.25
+
+
+# ---------------------------------------------------------------------------
+# SENSES
+# ---------------------------------------------------------------------------
+func _sense() -> void:
+	var pp: Vector3 = fight.call("player_feet")
+	var tp: Vector3 = fight.call("player_target")
+	var eye: Vector3 = feet() + Vector3(0.0, GunData.EYE_Y - drop, 0.0)
+	var to := Vector3(tp.x - eye.x, 0.0, tp.z - eye.z)
+	var d: float = to.length()
+	var in_view: bool = d <= GunData.SIGHT_M
+	if in_view and not is_alerted and d > 0.5:
+		in_view = forward().angle_to(to / d) <= deg_to_rad(GunData.FOV_DEG * 0.5)
+	sees = in_view and bool(fight.call("clear_line", eye, tp))
+	if sees:
+		last_seen = pp
+		_since_seen = 0.0
+	if is_alerted:
+		return
+	if sees:
+		alert(pp)
+		return
+	var noise: float = float(fight.call("noise_radius"))
+	if noise > 0.0 and WeaponMath.flat(pp, feet()) <= noise:
+		alert(pp)
+
+
+## Heard gunfire / a scream at p (GunFight: the player's shots within HEAR_SHOT_M; WeaponDirector "scare").
+func hear(p: Vector3) -> void:
+	if st == St.KO or st == St.IDLE or st == St.HOLD:
+		return
+	if not is_alerted:
+		alert(p)
+
+
+## Alerted (saw / heard the player, or a guard called): "Có biến!", turn, then cover. Shared with the guards nearby.
+func alert(at: Vector3) -> void:
+	if is_alerted or st == St.KO or st == St.IDLE or st == St.HOLD:
+		return
+	is_alerted = true
+	last_seen = at
+	shout.text = GunData.T_ALERT
+	shout.visible = true
+	_shout_left = SHOUT_S
+	_enter(St.ALERT)
+	alerted.emit(self)
+	if fight and fight.has_method("on_alert"):
+		fight.call("on_alert", self)
+
+
+# ---------------------------------------------------------------------------
+# STATES
+# ---------------------------------------------------------------------------
+func _do_patrol(delta: float) -> void:
+	if patrol.is_empty():
+		yaw += sin(st_t * 0.8) * 0.6 * delta   # stands guard, looking around
+		body.rotation.y = yaw
+		return
+	if _wait > 0.0:
+		_wait -= delta
+		return
+	if _path_i >= _path.size():
+		_patrol_i = (_patrol_i + 1) % patrol.size()
+		_go(patrol[_patrol_i])
+	if _move(delta, GunData.WALK_SPEED):
+		_wait = 1.2
+
+
+func _do_travel(delta: float) -> void:
+	if _move(delta, GunData.RUN_SPEED):
+		_enter(St.COVER)
+		return
+	if global_position.distance_to(_last_pos) > 0.5:
+		_last_pos = global_position
+		_stuck_t = 0.0
+	else:
+		_stuck_t += delta
+		if _stuck_t >= GunData.STUCK_S:
+			_release_slot()
+			_enter(St.OPEN)
+
+
+func _do_cover(delta: float) -> void:
+	if slot >= 0:
+		_turn_toward(-(fight.get("cover") as CoverMap).normal[slot], delta)
+	_recheck -= delta
+	if _recheck <= 0.0:
+		_recheck = GunData.RECHECK_S
+		if slot < 0 or not (fight.get("cover") as CoverMap).protects(slot, fight.call("player_feet")):
+			_seek_cover(false)
+			return
+	_wait -= delta
+	if _wait > 0.0:
+		return
+	if peeks >= peeks_max:
+		peeks = 0
+		peeks_max = _rng.randi_range(GunData.PEEKS_BEFORE_FLANK.x, GunData.PEEKS_BEFORE_FLANK.y)
+		_seek_cover(true)
+		return
+	if bool(fight.call("request_token", self)):
+		has_token = true
+		_enter(St.PEEK)
+	else:
+		_wait = 0.3
+
+
+func _do_peek(delta: float) -> void:
+	var pp: Vector3 = fight.call("player_feet")
+	_turn_toward(pp - feet(), delta)
+	if st_t < GunData.AIM_S:
+		return
+	if telegraphing:
+		tele_t += delta
+		var k: float = 1.0 + 0.35 * sin(tele_t * 40.0)
+		glint.scale = Vector3.ONE * k * lerpf(0.6, 1.3, clampf(tele_t / GunData.TELEGRAPH_S, 0.0, 1.0))
+		glint.global_position = muzzle_pos()
+		if tele_t >= GunData.TELEGRAPH_S - 1e-4:
+			tele_before_shot.append(tele_t)
+			if tele_before_shot.size() > LOG_MAX:
+				tele_before_shot.pop_front()
+			telegraphing = false
+			glint.visible = false
+			_fire()
+			burst_left -= 1
+			_gap = GunData.SHOT_GAP_S
+			if burst_left <= 0:
+				_end_peek()
+		return
+	if _gap > 0.0:
+		_gap -= delta
+		return
+	if bool(fight.call("clear_line", muzzle_pos(), fight.call("player_target"))):
+		telegraphing = true
+		tele_t = 0.0
+		tele_starts += 1
+		glint.visible = true
+		glint.global_position = muzzle_pos()
+		fight.call("play_cue", "dry_click", muzzle_pos(), -6.0)
+		telegraph_started.emit(self)
+	elif st_t >= GunData.AIM_S + GunData.PEEK_ABORT_S:
+		_end_peek()
+
+
+func _end_peek() -> void:
+	_cancel_shot()
+	peeks += 1
+	if slot >= 0 and (fight.get("cover") as CoverMap).protects(slot, fight.call("player_feet")):
+		_enter(St.COVER)
+	elif slot >= 0:
+		_seek_cover(false)
+	else:
+		_enter(St.OPEN)
+
+
+func _do_open(delta: float) -> void:
+	var pp: Vector3 = fight.call("player_feet")
+	var to: Vector3 = pp - feet()
+	var d: float = Vector2(to.x, to.z).length()
+	_open_look -= delta
+	if _open_look <= 0.0:
+		_open_look = 2.0
+		if (fight.get("cover") as CoverMap).count() > 0 and _seek_cover(false, true):
+			return
+	if d > GunData.OPEN_KEEP_M + 2.0:
+		var stp: Vector3 = feet() + WeaponMath.flat_dir(to) * minf(2.0, d - GunData.OPEN_KEEP_M)
+		if bool(fight.call("clear_walk", feet(), stp)):
+			_step_toward(stp, delta, GunData.WALK_SPEED * 1.6)
+	_turn_toward(to, delta)
+	_wait -= delta
+	if _wait <= 0.0:
+		if bool(fight.call("request_token", self)):
+			has_token = true
+			_enter(St.PEEK)
+		else:
+			_wait = 0.3
+
+
+## Pick a cover slot (flank = round the player) and run there. quiet: called from OPEN, stays OPEN when nothing is found.
+## Returns true when a slot was taken.
+func _seek_cover(flank: bool, quiet: bool = false) -> bool:
+	var cover: CoverMap = fight.get("cover")
+	var taken: Dictionary = fight.get("taken")
+	var threat: Vector3 = fight.call("player_feet")
+	var ids: PackedInt32Array
+	if cover == null or cover.count() == 0:
+		ids = PackedInt32Array()
+	elif flank:
+		ids = cover.flank_candidates(threat, feet(), GunData.FLANK_MAX_M, taken, self, GunData.FLANK_MIN_DEG)
+	else:
+		ids = cover.candidates(threat, feet(), GunData.COVER_SEARCH_M, taken, self, GunData.COVER_MIN_PLAYER_M)
+	var tries: int = 0
+	for id: int in ids:
+		if tries >= 4:
+			break
+		tries += 1
+		if id == slot and not flank:
+			_enter(St.COVER)
+			return true
+		var target: Vector3 = cover.pos[id]
+		if _route_ok(target):
+			_release_slot()
+			slot = id
+			taken[id] = self
+			_go(target)
+			_stuck_t = 0.0
+			_last_pos = global_position
+			_enter(St.FLANK if flank else St.TO_COVER)
+			return true
+	if quiet:
+		return false
+	if flank and slot >= 0:
+		_enter(St.COVER)                     # no flank spot: keep this cover
+	else:
+		_release_slot()
+		_enter(St.OPEN)
+	return false
+
+
+func _route_ok(target: Vector3) -> bool:
+	if bool(fight.call("clear_walk", feet(), target)):
+		return true
+	var nav: HorrorNavGraph = fight.get("nav")
+	return nav != null and nav.size() > 0
+
+
+func _release_slot() -> void:
+	if slot >= 0:
+		var taken: Dictionary = fight.get("taken")
+		if taken.get(slot) == self:
+			taken.erase(slot)
+	slot = -1
+
+
+## After a stagger: back into the cover when it still protects, else find another.
+func _after_hit() -> void:
+	if slot >= 0 and (fight.get("cover") as CoverMap).protects(slot, fight.call("player_feet")):
+		_enter(St.COVER)
+	else:
+		_seek_cover(false)
+
+
+# ---------------------------------------------------------------------------
+# SHOOTING
+# ---------------------------------------------------------------------------
+func _fire() -> void:
+	var muzzle: Vector3 = muzzle_pos()
+	var tp: Vector3 = fight.call("player_target")
+	var fx: WeaponFX = fight.get("fx")
+	shots += 1
+	var d0: Vector3 = (tp - muzzle).normalized()
+	if fx:
+		fx.muzzle(muzzle, d0, 0.8)
+	fight.call("play_cue", "shot_pistol", muzzle, -3.0)
+	var block: Dictionary = fight.call("ray", muzzle, tp)
+	var result: String
+	if not block.is_empty():
+		var at: Vector3 = block["position"]
+		GunData.tracer(fx, muzzle, at)
+		if fx:
+			fx.impact(at, block["normal"], false)
+		result = "blocked"
+	else:
+		var p: float = accuracy_override if accuracy_override >= 0.0 else GunData.hit_chance(muzzle.distance_to(tp),
+			float(fight.call("player_speed")), bool(fight.call("player_popped")), first_shot, accuracy_k)
+		if _rng.randf() < p:
+			GunData.tracer(fx, muzzle, tp)
+			fight.call("hit_player", self, GunData.GUNMAN_DMG)
+			hits += 1
+			result = "hit"
+		else:
+			var side: Vector3 = d0.cross(Vector3.UP)
+			side = side.normalized() if side.length_squared() > 1e-6 else Vector3.RIGHT
+			var off: Vector3 = side * _rng.randf_range(GunData.MISS_OFFSET.x, GunData.MISS_OFFSET.y) * (1.0 if _rng.randf() < 0.5 else -1.0)
+			off.y = _rng.randf_range(-0.3, 0.6)
+			var end: Vector3 = muzzle + ((tp + off) - muzzle).normalized() * GunData.SHOT_RANGE
+			var h: Dictionary = fight.call("ray", muzzle, end)
+			var stop: Vector3 = end if h.is_empty() else h["position"]
+			GunData.tracer(fx, muzzle, stop)
+			if fx and not h.is_empty():
+				fx.impact(stop, h["normal"], false)
+			fight.call("play_cue", "ricochet", tp + off * 0.5, -8.0)
+			result = "miss"
+	first_shot = false
+	shot.emit(self, result)
+
+
+func _cancel_shot() -> void:
+	telegraphing = false
+	glint.visible = false
+	if has_token:
+		has_token = false
+		if fight:
+			fight.call("release_token", self)
+
+
+# ---------------------------------------------------------------------------
+# HITS
+# ---------------------------------------------------------------------------
+## Phase W duck-typed target: "bullet" / "pellet" / melee kinds hurt (GUNMAN_DMG_TAKEN), "scare" (gunfire nearby) and the
+## funny weapons only alert. Returns "knocked_out", "stumble" or "none".
+func take_hit(info: Dictionary) -> String:
+	if st == St.KO:
+		return "none"
+	var kind: String = String(info.get("kind", "melee"))
+	var from: Vector3 = info.get("from", feet())
+	if not GunData.GUNMAN_DMG_TAKEN.has(kind):
+		hear(from)
+		return "none"
+	hp -= float(GunData.GUNMAN_DMG_TAKEN[kind])
+	if not is_alerted and st != St.HOLD:
+		alert(from)
+	if hp <= 0.0:
+		_knock_out(from)
+		return "knocked_out"
+	if st != St.HOLD and st != St.IDLE:
+		_cancel_shot()
+		_enter(St.STAGGER)
+	else:
+		CharacterBuilder.play(body, "flinch", GunData.STAGGER_S)
+	return "stumble"
+
+
+func _knock_out(from: Vector3) -> void:
+	_cancel_shot()
+	_release_slot()
+	hp = 0.0
+	_enter(St.KO)
+	pose.reset()
+	var away: Vector3 = WeaponMath.flat_dir(feet() - from)
+	yaw = atan2(away.x, away.z)              # faces the shot, falls on its back away from it
+	body.rotation.y = yaw
+	CharacterBuilder.play(body, "knockdown")
+	shout.visible = false
+	_apply_drop()
+	if fight:
+		fight.call("play_cue", "body_fall", feet(), -2.0)
+	ko.emit(self)
+
+
+## The fight was lost: stop shooting and stand down.
+func stand_down() -> void:
+	if st == St.KO:
+		return
+	_cancel_shot()
+	_enter(St.IDLE)
+
+
+# ---------------------------------------------------------------------------
+# MOVEMENT
+# ---------------------------------------------------------------------------
+func _go(target: Vector3) -> void:
+	var t := Vector3(target.x, floor_y, target.z)
+	var nav: HorrorNavGraph = fight.get("nav") if fight else null
+	if nav == null or nav.size() == 0 or bool(fight.call("clear_walk", feet(), t)):
+		_path = PackedVector3Array([t])
+	else:
+		_path = nav.route(feet(), t, get_world_3d().direct_space_state if is_inside_tree() else null)
+		for i: int in _path.size():
+			_path[i] = Vector3(_path[i].x, floor_y, _path[i].z)
+		if _path.is_empty():
+			_path = PackedVector3Array([t])
+	_path_i = 0
+
+
+## One step along the path; true when the end is reached.
+func _move(delta: float, speed: float) -> bool:
+	var budget: float = speed * delta
+	while budget > 0.0 and _path_i < _path.size():
+		var tgt: Vector3 = _path[_path_i]
+		var d := Vector3(tgt.x - global_position.x, 0.0, tgt.z - global_position.z)
+		var dist: float = d.length()
+		if dist < 0.05:
+			_path_i += 1
+			continue
+		var stp: float = minf(budget, dist)
+		global_position += d / dist * stp
+		budget -= stp
+		_turn_toward(d, delta)
+		speed_now = speed
+		if stp >= dist - 0.0001:
+			_path_i += 1
+	return _path_i >= _path.size()
+
+
+func _step_toward(p: Vector3, delta: float, speed: float) -> void:
+	var d := Vector3(p.x - global_position.x, 0.0, p.z - global_position.z)
+	var dist: float = d.length()
+	if dist < 0.05:
+		return
+	global_position += d / dist * minf(dist, speed * delta)
+	speed_now = speed
+
+
+func _turn_toward(dir: Vector3, delta: float) -> void:
+	if Vector2(dir.x, dir.z).length_squared() < 1e-6:
+		return
+	var want: float = atan2(-dir.x, -dir.z)
+	yaw += clampf(wrapf(want - yaw, -PI, PI), -GunData.TURN_RATE * delta, GunData.TURN_RATE * delta)
+	body.rotation.y = yaw
+
+
+## The pistol in the right hand, barrel along the body's facing (WeaponDirector._update_held_pose without the pitch).
+func _update_gun() -> void:
+	if gun == null or _gun_att == null or _sk == null:
+		return
+	var hand: Transform3D = _sk.global_transform * CharacterBuilder._bone_global_now(_sk, _wrist)
+	var bs: Basis = body.global_basis.orthonormalized()
+	gun.transform = hand.affine_inverse() * Transform3D(bs, hand.origin)
