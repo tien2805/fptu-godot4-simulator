@@ -754,6 +754,8 @@ static func build_palm_field(parent: Node3D, points: PackedVector3Array, opts: D
 			cs.shape = shape
 			cs.position = points[i] + Vector3(0.0, heights[i] * 0.5, 0.0)
 			body.add_child(cs)
+	mm_t.set_meta("cine_xforms", (xfs["trunk"] as Array).slice(0, n))   # FreeRoam's cinematic clutter check (headless too)
+	mm_c.set_meta("cine_xforms", (xfs["crown"] as Array).slice(0, n))
 	var shadow: GeometryInstance3D.ShadowCastingSetting = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if bool(opts.get("cast_shadow", true)) else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	for pair: Array in [["Trunks", mm_t], ["Crowns", mm_c]]:
 		var mmi := MultiMeshInstance3D.new()
