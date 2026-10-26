@@ -2,11 +2,10 @@
 # Day 2 horror beat under the Rạch Hầm bridge (spec C-D6 beats 4-5): on foot after the chase, fog rolls over the canal bank;
 # a wolf howl; red LED eyes glow in the dark under the deck: Sói Xám standing still, and the pack's eyes around him. Walking
 # in, the pack's eyes go out one by one (heartbeat); at SNAP_M every eye snaps bright (a sting). Then, within RING_M, his
-# phone rings: a cheesy synth ringtone (a synthesized SFX, not music) and a comic line in a bubble, the scare deflates, and
-# the villain card "Sói Xám - đầu đàn Bầy Sói" (StoryVillainCard.show_for) runs before the duel beat starts.
+# phone rings: a cheesy synth ringtone (a synthesized SFX, not music) and a comic line in a bubble, the scare deflates and
+# the duel beat starts. His villain card moved to the chase cameo (spec 2026-10-27 D2X-7: his first appearance).
 # "Giảm hù dọa": no sting, a softer howl, the eyes fade in slowly instead of snapping.
-# opts: "anchors" (StoryRoam anchors: bridge_bank = where Sói Xám stands, bridge_road = the player's start), "manual_card"
-# (tests step `card`).
+# opts: "anchors" (StoryRoam anchors: bridge_bank = where Sói Xám stands, bridge_road = the player's start).
 class_name MissionBridge
 extends StoryMission
 
@@ -23,8 +22,7 @@ const T_PHONE: String = "A lô? Mẹ hả... con đang bận, lát con gọi l�
 var soi: Node3D
 var bank: Vector3 = Vector3.ZERO
 var eyes: Array[Node3D] = []
-var phase: String = "walk"           # walk -> snapped -> ringing -> card -> done
-var card: StoryVillainCard = null
+var phase: String = "walk"           # walk -> snapped -> ringing -> done
 var calm: bool = false
 var bubble: Label3D
 var _ring_t: float = 0.0
@@ -126,19 +124,9 @@ func _tick(dt: float) -> void:
 		"ringing":
 			_ring_t += dt
 			if _ring_t >= RING_HOLD:
-				phase = "card"
+				phase = "done"
 				bubble.visible = false
-				_show_card()
-
-
-func _show_card() -> void:
-	card = StoryVillainCard.show_for(self, StoryCast.villain_data("soi_xam"), StoryCast.card_len("soi_xam"))
-	if bool(opts.get("manual_card", false)):
-		card.manual = true
-	card.finished.connect(func() -> void:
-		card = null
-		phase = "done"
-		finish({}), CONNECT_ONE_SHOT)
+				finish({})
 
 
 ## Fog over the bank (on) or the time of day's own fog back (off): the WorldEnvironment of the host, both fog modes.
@@ -165,6 +153,3 @@ func _fog(on: bool) -> void:
 
 func _cleanup() -> void:
 	_fog(false)
-	if card and is_instance_valid(card):
-		card.queue_free()
-	card = null

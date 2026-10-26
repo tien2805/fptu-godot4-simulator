@@ -3,7 +3,8 @@
 # and a signed lateral offset d (positive = right of the travel direction). The AI places its targets with world(s, d)
 # and finds the player with project(p, s_hint), which only searches a window around the last s so two close parallel
 # legs never swap. nguyen_xien(md) builds the default Day 2 route from the real map data by road name; bridge_s is the
-# route distance of the Rạch Hầm bridge's middle (find_bridge_s for any route; -1 = not on it).
+# route distance of the Rạch Hầm bridge's middle (find_bridge_s for any route; -1 = not on it). turn_deg / max_turn measure
+# the real turns (the Day 2 drift zones).
 class_name BikeRoute
 extends RefCounted
 
@@ -123,6 +124,24 @@ static func find_bridge_s(md: MapData, r: BikeRoute) -> float:
 		if absf(pr.y) <= BRIDGE_MAX_D:
 			return pr.x
 	return -1.0
+
+
+## Heading change (degrees, signed: > 0 turns left on the map) between s - half_span and s + half_span (drift zones sit
+## on real turns).
+func turn_deg(s: float, half_span: float = 15.0) -> float:
+	var t0: Vector2 = tangent(clampf(s - half_span, 0.0, length))
+	var t1: Vector2 = tangent(clampf(s + half_span, 0.0, length))
+	return rad_to_deg(t0.angle_to(t1))
+
+
+## The sharpest heading change (absolute degrees) over [s0, s1], probed every 4 m with +/-half_span windows.
+func max_turn(s0: float, s1: float, half_span: float = 15.0) -> float:
+	var best: float = 0.0
+	var s: float = s0
+	while s <= s1:
+		best = maxf(best, absf(turn_deg(s, half_span)))
+		s += 4.0
+	return best
 
 
 func _seg(s: float) -> int:

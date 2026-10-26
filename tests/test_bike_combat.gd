@@ -92,7 +92,7 @@ func _initialize() -> void:
 static func _plain(s: String) -> bool:
 	for i: int in s.length():
 		var c: int = s.unicode_at(i)
-		if c > 0x2000 or (c < 0x80 and not (char(c) in " ,.:-[]/!0123456789\n") and not ((c >= 65 and c <= 90) or (c >= 97 and c <= 122))):
+		if c > 0x2000 or (c < 0x80 and not (char(c) in " ,.:-[]/!?%0123456789\n") and not ((c >= 65 and c <= 90) or (c >= 97 and c <= 122))):
 			return false
 	return true
 
@@ -103,8 +103,7 @@ func _data_checks() -> void:
 	_check(BikeCombatData.WINDUP_S + BikeCombatData.ENEMY_HIT_AT >= 0.45, "an enemy kick is telegraphed >= 0.45 s before it lands")
 	_check(BikeCombatData.KICK_WINDUP < BikeCombatData.KICK_ACTIVE_END and BikeCombatData.KICK_ACTIVE_END < BikeCombatData.KICK_DUR, "kick: wind-up < hit window end < duration")
 	_check(BikeCombatData.T_START_D2 == "Tới công chuyện luôn!" and BikeCombatData.T_WIN_D2 == "Đỉnh nóc kịch trần bay phấp phới", "the Day 2 meme lines")
-	var w: Array = BikeChase.day2_waves()
-	_check(w.size() == 2 and (w[0] as Array).size() + (w[1] as Array).size() == 6, "the Day 2 layout: 6 bikers in 2 waves")
+	_day2_data_checks()
 	# route maths
 	var r: BikeRoute = BikeRoute.from_points([Vector2(0.0, 0.0), Vector2(0.0, -100.0), Vector2(100.0, -100.0)])
 	_check(r.valid() and absf(r.length - 200.0) < 0.01, "route length 200 m (%.2f)" % r.length)
@@ -218,7 +217,7 @@ static func _ride(on: bool) -> void:
 func _on_physics() -> void:
 	frames += 1
 	var t: int = frames - t0
-	if frames > 20000:
+	if frames > 60000:
 		_check(false, "timed out in phase %s" % phase)
 		_finish()
 		return
@@ -254,6 +253,30 @@ func _on_physics() -> void:
 			_phase_a10(t)
 		"a11":
 			_phase_a11(t)
+		"c2":
+			_phase_c2(t)
+		"c3":
+			_phase_c3(t)
+		"c4":
+			_phase_c4(t)
+		"c5":
+			_phase_c5(t)
+		"c6":
+			_phase_c6(t)
+		"c7":
+			_phase_c7(t)
+		"c8":
+			_phase_c8(t)
+		"c9":
+			_phase_c9(t)
+		"c10":
+			_phase_c10(t)
+		"c9b":
+			_phase_c9b(t)
+		"c11b":
+			_phase_c11b(t)
+		"c11":
+			_phase_c11(t)
 		"b":
 			_phase_b(t)
 
@@ -371,15 +394,15 @@ func _phase_a2(t: int) -> void:
 		mark["hit_f"] = frames
 		var lead: float = float(frames - int(mark["f0"])) / 60.0
 		_check(lead >= 0.45, "the kick lands %.2f s after the telegraph started (>= 0.45)" % lead)
-		_check(is_equal_approx(chase.combat.stability, 80.0), "an enemy kick costs 20 stability (%.1f)" % chase.combat.stability)
+		_check(is_equal_approx(chase.combat.stability, 78.0), "an enemy kick costs 22 stability (%.1f)" % chase.combat.stability)
 	if t == 70:
 		_check(mark.has("hit_f") and b3.results.back() == "hit", "the AI kick hit (%s)" % str(b3.results))
 	if t == 110:
 		_check(b3.st == BikerEnemy.St.HOLD, "back to its hold after the recovery (%s)" % b3.state_name())
 		bike.crash_occurred.emit()
-		_check(is_equal_approx(chase.combat.stability, 55.0), "a crash costs 25 stability (%.1f)" % chase.combat.stability)
+		_check(is_equal_approx(chase.combat.stability, 63.0), "a crash at a standstill costs 15 stability (15-25 by speed) (%.1f)" % chase.combat.stability)
 		bike.crash_occurred.emit()
-		_check(is_equal_approx(chase.combat.stability, 55.0), "i-frames swallow a second crash at once (%.1f)" % chase.combat.stability)
+		_check(is_equal_approx(chase.combat.stability, 63.0), "i-frames swallow a second crash at once (%.1f)" % chase.combat.stability)
 		_next("a3")
 
 
@@ -626,7 +649,7 @@ func _phase_a6(t: int) -> void:
 		_check(roles.has(BikerEnemy.Role.FRONT) and roles.has(BikerEnemy.Role.LEFT) and roles.has(BikerEnemy.Role.RIGHT), "roles FRONT, LEFT and RIGHT taken (%s)" % str(roles.keys()))
 		_check(chase.boxed_count >= 1, "they box the player in (%d)" % chase.boxed_count)
 		_check(bool(mark["brake"]), "the front biker brake-checks")
-		_check(att >= 2 and chase.max_attackers_seen <= 2, "they attack, never more than 2 at once (%d attacks, max %d)" % [att, chase.max_attackers_seen])
+		_check(att >= 2 and chase.max_attackers_seen <= BikeCombatData.MAX_ATTACKERS, "they attack, never more than the cap at once (%d attacks, max %d)" % [att, chase.max_attackers_seen])
 		_check(int(mark["off_road"]) == 0, "they stay on the road (%d frames off)" % int(mark["off_road"]))
 		chase.stop()
 	if t == 602:
@@ -642,7 +665,7 @@ func _phase_a7(t: int) -> void:
 		var c2 := BikeChase.new()
 		arena.add_child(c2)
 		c2.setup({"bike": bike, "route": [Vector2(0.0, Z0), Vector2(0.0, -1500.0)], "waves": BikeChase.day2_waves()})
-		_check(c2.waves.size() == 2 and c2.remaining() == 6, "setup(waves) adds the Day 2 waves (%d, %d left)" % [c2.waves.size(), c2.remaining()])
+		_check(c2.waves.size() == 3 and c2.remaining() == 14, "setup(waves) adds the Day 2 waves (%d, %d left)" % [c2.waves.size(), c2.remaining()])
 		c2.queue_free()
 	if t == 30:
 		chase = _arena_chase([1])
@@ -684,6 +707,10 @@ func _phase_a8(t: int) -> void:
 		chase = _arena_chase([2], true, {"auto_replay": false, "seed": 5}, {"hp": 2, "aggression": 0.0})
 		chase.combat.god = true
 		chase.start()
+		for b0: Variant in chase.bikers:          # Day 2 riders pace just out of kick reach: this geometry test keeps the
+			var e0: BikerEnemy = b0               # old in-reach slot to aim moving kicks at a flanker alongside
+			e0.kp = e0.kp.duplicate()
+			e0.kp["slot_lat"] = BikeCombatData.SLOT_LAT
 		_ride(true)
 		autopilot = true
 		tangent_mode = false
@@ -769,7 +796,7 @@ func _phase_a9(t: int) -> void:
 		(chase.bikers[0] as BikerEnemy).start_attack(-1.0)
 	if t == 260 + 50:
 		var b: BikerEnemy = chase.bikers[0]
-		_check(b.results.back() == "hit" and is_equal_approx(chase.combat.stability, 80.0), "riding straight: the AI kick hits (%s, %.1f)" % [str(b.results), chase.combat.stability])
+		_check(b.results.back() == "hit" and is_equal_approx(chase.combat.stability, 78.0), "riding straight: the AI kick hits (%s, %.1f)" % [str(b.results), chase.combat.stability])
 	if t == 400:
 		var b: BikerEnemy = chase.bikers[0]
 		_check(b.st == BikerEnemy.St.HOLD, "test setup: the biker back beside the player (%s)" % b.state_name())
@@ -780,7 +807,7 @@ func _phase_a9(t: int) -> void:
 	if t == 400 + 50:
 		var b: BikerEnemy = chase.bikers[0]
 		var rel: Vector2 = b.pos2 - chase.p_pos
-		_check(b.results.back() == "miss" and is_equal_approx(chase.combat.stability, 80.0), "steering away during the wind-up dodges the kick (%s, %.1f, %.2f m apart)" % [str(b.results), chase.combat.stability, rel.length()])
+		_check(b.results.back() == "miss" and is_equal_approx(chase.combat.stability, 78.0), "steering away during the wind-up dodges the kick (%s, %.1f, %.2f m apart)" % [str(b.results), chase.combat.stability, rel.length()])
 		_steer(0.0)
 		autopilot = true
 	if t == 470:
@@ -886,15 +913,13 @@ func _phase_a11(t: int) -> void:
 			autopilot = false
 			chase.stop()
 			chase.queue_free()
-			arena.queue_free()
-			_next("b")
+			_next("c2")
 	if t > 3000 and not mark.has("won"):
 		_check(false, "A11: never reached end_at_s (s %.0f)" % chase.s_p)
 		_ride(false)
 		autopilot = false
 		chase.queue_free()
-		arena.queue_free()
-		_next("b")
+		_next("c2")
 
 
 # ---------------------------------------------------------------------------
@@ -968,6 +993,809 @@ func _phase_b(t: int) -> void:
 		roam.call("toggle_bike")
 		_check(not bool(roam.get("mounted")), "after the chase [F] gets off the bike")
 		_finish()
+
+
+# ---------------------------------------------------------------------------
+# DAY 2 "Tokyo Drift" (spec 2026-10-27, D2X-2 to D2X-7, D2X-13 agent A)
+# ---------------------------------------------------------------------------
+func _day2_data_checks() -> void:
+	var w: Array = BikeChase.day2_waves()
+	var n: int = 0
+	var kinds: Dictionary = {}
+	for wv: Variant in w:
+		for sp: Variant in wv:
+			n += 1
+			kinds[String(((sp as Dictionary).get("opts", {}) as Dictionary).get("kind", "rider"))] = true
+	_check(w.size() == 3 and n >= 12 and n <= 14, "the Day 2 layout: 12-14 vehicles in 3 waves (%d in %d)" % [n, w.size()])
+	_check(kinds.has("rider") and kinds.has("stick") and kinds.has("thrower") and kinds.has("heavy") and kinds.has("pickup"), "every enemy kind is in the Day 2 layout (%s)" % str(kinds.keys()))
+	var wo: Array = BikeChase.day2_wave_opts()
+	_check(wo.size() == 3 and float((wo[1] as Dictionary).get("force_s", -1.0)) > 0.0 and bool((wo[2] as Dictionary).get("after_cameo", false)) and int((wo[2] as Dictionary).get("max_attackers", 0)) == 4,
+		"wave 2 is forced by distance, wave 3 follows the cameo with 4 attackers")
+	_check(BikeCombatData.MAX_ATTACKERS == 3 and is_equal_approx(BikeCombatData.ATTACK_GAP_S, 0.6) and is_equal_approx(BikeCombatData.REGEN_RATE, 0.0), "3 attackers 0.6 s apart, no regeneration")
+	for k: String in BikeCombatData.KINDS.keys():
+		var kp: Dictionary = BikeCombatData.KINDS[k]
+		var lead: float = float(kp["windup"]) + (BikeCombatData.THROW_FLIGHT if k == "thrower" else BikeCombatData.ENEMY_HIT_AT)
+		_check(lead >= 0.45 and float(kp["dmg"]) > 0.0 and float(kp["reach"]) > 0.0, "%s: telegraphed >= 0.45 s before it lands (%.2f)" % [k, lead])
+	_check(float(BikeCombatData.KINDS["pickup"]["windup"]) >= 1.0 and not bool(BikeCombatData.KINDS["pickup"]["kickable"]), "the pickup: a 1 s telegraph, cannot be kicked")
+	_check(int(BikeCombatData.KINDS["heavy"]["hp"]) == 3 and float(BikeCombatData.KINDS["heavy"]["top"]) < BikeCombatData.MAX_SPEED, "the heavy: 3 kicks, slower")
+	_check(is_equal_approx(float(BikeCombatData.CHASE_PROFILE["max_speed_ms"]), 27.8) and is_equal_approx(float(BikeCombatData.CHASE_PROFILE["slipstream_max_ms"]), 30.6) and BikeCombatData.MAX_SPEED >= 31.5, "chase profile 27.8 / 30.6 m/s, bikers top at 32")
+	_check(is_equal_approx(BikeCombatData.OPEN_DROP_S, 4.15), "the opening drop at 4.15 s (the owner's track)")
+	# the real Day 2 route and its set pieces
+	var md: MapData = MapData.load_default()
+	var r: BikeRoute = MissionBikeChase.day2_route(md)
+	if not _check(r != null and r.valid(), "MissionBikeChase.day2_route builds from mapdata"):
+		return
+	_check(absf(r.length - 5476.0) < 30.0 and absf(r.bridge_s - 2389.0) < 25.0, "the Stage 1 real route, the bridge at ~2389 m (%.0f, %.0f)" % [r.length, r.bridge_s])
+	var chase_len: float = r.bridge_s + MissionBikeChase.END_PAST_M - MissionBikeChase.START_S
+	_check(chase_len > 2200.0 and chase_len < 2500.0, "the chase is ~2.4 km long, about 2 minutes (%.0f m)" % chase_len)
+	var last: float = MissionBikeChase.START_S
+	var events: Array[float] = [MissionBikeChase.START_S, BikeCombatData.CAMEO_S, r.bridge_s + MissionBikeChase.END_PAST_M]
+	var drift: int = 0
+	var have: Dictionary = {}
+	for p: Variant in BikeCombatData.DAY2_SET_PIECES:
+		var d: Dictionary = p
+		var k2: String = d["kind"]
+		var s: float = float(d["s"])
+		have[k2] = true
+		_check(s >= last, "the set pieces are in route order (%s at %.0f)" % [k2, s])
+		last = s
+		events.append(s)
+		if d.has("end_s"):
+			events.append(float(d["end_s"]))
+		match k2:
+			"drift":
+				drift += 1
+				var mt: float = r.max_turn(s, s + float(d["len"]))
+				_check(mt >= 60.0, "drift zone at %.0f sits on a real turn (%.0f deg)" % [s, mt])
+			"barrier", "ramp":
+				_check(r.max_turn(s - 40.0, s + 10.0) < 15.0, "%s at %.0f on a straight (%.0f deg)" % [k2, s, r.max_turn(s - 40.0, s + 10.0)])
+			"wrong_way":
+				_check(r.max_turn(s - 30.0, s + float(d["len"])) < 20.0, "wrong way at %.0f on a straight" % s)
+	_check(have.has("melons") and have.has("barrier") and have.has("wrong_way") and have.has("ramp") and have.has("police") and drift >= 3 and drift <= 4,
+		"all six set pieces, 3-4 drift zones (%s, %d drift)" % [str(have.keys()), drift])
+	events.sort()
+	var gap: float = 0.0
+	for i: int in range(1, events.size()):
+		gap = maxf(gap, events[i] - events[i - 1])
+	_check(gap <= 450.0, "something new at least every ~450 m (15-20 s at chase speed; largest gap %.0f m)" % gap)
+	_check(BikeCombatData.CAMEO_S > 1400.0 and BikeCombatData.CAMEO_FORCE_S > BikeCombatData.CAMEO_S and BikeCombatData.CAMEO_FORCE_S < r.bridge_s - 400.0, "the cameo after wave 2 on the long straight")
+
+
+## A chase on the arena route with explicit spawns per wave ({"lane", "from", "opts"} each) and per-wave options.
+func _kind_chase(spec: Array, opts: Dictionary = {}, wopts: Array = []) -> BikeChase:
+	var c := BikeChase.new()
+	c.name = "KChase%d" % frames
+	arena.add_child(c)
+	var o: Dictionary = {"bike": bike, "route": [Vector2(0.0, Z0), Vector2(0.0, -1500.0)], "start_s": 60.0, "manual_replay": true, "seed": 11}
+	for k: String in opts.keys():
+		o[k] = opts[k]
+	c.setup(o)
+	for i: int in spec.size():
+		c.add_wave(spec[i], wopts[i] if i < wopts.size() else {})
+	c.biker_down.connect(func(b: BikerEnemy, cause: String) -> void: downs.append([b, cause]))
+	c.lost.connect(func() -> void: lost_n += 1)
+	c.won.connect(func() -> void: won_n += 1)
+	c.wave_cleared.connect(func(i2: int) -> void: cleared.append(i2))
+	c.wave_started.connect(func(i3: int) -> void: started_w.append(i3))
+	return c
+
+
+func _end_chase(nxt: String) -> void:
+	_ride(false)
+	autopilot = false
+	tangent_mode = false
+	auto_yaw = 0.0
+	Input.action_release("brake")
+	if chase and is_instance_valid(chase):
+		chase.stop()
+		chase.queue_free()
+	_next(nxt)
+
+
+## Brake with the real action (the gas let go: PlayerBike ignores the brake while the gas is held), or back on the gas.
+static func _brake(on: bool) -> void:
+	if on:
+		Input.action_release("gas")
+		Input.action_press("brake")
+	else:
+		Input.action_release("brake")
+		Input.action_press("gas")
+
+
+func _by_label(lbl: String) -> BikerEnemy:
+	for b: Variant in chase.bikers:
+		if is_instance_valid(b) and (b as BikerEnemy).label == lbl:
+			return b
+	return null
+
+
+func _active_helmet() -> Dictionary:
+	for h: Dictionary in chase.helmets:
+		if bool(h["active"]):
+			return h
+	return {}
+
+
+# C2: the stick: raised wind-up, a 25 swing; braking in the wind-up dodges (speed-locked line); a kick interrupts it.
+func _phase_c2(t: int) -> void:
+	if t < 2:
+		return
+	var b: BikerEnemy = chase.bikers[0] if (chase and is_instance_valid(chase) and not chase.bikers.is_empty()) else null
+	if t == 2:
+		downs.clear()
+		chase = _kind_chase([[{"lane": -1, "opts": {"kind": "stick", "ai": false, "hp": 99, "label": "Gậy"}}]])
+		chase.start()
+		_ride(true)
+		autopilot = true
+		return
+	if b == null:
+		return
+	if t == 200:
+		_hold(b, BikeCombatData.SLOT_ALONG, -2.2)
+	if t == 250:
+		_check(chase.p_vel.length() > 15.0, "stick: riding at speed (%.1f m/s)" % chase.p_vel.length())
+		mark["rx"] = b.stick.rotation.x
+		mark["f0"] = frames
+		mark["stab0"] = chase.combat.stability
+		b.start_attack(-1.0)
+	if t == 268:
+		_check(b.telegraphing() and b.stick.rotation.x > float(mark["rx"]) + 0.15, "stick: the wind-up raises the stick (%.2f -> %.2f)" % [float(mark["rx"]), b.stick.rotation.x])
+		_check(chase.hud.warn_left, "stick: the HUD warns on its side")
+	if t > 250 and t < 340 and not mark.has("hit") and chase.combat.stability < float(mark["stab0"]):
+		mark["hit"] = true
+		var lead: float = float(frames - int(mark["f0"])) / 60.0
+		_check(lead >= 0.45, "stick: the swing lands %.2f s after the wind-up began (>= 0.45)" % lead)
+		_check(is_equal_approx(chase.combat.stability, float(mark["stab0"]) - 25.0), "stick: a swing costs 25 (%.1f)" % chase.combat.stability)
+	if t == 340:
+		_check(mark.has("hit"), "stick: riding straight, the swing hits")
+	if t == 420:
+		_check(b.st == BikerEnemy.St.HOLD, "stick: back beside the player (%s)" % b.state_name())
+		mark["stab1"] = chase.combat.stability
+		b.start_attack(-1.0)
+	if t == 429:
+		_brake(true)                          # 0.15 s in: the line and the speed are locked
+	if t == 470:
+		_brake(false)
+		_check(b.results.back() == "miss" and is_equal_approx(chase.combat.stability, float(mark["stab1"])), "stick: braking in the wind-up dodges the swing (%s, %.0f m/s)" % [str(b.results), chase.p_vel.length()])
+	if t == 600:
+		_hold(b, BikeCombatData.SLOT_ALONG, -2.2)
+	if t == 640:
+		mark["nres"] = b.results.size()
+		b.start_attack(-1.0)
+	if t == 652:
+		_check(chase.combat.kick(-1), "stick: a kick during the wind-up")
+	if t == 690:
+		_check(b.results.size() == int(mark["nres"]) and not b.is_attacking(), "stick: the kick interrupts the swing (%s)" % b.state_name())
+		_end_chase("c3")
+
+
+# C3: the thrower: the pillion faces back; the helmet lands where the player would be, its red marker 0.8 s ahead; riding
+# on = hit (15), braking out of the marker = dodge; a kick drops both riders.
+func _phase_c3(t: int) -> void:
+	if t < 2:
+		return
+	var b: BikerEnemy = chase.bikers[0] if (chase and is_instance_valid(chase) and not chase.bikers.is_empty()) else null
+	if t == 2:
+		chase = _kind_chase([[{"lane": -1, "opts": {"kind": "thrower", "ai": false, "label": "Ném"}}]])
+		chase.start()
+		_ride(true)
+		autopilot = true
+		return
+	if b == null:
+		return
+	if t == 3:
+		_check(b.pillion != null and absf(absf(b.pillion.rotation.y) - PI) < 0.01 and b.helmet_prop != null, "thrower: two on one bike, the pillion faces back with a helmet")
+	if t == 200:
+		_hold(b, BikeCombatData.THROW_AHEAD, -2.4)
+	if t == 250:
+		mark["stab0"] = chase.combat.stability
+		b.start_attack(-1.0)
+	if not mark.has("thr") and chase.helmets_thrown == 1:
+		mark["thr"] = frames
+		var h: Dictionary = _active_helmet()
+		var mk: Node3D = h.get("mark") as Node3D
+		var land := Vector2(mk.global_position.x, mk.global_position.z) if mk else Vector2.INF
+		var pred: Vector2 = chase.p_pos + chase.p_vel * BikeCombatData.THROW_FLIGHT
+		_check(mk != null and mk.visible and land.distance_to(pred) < 1.0, "thrower: the red marker shows where the player will be (%.2f m off)" % land.distance_to(pred))
+	if mark.has("thr") and not mark.has("land") and chase.helmets_thrown == 1 and _active_helmet().is_empty():
+		mark["land"] = frames
+		var lead: float = float(frames - int(mark["thr"])) / 60.0
+		_check(lead >= 0.75, "thrower: the marker shows %.2f s before the helmet lands" % lead)
+		_check(chase.helmets_hit == 1 and is_equal_approx(chase.combat.stability, float(mark["stab0"]) - 15.0), "thrower: riding on into the marker = hit, 15 (%d, %.1f)" % [chase.helmets_hit, chase.combat.stability])
+	if t == 440:
+		_check(mark.has("land"), "thrower: the first helmet landed")
+		mark["stab1"] = chase.combat.stability
+		b.start_attack(-1.0)
+	if not mark.has("thr2") and chase.helmets_thrown == 2:
+		mark["thr2"] = frames
+		_brake(true)
+	if mark.has("thr2") and not mark.has("land2") and _active_helmet().is_empty():
+		mark["land2"] = frames
+		_brake(false)
+		_check(chase.helmets_hit == 1 and is_equal_approx(chase.combat.stability, float(mark["stab1"])), "thrower: braking out of the red marker dodges the helmet (%d)" % chase.helmets_hit)
+	if t == 640:
+		_hold(b, 0.0, -1.8)
+	if t == 650:
+		_check(chase.combat.kick(-1), "thrower: kick alongside")
+	if t == 720:
+		_check(b.is_down() and b.pillion.get_parent() == b.body and b.crash_cause == "kick", "thrower: a kick drops both riders (%s)" % b.state_name())
+		_end_chase("c4")
+
+
+# C4: the heavy: 3 kicks (a short wobble), a 30 shoulder ram; a nitro touch is a takedown (the heavy included).
+func _phase_c4(t: int) -> void:
+	if t < 2:
+		return
+	if t == 2:
+		downs.clear()
+		chase = _kind_chase([[{"lane": 1, "opts": {"kind": "heavy", "ai": false, "label": "Bự"}},
+			{"lane": -1, "opts": {"kind": "heavy", "ai": false, "hp": 99, "label": "Bự 2"}},
+			{"lane": -1, "opts": {"ai": false, "hp": 99, "label": "R"}}]])
+		chase.start()
+		return
+	var h1: BikerEnemy = _by_label("Bự")
+	var h2: BikerEnemy = _by_label("Bự 2")
+	var r1: BikerEnemy = _by_label("R")
+	if h1 == null or h2 == null or r1 == null:
+		return
+	if t == 4:
+		_hold(h1, 0.0, 1.8)
+		_hold(h2, 0.0, -6.0)
+		_hold(r1, 0.0, -9.0)
+		_check(h1.max_hp == 3 and (h1.get_node("Scooter") as Node3D).scale.x > 1.1, "heavy: 3 kicks, a bigger bike")
+	if t == 10 or t == 80 or t == 150:
+		chase.combat.kick(1)
+	if t == 10 + 14:
+		_check(h1.st == BikerEnemy.St.WOBBLE and h1.hp == 2, "heavy: kick 1 wobbles it (hp %d)" % h1.hp)
+	if t == 10 + 34:
+		_check(h1.st != BikerEnemy.St.WOBBLE and not h1.is_down(), "heavy: a short wobble (0.35 s), back on (%s)" % h1.state_name())
+	if t == 230:
+		_check(h1.is_down() and h1.crash_cause == "kick" and chase.takedowns == 0, "heavy: down on the 3rd kick (a plain kick crash is no takedown) (%s, hp %d)" % [h1.state_name(), h1.hp])
+		_hold(h2, BikeCombatData.SLOT_ALONG, -2.1)
+		mark["stab0"] = chase.combat.stability
+	if t == 240:
+		h2.start_attack(-1.0)
+	if t == 320:
+		_check(h2.results.back() == "hit" and is_equal_approx(chase.combat.stability, float(mark["stab0"]) - 30.0), "heavy: the shoulder ram costs 30 (%.1f)" % chase.combat.stability)
+		_hold(r1, 0.0, 0.6)
+		chase.nitro_fn = func() -> bool: return true
+	if t == 322:
+		chase.nitro_fn = func() -> bool: return false
+		_check(r1.is_down() and r1.crash_cause == "nitro" and chase.takedowns == 1 and is_equal_approx(chase.charge_given, BikeCombatData.TD_CHARGE), "nitro ram: a touch during nitro is a takedown, +15 charge (%s, %d, %.0f)" % [r1.crash_cause, chase.takedowns, chase.charge_given])
+	if t == 400:
+		_hold(h2, 0.0, -0.6)
+		chase.nitro_fn = func() -> bool: return true
+	if t == 402:
+		chase.nitro_fn = Callable()
+		_check(h2.is_down() and h2.crash_cause == "nitro" and chase.takedowns == 2, "nitro ram downs the heavy too")
+		_end_chase("c5")
+
+
+# C5: the pickup: cannot be kicked; horn + headlight flash for 1 s; riding on = 35; braking after the lock dodges; two
+# dodged rams and it hits a pole (a takedown).
+func _phase_c5(t: int) -> void:
+	if t < 2:
+		return
+	var b: BikerEnemy = chase.bikers[0] if (chase and is_instance_valid(chase) and not chase.bikers.is_empty()) else null
+	if t == 2:
+		downs.clear()
+		chase = _kind_chase([[{"lane": 1, "opts": {"kind": "pickup", "ai": false, "label": "BT"}}]])
+		chase.start()
+		_ride(true)
+		autopilot = true
+		return
+	if b == null:
+		return
+	if t == 200:
+		_hold(b, BikeCombatData.SLOT_ALONG, 3.3)
+	if t == 230:
+		_hold(b, 0.0, 2.0)
+		mark["miss0"] = chase.combat.misses
+	if t == 232:
+		chase.combat.kick(1)
+	if t == 260:
+		_check(not b.kickable() and chase.combat.misses == int(mark["miss0"]) + 1 and b.st == BikerEnemy.St.HOLD, "pickup: a kick does nothing to it")
+		_hold(b, BikeCombatData.SLOT_ALONG, 3.3)
+	if t == 300:
+		mark["stab0"] = chase.combat.stability
+		mark["f0"] = frames
+		b.start_attack(1.0)
+	if t > 300 and t < 420 and b.telegraphing() and b._head_mat and b._head_mat.emission_energy_multiplier > 4.0:
+		mark["flash"] = true
+	if t == 330:
+		_check(chase.hud.warn_right, "pickup: the HUD warns on its side")
+	if t > 300 and t < 420 and not mark.has("hit") and chase.combat.stability < float(mark["stab0"]):
+		mark["hit"] = true
+		var lead: float = float(frames - int(mark["f0"])) / 60.0
+		_check(lead >= 0.95, "pickup: the ram lands %.2f s after the horn" % lead)
+		_check(is_equal_approx(chase.combat.stability, float(mark["stab0"]) - float(BikeCombatData.KINDS["pickup"]["dmg"])), "pickup: the side ram costs %.0f (%.1f)" % [float(BikeCombatData.KINDS["pickup"]["dmg"]), chase.combat.stability])
+	if t == 420:
+		_check(mark.has("hit") and mark.has("flash"), "pickup: horn and headlight flash, then the ram hits a rider going straight")
+	for k: int in 2:
+		var t0: int = 520 + 240 * k
+		if t == t0:
+			_hold(b, BikeCombatData.SLOT_ALONG, 3.3)
+		if t == t0 + 40:
+			mark["stab%d" % (k + 1)] = chase.combat.stability
+			b.start_attack(1.0)
+		if t == t0 + 40 + 36:
+			_brake(true)                      # after the lock at 0.5 s
+		if t == t0 + 40 + 130:
+			_brake(false)
+			var want: float = float(mark["stab%d" % (k + 1)]) + (BikeCombatData.WAVE_REFILL if k == 1 else 0.0)   # its crash clears the wave
+			_check(b.strikes == k + 1 and is_equal_approx(chase.combat.stability, minf(want, chase.combat.max_stability)), "pickup: braking after the lock dodges ram %d (strikes %d, stability %.0f -> %.0f, %s)" % [k + 1, b.strikes, float(mark["stab%d" % (k + 1)]), chase.combat.stability, str(b.results)])
+	if t == 1000:
+		_check(b.is_down() and b.crash_cause == "pole" and chase.takedowns == 1 and chase.hud.popups > 0, "pickup: two dodged rams and it hits a pole: a takedown (%s, %s)" % [b.state_name(), b.crash_cause])
+		_end_chase("c6")
+
+
+# C6: attacker caps (3, or 4 by wave opts) and attack starts at least 0.6 s apart, with AI riders, a thrower, a stick and the
+# pickup all eager.
+func _phase_c6(t: int) -> void:
+	if t < 2:
+		return
+	var cap: int = 3 if not mark.has("second") else 4
+	if t == 2:
+		var w: Array = [{"lane": -1, "opts": {"hp": 99, "aggression": 1.0}}, {"lane": 1, "opts": {"hp": 99, "aggression": 1.0}},
+			{"lane": -1, "opts": {"kind": "thrower", "hp": 99, "aggression": 1.0}}, {"lane": 1, "opts": {"kind": "stick", "hp": 99, "aggression": 1.0}},
+			{"lane": 1, "opts": {"kind": "pickup", "aggression": 1.0}}]
+		chase = _kind_chase([w], {"seed": 13 + cap}, [{"max_attackers": cap}] if cap == 4 else [])
+		chase.combat.god = true
+		chase.start()
+		_ride(true)
+		autopilot = true
+		mark["att"] = 0
+		mark["starts"] = []
+		return
+	var a: int = 0
+	for e: Variant in chase.bikers:
+		a += (e as BikerEnemy).attacks
+	while a > int(mark["att"]):
+		(mark["starts"] as Array).append(frames)
+		mark["att"] = int(mark["att"]) + 1
+	if t == 2 + 900:
+		var st: Array = mark["starts"]
+		var gap: int = 999
+		for i: int in range(1, st.size()):
+			gap = mini(gap, int(st[i]) - int(st[i - 1]))
+		print("  C6 cap %d: %d attacks, max %d at once, min gap %d frames" % [cap, st.size(), chase.max_attackers_seen, gap])
+		_check(st.size() >= 4 and chase.max_attackers_seen >= 2 and chase.max_attackers_seen <= cap, "cap %d: at most %d attackers at once (max %d, %d attacks)" % [cap, cap, chase.max_attackers_seen, st.size()])
+		_check(gap >= int(BikeCombatData.ATTACK_GAP_S * 60.0) - 1, "attacks start at least 0.6 s apart (%d frames)" % gap)
+		if cap == 3:
+			mark.clear()
+			mark["second"] = true
+			_ride(false)
+			autopilot = false
+			chase.stop()
+			chase.queue_free()
+			t0 = frames
+		else:
+			_end_chase("c7")
+
+
+# C7: takedowns: counter, popup, charge, 0.5 s slow motion + side cut (rate limited, none while 2 wind up near the player),
+# spin kicks on 2 riders, an air kick off the ramp jump.
+func _phase_c7(t: int) -> void:
+	if t < 2:
+		return
+	if t == 2:
+		var w: Array = []
+		for i: int in 6:
+			w.append({"lane": [-1, 1][i % 2], "opts": {"ai": false, "hp": 99, "label": "T%d" % i}})
+		chase = _kind_chase([w])
+		chase.start()
+		return
+	var bs: Array = chase.bikers
+	if t == 4:
+		for i: int in 6:
+			_hold(bs[i], -4.0 - 3.0 * float(i), [-5.0, 5.0][i % 2])
+	if t == 10:
+		(bs[0] as BikerEnemy).crash("traffic")
+		_check(chase.takedowns == 1 and chase.td_slowmos == 1 and is_equal_approx(Engine.time_scale, BikeCombatData.TD_SCALE), "takedown: counted, slow motion 0.3x (%d, %.2f)" % [chase.takedowns, Engine.time_scale])
+		_check(chase.cam.current and chase.cam_mode == "td", "takedown: a side camera cut")
+		_check(BikeCombatData.T_TAKEDOWN.has(chase.hud.popup_text) and is_equal_approx(chase.charge_given, 15.0), "takedown: the popup and +15 nitro charge (%s)" % chase.hud.popup_text)
+	if t == 15:
+		(bs[1] as BikerEnemy).crash("melon")
+		_check(chase.takedowns == 2 and chase.td_slowmos == 1 and chase.hud.popup_text != BikeCombatData.T_TAKEDOWN[0], "takedown 2: counted, the popup rotates, no second slow motion within 3 s")
+	if t == 10 + 32:
+		_check(is_equal_approx(Engine.time_scale, 1.0) and bike.chase_cam.current and chase.cam_mode == "", "after 0.5 s real: normal time, the bike's camera (%.2f)" % Engine.time_scale)
+	if t == 250:
+		_hold(bs[2], BikeCombatData.SLOT_ALONG, -1.95)
+		_hold(bs[3], BikeCombatData.SLOT_ALONG, 1.95)
+		chase.combat.god = true
+	if t == 255:
+		(bs[2] as BikerEnemy).start_attack(-1.0)
+		(bs[3] as BikerEnemy).start_attack(1.0)
+	if t == 258:
+		(bs[4] as BikerEnemy).crash("pole")
+		_check(chase.takedowns == 3 and chase.td_slowmos == 1 and is_equal_approx(Engine.time_scale, 1.0), "no takedown slow motion while 2 attackers wind up near the player (%d)" % chase.td_slowmos)
+	if t == 360:
+		_hold(bs[2], 0.0, -1.8)
+		_hold(bs[3], 0.0, 1.8)
+	if t == 362:
+		for k: int in 2:
+			var e: BikerEnemy = bs[2 + k]
+			e.take_kick(Vector2(-1.0 if k == 0 else 1.0, 0.0))
+			chase.combat.kick_hit.emit(e, 0)
+	if t == 420:
+		var e2: BikerEnemy = bs[2]
+		var e3: BikerEnemy = bs[3]
+		_check(e2.crash_cause == "spin" and e3.crash_cause == "spin" and chase.takedowns == 5 and chase.td_slowmos == 2, "a spin kick on 2 riders: both down, 2 takedowns (%s %s, %d, slow %d)" % [e2.crash_cause, e3.crash_cause, chase.takedowns, chase.td_slowmos])
+	if t == 470:
+		_hold(bs[5], 0.0, 1.8)
+	if t == 472:
+		chase.start_jump()
+		_check(chase.jumping() and (bs[5] as BikerEnemy).airborne and is_equal_approx(Engine.time_scale, BikeCombatData.JUMP_SCALE), "the jump: slow motion 0.4x, the rider alongside flies too")
+	if t == 472 + 36:
+		_check(bike.visual_pivot.position.y > 1.0 and (bs[5] as BikerEnemy).air_y > 1.0, "the jump: the bike and the rider in the air (%.2f)" % bike.visual_pivot.position.y)
+		chase.combat.kick(1)
+	if t == 472 + 60:
+		var e5: BikerEnemy = bs[5]
+		_check(e5.is_down() or e5.st == BikerEnemy.St.WOBBLE, "air kick lands (%s)" % e5.state_name())
+	if t == 472 + 130:
+		var e6: BikerEnemy = bs[5]
+		_check(e6.crash_cause == "air" and chase.takedowns == 6 and not chase.jumping() and is_equal_approx(bike.visual_pivot.position.y, 0.0) and is_equal_approx(Engine.time_scale, 1.0),
+			"an air kick is a takedown; the landing is safe, time back to 1 (%s, %d)" % [e6.crash_cause, chase.takedowns])
+		_end_chase("c8")
+
+
+# C8: the film opening: slow motion, the low camera, letterbox and the start line until the drop; the drop by a real-time
+# timer, by the music position (before the timer), or by the timer when the track stalls; wave 0 bursts from the sides.
+func _phase_c8(t: int) -> void:
+	if t < 2:
+		return
+	var round_i: int = int(mark.get("round", 0))
+	if t == 2:
+		mark["mpos"] = -1.0
+		var o: Dictionary = {"opening": {"drop_s": 1.0, "scale": 0.35}, "start_line": BikeCombatData.T_START_D2, "start_speed": 10.0}
+		if round_i >= 1:
+			o["music_pos_fn"] = func() -> float: return float(mark.get("mpos", -1.0))
+		chase = _kind_chase([[{"from": "side", "lane": -1, "opts": {"ai": false}}, {"from": "side", "lane": 1, "opts": {"ai": false}}]], o)
+		chase.start()
+		mark["f0"] = frames
+		_check(chase.opening_on and is_equal_approx(Engine.time_scale, 0.35) and chase.cam.current and chase.hud.letterboxed, "opening %d: slow motion 0.35x, the low camera, letterbox" % round_i)
+		_check(chase.bikers.is_empty() and chase.remaining() == 2 and chase.hud.popup_text == BikeCombatData.T_START_D2, "opening: the start line, no biker yet")
+		_check(not bike.is_controls_locked, "opening: the player can steer")
+		return
+	if round_i == 0 and t == 32:
+		_check(absf(chase.hud.popup_left - 0.5) < 0.1, "the start line counts real seconds under slow motion (%.2f s left of 1.0)" % chase.hud.popup_left)
+	if round_i == 1:
+		if t == 10:
+			mark["mpos"] = 0.5
+		if t == 20:
+			mark["mpos"] = 1.02
+	if round_i == 2 and t == 10:
+		mark["mpos"] = 0.2                    # the track stalls: the timer takes over 1.5 s after drop_s
+	if round_i == 3 and t == 10:
+		chase.stop()
+		_check(is_equal_approx(Engine.time_scale, 1.0) and bike.chase_cam.current and not chase.hud.letterboxed, "stop() during the opening: normal time, the bike's camera, no letterbox")
+		mark.clear()
+		_end_chase("c9")
+		return
+	if not mark.has("drop") and not chase.opening_on and chase.drop_at >= 0.0:
+		mark["drop"] = frames
+		var real_f: int = frames - int(mark["f0"])
+		var want: int = [60, 19, 150][round_i]
+		print("  C8 round %d: drop after %d frames (by music %s)" % [round_i, real_f, str(chase.drop_by_music)])
+		_check(absi(real_f - want) <= 3 and chase.drop_by_music == (round_i == 1), "opening %d: the drop at %d frames (%d), by music %s" % [round_i, want, real_f, str(chase.drop_by_music)])
+		_check(is_equal_approx(Engine.time_scale, 1.0) and bike.chase_cam.current and chase.bikers.size() == 2, "the drop: normal time, the bike's camera, wave 0 spawned")
+		var out_view: bool = true
+		for e: Variant in chase.bikers:
+			var be: BikerEnemy = e
+			out_view = out_view and not chase.in_view(be.ground_pos() + Vector3(0.0, 1.0, 0.0)) and be.flare_t > 0.0
+			_check(absf(chase.route.project(be.pos2).y) > chase.route.half_width + 1.0, "wave 0 bursts out of the side roads (%.1f m off the centre)" % absf(chase.route.project(be.pos2).y))
+		_check(out_view, "the side riders spawn out of view, LED eyes flaring")
+	if mark.has("drop") and frames == int(mark["drop"]) + 20:
+		_check(not chase.hud.letterboxed, "the letterbox goes")
+		chase.stop()
+		chase.queue_free()
+		mark.clear()
+		mark["round"] = round_i + 1
+		t0 = frames
+	if t > 400:
+		_check(false, "opening %d: no drop" % round_i)
+		_end_chase("c9")
+
+
+# C9: the time scale is never left below 1: retry during a takedown slow motion, lost in the air, freed in the air.
+func _phase_c9(t: int) -> void:
+	if t == 2:
+		chase = _kind_chase([[{"lane": -1, "opts": {"ai": false, "hp": 99}}, {"lane": 1, "opts": {"ai": false, "hp": 99}}]])
+		chase.start()
+	if t == 4:
+		_hold(chase.bikers[0], -6.0, -5.0)
+		_hold(chase.bikers[1], -9.0, 5.0)
+	if t == 6:
+		(chase.bikers[0] as BikerEnemy).crash("traffic")
+		_check(Engine.time_scale < 0.5, "test setup: takedown slow motion")
+		chase.retry()
+		_check(is_equal_approx(Engine.time_scale, 1.0) and bike.chase_cam.current and RadialWheel.scale_owner == null, "retry() during slow motion: time 1, the bike's camera")
+	if t == 10:
+		chase.start_jump()
+	if t == 20:
+		chase.combat.damage(999.0, "test")
+	if t == 22:
+		_check(lost_n > 0 and is_equal_approx(Engine.time_scale, 1.0) and is_equal_approx(bike.visual_pivot.position.y, 0.0), "lost in the air: time 1, the bike back on the ground")
+		chase.retry()
+	if t == 30:
+		chase.start_jump()
+	if t == 40:
+		chase.queue_free()
+	if t == 42:
+		_check(is_equal_approx(Engine.time_scale, 1.0) and is_equal_approx(bike.visual_pivot.position.y, 0.0) and RadialWheel.scale_owner == null, "freed in the air: time 1, the bike on the ground")
+		_next("c9b")
+
+
+# C10: the set pieces on the arena route, ridden for real: each triggers at its distance (drift curb, melons, the ramp, the
+# barrier with a ducking stub, the wrong way with the AI clamped left and cones, the police for 10 s), then re-arm on
+# retry and the barrier without ducking knocks the player off.
+const C10_PIECES: Array = [
+	{"kind": "drift", "s": 150.0, "len": 30.0},
+	{"kind": "melons", "s": 330.0},
+	{"kind": "ramp", "s": 520.0, "d": 0.0},
+	{"kind": "barrier", "s": 700.0},
+	{"kind": "wrong_way", "s": 850.0, "len": 150.0},
+	{"kind": "police", "s": 1080.0, "end_s": 1500.0, "dur": 10.0},
+]
+
+
+func _phase_c10(t: int) -> void:
+	if t < 2:
+		return
+	if t == 2:
+		downs.clear()
+		mark["at"] = {}
+		var ws: Array = []
+		for i: int in 5:                     # wave after wave (no checkpoint moves): the chase keeps running through every piece
+			ws.append([{"lane": -1, "opts": {"hp": 99, "aggression": 0.0, "label": "A%d" % i}}, {"lane": 1, "opts": {"hp": 99, "aggression": 0.0, "label": "B%d" % i}}])
+		chase = _kind_chase(ws, {"set_pieces": C10_PIECES, "duck_fn": func() -> bool: return bool(mark.get("duck", false)), "seed": 21, "auto_checkpoint": false})
+		chase.combat.max_stability = 1000.0
+		chase.combat.stability = 1000.0
+		chase.set_piece.connect(func(k: String, ph: String) -> void:
+			if ph == "active" and is_instance_valid(chase):
+				(mark["at"] as Dictionary)[k] = chase.s_p)
+		chase.start()
+		mark["duck"] = true
+		_ride(true)
+		autopilot = true
+		mark["clamp"] = false
+		mark["max_y"] = 0.0
+		return
+	if chase == null or not is_instance_valid(chase):
+		return
+	var sp: BikeSetPieces = chase.set_pieces
+	var at: Dictionary = mark.get("at", {})
+	if not mark.has("rearm"):
+		if chase.s_p > 120.0 and chase.s_p < 178.0 and sp.prompt == BikeCombatData.T_DRIFT:
+			mark["drift_prompt"] = true
+		if chase.s_p > 640.0 and chase.s_p < 698.0 and sp.prompt == BikeCombatData.T_DUCK:
+			mark["duck_prompt"] = true
+		if chase.jumping():
+			mark["max_y"] = maxf(float(mark["max_y"]), bike.visual_pivot.position.y)
+		if chase.s_p > 860.0 and chase.s_p < 990.0:
+			if is_equal_approx(chase.d_hi, -0.4):
+				mark["clamp"] = true
+			if chase.s_p > 900.0 and chase.s_p < 930.0:
+				tangent_mode = true
+				auto_yaw = -8.0                   # drift onto the closed half: the cones
+			else:
+				tangent_mode = false
+				auto_yaw = 0.0
+		if sp.melon_t >= 0.0 and not mark.has("melon_poke"):
+			mark["melon_poke"] = true
+			mark["drop_truck_s"] = sp.truck_s
+			sp.melon_pos[0] = Vector3(chase.p_pos.x, sp.melon_floor + 0.3, chase.p_pos.y)
+			sp.melon_vel[0] = Vector3.ZERO
+			mark["mh0"] = sp.melon_hits
+			var tgt: BikerEnemy = null
+			for e: Variant in chase.bikers:
+				if (e as BikerEnemy).is_active():
+					tgt = e
+					break
+			if tgt:
+				sp.melon_pos[1] = Vector3(tgt.pos2.x, sp.melon_floor + 0.3, tgt.pos2.y)
+				sp.melon_vel[1] = Vector3.ZERO
+				mark["melon_tgt"] = true
+		if mark.has("melon_poke") and not mark.has("melon_chk"):
+			mark["melon_chk"] = true
+		if chase.police_active() > 0:
+			mark["cops"] = maxi(int(mark.get("cops", 0)), chase.police_active())
+		if sp.fired("police") == 1 and sp.pieces[5]["phase"] == "done" and not mark.has("cops_gone"):
+			mark["cops_gone"] = frames
+		if mark.has("cops_gone") and frames == int(mark["cops_gone"]) + 2:
+			var leaving: int = 0
+			var ram: int = 0
+			for c: Variant in chase.cops:
+				var ce: BikerEnemy = c
+				if ce.st == BikerEnemy.St.LEAVE or ce.gone:
+					leaving += 1
+				ram += ce.attacks
+			print("  C10: fired %s at %s, melon hits %d, cones %d, curb %d, barrier %s, cops %d (rams %d), jump max %.2f" % [str(sp.counts), str(at), sp.melon_hits, sp.cone_hits, sp.curb_hits, str(sp.results), int(mark.get("cops", 0)), ram, float(mark["max_y"])])
+			_check(at.has("drift") and absf(float(at["drift"]) - 150.0) < 3.0 and sp.curb_hits == 1 and bool(mark.get("drift_prompt", false)), "drift zone: \"DRIFT!\", through it fast without drifting = the curb (%d)" % sp.curb_hits)
+			_check(sp.fired("melons") == 1 and sp.melon_hits >= int(mark.get("mh0", 0)) + 1 and float(mark.get("drop_truck_s", 0.0)) > 280.0 and float(mark.get("drop_truck_s", 0.0)) <= 331.0, "melons: the tailgate drops by s 330 (truck at %.0f), a melon hit (%d)" % [float(mark.get("drop_truck_s", 0.0)), sp.melon_hits])
+			var mel: int = 0
+			for dn: Array in downs:
+				if String(dn[1]) == "melon":
+					mel += 1
+			_check(mark.has("melon_tgt") and mel >= 1, "melons: a biker hitting one crashes (a takedown) (%d)" % mel)
+			_check(at.has("ramp") and absf(float(at["ramp"]) - 520.0) < 3.0 and float(mark["max_y"]) > 1.2, "the ramp: a jump at s 520 (apex %.2f m)" % float(mark["max_y"]))
+			_check(at.has("barrier") and absf(float(at["barrier"]) - 700.0) < 3.0 and sp.results.size() == 1 and sp.results[0] == "ducked" and lost_n == int(mark.get("lost0", lost_n)) and bool(mark.get("duck_prompt", false)),
+				"the barrier: \"[CTRL] CÚI XUỐNG\" from the signs; ducking (stub) passes under it (%s)" % str(sp.results))
+			_check(at.has("wrong_way") and bool(mark["clamp"]) and sp.cone_hits >= 1, "the wrong way: the AI keeps to the left half, riding into the cones hurts (%d)" % sp.cone_hits)
+			_check(int(mark.get("cops", 0)) == 2 and leaving == 2 and at.has("police") and absf(float(at["police"]) - 1080.0) < 3.0, "the police: 2 cops join at s 1080 and drop back after their time (%d leaving)" % leaving)
+			_check(ram >= 1, "the police ram (%d)" % ram)
+			# retry: every piece after the checkpoint is armed again
+			mark["rearm"] = true
+			mark["duck"] = false
+			_ride(false)
+			autopilot = false
+			chase.retry()
+			var armed: int = 0
+			for p: Dictionary in sp.pieces:
+				if String(p["phase"]) == "armed":
+					armed += 1
+			_check(armed == sp.pieces.size() and chase.cops.is_empty() and sp.melon_t < 0.0, "retry(): every set piece is armed again (%d / %d)" % [armed, sp.pieces.size()])
+			_check(is_equal_approx(sp.safe_checkpoint_s(660.0), 620.0) and is_equal_approx(sp.safe_checkpoint_s(600.0), 600.0) and is_equal_approx(sp.safe_checkpoint_s(720.0), 720.0),
+				"a checkpoint inside the barrier's warning stretch moves back to its first sign")
+			sp.rearm(1200.0)
+			_check(is_equal_approx(float(sp.pieces[5].get("at", -1.0)), 1200.0 + BikeSetPieces.POLICE_REJOIN_M), "a retry past the police start: they rejoin 80 m later, not on top of it")
+			sp.rearm(60.0)
+			bike.global_transform = chase.route_transform(650.0)
+			bike.current_speed_ms = 17.0
+			mark["lost0"] = lost_n
+			_ride(true)
+			autopilot = true
+		if t > 60 * 90:
+			_check(false, "C10 timed out (s %.0f, %s, barrier %s, %s, lost %d, knocked %s)" % [chase.s_p, str(sp.counts), str(sp.results), chase.state, lost_n, str(chase.combat.knocked)])
+			_end_chase("c11")
+		return
+	if lost_n > int(mark["lost0"]) and not mark.has("knocked"):
+		mark["knocked"] = true
+		_check(sp.results.back() == "hit" and chase.state == "lost" and chase.combat.knocked, "the barrier without ducking knocks the player off: lost, back to the checkpoint (%s)" % str(sp.results))
+		_end_chase("c11")
+	elif t > 60 * 120:
+		_check(false, "C10: the barrier never knocked the player off (%s)" % str(sp.results))
+		_end_chase("c11")
+
+
+# C11: the Sói Xám cameo: after wave 0 (cleared) once past cameo s; he rides up from behind out of view, wheelies past, the
+# card (stub) freezes, the taunt, the nitro flame, then wave 1 (after_cameo) starts; no attack token meanwhile. Then the
+# forced path: at force_s with wave 0 still riding (it carries into wave 1).
+func _phase_c11(t: int) -> void:
+	if t < 2:
+		return
+	var forced: bool = mark.has("forced")
+	if t == 2:
+		started_w.clear()
+		mark["cards"] = 0
+		var cf := func(done: Callable) -> void:
+			mark["cards"] = int(mark["cards"]) + 1
+			mark["done_cb"] = done
+			mark["card_f"] = frames
+		chase = _kind_chase([[{"lane": -1, "opts": {"ai": false, "hp": 99, "label": "W0"}}], [{"lane": 1, "opts": {"ai": false, "hp": 99, "label": "W1"}}]],
+			{"cameo": {"s": 150.0, "force_s": 300.0, "card_fn": cf}, "start_s": 60.0 if not forced else 280.0, "seed": 31}, [{}, {"after_cameo": true}])
+		chase.start()
+		_ride(true)
+		autopilot = true
+		mark["wheelie"] = 0.0
+		return
+	if chase == null or not is_instance_valid(chase):
+		return
+	if t == 4:
+		_hold(chase.bikers[0], -8.0, -5.0)
+	if t == 20 and not forced:
+		(chase.bikers[0] as BikerEnemy).crash("test")
+	if t == 24 and not forced:
+		_check(chase.cameo_state == "waiting" and chase.s_p < 150.0 and chase.wave == 0, "wave 0 cleared before the cameo point: Sói Xám waits (%s)" % chase.cameo_state)
+	if chase.cameo_state == "running" and not mark.has("cam0"):
+		mark["cam0"] = frames
+		var cm: BikeCameo = chase.cameo
+		var p3: Vector3 = cm.rider.global_position + Vector3(0.0, 1.0, 0.0)
+		_check(cm != null and not chase.in_view(p3) and cm.along < -20.0, "the cameo: he comes from behind, out of view (along %.0f)" % cm.along)
+		_check(forced or absf(chase.s_p - 150.0) < 3.0, "the cameo starts at its point (s %.0f)" % chase.s_p)
+		_check(not chase.request_token(chase.bikers[0] if not chase.bikers.is_empty() else null), "no attack token during the cameo")
+	if chase.cameo and is_instance_valid(chase.cameo):
+		mark["wheelie"] = maxf(float(mark["wheelie"]), chase.cameo.wheelie)
+	if mark.has("card_f") and frames == int(mark["card_f"]) + 30:
+		var cm2: BikeCameo = chase.cameo
+		_check(int(mark["cards"]) == 1 and cm2.phase == "card" and cm2.along >= 6.5 and float(mark["wheelie"]) > 0.3, "the card shows once he is ahead, after a wheelie (%.2f)" % float(mark["wheelie"]))
+		(mark["done_cb"] as Callable).call()
+		_check(cm2.phase == "taunt" and cm2.bubble.visible and chase.hud.popup_text == BikeCombatData.T_CAMEO_TAUNT, "the card ends: his taunt")
+	if chase.cameo and is_instance_valid(chase.cameo) and chase.cameo.phase == "nitro" and not mark.has("nitro"):
+		mark["nitro"] = true
+		_check(chase.cameo.flame.visible, "the nitro: a blue flame")
+	if not mark.has("w1") and started_w.has(1):
+		mark["w1"] = frames
+		_check(chase.cameo_state == "done" and mark.has("nitro") and chase.wave == 1, "wave 1 starts as he pulls away (%s)" % chase.cameo_state)
+		if forced:
+			_check(chase.bikers.size() == 2, "forced cameo: wave 0's rider carries into wave 1 (%d)" % chase.bikers.size())
+		else:
+			_check(chase.bikers.size() == 1, "wave 1 alone after the cleared wave 0 (%d)" % chase.bikers.size())
+	if mark.has("w1") and frames == int(mark["w1"]) + 10:
+		if not forced:
+			mark.clear()
+			mark["forced"] = true
+			_ride(false)
+			autopilot = false
+			chase.stop()
+			chase.queue_free()
+			t0 = frames
+		else:
+			_end_chase("c11b")
+	if t > 60 * 40:
+		_check(false, "C11 timed out (%s, s %.0f)" % [chase.cameo_state, chase.s_p])
+		_end_chase("c11b")
+
+# C9b: a ramp jump started inside a takedown cut gives the bike's camera back at once (and after the jump), so the downed
+# rider is judged out of view by the bike's camera again.
+func _phase_c9b(t: int) -> void:
+	if t < 2:
+		return
+	if t == 2:
+		chase = _kind_chase([[{"lane": -1, "opts": {"ai": false, "hp": 99, "label": "J0"}}, {"lane": 1, "opts": {"ai": false, "hp": 99, "label": "J1"}}]])
+		chase.start()
+		return
+	if t == 4:
+		_hold(chase.bikers[0], -6.0, -5.0)
+		_hold(chase.bikers[1], -9.0, 5.0)
+	if t == 6:
+		(chase.bikers[0] as BikerEnemy).crash("traffic")
+		_check(chase.cam_mode == "td" and chase.cam.current, "test setup: a takedown cut")
+	if t == 9:
+		chase.start_jump()
+		_check(chase.cam_mode == "" and bike.chase_cam.current and chase.slow_kind == "jump", "a jump inside a takedown cut: the bike's camera at once (%s)" % chase.cam_mode)
+	if t == 9 + 90:
+		_check(not chase.jumping() and chase.cam_mode == "" and bike.chase_cam.current and is_equal_approx(Engine.time_scale, 1.0) and RadialWheel.scale_owner == null,
+			"after that jump: normal time, the bike's camera")
+		_end_chase("c10")
+
+
+# C11b: knocked off during the cameo before his card: the retry replays the cameo (card shown once); knocked off after the
+# card: the retry starts the next wave at once.
+func _phase_c11b(t: int) -> void:
+	if t < 2:
+		return
+	if t == 2:
+		mark["cards"] = 0
+		var cf := func(done: Callable) -> void:
+			mark["cards"] = int(mark["cards"]) + 1
+			mark["done_cb"] = done
+			mark["card_f"] = frames
+		chase = _kind_chase([[{"lane": -1, "opts": {"ai": false, "hp": 99, "label": "W0"}}], [{"lane": 1, "opts": {"ai": false, "hp": 99, "label": "W1"}}]],
+			{"cameo": {"s": 150.0, "force_s": 300.0, "card_fn": cf}, "start_s": 60.0, "seed": 33}, [{}, {"after_cameo": true}])
+		chase.start()
+		_ride(true)
+		autopilot = true
+		return
+	if chase == null or not is_instance_valid(chase):
+		return
+	if t == 4:
+		_hold(chase.bikers[0], -8.0, -5.0)
+	if t == 20:
+		(chase.bikers[0] as BikerEnemy).crash("test")
+	if not mark.has("ko1") and chase.cameo_state == "running" and chase.cameo and is_instance_valid(chase.cameo) and chase.cameo.phase == "approach" and chase.cameo.along > -15.0:
+		mark["ko1"] = frames
+		chase.combat.damage(999.0, "test")
+	if mark.has("ko1") and frames == int(mark["ko1"]) + 3:
+		_check(chase.state == "lost", "test setup: knocked off during the cameo approach")
+		chase.retry()
+		_check(chase.cameo_state == "running" and chase.wave == 0 and chase.bikers.is_empty() and chase.cameo != null and chase.cameo.phase == "approach" and int(mark["cards"]) == 0,
+			"knocked off before his card: the retry replays the cameo, not wave 1 (%s, wave %d)" % [chase.cameo_state, chase.wave])
+	if mark.has("ko1") and mark.has("card_f") and not mark.has("ko2"):
+		(mark["done_cb"] as Callable).call()
+		_check(chase.cameo_card_seen and int(mark["cards"]) == 1, "the replayed cameo shows the card")
+		mark["ko2"] = frames
+		chase.combat.damage(999.0, "test")
+	if mark.has("ko2") and frames == int(mark["ko2"]) + 3:
+		chase.retry()
+		_check(chase.cameo_state == "done" and chase.wave == 1 and chase.bikers.size() == 1 and int(mark["cards"]) == 1, "knocked off after the card: the retry starts the next wave at once (%s, wave %d)" % [chase.cameo_state, chase.wave])
+		_end_chase("b")
+		arena.queue_free()
+	if t > 60 * 40:
+		_check(false, "C11b timed out (%s)" % chase.cameo_state)
+		_end_chase("b")
+		arena.queue_free()
+
 
 
 func _finish() -> void:
