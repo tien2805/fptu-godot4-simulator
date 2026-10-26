@@ -138,6 +138,7 @@ var _act: Array = []
 var _sfx: Array[AudioStreamPlayer3D] = []
 var _sfx_i: int = 0
 var _hooks: bool = false
+var _bike_profile: Dictionary = {}       # the bike's own speed profile while the chase caps it (OB-D2)
 var end_at_s: float = -1.0
 var end_s: float = -1.0
 var end_xf: Transform3D = Transform3D.IDENTITY
@@ -498,6 +499,7 @@ func _set_hooks(on: bool) -> void:
 	if on == _hooks:
 		return
 	_hooks = on
+	_cap_bike(on)
 	if roam and is_instance_valid(roam):
 		if on:
 			roam.set("riding_hint", BikeCombatData.T_RIDING)
@@ -512,6 +514,20 @@ func _set_hooks(on: bool) -> void:
 			traffic.extra_obstacles_fn = _traffic_obstacles
 		elif traffic.extra_obstacles_fn == Callable(self, "_traffic_obstacles"):
 			traffic.extra_obstacles_fn = Callable()
+
+
+## Spec owner-bike OB-D2: the bikers top out at BikeCombatData.MAX_SPEED (31 m/s, 8 m/s above the player while closing
+## in), tuned against the 22.5 / 27 m/s bike. The owner's 120 km/h bike would outrun every wave, so while the chase runs
+## the player's bike rides on PlayerBike.STAGE_PROFILE; its own profile comes back with the hooks.
+func _cap_bike(on: bool) -> void:
+	if bike == null or not is_instance_valid(bike):
+		return
+	if on:
+		_bike_profile = bike.speed_profile()
+		bike.apply_speed_profile(PlayerBike.STAGE_PROFILE)
+	elif not _bike_profile.is_empty():
+		bike.apply_speed_profile(_bike_profile)
+		_bike_profile = {}
 
 
 ## RoamTraffic look-ahead obstacles: the riding bikers as small oriented boxes (kind "biker").

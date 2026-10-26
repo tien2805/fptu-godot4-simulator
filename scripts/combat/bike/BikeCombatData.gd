@@ -105,7 +105,7 @@ const T_WAVE: String = "Đợt %d/%d"
 const T_KICK_L: String = "[Q] Đạp trái"
 const T_KICK_R: String = "[E] Đạp phải"
 ## FreeRoam's bottom hint while a chase runs (replaces "[F] xuống xe ...").
-const T_RIDING: String = "[Q]/[E] đạp trái/phải · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [H] còi"
+const T_RIDING: String = "[Q]/[E] đạp trái/phải · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [H] còi · [L] đèn xa"
 const T_NO_DISMOUNT: String = "Đang bị Bầy Sói rượt, không xuống xe được!"
 const T_WARN_L: String = "BÊN TRÁI"
 const T_WARN_R: String = "BÊN PHẢI"

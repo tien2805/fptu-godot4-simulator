@@ -74,7 +74,7 @@ const MAP_BOTTOM: float = 30.0
 const HINT_DEFAULT: String = "[WASD] đi · [Shift] chạy nước rút · [Ctrl] đi bộ · [Space] nhảy · [Z]/[C] xoay camera · [F] xe máy · [T] giờ trong ngày · [M] bản đồ · [ESC] tạm dừng"
 ## Story mode (A2): the story drives the time of day, so [T] gives way to the phone [P].
 const HINT_STORY: String = "[WASD] đi · [Shift] chạy nước rút · [Ctrl] đi bộ · [Space] nhảy · [Z]/[C] xoay camera · [F] xe máy · [P] điện thoại · [M] bản đồ · [ESC] tạm dừng"
-const HINT_RIDING: String = "[F] xuống xe · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [H] còi"
+const HINT_RIDING: String = "[F] xuống xe · [W]/[S] ga/phanh · [A]/[D] lái · [SPACE] drift · [H] còi · [L] đèn xa"
 const HINT_NO_DISMOUNT: String = "Không có chỗ trống cạnh xe để xuống (nước / tường / vật cản) – chạy ra chỗ rộng rồi bấm [F]"
 const HINT_RESCUED: String = "Rơi xuống kênh! Đã đưa bạn về chỗ khô gần nhất"
 const HINT_SERVICE_BIKE: String = "Đang lao động công ích – làm xong mới được lấy xe"
@@ -585,6 +585,7 @@ func _build_bike() -> void:
 	bike.road_path = null
 	bike.lane_clamp_enabled = false
 	bike.fallback_fall_y = -5.0
+	bike.apply_speed_profile(PlayerBike.OWNER_PROFILE)   # owner's bike: 120 km/h in free roam and story roam (OB-D2)
 	# xe đang đỗ (PROCESS_MODE_DISABLED) vẫn là vật cản: không bị gỡ khỏi không gian vật lý
 	bike.disable_mode = CollisionObject3D.DISABLE_MODE_KEEP_ACTIVE
 	add_child(bike)
@@ -605,6 +606,8 @@ func _build_pedestrians() -> void:
 	for h: Area3D in hotspots:
 		avoid.append(h.global_position)
 	pedestrians.setup(md, player, {"bike": bike, "roam": self, "avoid": avoid})
+	if bike:
+		bike.horn_targets_fn = pedestrians.pedestrians   # the horn melody's dancing crowd (OB-D4)
 
 
 ## Xe chạy (spec vice-people-and-movement, Amendment 2026-10-22): làn bên phải, dừng trước người / xe; camera đi xuyên xe.
@@ -1089,6 +1092,8 @@ func set_time_of_day(preset: String) -> void:
 		we.environment = _base_env
 	GameFXScript.upgrade_scene_visuals(self, key)
 	_refresh_lab_hotspot()
+	if bike:
+		bike.set_time_of_day(key)   # headlight / haze / strobe glow at dark presets (OB-D5)
 	if tod_label:
 		tod_label.text = "%s · [T] đổi giờ" % String(TOD_NAMES.get(key, key))
 	if vice_hud:
