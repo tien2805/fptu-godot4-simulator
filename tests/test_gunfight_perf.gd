@@ -1,7 +1,7 @@
 # File: res://tests/test_gunfight_perf.gd
 # Phase C performance gate (spec C-D13, the lair-gunfight case): a test arena (floor, eight low cover boxes in front of the
-# player, one beside him) with a GunFight of 8 alerted gunmen in the first wave (tough enough not to fall) and 4 more
-# queued in a second wave; the player (god mode) crouches in cover, pops out to aim every second and fires while aiming.
+# player, one beside him) with a GunFight of 8 alerted gunmen plus the forklift boss (AI on: driving, charging, tossing
+# crates) in the first wave (tough enough not to fall) and 4 more gunmen queued in a second wave; the player (god mode) crouches in cover, pops out to aim every second and fires while aiming.
 # After a settle (the gunmen in cover, peeking and shooting) one measured window of 120 physics frames against a baseline
 # with the fight disabled (its gunmen, HUD and player cover; the player's cover pose too). Gate: the fight's cost < 3 ms per
 # physics frame by the MEDIAN and by the 5 %-TRIMMED MEAN (the test_combat_perf method: from the physics_frame signal to a
@@ -156,6 +156,7 @@ func _build() -> void:
 	var w2: Array = []
 	for i: int in 4:
 		w2.append({"at": Vector3(-6.0 + 4.0 * float(i), 0.0, -24.0), "opts": {"alerted": true}})
+	w1.append({"boss": "forklift", "at": Vector3(0.0, 0.0, -30.0), "yaw": 0.0, "opts": {"hp": 99999.0}})
 	fight.add_wave(w1)
 	fight.add_wave(w2)
 	fight.start()
@@ -186,8 +187,10 @@ func _on_physics() -> void:
 					if (g as Gunman).slot >= 0:
 						in_cover += 1
 					shots += (g as Gunman).shots
-				print("  arena: %d gunmen alive, %d in cover, %d shots so far, player in cover: %s" % [fight.alive().size(), in_cover, shots, fight.cover_ctl.in_cover])
-				_check(fight.alive().size() == 8, "8 gunmen fighting (%d)" % fight.alive().size())
+				var boss: ForkliftBoss = fight.boss
+				print("  arena: %d enemies alive (8 gunmen + forklift), %d in cover, %d shots so far, player in cover: %s, boss %s (%d charges, %d tosses)" % [fight.alive().size(), in_cover, shots, fight.cover_ctl.in_cover, boss.state_name(), boss.charges, boss.tosses])
+				_check(fight.alive().size() == 9 and boss != null, "8 gunmen and the forklift fighting (%d)" % fight.alive().size())
+				_check(boss.charges + boss.tosses >= 1, "the forklift attacked before the window")
 				_check(in_cover >= 4, "most gunmen took cover (%d of 8)" % in_cover)
 				_check(fight.cover_ctl.in_cover, "the player is in cover")
 				shots0 = shots
@@ -205,6 +208,7 @@ func _on_physics() -> void:
 					fight.cover_ctl.pose.process_mode = Node.PROCESS_MODE_DISABLED
 				for g3: Variant in fight.gunmen:
 					(g3 as Node3D).visible = false
+				fight.boss.visible = false
 				_next("base")
 		"base":
 			if t == 2:
@@ -219,7 +223,7 @@ func _report() -> void:
 	var trim: float = (trimmed[0] - trimmed[1]) / 1000.0
 	var pcost: float = (pmedians[0] - pmedians[1]) / 1000.0
 	var ptrim: float = (ptrimmed[0] - ptrimmed[1]) / 1000.0
-	print("  gunfight physics (8 gunmen + cover + HUD + fight): %.2f ms median, %.2f ms trimmed mean (median %.0f vs %.0f us; trimmed %.0f vs %.0f us)" % [cost, trim, medians[0], medians[1], trimmed[0], trimmed[1]])
+	print("  gunfight physics (8 gunmen + forklift boss + cover + HUD + fight): %.2f ms median, %.2f ms trimmed mean (median %.0f vs %.0f us; trimmed %.0f vs %.0f us)" % [cost, trim, medians[0], medians[1], trimmed[0], trimmed[1]])
 	print("  gunfight process (HUD, pose layers, rigs): %.2f ms median, %.2f ms trimmed mean (median %.0f vs %.0f us; trimmed %.0f vs %.0f us)" % [pcost, ptrim, pmedians[0], pmedians[1], ptrimmed[0], ptrimmed[1]])
 	_check(cost < GATE_MS, "gunfight < 3 ms per physics frame, median (%.2f)" % cost)
 	_check(trim < GATE_MS, "gunfight < 3 ms per physics frame, 5 %%-trimmed mean (%.2f)" % trim)

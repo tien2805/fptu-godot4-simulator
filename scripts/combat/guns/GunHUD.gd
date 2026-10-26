@@ -6,10 +6,13 @@
 #   - under it the boss bar when the fight has a boss: Alexander's (endless) name cut to fit with "...", the bar (gold while
 #     a name intro refills it), the status ("SƠ HỞ!", "QUÁ NHIỆT!");
 #   - damage direction: a red arc around the screen centre towards each shooter that hit the player (fades in 1.2 s);
+#   - telegraph warning: an amber marker on the screen edge (pointing out, CombatHUD's edge-marker idea) for every gunman
+#     glinting and the forklift revving for a charge while it is behind the camera or off screen;
 #   - bottom centre: "[Ctrl] nấp" near a free cover slot, the in-cover hint while crouched, "Hết đạn, tìm hộp đạn";
 #   - centre popups (wave start, boss windows), a toast line (ammo pickups, refusals) and a subtitle (the name speech).
-# Test state (updated in _process, not in _draw): hp_text, left_text, wave_text, markers, boss_shown, boss_name,
-# prompt_text, popup_text, toast_text, subtitle_text.
+# Test state (updated in _process, not in _draw): hp_text, left_text, wave_text, markers, edge_markers, boss_shown,
+# boss_name, prompt_text, popup_text, toast_text, subtitle_text. Strings are rebuilt only when their value changes; the
+# panels redraw only on a change (or while the low-HP bar blinks).
 class_name GunHUD
 extends CanvasLayer
 
@@ -23,6 +26,8 @@ const MARK_MAX: int = 6
 const POPUP_S: float = 1.1
 const TOAST_S: float = 1.8
 const NAME_CHARS: int = 44
+const EDGE_INSET: float = 46.0
+const EDGE_COL := Color("#FFB23C")
 
 var fight: Object = null
 var panel: Control
@@ -45,6 +50,18 @@ var popup_text: String = ""
 var toast_text: String = ""
 var subtitle_text: String = ""
 var markers: int = 0
+var edge_markers: int = 0
+var edge_pos := PackedVector2Array()
+var edge_dir := PackedVector2Array()
+var hp_num: String = ""
+var _hp_i: int = -1
+var _left_n: int = -1
+var _wave_i: int = -1
+var _wave_n: int = -1
+var _boss_src: String = ""
+var _boss_k_shown: float = -1.0
+var _status_shown: String = ""
+var _dirty: bool = true
 var popups: int = 0
 var hp_k: float = 1.0
 var _mark_dir: PackedVector3Array = PackedVector3Array()
@@ -186,31 +203,100 @@ func _process(delta: float) -> void:
 	if fight == null or not visible:
 		return
 	_read_fight()
-	panel.queue_redraw()
-	if boss_bar.visible:
-		boss_bar.queue_redraw()
-	if markers > 0 or marks_view.get_meta("had", false):
-		marks_view.set_meta("had", markers > 0)
+	if _dirty or hp_k < 0.25:
+		panel.queue_redraw()
+		if boss_bar.visible:
+			boss_bar.queue_redraw()
+		_dirty = false
+	_edge_markers()
+	var draw_marks: bool = markers > 0 or edge_markers > 0
+	if draw_marks or marks_view.get_meta("had", false):
+		marks_view.set_meta("had", draw_marks)
 		marks_view.queue_redraw()
+
+
+## Telegraphs on their way from behind the camera or off screen: a point on the screen border (EDGE_INSET in) towards the
+## glinting gunman / the revving forklift.
+func _edge_markers() -> void:
+	edge_pos.clear()
+	edge_dir.clear()
+	edge_markers = 0
+	var vp: Viewport = get_viewport()
+	var cam: Camera3D = vp.get_camera_3d() if vp else null
+	if cam == null:
+		return
+	for g: Variant in fight.get("gunmen"):
+		if is_instance_valid(g) and (g as Gunman).telegraphing:
+			_edge_for(cam, vp, (g as Gunman).muzzle_pos())
+	var boss: Object = fight.get("boss")
+	if boss != null and is_instance_valid(boss) and String(boss.call("state_name")) == "charge_tell":
+		_edge_for(cam, vp, (boss.get("forklift") as Node3D).global_position + Vector3(0.0, 1.5, 0.0))
+	edge_markers = edge_pos.size()
+
+
+func _edge_for(cam: Camera3D, vp: Viewport, pos: Vector3) -> void:
+	var vs: Vector2 = vp.get_visible_rect().size
+	var c: Vector2 = vs * 0.5
+	var d: Vector2
+	if cam.is_position_behind(pos):
+		var lp: Vector3 = cam.global_transform.affine_inverse() * pos
+		d = Vector2(lp.x, -lp.y)
+		if d.length_squared() < 1e-4:
+			d = Vector2(0.0, 1.0)
+	else:
+		var sp: Vector2 = cam.unproject_position(pos)
+		if Rect2(Vector2.ZERO, vs).grow(-24.0).has_point(sp):
+			return                           # on screen: the glint itself tells it
+		d = sp - c
+	d = d.normalized()
+	var half: Vector2 = c - Vector2(EDGE_INSET, EDGE_INSET)
+	var t: float = minf(half.x / maxf(absf(d.x), 1e-4), half.y / maxf(absf(d.y), 1e-4))
+	edge_pos.append(c + d * t)
+	edge_dir.append(d)
 
 
 func _read_fight() -> void:
 	var c: PlayerCombat = fight.get("combat")
 	if c:
 		hp_k = clampf(c.hp / maxf(c.max_hp, 1.0), 0.0, 1.0)
-		hp_text = "%s %d" % [GunData.T_HP, int(ceil(c.hp))]
-	left_text = GunData.T_LEFT % int(fight.call("enemies_left"))
+		var hi: int = int(ceil(c.hp))
+		if hi != _hp_i:
+			_hp_i = hi
+			hp_num = str(hi)
+			hp_text = GunData.T_HP + " " + hp_num
+			_dirty = true
+	var left: int = int(fight.call("enemies_left"))
+	if left != _left_n:
+		_left_n = left
+		left_text = GunData.T_LEFT % left
+		_dirty = true
 	var nw: int = (fight.get("waves") as Array).size()
-	wave_text = GunData.T_WAVE % [int(fight.get("wave")) + 1, nw] if nw > 1 else ""
+	var wi: int = int(fight.get("wave"))
+	if wi != _wave_i or nw != _wave_n:
+		_wave_i = wi
+		_wave_n = nw
+		wave_text = GunData.T_WAVE % [wi + 1, nw] if nw > 1 else ""
+		_dirty = true
 	var boss: Object = fight.get("boss")
-	boss_shown = boss != null and is_instance_valid(boss) and not bool(boss.call("is_defeated"))
-	boss_bar.visible = boss_shown
+	var shown: bool = boss != null and is_instance_valid(boss) and not bool(boss.call("is_defeated"))
+	if shown != boss_shown:
+		boss_shown = shown
+		boss_bar.visible = shown
+		_dirty = true
 	if boss_shown:
 		boss_k = clampf(float(boss.get("hp")) / maxf(float(boss.get("max_hp")), 1.0), 0.0, 1.0)
 		boss_status = String(boss.call("status_text"))
-		boss_refilling = bool(boss.call("is_naming"))
+		var refill: bool = bool(boss.call("is_naming"))
+		if not is_equal_approx(boss_k, _boss_k_shown) or boss_status != _status_shown or refill != boss_refilling:
+			_boss_k_shown = boss_k
+			_status_shown = boss_status
+			boss_refilling = refill
+			_dirty = true
 		var full: String = String(boss.call("display_name"))
-		boss_name = full if full.length() <= NAME_CHARS else full.substr(0, NAME_CHARS - 3).strip_edges() + "..."
+		if full != _boss_src:
+			_boss_src = full
+			boss_name = full if full.length() <= NAME_CHARS else full.substr(0, NAME_CHARS - 3).strip_edges() + "..."
+			_dirty = true
 	var pt: String = ""
 	var cov: PlayerCover = fight.get("cover_ctl")
 	if cov:
@@ -244,7 +330,7 @@ class HPPanel extends Control:
 			col = col.lightened(0.45)
 		draw_rect(Rect2(r.position, Vector2(r.size.x * hud.hp_k, r.size.y)), col)
 		draw_rect(r, Color(1.0, 1.0, 1.0, 0.5), false, 1.0)
-		_text(f, Vector2(r.end.x + 6.0, 26.0), hud.hp_text.trim_prefix(GunData.T_HP + " "), 18, acc, HORIZONTAL_ALIGNMENT_LEFT, 44.0)
+		_text(f, Vector2(r.end.x + 6.0, 26.0), hud.hp_num, 18, acc, HORIZONTAL_ALIGNMENT_LEFT, 44.0)
 		_text(f, Vector2(size.x - 118.0, 26.0), hud.left_text, 18, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, 108.0)
 		if hud.wave_text != "":
 			_text(ThemeDB.fallback_font, Vector2(12.0, 50.0), hud.wave_text, 14, Color(0.85, 0.85, 0.9), HORIZONTAL_ALIGNMENT_CENTER, size.x - 24.0)
@@ -277,6 +363,14 @@ class Marks extends Control:
 	var hud: GunHUD
 
 	func _draw() -> void:
+		var pulse: float = 0.75 + 0.25 * sin(float(Time.get_ticks_msec()) / 1000.0 * 18.0)
+		for j: int in hud.edge_pos.size():
+			var p: Vector2 = hud.edge_pos[j]
+			var dd: Vector2 = hud.edge_dir[j]
+			var nn := Vector2(-dd.y, dd.x)
+			draw_colored_polygon(PackedVector2Array([p + dd * 18.0, p - dd * 6.0 + nn * 14.0, p - dd * 6.0 - nn * 14.0]), CombatHUD.INK)
+			draw_colored_polygon(PackedVector2Array([p + dd * 14.0, p - dd * 3.0 + nn * 10.0, p - dd * 3.0 - nn * 10.0]), Color(GunHUD.EDGE_COL, pulse))
+			draw_arc(p - dd * 4.0, 24.0, dd.angle() - 0.9, dd.angle() + 0.9, 12, Color(GunHUD.EDGE_COL, pulse), 3.0, true)
 		var c: Vector2 = size * 0.5
 		for i: int in hud._mark_dir.size():
 			var sd: Vector2 = hud.screen_dir(hud._mark_dir[i])

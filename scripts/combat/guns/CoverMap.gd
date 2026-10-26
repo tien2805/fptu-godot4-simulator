@@ -39,7 +39,7 @@ func add_marker(p: Vector3, n: Vector3, h: float = 1.0, box: int = -1) -> int:
 ## A box obstacle; returns the number of slots it added (0 for a box that is too tall or too flat to crouch behind).
 func add_box(xf: Transform3D, size: Vector3) -> int:
 	var h: float = size.y
-	if h < GunData.COVER_MIN_H or h > GunData.COVER_MAX_H:
+	if h < GunData.COVER_MIN_H - 0.005 or h > GunData.COVER_MAX_H + 0.005:   # float32 sizes: 0.9 is 0.89999998
 		return 0
 	boxes += 1
 	var c: Vector3 = xf.origin
@@ -109,6 +109,21 @@ func nearest(p: Vector3, r: float, taken: Dictionary = {}, me: Object = null) ->
 	return best
 
 
+## Free slots within r of p (flat, within 1 m of height), nearest first (the player's cover prompt checks each one's
+## reachability in that order).
+func near_ids(p: Vector3, r: float, taken: Dictionary = {}, me: Object = null) -> PackedInt32Array:
+	var found: Array = []
+	for i: int in pos.size():
+		var q: Vector3 = pos[i]
+		if absf(q.y - p.y) > 1.0:
+			continue
+		var d2: float = (q.x - p.x) * (q.x - p.x) + (q.z - p.z) * (q.z - p.z)
+		if d2 > r * r or (taken.has(i) and taken[i] != me):
+			continue
+		found.append(Vector2(d2, float(i)))
+	return _sorted_ids(found)
+
+
 ## The slot's obstacle stands between it and the threat.
 func protects(i: int, threat: Vector3) -> bool:
 	if i < 0 or i >= pos.size():
@@ -151,10 +166,10 @@ func _crosses_box(b_i: int, a: Vector3, b: Vector3) -> bool:
 
 ## Free slots within max_d of `from` that protect against the threat and stand min_threat_d..SIGHT_M from it, best first
 ## (score: the walk plus how far the threat distance is from a comfortable 12 m).
-func candidates(threat: Vector3, from: Vector3, max_d: float, taken: Dictionary, me: Object, min_threat_d: float) -> PackedInt32Array:
+func candidates(threat: Vector3, from: Vector3, max_d: float, taken: Dictionary, me: Object, min_threat_d: float, max_h: float = INF) -> PackedInt32Array:
 	var found: Array = []
 	for i: int in pos.size():
-		if taken.has(i) and taken[i] != me:
+		if (taken.has(i) and taken[i] != me) or height[i] > max_h:
 			continue
 		var walk: float = WeaponMath.flat(pos[i], from)
 		if walk > max_d:
@@ -167,11 +182,11 @@ func candidates(threat: Vector3, from: Vector3, max_d: float, taken: Dictionary,
 
 
 ## Slots for a flank: like candidates(), at least min_deg around the threat from where `from` stands (closest to 75°).
-func flank_candidates(threat: Vector3, from: Vector3, max_d: float, taken: Dictionary, me: Object, min_deg: float) -> PackedInt32Array:
+func flank_candidates(threat: Vector3, from: Vector3, max_d: float, taken: Dictionary, me: Object, min_deg: float, max_h: float = INF) -> PackedInt32Array:
 	var found: Array = []
 	var a0: Vector3 = WeaponMath.flat_dir(from - threat)
 	for i: int in pos.size():
-		if taken.has(i) and taken[i] != me:
+		if (taken.has(i) and taken[i] != me) or height[i] > max_h:
 			continue
 		var walk: float = WeaponMath.flat(pos[i], from)
 		if walk > max_d or walk < 1.0:

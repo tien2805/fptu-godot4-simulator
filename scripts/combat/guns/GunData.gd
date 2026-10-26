@@ -11,7 +11,7 @@ extends RefCounted
 # ----- cover -----
 const COVER_ENTER_R: float = 1.5         # hold Ctrl this close to a cover slot to take it
 const COVER_MAX_H: float = 1.4           # a box this low (top above its floor) is low cover
-const COVER_MIN_H: float = 0.5
+const COVER_MIN_H: float = 0.9           # lower boxes do not stop a bullet aimed at a crouched body
 const SLOT_STEP: float = 1.1             # slots along a box face
 const SLOT_OUT: float = 0.6              # a slot stands this far out from the face
 const SLOT_EDGE: float = 0.25            # slots keep this far from a face's corners
@@ -19,7 +19,9 @@ const PROTECT_COS: float = 0.3           # a slot protects against a threat with
 const CROUCH_DROP: float = 0.75          # a crouched body's hit capsule is lowered this much (capsule top ~1.05 m)
 const KO_DROP: float = 1.5               # a knocked-out gunman: capsule (and its stars) lowered onto the floor
 const TARGET_STAND_Y: float = 1.3        # where enemy bullets aim on a standing / exposed player
-const TARGET_CROUCH_Y: float = 0.7       # ... and on a player crouched behind cover
+const TARGET_CROUCH_Y: float = 0.7       # ... and on a player crouched behind cover, at most COVER_TARGET_BELOW under the
+const COVER_TARGET_BELOW: float = 0.35   #   obstacle's top (a 0.9 m box: aim at 0.55 m)
+const GUNMAN_COVER_MAX_H: float = 1.2    # gunmen only use cover their standing muzzle (MUZZLE_Y) clears
 const EXPOSE_AFTER_FIRE_S: float = 0.5   # a shot fired from cover keeps the player exposed this long
 
 # ----- gunmen -----
@@ -51,9 +53,13 @@ const OPEN_KEEP_M: float = 11.0          # without cover: walk to about this dis
 const STAGGER_S: float = 0.45
 const PEEK_ABORT_S: float = 1.2          # no clear ray this long while peeking: back down
 const RECHECK_S: float = 0.5             # cover still protects? (in cover, at most every 0.5 s)
-const ARRIVE_M: float = 0.25
 const SEPARATION_M: float = 1.0
 const STUCK_S: float = 3.0               # no progress this long on the way: give up that spot
+const RAY_DT: float = 0.1                # line / walk checks while waiting run at most 10 Hz
+const NO_LINE_TRIES: int = 3             # this many waits in cover without a line from the standing muzzle: flank
+const FLOOR_PROBE_UP: float = 0.6        # floor following (ramps, stairs): a down-ray from this high above the feet
+const FLOOR_PROBE_DOWN: float = 1.2      #   ... to this far below them
+const PRUNE_S: float = 1.0               # cover slots inside geometry are re-checked this often (moving blockers, crates)
 const ACC_BASE: float = 0.72
 const ACC_NEAR_M: float = 6.0
 const ACC_FAR_M: float = 32.0
@@ -123,7 +129,6 @@ const T_WAVE_POP: String = "Đợt %d"
 const T_COVER_PROMPT: String = "[Ctrl] nấp"
 const T_IN_COVER: String = "[Chuột phải] nhô ra bắn · thả [Ctrl] để rời chỗ nấp"
 const T_LOCKED: String = "Khoá"
-const T_LOADOUT: String = "Ở đây chỉ dùng: %s"
 const T_NO_AMMO: String = "Hết đạn, tìm hộp đạn"
 const T_AMMO: String = "+%d viên %s"
 const T_ALERT: String = "Có biến!"
@@ -151,7 +156,6 @@ const ALEX_LOOK: Dictionary = {"preset": "casual", "female": false, "body": "cas
 	"trousers_color": Color("#EADFC4"), "height": 1.0}
 
 # ----- code poses (character frame Euler, CineMoves conventions) -----
-const UPPER: Array[String] = ["torso", "head", "shoulder_l", "shoulder_r", "elbow_l", "elbow_r"]
 static var _pose_cache: Dictionary = {}
 
 

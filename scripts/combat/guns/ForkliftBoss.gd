@@ -6,7 +6,9 @@
 #   CHARGE_TELL  the telegraph (1.0 s, 0.8 s in phase 2): turns to the player, forks down, red beacon, horn, revving, tyre
 #                smoke, "Xe nâng lao tới!";
 #   CHARGE       full throttle along the locked direction (11 m/s, 13 in phase 2) for up to 2.4 s; the player within
-#                CHARGE_HIT_R of the chassis-to-fork-tips line takes a heavy hit (25, knock-down) once per charge;
+#                CHARGE_HIT_R of the chassis-to-fork-tips line, with a clear line from the chassis front to him (the
+#                forks have no collision: cover or a wall between stops the hit), takes a heavy hit (25, knock-down) once
+#                per charge; a crash is handled before any hit test;
 #   RECOVER      after a crash into the level (3.2 s) or a miss (1.8 s): stalled, Alexander dizzy with stars: VULNERABLE;
 #   LIFT         stops and raises the forks with a crate (0.9 s);
 #   TOSS         flings the crate (two in phase 2) in an arc onto where the player stands: a dark shadow on the landing spot
@@ -17,7 +19,9 @@
 #                and NAME_REFILL (10 %) of his bar refills meanwhile (never above full);
 #   TOPPLE       HP 0: the forklift tips over away from the player (Forklift.topple) with him on it; then KO: he lies beside
 #                it with stars (no blood); is_defeated() -> GunFight counts the wave beaten;
-#   HOLD         ai off (tests): sits still until force_attack(); STAND: the fight was lost.
+#   HOLD         ai off ({"ai": false}: the villain card, a cinematic, tests): sits still until activate() (starts the AI
+#                loop) or force_attack() (one attack, then back to HOLD); STAND: the fight was lost.
+# Hits on the player come from the forklift body (its position: the damage arc, the knock-down direction).
 # Bullets (and melee) reach him through the driver target (hit_node(), a capsule over the seat; the chassis and the mast
 # rails are world geometry and stop shots): outside the vulnerable windows he only clangs ("Không xi nhê!").
 # GunHUD shows the boss bar from display_name(), hp / max_hp, status_text() and is_naming().
@@ -180,6 +184,14 @@ func status_text() -> String:
 		St.OVERHEAT:
 			return GunData.T_OVERHEAT
 	return ""
+
+
+## Leave HOLD and run the AI loop (IDLE: drive, think, attack pattern).
+func activate() -> void:
+	ai = true
+	if st == St.HOLD:
+		_think = _rng.randf_range(GunData.THINK.x, GunData.THINK.y)
+		_enter(St.IDLE)
 
 
 ## Start an attack now ("charge" | "toss"), from IDLE or HOLD (tests, scripted beats).
@@ -427,13 +439,6 @@ func _do_tell(delta: float) -> void:
 
 
 func _do_charge() -> void:
-	forklift.drive(1.0, 0.0, GunData.CHARGE_SPEED2 if phase2() else GunData.CHARGE_SPEED, true)
-	if not _charge_hit:
-		var pl: Node3D = fight.get("player")
-		if pl and _near_segment(pl.global_position):
-			_charge_hit = true
-			if String(fight.call("hit_player", self, GunData.CHARGE_DMG, true)) == "hit":
-				charge_hits += 1
 	if _crashed_now:
 		_crashed_now = false
 		st_len = GunData.CRASH_RECOVER_S
@@ -447,9 +452,25 @@ func _do_charge() -> void:
 			pl2.call("shake", 0.5)
 		crashed.emit()
 		_enter(St.RECOVER)
-	elif st_t >= GunData.CHARGE_MAX_S:
+		return
+	if st_t >= GunData.CHARGE_MAX_S:
 		st_len = GunData.MISS_RECOVER_S
 		_enter(St.RECOVER)
+		return
+	forklift.drive(1.0, 0.0, GunData.CHARGE_SPEED2 if phase2() else GunData.CHARGE_SPEED, true)
+	if not _charge_hit:
+		var pl: Node3D = fight.get("player")
+		if pl and _near_segment(pl.global_position) and _charge_line_clear():
+			_charge_hit = true
+			if String(fight.call("hit_player", forklift, GunData.CHARGE_DMG, true)) == "hit":
+				charge_hits += 1
+
+
+## Nothing between the chassis front (above the chassis, between the mast rails) and the player's target point: a box he
+## crouches behind or a wall stops the charge hit even when the collision-free forks poke through it.
+func _charge_line_clear() -> bool:
+	var front: Vector3 = forklift.global_transform * Vector3(0.0, 1.0, -1.15)
+	return bool(fight.call("clear_line", front, fight.call("player_target")))
 
 
 func _on_crash(_speed: float) -> void:
@@ -550,7 +571,7 @@ func _land(c: Node3D, at: Vector3) -> void:
 	var hit: bool = false
 	var pl: Node3D = fight.get("player") if fight else null
 	if pl and WeaponMath.flat(pl.global_position, at) <= GunData.CRATE_R and absf(pl.global_position.y - at.y) < 2.0:
-		if String(fight.call("hit_player", self, GunData.CRATE_DMG, true)) == "hit":
+		if String(fight.call("hit_player", forklift, GunData.CRATE_DMG, true)) == "hit":
 			hit = true
 			crate_hits += 1
 	if fight:

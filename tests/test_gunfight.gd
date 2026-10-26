@@ -5,23 +5,35 @@
 #   cover    hold Ctrl away from cover = nothing; near a slot = snapped, crouched, walking locked, target point low, the box
 #            blocks a gunman's line; aiming pops out (target at chest height, the line is clear); release = out of cover;
 #            the fight forces the pistol, sets fight_active and hides the CombatHUD bar.
+#   lowcover the lowest cover (0.9 m) stops a bullet aimed at the crouched player from 6 m; a slot behind a thin wall is
+#            never offered (no snapping through it).
 #   duck     an exposed player ducks during a gunman's telegraph: the bullet stops at the cover, no damage; exposed again:
 #            hit, HP down, a damage-direction marker on the HUD.
 #   states   one gunman: patrol -> (the player's gunshot) alert -> to_cover -> cover -> peek -> flank; a bullet staggers,
 #            three knock out; the single wave is won and the weapons are unlocked.
 #   tele     every bullet that hits the player resolves at least 0.4 s after that gunman's glint telegraph started.
-#   wall     a gunman behind a tall wall never telegraphs or shoots, the player is never hurt.
-#   cap      six gunmen around the player: never more than 3 shooting at once (and 3 is reached).
-#   hp       no regeneration before 4 s, regeneration after; down -> lost (the gunman stands down), retry revives.
-#   retry    two waves: the wave-2 checkpoint (spot, ammo) comes back on retry() after a loss.
+#   wall     a gunman 24 m away behind a wide wall, with a nav graph that only covers its side: the cover slot past the wall
+#            is refused (no walkable route), it tries to walk to the player and stays behind the wall, never telegraphs,
+#            shoots or hurts the player.
+#   cap      six gunmen around the player: never more than 3 shooting at once (and 3 is reached); glints behind the camera
+#            show edge markers on the HUD.
+#   hp       no regeneration before 4 s, regeneration after; Tay không + Q held does not block gunfire; down -> lost (the
+#            gunman stands down), retry revives.
+#   retry    two waves: the wave-2 checkpoint (spot, ammo) comes back on retry() after a loss; a checkpoint taken with no
+#            ammo left comes back with one magazine of reserve per loadout gun.
 #   ammo     loadout lock (equip refuses, scroll skips, wheel "Khoá"), finite spare rounds, reload from the reserve, out of
-#            ammo = dry, no reload, HUD hint; a pickup adds rounds and reloads; stop() restores everything.
+#            ammo = dry, no reload, HUD hint; a pickup adds rounds and reloads; stop() restores everything; an unalerted
+#            guard without a yaw faces along its patrol.
 #   funny    force_loadout off: only the funny weapons are locked.
 #   ko       the player's pistol (aimed) staggers then knocks a gunman out (stars, capsule on the floor, enemy_ko, won).
 #   boss     forklift: immune outside the windows; charge telegraph >= 1 s, the charge hits the player in its path, crashes
 #            into a wall -> vulnerable recover (bullet damage) -> immune again; crate toss: the shadow grows 1.2 s before the
 #            landing, a dodge = no damage, staying = a heavy hit; name intro refills 10 % (invulnerable meanwhile), at most
 #            twice; overheat = vulnerable with x1.5 damage; HP 0 -> topple -> KO -> won.
+#   boss2    real pistol rays from the side reach the driver past the chassis (immune clang in HOLD, damage in the recover
+#            window); a charge into the box the player crouches behind crashes into it without hitting him.
+#   boss3    the boss AI loop (activate()): idle, charge telegraph, charge, recover, lift, toss.
+#   floor    a gunman walking onto a 0.3 m platform follows its height.
 # Counts physics frames (Engine.max_fps = 60).
 # Run:  godot --headless --path . --script tests/test_gunfight.gd
 extends SceneTree
@@ -30,6 +42,12 @@ const World: Script = preload("res://tests/support/mayhem_world.gd")
 const B0 := [Vector3(0.0, 0.5, -2.0), Vector3(2.0, 1.0, 0.8)]
 const BA := [Vector3(106.0, 0.5, -9.5), Vector3(2.0, 1.0, 0.8)]
 const BB := [Vector3(94.0, 0.5, -6.0), Vector3(2.0, 1.0, 0.8)]
+const B_LOW := [Vector3(0.0, 0.45, 80.0), Vector3(2.0, 0.9, 0.8)]
+const B_THIN := [Vector3(0.0, 0.5, 40.0), Vector3(2.0, 1.0, 0.8)]
+const W_THIN := [Vector3(0.0, 1.25, 41.6), Vector3(6.0, 2.5, 0.2)]
+const B_WALLSIDE := [Vector3(300.0, 0.5, 0.0), Vector3(2.0, 1.0, 0.8)]
+const B_BOSS2 := [Vector3(1000.0, 0.5, 0.0), Vector3(2.4, 1.0, 0.8)]
+const PLATFORM := [Vector3(1200.0, 0.15, -12.0), Vector3(10.0, 0.3, 20.0)]
 
 var fails: Array[String] = []
 var frames: int = 0
@@ -53,6 +71,9 @@ var won_n: int = 0
 var ko_n: int = 0
 var max_sh: int = 0
 var max_tele: int = 0
+var max_edge: int = 0
+var spotted_n: int = 0
+var alerted_n: int = 0
 var results: Array[String] = []
 var aux: Dictionary = {}
 
@@ -79,6 +100,7 @@ func _static_checks() -> void:
 	var n: int = c.add_box(Transform3D(Basis.IDENTITY, B0[0]), B0[1])
 	_check(n == 6 and c.count() == 6, "a 2 x 1 x 0.8 low box gets 6 cover slots (%d)" % n)
 	_check(c.add_box(Transform3D(Basis.IDENTITY, Vector3(5.0, 1.25, 0.0)), Vector3(2.0, 2.5, 1.0)) == 0, "a 2.5 m tall box is not low cover")
+	_check(c.add_box(Transform3D(Basis.IDENTITY, Vector3(9.0, 0.3, 0.0)), Vector3(2.0, 0.6, 1.0)) == 0, "a 0.6 m box is too low to stop bullets: no cover")
 	var front: int = c.nearest(Vector3(0.5, 0.0, -0.5), GunData.COVER_ENTER_R)
 	_check(front == 3 and c.pos[3].is_equal_approx(Vector3(0.75, 0.0, -1.0)), "nearest slot from (0.5, -0.5) is the front slot at (0.75, -1.0) (%d)" % front)
 	_check(c.nearest(Vector3(0.5, 0.0, -0.5), GunData.COVER_ENTER_R, {3: self}) == 2, "an occupied slot is skipped")
@@ -89,7 +111,7 @@ func _static_checks() -> void:
 	_check(GunData.hit_chance(6.0, 7.5, false, false) < near * 0.5 and GunData.hit_chance(6.0, 4.2, false, false) < near, "accuracy falls while the player moves")
 	_check(GunData.hit_chance(6.0, 0.0, true, false) < near and GunData.hit_chance(6.0, 0.0, false, true) < near, "popping out of cover and the first shot are harder to hit")
 	var texts: Array[String] = [GunData.T_HP, GunData.T_LEFT, GunData.T_WAVE, GunData.T_COVER_PROMPT, GunData.T_IN_COVER, GunData.T_LOCKED,
-		GunData.T_LOADOUT, GunData.T_NO_AMMO, GunData.T_AMMO, GunData.T_ALERT, GunData.T_IMMUNE, GunData.T_VULN, GunData.T_OVERHEAT,
+		GunData.T_NO_AMMO, GunData.T_AMMO, GunData.T_ALERT, GunData.T_IMMUNE, GunData.T_VULN, GunData.T_OVERHEAT,
 		GunData.T_CHARGE, GunData.T_FIGHT_PHONE, GunData.T_FIGHT_EMOTE, GunData.ALEX_FULL]
 	texts.append_array(GunData.ALEX_INTRO)
 	var bad: Array[String] = []
@@ -139,6 +161,8 @@ func _fight(waves: Array, opts: Dictionary = {}, boxes: Array = []) -> GunFight:
 	fight.won.connect(func() -> void: won_n += 1)
 	fight.enemy_ko.connect(func(_e: Node3D) -> void: ko_n += 1)
 	fight.player_hit.connect(_on_player_hit)
+	fight.spotted.connect(func(_g2: Node3D) -> void: spotted_n += 1)
+	fight.alerted.connect(func(_g3: Node3D) -> void: alerted_n += 1)
 	return fight
 
 
@@ -177,9 +201,9 @@ func _on_physics() -> void:
 		arena.name = "Arena"
 		root.add_child(arena)
 		World.floor_box(arena, 3000.0)
-		for b: Array in [B0, BA, BB]:
+		for b: Array in [B0, BA, BB, B_LOW, B_THIN, W_THIN, B_WALLSIDE, B_BOSS2, PLATFORM]:
 			World.wall(arena, b[0], b[1])
-		World.wall(arena, Vector3(300.0, 1.5, -5.0), Vector3(8.0, 3.0, 0.4))
+		World.wall(arena, Vector3(300.0, 1.5, -5.0), Vector3(20.0, 3.0, 0.4))
 		World.wall(arena, Vector3(900.0, 1.5, 6.0), Vector3(40.0, 3.0, 1.0))
 		player = World.player(arena, Vector3(4.0, 0.0, 3.0), 0.0)
 		dir = World.director(arena, player, targets)
@@ -195,6 +219,8 @@ func _on_physics() -> void:
 	match phase:
 		"cover":
 			_ph_cover(t)
+		"lowcover":
+			_ph_lowcover(t)
 		"duck":
 			_ph_duck(t)
 		"duck2":
@@ -221,6 +247,12 @@ func _on_physics() -> void:
 			_ph_ko(t)
 		"boss":
 			_ph_boss(t)
+		"boss2":
+			_ph_boss2(t)
+		"boss3":
+			_ph_boss3(t)
+		"floor":
+			_ph_floor(t)
 		"done":
 			_report()
 
@@ -238,30 +270,55 @@ func _ph_cover(t: int) -> void:
 		_check(dir.current == WeaponData.Slot.PISTOL and dir.ammo[WeaponData.Slot.PISTOL] == 12, "the loadout is forced: pistol equipped, full magazine")
 		_check(not fight.cover_ctl.in_cover and fight.cover_ctl.prompt_slot == -1, "Ctrl held away from cover: no cover")
 		player.teleport(Vector3(0.5, 0.0, -0.5), 0.0)
-	elif t == 8:
+	elif t == 16:
 		var cc: PlayerCover = fight.cover_ctl
 		_check(cc.in_cover and cc.slot == 3, "Ctrl held near the box: in cover at the front slot (%s, %d)" % [cc.in_cover, cc.slot])
 		_check(absf(player.global_position.x - 0.75) < 0.05 and absf(player.global_position.z + 1.0) < 0.05, "snapped to the slot (%s)" % str(player.global_position))
-		_check(player.move_lock and cc.hidden() and absf(cc.target_point().y - (player.global_position.y + GunData.TARGET_CROUCH_Y)) < 0.01, "crouched: walking locked, enemy aim point low")
+		var want_y: float = minf(GunData.TARGET_CROUCH_Y, 1.0 - GunData.COVER_TARGET_BELOW)
+		_check(player.move_lock and cc.hidden() and absf(cc.target_point().y - (player.global_position.y + want_y)) < 0.01, "crouched: walking locked, enemy aim point low (%.2f)" % (cc.target_point().y - player.global_position.y))
 		_check(not fight.clear_line(g.muzzle_pos(), fight.player_target()), "the low box blocks the gunman's line to the crouched player")
 		_check(fight.hud.prompt_text == GunData.T_IN_COVER, "HUD: in-cover hint (%s)" % fight.hud.prompt_text)
 		dir.aim_override = true
 		player.input_override = Vector2(1.0, 0.0)
-	elif t == 14:
+	elif t == 22:
 		var cc2: PlayerCover = fight.cover_ctl
 		_check(cc2.exposed() and not cc2.hidden(), "aiming pops out of cover")
 		_check(absf(cc2.target_point().y - (player.global_position.y + GunData.TARGET_STAND_Y)) < 0.01, "popped out: enemy aim point at the chest")
 		_check(fight.clear_line(g.muzzle_pos(), fight.player_target()), "popped out: the gunman's line is clear")
-	elif t == 22:
+	elif t == 30:
 		_check(absf(player.global_position.x - 0.75) < 0.06, "walking input in cover does not move the player (x %.2f)" % player.global_position.x)
 		_check(fight.hud.left_text == GunData.T_LEFT % 1 and fight.hud.hp_text == GunData.T_HP + " 100", "HUD: HP and enemies left (%s / %s)" % [fight.hud.hp_text, fight.hud.left_text])
 		dir.aim_override = false
 		player.input_override = null
-	elif t == 30:
+	elif t == 38:
 		_check(fight.cover_ctl.hidden() and fight.cover_ctl.pose.pose_name == "cover_crouch", "aim released: crouched again (pose %s)" % fight.cover_ctl.pose.pose_name)
 		fight.cover_ctl.hold_override = false
-	elif t == 33:
+	elif t == 41:
 		_check(not fight.cover_ctl.in_cover and not player.move_lock and not fight.taken.has(3), "Ctrl released: out of cover, walking unlocked, slot freed")
+		_next("lowcover")
+
+
+func _ph_lowcover(t: int) -> void:
+	if t == 1:
+		_fresh(Vector3(0.6, 0.0, 81.4))
+		_fight([[{"at": Vector3(0.0, 0.0, 74.0), "yaw": PI, "opts": {"ai": false}}]], {}, [B_LOW, B_THIN])
+		fight.start()
+		g = fight.gunmen[0]
+		fight.cover_ctl.hold_override = true
+	elif t == 16:
+		var cc: PlayerCover = fight.cover_ctl
+		_check(cc.in_cover and cc.hidden(), "in cover behind the 0.9 m box")
+		_check(absf(cc.target_point().y - player.global_position.y - (0.9 - GunData.COVER_TARGET_BELOW)) < 0.01, "the aim point sits 0.35 m under the box top (%.2f)" % (cc.target_point().y - player.global_position.y))
+		_check(not fight.clear_line(g.muzzle_pos(), fight.player_target()), "the 0.9 m box stops a bullet from 6 m at the crouched player")
+		fight.cover_ctl.hold_override = false
+	elif t == 20:
+		player.teleport(Vector3(0.75, 0.0, 42.2), 0.0)   # 0.2 m wall between the player and the front slot of B_THIN
+		fight.cover_ctl.hold_override = true
+	elif t == 34:
+		_check(fight.cover_ctl.map.nearest(player.global_position, GunData.COVER_ENTER_R) >= 0, "a slot is within reach on the other side of the thin wall")
+		_check(not fight.cover_ctl.in_cover and fight.cover_ctl.prompt_slot == -1, "no cover through the thin wall (in %s, prompt %d)" % [fight.cover_ctl.in_cover, fight.cover_ctl.prompt_slot])
+		_check(player.global_position.z > 41.7, "the player was not moved through the wall (z %.2f)" % player.global_position.z)
+		fight.cover_ctl.hold_override = false
 		_next("duck")
 
 
@@ -310,6 +367,8 @@ func _ph_states(t: int) -> void:
 		fight.start()
 		g = fight.gunmen[0]
 		aux["start"] = g.global_position
+		spotted_n = 0
+		alerted_n = 0
 	elif t == 60:
 		_check(g.state_name() == "patrol" and not g.is_alerted, "the gunman patrols, unaware (%s)" % g.state_name())
 		_check(g.global_position.distance_to(aux["start"]) > 0.5, "it walks its patrol")
@@ -320,6 +379,7 @@ func _ph_states(t: int) -> void:
 		print("    gunman states: %s (%d shots, flank after %.1f s)" % [str(g.state_log), g.shots, float(t) / 60.0])
 		_check(_ordered(g.state_log, want), "patrol -> alert -> to_cover -> cover -> peek -> flank (%s)" % str(g.state_log))
 		_check(g.shots >= 1, "it shot from cover (%d shots)" % g.shots)
+		_check(spotted_n == 1 and alerted_n == 1, "the fight signals spotted / alerted once (%d / %d)" % [spotted_n, alerted_n])
 	elif aux.has("flanked") and t == int(aux["flanked"]) + 1:
 		var r: String = g.take_hit({"kind": "bullet", "from": player.global_position})
 		_check(r == "stumble" and g.state_name() == "stagger", "a bullet staggers it (%s, %s)" % [r, g.state_name()])
@@ -364,16 +424,29 @@ func _ph_tele(t: int) -> void:
 
 func _ph_wall(t: int) -> void:
 	if t == 1:
-		_fresh(Vector3(300.0, 0.0, 0.0))
-		_fight([[{"at": Vector3(300.0, 0.0, -10.0), "opts": {"alerted": true}}]], {"accuracy_override": 1.0})
+		_fresh(Vector3(300.0, 0.0, 10.0))
+		var nav := HorrorNavGraph.new()
+		var a: int = nav.add_node(Vector3(295.0, 0.0, -14.0))
+		var b: int = nav.add_node(Vector3(305.0, 0.0, -14.0))
+		var c: int = nav.add_node(Vector3(300.0, 0.0, -10.0))
+		nav.connect_nodes(a, b)
+		nav.connect_nodes(a, c)
+		nav.connect_nodes(b, c)
+		_fight([[{"at": Vector3(300.0, 0.0, -14.0), "opts": {"alerted": true}}]], {"accuracy_override": 1.0, "nav": nav}, [B_WALLSIDE])
 		fight.start()
 		g = fight.gunmen[0]
 	elif t == 30:
 		_check(not fight.clear_line(g.muzzle_pos(), fight.player_target()), "the wall blocks the line")
+		_check(fight.cover.protects(4, fight.player_feet()) and absf(fight.cover.pos[4].z + 1.0) < 0.01, "a protecting slot exists past the wall")
+	elif t > 30 and t < 420:
+		aux["max_z"] = maxf(float(aux.get("max_z", -99.0)), g.global_position.z)
 	elif t == 420:
+		print("    wall: gunman states %s, furthest z %.2f" % [str(g.state_log), float(aux.get("max_z", -99.0))])
+		_check(g.state_log.has("open") and not g.state_log.has("to_cover"), "the slot past the wall is refused (no walkable route): it stays in the open (%s)" % str(g.state_log))
+		_check(float(aux.get("max_z", -99.0)) < -5.2, "it never walks through the wall (furthest z %.2f)" % float(aux.get("max_z", -99.0)))
 		_check(g.tele_starts == 0 and g.shots == 0, "behind a wall: no telegraph, no shot (%d / %d)" % [g.tele_starts, g.shots])
 		_check(is_equal_approx(combat.hp, 100.0) and fight.hits_taken == 0, "never hurt through the wall")
-		_check(absf(g.global_position.z + 10.0) < 0.5, "it does not walk through the wall (z %.2f)" % g.global_position.z)
+		aux.erase("max_z")
 		_next("cap")
 
 
@@ -382,6 +455,7 @@ func _ph_cap(t: int) -> void:
 		_fresh(Vector3(400.0, 0.0, 0.0), true)
 		max_sh = 0
 		max_tele = 0
+		max_edge = 0
 		var w: Array = []
 		for i: int in 6:
 			var a: float = TAU * float(i) / 6.0
@@ -395,6 +469,7 @@ func _ph_cap(t: int) -> void:
 			if (gm as Gunman).telegraphing:
 				tn += 1
 		max_tele = maxi(max_tele, tn)
+		max_edge = maxi(max_edge, fight.hud.edge_markers)
 	elif t == 600:
 		var shots_total: int = 0
 		for gm3: Variant in fight.gunmen:
@@ -403,6 +478,7 @@ func _ph_cap(t: int) -> void:
 		_check(max_sh <= 3 and fight.max_shooters_seen <= 3, "never more than 3 shooting at once (max %d)" % max_sh)
 		_check(max_sh == 3, "the cap is reached with 6 gunmen (max %d)" % max_sh)
 		_check(max_tele <= 3, "at most 3 telegraphs at once (%d)" % max_tele)
+		_check(max_edge >= 1, "glints behind the camera show edge markers on the HUD (max %d)" % max_edge)
 		_next("hp")
 
 
@@ -419,6 +495,15 @@ func _ph_hp(t: int) -> void:
 		_check(is_equal_approx(combat.hp, 92.0), "no regeneration before 4 s (%.1f)" % combat.hp)
 	elif t == 3 + 300:
 		_check(combat.hp > 92.0, "regeneration after 4 s without damage (%.1f)" % combat.hp)
+		dir.equip(WeaponData.Slot.UNARMED)
+		combat.block_override = true
+	elif t == 3 + 310:
+		_check(combat.blocking, "Tay không + Q: blocking")
+		var before: float = combat.hp
+		var r2: String = fight.hit_player(g, 8.0)
+		_check(r2 == "hit" and combat.hp < before, "gunfire goes through a block (%s, %.0f -> %.0f)" % [r2, before, combat.hp])
+		combat.block_override = null
+		dir.equip(WeaponData.Slot.PISTOL)
 		_next("hp_lost")
 
 
@@ -477,6 +562,22 @@ func _ph_retry(t: int) -> void:
 		_check(player.global_position.distance_to(aux["p2"]) < 0.1, "retry: back at the wave-2 checkpoint spot")
 		_check(fight.wave == 1 and fight.alive().size() == 2 and fight.state == "running", "retry: wave 2 spawned again")
 		_check(dir.ammo[WeaponData.Slot.PISTOL] == int(aux["ammo2"]) and is_equal_approx(combat.hp, 100.0), "retry: the checkpoint's ammo and full HP")
+		var r: PackedInt32Array = dir.reserve
+		r[WeaponData.Slot.PISTOL] = 0
+		r[WeaponData.Slot.SHOTGUN] = 0
+		dir.reserve = r
+		var a: PackedInt32Array = dir.ammo
+		a[WeaponData.Slot.PISTOL] = 0
+		a[WeaponData.Slot.SHOTGUN] = 0
+		dir.ammo = a
+		fight.checkpoint()
+		combat.hp = 5.0
+		fight.hit_player(fight.gunmen[0], 8.0)
+	elif t == 166:
+		_check(fight.state == "lost", "down again after an empty-handed checkpoint")
+		fight.retry()
+		_check(dir.reserve_of(WeaponData.Slot.PISTOL) == 12 and dir.reserve_of(WeaponData.Slot.SHOTGUN) == 6,
+			"retry tops each loadout gun up to one magazine of reserve (%d / %d)" % [dir.reserve_of(WeaponData.Slot.PISTOL), dir.reserve_of(WeaponData.Slot.SHOTGUN)])
 		_next("ammo")
 
 
@@ -484,9 +585,12 @@ func _ph_ammo(t: int) -> void:
 	if t == 1:
 		_fresh(Vector3(700.0, 0.0, 0.0))
 		dir.equip(WeaponData.Slot.UNARMED)
-		_fight([[{"at": Vector3(720.0, 0.0, -45.0), "opts": {"ai": false}}]])
+		_fight([[{"at": Vector3(720.0, 0.0, -45.0), "opts": {"ai": false}},
+			{"at": Vector3(730.0, 0.0, -45.0), "patrol": [Vector3(730.0, 0.0, -45.0), Vector3(735.0, 0.0, -45.0)], "opts": {"ai": false}}]])
 		fight.start()
 	elif t == 3:
+		_check(absf(wrapf((fight.gunmen[1] as Gunman).yaw + PI * 0.5, -PI, PI)) < 0.01 and absf((fight.gunmen[0] as Gunman).yaw) < 0.01,
+			"unalerted guards keep their facing: along the patrol, else yaw 0 (%.2f, %.2f)" % [(fight.gunmen[1] as Gunman).yaw, (fight.gunmen[0] as Gunman).yaw])
 		_check(dir.current == WeaponData.Slot.PISTOL and dir.reserve_of(WeaponData.Slot.PISTOL) == 48 and dir.reserve_of(WeaponData.Slot.SHOTGUN) == 12,
 			"finite spare rounds: pistol 48, shotgun 12")
 		_check(dir.ammo_text(WeaponData.Slot.PISTOL) == "12 / 48", "ammo text with the reserve (%s)" % dir.ammo_text(WeaponData.Slot.PISTOL))
@@ -672,9 +776,92 @@ func _ph_boss(t: int) -> void:
 		_check(aux.has("toppled") and boss.forklift.topple_done and absf(boss.forklift.topple_angle - PI * 0.5) < 0.01, "toppled onto its side")
 		_check(boss.state_name() == "ko" and boss.is_defeated() and boss.driver.get_parent() == boss, "Alexander tumbled out, knocked out")
 		_check(fight.state == "won" and won_n == 1, "the boss down: the fight is won (%s)" % fight.state)
-		_next("done")
+		_next("boss2")
 	elif t > 4000:
 		_check(false, "boss phase timed out (state %s, aux %s)" % [boss.state_name() if boss else "-", str(aux.keys())])
+		_next("done")
+
+
+## Stand the player 8 m to the forklift's +x side, level with its seat, facing it (aimed: the camera ray runs through the
+## driver); returns the expected driver point.
+func _side_shot_spot() -> void:
+	var seat: Vector3 = boss.forklift.seat_point()
+	player.teleport(Vector3(seat.x + 8.0, 0.0, seat.z + ThirdPersonController.AIM_SIDE), PI * 0.5)
+	player.pitch = 0.0
+	dir.aim_override = true
+
+
+func _ph_boss2(t: int) -> void:
+	if t == 1:
+		_fresh(Vector3(1000.0, 0.0, 0.0))
+		won_n = 0
+		aux.clear()
+		_fight([[{"boss": "forklift", "at": Vector3(1000.0, 0.0, -12.0), "yaw": PI, "opts": {"ai": false}}]], {}, [B_BOSS2])
+		fight.start()
+		boss = fight.boss
+		boss.crashed.connect(func() -> void: aux["crash2"] = frames)
+		_side_shot_spot()
+	elif t == 20:
+		_fire_edge()
+	elif t == 24:
+		_check(boss.immune_hits == 1 and is_equal_approx(boss.hp, GunData.BOSS_HP), "a real pistol ray from the side reaches the driver past the chassis: immune clang (%d)" % boss.immune_hits)
+		dir.aim_override = false
+		_fresh(Vector3(1000.95, 0.0, 1.0))
+		fight.cover_ctl.hold_override = true
+	elif t == 60:
+		_check(fight.cover_ctl.in_cover and fight.cover_ctl.hidden(), "crouched behind the box in the forklift's path (in %s)" % fight.cover_ctl.in_cover)
+		boss.force_attack("charge")
+	elif aux.has("crash2") and not aux.has("crash2_t"):
+		aux["crash2_t"] = t
+		print("    charge into cover: crash at z %.2f, forks at z %.2f, player z %.2f" % [boss.forklift.global_position.z, boss.forklift.fork_tips().z, player.global_position.z])
+		_check(boss.charge_hits == 0 and is_equal_approx(combat.hp, 100.0) and not player.is_knocked_down(), "the charge crashes into the cover box without hitting the player behind it (hp %.0f)" % combat.hp)
+		_check(boss.state_name() == "recover", "recovering after the crash")
+		fight.cover_ctl.hold_override = false
+	elif aux.has("crash2_t") and t == int(aux["crash2_t"]) + 4:
+		_side_shot_spot()
+	elif aux.has("crash2_t") and t == int(aux["crash2_t"]) + 20:
+		_check(boss.vulnerable(), "still in the window")
+		_fire_edge()
+	elif aux.has("crash2_t") and t == int(aux["crash2_t"]) + 24:
+		_check(is_equal_approx(boss.hp, GunData.BOSS_HP - 25.0), "a real pistol ray in the window hurts him (%.0f)" % boss.hp)
+		dir.aim_override = false
+		aux.clear()
+		_next("boss3")
+	elif t > 900:
+		_check(false, "boss2 timed out (%s)" % boss.state_name())
+		_next("boss3")
+
+
+func _ph_boss3(t: int) -> void:
+	if t == 1:
+		_fresh(Vector3(1100.0, 0.0, 0.0), true)
+		_fight([[{"boss": "forklift", "at": Vector3(1100.0, 0.0, -18.0), "yaw": PI, "opts": {"ai": false}}]])
+		fight.start()
+		boss = fight.boss
+		aux["fk0"] = boss.forklift.global_position
+	elif t == 5:
+		_check(boss.state_name() == "hold", "spawned holding (ai false)")
+		boss.activate()
+		_check(boss.state_name() == "idle" and boss.ai, "activate(): the AI loop starts")
+	elif t == 50:
+		_check(boss.forklift.global_position.distance_to(aux["fk0"]) > 0.5, "idle: it drives towards the player (%.2f m)" % boss.forklift.global_position.distance_to(aux["fk0"]))
+	elif t == 900:
+		print("    boss AI: %s (%d charges, %d tosses)" % [str(boss.state_log), boss.charges, boss.tosses])
+		_check(_ordered(boss.state_log, ["idle", "charge_tell", "charge", "recover", "idle", "lift", "toss"]), "the AI loop runs idle -> charge -> recover -> lift -> toss (%s)" % str(boss.state_log))
+		_check(boss.charges >= 1 and boss.tosses >= 1, "it charged and tossed on its own")
+		_next("floor")
+
+
+func _ph_floor(t: int) -> void:
+	if t == 1:
+		_fresh(Vector3(1200.0, 0.3, -4.0), true)
+		_fight([[{"at": Vector3(1200.0, 0.0, -27.0), "opts": {"alerted": true}}]], {"accuracy_override": 0.0})
+		fight.start()
+		g = fight.gunmen[0]
+	elif t == 900:
+		print("    floor: gunman at z %.2f, floor %.2f" % [g.global_position.z, g.floor_y])
+		_check(g.global_position.z > -21.5, "it walked onto the platform (z %.2f)" % g.global_position.z)
+		_check(absf(g.floor_y - 0.3) < 0.02 and (g.drop > 0.01 or absf(g.global_position.y - 0.3) < 0.02), "it follows the platform's height (floor %.2f, y %.2f)" % [g.floor_y, g.global_position.y])
 		_next("done")
 
 

@@ -28,7 +28,14 @@
 #   fight.won.connect(...)                      # the last wave is beaten (KO'd bodies stay until stop() / free)
 #   fight.lost.connect(...)                     # the player's HP reached 0: show "TOANG!", then call retry()
 #   fight.enemy_ko.connect(func(e): ...)        # also wave_started(i), wave_cleared(i), boss_spawned(boss),
-#                                               #   player_hit(source, damage)
+#                                               #   player_hit(source, damage), alerted(gunman) (each guard that notices),
+#                                               #   spotted(gunman) (the first one per wave: the Day 3 sneak failing; also
+#                                               #   fires for a wave spawned alerted)
+#   Unalerted guards without a "yaw" face along their patrol (first leg), else yaw 0; alerted ones face the player.
+#   Gunmen follow the floor height while walking (ramps, stairs) and never walk through level geometry (a nav graph's
+#   route is used only when every leg is walkable).
+#   Boss: {"boss": "forklift", ..., "opts": {"ai": false}} sits still (villain card, cinematic); boss.activate() starts
+#   its AI loop; boss.force_attack("charge" | "toss") triggers one attack (see ForkliftBoss).
 #   fight.start(); fight.checkpoint(); fight.retry(); fight.stop()
 #   fight.alive() -> Array; fight.shooters() -> int; fight.boss (ForkliftBoss or null); fight.state ("idle" | "running" |
 #   "won" | "lost"); fight.wave; fight.cover_ctl (PlayerCover); fight.hud (GunHUD)
@@ -51,6 +58,8 @@ signal wave_started(index: int)
 signal wave_cleared(index: int)
 signal boss_spawned(boss: Node3D)
 signal player_hit(source: Node3D, damage: float)
+signal alerted(gunman: Node3D)
+signal spotted(gunman: Node3D)
 
 const WAVE_GAP_S: float = 2.0
 const WORLD_MASK: int = 1
@@ -99,7 +108,8 @@ var _heat_cut: Object = null
 var _bar_was: bool = true
 var _sfx: Array[AudioStreamPlayer3D] = []
 var _sfx_i: int = 0
-var _pruned: bool = false
+var _prune_t: float = 0.0
+var _spotted: bool = false
 
 
 func _ready() -> void:
@@ -113,8 +123,9 @@ func _ready() -> void:
 		_sfx.append(p)
 	for c: String in ["shot_pistol", "dry_click", "ricochet", "reload"]:
 		WeaponAudio.stream(c)
-	for c2: String in ["body_fall", "crate_smash", "impact_heavy", "engine_roar"]:
+	for c2: String in ["body_fall", "crate_smash", "impact_heavy", "impact_medium", "helmet_clonk", "engine_roar"]:
 		CineAudio.sfx(c2)
+	GunAudio.warm()
 
 
 func setup(opts: Dictionary) -> void:
@@ -165,6 +176,7 @@ func setup(opts: Dictionary) -> void:
 	cover_ctl.enabled = false
 	add_child(cover_ctl)
 	cover_ctl.setup(player, cover, weapons, combat, taken)
+	cover_ctl.reach_fn = clear_walk
 	_rq.collision_mask = WORLD_MASK
 	_rq.collide_with_areas = false
 	_rq.hit_from_inside = true
@@ -209,7 +221,18 @@ func checkpoint() -> void:
 		taken_flags.append(p.taken)
 	_cp = {"wave": maxi(wave, 0), "pos": player.global_position, "yaw": player.facing_yaw(),
 		"ammo": weapons.ammo.duplicate() if weapons else PackedInt32Array(),
-		"reserve": weapons.reserve.duplicate() if weapons else PackedInt32Array(), "pickups": taken_flags}
+		"reserve": _topped_up(weapons.reserve) if weapons else PackedInt32Array(), "pickups": taken_flags}
+
+
+## Each loadout slot with a finite reserve gets at least one magazine of spare rounds (a checkpoint reached empty-handed
+## after the pickups are gone never makes every retry start dry).
+func _topped_up(res: PackedInt32Array) -> PackedInt32Array:
+	var out: PackedInt32Array = res.duplicate()
+	for s: Variant in loadout:
+		var i: int = int(s)
+		if i < out.size() and out[i] >= 0:
+			out[i] = maxi(out[i], WeaponData.mag_of(i))
+	return out
 
 
 func has_checkpoint() -> bool:
@@ -231,7 +254,7 @@ func retry() -> void:
 	_engage(true)
 	if weapons:
 		weapons.ammo = (_cp["ammo"] as PackedInt32Array).duplicate()
-		weapons.reserve = (_cp["reserve"] as PackedInt32Array).duplicate()
+		weapons.reserve = _topped_up(_cp["reserve"])
 		weapons.reload_left = 0.0
 		weapons.call("_refresh_hud")
 	var flags: Array = _cp["pickups"]
@@ -350,7 +373,7 @@ func clear_walk(a: Vector3, b: Vector3) -> bool:
 func hit_player(source: Node3D, damage: float, heavy: bool = false) -> String:
 	if state != "running" or combat == null:
 		return "ignored"
-	var r: String = combat.receive_attack(source, {"damage": damage, "heavy": heavy})
+	var r: String = combat.receive_attack(source, {"damage": damage, "heavy": heavy, "unblockable": true})
 	if r == "hit":
 		hits_taken += 1
 		if hud and is_instance_valid(source):
@@ -361,6 +384,10 @@ func hit_player(source: Node3D, damage: float, heavy: bool = false) -> String:
 
 ## A gunman was alerted: the others within ALERT_SHARE_M hear it.
 func on_alert(g: Object) -> void:
+	alerted.emit(g)
+	if not _spotted:
+		_spotted = true
+		spotted.emit(g)
 	var at: Vector3 = (g as Node3D).global_position
 	for o: Variant in gunmen:
 		if o != g and is_instance_valid(o) and WeaponMath.flat((o as Node3D).global_position, at) <= GunData.ALERT_SHARE_M:
@@ -396,6 +423,7 @@ func play_cue(cue: String, at: Vector3, db: float = 0.0) -> void:
 func _start_wave(i: int) -> void:
 	_clear_enemies()
 	_gap_left = -1.0
+	_spotted = false
 	wave = i
 	if auto_checkpoint:
 		checkpoint()
@@ -424,9 +452,17 @@ func _spawn_gunman(d: Dictionary, wave_i: int) -> void:
 	var at: Vector3 = d.get("at", global_position)
 	if d.has("yaw"):
 		o["yaw"] = float(d["yaw"])
-	else:
+	elif bool(o["alerted"]):
 		var to: Vector3 = player.global_position - at
 		o["yaw"] = atan2(-to.x, -to.z)
+	else:
+		var pts: Array = o["patrol"]
+		var to2 := Vector3.ZERO
+		for v: Variant in pts:
+			to2 = (v as Vector3) - at
+			if Vector2(to2.x, to2.z).length() > 0.3:
+				break
+		o["yaw"] = atan2(-to2.x, -to2.z) if Vector2(to2.x, to2.z).length() > 0.3 else 0.0
 	_spawned += 1
 	g.setup(o)
 	g.top_level = true
@@ -477,10 +513,15 @@ func _clear_enemies() -> void:
 			taken.erase(k)
 
 
-## Cover slots that stand inside level geometry (a slot of one box inside the next box or a wall) are never offered: they
-## are marked taken by the fight itself (first running physics frame, when the level's bodies are in the space).
+## Cover slots that stand inside level geometry (a slot of one box inside the next box or a wall, the forklift parked on
+## it) are not offered: they are marked taken by the fight itself, re-checked every PRUNE_S while the fight runs (a
+## blocker that moves away or a crate that breaks frees the slot again). reprune() checks at once.
+func reprune() -> void:
+	_prune_t = 0.0
+	_prune_slots()
+
+
 func _prune_slots() -> void:
-	_pruned = true
 	if not is_inside_tree() or cover == null:
 		return
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
@@ -489,12 +530,16 @@ func _prune_slots() -> void:
 	q.collide_with_areas = false
 	q.exclude = _ex
 	for i: int in cover.count():
+		var blocked: bool = false
 		for h: float in [0.4, 0.9]:
 			q.position = cover.pos[i] + Vector3(0.0, h, 0.0)
 			if not space.intersect_point(q, 1).is_empty():
-				if not taken.has(i):
-					taken[i] = self
+				blocked = true
 				break
+		if blocked and not taken.has(i):
+			taken[i] = self
+		elif not blocked and taken.get(i) == self:
+			taken.erase(i)
 
 
 func _on_ko(e: Node3D) -> void:
@@ -506,7 +551,9 @@ func _on_ko(e: Node3D) -> void:
 func _physics_process(delta: float) -> void:
 	if state != "running":
 		return
-	if not _pruned:
+	_prune_t -= delta
+	if _prune_t <= 0.0:
+		_prune_t = GunData.PRUNE_S
 		_prune_slots()
 	max_shooters_seen = maxi(max_shooters_seen, shooters())
 	if combat.is_down():
@@ -587,6 +634,9 @@ func _engage(on: bool) -> void:
 			if not weapons.fired.is_connected(_on_player_fired):
 				weapons.fired.connect(_on_player_fired)
 			var wanted: Object = roam.get("wanted") if roam and is_instance_valid(roam) else null
+			if wanted and String(wanted.get("state")) == "free" and (float(wanted.get("heat")) > 0.0 or int(wanted.get("stars")) > 0) \
+					and wanted.has_method("clear"):
+				wanted.call("clear")             # no officers walking into a lair fight with old heat
 			if wanted and weapons.mayhem.is_connected(Callable(wanted, "add_heat")):
 				weapons.mayhem.disconnect(Callable(wanted, "add_heat"))
 				_heat_cut = wanted

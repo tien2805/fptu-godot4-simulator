@@ -6,9 +6,11 @@
 #   - aiming (right mouse, WeaponDirector) pops out: the player stands and is exposed; a shot fired without aiming keeps the
 #     player exposed GunData.EXPOSE_AFTER_FIRE_S;
 #   - releasing Ctrl, a jump, a knock-down, being blocked (bike, cinematic, hidden) or `enabled = false` leaves the cover.
-# Enemy bullets aim at target_point(): chest height when exposed, GunData.TARGET_CROUCH_Y when crouched (a low obstacle
-# then stops them). The slot is marked in the shared `taken` Dictionary (slot -> occupant) so no gunman takes it.
-# prompt_slot = the free slot the HUD prompts "[Ctrl] nấp" for. Test hook: hold_override (bool = Ctrl held, null = key).
+# Enemy bullets aim at target_point(): chest height when exposed; crouched, GunData.TARGET_CROUCH_Y but at least
+# COVER_TARGET_BELOW under the obstacle's top (so the obstacle really stops them). The slot is marked in the shared `taken`
+# Dictionary (slot -> occupant) so no gunman takes it. Only a slot the player can walk to in a straight line (reach_fn:
+# GunFight.clear_walk; never across a wall or the box itself) is offered: prompt_slot = the nearest such free slot, the one
+# the HUD prompts "[Ctrl] nấp" for (re-checked at 10 Hz). Test hook: hold_override (bool = Ctrl held, null = key).
 class_name PlayerCover
 extends Node
 
@@ -22,12 +24,15 @@ var map: CoverMap
 var taken: Dictionary = {}
 var enabled: bool = true
 var hold_override: Variant = null
+## (from: Vector3, to: Vector3) -> bool: the player can walk the straight line (GunFight.clear_walk); empty = always.
+var reach_fn: Callable = Callable()
 var in_cover: bool = false
 var slot: int = -1
 var prompt_slot: int = -1
 var pose: GunPose
 var entries: int = 0
 var _since_fire: float = 99.0
+var _prompt_t: float = 0.0
 
 
 func _ready() -> void:
@@ -89,10 +94,24 @@ func _physics_process(delta: float) -> void:
 		else:
 			_hold_spot()
 	else:
-		prompt_slot = map.nearest(player.global_position, GunData.COVER_ENTER_R, taken, player) if can else -1
+		_prompt_t -= delta
+		if not can:
+			prompt_slot = -1
+		elif _prompt_t <= 0.0 or (prompt_slot >= 0 and taken.has(prompt_slot) and taken[prompt_slot] != player):
+			_prompt_t = GunData.RAY_DT
+			prompt_slot = _reachable_slot()
 		if hold and prompt_slot >= 0:
 			enter(prompt_slot)
 	_apply_pose()
+
+
+## The nearest free slot within COVER_ENTER_R the player can walk to (-1 = none).
+func _reachable_slot() -> int:
+	var p: Vector3 = player.global_position
+	for i: int in map.near_ids(p, GunData.COVER_ENTER_R, taken, player):
+		if not reach_fn.is_valid() or bool(reach_fn.call(p, map.pos[i])):
+			return i
+	return -1
 
 
 func enter(i: int) -> void:
@@ -138,7 +157,10 @@ func hidden() -> bool:
 
 ## Where enemy bullets aim.
 func target_point() -> Vector3:
-	return player.global_position + Vector3(0.0, GunData.TARGET_CROUCH_Y if hidden() else GunData.TARGET_STAND_Y, 0.0)
+	if hidden():
+		var y: float = minf(GunData.TARGET_CROUCH_Y, map.height[slot] - GunData.COVER_TARGET_BELOW)
+		return player.global_position + Vector3(0.0, y, 0.0)
+	return player.global_position + Vector3(0.0, GunData.TARGET_STAND_Y, 0.0)
 
 
 func _hold_spot() -> void:

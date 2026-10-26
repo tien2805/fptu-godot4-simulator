@@ -16,10 +16,15 @@
 #   STAGGER   a hit that does not knock out: flinch 0.45 s, the telegraph and the token are lost;
 #   KO        knocked out (comic fall, stars from WeaponDirector.hit_target, no blood): stays down, never hit again;
 #   HOLD      ai off (tests, scripted beats): stands still; IDLE: the fight was lost, stands down.
-# Plain Node3D like HorrorStalker (no physics body: bullets test it analytically, WeaponDirector.first_hit; moves along
-# straight clear lines or the fight's HorrorNavGraph). The root never rotates (the body child carries the yaw). The hit
-# capsule base (the root) is lowered by `drop` while crouched (GunData.CROUCH_DROP) or knocked out (KO_DROP); feet() is
-# the floor point. Senses run at 10 Hz (staggered), one ray each; no allocation per frame except on decisions.
+# Plain Node3D like HorrorStalker (no physics body: bullets test it analytically, WeaponDirector.first_hit). It only moves
+# along a straight line it can walk (GunFight.clear_walk at knee and chest height) or a HorrorNavGraph route whose every
+# leg is walkable; a spot it cannot reach is never chosen (no ghosting through walls). It follows the floor height with a
+# down-ray while moving (ramps, stairs) and keeps SEPARATION_M from the other gunmen while standing in the open. It only
+# asks for a shooting token when its standing muzzle has a clear line to the player (cover it cannot shoot over, or a
+# hidden player: after NO_LINE_TRIES waits it flanks), and only uses cover up to GUNMAN_COVER_MAX_H high. The root never
+# rotates (the body child carries the yaw). The hit capsule base (the root) is lowered by `drop` while crouched
+# (GunData.CROUCH_DROP) or knocked out (KO_DROP); feet() is the floor point. Senses run at 10 Hz (staggered), one ray each;
+# line / walk / floor checks while waiting or walking at most 10 Hz; no allocation per frame except on decisions.
 # Usage (GunFight does this): var g := Gunman.new(); g.setup(opts); g.position = at; parent.add_child(g); g.bind(fight).
 # opts: "body" (CharacterBuilder opts over GunData.GUARD_LOOK), "body_fn" (Callable(look) -> rigged Node3D), "mask"
 # ("sheep" | "wolf" | "fox" | "none"; default by seed), "label", "hp", "accuracy" (scale), "patrol" (Array of Vector3),
@@ -89,6 +94,13 @@ var _last_pos: Vector3 = Vector3.ZERO
 var _since_seen: float = 99.0
 var _shout_left: float = 0.0
 var _open_look: float = 0.0
+var _ray_t: float = 0.0
+var _floor_t: float = 0.0
+var _sep_t: float = 0.0
+var _sep_v: Vector3 = Vector3.ZERO
+var _step_to: Vector3 = Vector3.ZERO
+var _step_ok: bool = false
+var _no_line: int = 0
 var _rng := RandomNumberGenerator.new()
 var _anim: Node = null
 var _sk: Skeleton3D = null
@@ -246,6 +258,7 @@ func _physics_process(delta: float) -> void:
 			_do_patrol(delta)
 		St.ALERT:
 			_turn_toward(last_seen - feet(), delta)
+			_separate(delta)
 			if st_t >= GunData.REACT_S:
 				_seek_cover(false)
 		St.TO_COVER, St.FLANK:
@@ -279,6 +292,8 @@ func _enter(s: int) -> void:
 		St.PEEK:
 			pose.set_pose("aim")
 			_gap = 0.0
+			_ray_t = 0.0
+			_no_line = 0
 			burst_left = _rng.randi_range(GunData.BURST.x, GunData.BURST.y)
 		St.OPEN:
 			_wait = _rng.randf_range(GunData.COVER_WAIT.x, GunData.COVER_WAIT.y)
@@ -372,7 +387,9 @@ func _do_patrol(delta: float) -> void:
 		return
 	if _path_i >= _path.size():
 		_patrol_i = (_patrol_i + 1) % patrol.size()
-		_go(patrol[_patrol_i])
+		if not _go(patrol[_patrol_i]):
+			_wait = 1.2                      # that patrol point cannot be walked to: try the next one later
+			return
 	if _move(delta, GunData.WALK_SPEED):
 		_wait = 1.2
 
@@ -408,11 +425,24 @@ func _do_cover(delta: float) -> void:
 		peeks_max = _rng.randi_range(GunData.PEEKS_BEFORE_FLANK.x, GunData.PEEKS_BEFORE_FLANK.y)
 		_seek_cover(true)
 		return
+	if not _line_from_standing():
+		_no_line += 1
+		_wait = 0.5
+		if _no_line >= GunData.NO_LINE_TRIES:
+			_no_line = 0
+			peeks = 0
+			_seek_cover(true)
+		return
 	if bool(fight.call("request_token", self)):
 		has_token = true
 		_enter(St.PEEK)
 	else:
 		_wait = 0.3
+
+
+## Would the standing muzzle see the player now (one ray)? Checked before asking for a token.
+func _line_from_standing() -> bool:
+	return bool(fight.call("clear_line", muzzle_pos(), fight.call("player_target")))
 
 
 func _do_peek(delta: float) -> void:
@@ -440,6 +470,10 @@ func _do_peek(delta: float) -> void:
 	if _gap > 0.0:
 		_gap -= delta
 		return
+	_ray_t -= delta
+	if _ray_t > 0.0:
+		return
+	_ray_t = GunData.RAY_DT
 	if bool(fight.call("clear_line", muzzle_pos(), fight.call("player_target"))):
 		telegraphing = true
 		tele_t = 0.0
@@ -472,14 +506,22 @@ func _do_open(delta: float) -> void:
 		_open_look = 2.0
 		if (fight.get("cover") as CoverMap).count() > 0 and _seek_cover(false, true):
 			return
+	_ray_t -= delta
 	if d > GunData.OPEN_KEEP_M + 2.0:
-		var stp: Vector3 = feet() + WeaponMath.flat_dir(to) * minf(2.0, d - GunData.OPEN_KEEP_M)
-		if bool(fight.call("clear_walk", feet(), stp)):
-			_step_toward(stp, delta, GunData.WALK_SPEED * 1.6)
+		if _ray_t <= 0.0:
+			_ray_t = GunData.RAY_DT
+			_step_to = feet() + WeaponMath.flat_dir(to) * minf(2.0, d - GunData.OPEN_KEEP_M)
+			_step_ok = bool(fight.call("clear_walk", feet(), _step_to))
+		if _step_ok:
+			_step_toward(_step_to, delta, GunData.WALK_SPEED * 1.6)
+	else:
+		_separate(delta)
 	_turn_toward(to, delta)
 	_wait -= delta
 	if _wait <= 0.0:
-		if bool(fight.call("request_token", self)):
+		if not _line_from_standing():
+			_wait = 0.5
+		elif bool(fight.call("request_token", self)):
 			has_token = true
 			_enter(St.PEEK)
 		else:
@@ -496,9 +538,9 @@ func _seek_cover(flank: bool, quiet: bool = false) -> bool:
 	if cover == null or cover.count() == 0:
 		ids = PackedInt32Array()
 	elif flank:
-		ids = cover.flank_candidates(threat, feet(), GunData.FLANK_MAX_M, taken, self, GunData.FLANK_MIN_DEG)
+		ids = cover.flank_candidates(threat, feet(), GunData.FLANK_MAX_M, taken, self, GunData.FLANK_MIN_DEG, GunData.GUNMAN_COVER_MAX_H)
 	else:
-		ids = cover.candidates(threat, feet(), GunData.COVER_SEARCH_M, taken, self, GunData.COVER_MIN_PLAYER_M)
+		ids = cover.candidates(threat, feet(), GunData.COVER_SEARCH_M, taken, self, GunData.COVER_MIN_PLAYER_M, GunData.GUNMAN_COVER_MAX_H)
 	var tries: int = 0
 	for id: int in ids:
 		if tries >= 4:
@@ -507,12 +549,13 @@ func _seek_cover(flank: bool, quiet: bool = false) -> bool:
 		if id == slot and not flank:
 			_enter(St.COVER)
 			return true
-		var target: Vector3 = cover.pos[id]
-		if _route_ok(target):
+		var route: PackedVector3Array = _plan_route(cover.pos[id])
+		if not route.is_empty():
 			_release_slot()
 			slot = id
 			taken[id] = self
-			_go(target)
+			_path = route
+			_path_i = 0
 			_stuck_t = 0.0
 			_last_pos = global_position
 			_enter(St.FLANK if flank else St.TO_COVER)
@@ -527,11 +570,24 @@ func _seek_cover(flank: bool, quiet: bool = false) -> bool:
 	return false
 
 
-func _route_ok(target: Vector3) -> bool:
-	if bool(fight.call("clear_walk", feet(), target)):
-		return true
+## A walkable route to target: the straight line when clear, else the nav graph's route with every leg walkable; empty =
+## unreachable (never a blocked straight line).
+func _plan_route(target: Vector3) -> PackedVector3Array:
+	var t := Vector3(target.x, floor_y, target.z)
+	if bool(fight.call("clear_walk", feet(), t)):
+		return PackedVector3Array([t])
 	var nav: HorrorNavGraph = fight.get("nav")
-	return nav != null and nav.size() > 0
+	if nav == null or nav.size() == 0 or not is_inside_tree():
+		return PackedVector3Array()
+	var r: PackedVector3Array = nav.route(feet(), t, get_world_3d().direct_space_state)
+	var prev: Vector3 = feet()
+	for i: int in r.size():
+		var q := Vector3(r[i].x, floor_y, r[i].z)
+		if not bool(fight.call("clear_walk", prev, q)):
+			return PackedVector3Array()
+		r[i] = q
+		prev = q
+	return r
 
 
 func _release_slot() -> void:
@@ -659,18 +715,11 @@ func stand_down() -> void:
 # ---------------------------------------------------------------------------
 # MOVEMENT
 # ---------------------------------------------------------------------------
-func _go(target: Vector3) -> void:
-	var t := Vector3(target.x, floor_y, target.z)
-	var nav: HorrorNavGraph = fight.get("nav") if fight else null
-	if nav == null or nav.size() == 0 or bool(fight.call("clear_walk", feet(), t)):
-		_path = PackedVector3Array([t])
-	else:
-		_path = nav.route(feet(), t, get_world_3d().direct_space_state if is_inside_tree() else null)
-		for i: int in _path.size():
-			_path[i] = Vector3(_path[i].x, floor_y, _path[i].z)
-		if _path.is_empty():
-			_path = PackedVector3Array([t])
+## Walk to target along _plan_route; false (and no path) when it cannot be reached.
+func _go(target: Vector3) -> bool:
+	_path = _plan_route(target)
 	_path_i = 0
+	return not _path.is_empty()
 
 
 ## One step along the path; true when the end is reached.
@@ -690,6 +739,7 @@ func _move(delta: float, speed: float) -> bool:
 		speed_now = speed
 		if stp >= dist - 0.0001:
 			_path_i += 1
+	_follow_floor(delta)
 	return _path_i >= _path.size()
 
 
@@ -700,6 +750,46 @@ func _step_toward(p: Vector3, delta: float, speed: float) -> void:
 		return
 	global_position += d / dist * minf(dist, speed * delta)
 	speed_now = speed
+	_follow_floor(delta)
+
+
+## While walking: the floor height under the feet from a down-ray at 10 Hz (ramps, stairs; GunFight.ray ignores the
+## player). A gap keeps the last floor.
+func _follow_floor(delta: float) -> void:
+	_floor_t -= delta
+	if _floor_t > 0.0 or fight == null:
+		return
+	_floor_t = GunData.RAY_DT
+	var f: Vector3 = feet()
+	var h: Dictionary = fight.call("ray", f + Vector3(0.0, GunData.FLOOR_PROBE_UP, 0.0), f - Vector3(0.0, GunData.FLOOR_PROBE_DOWN, 0.0))
+	if not h.is_empty() and (h["normal"] as Vector3).y > 0.6:
+		floor_y = (h["position"] as Vector3).y
+
+
+## Standing in the open: step away from gunmen closer than SEPARATION_M (the push is worked out at 10 Hz, only along a
+## walkable line).
+func _separate(delta: float) -> void:
+	_sep_t -= delta
+	if _sep_t <= 0.0:
+		_sep_t = GunData.RAY_DT
+		var push := Vector3.ZERO
+		var me: Vector3 = feet()
+		for o: Variant in fight.get("gunmen"):
+			if o == self or not is_instance_valid(o) or (o as Gunman).is_down():
+				continue
+			var dv: Vector3 = me - (o as Gunman).feet()
+			dv.y = 0.0
+			var l: float = dv.length()
+			if l < GunData.SEPARATION_M:
+				var away: Vector3 = dv / l if l > 0.01 else Vector3(1.0, 0.0, 0.0).rotated(Vector3.UP, float(get_instance_id() % 628) * 0.01)
+				push += away * (GunData.SEPARATION_M - l)
+		_sep_v = Vector3.ZERO
+		if push.length_squared() > 1e-4:
+			var dir: Vector3 = push.normalized()
+			if bool(fight.call("clear_walk", me, me + dir * 0.6)):
+				_sep_v = dir * minf(1.5, push.length() * 4.0)
+	if _sep_v.length_squared() > 0.0:
+		global_position += _sep_v * delta
 
 
 func _turn_toward(dir: Vector3, delta: float) -> void:
