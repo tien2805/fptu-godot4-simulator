@@ -42,6 +42,7 @@ var flips: int = 0
 var throws: int = 0
 var blocked: int = 0
 var food_hits: int = 0
+var guarded: int = 0
 var soup_splashes: int = 0
 var cuts: int = 0
 var bubble: Label3D
@@ -183,11 +184,18 @@ func _table(p: Vector3, yaw: float, food: bool) -> Dictionary:
 	return t
 
 
-## The upright table the player can flip right now (within FLIP_M, roughly in front), else -1.
+## The upright table the player can flip right now (within FLIP_M, roughly in front), else -1. None while [E] belongs to
+## the combat (a finisher, a throw, a pickup) or the player is down, stunned or mid-move.
 func flip_target() -> int:
 	var pl: ThirdPersonController = mission.player if mission else null
-	if pl == null or kind != "d4":
+	if pl == null or kind != "d4" or not pl.controls_enabled or pl.is_knocked_down():
 		return -1
+	var cmb: PlayerCombat = fight.combat if fight else null
+	if cmb != null:
+		if cmb.finisher_target() != null or cmb.throw_target() != null or cmb.prop_target() != null:
+			return -1
+		if cmb.state in [PlayerCombat.St.DOWN, PlayerCombat.St.HITSTUN, PlayerCombat.St.FINISHER, PlayerCombat.St.THROW, PlayerCombat.St.DODGE]:
+			return -1
 	var best: int = -1
 	var bd: float = FLIP_M
 	var f: Vector3 = pl.facing_dir()
@@ -412,6 +420,9 @@ func _land(b: Dictionary, pl: ThirdPersonController) -> void:
 		blocked += 1
 		return
 	if pl.global_position.distance_to(at - Vector3(0.0, 1.1, 0.0)) <= BUN_HIT_R:
+		if fight and fight.combat and fight.combat.blocking:
+			guarded += 1      # caught on the guard: no damage, and no counter toward the far thrower
+			return
 		food_hits += 1
 		if fight and fight.combat:
 			fight.combat.receive_attack(throwers[0]["body"] if not throwers.is_empty() else self, {"damage": food_dmg()})

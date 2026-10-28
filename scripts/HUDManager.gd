@@ -497,11 +497,15 @@ func _on_destination_reached() -> void:
 		await _story_replay()
 
 	var time_left: float = maxf(0.0, stage_duration_sec - elapsed_sec)
+	# Q6: the score counts the time left on the BASE clock (RoadManager.STAGE_TIME), never Dễ's longer budget, so Dễ
+	# runs do not inflate the score or the shared records
+	var score_left: float = maxf(0.0, RoadManager.STAGE_TIME - elapsed_sec)
 	var longest_chain: int = int(player_bike.get("longest_near_miss_chain")) if player_bike else 0
-	var score: int = int(time_left * 40.0) + near_miss_count * 60 + longest_chain * 60 + drift_boosts * 50 - crashes * 40
+	var score: int = int(score_left * 40.0) + near_miss_count * 60 + longest_chain * 60 + drift_boosts * 50 - crashes * 40
 	score = maxi(0, score)
-	# S đòi hỏi ít nhất một chuỗi sát nút 3 (ngưỡng 1100 -> 1250)
-	var rank: String = GameFX.rank_for(float(score), 1250.0, 800.0, 450.0)
+	# S đòi hỏi ít nhất một chuỗi sát nút 3 (ngưỡng 1100 -> 1250). Wave 2: the bus cut-in, the jam and the flood make a
+	# clean run about 14 s slower (about -560 points): S 1250 -> 700, A 800 -> 380, B 450 -> 180.
+	var rank: String = GameFX.rank_for(float(score), 700.0, 380.0, 180.0)
 	StageManager.report_stage_result(StageManager.StageID.STAGE_1_RACE, {
 		"result": "win", "score": score, "rank": rank,
 		"detail": "left=%.1f nearmiss=%d chain=%d drift=%d crash=%d" % [time_left, near_miss_count, longest_chain, drift_boosts, crashes]

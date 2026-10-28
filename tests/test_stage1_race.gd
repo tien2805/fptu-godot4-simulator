@@ -11,6 +11,7 @@
 # gas and brake; steering toward the chosen lane stays immediate), picks a wrong lane first for 15 % of the lane changes,
 # turns 15 % of its 1.5 s decisions into a wrong input (a wrong steer 0.25 s, gas off 0.4 s, a late brake 0.4 s),
 # misreads the red light in 35 % of the runs and looks less far ahead (22 m). It prints "SLOPPY RESULT" (elapsed vs the clock) and exits 0 when it reached the gate, whatever the time.
+# Review round: the limit is the HUD clock (RoadEvents.stage_time: 294 s on Thường, 345 s on Dễ).
 # Chạy:  godot --headless --path . --script tests/test_stage1_race.gd
 extends SceneTree
 
@@ -100,8 +101,8 @@ func _build() -> void:
 func _print_route_info() -> void:
 	var stage_time: float = float(hud.get("stage_duration_sec"))
 	print("  track_len=%.0f m, finish_offset=%.0f m, curve=%.0f m, stage_time=%.0fs" % [float(road.get("total_track_length")), float(road.get("finish_offset")), curve.get_baked_length(), stage_time])
-	if absf(stage_time - TIME_LIMIT) > 0.5:
-		print("⚠️ WARN: HUD stage_duration_sec %.0f != test TIME_LIMIT %.0f (update the test when RoadManager.STAGE_TIME changes)" % [stage_time, TIME_LIMIT])
+	if absf(stage_time - TIME_LIMIT * (1.15 if easy else 0.98)) > 0.5:
+		print("⚠️ WARN: HUD stage_duration_sec %.0f != the expected clock %.0f (RoadManager.STAGE_TIME x RoadEvents' difficulty factor)" % [stage_time, TIME_LIMIT * (1.15 if easy else 0.98)])
 	var marks: Dictionary = road.get("route_marks")
 	var keys: Array = marks.keys()
 	keys.sort()
@@ -410,11 +411,11 @@ func _process(_delta: float) -> bool:
 				"De" if easy else "Thuong", rng.seed, elapsed, limit, str(reached and elapsed < limit), int(hud.get("crashes")), float(hud.get("penalty_total")), slips, str(ignores_light)])
 			quit(0 if reached else 1)
 			return true
-		if reached and cps_done >= 5 and len_ok and elapsed < TIME_LIMIT:
+		if reached and cps_done >= 5 and len_ok and elapsed < limit:
 			print("✅ SUCCESS: AUTOPILOT REACHED FPTU GATE IN %.1fs ON THE %.0f m REAL ROUTE; ALL ROAD EVENTS FIRED" % [elapsed, track_len])
 			quit(0)
 		else:
-			print("❌ FAILED: reached=%s checkpoints=%d/5 elapsed=%.1fs (limit %.0fs)" % [str(reached), cps_done, elapsed, TIME_LIMIT])
+			print("❌ FAILED: reached=%s checkpoints=%d/5 elapsed=%.1fs (limit %.0fs)" % [str(reached), cps_done, elapsed, limit])
 			quit(1)
 		return true
 	if frames >= MAX_FRAMES:

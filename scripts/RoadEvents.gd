@@ -10,7 +10,7 @@
 # các offset cũ của đường 14 m. RoadManager tạo node này sau khi dựng đường; HUDManager nối các signal.
 # Wave 2 (plan 2026-10-29-w2-early.md Task 2): set_pieces (RoadSetPieces) adds the bus cut-in, the flooded street and the
 # traffic jam; its banners go out through this node's `banner`. stage_time() is the clock budget for the difficulty
-# (HUDManager reads it): RoadManager.STAGE_TIME on Thường, EASY_TIME_K x that on Dễ.
+# (HUDManager reads it): NORMAL_TIME_K x RoadManager.STAGE_TIME on Thường (294 s), EASY_TIME_K x that on Dễ (345 s).
 class_name RoadEvents
 extends Node3D
 
@@ -20,6 +20,9 @@ signal banner(text: String, color: Color, duration: float)
 signal rain_changed(is_raining: bool)
 
 const EASY_TIME_K: float = 1.15
+## Thường: the review round's fixes (one crash per body, the faster bus, traffic off the set pieces) made the sloppy bot
+## pass about 3 runs in 4 at 300 s; 294 s brings it back to about half (the plain race bot runs 273 s).
+const NORMAL_TIME_K: float = 0.98
 
 var LIGHT_OFFSET: float = 778.0   # vạch đèn đỏ: 34 m trước đầu Cầu Rạch Hầm (setup đặt theo route_marks)
 var DOG_OFFSET: float = 470.0     # chó cô Ba: giữa Đường Cầu Vồng 5
@@ -104,9 +107,10 @@ func setup(path: Path3D, bike: CharacterBody3D, manager: Node = null) -> void:
 	set_pieces.setup(path, bike, manager, self)
 
 
-## Clock budget of the race (s) for the current difficulty (Thường = the base, Dễ = EASY_TIME_K x the base).
+## Clock budget of the race (s) for the current difficulty (Thường = NORMAL_TIME_K x the base, Dễ = EASY_TIME_K x the
+## base). The score always counts against the base (HUDManager).
 static func stage_time(base: float) -> float:
-	return base * float(Difficulty.pick(1.0, EASY_TIME_K))
+	return base * float(Difficulty.pick(NORMAL_TIME_K, EASY_TIME_K))
 
 ## Offset mốc thật (route_marks) hoặc giá trị dự phòng của đường cũ khi thiếu.
 func _mark(key: String, fallback: float) -> float:

@@ -125,7 +125,7 @@ func _on_wave(i: int) -> void:
 func _tick(dt: float) -> void:
 	if arena:
 		arena.tick(dt)
-		if kind == "d4" and arena.flip_target() >= 0 and fight and fight.combat and fight.combat.prop_target() == null:
+		if kind == "d4" and arena.flip_target() >= 0:
 			set_prompt(ArenaDressing.T_FLIP)
 		else:
 			set_prompt("")

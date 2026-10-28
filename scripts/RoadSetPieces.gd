@@ -4,7 +4,8 @@
 # the standalone stage alike:
 #   - BUS CUT-IN (between Hải Đăng and Cầu Vồng 5): a bus waits at the right kerb; BUS_BLINK_M before it the amber
 #     blinkers flash and it honks (the telegraph, about 2 s at full speed), at bus_trigger_m() it pulls into the lane
-#     (preview cut on it), rolls ahead BUS_DRIVE_M and goes back to the kerb. It is a slipstream vehicle while it drives.
+#     (preview cut on it), rolls ahead BUS_DRIVE_M at bus_speed() (11.5 / 12.5 m/s: overtake it on the left or draft it)
+#     and goes back to the kerb. It is a slipstream vehicle while it drives.
 #   - FLOODED STREET "đường ngập" (the signature, near the end of Nguyễn Văn Tăng): FLOOD_LEN m of murky animated water
 #     over the carriageway, deeper along both kerbs (DEEP_W m, darker), four ranks of stalled bikes with one gap each at
 #     alternating sides (the lane to pick), a warning sign and a preview cut before it. In the water the bike's speed is
@@ -135,7 +136,7 @@ static func bus_trigger_m() -> float:
 
 
 static func bus_speed() -> float:
-	return float(Difficulty.pick(7.5, 9.0))
+	return float(Difficulty.pick(11.5, 12.5))
 
 
 static func water_k() -> float:
@@ -407,7 +408,9 @@ func _build_flood() -> void:
 		while lat <= hw - 0.4:
 			if absf(lat - g) >= half_gap:
 				var jitter: float = float((k * 37) % 7) * 0.08 - 0.24
-				_stalled_bike(root, o + jitter, lat, bike_mats[k % bike_mats.size()], (float(k % 5) - 2.0) * 0.12, not rider_done and absf(lat - g) < half_gap + 1.2)
+				# a yawed 1.9 m bike sweeps sideways: the two bikes beside the gap stand straight so it stays >= stall_gap()
+				var yaw: float = 0.0 if absf(lat - g) < half_gap + STALL_STEP else (float(k % 5) - 2.0) * 0.12
+				_stalled_bike(root, o + jitter, lat, bike_mats[k % bike_mats.size()], yaw, not rider_done and absf(lat - g) < half_gap + 1.2)
 				if absf(lat - g) < half_gap + 1.2:
 					rider_done = true
 				k += 1
@@ -533,10 +536,14 @@ func _tick_flood(dt: float, off: float, lat: float) -> void:
 		_sfx("whoosh", -3.0, 0.4)
 	var speed: float = absf(float(bike.get("current_speed_ms")))
 	if inside:
+		# the bike's own speed_cap (applied in its physics step after every boost) eases down to the water's cap
 		var cap: float = flood_cap(deep)
-		var cur: float = float(bike.get("current_speed_ms"))
-		if cur > cap:
-			bike.set("current_speed_ms", move_toward(cur, cap, WATER_DECEL * dt))
+		var cur_cap: float = float(bike.get("speed_cap"))
+		if is_inf(cur_cap):
+			cur_cap = maxf(speed, cap)
+		bike.set("speed_cap", maxf(cap, move_toward(minf(cur_cap, maxf(speed, cap)), cap, WATER_DECEL * dt)))
+	elif not is_inf(float(bike.get("speed_cap"))):
+		bike.set("speed_cap", INF)
 	var spraying: bool = inside and speed > 1.5
 	if spray.emitting != spraying:
 		spray.emitting = spraying
@@ -604,6 +611,15 @@ func _tick_jam(off: float) -> void:
 
 
 # ---------------------------------------------------------------------------
+## Route spans where normal traffic must not drive (TrafficSpawner skips its followers past them): the cut-in bus while it
+## is parked or on the move, the jam and the flood.
+func blocked_ranges() -> Array[Vector2]:
+	var out: Array[Vector2] = [Vector2(jam_from - 6.0, jam_to + 6.0), Vector2(flood_from - 4.0, flood_to + 4.0)]
+	if bus_state != "done":
+		out.append(Vector2(bus_s - 8.0, bus_s + 8.0))
+	return out
+
+
 ## Called by RoadEvents._process with the bike's route offset (one closest-offset search per frame for both).
 func tick(dt: float, off: float) -> void:
 	if curve == null or bike == null or not is_instance_valid(bike):

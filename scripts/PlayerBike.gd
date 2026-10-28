@@ -121,6 +121,11 @@ static var _owner_tasks: Dictionary = {}   # file path -> {"task": int, "box": [
 @export var fallback_fall_y: float = -3.5
 
 var current_speed_ms: float = 0.0
+## Wave 2: a hard speed cap applied in the physics step after every boost (RoadSetPieces' flood water; INF = none).
+var speed_cap: float = INF
+## Wave 2: physics frame of the last counted crash per collider (one crash per collider per CRASH_COOLDOWN_S).
+var _crash_frames: Dictionary = {}
+const CRASH_COOLDOWN_S: float = 1.5
 var steer_input: float = 0.0
 var tilt_angle: float = 0.0
 var slipstream_charge: float = 0.0
@@ -1268,7 +1273,7 @@ func _physics_process(delta: float) -> void:
 	if _coast_cap > target_top_speed:   # after a nitro burn the extra speed fades instead of snapping off
 		_coast_cap = maxf(target_top_speed, _coast_cap - NITRO_COAST_DECEL * delta)
 		target_top_speed = maxf(target_top_speed, minf(_coast_cap, current_speed_ms))
-	current_speed_ms = clampf(current_speed_ms - drag_loss, -reverse_speed_ms, target_top_speed)
+	current_speed_ms = clampf(current_speed_ms - drag_loss, -reverse_speed_ms, minf(target_top_speed, speed_cap))
 
 	# 3. Bẻ lái & nghiêng thân xe + DRIFT
 	var raw_steer: float = Input.get_axis("steer_right", "steer_left")
@@ -1524,15 +1529,29 @@ func _on_obstacle_hit(collider: Object = null) -> void:
 		near_candidates[collider]["collided"] = true
 	near_miss_chain = 0
 	near_miss_chain_timer = 0.0
-	if bump_player:
-		bump_player.play()
-	add_camera_shake(0.65)
+	# the body still stops the bike on every contact; scraping along the same body (a bus, a jam car) counts as one crash
+	# (the bump, the shake, crash_occurred) per CRASH_COOLDOWN_S, not one per physics frame
+	var counted: bool = true
+	if collider != null:
+		var now: int = Engine.get_physics_frames()
+		var key: int = collider.get_instance_id()
+		var last: int = int(_crash_frames.get(key, -1000000))
+		counted = now - last >= int(CRASH_COOLDOWN_S * float(Engine.physics_ticks_per_second))
+		if counted:
+			if _crash_frames.size() > 32:
+				_crash_frames.clear()
+			_crash_frames[key] = now
+	if counted:
+		if bump_player:
+			bump_player.play()
+		add_camera_shake(0.65)
 	if current_speed_ms > 6.0:
 		current_speed_ms *= 0.35
 		slipstream_charge = 0.0
 		is_slipstream_boosting = false
 		drift_boost_timer = 0.0
-		emit_signal("crash_occurred")
+		if counted:
+			emit_signal("crash_occurred")
 
 ## Ổ gà: không chặn xe nhưng làm mất tốc + xóc mạnh
 func hit_pothole() -> void:

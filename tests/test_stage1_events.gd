@@ -141,6 +141,7 @@ func _process(_d: float) -> bool:
 			if off > sp.flood_from + 25.0 and not mark.has("in_water"):
 				mark["in_water"] = true
 				_check(sp.in_flood and not sp.deep, "in the water, in the shallow middle")
+				_check(float(bike.get("speed_cap")) <= sp.flood_cap(false) + 0.6, "the bike's own speed cap holds the water speed (%.1f)" % float(bike.get("speed_cap")))
 				_check(float(bike.get("current_speed_ms")) <= sp.flood_cap(false) + 0.6, "the water pulls the speed down to the cap (%.1f <= %.1f m/s)" % [float(bike.get("current_speed_ms")), sp.flood_cap(false)])
 				_check(sp.spray.emitting and sp.flood_entries == 1, "spray behind the bike, one entry splash")
 				var hw: float = float(road.call("half_width_at", off))
@@ -155,13 +156,33 @@ func _process(_d: float) -> bool:
 				_check(mark.has("deep"), "reached a deep pocket")
 				_check(not sp.in_flood and not sp.spray.emitting, "out of the water: no spray")
 				phase = 3
-		3:   # E: Dễ
+		3:   # F: review round: traffic keeps out of the set pieces, one crash per body per 1.5 s, the score on the base clock
+			var spawner: Node = stage.get_node_or_null("TrafficSpawner")
+			var inside: int = 0
+			var ranges: Array = sp.blocked_ranges()
+			for a: Variant in (spawner.get("active_buses") as Array) if spawner else []:
+				var prog: float = float((a.follower as PathFollow3D).progress)
+				for r: Vector2 in ranges:
+					if prog > r.x + 0.5 and prog < r.y - 0.5:
+						inside += 1
+			_check(spawner != null and ranges.size() >= 2 and inside == 0, "no traffic follower inside the jam / flood / bus spans (%d inside)" % inside)
+			_check(RSP.bus_speed() >= 11.0, "the cut-in bus rolls at %.1f m/s (overtake or draft)" % RSP.bus_speed())
+			var crashes: Array[int] = [0]
+			bike.crash_occurred.connect(func() -> void: crashes[0] += 1)
+			var car: Node = get_nodes_in_group("jam_car")[0]
+			for k: int in 5:
+				bike.set("current_speed_ms", 15.0)
+				bike.call("_on_obstacle_hit", car)
+			_check(crashes[0] == 1, "scraping one car five times in a row counts one crash (%d)" % crashes[0])
+			_check(is_inf(float(bike.get("speed_cap"))), "the water cap is off out of the flood")
+			phase = 4
+		4:   # E: Dễ
 			Difficulty.set_easy(true)
 			_check(is_equal_approx(REV.stage_time(300.0), 345.0), "Dễ: 345 s on the clock (%.0f)" % REV.stage_time(300.0))
 			_check(RSP.stall_gap() > 2.4 and RSP.jam_squeeze() > 1.8 and RSP.water_k() > 0.6 and RSP.bus_trigger_m() > 50.0,
 				"Dễ: wider gaps, a gentler cap, the bus earlier")
 			Difficulty.set_easy(false)
-			_check(is_equal_approx(REV.stage_time(300.0), 300.0), "Thường keeps 300 s")
+			_check(is_equal_approx(REV.stage_time(300.0), 294.0), "Thường: 294 s on the clock (%.0f)" % REV.stage_time(300.0))
 			return _end()
 	return false
 

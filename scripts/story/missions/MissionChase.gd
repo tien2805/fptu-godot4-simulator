@@ -88,6 +88,7 @@ var tackled: bool = false
 var tackling: bool = false
 var _tackle_t: float = 0.0
 var _tackle_from: Vector3 = Vector3.ZERO
+var _tackle_cam: Vector2 = Vector2.ZERO
 var _move: Dictionary = {}                  # the running vault / slide: {kind, from, to, t, secs, h}
 var _hop_t: float = -1.0
 var _prev_filter: Callable
@@ -179,6 +180,8 @@ func _reset() -> void:
 	tackled = false
 	tackling = false
 	shortcut_used = false
+	if not _move.is_empty() and _move.get("body") is PhysicsBody3D and is_instance_valid(_move["body"]) and player:
+		player.remove_collision_exception_with(_move["body"])
 	_move = {}
 	_hop_t = -1.0
 	_taunt_cd = 0.0
@@ -680,8 +683,16 @@ func _begin_move(kind: String, o: Dictionary, secs: float, h: float) -> void:
 		side = -1.0
 	var to: Vector3 = at - f * side * 1.3
 	to.y = ground_y(to)
-	_move = {"kind": kind, "from": player.global_position, "to": to, "t": 0.0, "secs": secs, "h": h}
+	var yaw: float = yaw_of(to - player.global_position)
+	_move = {"kind": kind, "from": player.global_position, "to": to, "t": 0.0, "secs": secs, "h": h, "yaw": yaw,
+		"cam": Vector2(player.yaw, player.pitch), "body": o.get("toppled_body", o.get("body"))}
+	# one teleport at the start (clears the locomotion state), then the clip; the arc itself only moves the body
+	player.teleport(player.global_position, yaw)
+	_keep_cam(_move["cam"])
 	player.controls_enabled = false
+	var obst: Variant = _move["body"]
+	if obst is PhysicsBody3D and is_instance_valid(obst):
+		player.add_collision_exception_with(obst)   # the capsule passes over / under it
 	CharacterBuilder.play(player.model, "jump_takeoff" if kind == "vault" else "slide", secs)
 	MissionSfx.play(self, "vault", -4.0)
 	cues_played.append(kind)
@@ -695,12 +706,31 @@ func _tick_move(dt: float) -> void:
 	var u: float = clampf(float(_move["t"]) / float(_move["secs"]), 0.0, 1.0)
 	var p: Vector3 = (_move["from"] as Vector3).lerp(_move["to"], u)
 	p.y += sin(u * PI) * float(_move["h"])
-	var yaw: float = yaw_of((_move["to"] as Vector3) - (_move["from"] as Vector3))
-	player.teleport(p, yaw)
+	_carry(p, float(_move["yaw"]))
 	if u >= 1.0:
+		var obst: Variant = _move["body"]
+		var cam: Vector2 = _move["cam"]
 		_move = {}
+		player.teleport(p, player.model.rotation.y if player.model else 0.0)
+		_keep_cam(cam)
+		if obst is PhysicsBody3D and is_instance_valid(obst):
+			player.remove_collision_exception_with(obst)
 		player.controls_enabled = true
 		Impact.particles(self, "dust", player.global_position, Vector3.UP, 0.6)
+
+
+## Moves the player's body along a scripted arc without teleport() (that would stop the clip and snap the camera): the
+## position, no velocity, the body facing; the camera keeps its own yaw and pitch.
+func _carry(p: Vector3, yaw: float) -> void:
+	player.global_position = p
+	player.velocity = Vector3.ZERO
+	if player.model:
+		player.model.rotation.y = yaw
+
+
+func _keep_cam(cam: Vector2) -> void:
+	player.yaw = cam.x
+	player.pitch = cam.y
 
 
 ## Spilled rubbish and rolling fruit: the player's speed is capped inside a slow zone (vaulting skips it).
@@ -763,7 +793,11 @@ func try_tackle() -> bool:
 	tackled = true
 	_tackle_t = 0.0
 	_tackle_from = player.global_position
+	_tackle_cam = Vector2(player.yaw, player.pitch)
+	player.teleport(player.global_position, yaw_of(courier.global_position - _tackle_from))
+	_keep_cam(_tackle_cam)
 	player.controls_enabled = false
+	CharacterBuilder.play(player.model, "jump_takeoff", TACKLE_S)
 	set_prompt("")
 	CharacterBuilder.set_speed(courier, 0.0)
 	Impact.slowmo_orbit(self, courier, 0.9)
@@ -777,8 +811,10 @@ func _tick_tackle(dt: float) -> void:
 	var to: Vector3 = courier.global_position - (courier.global_position - _tackle_from).normalized() * 0.6
 	var p: Vector3 = _tackle_from.lerp(to, u)
 	p.y += sin(u * PI) * 0.7
-	player.teleport(p, yaw_of(courier.global_position - _tackle_from))
+	_carry(p, yaw_of(courier.global_position - _tackle_from))
 	if u >= 1.0 and not ended:
+		player.teleport(p, yaw_of(courier.global_position - _tackle_from))
+		_keep_cam(_tackle_cam)
 		var dir: Vector3 = courier.global_position - _tackle_from
 		dir.y = 0.0
 		Impact.hit(self, "finisher", {"pos": courier.global_position + Vector3(0.0, 0.9, 0.0), "dir": dir.normalized(), "no_hitstop": true})

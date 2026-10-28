@@ -483,6 +483,7 @@ func _tick(dt: float) -> void:
 	if state != "running":
 		return
 	if clock >= handover_s():
+		raise_phone(false)
 		fail(T_MISSED)
 
 

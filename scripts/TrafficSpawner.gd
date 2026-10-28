@@ -31,6 +31,8 @@ class BusAgent:
 
 var active_buses: Array[BusAgent] = []
 var road_manager: Node = null
+## Wave 2: RoadSetPieces (found through RoadManager.road_events): its blocked_ranges() are skipped like one-way sections.
+var set_pieces: Node = null
 var oneway: Array[Vector2] = []
 var track_len: float = 1.0
 
@@ -194,10 +196,31 @@ func _skip_oneway(progress: float) -> float:
 			return p if p > 0.0 else track_len - 1.0
 	return progress
 
+## Wave 2: a follower inside a set-piece span (the cut-in bus, the jam, the flood) jumps past it in its own direction.
+func _skip_blocked(progress: float, direction: float, ranges: Array) -> float:
+	for r: Vector2 in ranges:
+		if progress > r.x and progress < r.y:
+			var p: float = r.y + 1.0 if direction > 0.0 else r.x - 1.0
+			return fposmod(p, track_len)
+	return progress
+
+
+func _blocked_ranges() -> Array:
+	if set_pieces == null or not is_instance_valid(set_pieces):
+		set_pieces = null
+		var ev: Variant = road_manager.get("road_events") if road_manager else null
+		if ev is Node and is_instance_valid(ev):
+			set_pieces = (ev as Node).get("set_pieces")
+	return set_pieces.call("blocked_ranges") if set_pieces != null and set_pieces.has_method("blocked_ranges") else []
+
+
 func _physics_process(delta: float) -> void:
+	var blocked: Array = _blocked_ranges()
 	for agent: BusAgent in active_buses:
 		var p: float = agent.follower.progress + agent.speed_ms * agent.direction * delta
 		if agent.direction < 0.0 and not oneway.is_empty():
 			p = _skip_oneway(fposmod(p, track_len))
+		if not blocked.is_empty():
+			p = _skip_blocked(fposmod(p, track_len), agent.direction, blocked)
 		agent.follower.progress = p
 		agent.follower.h_offset = _lane(agent.lane_offset, agent.follower.progress)
