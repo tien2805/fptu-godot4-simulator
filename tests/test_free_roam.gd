@@ -663,6 +663,13 @@ func _process(_delta: float) -> bool:
 # ---------------------------------------------------------------------------
 # [T] ĐÊM -> BÌNH MINH -> SÁNG  +  LỚP "VỀ CAMPUS" KHI CHƠI LẠI
 # ---------------------------------------------------------------------------
+## The scene's own environment under an active Q3 look preset (the preset shows a copy of it with its values over).
+func _below_look(we: WorldEnvironment) -> Environment:
+	if LookPresets.active(roam) != "" and roam.has_meta("look_base_env"):
+		return roam.get_meta("look_base_env") as Environment
+	return we.environment
+
+
 func _phase_tod_and_retry() -> bool:
 	var we: WorldEnvironment = roam.get_node("WorldEnvironment")
 	var base: Environment = roam.get("_base_env")
@@ -683,7 +690,10 @@ func _phase_tod_and_retry() -> bool:
 	if not _check(String(roam.get("tod_preset")) == "dawn" and ve.ambient_light_color.is_equal_approx(vdawn["amb_col"]) and absf(ve.ambient_light_energy - float(vdawn["amb"])) < 0.001, "vice: dawn after night uses the dawn look ambient"):
 		return false
 	roam.call("cycle_time_of_day")   # dawn -> morning (vice day)
-	ve = we.environment
+	# Q3: by day the campus_day look preset is layered on a copy of the vice environment
+	if not _check(LookPresets.active(roam) == "campus_day" and absf(we.environment.ambient_light_energy - float(LookPresets.PRESETS["campus_day"]["amb"])) < 0.001, "vice: morning shows the campus_day look preset"):
+		return false
+	ve = _below_look(we)
 	var vday: Dictionary = ViceStyle.params_for("morning")
 	if not _check(String(roam.get("tod_preset")) == "morning" and ve.ambient_light_color.is_equal_approx(vday["amb_col"]) and absf(ve.ambient_light_energy - float(vday["amb"])) < 0.001 and String(roam.get_meta("vice_look", "")) == "day", "vice: morning after dawn uses the day look"):
 		return false
@@ -702,7 +712,7 @@ func _phase_tod_and_retry() -> bool:
 	if not _check(absf(e.ambient_light_energy - float(presets["dawn"]["ambient"])) < 0.001, "dawn ambient energy = its preset value"):
 		return false
 	roam.call("cycle_time_of_day")   # dawn -> morning
-	e = we.environment
+	e = _below_look(we)
 	if not _check(String(roam.get("tod_preset")) == "morning" and absf(e.ambient_light_energy - base.ambient_light_energy) < 0.001 and e.ambient_light_color.is_equal_approx(base.ambient_light_color), "morning after night/dawn restores the base ambient energy %.2f (got %.2f)" % [base.ambient_light_energy, e.ambient_light_energy]):
 		return false
 	if not _check(base.ambient_light_energy == 1.0 and base != e, "base Environment itself is never modified"):

@@ -489,7 +489,8 @@ func _telegraph(t: int) -> void:
 		if t == int(mark["tg0"]) + 10:
 			var lit: bool = e.flash_on
 			for mi: Node in e.body.find_children("*", "MeshInstance3D", true, false):
-				lit = lit and (mi as MeshInstance3D).material_overlay != null
+				if not mi.has_meta("rim_shell_node"):   # Q3 rim shells are not part of the body's flash
+					lit = lit and (mi as MeshInstance3D).material_overlay != null
 			_check(lit, "the telegraph flashes the enemy red")
 			_check(combat.hud.telegraph_shown >= 1, "the HUD marks the telegraph")
 			_check(combat.hud.edge_markers == 0, "an attacker on screen gets no edge marker (%d)" % combat.hud.edge_markers)

@@ -5,7 +5,7 @@
 #      an existing overlay is kept;
 #   C: shell mode: a "RimShell" child per mesh with the same mesh / skin and a skeleton path that resolves, no overlay;
 #   D: the real enemy builds: MeleeEnemy (shells: its hit flash owns material_overlay), Gunman, BikerEnemy, AmmoPickup
-#      (yellow pickup rim);
+#      (yellow pickup rim); the extra passes per enemy stay within a budget (8 / 12 / 14);
 #   E: the settings toggle: off removes every rim (overlays and shells), rim() while off only registers, on puts them back;
 #   F: GameFX "Viền sáng nhân vật": the CheckButton in a settings panel and in the pause settings, toggling it switches
 #      Readability and saves video/rim_light to a TEMP settings path (the owner's settings are never touched);
@@ -166,6 +166,9 @@ func _part_d() -> bool:
 	for mi: MeshInstance3D in _meshes(ap):
 		if mi.material_overlay != null and not _check(mi.material_overlay == Readability.rim_material("pickup"), "pickup rim not yellow"):
 			return false
+	# render budget: extra rim passes per enemy stay few (tiny face meshes are skipped)
+	if not _check(Readability.rimmed_count(me.body) <= 8 and Readability.rimmed_count(g.body) <= 12 and Readability.rimmed_count(be) <= 14, "too many rim passes per enemy"):
+		return false
 	print("  D: MeleeEnemy %d, Gunman %d, BikerEnemy %d, AmmoPickup %d rimmed meshes" % [Readability.rimmed_count(me.body),
 		Readability.rimmed_count(g.body), Readability.rimmed_count(be), Readability.rimmed_count(ap)])
 	return true
