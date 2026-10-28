@@ -55,29 +55,28 @@ func build() -> void:
 	look("hero", 13.6, 15.4, LAPTOP + Vector3(0.0, 0.15, 0.0))
 	hold("hero", 15.7, 18.0, "phone", {"offset": Vector3(0.0, 0.0, -0.02), "glow": true})
 	move("hero", 15.7, "hold_up", {"fade": 0.25})
+	move("hero", 13.6, "facepalm", {"fade": 0.15})
 	look("hero", 15.8, 18.0, Vector3(1.05, 1.3, -1.25))
 	expr("hero", 0.0, "open")
 	expr("hero", 9.8, "surprised")
 	expr("hero", 13.5, "angry")
-	expr("hero", 15.8, "open")
+	expr("hero", 16.0, "surprised")
 	sfx_at(2.0, "keyboard_clack", -10.0)
 	sfx_at(4.4, "phone_buzz", -14.0)
 	sfx_at(9.7, "dun_dun_duun", -6.0)
 	sfx_at(15.6, "phone_buzz", -4.0)
+	sfx_at(16.4, "cliff_sting", -3.0)
 	shot("S1", 0.0, "static", "wide: the scorched server room, Za Mẫn slumped against the racks with a broken katana",
 		{"pos": Vector3(3.0, 1.7, 3.6), "look": Vector3(-1.6, 1.0, -1.6), "fov": 52.0})
 	shot("S2", 0.4, "static", "close: Za Mẫn, \"Bảo hành... bảy ngày...\"",
 		{"pos": Vector3(-3.4, 0.95, -2.0), "look": Vector3(-4.55, 0.8, -2.25), "fov": 40.0})
 	shot("S3", 2.0, "static", "over the protagonist's shoulder: the transaction logs on the laptop",
 		{"pos": Vector3(1.45, 1.65, -0.25), "look": LAPTOP + Vector3(0.0, 0.15, 0.0), "fov": 40.0})
-	shot("S4", 9.7, "static", "close: the protagonist, \"...Trà Sữa Lọ?\"",
-		{"pos": Vector3(0.75, 1.6, -1.9), "look": HERO + Vector3(0.0, 1.55, 0.0), "fov": 38.0})
+	push_in("S4", 9.7, "hero", {"from": 2.7, "to": 2.3, "side_deg": 30.0, "look_y": 1.2})   # Q5: "...Trà Sữa Lọ?"
 	shot("S5", 10.9, "static", "close: Za Mẫn, dreamy: the milk tea",
 		{"pos": Vector3(-3.4, 0.95, -2.0), "look": Vector3(-4.55, 0.8, -2.25), "fov": 40.0})
-	shot("S6", 13.4, "static", "wide side on: \"Lọ Thần. Trà Sữa Lọ. Lọ hết trơn.\"",
-		{"pos": Vector3(-1.4, 1.5, 1.6), "look": Vector3(0.6, 1.2, -1.2), "fov": 46.0})
-	shot("S7", 15.6, "static", "close: the phone buzzes in the protagonist's hand",
-		{"pos": Vector3(1.35, 1.55, -0.3), "look": Vector3(1.0, 1.3, -1.15), "fov": 40.0})
+	two_shot("S6", 13.4, "hero", "za", {"side": 1.0, "look_y": 1.0, "dist": 6.2})   # "Lọ Thần. Trà Sữa Lọ. Lọ hết trơn."
+	push_in("S7", 15.6, "hero", {"from": 3.0, "to": 2.3, "side_deg": -30.0, "look_y": 1.2})   # the cliffhanger text
 	card("screen", 4.4, 5.2, {"kind": "flow", "title": "NHẬT KÝ GIAO DỊCH", "nodes": ["LỌ THẦN 9.0", "VÍ ẨN DANH", "TRÀ SỮA LỌ"],
 		"amounts": ["2,4 tỷ", "2,4 tỷ"]})
 	sub(0.5, 1.5, "za", "Bảo hành... bảy ngày...")
@@ -85,4 +84,6 @@ func build() -> void:
 	sub(9.8, 1.0, "hero", "...Trà Sữa Lọ?")
 	sub(11.0, 2.3, "za", "Trà sữa ngon lắm... size L, ít đá...")
 	sub(13.5, 2.05, "hero", "Lọ Thần. Trà Sữa Lọ. Lọ hết trơn.")
-	sub(15.8, 1.4, "hero", "Chủ quán là ai đây...")
+	sub(15.8, 2.17, "hero", "...'Trà sữa size L, ít đá. Tao mời.'")
+	joke(11.0, "Za Mẫn, beaten, dreams of milk tea: size L, ít đá")
+	cliffhanger(15.8)

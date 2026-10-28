@@ -35,9 +35,9 @@ func build() -> void:
 	expr("phuc", 3.0, "surprised")
 	sfx_at(0.2, "success_fanfare", -9.0)
 	sfx_at(3.2, "ba_dum_tss", -5.0)
-	shot("S1", 0.0, "static", "two-shot: Phúc's arms up in relief",
-		{"pos": Vector3(0.2, 1.5, -2.6), "look": Vector3(0.0, 1.3, -0.1), "fov": 46.0})
+	two_shot("S1", 0.0, "hero", "phuc", {"side": -1.0, "look_y": 1.2})   # Phúc's arms up in relief
 	shot("S2", 2.7, "static", "close: the protagonist, deadpan",
 		{"pos": Vector3(-0.15, 1.58, -0.75), "look": Vector3(0.55, 1.5, 0.1), "fov": 38.0})
 	sub(0.3, 2.4, "phuc", "Mày là nhất! Tao nợ mày một tô mì!")
-	sub(2.8, 1.0, "hero", "…Hai tô.")
+	sub(2.8, 1.0, "hero", "...Hai tô.")
+	joke(2.8, "...Hai tô. on a ba-dum-tss")

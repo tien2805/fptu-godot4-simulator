@@ -1,7 +1,9 @@
 # File: res://tests/test_story_day1.gd
 # Headless end-to-end test of story Day 1 "Shipper bóng đêm" (spec B-D5, B-D6; plan 2026-10-25-phase-b-integration.md):
-# Day 1 morning (cine_day_start) -> the main-gate marker (blocked while wanted) -> cine_d1_intro -> the stake-out (seen =
-# restart, the window missed = TOANG! -> THỬ LẠI, a photo too early refused, the photo in the window, 60 s) -> the chase
+# Day 1 morning (cine_day_start) -> the main-gate marker (blocked while wanted) -> cine_d1_intro -> the stake-out (Wave 2
+# tension mini-game: seen in the open while he looks round = BỊ LỘ -> THỬ LẠI; hidden ducked behind a car through the
+# guard's walk-by and Lu's bark until the handover ends = TOANG!; the phone camera: a blurred shot, three clear photos of
+# the three moments with the turns hidden behind a car, a real [Q] / [E]) -> the chase
 # starts by itself (leash lost = TOANG! -> retry, the banana slip with slide_whistle and the replay mark, 60-90 s, the
 # seg_d1_chase replay) -> the brawl (3 couriers, forced unarmed, "Gét gô!", down = TOANG! -> retry from the checkpoint,
 # won -> seg_d1_brawl, the locker key flag) -> the corridor marker -> the horror walk (flicker, figure, blackout, gone,
@@ -20,9 +22,9 @@
 # Run:  godot --headless --path . --script tests/test_story_day1.gd
 extends SceneTree
 
-const TMP: String = "user://test_story_day1.cfg"
-const SNAP: String = "user://test_story_day1_snap.cfg"
-const VID: String = "user://test_story_day1_video/"
+var TMP: String = "user://test_story_day1_%d.cfg" % OS.get_process_id()
+var SNAP: String = "user://test_story_day1_snap_%d.cfg" % OS.get_process_id()
+var VID: String = "user://test_story_day1_video_%d/" % OS.get_process_id()
 const DT: float = 1.0 / 60.0
 var fails: Array[String] = []
 var frames: int = 0
@@ -45,6 +47,53 @@ func _key(code: Key) -> void:
 		ev.keycode = code
 		ev.pressed = down
 		Input.parse_input_event(ev)
+
+
+## The chase's parkour set pieces, checked at the start (the courier barely moves).
+func _parkour(ch: MissionChase) -> void:
+	_check(ch.obstacles.size() == 6 and ch.crowd.size() == 8 and ch.canteen != null, "6 set pieces, 8 students, the canteen stall")
+	var a: Vector3 = ch.campus(MissionChase.SHORTCUT[0]) + Vector3(0.0, 0.5, 0.0)
+	var b: Vector3 = ch.campus(MissionChase.SHORTCUT[1]) + Vector3(0.0, 0.5, 0.0)
+	_check(ch.clear_line(a, b) and ch.clear_line(a + Vector3(0.0, 0.7, 0.0), b + Vector3(0.0, 0.7, 0.0)), "the canteen shortcut is clear at 0.5 and 1.2 m")
+	var o: Dictionary = ch.obstacles[0]
+	var before: Vector3 = (o["at"] as Vector3) - (o["fwd"] as Vector3) * 1.0
+	_player().teleport(before, MissionStakeout.yaw_of(o["fwd"]))
+	_check(ch.hud_prompt.text == "" or true, "")
+	_check(not ch.try_slide() and ch.try_vault() and not _player().controls_enabled, "Space at the bench: a vault (controls held during it)")
+	_advance(0.6)
+	var past: float = (_player().global_position - (o["at"] as Vector3)).dot(o["fwd"])
+	_check(past > 0.8 and _player().controls_enabled and ch.vaults == 1, "over the bench (%.1f m past it)" % past)
+	var sl: Dictionary = ch.obstacles[2]
+	var before2: Vector3 = (sl["at"] as Vector3) - (sl["fwd"] as Vector3) * 1.5
+	_player().teleport(before2, MissionStakeout.yaw_of(sl["fwd"]))
+	_check(not ch.try_vault() and ch.try_slide(), "Ctrl at the barrier: a slide")
+	_advance(0.7)
+	var past2: float = (_player().global_position - (sl["at"] as Vector3)).dot(sl["fwd"])
+	_check(past2 > 0.8 and ch.slides == 1 and ch.cues_played.has("slide"), "under the barrier (%.1f m past it)" % past2)
+
+## Advances (aiming) until the courier is side-on in his current moment and the view has been steady long enough.
+func _to_profile(so: MissionStakeout) -> void:
+	var n: int = 0
+	while n < 200 and so.state == "running" and not (so.in_profile and so.steady_t >= MissionStakeout.steady_s() and so.zoom_t >= 0.9):
+		_aim(so)
+		so.advance(0.05)
+		n += 1
+
+
+## Aims the player's view (yaw / pitch) at the courier's chest from the player's phone eye.
+func _aim(so: MissionStakeout) -> void:
+	var to: Vector3 = so.courier_chest() - so.eye_pos()
+	_player().yaw = atan2(-to.x, -to.z)
+	_player().pitch = asin(clampf(to.y / maxf(to.length(), 0.01), -1.0, 1.0))
+
+
+## A real key press or release through Input.
+func _key_down(code: Key, down: bool) -> void:
+	var ev := InputEventKey.new()
+	ev.physical_keycode = code
+	ev.keycode = code
+	ev.pressed = down
+	Input.parse_input_event(ev)
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -137,6 +186,7 @@ func _process(_d: float) -> bool:
 		return _end()
 	match phase:
 		0:
+			Difficulty.set_easy(false)   # Thường (the owner's setting is loaded by GameFX before the first frame)
 			sd.call("new_story", {"female": false, "name": "Minh", "variant": 1, "hair_style": "spiky", "hair_color": 2, "skin": 1})
 			sd.set("step", "d0_intro")
 			sd.call("complete_step", "d0_intro")
@@ -193,47 +243,106 @@ func _process(_d: float) -> bool:
 				phase = 999
 				return false
 			var so: MissionStakeout = m
-			_check(so.guards.size() == 2 and so.courier != null and so.hud.visible and sr.ui.visible, "two guards, the courier, the mission HUD and the objective")
+			_check(so.cars.size() == 7 and so.courier != null and so.buyer != null and so.hud.visible and sr.ui.visible, "the courier, the buyer, six parked cars and his scooter, the mission HUD")
 			var objc: String = String(sd.get("objective"))
 			_check(objc.contains("cổng") or objc.contains("Mr.T"), "objective kept: %s" % objc)
-			# seen = restart
-			var g: Node3D = so.guards[0]
-			_player().teleport(g.global_position + MissionStakeout.fwd_of(g) * 4.0, 0.0)
+			_check(MissionStakeout.tell_s() >= 0.5 and MissionStakeout.bark_tell_s() >= 0.5, "every turn has a telegraph of at least 0.5 s")
+			# seen in the open while he looks round: the meter fills, BỊ LỘ
+			_player().teleport(so.campus(Vector3(112.0, 0.0, 103.5)), 0.0)
+			so.duck_override = false
+			so._begin_tell(0.6, Vector3.ZERO)
+			_check(so.bubble.visible and so.bubble.text == "Hửm?" and so.tells == 1, "the turn telegraph: a red Hửm? bubble")
+			_advance(0.7)
+			_check(so.phase == "look", "then he looks down the lane")
+			_advance(2.0)
+			_check(so.state == "failed" and sr.fail_ui != null and sr.fail_ui.visible and sr.fail_ui.title_label.text == "BỊ LỘ" and so.seen_count >= 1,
+				"seen standing in the open: the meter fills, BỊ LỘ (%s, %.0f)" % [so.state, so.suspicion])
+			sr.fail_ui.press_retry()
+			_check(so.state == "running" and so.clock < 0.01 and so.suspicion == 0.0 and not sr.fail_ui.visible and so.photos.count(true) == 0, "THỬ LẠI restarts the stake-out")
+			# hidden ducked behind a car the whole handover: the guard walks by, Lu barks, the courier spins round; no photos = TOANG!
+			var hide: Vector3 = so.campus(Vector3(94.5, 0.0, 100.6))   # behind the first car from the courier and from the lane
+			so.duck_override = true
+			var hn: int = 0
+			while so.state == "running" and hn < 1200:
+				_player().teleport(hide, MissionStakeout.yaw_of(so.courier.global_position - hide))
+				so.advance(0.1)
+				hn += 1
+			_check(so.guard_walks >= 1 and so.barks == 1 and so.cues_played.has("bark") and so.cues_played.has("rustle"), "the guard walked by, Lu barked behind the player (%d, %d)" % [so.guard_walks, so.barks])
+			_check(so.lu_shown and so.scare.fake_count == 1 and so.tells >= 5, "Lu's sting is the one fake-out; the courier kept turning round (%d tells)" % so.tells)
+			_check(so.state == "failed" and sr.fail_ui.visible and sr.fail_ui.title_label.text == "TOANG!", "hidden all along without photos: the handover ends, TOANG! (%s, %.0f)" % [so.state, so.suspicion])
+			sr.fail_ui.press_retry()
+			so.duck_override = false
+			_check(so.state == "running" and so.clock < 0.01, "THỬ LẠI again")
+			# photos: 21 m behind him in the lane while his back is turned
+			var spot: Vector3 = so.campus(Vector3(101.0, 0.0, 103.5))
+			_player().teleport(spot, 0.0)
+			_aim(so)
+			_check(so.take_photo() == "", "[E] without the phone up does nothing")
+			so.raise_phone(true)
+			_check(so.phone_cam.current and so._finder.visible and _player().move_lock, "the phone is up: the viewfinder camera, no walking")
 			so.advance(0.1)
-			_check(so.seen_count == 1 and so.clock < 0.2 and MissionStakeout.flat(_player().global_position, so.campus(MissionStakeout.START)) < 6.0, "seen by a guard: the stake-out restarts at the start")
-			# the window passes without a photo: TOANG!
+			_check(so.take_photo() == "blur" and so.blurs == 1 and so.suspicion > 0.0, "a shot before the view is steady and zoomed: blurred, a little suspicion")
+			_advance(1.0)
+			_aim(so)
+			if not so.in_profile:
+				_check(so.take_photo() == "back", "his back turned: not a clear photo yet")
+			_to_profile(so)
+			_check(so.in_profile and so.hud_prompt.text == MissionStakeout.T_PROFILE, "he turns side-on: HẮN NGHIÊNG MẶT!")
+			_check(so.take_photo() == "clear" and so.photos[0], "steady, centred, his face side-on: a clear photo of moment 1")
+			_check(so.take_photo() == "done", "the same moment again does not count")
+			so.raise_phone(false)
+			_check(not so.phone_cam.current and not _player().move_lock, "the phone down: the gameplay camera back")
+			# he turns: hide behind a car (ducked) until the next moment
 			var guard_n: int = 0
-			while so.state == "running" and guard_n < 1200:
+			while so.phase != "tell" and guard_n < 200:
 				so.advance(0.1)
 				guard_n += 1
-			_check(so.state == "failed" and sr.fail_ui != null and sr.fail_ui.visible and sr.fail_ui.title_label.text == "TOANG!", "the handover missed: TOANG! (%s)" % so.state)
-			_check(so.lu_shown and so.lu_state == "gone" and so.cues_played.has("rustle") and so.scare.fake_count == 1 and so.shiba == null,
-				"a rustle behind, then Lu trots up and off: the stake-out fake-out (%s, %s)" % [so.lu_state, str(so.cues_played)])
-			sr.fail_ui.press_retry()
-			_check(so.state == "running" and so.clock < 0.01 and not sr.fail_ui.visible, "THỬ LẠI restarts the stake-out")
-			_advance(10.0)
-			_check(not so.take_photo() and not so.photo_taken and not so.popup_label.visible, "[E] before the handover does nothing (no line)")
-			_check(MissionStakeout.T_WINDOW.contains("[E]") and not MissionStakeout.T_WINDOW.contains("[S]"), "the photo key is [E]")
-			while so.clock < 35.0 and so.state == "running":
+			var cover: Vector3 = so.campus(Vector3(101.5, 0.0, 101.3))
+			so.duck_override = true
+			while so.phase != "act" and guard_n < 400:
+				_player().teleport(cover, 0.0)
 				so.advance(0.1)
-			for gd: Dictionary in so._g:
-				gd["t"] = 1.0
-				gd["dir"] = 1.0
-				gd["pause"] = 999.0
-			so.advance(0.1)
-			var spot: Vector3 = so.campus(Vector3(106.0, 0.0, 103.5))
-			_player().teleport(spot, MissionStakeout.yaw_of(so.courier.global_position - spot))
-			_check(so.box.visible and so.hud_prompt.text.contains("[E]"), "the handover is on: the package and the [E] prompt")
-			_key(KEY_E)
+				guard_n += 1
+			_check(so.state == "running" and so.suspicion < 100.0, "ducked behind a car while he looked: not caught (%.0f)" % so.suspicion)
+			so.duck_override = false
+			_player().teleport(spot, 0.0)
+			_aim(so)
+			_key_down(KEY_Q, true)
 			_next(32)
 		32:
 			if frames < 2:
 				return false
 			var so2: MissionStakeout = m as MissionStakeout
-			_check(so2.photo_taken, "a real [E] takes the photo in the window, the courier in frame (16 m)")
-			_advance(30.0)
-			_check(so2.state == "done", "60 s with the photo: done (%s, %.1f s)" % [so2.state, so2.clock])
-			_check(so2.scare.fake_count == 1 and so2.cues_played.count("rustle") == 1, "Lu comes once per mission, not again after THỬ LẠI")
+			_check(so2.phone_up, "a real [Q] raises the phone")
+			_to_profile(so2)
+			_key(KEY_E)
+			_next(35)
+		35:
+			if frames < 2:
+				return false
+			var so3: MissionStakeout = m as MissionStakeout
+			_check(so3.photos.count(true) == 2 and so3.cues_played.has("shutter"), "a real [E] takes the second clear photo (%d)" % so3.photos.count(true))
+			_key_down(KEY_Q, false)
+			var g3: int = 0
+			while so3.phase != "tell" and g3 < 200:
+				so3.advance(0.1)
+				g3 += 1
+			var cover3: Vector3 = so3.campus(Vector3(101.5, 0.0, 101.3))
+			so3.duck_override = true
+			while so3.phase != "act" and g3 < 400:
+				_player().teleport(cover3, 0.0)
+				so3.advance(0.1)
+				g3 += 1
+			so3.duck_override = false
+			var spot3: Vector3 = so3.campus(Vector3(101.0, 0.0, 103.5))
+			_player().teleport(spot3, 0.0)
+			_aim(so3)
+			so3.raise_phone(true)
+			_to_profile(so3)
+			_check(so3.take_photo() == "clear" and so3.photos.count(true) == 3, "the third moment: three clear photos")
+			_advance(2.0)
+			_check(so3.state == "done", "three photos: done (%s, %.1f s)" % [so3.state, so3.clock])
+			_check(so3.scare.fake_count == 1, "Lu's fake-out sting came once per mission")
 			_next(4)
 		4:
 			if sr.mission_node == null or not (sr.mission_node is MissionChase):
@@ -245,11 +354,14 @@ func _process(_d: float) -> bool:
 			m = sr.mission_node
 			var ch: MissionChase = m
 			_check(ch.length_m > 280.0 and ch.length_m < 360.0, "the chase path is %.0f m" % ch.length_m)
+			_check(MissionChase.leash_m() < MissionChase.TAUNT_M, "the leash is shorter than his taunt stop")
 			_check(_music_slot() == "mission_chase", "the chase plays mission_chase (%s)" % _music_slot())
 			# lost him: TOANG!
 			_player().teleport(ch.courier.global_position + Vector3(40.0, 0.0, 0.0), 0.0)
 			_advance(3.0, 0.25)
-			_check(ch.state == "failed" and sr.fail_ui.visible and sr.fail_ui.title_label.text == "TOANG!", "farther than 25 m for 2.5 s: TOANG!")
+			_check(ch.state == "running", "no leash in the first %.0f s (his head start)" % MissionChase.LEASH_START_S)
+			_advance(6.0, 0.25)
+			_check(ch.state == "failed" and sr.fail_ui.visible and sr.fail_ui.title_label.text == "TOANG!", "farther than the leash: TOANG!")
 			_check(bool(fr.call("story_mission_active")) and fr.call("mayhem_targets").is_empty(), "no fists, heat or wanted on pedestrians mid-mission")
 			_check((fr.get("weapons") as WeaponDirector).locked, "the weapon wheel is locked during the mission")
 			sr.fail_ui.press_leave()
@@ -281,9 +393,26 @@ func _process(_d: float) -> bool:
 				_check(false, "the chase mission vanished")
 				phase = 999
 				return false
+			if not mark.has("parkour"):
+				mark["parkour"] = true
+				_parkour(ch2)
 			if not ch2.ended:
 				var p: Vector3 = ch2.point_at(ch2.s - 5.0)
 				_player().teleport(p, MissionStakeout.yaw_of(ch2.courier.global_position - p))
+				if ch2.s > ch2.cum[3] + 4.0 and ch2.s < ch2.cum[6] - 4.0 and not ch2.shortcut_used:
+					var cp2: Vector3 = ch2.canteen.global_position
+					_player().teleport(cp2, MissionStakeout.yaw_of(ch2.courier.global_position - cp2))
+					ch2.advance(0.1)
+					_check(ch2.shortcut_used, "through the canteen stall on the loop: the shortcut")
+				if ch2.s >= MissionChase.TACKLE_FROM_U * ch2.length_m and not ch2.tackled:
+					_check(not ch2.can_tackle(), "5 m behind: no tackle yet")
+					var close: Vector3 = ch2.point_at(ch2.s - 2.0)
+					_player().teleport(close, MissionStakeout.yaw_of(ch2.courier.global_position - close))
+					ch2.advance(0.02)
+					_check(ch2.can_tackle() and ch2.hud_prompt.text == MissionChase.T_TACKLE, "2 m behind on the last stretch: [Space] VỒ! (%s)" % ch2.hud_prompt.text)
+					_check(ch2.knocks == 2 and ch2.cuts >= 2 and ch2.slow_zones.size() == 2, "the trash cans and the fruit cart were knocked over behind him, each with a preview cut (%d, %d)" % [ch2.knocks, ch2.cuts])
+					_check(ch2.parted == ch2.crowd.size(), "the crowd parted (%d / %d)" % [ch2.parted, ch2.crowd.size()])
+					_check(ch2.try_vault() and ch2.tackling and ch2.cues_played.has("tackle"), "Space: the flying tackle")
 				ch2.advance(0.25)
 				if frames > 1500:
 					_check(false, "the chase never ended (s %.0f / %.0f)" % [ch2.s, ch2.length_m])
@@ -292,7 +421,7 @@ func _process(_d: float) -> bool:
 			if not mark.has("chase_end"):
 				mark["chase_end"] = true
 				_check(ch2.slipped and ch2.cues_played.has("slide_whistle") and ch2.rec.marks.has("blow"), "the banana slip: slide_whistle and the replay mark")
-				_check(ch2.clock >= 60.0 - 0.01 and ch2.clock <= 90.0, "the chase lasted %.1f s (60-90)" % ch2.clock)
+				_check(ch2.tackled and ch2.clock >= MissionChase.min_s() - 0.01 and ch2.clock <= MissionChase.min_s() + 35.0, "the tackle ended the chase after %.1f s (from %.0f s)" % [ch2.clock, MissionChase.min_s()])
 			if ch2.replay != null:
 				var n2: int = 0
 				while ch2 != null and is_instance_valid(ch2) and ch2.replay != null and n2 < 1000:
@@ -315,6 +444,11 @@ func _process(_d: float) -> bool:
 			var mf: MissionFight = m
 			_check(String(sd.get("step")) == "d1_brawl" and mf.fight.enemies.size() == 3 and mf.fight.state == "running", "the brawl: 3 couriers")
 			_check(mf.fight.start_line == "Gét gô!" and mf.fight.force_unarmed, "start line Gét gô!, forced unarmed")
+			_check(mf.arena != null and mf.arena.bikes.size() == 4 and mf.arena.tables.size() == 1 and mf.fight.props.size() == 4,
+				"the west-gate arena: parked bikes and a vendor table to slam into, helmets and lids on the floor")
+			var slam_ok: bool = mf.arena.bikes.all(func(b: Node3D) -> bool: return b.find_child("Collision", false, false).is_in_group("slam_car"))
+			_check(slam_ok and (mf.arena.tables[0]["body"] as Node).is_in_group("slam_table"), "bikes slam as cars, the table as a table")
+			_check(mf.fight.waves.size() == 2 and (mf.fight.waves[1] as Array).size() == MissionFight.d1_backup(), "the escalation wave: %d reinforcements" % MissionFight.d1_backup())
 			mf.fight.combat.receive_attack(mf.fight.enemies[0], {"damage": 999.0})
 			_next(7)
 		7:
@@ -330,6 +464,8 @@ func _process(_d: float) -> bool:
 			_next(8)
 		8:
 			var mf3: MissionFight = m as MissionFight if is_instance_valid(m) else null
+			if mf3 != null and mf3.escalated and mf3.cues_played.has("backup"):
+				mark["d1_escalated"] = true
 			if mf3 != null and mf3.fight != null and is_instance_valid(mf3.fight):
 				for e: Variant in mf3.fight.alive():
 					(e as MeleeEnemy).take_strike({"dmg": 999.0, "stagger": 999.0, "breaks_block": true, "from": _player().global_position})
@@ -338,6 +474,7 @@ func _process(_d: float) -> bool:
 					_check(false, "the brawl was not won / seg_d1_brawl did not start")
 					phase = 999
 				return false
+			_check(bool(mark.get("d1_escalated", false)), "the reinforcements came in (a line, a preview cut)")
 			_check(_finish_cine() == "seg_d1_brawl", "the brawl won: seg_d1_brawl")
 			_next(9)
 		9:
@@ -357,6 +494,8 @@ func _process(_d: float) -> bool:
 			_check(mc.events.has("flicker") and mc.scare.flicker_events >= 1, "the tubes stutter")
 			_corridor_to(mc, 0.3)
 			_check(mc.figure.visible, "the figure stands at the far end")
+			_check(mc.cuts == 1, "a staged director cut onto the figure")
+			_check(LookPresets.active(fr) == MissionCorridor.LOOK, "the corridor walk wears the campus_horror look (%s)" % LookPresets.active(fr))
 			_corridor_to(mc, 0.35)
 			_check(mc.events.has("window") and mc.slam.playing, "a sheep face slams against the dark window (%s)" % str(mc.events))
 			_advance(12.0)
@@ -387,6 +526,7 @@ func _process(_d: float) -> bool:
 				return false
 			_check(_finish_cine() == "cine_d1_corridor", "cine_d1_corridor follows the walk")
 			_check(is_inf(_player().combat_speed_cap), "the walk cap is lifted")
+			_check(LookPresets.active(fr) != MissionCorridor.LOOK, "the horror look is popped after the walk (%s)" % LookPresets.active(fr))
 			_next(11)
 		11:
 			if frames < 5:

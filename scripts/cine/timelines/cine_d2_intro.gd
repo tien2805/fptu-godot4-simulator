@@ -54,6 +54,8 @@ func build() -> void:
 	move("hero", 0.0, "walk")
 	move("hero", 1.7, "idle", {"fade": 0.25})
 	move("hero", 2.6, "arms_crossed", {"fade": 0.3})
+	move("hero", 9.0, "facepalm", {"fade": 0.15})
+	move("hero", 10.8, "arms_crossed", {"fade": 0.25})
 	look("hero", 1.8, 12.0, Vector3(0.0, 0.95, 0.15))
 	expr("hero", 0.0, "open")
 	expr("hero", 4.6, "done")
@@ -73,10 +75,8 @@ func build() -> void:
 		{"pos": Vector3(2.4, 1.65, 1.9), "look": Vector3(0.3, 1.0, -0.9), "fov": 50.0})
 	shot("S2", 1.9, "static", "close over the laptops: Anh Duy typing, the route on three screens",
 		{"pos": Vector3(0.22, 1.32, 0.62), "look": Vector3(0.0, 1.18, -0.72), "fov": 40.0, "hand": 0.15})
-	shot("S3", 4.5, "static", "close: the protagonist, \"Nói tiếng người đi anh.\"",
-		{"pos": Vector3(1.05, 1.6, -0.3), "look": Vector3(0.78, 1.55, -1.42), "fov": 38.0, "hand": 0.15})
-	shot("S4", 6.1, "static", "two-shot side on: Anh Duy explains, the protagonist listens",
-		{"pos": Vector3(-2.3, 1.45, -1.4), "look": Vector3(0.3, 1.2, -1.0), "fov": 44.0})
+	push_in("S3", 4.5, "hero", {"from": 2.8, "to": 2.3, "side_deg": 50.0, "hand": 0.15, "look_y": 1.2})
+	two_shot("S4", 6.1, "duy", "hero", {"look_y": 1.05, "dist": 3.4})   # Anh Duy explains, the protagonist listens
 	shot("S5", 9.6, "static", "insert: the energy drink goes down, fingers on the keys",
 		{"pos": Vector3(-0.75, 1.2, 0.55), "look": Vector3(0.0, 0.95, -0.35), "fov": 38.0})
 	shot("S6", 11.9, "static", "wide: the protagonist turns and goes, \"Tới công chuyện luôn!\"",
@@ -84,5 +84,6 @@ func build() -> void:
 	# Anh Duy's lines show with their Dịch line: timed for both (0.06 s per character of the two)
 	sub(0.5, 3.95, "duy", "Anh trace route Bầy Sói rồi.", "Dịch: Anh biết tụi nó chạy đường nào.")
 	sub(4.6, 1.5, "hero", "Nói tiếng người đi anh.")
-	sub(6.2, 5.6, "duy", "Tụi nó ping nhau 2h, payload trên Nguyễn Xiển.", "Dịch: 2 giờ sáng tụi nó chở hàng ở Nguyễn Xiển.")
+	sub(6.2, 5.6, "duy", "2h, Nguyễn Xiển. Còn lại e tự improvise nha.", "Dịch: Anh hết biết rồi, em tự lo.")
+	joke(6.2, "Anh Duy's plan ends in 'tự improvise'; the protagonist facepalms")
 	sub(12.05, 1.4, "hero", "Tới công chuyện luôn!")

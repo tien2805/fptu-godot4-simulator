@@ -8,15 +8,20 @@
 SHOT S1      0.000  static    wide: the road edge after the brawl, Mũ Đỏ against his scooter, the phone lights up
 SHOT S2      2.400  static    medium: the protagonist picks the phone up and reads it (the phone card plays over it)
 SHOT S3      9.400  static    low wide down the road: a headlight sweeps past, engines roar
-SHOT S4     12.400  static    low hero shot: the protagonist, the phone in hand
-SHOT S5     14.300  static    close: Mũ Đỏ, worried
-SHOT S6     16.400  static    wide: night road, the protagonist walks off toward the gate
+SHOT S4     12.400  low_hero  hero hero
+SHOT S5     14.300  two_shot  two-shot hero + c2
+SHOT S6     16.200  push_in   push-in hero
 #
 # Subtitles (real start - end, speaker: line)
-SUB    2.100 -  3.400  Shipper Mũ Đỏ: Ê… đừng… đọc…
-SUB    5.600 -  8.200  Bạn: Sói Xám… hàng đêm nay ở Nguyễn Xiển.
+SUB    2.100 -  3.400  Shipper Mũ Đỏ: Ê... đừng... đọc...
+SUB    5.600 -  8.200  Bạn: Sói Xám... hàng đêm nay ở Nguyễn Xiển.
 SUB   12.700 - 14.300  Bạn: Tối nay vui rồi đây.
-SUB   14.500 - 16.700  Shipper Mũ Đỏ: Sói Xám mà biết… tụi tao tiêu…
+SUB   14.500 - 16.300  Shipper Mũ Đỏ: Ê... trả tao điện thoại đi...
+SUB   16.400 - 17.900  Bạn: ...'Tao thấy mày rồi.'
 #
 # Cards (real start - end, kind: what)
 CARD    4.000 -  9.400  screen: phone Hàng đêm nay ở Nguyễn Xiển. 2h. Đừng trễ.
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE   14.500  Mũ Đỏ begs for his phone back; a flat head shake
+CLIFF  16.400

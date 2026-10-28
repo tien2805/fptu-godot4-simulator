@@ -71,6 +71,12 @@ const PRESETS: Dictionary = {
 		"brightness": 1.02, "contrast": 1.0, "sat": 1.18, "amb": 1.1, "amb_col": Color("#d2e2e6"),
 		"key": {"col": Color("#fff0d4"), "energy": 1.5, "shadow": 0.62},
 		"fill": {"col": Color("#bcd8ff"), "energy": 0.15, "elev": 35.0, "azim": -30.0}},
+	# Wave 2 (plan 2026-10-29-w2-early.md Task 7): the Day 1 corridor walk and the Day 4 night building. Cold fluorescent
+	# grade, desaturated, harder contrast, close dark fog (the far end of a corridor dissolves), glow only on the tubes and
+	# exit signs (threshold 1.2); no key or fill of its own (the scene's lamps and the flashlight light it).
+	"campus_horror": {"exposure": 1.0, "glow": 0.8, "glow_strength": 1.0, "thr": 1.2, "cap": 3.0, "bloom": 0.0,
+		"fog": Color("#0b1016"), "fog_begin": 4.0, "fog_end": 38.0, "fog_density": 0.75,
+		"brightness": 0.98, "contrast": 1.12, "sat": 0.82, "amb": 0.4, "amb_col": Color("#4b5d70")},
 }
 
 ## FreeRoam base preset per time of day (GameFX.TOD_PRESETS keys): night = night_city, morning / noon = campus_day; dawn and

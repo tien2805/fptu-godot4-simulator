@@ -47,9 +47,10 @@ func build() -> void:
 	shot("S1", 0.0, "static", "wide front: bursting out of the lobby", {"pos": Vector3(1.8, 1.3, -3.6), "look": Vector3(0.0, 1.0, 1.6), "fov": 55.0})
 	shot("S2", 1.5, "static", "close: Tôi là ai, đây là đâu?", {"pos": Vector3(0.35, 1.55, -1.05), "look": Vector3(0.0, 1.5, 0.4), "fov": 40.0, "hand": 0.25})
 	shot("S3", 3.7, "static", "over the shoulder: Phúc's text", {"pos": Vector3(0.5, 1.75, 1.35), "look": Vector3(0.0, 1.15, 0.2), "fov": 45.0})
-	shot("S4", 5.8, "static", "close: panic", {"pos": Vector3(-0.3, 1.5, -1.2), "look": Vector3(0.0, 1.45, 0.3), "fov": 42.0, "hand": 0.35})
+	push_in("S4", 5.8, "hero", {"from": 2.9, "to": 2.1, "side_deg": -12.0, "hand": 0.35, "look_y": 1.2})   # Q5: close on the panic
 	shot("S5", 6.4, "static", "wide: running off to the race", {"pos": Vector3(3.0, 1.4, -5.2), "look": Vector3(0.0, 1.0, -1.0), "fov": 55.0})
 	sub(1.6, 2.0, "hero", "Tôi là ai, đây là đâu?")
+	joke(1.6, "Tôi là ai, đây là đâu? on a record scratch")
 	sub(4.0, 1.9, "Phúc (tin nhắn)", "Ê!!! Thi EOS 8h đó, 7h05 rồi!!!")
 	sub(5.95, 1.0, "hero", "CHẾT RỒI!!!")
-	sub(7.0, 0.9, "hero", "Ét o ét…")
+	sub(7.0, 0.9, "hero", "Ét o ét...")

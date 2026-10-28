@@ -507,5 +507,5 @@ func _subs() -> void:
 	sub(0.35, 0.9, "hero", "Cho mình qua với.")
 	sub(1.5, 0.75, "c1", "Đi đâu mà vội!")
 	sub(7.3, 0.4, "hero", "Gét gô.")
-	sub(22.55, 1.0, "c1", "Ui da… đơn này… bom thật rồi…")
-	sub(23.7, 1.25, "hero", "Ơ… điện thoại ai sáng kìa?")
+	sub(22.55, 1.0, "c1", "Ui da... đơn này... bom thật rồi...")
+	sub(23.7, 1.25, "hero", "Ơ... điện thoại ai sáng kìa?")

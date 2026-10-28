@@ -403,12 +403,14 @@ func _physics_process(delta: float) -> void:
 				var away := Vector2(t.global_position.x - bike.global_position.x, t.global_position.z - bike.global_position.z)
 				away = away.normalized() if away.length_squared() > 1e-4 else right2 * float(kick_side)
 				var stick: bool = stick_swings > 0
+				var res: Variant
 				if stick:
 					stick_hits += 1
-					(t as Object).call("take_kick", away, BikeCombatData.STICK_POWER)
+					res = (t as Object).call("take_kick", away, BikeCombatData.STICK_POWER)
 				else:
-					(t as Object).call("take_kick", away)
-				_connect_feel(t, away, "heavy", 1.25 if stick else 1.0, [["stick_crack", -6.0]] if stick else [])
+					res = (t as Object).call("take_kick", away)
+				# Wave 2: the tier by the outcome (a downing kick is the finisher), the target reacts (impact_react)
+				_connect_feel(t, away, "finisher" if String(res) == "crash" else "heavy", 1.25 if stick else 1.0, [["stick_crack", -6.0]] if stick else [])
 				kick_hit.emit(t, kick_side)
 			elif kick_t > BikeCombatData.KICK_ACTIVE_END:
 				kick_done = true
@@ -552,7 +554,7 @@ func _connect_feel(t: Node3D, away: Vector2, tier: String, punch_k: float = 1.0,
 	var at: Vector3 = t.global_position + Vector3(0.0, 1.0, 0.0)
 	var d3 := Vector3(away.x, 0.0, away.y)
 	var shake: Callable = bike.add_camera_shake if bike and is_instance_valid(bike) else Callable()
-	Impact.hit(self, tier, {"pos": at, "dir": d3, "fx": fx, "shake_fn": shake, "punch_k": punch_k, "cues": cues})
+	Impact.hit(self, tier, {"pos": at, "dir": d3, "fx": fx, "shake_fn": shake, "punch_k": punch_k, "cues": cues, "target": t})
 	if kickback and bike and is_instance_valid(bike):
 		kickbacks += 1                       # the recoil: the bike rocks away from the kick (visual) and loses a little speed
 		update_frame()

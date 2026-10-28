@@ -27,7 +27,7 @@ SHOT S13    19.600  dolly     slow push: Dolly turns and bolts for the side exit
 SHOT S14    22.200  dolly     tail wide: the wreckage, C1 with the pot on his head, the protagonist winded
 #
 # Subtitles (real start - end, speaker: line)
-SUB    0.400 -  1.900  Bạn: Từ từ… nói chuyện đã.
+SUB    0.400 -  1.900  Bạn: Từ từ... nói chuyện đã.
 SUB    1.950 -  2.550  Cừu Dolly: Lên!
 SUB   22.400 - 23.300  Cừu Dolly: Bai bai!
-SUB   23.600 - 24.600  Bạn: …Lại chạy.
+SUB   23.600 - 24.600  Bạn: ...Lại chạy.

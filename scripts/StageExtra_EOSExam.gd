@@ -74,6 +74,23 @@ var story: bool = false
 var story_rec: CineReplayRecorder
 var story_finishing: bool = false
 var mr_t: Node3D
+## Wave 2 (plan 2026-10-29-w2-early.md Task 3, master plan Q4b): the planted glasses glint, story only. At GLINT_AT s of
+## the exam the protagonist's bag by the front desk glints red: a slow push-in (GLINT_PUSH_S; the exam clock, the class
+## and the keys frozen) with the dun-dun-duun sting, held GLINT_HOLD_S, then back to the camera that was on. Once.
+const GLINT_AT: float = 38.0
+const GLINT_PUSH_S: float = 2.2
+const GLINT_HOLD_S: float = 0.8
+const GLINT_FOV: float = 30.0
+const BAG_POS := Vector3(4.35, 0.0, 3.55)
+var glint_state: String = ""            # "" | "push" | "done"
+var glint_t: float = 0.0
+var glint_cam: Camera3D
+var glint_prev: Camera3D
+var glint_from: Transform3D
+var glint_fov0: float = 70.0
+var bag: Node3D
+var glint_star: MeshInstance3D
+var glint_cues: Array[String] = []
 var cam_yaw: float = PI # yaw camera đang bám (PI = nhìn về phía bảng / cửa sổ D1)
 
 ## Vật liệu riêng (có alpha) cho thân & đầu giám thị để camera lại gần thì mờ dần.
@@ -153,6 +170,102 @@ func _setup_story() -> void:
 		if bool(st["is_cheater"]):
 			tracked.append(st["student"])
 	story_rec = StoryStage.make_recorder(self, tracked)
+	_build_bag()
+
+
+## The protagonist's backpack on the floor by the front desk, the planted smart glasses peeking out, a hidden red glint.
+func _build_bag() -> void:
+	bag = CineFX.build_prop("backpack")
+	bag.name = "HeroBag"
+	add_child(bag)
+	bag.position = BAG_POS
+	bag.rotation.y = -PI * 0.35
+	var gl: Node3D = CineFX.build_prop("glasses")
+	bag.add_child(gl)
+	gl.position = Vector3(0.0, 0.5, -0.05)
+	gl.rotation = Vector3(-0.5, 0.3, 0.0)
+	glint_star = MeshInstance3D.new()
+	glint_star.name = "GlassesGlint"
+	var qm := QuadMesh.new()
+	qm.size = Vector2(0.22, 0.22)
+	glint_star.mesh = qm
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(1.0, 0.15, 0.1)
+	m.emission_enabled = true
+	m.emission = Color(1.0, 0.1, 0.05)
+	m.emission_energy_multiplier = 4.0
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.set_meta("vice_done", true)
+	glint_star.material_override = m
+	glint_star.visible = false
+	bag.add_child(glint_star)
+	glint_star.position = Vector3(0.05, 0.56, -0.12)
+	StoryAudio.warm(["dun_dun_duun"])
+
+
+func _bag_top() -> Vector3:
+	return bag.global_position + Vector3(0.0, 0.5, 0.0)
+
+
+## The glint: a director-style push-in from the current camera onto the bag (story only, once).
+func _start_glint() -> void:
+	glint_state = "push"
+	glint_t = 0.0
+	glint_prev = get_viewport().get_camera_3d()
+	glint_from = glint_prev.global_transform if glint_prev else walk_cam.global_transform
+	glint_fov0 = glint_prev.fov if glint_prev else 70.0
+	glint_cam = Camera3D.new()
+	glint_cam.name = "GlintCam"
+	add_child(glint_cam)
+	glint_cam.global_transform = glint_from
+	glint_cam.fov = glint_fov0
+	glint_cam.make_current()
+	glint_star.visible = true
+	prompt_panel.visible = false
+	cctv_panel.visible = false
+	glint_cues.append("dun_dun_duun")
+	if StoryAudio.ready_for(["dun_dun_duun"]):
+		var sp := AudioStreamPlayer.new()
+		sp.stream = StoryAudio.stream_once("dun_dun_duun")
+		sp.volume_db = StoryAudio.cue_db("dun_dun_duun") - 2.0
+		add_child(sp)
+		sp.play()
+		sp.finished.connect(sp.queue_free)
+	GameFX.popup("...Cái gì vừa lóe đỏ trong balo mình vậy?", Color("#FF6B5A"), 22, GLINT_PUSH_S + GLINT_HOLD_S)
+
+
+func _tick_glint(delta: float) -> void:
+	glint_t += delta
+	var u: float = clampf(glint_t / GLINT_PUSH_S, 0.0, 1.0)
+	var e: float = u * u * (3.0 - 2.0 * u)
+	var look: Vector3 = _bag_top()
+	var away: Vector3 = glint_from.origin - look
+	away.y = 0.0
+	away = away.normalized() if away.length_squared() > 0.01 else Vector3(0.0, 0.0, -1.0)
+	var close: Vector3 = look + away * 1.25 + Vector3(0.0, 0.45, 0.0)
+	var pos: Vector3 = glint_from.origin.lerp(close, e)
+	var aim: Vector3 = (glint_from.origin - glint_from.basis.z * 4.0).lerp(look, minf(1.0, e * 2.5))   # the view swings onto the bag first
+	if (aim - pos).length_squared() > 1e-4:
+		glint_cam.look_at_from_position(pos, aim, Vector3.UP)
+	glint_cam.fov = lerpf(glint_fov0, GLINT_FOV, e)
+	glint_star.scale = Vector3.ONE * (0.7 + 0.5 * absf(sin(glint_t * 7.0)))
+	if glint_t >= GLINT_PUSH_S + GLINT_HOLD_S:
+		_end_glint()
+
+
+func _end_glint() -> void:
+	glint_state = "done"
+	glint_star.visible = false
+	if is_cctv:
+		cctv_cam.make_current()
+		cctv_panel.visible = true
+	else:
+		walk_cam.make_current()
+	if glint_cam:
+		glint_cam.queue_free()
+	glint_cam = null
 
 ## Story: the final confiscation -> mark, a short beat of the student being led off, the replay, then the result.
 func _story_finish(st: Dictionary) -> void:
@@ -419,7 +532,7 @@ func _update_hud() -> void:
 # INPUT
 # ===========================================================================
 func _input(event: InputEvent) -> void:
-	if is_stage_ended or story_finishing:
+	if is_stage_ended or story_finishing or glint_state == "push":
 		return
 	if event is InputEventKey and event.is_pressed() and not event.is_echo():
 		var key: int = event.physical_keycode
@@ -455,8 +568,14 @@ func _target_station_idx() -> int:
 func _process(delta: float) -> void:
 	if is_stage_ended or story_finishing:
 		return
+	if glint_state == "push":
+		_tick_glint(delta)   # the exam waits while the camera pushes in on the bag
+		return
 	time_left -= delta
 	var elapsed: float = STAGE_TIME - time_left
+	if story and glint_state == "" and elapsed >= GLINT_AT and bag != null and not inspect_panel.visible:
+		_start_glint()
+		return
 	var secs: int = int(elapsed)
 	timer_label.text = "08:%02d:%02d · còn %ds" % [secs / 60, secs % 60, int(ceil(maxf(0.0, time_left)))]
 	if cctv_panel.visible:

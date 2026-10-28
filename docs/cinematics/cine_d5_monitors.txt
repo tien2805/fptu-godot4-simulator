@@ -10,7 +10,7 @@ SHOT S2      2.250  static    low in front: the protagonist's face lit as the sc
 SHOT S3      3.050  static    right at one screen: the laughing face snaps on it
 SHOT S4      3.800  static    wide: the protagonist small against fifty laughing faces
 SHOT S5      6.300  static    the wall: every screen freezes on "Lọ Thần đã gặp sự cố"
-SHOT S6      7.600  static    close: the protagonist, "...Nó tự sập kìa."
+SHOT S6      7.600  push_in   push-in hero
 #
 # Subtitles (real start - end, speaker: line)
 SUB    3.900 -  6.100  Za Mẫn: Ha ha ha! Chào mừng tới Lọ Thần 9.0!
@@ -18,3 +18,6 @@ SUB    7.800 -  9.100  Bạn: ...Nó tự sập kìa.
 #
 # Jump scares v2 (real hit, duck from, twitching actor)
 SCARE    3.300  duck  2.900  -
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE    7.800  the evil tool crashes on its own: Lọ Thần đã gặp sự cố

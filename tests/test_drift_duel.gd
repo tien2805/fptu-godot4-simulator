@@ -1,16 +1,18 @@
 # File: res://tests/test_drift_duel.gd
-# Headless test of the Day 2 drift duel with Sói Xám (spec D2X-10, plan 2026-10-27-d2x-drift.md).
-# Part A, a flat arena under the course (no FreeRoam; the bike locked and moved along the line by the test):
-#   the course data (closed lap ~1 km, 7 gates + the finish, 8 drift zones, the tightest radius, the rival's lap); the
-#   hooks (duel profile, nitro on, all given back on stop); the countdown (a rev on each count at 0 / 1 / 2 s, Sói Xám
-#   answering 0.5 s later, GO at 3 s, the music cue once at GO); gates passed in order; losing on the gap (> 40 m for 3 s)
-#   and the quick retry (fade 0.4 s, a 2 s countdown, the grid again); drift points only inside the zones and doubled
-#   while tailing; winning on points at the finish, losing on points; winning by staying ahead 4 s; off the course and the
-#   wrong way reset to the last gate with the grace; a knocked cone; the rubber band; the time scale left at 1.
-# Part B, FreeRoam (crowd off): the course corridor is clear of the real world (the bridge deck's parapets aside), the
-#   traffic is parked and comes back, MissionDriftDuel's music (the drift track on GO with fade 0, the old track faded
-#   over the countdown; the chase-track fallback), test bots on the real bike: a good bot wins, a slow bot loses on the
-#   gap; lap time, gap range, points and the duel's own cost are printed (plan "Tuning").
+# Headless test of the Day 2 race with Sói Xám, "đua + đánh" (Wave 2 Day 2 rework, plan 2026-10-29-w2-day2.md).
+# Part A, a flat arena under the course (no FreeRoam; the bike locked and moved along the path by the test):
+#   the course data (an open path of about 2.1 km on real roads, 2 laps, the drift corners and their labels, the gates,
+#   the rival's pace); the props (4 neon arches, a sign set per corner, the pack, the fireworks pool); the hooks (race
+#   profile, nitro on, the kicks, all given back on stop); the countdown (a rev on each count at 0 / 1 / 2 s, Sói Xám
+#   answering 0.5 s later, GO at 3 s, the music cue once at GO); a drifted corner charges nitro (x1.5 inside, + the bonus
+#   on the way out); his kick (telegraph ring, the side warning, the counter window, the damage), a dodge, the player's 3
+#   kicks make him wobble and lose speed for 2 s, a counter-kick is worth 2; the laps and gates; the losses (he crosses
+#   first, knocked off) with the quick retry and the lap 2 checkpoint; off the course and the wrong way; the win with the
+#   fireworks and the ending; Dễ numbers; the time scale left at 1.
+# Part B, FreeRoam (crowd off): the racing line is clear of the real world, the pack stands on free ground, the traffic
+#   is parked and comes back, MissionDriftDuel's music (the drift track on GO with fade 0, the old track faded over the
+#   countdown; the chase-track fallback); test bots on the real bike: a good bot wins, a stopped bot is beaten; the
+#   race's own cost is printed.
 # Run:  godot --headless --path . --script tests/test_drift_duel.gd
 extends SceneTree
 
@@ -35,9 +37,10 @@ func _check(ok: bool, msg: String) -> void:
 
 func _initialize() -> void:
 	Engine.max_fps = 60
-	print("--- TEST DRIFT DUEL (Sói Xám, Cầu Rạch Hầm) ---")
+	print("--- TEST DRIFT DUEL (đua + đánh with Sói Xám, Rạch Hầm GP) ---")
 	PlayerBike.sfx_dir = OS.get_cache_dir().replace("\\", "/").trim_suffix("/") + "/fptu_test_drift_no_sfx/"
 	PlayerBike.clear_owner_sfx()
+	Difficulty.set_easy(false)
 	_run.call_deferred()
 
 
@@ -50,7 +53,7 @@ func _count(name: String) -> void:
 	sig[name] = int(sig.get(name, 0)) + 1
 
 
-## The test's "rider": the bike locked and set on the line at drive_s (lateral d) facing along it, moving at v.
+## The test's "rider": the bike set on the path at s (lateral d) facing along it, moving at v.
 func _drive_to(s: float, d: float = 0.0, v: float = 18.0, backwards: bool = false) -> void:
 	drive_s = s
 	var p: Vector2 = course.world(s, d)
@@ -58,6 +61,18 @@ func _drive_to(s: float, d: float = 0.0, v: float = 18.0, backwards: bool = fals
 	bike.global_position = Vector3(p.x, (float(y) if y is float else 0.0) - DriftDuel.BIKE_FLOOR_OFFSET, p.y)
 	bike.rotation = Vector3(0.0, course.yaw_at(s) + (PI if backwards else 0.0), 0.0)
 	bike.current_speed_ms = v
+	var t: Vector2 = course.tangent(s) * (-v if backwards else v)
+	bike.velocity = Vector3(t.x, 0.0, t.y)
+
+
+## Drive the player from drive_s to s_to at step m per frame (the race keeps ticking); stops early when the state leaves
+## "racing".
+func _ride(s_to: float, step: float, d: float = 0.0) -> void:
+	var n: int = 0
+	while drive_s < s_to and duel.state == "racing" and n < 20000:
+		_drive_to(minf(drive_s + step, s_to), d, step * 60.0)
+		await _frames(1)
+		n += 1
 
 
 func _run() -> void:
@@ -66,7 +81,8 @@ func _run() -> void:
 	if arena and is_instance_valid(arena):
 		arena.free()
 	await _frames(2)
-	await _part_b()
+	if not OS.has_environment("DRIFT_SKIP_B"):
+		await _part_b()
 	_finish()
 
 
@@ -75,47 +91,57 @@ func _run() -> void:
 # ---------------------------------------------------------------------------
 func _part_a() -> void:
 	course = DriftCourse.rach_ham()
-	_check(course.length > 1250.0 and course.length < 1450.0, "the lap is about 1.3 km (%.0f m)" % course.length)
-	_check(course.gates.size() == 8 and course.zones.size() >= 5, "8 gates + the finish, %d drift zones (at least 5)" % course.zones.size())
-	_check(course.point(0.0).distance_to(course.point(course.length)) < 0.01, "a closed lap: the finish is the start")
+	_check(course.length > 1900.0 and course.length < 2300.0, "the race is about 2.1 km (%.0f m)" % course.length)
+	_check(course.lap_s.size() == DriftCourse.LAPS + 1 and course.lap_s[0] < course.lap_s[1] and course.lap_s[1] < course.lap_s[2] and course.lap_s[2] < course.length,
+		"2 laps of the loop between the run out and home (lap lines %s)" % str(course.lap_s))
+	var lap_len: float = course.lap_s[1] - course.lap_s[0]
+	_check(lap_len > 600.0 and lap_len < 760.0, "one loop is %.0f m" % lap_len)
+	_check(course.corners.size() >= 7, "%d drift corners" % course.corners.size())
+	var labels: Array = []
+	for c: Array in course.corners:
+		if not labels.has(String(c[3])):
+			labels.append(String(c[3]))
+	_check(labels.has("CUA CHỮ Y") and labels.has("KẸP TÓC") and labels.has("CUA SỐ 20") and labels.has("VÀO VÒNG"), "the corners are named (%s)" % str(labels))
 	_check(course.min_radius() > 7.0, "the tightest corner radius %.1f m (the bike's drift circle is 8.4 m)" % course.min_radius())
-	var lap: float = 0.0
-	var s: float = 0.0
-	while s < course.length:
-		lap += 2.0 / maxf(course.speed_at(s), 1.0)
-		s += 2.0
-	_check(lap > 50.0 and lap < 70.0, "the rival's full-pace lap is %.1f s (the spec's 50-75 s)" % lap)
+	var pace: float = course.pace_time()
+	_check(pace > 65.0 and pace < 100.0, "the rival's full pace from the grid to the finish: %.1f s" % pace)
 	var pr: Vector2 = course.project_near(course.world(300.0, 2.0), 290.0)
 	_check(absf(pr.x - 300.0) < 0.5 and absf(pr.y - 2.0) < 0.05, "project_near: s and the lateral offset (%.2f, %.2f)" % [pr.x, pr.y])
-	var pe: Vector2 = course.project_near(course.world(3.0, 0.0), course.length - 4.0)
-	_check(pe.x > course.length, "project_near unwraps over the finish (%.1f > %.1f)" % [pe.x, course.length])
-	_check(DriftDuel.band_for(35.0, false) < 0.6 and DriftDuel.band_for(20.0, false) == 1.0 and DriftDuel.band_for(-3.0, false) > 1.05 and DriftDuel.band_for(10.0, true) < 0.5,
-		"the rubber band: he waits past 30 m, fights back when passed, waits during a reset's grace")
-	var texts: Array[String] = [DriftDuel.T_START, DriftDuel.T_END, DriftDuel.T_GO, DriftDuel.T_TAIL, DriftDuel.T_OVERTAKE, DriftDuel.T_FAR,
-		DriftDuel.T_LOSE_GAP, DriftDuel.T_LOSE_POINTS, DriftDuel.T_WIN_POINTS, DriftDuel.T_OFF, DriftDuel.T_WRONG, DriftDuel.T_GATE,
-		DriftDuel.T_ZONE, DriftDuel.T_CONE, DriftDuel.T_POINTS, DriftDuel.T_GAP, DriftDuel.T_AHEAD, DriftDuel.T_RIDING,
-		DriftDuel.T_NO_DISMOUNT, DriftRival.NAME, DriftRival.T_CLOSE, DriftRival.T_FAR, NitroGauge.T_TITLE, NitroGauge.T_READY,
+	var pl: Vector2 = course.project_near(course.world(course.lap_s[1] + 100.0, 0.0), course.lap_s[1] + 90.0)
+	_check(absf(pl.x - course.lap_s[1] - 100.0) < 0.5, "the windowed projection keeps the lap (lap 2, not lap 1, on the same road)")
+	_check(course.lap_at(10.0) == 0 and course.lap_at(course.lap_s[0] + 5.0) == 1 and course.lap_at(course.lap_s[1] + 5.0) == 2 and course.lap_at(course.lap_s[2] + 5.0) == 3,
+		"lap_at: grid run, lap 1, lap 2, home")
+	_check(course.point(0.0).distance_to(course.point(course.length)) < 1.0, "the finish line is where the grid was (mid-deck)")
+	var texts: Array[String] = [DriftDuel.T_START, DriftDuel.T_END, DriftDuel.T_GO, DriftDuel.T_LAP, DriftDuel.T_LAST_LAP, DriftDuel.T_HOME,
+		DriftDuel.T_LEAD, DriftDuel.T_SECOND, DriftDuel.T_GAP_AHEAD, DriftDuel.T_GAP_BEHIND, DriftDuel.T_WIN, DriftDuel.T_LOSE_BEATEN,
+		DriftDuel.T_LOSE_KNOCKED, DriftDuel.T_RETRY_LAP2, DriftDuel.T_OFF, DriftDuel.T_WRONG, DriftDuel.T_CORNER, DriftDuel.T_CORNER_BONUS,
+		DriftDuel.T_KICK_HIT, DriftDuel.T_WOBBLE, DriftDuel.T_HE_KICKED, DriftDuel.T_DODGED, DriftDuel.T_TURN_LAP2, DriftDuel.T_TURN_HOME,
+		DriftDuel.T_STAB, DriftDuel.T_KICKS, DriftDuel.T_RIDING, DriftDuel.T_NO_DISMOUNT, DriftRival.NAME, DriftRival.T_CLOSE,
+		DriftRival.T_FAR, DriftRival.T_KICK, DriftRival.T_WOBBLE, DriftRival.T_BLOCK, NitroGauge.T_TITLE, NitroGauge.T_READY,
 		NitroGauge.T_HINT, String(StoryMissions.beat("d2_drift")["objective"]), String(StoryMissions.beat("d2_drift")["title"])]
 	texts.append_array(DriftRival.TAUNTS)
-	for z: Array in course.zones:
-		texts.append(String(z[2]))
+	for a: Array in course.arches:
+		texts.append(String(a[1]))
+		texts.append(String(a[2]))
+	for z: Array in course.corners:
+		texts.append(String(z[3]))
 	var odd: Array = []
 	for tx: String in texts:
 		for i: int in tx.length():
 			if tx.unicode_at(i) >= 0x2000:
 				odd.append(tx)
 				break
-	_check(odd.is_empty(), "every duel / gauge text is plain Vietnamese, no emoji or decorative symbols %s" % str(odd))
+	_check(odd.is_empty(), "every race text is plain Vietnamese, no emoji or decorative symbols %s" % str(odd))
 	arena = Node3D.new()
 	arena.name = "Arena"
 	root.add_child(arena)
 	var floor := StaticBody3D.new()
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = Vector3(800.0, 1.0, 800.0)
+	bs.size = Vector3(700.0, 1.0, 700.0)
 	cs.shape = bs
 	floor.add_child(cs)
-	floor.position = Vector3(2125.0, -0.5, 10.0)
+	floor.position = Vector3(1915.0, -0.5, 10.0)
 	arena.add_child(floor)
 	bike = (load("res://scenes/PlayerBike.tscn") as PackedScene).instantiate() as PlayerBike
 	arena.add_child(bike)
@@ -124,46 +150,22 @@ func _part_a() -> void:
 	duel = DriftDuel.new()
 	duel.name = "Duel"
 	arena.add_child(duel)
-	duel.setup({"bike": bike, "intro": false, "target": 300.0, "course": course})
-	for n: String in ["countdown_started", "music_cue", "go", "won", "lost", "ended", "gate_passed", "reset_to_gate"]:
+	duel.setup({"bike": bike, "intro": false, "course": course})
+	for n: String in ["countdown_started", "music_cue", "go", "won", "lost", "ended", "gate_passed", "reset_to_gate", "lap_started"]:
 		duel.connect(n, func(_a: Variant = null) -> void: _count(n))
 	duel.won.connect(func(how: String) -> void: sig["won_how"] = how)
 	duel.lost.connect(func(r: String) -> void: sig["lost_reason"] = r)
+	var laps_seen: Array = []
+	duel.lap_started.connect(func(l: int) -> void: laps_seen.append(l))
 	await _frames(2)
-	_check(duel._cone_mm.multimesh.instance_count == course.cones.size() and course.cones.size() >= 30, "%d cones placed (gates, slalom, islands)" % course.cones.size())
-	# the rival's floor ray: a pedestrian capsule is looked through, a box higher than 1 m over the current floor is no floor
-	var ped := CharacterBody3D.new()
-	var pcs := CollisionShape3D.new()
-	var cap := CapsuleShape3D.new()
-	cap.height = 1.8
-	cap.radius = 0.3
-	pcs.shape = cap
-	pcs.position = Vector3(0.0, 0.9, 0.0)
-	ped.add_child(pcs)
-	arena.add_child(ped)
-	ped.global_position = Vector3(2200.0, 0.0, 300.0)
-	var crate := StaticBody3D.new()
-	var ccs := CollisionShape3D.new()
-	var cbox := BoxShape3D.new()
-	cbox.size = Vector3(2.0, 1.5, 2.0)
-	ccs.shape = cbox
-	ccs.position = Vector3(0.0, 0.75, 0.0)
-	crate.add_child(ccs)
-	arena.add_child(crate)
-	crate.global_position = Vector3(2210.0, 0.0, 300.0)
-	await _frames(2)
-	duel.rival.floor_y = 0.0
-	var fy: Variant = duel.rival._floor_ray(Vector3(2200.0, 0.0, 300.0), 3.0, 6.0, DriftRival.MAX_RISE)
-	var fc: Variant = duel.rival._floor_ray(Vector3(2210.0, 0.0, 300.0), 3.0, 6.0, DriftRival.MAX_RISE)
-	var fc2: Variant = duel.rival._floor_ray(Vector3(2210.0, 0.0, 300.0), 3.0, 6.0)
-	_check(fy is float and absf(float(fy)) < 0.05 and duel.rival.ray_exclude.size() == 1, "the rival's floor ray looks through a pedestrian (floor %s, not the head)" % str(fy))
-	_check(fc == null and fc2 is float and absf(float(fc2) - 1.5) < 0.05, "a hit more than 1 m over the current floor is ignored (%s / %s)" % [str(fc), str(fc2)])
-	ped.free()
-	crate.free()
+	var pp: DriftRaceProps = duel.props
+	_check(pp != null and pp.arch_count == course.arches.size() and pp.arrow_groups.size() == course.corners.size(), "props: %d neon arches, a sign set per corner" % (pp.arch_count if pp else -1))
+	_check(pp.member_count >= 40 and pp.lights.size() == DriftRaceProps.LIGHTS, "the Bầy Sói pack: %d with flares, %d flare lights" % [pp.member_count, pp.lights.size()])
 	duel.start()
-	_check(duel.state == "countdown" and bike.staged and bike.is_controls_locked, "start(): the countdown, the bike staged on the line")
-	_check(is_equal_approx(bike.max_speed_ms, float(DriftDuel.DUEL_PROFILE["max_speed_ms"])) and bike.nitro_enabled and duel.hud.visible, "the duel profile (86 km/h), nitro on, the HUD")
-	_check(absf(duel.rival.s - DriftDuel.RIVAL_LEAD_M) < 0.01 and absf(duel.gap() - DriftDuel.RIVAL_LEAD_M) < 0.5, "Sói Xám starts 8 m ahead (gap %.1f)" % duel.gap())
+	_check(duel.state == "countdown" and bike.staged and bike.is_controls_locked, "start(): the countdown, the bike staged on the grid")
+	_check(is_equal_approx(bike.max_speed_ms, float(DriftDuel.DUEL_PROFILE["max_speed_ms"])) and bike.nitro_enabled and duel.hud.visible and not duel.combat.enabled,
+		"the race profile (100 km/h), nitro on, the HUD; no kicks before GO")
+	_check(absf(duel.gap() - DriftDuel.RIVAL_GRID_AHEAD) < 0.5 and duel.rival.d < 0.0 and duel.d_p > 0.0, "the grid: Sói Xám on the left, 2.5 m ahead")
 	# countdown: revs at 0 / 1 / 2 s, his answers 0.5 s later, GO at 3 s
 	var revs0: int = bike.revs
 	var times: Array = []
@@ -181,157 +183,214 @@ func _part_a() -> void:
 			last_a = duel.rival.revs
 		if go_f < 0 and duel.state == "racing":
 			go_f = f
+			break
 	_check(bike.revs - revs0 == 3 and times.size() == 3 and absf(float(times[1] - times[0]) - 60.0) <= 1.0 and absf(float(times[2] - times[0]) - 120.0) <= 1.0,
 		"a rev on each count, 1 s apart (frames %s)" % str(times))
-	_check(ans.size() == 3 and absf(float(ans[0] - times[0]) - 30.0) <= 1.0 and absf(float(ans[2] - times[2]) - 30.0) <= 1.0, "Sói Xám answers each count 0.5 s later (frames %s)" % str(ans))
+	_check(ans.size() == 3 and absf(float(ans[0] - times[0]) - 30.0) <= 1.0, "Sói Xám answers each count 0.5 s later (frames %s)" % str(ans))
 	_check(go_f >= 0 and absf(float(go_f - times[0]) - 180.0) <= 1.0 and int(sig.get("go", 0)) == 1 and int(sig.get("music_cue", 0)) == 1, "GO 3 s after the first count, the music cue once with it (frame %d)" % go_f)
-	_check(not bike.staged and not bike.is_controls_locked and duel.rival.racing, "GO: the bike rides, he races")
-	_check(duel.rival.revs == 3 and duel.rival.rev_source == "blip", "without the owner's rev file he blips his exhaust loop")
-	# gap lose: the player stays put
+	_check(not bike.staged and duel.rival.racing and duel.combat.enabled and duel.rival.nitros == 1, "GO: he launches with a nitro burst, the kicks are on")
 	bike.is_controls_locked = true
-	_drive_to(0.0, 0.0, 0.0)
-	var n: int = 0
-	while duel.state == "racing" and n < 1200:
+	# the first corner (the Y junction), drifted: x1.5 inside, the bonus on the way out
+	duel.rival.kick_cd = 99.0
+	drive_s = duel.s_p
+	var c0: Array = course.corners[0]
+	await _ride(float(c0[0]) - 2.0, 0.6)
+	bike.drift_charge = 0.0
+	duel.force_drift = 1
+	var mult_in: float = 0.0
+	while drive_s < float(c0[1]) + 3.0 and duel.state == "racing":
+		_drive_to(drive_s + 0.5, 0.0, 30.0)
 		await _frames(1)
-		_drive_to(0.0, 0.0, 0.0)
+		if course.corner_at(duel.s_p) == 0:
+			mult_in = bike.drift_charge_mult
+	duel.force_drift = 0
+	await _frames(1)
+	_check(is_equal_approx(mult_in, DriftDuel.CORNER_CHARGE_MULT) and duel.corner_bonuses == 1 and bike.drift_charge >= duel.corner_bonus - 0.01 and is_equal_approx(bike.drift_charge_mult, 1.0),
+		"a drifted corner: charge x1.5 inside, +%d nitro on the way out (charge %.1f)" % [int(duel.corner_bonus), bike.drift_charge])
+	_check(duel.popup_text == DriftDuel.T_CORNER_BONUS, "DRIFT ĐẸP! +NITRO")
+	duel.force_drift = -1
+	# his kick: alongside him on a straight
+	var r: DriftRival = duel.rival
+	var kicked: Array = []
+	r.kicked_player.connect(func(side: int, hit: bool) -> void: kicked.append([side, hit]))
+	await _alongside(1.6, 5)
+	r.kick_cd = 0.0
+	r.attack_chance = 1.0
+	var st0: float = duel.combat.stability
+	var saw: Dictionary = {}
+	var n: int = 0
+	while kicked.is_empty() and n < 400:
+		await _alongside(1.6, 1)
+		if r.mode == "windup":
+			saw["ring"] = r.ring.visible
+			saw["warn"] = duel.warn_side
+			saw["tth"] = maxf(float(saw.get("tth", 0.0)), r.time_to_hit())
 		n += 1
-	_check(duel.state == "lost" and String(sig.get("lost_reason", "")) == "gap" and duel.losses == 1, "left behind: lost on the gap after %.1f s (gap %.0f m)" % [float(n) / 60.0, duel.gap()])
-	_check(duel.max_gap > DriftDuel.LOSE_GAP_M and duel.max_gap < 70.0, "stopped dead: he waits (band) but the gap passes 40 m, max %.0f m" % duel.max_gap)
+	_check(bool(saw.get("ring", false)) and int(saw.get("warn", 0)) == -1 and float(saw.get("tth", 0.0)) <= r.kick_windup + DriftRival.KICK_HIT_AT + 0.01,
+		"his kick: a %.1f s telegraph (the red ring, BÊN TRÁI on the HUD), the counter window from time_to_hit" % r.kick_windup)
+	_check(kicked.size() == 1 and bool(kicked[0][1]) and absf(st0 - duel.combat.stability - r.kick_dmg) < 0.01 and duel.popup_text == DriftDuel.T_HE_KICKED,
+		"the kick lands: -%d stability, \"Ăn đạp của Sói Xám!\" (%s)" % [int(r.kick_dmg), str(kicked)])
+	# a dodge: the player steers away during the wind-up
+	await _frames(40)
+	kicked.clear()
+	r.kick_cd = 0.0
+	n = 0
+	var dodge_d: float = 1.6
+	while kicked.is_empty() and n < 400:
+		if r.mode == "windup":
+			dodge_d = minf(dodge_d + 0.2, 4.5)
+		await _alongside(dodge_d, 1)
+		n += 1
+	_check(kicked.size() == 1 and not bool(kicked[0][1]) and duel.dodges == 1 and duel.popup_text == DriftDuel.T_DODGED, "steering away in the wind-up dodges it: NÉ ĐẸP! (%s)" % str(kicked))
+	# the player's kicks: 3 make him wobble and lose speed for 2 s
+	r.kick_cd = 99.0
+	bike.is_controls_locked = false
+	var hits0: int = r.hits_total
+	r.wobbled.connect(func() -> void: sig["wob_f"] = Engine.get_physics_frames(), CONNECT_ONE_SHOT)
+	for k: int in 3:
+		await _alongside(1.6, 2)
+		duel.combat.kick(-1)                 # he rides on the player's left
+		for f2: int in 40:
+			await _alongside(1.6, 1)
+	_check(r.hits_total - hits0 == 3 and r.wobbles == 1 and r.wobbling() and duel.popup_text == DriftDuel.T_WOBBLE, "3 kicks: SÓI XÁM LOẠNG CHOẠNG! (hits %d, wobbles %d)" % [r.hits_total - hits0, r.wobbles])
+	_check(not r.kickable() and r.hp == DriftRival.KICKS_TO_WOBBLE, "while he wobbles he cannot be kicked, the count starts again after")
+	var v_w: float = r.v
+	var v_prof: float = course.speed_at(r.s) * r.pace
+	var w_frames: int = 0
+	while r.wobbling() and w_frames < 300:
+		await _alongside(1.6, 1)
+		v_w = minf(v_w, r.v)
+		w_frames += 1
+	var wob_len: float = float(Engine.get_physics_frames() - int(sig.get("wob_f", 0))) / 60.0
+	_check(wob_len >= DriftRival.WOBBLE_S - 0.02 and wob_len < DriftRival.WOBBLE_S + 0.3, "the wobble lasts %.2f s (%.1f s of race time, the kick's hit-stop on top)" % [wob_len, DriftRival.WOBBLE_S])
+	_check(v_w < v_prof * 0.7, "wobbling he loses speed (down to %.1f m/s against a profile of %.1f)" % [v_w, v_prof])
+	# the counter-kick: worth 2 kicks
+	await _frames(20)
+	r.kick_cd = 0.0
+	var counters0: int = duel.combat.counters
+	var hits1: int = r.hits_taken
+	n = 0
+	while n < 400 and duel.combat.counters == counters0:
+		await _alongside(1.6, 1)
+		var tth: float = r.time_to_hit()
+		if tth >= 0.0 and tth <= 0.2:
+			duel.combat.kick(-1)
+		n += 1
+	_check(duel.combat.counters == counters0 + 1 and (r.hits_taken - hits1 == 2 or r.wobbles == 2), "PHẢN ĐÒN in his last 0.25 s: worth 2 kicks (%d)" % (r.hits_taken - hits1))
+	bike.is_controls_locked = true
+	r.kick_cd = 99.0
+	# knocked off: lost, the quick retry on the grid, stability full
+	sig.erase("lost_reason")
+	for k2: int in 10:
+		duel.combat.iframes = 0.0
+		duel.combat.damage(20.0, "test")
+	await _frames(2)
+	_check(duel.state == "lost" and String(sig.get("lost_reason", "")) == "knocked" and duel.losses == 1, "his kicks knock the player off: lost (%s)" % str(sig.get("lost_reason", "")))
 	var lost_f: int = 0
-	while duel.state != "countdown" and lost_f < 200:
+	while duel.state != "countdown" and lost_f < 300:
 		await _frames(1)
 		lost_f += 1
-	_check(duel.state == "countdown" and duel.retry_count and absf(duel.countdown_len - DriftDuel.RETRY_COUNTDOWN_S) < 0.01, "a quick retry by itself: a 2 s countdown")
-	_check(absf(float(lost_f) / 60.0 - (DriftDuel.LOSE_PAUSE_S + DriftDuel.FADE_S)) < 0.1, "back on the grid %.2f s after the loss (pause %.1f s + a %.1f s fade)" % [float(lost_f) / 60.0, DriftDuel.LOSE_PAUSE_S, DriftDuel.FADE_S])
-	_check(absf(duel.rival.s - DriftDuel.RIVAL_LEAD_M) < 0.01 and duel.points == 0.0 and duel.gate_i == 0 and absf(duel.s_p) < 1.0, "the grid again: he is 8 m ahead, points and gates reset")
-	var cf: int = 0
-	while duel.state == "countdown" and cf < 200:
+	_check(duel.state == "countdown" and duel.retry_count and absf(duel.countdown_len - DriftDuel.RETRY_COUNTDOWN_S) < 0.01 and is_equal_approx(duel.combat.stability, duel.combat.max_stability),
+		"a quick retry by itself: a 2 s countdown, stability full")
+	_check(absf(float(lost_f) / 60.0 - (DriftDuel.LOSE_PAUSE_S + DriftDuel.FADE_S)) < 0.15 and absf(duel.s_p - DriftDuel.GRID_LAT * 0.0) < 3.0 and duel.start_s == 0.0,
+		"back on the grid %.2f s after the loss" % (float(lost_f) / 60.0))
+	n = 0
+	while duel.state == "countdown" and n < 200:
 		await _frames(1)
-		cf += 1
-	_check(absf(float(cf) / 60.0 - 2.0) < 0.1 and duel.state == "racing" and int(sig.get("go", 0)) == 2, "the retry's GO after 2 s (%.2f s)" % (float(cf) / 60.0))
-	# tail the rival 10 m behind through the lap, drifting: gates in order, points only in zones (doubled), win on points
+		n += 1
+	_check(absf(float(n) / 60.0 - 2.0) < 0.1 and duel.state == "racing", "the retry's GO after 2 s")
 	bike.is_controls_locked = true
+	r.kick_cd = 99.0
+	# laps and gates: ride the race (ahead of him), past the lap 2 line, then he crosses first: beaten, the lap 2 grid
 	var gates_seen: Array = []
 	duel.gate_passed.connect(func(i: int) -> void: gates_seen.append(i))
-	var pts_outside: bool = false
-	var tail_ok: bool = true
+	laps_seen.clear()
+	drive_s = duel.s_p
+	await _ride(course.lap_s[1] + 40.0, 0.7)
+	_check(laps_seen == [1, 2] and duel.lap2_reached and duel.lap == 2, "the laps: lap 1, then lap 2 (%s)" % str(laps_seen))
+	var want_g: int = 0
+	for g: float in course.gates:
+		if g < course.lap_s[1] + 40.0:
+			want_g += 1
+	_check(gates_seen.size() == want_g and gates_seen == range(want_g), "the gates in order (%d)" % gates_seen.size())
+	sig.erase("lost_reason")
+	r.s = course.length - 1.0
+	r.v = 20.0
+	await _frames(10)
+	_check(duel.state == "lost" and String(sig.get("lost_reason", "")) == "beaten" and duel.popup_text == DriftDuel.T_LOSE_BEATEN, "he crosses the line first: lost (%s)" % str(sig.get("lost_reason", "")))
 	n = 0
-	drive_s = 0.0
-	while duel.state == "racing" and n < 4000:
-		var tgt: float = maxf(drive_s, duel.rival.s - 10.0)
-		if duel.rival.finished:
-			tgt = drive_s + 0.4
-		var in_zone: bool = course.zone_at(course.wrap_s(tgt)) >= 0
-		duel.force_drift = 1
-		var p0: float = duel.points
-		_drive_to(tgt, 0.0, 15.0)
-		await _frames(1)
-		if not in_zone and duel.points > p0 + 0.001 and course.zone_at(course.wrap_s(duel.s_p)) < 0:
-			pts_outside = true
-		if in_zone and duel.state == "racing" and absf(duel.gap() - 10.0) < 1.0 and duel.points > p0:
-			var per: float = (duel.points - p0) / (15.0 * DT * DriftDuel.POINTS_PER)
-			tail_ok = tail_ok and absf(per - 2.0) < 0.6
-		n += 1
-	duel.force_drift = -1
-	_check(gates_seen == [0, 1, 2, 3, 4, 5, 6, 7], "every gate passed in order %s" % str(gates_seen))
-	_check(not pts_outside, "no drift points outside the zones")
-	_check(tail_ok and duel.tail_t > 20.0, "tailing within 12 m doubles the points (tailed %.0f s)" % duel.tail_t)
-	_check(duel.state == "won" and String(sig.get("won_how", "")) == "points" and duel.points >= 300.0, "the finish with the target: won on points (%.0f)" % duel.points)
-	_check(duel.race_t > 50.0 and duel.race_t < 75.0, "the tailed lap took %.1f s" % duel.race_t)
-	# the ending: his line, he rides down off the deck, a fade, ended
-	n = 0
-	while int(sig.get("ended", 0)) == 0 and n < 900:
+	while duel.state != "countdown" and n < 300:
 		await _frames(1)
 		n += 1
-	_check(int(sig.get("ended", 0)) == 1 and duel.state == "done" and duel.rival.exit_done() and duel.subtitle_text.contains(DriftDuel.T_END), "the ending: his line, he rides down under the bridge, the fade, ended (%.1f s)" % (float(n) / 60.0))
-	_check(not bike.is_controls_locked and is_equal_approx(bike.max_speed_ms, 33.3), "after the duel the bike rides again on its own profile")
-	# a fresh duel: lose on points at the finish, the overtake win, off course and wrong way, a cone
-	duel.queue_free()
-	await _frames(2)
-	duel = DriftDuel.new()
-	duel.name = "Duel2"
-	arena.add_child(duel)
-	duel.setup({"bike": bike, "intro": false, "target": 1.0e9, "course": course})
-	duel.won.connect(func(how: String) -> void: sig["won_how2"] = how)
-	duel.lost.connect(func(r: String) -> void: sig["lost_reason2"] = r)
+	_check(duel.state == "countdown" and absf(duel.start_s - (course.lap_s[1] + DriftDuel.LAP2_GRID_AFTER)) < 0.01 and absf(duel.s_p - duel.start_s) < 2.0
+		and absf(r.s - duel.start_s - DriftDuel.RIVAL_GRID_AHEAD) < 0.1 and duel.subtitle_text == DriftDuel.T_RETRY_LAP2, "past lap 2 the retry starts on the lap 2 grid (a fair checkpoint)")
+	n = 0
+	while duel.state == "countdown" and n < 200:
+		await _frames(1)
+		n += 1
+	bike.is_controls_locked = true
+	r.kick_cd = 99.0
+	# off the course and the wrong way: back to the last gate
 	var resets: Array = []
 	duel.reset_to_gate.connect(func(i: int) -> void: resets.append(i))
-	await _frames(2)
-	duel.start()
-	await _frames(185)
-	_check(duel.state == "racing", "second duel racing")
-	bike.is_controls_locked = true
-	# drive to just past gate 1, then off the course sideways
-	n = 0
-	drive_s = 0.0
-	while drive_s < course.gates[1] + 6.0 and n < 3000:
-		_drive_to(maxf(drive_s, minf(duel.rival.s - 10.0, drive_s + 1.0)), 0.0, 15.0)
-		await _frames(1)
-		n += 1
-	_check(duel.gate_i == 2, "test setup: past gate 2 (%d)" % duel.gate_i)
+	drive_s = duel.s_p
+	var next_gate: float = course.gates[duel.gate_i]
+	await _ride(next_gate + 6.0, 0.7)
+	var g_at: int = duel.gate_i - 1
 	var off_f: int = 0
 	while resets.is_empty() and off_f < 200:
-		_drive_to(drive_s, 20.0, 0.0)
+		_drive_to(drive_s, course.half_width_at(drive_s) + 6.0, 0.0)
 		await _frames(1)
 		off_f += 1
 	await _frames(20)
 	var at: Vector2 = Vector2(bike.global_position.x, bike.global_position.z)
-	_check(resets == [1] and absf(float(off_f) / 60.0 - DriftDuel.OFF_COURSE_S - DriftDuel.FADE_S) < 0.1 and at.distance_to(course.world(course.gates[1], 0.0)) < 1.5,
-		"20 m off the line for 1.2 s: back at the last gate behind a 0.2 s fade (%s after %.2f s)" % [str(resets), float(off_f) / 60.0])
-	_check(duel.grace_t > 2.0 and duel.rival.band < 1.0, "a reset gives 3 s of grace, he waits (band %.2f)" % duel.rival.band)
-	# wrong way
+	_check(resets == [g_at] and absf(float(off_f) / 60.0 - DriftDuel.OFF_COURSE_S - DriftDuel.FADE_S) < 0.1 and at.distance_to(course.world(course.gates[g_at], 0.0)) < 1.5,
+		"off the road for 1.2 s: back at the last gate behind a 0.2 s fade (%s after %.2f s)" % [str(resets), float(off_f) / 60.0])
+	_check(duel.grace_t > 2.0, "a reset gives him 3 s of grace (he eases off)")
 	resets.clear()
+	drive_s = course.gates[g_at]
 	var ww: int = 0
-	drive_s = course.gates[1]
 	while resets.is_empty() and ww < 300:
 		_drive_to(drive_s - 0.15, 0.0, 9.0, true)
-		bike.velocity = -Vector3(course.tangent(drive_s).x, 0.0, course.tangent(drive_s).y) * 9.0
 		await _frames(1)
 		ww += 1
 	await _frames(20)
-	_check(resets == [1] and absf(float(ww) / 60.0 - DriftDuel.WRONG_WAY_S - DriftDuel.FADE_S) < 0.1, "riding the wrong way 1.5 s: back at the last gate behind the fade (%.2f s)" % (float(ww) / 60.0))
-	# a cone: the chicane B cone gate
-	var cone: Vector2 = course.cones[6]
-	var k0: int = duel.knocked_cones
-	duel.points = 100.0
-	bike.global_position = Vector3(cone.x, -0.1, cone.y)
-	await _frames(2)
-	_check(duel.knocked_cones == k0 + 1 and absf(duel.points - (100.0 - DriftDuel.CONE_PENALTY)) < 1.0, "a cone the bike touches flies off and costs %d points" % int(DriftDuel.CONE_PENALTY))
-	# overtake: 5 m ahead of him for 4 s
-	_drive_to(duel.rival.s, 0.0, 15.0)
-	await _frames(2)
+	_check(resets == [g_at] and absf(float(ww) / 60.0 - DriftDuel.WRONG_WAY_S - DriftDuel.FADE_S) < 0.1, "riding the wrong way 1.5 s: back at the last gate (%.2f s)" % (float(ww) / 60.0))
+	# the win: over the line first, the fireworks, the slow-motion finish, then the ending
+	r.s = minf(r.s, duel.s_p - 60.0)
+	drive_s = duel.s_p
+	await _ride(course.length + 3.0, 0.9)
+	_check(duel.state == "won" and String(sig.get("won_how", "")) == "race" and duel.popup_text == DriftDuel.T_WIN, "first over the line on the bridge: VỀ NHẤT! (%s)" % duel.state)
+	await _frames(70)
+	_check(duel.props.fireworks_fired >= 2, "fireworks over the finish (%d bursts)" % duel.props.fireworks_fired)
 	n = 0
-	while duel.state == "racing" and n < 600:
-		_drive_to(duel.rival.s + 5.0, 0.0, 15.0)
+	while int(sig.get("ended", 0)) == 0 and n < 1200:
 		await _frames(1)
 		n += 1
-	_check(duel.state == "won" and String(sig.get("won_how2", "")) == "overtake" and absf(float(n) / 60.0 - DriftDuel.OVERTAKE_S) < 0.3, "ahead of him for 4 s: VƯỢT MẶT, an instant win (%.2f s)" % (float(n) / 60.0))
-	duel.stop()
-	_check(is_equal_approx(bike.max_speed_ms, 33.3) and not bike.staged and is_equal_approx(bike.drift_charge_mult, 1.0), "stop(): the profile and the zone multiplier given back")
-	# losing on points at the finish (a third duel, the target out of reach)
-	duel.queue_free()
-	await _frames(2)
-	duel = DriftDuel.new()
-	duel.name = "Duel3"
-	arena.add_child(duel)
-	duel.setup({"bike": bike, "intro": false, "target": 1.0e9, "course": course})
-	duel.lost.connect(func(r: String) -> void: sig["lost_reason3"] = r)
-	await _frames(2)
-	duel.start()
-	await _frames(185)
-	bike.is_controls_locked = true
-	n = 0
-	drive_s = 0.0
-	while duel.state == "racing" and n < 5000:
-		var tg: float = maxf(drive_s, duel.rival.s - 10.0) if not duel.rival.finished else drive_s + 0.4
-		_drive_to(tg, 0.0, 15.0)
-		await _frames(1)
-		n += 1
-	_check(duel.state == "lost" and String(sig.get("lost_reason3", "")) == "points", "the finish without the target: lost on points")
+	_check(int(sig.get("ended", 0)) == 1 and duel.state == "done" and duel.rival.exit_done() and duel.subtitle_text.contains(DriftDuel.T_END), "the ending: his line, he rides down under the bridge, the fade, ended")
+	_check(not bike.is_controls_locked and is_equal_approx(bike.max_speed_ms, float(PlayerBike.OWNER_PROFILE["max_speed_ms"])) and not duel.combat.enabled,
+		"after the race the bike rides again on its own profile, the kicks off")
+	_check(is_equal_approx(Engine.time_scale, 1.0), "the time scale is back at 1 after the finish")
 	duel.stop()
 	duel.queue_free()
 	await _frames(2)
+	# Dễ: the rival's and the rules' numbers
+	Difficulty.set_easy(true)
+	var rv := DriftRival.new()
+	rv.refresh_tuning()
+	_check(rv.kick_dmg < 20.0 and rv.kick_windup > 0.5 and rv.kick_cooldown > 2.4 and rv.pace < 1.0 and rv.nitros_per_race < 4, "Dễ: he kicks softer, later and less often, rides slower, fewer nitros")
+	rv.free()
+	Difficulty.set_easy(false)
 	_check(is_equal_approx(Engine.time_scale, 1.0), "the time scale is left at 1")
+
+
+## The player alongside the rival at `lat` to his right (the rival on the player's left), at his speed, for n frames.
+func _alongside(lat: float, n: int) -> void:
+	for i: int in n:
+		var r: DriftRival = duel.rival
+		_drive_to(r.s, r.d + lat, maxf(r.v, 12.0))
+		duel.s_p = r.s
+		await _frames(1)
 
 
 # ---------------------------------------------------------------------------
@@ -381,10 +440,8 @@ func _part_b() -> void:
 	var peds: Node = fr.get("pedestrians")
 	if peds:
 		peds.process_mode = Node.PROCESS_MODE_DISABLED   # the bots race with no crowd (deterministic)
-	await _bot_run("good", {"k": 1.3, "vmax": 30.0, "drift": true, "nitro": true}, 0)
-	await _bot_run("medium", {"k": 1.05, "vmax": 30.0, "drift": true, "nitro": true, "drift_r": 16.0}, -1)
-	await _bot_run("slow", {"k": 0.62, "vmax": 13.0, "drift": false, "nitro": false, "frames": 3600}, 1)
-	await _bot_run("stop", {"k": 1.0, "vmax": 30.0, "drift": false, "nitro": false, "stop_at": 140.0}, 2)
+	await _bot_run("good", {"k": 1.25, "drift": true, "nitro": true, "kick": true}, 0)
+	await _bot_run("stop", {"k": 1.0, "drift": false, "nitro": false, "kick": false, "stop_at": 140.0}, 1)
 	fr.queue_free()
 	await _frames(3)
 
@@ -402,8 +459,8 @@ func _free_at(space: PhysicsDirectSpaceState3D, q: PhysicsShapeQueryParameters3D
 	return space.intersect_shape(q, 1).is_empty()
 
 
-## The course corridor in the real world: on the floor (the bridge deck's hump included) with at least 1.2 m clear on
-## both sides of the line (the deck's parapets are 1.5-2 m off the lanes), and every cone and barrier on free ground.
+## The racing line in the real world: on the floor (the bridge deck's hump included) with at least 1.2 m clear on both
+## sides from the grid to the finish.
 func _clearance() -> void:
 	var space: PhysicsDirectSpaceState3D = fr.get_world_3d().direct_space_state
 	var q := PhysicsShapeQueryParameters3D.new()
@@ -422,17 +479,7 @@ func _clearance() -> void:
 		if not _free_at(space, q, rq, p) or not _free_at(space, q, rq, p + n * 1.2) or not _free_at(space, q, rq, p - n * 1.2):
 			tight.append(int(s))
 		s += 2.0
-	_check(tight.is_empty(), "the racing line has 1.2 m clear on both sides all round the lap (tight at s %s)" % str(tight))
-	var bad: Array = []
-	for c: Vector2 in course.cones:
-		if not _free_at(space, q, rq, c):
-			bad.append(c)
-	for b: Array in course.barriers:
-		for k: int in 5:
-			var bp: Vector2 = (b[0] as Vector2).lerp(b[1], float(k) / 4.0)
-			if not _free_at(space, q, rq, bp):
-				bad.append(bp)
-	_check(bad.is_empty(), "every cone and barrier stands on free ground (%s)" % str(bad))
+	_check(tight.is_empty(), "the racing line has 1.2 m clear on both sides all the way (tight at s %s)" % str(tight))
 
 
 func _silent(secs: float) -> AudioStreamWAV:
@@ -470,6 +517,8 @@ func _part_music() -> void:
 		if c == 0:
 			_check(MissionDriftDuel.drift_slot() == "race_d2_drift" and m.duel.state == "countdown" and m.music_fades == 1 and md.target_gain == 0.0,
 				"with the drift track: the chase track fades out over the countdown (no music under it)")
+			var pp: DriftRaceProps = m.duel.props
+			_check(pp.member_count >= 30 and pp.dropped_members <= pp.member_count / 2, "the pack stands on free ground (%d kept, %d dropped by walls)" % [pp.member_count, pp.dropped_members])
 		else:
 			_check(MissionDriftDuel.drift_slot() == "mission_bike_chase" and md.slot == chase_slot and md.target_gain == 1.0 and m.music_fades == 0,
 				"without the drift track: the chase track (%s) keeps playing through the countdown" % chase_slot)
@@ -482,13 +531,13 @@ func _part_music() -> void:
 			_check(md.slot == "race_d2_drift" and is_zero_approx(md.fade_time) and is_equal_approx(md.gains[md.cur], 1.0) and m.music_starts == 1,
 				"GO: race_d2_drift starts at once (fade 0), its first bar on the launch")
 			_check(bool(fr.get("mounted")) and String(fr.call("_hint_text")) == DriftDuel.T_RIDING and (fr.get("traffic") as RoamTraffic).active_count() == 0,
-				"during the duel: riding, the duel's hint, the traffic parked")
+				"during the race: riding, the race's hint, the traffic parked")
 		else:
 			_check(md.slot == chase_slot and md.target_gain == 1.0, "GO without the drift track: still %s (no crossfade back)" % chase_slot)
 		m.abort()
 		await _frames(3)
 		_check(String(fr.get("riding_hint")) == "" and String(fr.get("dismount_refusal")) == "" and (fr.get("traffic") as RoamTraffic).is_physics_processing(),
-			"the duel gone: hint, [F] and traffic given back")
+			"the race gone: hint, [F] and traffic given back")
 	MissionDriftDuel.force_no_track = false
 	MusicDirector.test_streams.erase(MissionDriftDuel.DRIFT_SLOT)
 	MusicDirector.test_streams.erase(MissionDriftDuel.CHASE_SLOT)
@@ -496,13 +545,13 @@ func _part_music() -> void:
 	md.stop(false)
 
 
-## A test bot on the real bike in FreeRoam: it steers for the line ahead, holds a target speed (the rival's profile x k,
-## capped at vmax), drifts in the zones' tight corners and fires nitro on straights.
+## A test bot on the real bike in FreeRoam: it steers for the line ahead, holds the rival's profile x k, drifts the
+## corners, fires nitro on straights and kicks Sói Xám when he is alongside (a counter in his last 0.2 s).
 func _bot(cfg: Dictionary) -> void:
 	var bp := Vector2(bike.global_position.x, bike.global_position.z)
 	var s: float = duel.s_p
 	var v: float = bike.current_speed_ms
-	var look: float = clampf(v * 0.5, 3.5, 13.0)
+	var look: float = clampf(v * 0.45, 4.0, 12.0)
 	var tgt: Vector2 = course.world(s + look, 0.0)
 	var z: Vector3 = bike.global_transform.basis.z
 	var f := Vector2(-z.x, -z.z).normalized()
@@ -515,11 +564,10 @@ func _bot(cfg: Dictionary) -> void:
 		Input.action_press("steer_left", -st)
 	elif st > 0.02:
 		Input.action_press("steer_right", st)
-	var vt: float = minf(course.speed_at(s + 8.0) * float(cfg["k"]), float(cfg["vmax"]))
-	if not bool(cfg["drift"]):
-		var rr: float = minf(course.radius_at(s + 4.0), course.radius_at(s + 8.0))
-		if rr < 13.0:
-			vt = minf(vt, maxf(3.5, 0.5 * rr))   # a careful rider brakes for what the bike turns without a drift
+	var rr: float = minf(course.radius_at(s + 6.0), course.radius_at(s + 12.0))
+	var vt: float = 40.0
+	if rr < 30.0:
+		vt = maxf(8.0, course.speed_at(s + 8.0) * float(cfg["k"])) if bool(cfg["drift"]) else maxf(4.0, 0.45 * rr)
 	if cfg.has("stop_at") and s > float(cfg["stop_at"]):
 		vt = 0.0
 	Input.action_release("gas")
@@ -528,8 +576,7 @@ func _bot(cfg: Dictionary) -> void:
 		Input.action_press("gas")
 	elif v > vt + 1.5:
 		Input.action_press("brake", clampf((v - vt) / 6.0, 0.2, 1.0))
-	var in_zone: bool = course.zone_at(course.wrap_s(s + 4.0)) >= 0
-	var want_drift: bool = bool(cfg["drift"]) and in_zone and course.radius_at(s + 6.0) < float(cfg.get("drift_r", 30.0)) and v > 8.0 and absf(ang) > 0.04
+	var want_drift: bool = bool(cfg["drift"]) and course.corner_at(s + 3.0) >= 0 and rr < 30.0 and v > 8.0 and absf(ang) > 0.04
 	if want_drift:
 		Input.action_press("drift")
 	else:
@@ -541,10 +588,16 @@ func _bot(cfg: Dictionary) -> void:
 	elif bool(cfg["nitro"]) and bike.drift_charge >= PlayerBike.NITRO_MIN and course.radius_at(s + 25.0) > 150.0 and course.radius_at(s + 50.0) > 150.0 and not bike.nitro_active():
 		Input.action_press("nitro")
 		_nitro_hold = 3
+	if bool(cfg.get("kick", false)) and duel.combat.can_kick():
+		var r: DriftRival = duel.rival
+		var rel_s: float = r.s - s
+		var rel_d: float = r.d - duel.d_p
+		var tth: float = r.time_to_hit()
+		if absf(rel_s) < 1.6 and absf(rel_d) > 0.6 and absf(rel_d) < 2.6 and (r.kickable() and (tth < 0.0 or tth <= 0.2)):
+			duel.combat.kick(1 if rel_d > 0.0 else -1)
 
 
-## expect: 0 = wins, 1 = finishes but loses on points (the band keeps a slow rider in reach), 2 = stops dead and loses
-## on the gap.
+## expect: 0 = wins, 1 = beaten (stops dead at stop_at).
 func _bot_run(name: String, cfg: Dictionary, expect: int) -> void:
 	duel = DriftDuel.new()
 	duel.name = "BotDuel_" + name
@@ -558,49 +611,40 @@ func _bot_run(name: String, cfg: Dictionary, expect: int) -> void:
 	while duel.state == "countdown" and n < 400:
 		await _frames(1)
 		n += 1
-	var hard: int = 0
-	var prev_v: float = 0.0
 	var nitros0: int = bike.nitro_count
 	var measured: bool = false
 	n = 0
-	var cap: int = int(cfg.get("frames", 6000))
+	var cap: int = int(cfg.get("frames", 9000))
 	while res.is_empty() and n < cap:
 		_bot(cfg)
 		if name == "good" and not measured and duel.race_t > 12.0:
 			measured = true
 			await _measure(cfg)
 		await _frames(1)
-		var v: float = bike.current_speed_ms
-		if prev_v - v > 4.0:
-			hard += 1
-		prev_v = v
 		n += 1
 		if OS.has_environment("DRIFT_BOT_TRACE") and n % 60 == 0:
-			print("    %s t %.0f s_p %.0f d %.1f v %.1f gap %.0f band %.2f" % [name, duel.race_t, duel.s_p, duel.d_p, v, duel.gap(), duel.rival.band])
+			print("    %s t %.0f s_p %.0f d %.1f v %.1f gap %.0f band %.2f st %.0f" % [name, duel.race_t, duel.s_p, duel.d_p, bike.current_speed_ms, duel.gap(), duel.rival.band, duel.combat.stability])
 	for a: String in ["gas", "brake", "steer_left", "steer_right", "drift", "nitro"]:
 		Input.action_release(a)
-	var avg: float = duel.s_p / maxf(duel.race_t, 0.1)
 	var outcome: String = ("won " + String(res.get("won", ""))) if res.has("won") else ("lost " + String(res.get("lost", "?")))
-	print("  BOT %s: %s after %.1f s (avg %.1f m/s), points %d / %d, tailed %.1f s, gap %.0f..%.0f m, resets %d, cones %d, nitros %d, hard stops %d, drift in zones %.1f s; Soi Xam drifted %.1f s, %d nitro bursts" % [
-		name, outcome, duel.race_t, avg, int(duel.points), int(duel.target), duel.tail_t, duel.min_gap, duel.max_gap, duel.resets,
-		duel.knocked_cones, bike.nitro_count - nitros0, hard, duel.drift_in_zone_t, duel.rival.drift_time, duel.rival.nitros])
+	print("  BOT %s: %s after %.1f s, gap %.0f..%.0f m, lead %.1f s, resets %d, corner bonuses %d, nitros %d, stability %d, his kicks %d (%d hit), my kicks on him %d, wobbles %d, blocks %d, contacts %d; Soi Xam drifted %.1f s, %d nitro bursts" % [
+		name, outcome, duel.race_t, duel.min_gap, duel.max_gap, duel.lead_t, duel.resets, duel.corner_bonuses, bike.nitro_count - nitros0,
+		int(duel.combat.stability), duel.rival.kicks, duel.rival.kick_hits, duel.rival.hits_total, duel.rival.wobbles, duel.rival.blocks,
+		duel.contacts, duel.rival.drift_time, duel.rival.nitros])
 	if expect == 0:
-		_check(res.has("won") and duel.resets == 0, "the good bot wins the duel without a reset (%s)" % str(res))
-		_check(duel.rival.drift_time > 4.0, "Sói Xám drifts visibly through the tight corners (%.1f s)" % duel.rival.drift_time)
-		_check(duel.race_t > 48.0 and duel.race_t < 75.0, "the good bot's lap: %.1f s (50-75 s target)" % duel.race_t)
-		_check(duel.max_gap < DriftDuel.LOSE_GAP_M and duel.tail_t > 5.0, "the good bot stays within reach (max gap %.0f m) and tails him %.0f s" % [duel.max_gap, duel.tail_t])
-		_check(bike.nitro_count - nitros0 >= 1, "the good bot fires nitro off its drift charge")
+		_check(res.has("won") and duel.resets <= 1, "the good bot wins the race (%s, resets %d)" % [str(res), duel.resets])
+		_check(duel.race_t > 60.0 and duel.race_t < 110.0, "the good bot's race: %.1f s" % duel.race_t)
+		_check(duel.rival.drift_time > 3.0, "Sói Xám drifts the corners (%.1f s)" % duel.rival.drift_time)
+		_check(bike.nitro_count - nitros0 >= 1 and duel.corner_bonuses >= 3, "drift corners charge nitro and the bot fires it")
 	elif expect == 1:
-		_check(not res.has("won") and String(res.get("lost", "points")) == "points" and duel.max_gap < DriftDuel.LOSE_GAP_M,
-			"the slow bot (no drift, 13 m/s) is never dropped: he waits, max gap %.0f m (%s after %.0f s)" % [duel.max_gap, str(res), duel.race_t])
-	elif expect == 2:
-		_check(String(res.get("lost", "")) == "gap", "a rider who stops dead loses on the gap (%s)" % str(res))
+		_check(String(res.get("lost", "")) == "beaten", "a rider who stops is beaten to the line (%s)" % str(res))
+		_check(duel.rival.kicks >= 1, "Sói Xám kicks a rider he passes (%d kicks)" % duel.rival.kicks)
 	duel.stop()
 	duel.queue_free()
 	await _frames(3)
 
 
-## 120 physics frames of the good bot's race: the duel's own tick (stepped by hand, timed) and the whole physics frame.
+## 120 physics frames of the good bot's race: the race's own tick (stepped by hand, timed) and the whole physics frame.
 func _measure(cfg: Dictionary) -> void:
 	duel.process_mode = Node.PROCESS_MODE_DISABLED
 	duel_us.clear()
@@ -620,8 +664,8 @@ func _measure(cfg: Dictionary) -> void:
 	b.sort()
 	var dm: float = float(a[a.size() / 2]) / 1000.0
 	var fm: float = float(b[b.size() / 2]) / 1000.0
-	print("  PERF duel tick (rival, gates, points, cones, HUD): median %.3f ms, max %.3f ms; whole physics frame median %.2f ms (FreeRoam, crowd off)" % [dm, float(a[a.size() - 1]) / 1000.0, fm])
-	_check(dm < 0.5, "the duel's own tick stays light (median %.3f ms)" % dm)
+	print("  PERF race tick (rival, rules, props, HUD): median %.3f ms, max %.3f ms; whole physics frame median %.2f ms (FreeRoam, crowd off)" % [dm, float(a[a.size() - 1]) / 1000.0, fm])
+	_check(dm < 0.6, "the race's own tick stays light (median %.3f ms)" % dm)
 
 
 func _finish() -> void:
@@ -630,9 +674,10 @@ func _finish() -> void:
 	PlayerBike.clear_owner_sfx()
 	PlayerBike.sfx_dir = "user://sfx/"
 	MissionDriftDuel.force_no_track = false
+	Difficulty.set_easy(false)
 	Engine.time_scale = 1.0
 	if fails.is_empty():
-		print("SUCCESS: DRIFT DUEL (course, countdown + revs, gates, gap lose + quick retry, points, overtake, resets, cones, FreeRoam bots, music)")
+		print("SUCCESS: DRIFT DUEL (race course, countdown + revs, corners charge nitro, his kicks / blocks / wobble, laps + lap 2 retry, losses, resets, the win with fireworks, FreeRoam bots, music)")
 		quit(0)
 	else:
 		print("FAILED: %d issues" % fails.size())

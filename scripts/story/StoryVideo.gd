@@ -14,7 +14,7 @@ signal finished(skipped: bool)
 
 const VIDEO_DIR: String = "user://video/"
 const FADE: float = 0.5
-const ESC_HOLD: float = 0.8
+const ESC_HOLD: float = SkipHold.HOLD
 const STALL_S: float = 1.5
 
 static var video_dir: String = VIDEO_DIR
@@ -24,6 +24,7 @@ var frame: AspectRatioContainer
 var black: ColorRect
 var bg: ColorRect
 var hint: Label
+var ring: SkipHold.Ring
 var t: float = 0.0
 var failed: bool = false
 var left_tree: bool = false
@@ -71,7 +72,7 @@ func play_file(path: String) -> bool:
 	black.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(black)
 	hint = Label.new()
-	hint.text = "Giữ Esc để bỏ qua"
+	hint.text = "Giữ Esc hoặc Enter để bỏ qua"
 	hint.add_theme_font_size_override("font_size", 14)
 	hint.add_theme_color_override("font_color", Color(0.9, 0.88, 0.95, 0.7))
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -81,6 +82,14 @@ func play_file(path: String) -> bool:
 	hint.offset_bottom = -18.0
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	add_child(hint)
+	ring = SkipHold.Ring.new()
+	ring.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	ring.offset_left = -200.0
+	ring.offset_top = 16.0
+	ring.offset_right = -16.0
+	ring.offset_bottom = 40.0
+	ring.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	add_child(ring)
 	player.finished.connect(func() -> void: _begin_end(false))
 	player.play()
 	if not player.is_playing() or player.get_stream_length() <= 0.0:
@@ -134,7 +143,8 @@ func _process(delta: float) -> void:
 	else:
 		_still_t = 0.0
 		_last_pos = pos
-	_hold = _hold + delta if Input.is_physical_key_pressed(KEY_ESCAPE) else 0.0
+	_hold = _hold + delta if SkipHold.held() else 0.0
+	ring.set_progress(_hold / ESC_HOLD if _hold > 0.0 else -1.0)
 	if _hold >= ESC_HOLD:
 		_begin_end(true)
 

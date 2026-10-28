@@ -7,6 +7,10 @@
 # The player and the enemies stand around the beat's anchor (free spots). MeleeFight `won` = done (the beat's "after"
 # cinematic follows), `lost` (the player down) = fail "TOANG!"; retry() = MeleeFight.retry() from its checkpoint (the
 # wave in progress, full HP); abort() stops the fight.
+# Wave 2 (plan 2026-10-29-w2-early.md Task 6): d1 and d4 get an ArenaDressing (parked bikes and a vendor table to slam
+# into, helmets and lids / trays and chairs on the floor through the MeleeFight "props" option; d4: [E] flips a canteen
+# table, food throwers in wave 2) and one escalation beat each: d1 calls in reinforcements (two more couriers on Thường,
+# one on Dễ, a preview cut on them), d4 turns into the food fight at wave 2.
 class_name MissionFight
 extends StoryMission
 
@@ -15,10 +19,18 @@ const T_DOWN: String = "Bị hạ đo ván rồi!"
 const D1_LINE: String = "Gét gô!"
 const D4_LINE: String = "Bầy cừu xông lên!"
 const D2_LINE: String = "Đầu đàn thì sao? Vào đây!"
+const D1_BACKUP_LINE: String = "Gọi thêm anh em! Mũ Tím, Mũ Cam, vô!"
 
 var fight: MeleeFight
 var centre: Vector3 = Vector3.ZERO
 var kind: String = "d1"
+var arena: ArenaDressing
+var escalated: bool = false
+
+
+## Reinforcements of the d1 escalation (Thường 2, Dễ 1).
+static func d1_backup() -> int:
+	return int(Difficulty.pick(2, 1))
 
 
 ## Fight centre: opts "centre" (Vector3, tests / StoryRoam: the beat anchor), else the player's spot.
@@ -32,14 +44,23 @@ func _start() -> void:
 	fight = MeleeFight.new()
 	fight.name = "Fight"
 	add_child(fight)
-	fight.setup({"roam": roam, "force_unarmed": true, "max_attackers": 2, "auto_checkpoint": true,
-		"start_line": {"d1": D1_LINE, "d2": D2_LINE}.get(kind, D4_LINE), "seed": int(opts.get("seed", 11))})
 	var fwd := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	var props: Array = ArenaDressing.props_for(kind, centre, fwd) if kind in ["d1", "d4"] else []
+	for pd: Dictionary in props:
+		pd["at"] = _floor(free_spot(pd["at"], 3))
+	fight.setup({"roam": roam, "force_unarmed": true, "max_attackers": 2, "auto_checkpoint": true,
+		"start_line": {"d1": D1_LINE, "d2": D2_LINE}.get(kind, D4_LINE), "seed": int(opts.get("seed", 11)), "props": props})
+	if kind in ["d1", "d4"]:
+		arena = ArenaDressing.new()
+		add_child(arena)
+		arena.setup(kind, self, fight, centre, fwd)
 	if kind == "d2":
 		fight.add_wave(_ring([["soi_xam", "soi_xam", "Sói Xám"]], fwd))
 	elif kind == "d1":
 		fight.add_wave(_ring([["courier", "courier_do", "Mũ Đỏ"], ["courier", "courier_xanh", "Mũ Xanh"],
 			["courier", "courier_vang", "Mũ Vàng"]], fwd))
+		var backup: Array = [["courier", "courier_xanh", "Mũ Tím"], ["courier", "courier_vang", "Mũ Cam"]]
+		fight.add_wave(_ring(backup.slice(0, d1_backup()), -fwd))
 	else:
 		fight.add_wave(_ring([["clone", "clone_masked", "Nhân bản"], ["clone", "clone_masked", "Nhân bản"],
 			["clone", "clone_masked", "Nhân bản"], ["clone", "clone_masked", "Nhân bản"]], fwd))
@@ -47,6 +68,7 @@ func _start() -> void:
 			["clone", "clone_masked", "Nhân bản"]], fwd))
 	fight.won.connect(_on_won)
 	fight.lost.connect(_on_lost)
+	fight.wave_started.connect(_on_wave)
 	fight.start()
 	set_info(_info())
 
@@ -72,9 +94,51 @@ func _info() -> String:
 	return "Đợt %d/%d · Còn %d đối thủ" % [fight.wave + 1, fight.waves.size(), fight.alive().size()]
 
 
-func _tick(_dt: float) -> void:
+func _floor(p: Vector3) -> Vector3:
+	return Vector3(p.x, ground_y(p), p.z)
+
+
+## The escalation beat at wave 2: d1 reinforcements (a line, a preview cut), d4 the food fight. Every enemy's slam into a
+## table splashes soup (ArenaDressing.on_slammed).
+func _on_wave(i: int) -> void:
+	if arena:
+		for e: Variant in fight.enemies:
+			var me: MeleeEnemy = e
+			if not me.slammed.is_connected(arena.on_slammed):
+				me.slammed.connect(arena.on_slammed)
+	if i < 1 or escalated:
+		return
+	escalated = true
+	if kind == "d1":
+		popup(D1_BACKUP_LINE, 2.2, WARN)
+		cues_played.append("backup")
+		var first: Variant = fight.enemies[0] if not fight.enemies.is_empty() else null
+		var d: CameraDirector = CameraDirector.live()
+		if first != null and d != null and (first as Node3D).is_inside_tree():
+			d.preview_cut(first as Node3D, 0.6)
+		if arena:
+			arena.cuts += 1
+	elif kind == "d4" and arena:
+		arena.start_food_fight()
+
+
+func _tick(dt: float) -> void:
+	if arena:
+		arena.tick(dt)
+		if kind == "d4" and arena.flip_target() >= 0:
+			set_prompt(ArenaDressing.T_FLIP)
+		else:
+			set_prompt("")
 	if fight and int(clock * 10.0) % 3 == 0:
 		set_info(_info())
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if state != "running" or arena == null or not (event is InputEventKey):
+		return
+	var k: InputEventKey = event
+	if k.pressed and not k.echo and k.physical_keycode == KEY_E and arena.try_flip():
+		get_viewport().set_input_as_handled()
 
 
 func _on_won() -> void:
@@ -86,11 +150,21 @@ func _on_lost() -> void:
 
 
 func _reset() -> void:
+	if arena:
+		arena.reset()
 	if fight:
 		fight.retry()
+	if fight and fight.wave < 1:
+		escalated = false
+	elif fight and kind == "d4" and arena:
+		arena.start_food_fight()   # retry from the food-fight wave: the throwers are back
 
 
 func _cleanup() -> void:
+	if arena and is_instance_valid(arena):
+		arena.stop_food_fight()
+		arena.queue_free()
+	arena = null
 	if fight and is_instance_valid(fight):
 		fight.stop()
 		fight.queue_free()

@@ -1,29 +1,43 @@
 # File: res://scripts/combat/bike/BikeSetPieces.gd
-# Day 2 road set pieces of the bike chase (spec 2026-10-27, D2X-6), owned and ticked by BikeChase (setup opt "set_pieces").
-# A data list keyed by route distance (BikeCombatData.DAY2_SET_PIECES): each piece has a telegraph, triggers at its
-# distance and re-arms on retry (rearm(checkpoint_s): every piece not wholly behind the checkpoint comes back).
+# Day 2 road set pieces of the bike chase (spec 2026-10-27 D2X-6; Wave 2 rework, plan 2026-10-29-w2-day2.md: each big one is
+# a spectacle opened by a 0.6 s CameraDirector preview cut, BikeChase.preview), owned and ticked by BikeChase (setup opt
+# "set_pieces"). A data list keyed by route distance (BikeCombatData.DAY2_SET_PIECES): each piece has a telegraph,
+# triggers at its distance and re-arms on retry (rearm(checkpoint_s): every piece not wholly behind the checkpoint comes
+# back).
 #   melons    {"s"}: a melon truck shows MELON_TRUCK_LEAD m before s ahead in the right lane (hazard lights blinking); at s
-#             (or the player 35 m behind it) the tailgate drops with a horn and MELON_N melons (one MultiMesh, analytic
-#             bounces, no rigid bodies) roll across the lanes for MELON_S s. A melon hit: MELON_DMG, a wobble, a green and
-#             pink splash; a biker that hits one crashes ("melon": a takedown).
-#   barrier   {"s"}: a half-lowered barrier arm at chest height across the road but for a slow gap by the right curb
-#             (cones); warning signs BARRIER_WARN_M and half of it before; the HUD prompt "[CTRL] CÚI XUỐNG" from the first
-#             sign. At s: in the gap = through; ducking (PlayerBike.is_ducking via BikeChase.bike_ducking) = "CÚI NÉ!";
-#             else knocked off (a fail, back to the checkpoint; not in god mode). Bikers behind it crash into it one in two.
+#             (or the player 35 m behind it) the preview cut (TIP_REAL_S long) shows it hit a bump and TIP OVER onto its side in slow motion
+#             (BikeChase.slow_motion "tip"), sliding with sparks; MELON_N (100) pooled melons (one MultiMesh, analytic
+#             bounces, no rigid bodies) burst out of the bed and roll across the lanes for MELON_S s. The truck lies in the
+#             right lane until it is passed. A melon hit: melon_dmg, a wobble, a green and pink splash; a biker that hits one
+#             crashes ("melon": a takedown).
+#   barrier   {"s"}: a CRANE beside the road lowers a steel beam with sparks across the road at chest height (but for a slow
+#             gap by the right curb, cones): the preview cut when the warning starts BARRIER_WARN_M before s, the signs, the
+#             HUD prompt "[CTRL] CÚI XUỐNG", the beam coming down (sparks off its guide rails, a rattle, a clang when it
+#             stops BEAM_DOWN_M before s). At s: in the gap = through; ducking (PlayerBike.is_ducking via
+#             BikeChase.bike_ducking) = "CÚI NÉ!"; else knocked off on Thường (a fail, back to the checkpoint; not in god
+#             mode), beam_dmg on Dễ. Bikers behind it crash into it one in two.
 #   wrong_way {"s", "len"}: cones on the centre line and a taper close the player's (right) carriageway for len m with
 #             flashing arrows; the AI targets clamp to the left half (BikeChase.d_lo / d_hi) and a few cars come the other
-#             way; riding through the cones costs CONE_DMG.
-#   ramp      {"s", "d"}: a marked sand ramp in one lane (d m right of the centre line) by a construction site: over it
-#             faster than RAMP_MIN_SPEED = BikeChase.start_jump() (riders alongside fly too: air kick).
+#             way; riding through the cones costs cone_dmg.
+#   ramp      {"s"}: a BROKEN ROAD GAP across the whole road, the lifted slab of its near edge the ramp: the preview cut GAP_
+#             PREVIEW_M before it; at s faster than ramp_min_speed = a real jump (BikeChase.start_jump) with the camera
+#             director's slow-motion orbit round the bike (riders alongside fly too: air kick); slower = a short hop and a
+#             hard landing (gap_short_dmg). Bikers behind it fall in one in two ("gap": a takedown).
+#   roadblock {"s", "gap_d"}: a POLICE ROADBLOCK (two police cars across the road, barricades, blue and red lightbars) with
+#             a gap of roadblock_gap_w (frozen per piece when built: "gap_w") at gap_d m right of the centre line, marked with yellow arrows; the preview cut
+#             ROADBLOCK_PREVIEW_M before it, the prompt "CHỐT CHẶN! LỌT QUA KHE"; at s: in the gap = "LỌT KHE!", else a crash
+#             into it (roadblock_dmg, speed x0.3). The AI funnels into the gap (d_lo / d_hi), one in three crash
+#             ("roadblock": a takedown).
 #   police    {"s", "end_s", "dur"}: BikeChase.spawn_police(POLICE_N) at s (a retry from past s: POLICE_REJOIN_M after the
-#             checkpoint); they drop back after dur s or at end_s. safe_checkpoint_s keeps checkpoints out of a barrier's
-#             warning stretch.
+#             checkpoint); they drop back after dur s or at end_s (no longer in the Day 2 layout; kept for other chases).
 #   drift     {"s", "len"}: a real turn marked with chevrons and the prompt "DRIFT!"; through its middle faster than
-#             DRIFT_FAST without drifting = into the curb (CURB_DMG, speed x CURB_SLOW: braking into the turn is fine);
+#             DRIFT_FAST without drifting = into the curb (curb_dmg, speed x CURB_SLOW: braking into the turn is fine);
 #             drifting in it adds DRIFT_ZONE_BONUS charge/s.
+# safe_checkpoint_s keeps checkpoints out of a barrier's warning stretch. Every tuned number goes through Difficulty.pick
+# (refresh_tuning at setup and at each rearm).
 # State for tests: pieces (each a Dictionary with "phase": armed | tele | active | done and its own fields), fired(kind),
-# melon_hits, cone_hits, curb_hits, results (barrier outcomes). No per-frame allocation; the props are pooled and built
-# once in setup().
+# melon_hits, cone_hits, curb_hits, results (barrier outcomes), gap_results, block_results, previews. No per-frame
+# allocation; the props are pooled and built once in setup().
 class_name BikeSetPieces
 extends Node3D
 
@@ -32,6 +46,16 @@ const MELON_RAD: float = 0.24
 const SPLASH_N: int = 2
 const POLICE_REJOIN_M: float = 80.0
 const ONCOMING_AT: Array[float] = [168.0, 182.0, 196.0]   # beyond the camera's view range (160 m), inside the despawn (200)
+const TIP_SCALE: float = 0.4               # the truck tips over in this slow motion ...
+const TIP_REAL_S: float = 1.3              # ... for this many real seconds
+const TIP_S: float = 0.75                  # race seconds from the bump to the truck on its side
+const TRUCK_SLIDE_DECEL: float = 9.0
+const BEAM_TOP: float = 7.5                # the beam hangs this high before it comes down ...
+const BEAM_DOWN_M: float = 28.0            # ... and is down this far before s
+const GAP_LEN: float = 7.0                 # the broken stretch (m)
+const GAP_PREVIEW_M: float = 110.0
+const ROADBLOCK_PREVIEW_M: float = 130.0
+const PREVIEW_S: float = 0.6
 
 var ch: BikeChase
 var pieces: Array = []
@@ -40,6 +64,9 @@ var melon_hits: int = 0
 var cone_hits: int = 0
 var curb_hits: int = 0
 var results: Array[String] = []
+var gap_results: Array[String] = []
+var block_results: Array[String] = []
+var previews: int = 0
 var oncoming_cars: int = 0
 var prompt: String = ""
 # melons (one active melon piece at a time)
@@ -54,39 +81,78 @@ var truck_gate: Node3D
 var truck_s: float = 0.0
 var truck_d: float = 1.5
 var truck_v: float = 0.0
+var truck_tip: float = 0.0                 # 0 upright .. 1 on its side
+var tip_t: float = -1.0                    # race seconds since the bump (-1 = upright)
+# Difficulty-picked tuning (refresh_tuning)
+var melon_dmg: float = 10.0
+var beam_knocks: bool = true
+var beam_dmg: float = 40.0
+var ramp_min_speed: float = 18.0
+var gap_short_dmg: float = 18.0
+var roadblock_gap_w: float = 2.6
+var roadblock_dmg: float = 35.0
+var cone_dmg: float = 8.0
+var curb_dmg: float = 10.0
 var _hazard: StandardMaterial3D
 var _arrow_mat: StandardMaterial3D
+var _bar_red: StandardMaterial3D
+var _bar_blue: StandardMaterial3D
 var _splash: Array[CPUParticles3D] = []
 var _splash_i: int = 0
 var _blink_t: float = 0.0
 var _cone_cd: float = 0.0
-var _xf := Transform3D.IDENTITY
+var _spark_t: float = 0.0
+var _kerb_i: int = 0
+var _beams: Dictionary = {}                # barrier piece index -> beam Node3D
+var _gaps: Dictionary = {}                 # ramp piece index -> gap root
+var _blocks: Dictionary = {}               # roadblock piece index -> root
 
 
 func setup(chase: BikeChase, data: Array) -> void:
 	ch = chase
+	refresh_tuning()
 	for d: Variant in data:
 		var p: Dictionary = (d as Dictionary).duplicate(true)
 		p["phase"] = "armed"
 		pieces.append(p)
 	_hazard = Readability.telegraph_material("danger", 4.0)    # Q3 telegraph colours: red = danger
 	_arrow_mat = Readability.telegraph_material("prompt", 3.0) # yellow = prompt
-	for p2: Dictionary in pieces:
+	_bar_red = CineFX._glow_mat(Color(1.0, 0.12, 0.1), 4.5)
+	_bar_blue = CineFX._glow_mat(Color(0.15, 0.35, 1.0), 4.5)
+	for i: int in pieces.size():
+		var p2: Dictionary = pieces[i]
 		match String(p2.get("kind", "")):
 			"melons":
 				if truck == null:
 					_build_truck()
 					_build_melons()
 			"barrier":
-				_build_barrier(p2)
+				_beams[i] = _build_barrier(p2)
 			"wrong_way":
 				_build_wrong_way(p2)
 			"ramp":
-				_build_ramp(p2)
+				_gaps[i] = _build_gap(p2)
+			"roadblock":
+				_blocks[i] = _build_roadblock(p2)
 			"drift":
 				_build_drift(p2)
-	for i: int in SPLASH_N:
-		_splash.append(_make_splash(i))
+	for i2: int in SPLASH_N:
+		_splash.append(_make_splash(i2))
+	for c: String in ["chain_rattle", "glass_crack"]:
+		CineAudio.sfx(c)                    # synthesized at setup, never mid-chase
+
+
+## The difficulty's numbers (Thường, Dễ).
+func refresh_tuning() -> void:
+	melon_dmg = float(Difficulty.pick(BikeCombatData.MELON_DMG, 6.0))
+	beam_knocks = bool(Difficulty.pick(true, false))
+	beam_dmg = float(Difficulty.pick(40.0, 30.0))
+	ramp_min_speed = float(Difficulty.pick(BikeCombatData.RAMP_MIN_SPEED, 13.0))
+	gap_short_dmg = float(Difficulty.pick(18.0, 10.0))
+	roadblock_gap_w = float(Difficulty.pick(BikeCombatData.ROADBLOCK_GAP_W, 3.4))
+	roadblock_dmg = float(Difficulty.pick(BikeCombatData.ROADBLOCK_DMG, 22.0))
+	cone_dmg = float(Difficulty.pick(BikeCombatData.CONE_DMG, 5.0))
+	curb_dmg = float(Difficulty.pick(BikeCombatData.CURB_DMG, 6.0))
 
 
 ## Triggers of a kind so far (tests).
@@ -101,9 +167,16 @@ func _fire(p: Dictionary, phase: String) -> void:
 	ch.set_piece.emit(k, phase)
 
 
+## The preview cut on a hazard (0.6 s; BikeChase.preview: the camera director's cut, when nothing else holds the screen).
+func _preview(target: Node3D, secs: float = PREVIEW_S) -> void:
+	if ch.preview(target, secs):
+		previews += 1
+
+
 ## Back to "armed" every piece that ends after cp_s (the checkpoint's route distance; -INF = all), props reset.
 ## The police: a checkpoint past their start makes them join POLICE_REJOIN_M after it (never on top of the retry).
 func rearm(cp_s: float) -> void:
+	refresh_tuning()
 	for p: Dictionary in pieces:
 		if _end_s(p) > cp_s + 0.5:
 			p["phase"] = "armed"
@@ -112,6 +185,8 @@ func rearm(cp_s: float) -> void:
 			p.erase("vmid")
 			p.erase("bikers_s")
 			p.erase("at")
+			p.erase("previewed")
+			p.erase("spilled")                   # a knock-off during the melon window: the load spills again
 			if String(p.get("kind", "")) == "police" and cp_s > float(p["s"]):
 				p["at"] = cp_s + POLICE_REJOIN_M
 				if float(p["at"]) >= _end_s(p) - 40.0:
@@ -123,11 +198,13 @@ func rearm(cp_s: float) -> void:
 func safe_checkpoint_s(s: float) -> float:
 	var out: float = s
 	for p: Dictionary in pieces:
-		if String(p.get("kind", "")) != "barrier":
+		var k: String = String(p.get("kind", ""))
+		var warn: float = BikeCombatData.BARRIER_WARN_M if k == "barrier" else (ROADBLOCK_PREVIEW_M if k == "roadblock" else -1.0)
+		if warn < 0.0:
 			continue
 		var bs: float = float(p["s"])
-		if s > bs - BikeCombatData.BARRIER_WARN_M and s <= bs + 1.0:
-			out = minf(out, bs - BikeCombatData.BARRIER_WARN_M)
+		if s > bs - warn and s <= bs + 1.0:
+			out = minf(out, bs - warn)
 	return out
 
 
@@ -147,6 +224,10 @@ func _reset_props() -> void:
 	if truck:
 		truck.visible = false
 		truck_gate.rotation.x = 0.0
+	truck_tip = 0.0
+	tip_t = -1.0
+	for bi: Variant in _beams.keys():
+		_set_beam(int(bi), BEAM_TOP)
 	ch.d_lo = -INF
 	ch.d_hi = INF
 	prompt = ""
@@ -172,14 +253,20 @@ func tick(delta: float, _rdt: float) -> void:
 		return
 	_blink_t += delta
 	_cone_cd -= delta
+	_spark_t -= delta
 	var blink: bool = int(_blink_t * 3.0) % 2 == 0
 	if _hazard:
 		_hazard.emission_energy_multiplier = 5.0 if blink else 0.3
 	if _arrow_mat:
 		_arrow_mat.emission_energy_multiplier = 4.0 if int(_blink_t * 2.5) % 2 == 0 else 0.4
+	if _bar_red:
+		var fast: bool = int(_blink_t * 7.0) % 2 == 0
+		_bar_red.emission_energy_multiplier = 5.0 if fast else 0.4
+		_bar_blue.emission_energy_multiplier = 0.4 if fast else 5.0
 	var want: String = ""
 	var want_pri: int = 0
-	for p: Dictionary in pieces:
+	for i: int in pieces.size():
+		var p: Dictionary = pieces[i]
 		var ph: String = p["phase"]
 		if ph == "done":
 			continue
@@ -192,10 +279,12 @@ func tick(delta: float, _rdt: float) -> void:
 				if ph == "armed" and s >= ps - BikeCombatData.BARRIER_WARN_M:
 					p["phase"] = "tele"
 					_fire(p, "tele")
+					_preview(_beams.get(i, null))
 				if p["phase"] == "tele":
 					if want_pri < 3:
 						want = BikeCombatData.T_DUCK
 						want_pri = 3
+					_lower_beam(i, s, ps)
 					if s >= ps:
 						_barrier_cross(p)
 				elif p["phase"] == "active":
@@ -216,7 +305,7 @@ func tick(delta: float, _rdt: float) -> void:
 					if s >= ps and s <= ps + ln and ch.d_p * ch.dir_sign > 0.35 and _cone_cd <= 0.0:
 						_cone_cd = BikeCombatData.CONE_CD
 						cone_hits += 1
-						if ch.combat.damage(BikeCombatData.CONE_DMG, "cones"):   # the slowdown comes with the damage (not in god mode)
+						if ch.combat.damage(cone_dmg, "cones"):   # the slowdown comes with the damage (not in god mode)
 							ch.bike.current_speed_ms *= 0.85
 						ch.cue("tray_clang", ch.bike.global_position, -2.0)
 						if ch.hud:
@@ -229,19 +318,15 @@ func tick(delta: float, _rdt: float) -> void:
 						want = BikeCombatData.T_WRONG_WAY
 						want_pri = 2
 			"ramp":
-				if ph == "armed" and s >= ps - 60.0:
-					p["phase"] = "tele"
-					_fire(p, "tele")
-				if p["phase"] == "tele" and s >= ps:
-					p["phase"] = "done"
-					var lat: float = ch.d_p * ch.dir_sign
-					var sp: float = absf(ch.bike.current_speed_ms)
-					if absf(lat - float(p.get("d", 1.4))) <= BikeCombatData.RAMP_HALF_W and sp >= BikeCombatData.RAMP_MIN_SPEED and not ch.jumping():
-						_fire(p, "active")
-						ch.start_jump()
-					elif absf(lat - float(p.get("d", 1.4))) <= BikeCombatData.RAMP_HALF_W:
-						ch.bike.add_camera_shake(0.35)
-					_fire(p, "done")
+				_tick_gap(i, p, s, ps, delta)
+				if p["phase"] == "tele" and want_pri < 2:
+					want = BikeCombatData.T_GAP_JUMP
+					want_pri = 2
+			"roadblock":
+				_tick_roadblock(i, p, s, ps, delta)
+				if p["phase"] == "tele" and want_pri < 3:
+					want = BikeCombatData.T_ROADBLOCK
+					want_pri = 3
 			"police":
 				if ph == "armed" and s >= float(p.get("at", ps)):
 					p["phase"] = "active"
@@ -279,7 +364,7 @@ func tick(delta: float, _rdt: float) -> void:
 						p["phase"] = "done"
 						if not bool(p["drifted"]) and float(p.get("vmid", absf(ch.bike.current_speed_ms))) > BikeCombatData.DRIFT_FAST:
 							curb_hits += 1
-							if ch.combat.damage(BikeCombatData.CURB_DMG, "curb"):
+							if ch.combat.damage(curb_dmg, "curb"):
 								ch.bike.current_speed_ms *= BikeCombatData.CURB_SLOW
 							ch.bike.add_camera_shake(0.6)
 							ch.sparks(ch.bike.global_position + Vector3(0.0, 0.2, 0.0), Vector3.UP)
@@ -308,7 +393,43 @@ func _clamp_left(on: bool) -> void:
 		ch.d_hi = INF
 
 
-# ----- barrier -----
+# ----- the crane beam -----
+## The beam comes down as the player closes in: BEAM_TOP at the warning's start, BARRIER_Y at BEAM_DOWN_M before s, sparks
+## off its guide rails on the way, a clang at the bottom.
+func _lower_beam(i: int, s: float, ps: float) -> void:
+	var beam: Node3D = _beams.get(i, null)
+	if beam == null:
+		return
+	var u: float = clampf((s - (ps - BikeCombatData.BARRIER_WARN_M + 10.0)) / (BikeCombatData.BARRIER_WARN_M - 10.0 - BEAM_DOWN_M), 0.0, 1.0)
+	var h: float = lerpf(BEAM_TOP, BikeCombatData.BARRIER_Y, u * u * (3.0 - 2.0 * u))
+	var was: float = float(beam.get_meta("h", BEAM_TOP))
+	_set_beam(i, h)
+	if u > 0.0 and u < 1.0 and _spark_t <= 0.0:
+		_spark_t = 0.12
+		var hw: float = _hw()
+		for x: float in [-hw - 0.3, hw - BikeCombatData.BARRIER_GAP_W + 0.1]:
+			Impact.particles(ch, "sparks", beam.global_transform * Vector3(x, 0.0, 0.0), Vector3(0.0, -0.4, 0.0), 0.9, ch.fx)
+		if int(_blink_t * 4.0) % 3 == 0:
+			ch.cue("chain_rattle", beam.global_position, -6.0)
+	if was > BikeCombatData.BARRIER_Y + 0.01 and h <= BikeCombatData.BARRIER_Y + 0.01:
+		ch.cue("impact_heavy", beam.global_position, 0.0)
+		Impact.particles(ch, "dust_ring", beam.global_position - Vector3(0.0, BikeCombatData.BARRIER_Y, 0.0), Vector3.UP, 1.2, ch.fx)
+		ch.bike.add_camera_shake(0.25)
+
+
+func _set_beam(i: int, h: float) -> void:
+	var beam: Node3D = _beams.get(i, null)
+	if beam == null:
+		return
+	beam.set_meta("h", h)
+	beam.position.y = h
+	var cables: Node3D = beam.get_meta("cables", null)
+	if cables:
+		var top: float = float(cables.get_meta("top", BEAM_TOP + 3.0))
+		cables.scale = Vector3(1.0, maxf(0.05, top - h), 1.0)
+		cables.position.y = h
+
+
 func _barrier_cross(p: Dictionary) -> void:
 	p["phase"] = "active"
 	p["t"] = 0.0
@@ -324,17 +445,22 @@ func _barrier_cross(p: Dictionary) -> void:
 		if ch.hud:
 			ch.hud.popup(BikeCombatData.T_DUCKED, CombatHUD.GOLD, 1.0)
 		ch.cue("whoosh_down", ch.bike.global_position + Vector3(0.0, 1.2, 0.0), 0.0)
+		Impact.particles(ch, "sparks", ch.bike.global_position + Vector3(0.0, 1.3, 0.0), Vector3.UP, 0.8, ch.fx)
 	else:
 		res = "hit"
 		ch.cue("impact_heavy", ch.bike.global_position + Vector3(0.0, 1.2, 0.0), 2.0)
+		Impact.hit(ch, "heavy", {"pos": ch.bike.global_position + Vector3(0.0, 1.2, 0.0), "dir": -Vector3(ch.p_fwd.x, 0.0, ch.p_fwd.y), "fx": ch.fx, "shake_fn": ch.bike.add_camera_shake})
 		if ch.hud:
 			ch.hud.popup(BikeCombatData.T_BARRIER_HIT, CombatHUD.WARN, 1.6)
 		if not ch.combat.god:
-			ch.combat.knock_off()
+			if beam_knocks:
+				ch.combat.knock_off()
+			elif ch.combat.damage(beam_dmg, "barrier"):
+				ch.bike.current_speed_ms *= 0.35
 	results.append(res)
 
 
-## Bikers crossing behind the player: one in two slams into the arm (a takedown), the others duck under it.
+## Bikers crossing behind the player: one in two slams into the beam (a takedown), the others duck under it.
 func _barrier_bikers(p: Dictionary, ps: float, delta: float) -> void:
 	p["t"] = float(p["t"]) + delta
 	var seen: Dictionary = p["bikers_s"]
@@ -350,6 +476,121 @@ func _barrier_bikers(p: Dictionary, ps: float, delta: float) -> void:
 	if float(p["t"]) > 8.0:
 		p["phase"] = "done"
 		_fire(p, "done")
+
+
+# ----- the broken road gap -----
+func _tick_gap(i: int, p: Dictionary, s: float, ps: float, delta: float) -> void:
+	var ph: String = p["phase"]
+	if ph == "armed" and s >= ps - GAP_PREVIEW_M:
+		p["phase"] = "tele"
+		_fire(p, "tele")
+		_preview(_gaps.get(i, null))
+		if ch.hud:
+			ch.hud.popup(BikeCombatData.T_GAP, CombatHUD.WARN, 1.6)
+	if p["phase"] == "tele" and s >= ps:
+		p["phase"] = "active"
+		p["t"] = 0.0
+		p["bikers_s"] = {}
+		_fire(p, "active")
+		var sp: float = absf(ch.bike.current_speed_ms)
+		if ch.jumping():
+			gap_results.append("air")
+		elif sp >= ramp_min_speed:
+			gap_results.append("jump")
+			ch.start_jump()
+			var cd: Node = ch.director()
+			if cd and cd.has_method("slowmo_orbit"):
+				cd.call("slowmo_orbit", ch.bike, ch.jump_len)   # the cinematic cam: the jump in slow motion, the camera round
+		else:
+			gap_results.append("short")
+			ch.start_jump(true)
+	elif p["phase"] == "active":
+		p["t"] = float(p["t"]) + delta
+		var seen: Dictionary = p["bikers_s"]
+		for b: Variant in ch.bikers:
+			var e: BikerEnemy = b as BikerEnemy
+			if e == null or not is_instance_valid(e) or not e.is_active() or seen.has(e) or e.airborne:
+				continue
+			var es: float = ch.route.project(e.pos2, ps, 30.0).x if ch.route else 0.0
+			if es >= ps - 0.5 and es < ps + GAP_LEN:
+				seen[e] = true
+				if e.kind != "pickup" and seen.size() % 2 == 1:
+					e.crash("gap", e.vel * 0.3)
+		if float(p["t"]) > 10.0:
+			p["phase"] = "done"
+			_fire(p, "done")
+
+
+## The short hop's hard landing (BikeChase._land of a short jump).
+func short_landing() -> void:
+	if ch.combat.damage(gap_short_dmg, "gap"):
+		ch.bike.current_speed_ms *= 0.4
+	ch.bike.add_camera_shake(0.8)
+	Impact.particles(ch, "dust_ring", ch.bike.global_position, Vector3.UP, 1.3, ch.fx)
+	Impact.particles(ch, "sparks", ch.bike.global_position + Vector3(0.0, 0.2, 0.0), Vector3.UP, 1.0, ch.fx)
+	ch.cue("impact_heavy", ch.bike.global_position, 1.0)
+	if ch.hud:
+		ch.hud.popup(BikeCombatData.T_GAP_SHORT, CombatHUD.WARN, 1.2)
+
+
+# ----- the police roadblock -----
+func _tick_roadblock(i: int, p: Dictionary, s: float, ps: float, delta: float) -> void:
+	var ph: String = p["phase"]
+	var gd: float = float(p.get("gap_d", -1.6))
+	if ph == "armed" and s >= ps - ROADBLOCK_PREVIEW_M:
+		p["phase"] = "tele"
+		_fire(p, "tele")
+		_preview(_blocks.get(i, null))
+		if ch.hud:
+			ch.hud.popup(BikeCombatData.T_ROADBLOCK_SEEN, CombatHUD.WARN, 1.6)
+	if p["phase"] == "tele":
+		if s >= ps - 70.0:                    # the bikers funnel into the gap too
+			var half: float = float(p.get("gap_w", roadblock_gap_w)) * 0.5 - 0.35
+			var lo: float = (gd - half) * ch.dir_sign
+			var hi: float = (gd + half) * ch.dir_sign
+			ch.d_lo = minf(lo, hi)
+			ch.d_hi = maxf(lo, hi)
+		if s >= ps:
+			p["phase"] = "active"
+			p["t"] = 0.0
+			p["bikers_s"] = {}
+			_fire(p, "active")
+			var lat: float = ch.d_p * ch.dir_sign
+			if absf(lat - gd) <= float(p.get("gap_w", roadblock_gap_w)) * 0.5 - 0.3:
+				block_results.append("through")
+				ch.add_charge(10.0)
+				ch.cue("whoosh_down", ch.bike.global_position + Vector3(0.0, 1.0, 0.0), -2.0)
+				if ch.hud:
+					ch.hud.popup(BikeCombatData.T_ROADBLOCK_THROUGH, CombatHUD.GOLD, 1.2)
+			else:
+				block_results.append("hit")
+				var at: Vector3 = ch.bike.global_position + Vector3(0.0, 0.8, 0.0)
+				Impact.hit(ch, "heavy", {"pos": at, "dir": -Vector3(ch.p_fwd.x, 0.0, ch.p_fwd.y), "fx": ch.fx, "shake_fn": ch.bike.add_camera_shake,
+					"cues": [["metal_slam", 0.0]]})
+				Impact.particles(ch, "debris", at, Vector3.UP, 1.2, ch.fx)
+				ch.cue("glass_crack", at, -2.0)
+				if ch.combat.damage(roadblock_dmg, "roadblock"):
+					ch.bike.current_speed_ms *= 0.3
+				if ch.hud:
+					ch.hud.popup(BikeCombatData.T_ROADBLOCK_HIT, CombatHUD.WARN, 1.4)
+	elif ph == "active":
+		p["t"] = float(p["t"]) + delta
+		var seen: Dictionary = p["bikers_s"]
+		for b: Variant in ch.bikers:
+			var e: BikerEnemy = b as BikerEnemy
+			if e == null or not is_instance_valid(e) or not e.is_active() or seen.has(e):
+				continue
+			var es: float = ch.route.project(e.pos2, ps, 30.0).x if ch.route else 0.0
+			if absf(es - ps) < 1.5:
+				seen[e] = true
+				if e.kind != "pickup" and seen.size() % 3 == 1:
+					e.crash("roadblock", -ch.p_fwd * 5.0)
+		if s > ps + 25.0 and (ch.d_lo > -INF or ch.d_hi < INF):
+			ch.d_lo = -INF
+			ch.d_hi = INF
+		if float(p["t"]) > 8.0:
+			p["phase"] = "done"
+			_fire(p, "done")
 
 
 # ----- wrong way: a few cars the other way -----
@@ -398,7 +639,8 @@ func _oncoming(ps: float, _ln: float) -> void:
 				continue
 			if not c.active and c.kind == RoamTraffic.Kind.CAR and spare == null:
 				spare = c
-			elif c.active and (c.pos - ch.p_pos).dot(ch.p_fwd) < 0.0 and c.pos.distance_to(ch.p_pos) > far_d 					and not ch.in_view(Vector3(c.pos.x, ch.bike.global_position.y + 1.0, c.pos.y)):
+			elif c.active and (c.pos - ch.p_pos).dot(ch.p_fwd) < 0.0 and c.pos.distance_to(ch.p_pos) > far_d \
+					and not ch.in_view(Vector3(c.pos.x, ch.bike.global_position.y + 1.0, c.pos.y)):
 				far_d = c.pos.distance_to(ch.p_pos)
 				far = c
 		if spare == null:
@@ -419,6 +661,8 @@ func _tick_melons(p: Dictionary, s: float, ps: float, delta: float) -> void:
 		truck_s = minf(s + 75.0, ps)
 		truck_d = 1.5
 		truck_v = BikeCombatData.TRUCK_SPEED
+		truck_tip = 0.0
+		tip_t = -1.0
 		truck.visible = true
 		truck_gate.rotation.x = 0.0
 		_place_truck()
@@ -431,17 +675,46 @@ func _tick_melons(p: Dictionary, s: float, ps: float, delta: float) -> void:
 			p["phase"] = "active"
 			p["t"] = 0.0
 			_fire(p, "active")
-			_drop_melons()
+			_tip_over()
 	elif p["phase"] == "active":
 		p["t"] = float(p["t"]) + delta
-		truck_v = minf(truck_v + 6.0 * delta, 24.0)
+		if tip_t >= 0.0:
+			tip_t += delta
+			var u: float = clampf(tip_t / TIP_S, 0.0, 1.0)
+			truck_tip = u * u                  # it falls faster and faster onto its side
+			if u >= 0.55 and melon_t < 0.0 and p.get("spilled", 0) == 0:
+				p["spilled"] = 1
+				_drop_melons()
+			if u >= 1.0 and tip_t < TIP_S + delta * 1.5:
+				var at: Vector3 = truck.global_position + Vector3(0.0, 0.6, 0.0)
+				Impact.particles(ch, "dust_ring", truck.global_position, Vector3.UP, 1.8, ch.fx)
+				Impact.particles(ch, "debris", at, Vector3.UP, 1.4, ch.fx)
+				ch.cue("bin_crash", at, 3.0)
+				ch.cue("impact_heavy", at, 2.0)
+				ch.bike.add_camera_shake(0.45)
+		truck_v = maxf(0.0, truck_v - TRUCK_SLIDE_DECEL * delta)
 		truck_s += truck_v * delta * ch.dir_sign
 		truck_gate.rotation.x = minf(truck_gate.rotation.x + delta * 6.0, 1.5)
+		if truck_tip >= 1.0 and truck_v > 0.5 and _spark_t <= 0.0:
+			_spark_t = 0.1
+			Impact.particles(ch, "sparks", truck.global_position + Vector3(0.0, 0.3, 0.0), Vector3(0.0, 0.5, 0.0), 1.0, ch.fx)
 		_place_truck()
-		if float(p["t"]) > BikeCombatData.MELON_S + 0.5:
+		if float(p["t"]) > BikeCombatData.MELON_S + 0.5 and (truck_s - s) * ch.dir_sign < -25.0:
 			p["phase"] = "done"
+			p.erase("spilled")
 			_fire(p, "done")
 			truck.visible = false
+
+
+## The bump: the preview cut on the truck and the tip over in slow motion.
+func _tip_over() -> void:
+	tip_t = 0.0
+	ch.cue("horn", truck.global_position + Vector3(0.0, 1.5, 0.0), 2.0, 0.6)
+	ch.cue("impact_medium", truck.global_position, 0.0)
+	ch.slow_motion(TIP_SCALE, TIP_REAL_S, "tip")
+	_preview(truck, TIP_REAL_S)               # the cut lasts the whole tip: the truck on its side and the spill
+	if ch.hud:
+		ch.hud.popup(BikeCombatData.T_MELONS, CombatHUD.WARN, 1.6)
 
 
 func _place_truck() -> void:
@@ -450,11 +723,19 @@ func _place_truck() -> void:
 	var q: Vector2 = ch.route.world(clampf(truck_s, 0.0, ch.route.length), truck_d * ch.dir_sign)
 	var t: Vector2 = ch.route.tangent(clampf(truck_s, 0.0, ch.route.length)) * ch.dir_sign
 	var y: float = ch.bike.global_position.y + BikeChase.BIKE_FLOOR_OFFSET
-	truck.global_transform = Transform3D(Basis(Vector3.UP, atan2(-t.x, -t.y)), Vector3(q.x, y, q.y))
-	# the truck is an analytic obstacle: the player riding into it
+	# tipping onto its left side (into the lanes), about the left wheels' line
+	var roll: float = truck_tip * PI * 0.5
+	var b := Basis(Vector3.UP, atan2(-t.x, -t.y))
+	var pivot := Vector3(-TRUCK_HALF.x, 0.0, 0.0)
+	var local := Transform3D(Basis(Vector3(0.0, 0.0, 1.0), roll), Vector3.ZERO)
+	local = Transform3D(Basis(), pivot) * local * Transform3D(Basis(), -pivot)
+	truck.global_transform = Transform3D(b, Vector3(q.x, y, q.y)) * local
+	# the truck is an analytic obstacle: the player riding into it (upright, or lying in the lane)
 	var rel: Vector2 = ch.p_pos - q
 	var tr := Vector2(-t.y, t.x)
-	if absf(rel.dot(t)) < TRUCK_HALF.y + 0.9 and absf(rel.dot(tr)) < TRUCK_HALF.x + 0.4 and ch.combat.ram_cd <= 0.0:
+	var half_w: float = TRUCK_HALF.x + 0.4 + truck_tip * 0.5
+	var lat_c: float = -truck_tip * 0.9                 # on its side its footprint moves into the lane on its left
+	if absf(rel.dot(t)) < TRUCK_HALF.y + 0.9 and absf(rel.dot(tr) - lat_c) < half_w and ch.combat.ram_cd <= 0.0:
 		ch.combat.ram_cd = BikeCombatData.RAM_COOLDOWN
 		if ch.combat.damage(BikeCombatData.CRASH_DMG_MIN, "crash"):
 			ch.bike.current_speed_ms = minf(ch.bike.current_speed_ms, truck_v * 0.8)
@@ -464,22 +745,21 @@ func _place_truck() -> void:
 func _drop_melons() -> void:
 	melon_t = 0.0
 	melon_floor = ch.bike.global_position.y + BikeChase.BIKE_FLOOR_OFFSET
-	var tail: Vector3 = truck.global_transform * Vector3(0.0, 1.3, TRUCK_HALF.y)
 	var t: Vector2 = ch.route.tangent(clampf(truck_s, 0.0, ch.route.length)) * ch.dir_sign
 	var r := Vector2(-t.y, t.x)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = ch.chase_seed * 31 + 7
+	var bed: Vector3 = truck.global_transform * Vector3(0.0, 1.2, 0.6)
 	for i: int in BikeCombatData.MELON_N:
-		var fwd: float = truck_v * rng.randf_range(0.15, 0.55)
-		var side: float = rng.randf_range(-4.5, 3.0)
-		melon_pos[i] = tail + Vector3(r.x, 0.0, r.y) * rng.randf_range(-0.8, 0.8) + Vector3(0.0, rng.randf_range(0.0, 0.5), 0.0)
-		melon_vel[i] = Vector3(t.x * fwd + r.x * side, rng.randf_range(0.5, 3.0), t.y * fwd + r.y * side)
+		var along: float = rng.randf_range(-2.4, 2.4)
+		var fwd: float = truck_v * rng.randf_range(0.3, 0.9) + rng.randf_range(-1.5, 3.0)
+		var side: float = -rng.randf_range(1.0, 7.5)          # out of the open bed, across the lanes (to the left)
+		melon_pos[i] = bed + Vector3(t.x, 0.0, t.y) * along + Vector3(r.x, 0.0, r.y) * rng.randf_range(-0.6, 0.6) \
+			+ Vector3(0.0, rng.randf_range(-0.2, 0.6), 0.0)
+		melon_vel[i] = Vector3(t.x * fwd + r.x * side, rng.randf_range(0.5, 4.0), t.y * fwd + r.y * side)
 		melon_on[i] = 1
 	melon_mm.visible = true
-	ch.cue("horn", tail, 2.0, 0.6)
-	ch.cue("crate_smash", tail, 0.0)
-	if ch.hud:
-		ch.hud.popup(BikeCombatData.T_MELONS, CombatHUD.WARN, 1.6)
+	ch.cue("crate_smash", bed, 2.0)
 
 
 func _tick_melon_balls(delta: float) -> void:
@@ -487,6 +767,8 @@ func _tick_melon_balls(delta: float) -> void:
 	var hw: float = (ch.route.half_width if ch.route else BikeCombatData.ROAD_HALF) + 1.2
 	var any: bool = false
 	var mm: MultiMesh = melon_mm.multimesh
+	_kerb_i = (_kerb_i + 1) % 4
+	var mr2: float = BikeCombatData.MELON_R * BikeCombatData.MELON_R
 	for i: int in melon_on.size():
 		if melon_on[i] == 0:
 			continue
@@ -500,7 +782,7 @@ func _tick_melon_balls(delta: float) -> void:
 			v.y = absf(v.y) * 0.45 if absf(v.y) > 1.2 else 0.0
 			v.x *= 1.0 - 0.35 * delta
 			v.z *= 1.0 - 0.35 * delta
-		if ch.route:
+		if ch.route and i % 4 == _kerb_i:      # the kerb check, a quarter of the melons each frame
 			var pr: Vector2 = ch.route.project(Vector2(p.x, p.z), truck_s, 60.0)
 			if absf(pr.y) > hw:   # off the kerb: bounce back
 				var n2: Vector2 = ch.route.right(pr.x) * signf(pr.y)
@@ -516,13 +798,14 @@ func _tick_melon_balls(delta: float) -> void:
 			continue
 		var spin: float = melon_t * 9.0 + float(i)
 		mm.set_instance_transform(i, Transform3D(Basis(Vector3(1.0, 0.0, 0.3).normalized(), spin).scaled(Vector3(1.0, 0.85, 1.15)), p))
-		var p2 := Vector2(p.x, p.z)
+		var dx: float = p.x - ch.p_pos.x
+		var dz: float = p.z - ch.p_pos.y
 		# the player
-		if ch.state == "running" and p2.distance_to(ch.p_pos) < BikeCombatData.MELON_R and absf(p.y - melon_floor) < 1.2:
+		if ch.state == "running" and dx * dx + dz * dz < mr2 and absf(p.y - melon_floor) < 1.2:
 			melon_on[i] = 0
 			mm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ZERO), p))
 			melon_hits += 1
-			if ch.combat.damage(BikeCombatData.MELON_DMG, "melon"):
+			if ch.combat.damage(melon_dmg, "melon"):
 				ch.bike.current_speed_ms *= 0.8
 			ch.bike.add_camera_shake(0.5)
 			_splat(p)
@@ -530,6 +813,7 @@ func _tick_melon_balls(delta: float) -> void:
 				ch.hud.popup(BikeCombatData.T_MELON_HIT, CombatHUD.WARN, 0.8)
 			continue
 		# the bikers (a crash: takedown "melon")
+		var p2 := Vector2(p.x, p.z)
 		for b: Variant in ch.bikers:
 			var e: BikerEnemy = b as BikerEnemy
 			if e == null or not is_instance_valid(e) or not e.is_active():
@@ -595,8 +879,8 @@ func _build_truck() -> void:
 		sign.rotation.y = -sx * PI * 0.5
 		truck.add_child(sign)
 	var melon_mat: StandardMaterial3D = CineFX._mat(Color("#2E7D32"), 0.6)
-	for i: int in 9:
-		CineFX._sphere(truck, "Load", 0.3, Vector3(-0.7 + 0.7 * float(i % 3), 1.25 + 0.25 * float(i / 6), -0.6 + 1.3 * float(i / 3)), melon_mat, Vector3(1.0, 0.85, 1.15))
+	for i: int in 12:
+		CineFX._sphere(truck, "Load", 0.3, Vector3(-0.7 + 0.7 * float(i % 3), 1.25 + 0.25 * float(i / 9), -0.9 + 1.0 * float(i / 3)), melon_mat, Vector3(1.0, 0.85, 1.15))
 	truck_gate = Node3D.new()
 	truck_gate.name = "Tailgate"
 	truck_gate.position = Vector3(0.0, 1.0, 3.15)
@@ -614,8 +898,8 @@ func _build_melons() -> void:
 	var sm := SphereMesh.new()
 	sm.radius = MELON_RAD
 	sm.height = MELON_RAD * 2.0
-	sm.radial_segments = 12
-	sm.rings = 6
+	sm.radial_segments = 10
+	sm.rings = 5
 	mm.mesh = sm
 	mm.instance_count = BikeCombatData.MELON_N
 	melon_mm.multimesh = mm
@@ -663,33 +947,64 @@ func _make_splash(i: int) -> CPUParticles3D:
 	return p
 
 
-func _build_barrier(p: Dictionary) -> void:
+## The crane on the left kerb, its jib over the road, the steel beam on two cables (it starts BEAM_TOP high), guide rails
+## at both ends, the slow gap by the right curb (cones), the warning signs. Returns the beam node.
+func _build_barrier(p: Dictionary) -> Node3D:
 	var s: float = float(p["s"])
 	var hw: float = _hw()
 	var root := Node3D.new()
-	root.name = "Barrier"
+	root.name = "CraneBeam"
 	root.top_level = true
 	add_child(root)
-	var xf: Transform3D = route_xf(s, 0.0)
-	root.global_transform = xf
+	root.global_transform = route_xf(s, 0.0)
 	var yel: Material = CineFX._mat(Color("#F2C230"), 0.6)
 	var blk: Material = CineFX._mat(Color("#1A1A1A"), 0.6)
-	var post: Material = PropBuilder.steel()
+	var steel: Material = PropBuilder.steel()
 	var x0: float = -hw - 0.3
 	var x1: float = hw - BikeCombatData.BARRIER_GAP_W
-	CharacterBuilder._box(root, Vector3(x0, BikeCombatData.BARRIER_Y * 0.5, 0.0), Vector3(0.18, BikeCombatData.BARRIER_Y + 0.2, 0.18), post)
-	CharacterBuilder._box(root, Vector3(x1 + 0.1, BikeCombatData.BARRIER_Y * 0.5, 0.0), Vector3(0.14, BikeCombatData.BARRIER_Y, 0.14), post)
-	var n: int = 10
-	var w: float = (x1 - x0) / float(n)
+	var top: float = BEAM_TOP + 4.0
+	# the crane: a yellow tower behind the left kerb, the jib out over the road, a counterweight, a beacon
+	var tx: float = x0 - 1.6
+	CharacterBuilder._box(root, Vector3(tx, top * 0.5, 0.0), Vector3(0.9, top, 0.9), yel)
+	for k: int in 6:
+		CharacterBuilder._box(root, Vector3(tx, 1.0 + float(k) * (top / 6.0), 0.0), Vector3(0.95, 0.08, 0.95), blk)
+	CharacterBuilder._box(root, Vector3((tx + x1) * 0.5 + 0.5, top + 0.35, 0.0), Vector3(x1 - tx + 2.5, 0.6, 0.6), yel)
+	CharacterBuilder._box(root, Vector3(tx - 2.2, top + 0.2, 0.0), Vector3(1.6, 1.2, 1.2), CineFX._mat(Color("#55585E"), 0.8))
+	CineFX._box(root, "Beacon", Vector3(0.3, 0.3, 0.3), Vector3(tx, top + 0.9, 0.0), _hazard)
+	# guide rails at both ends of the beam (the sparks fly off them)
+	for gx: float in [x0 - 0.15, x1 + 0.25]:
+		CharacterBuilder._box(root, Vector3(gx, BEAM_TOP * 0.5 + 0.3, 0.0), Vector3(0.12, BEAM_TOP + 0.6, 0.3), steel)
+	# the beam (an I-beam with hazard stripes and a red glowing strip), on its cables
+	var beam := Node3D.new()
+	beam.name = "Beam"
+	root.add_child(beam)
+	var w: float = x1 - x0
+	var mid: float = (x0 + x1) * 0.5
+	CharacterBuilder._box(beam, Vector3(mid, 0.12, 0.0), Vector3(w, 0.06, 0.32), steel)
+	CharacterBuilder._box(beam, Vector3(mid, -0.12, 0.0), Vector3(w, 0.06, 0.32), steel)
+	CharacterBuilder._box(beam, Vector3(mid, 0.0, 0.0), Vector3(w, 0.24, 0.06), steel)
+	var n: int = 8
 	for i: int in n:
-		CharacterBuilder._box(root, Vector3(x0 + w * (float(i) + 0.5), BikeCombatData.BARRIER_Y, 0.0), Vector3(w, 0.16, 0.12), yel if i % 2 == 0 else blk)
-	CineFX._box(root, "Lamp", Vector3(0.16, 0.16, 0.16), Vector3(x0, BikeCombatData.BARRIER_Y + 0.25, 0.0), _hazard)
+		CharacterBuilder._box(beam, Vector3(x0 + w * (float(i) + 0.5) / float(n), 0.0, 0.17), Vector3(w / float(n), 0.2, 0.02), yel if i % 2 == 0 else blk)
+	CineFX._box(beam, "Glow", Vector3(w, 0.05, 0.03), Vector3(mid, -0.16, 0.17), _hazard)
+	var cables := Node3D.new()
+	cables.name = "Cables"
+	cables.set_meta("top", top)
+	root.add_child(cables)
+	for cx: float in [x0 + w * 0.25, x0 + w * 0.75]:
+		CharacterBuilder._box(cables, Vector3(cx, 0.5, 0.0), Vector3(0.04, 1.0, 0.04), blk)
+	beam.set_meta("cables", cables)
 	# the slow gap: cones funnel to the right curb
-	for k: int in 4:
-		_cone(root, Vector3(x1 + 0.1, 0.0, 2.0 + 2.0 * float(k)))
-		_cone(root, Vector3(hw + 0.4, 0.0, 2.0 + 2.0 * float(k)))
+	for k2: int in 4:
+		_cone(root, Vector3(x1 + 0.1, 0.0, 2.0 + 2.0 * float(k2)))
+		_cone(root, Vector3(hw + 0.4, 0.0, 2.0 + 2.0 * float(k2)))
 	for warn: float in [BikeCombatData.BARRIER_WARN_M, BikeCombatData.BARRIER_WARN_M * 0.5]:
 		_sign(route_xf(s - warn, hw + 0.8), BikeCombatData.T_BARRIER_SIGN)
+	beam.position.y = BEAM_TOP
+	beam.set_meta("h", BEAM_TOP)
+	cables.position.y = BEAM_TOP
+	cables.scale = Vector3(1.0, top - BEAM_TOP, 1.0)
+	return beam
 
 
 func _build_wrong_way(p: Dictionary) -> void:
@@ -723,32 +1038,101 @@ func _build_wrong_way(p: Dictionary) -> void:
 		_arrow(route_xf(a, hw * 0.55))
 
 
-func _build_ramp(p: Dictionary) -> void:
+## The broken road gap across the whole road at s: the lifted slab of its near edge (the ramp), the dark hole GAP_LEN long,
+## broken asphalt chunks on its edges, amber-lit barriers on both kerbs, a warning sign. Returns the root (the preview's
+## target).
+func _build_gap(p: Dictionary) -> Node3D:
 	var s: float = float(p["s"])
-	var d: float = float(p.get("d", 1.4))
+	var hw: float = _hw()
 	var root := Node3D.new()
-	root.name = "SandRamp"
+	root.name = "BrokenRoad"
 	root.top_level = true
 	add_child(root)
-	root.global_transform = route_xf(s, d)
-	var sand: StandardMaterial3D = CineFX._mat(Color("#D9B26F"), 0.95)
+	root.global_transform = route_xf(s, 0.0)
+	var asphalt: StandardMaterial3D = CineFX._mat(Color("#3A3A40"), 0.95)
+	var hole := StandardMaterial3D.new()
+	hole.albedo_color = Color(0.02, 0.02, 0.025)
+	hole.roughness = 1.0
+	hole.set_meta("vice_done", true)
 	var ramp := MeshInstance3D.new()
-	ramp.name = "Ramp"
+	ramp.name = "Slab"
 	var pm := PrismMesh.new()
 	pm.left_to_right = 1.0
-	pm.size = Vector3(4.0, 0.9, 2.4)      # rotated: 4 m long up to its lip at s, 2.4 m wide
+	pm.size = Vector3(3.6, 0.75, 2.0 * hw + 0.4)
 	ramp.mesh = pm
-	ramp.material_override = sand
+	ramp.material_override = asphalt
 	ramp.rotation = Vector3(0.0, PI * 0.5, 0.0)
-	ramp.position = Vector3(0.0, 0.45, 2.0)
+	ramp.position = Vector3(0.0, 0.375, 1.8)
 	root.add_child(ramp)
+	CharacterBuilder._box(root, Vector3(0.0, 0.012, -GAP_LEN * 0.5), Vector3(2.0 * hw + 0.6, 0.02, GAP_LEN), hole)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(s)
+	for k: int in 10:
+		var x: float = -hw + (2.0 * hw) * (float(k) + 0.5) / 10.0
+		for edge: float in [0.0, -GAP_LEN]:
+			var chunk: MeshInstance3D = CharacterBuilder._box(root, Vector3(x, 0.08, edge + rng.randf_range(-0.3, 0.3)), Vector3(0.7, 0.18, 0.5), asphalt)
+			chunk.rotation = Vector3(rng.randf_range(-0.4, 0.4), rng.randf_range(-0.6, 0.6), rng.randf_range(-0.3, 0.3))
 	for sx: float in [-1.0, 1.0]:
-		CharacterBuilder._cyl(root, Vector3(sx * 1.4, 0.7, 0.4), 0.02, 0.02, 1.4, PropBuilder.steel())
-		CineFX._box(root, "Flag", Vector3(0.02, 0.3, 0.45), Vector3(sx * 1.4, 1.25, 0.6), CineFX._glow_mat(Color(1.0, 0.45, 0.1), 1.5))
-	var edge: float = _hw() - d                # the right kerb seen from the ramp
-	for k: int in 3:   # the construction site beside it: sand piles and a fence
-		CineFX._sphere(root, "Pile", 1.1, Vector3(edge + 2.6 + 1.2 * float(k), 0.0, -2.0 + 2.4 * float(k)), sand, Vector3(1.4, 0.55, 1.2))
-	CharacterBuilder._box(root, Vector3(edge + 1.3, 0.9, 0.0), Vector3(0.08, 1.8, 10.0), CineFX._mat(Color("#2D6CB5"), 0.7))
+		for z: float in [0.5, -GAP_LEN * 0.5, -GAP_LEN - 0.5]:
+			CharacterBuilder._box(root, Vector3(sx * (hw + 0.5), 0.5, z), Vector3(0.25, 1.0, 1.6), CineFX._mat(Color("#E8282B"), 0.6))
+			CineFX._box(root, "Lamp", Vector3(0.18, 0.18, 0.18), Vector3(sx * (hw + 0.5), 1.15, z), _hazard)
+	_sign(route_xf(s - GAP_PREVIEW_M * 0.6, hw + 0.8), BikeCombatData.T_GAP_SIGN)
+	return root
+
+
+## The police roadblock at s: two police cars angled across the road and barricades, a gap of roadblock_gap_w at gap_d,
+## lightbars blinking red and blue, yellow arrows into the gap. Returns the root (the preview's target).
+func _build_roadblock(p: Dictionary) -> Node3D:
+	var s: float = float(p["s"])
+	var hw: float = _hw()
+	var gd: float = float(p.get("gap_d", -1.6))
+	var gw: float = roadblock_gap_w
+	p["gap_w"] = gw                           # frozen: the hit window always matches the gap that was built
+	var root := Node3D.new()
+	root.name = "Roadblock"
+	root.top_level = true
+	add_child(root)
+	root.global_transform = route_xf(s, 0.0)
+	var white: Material = PropBuilder.paint(Color("#F2F2F0"))
+	var blue: Material = PropBuilder.paint(Color("#1F4FB5"))
+	var stripe_r: Material = CineFX._mat(Color("#E8282B"), 0.6)
+	var stripe_w: Material = CineFX._mat(Color("#F4F6F8"), 0.6)
+	var g0: float = gd - gw * 0.5
+	var g1: float = gd + gw * 0.5
+	# the blocked stretches: [-hw - 0.5, g0] and [g1, hw + 0.5]
+	for seg: Vector2 in [Vector2(-hw - 0.6, g0), Vector2(g1, hw + 0.6)]:
+		var w: float = seg.y - seg.x
+		if w < 0.4:
+			continue
+		var cx: float = (seg.x + seg.y) * 0.5
+		if w > 3.4:                            # a police car angled across it
+			var car := Node3D.new()
+			car.name = "PoliceCar"
+			root.add_child(car)
+			PropBuilder.build_car(car, Color("#F2F2F0"), true)
+			car.position = Vector3(cx, 0.0, -1.5)
+			car.rotation.y = PI * 0.5 + (0.35 if cx < gd else -0.35)
+			car.scale = Vector3(1.0, 1.0, minf(1.0, (w + 0.6) / 4.4))
+			CharacterBuilder._box(car, Vector3(0.0, 0.95, 0.0), Vector3(1.9, 0.12, 4.0), blue)
+			CineFX._box(car, "BarR", Vector3(0.5, 0.14, 0.22), Vector3(-0.3, 1.58, 0.0), _bar_red)
+			CineFX._box(car, "BarB", Vector3(0.5, 0.14, 0.22), Vector3(0.3, 1.58, 0.0), _bar_blue)
+		var k: int = maxi(1, int(round(w / 1.2)))
+		for j: int in k:
+			var x: float = seg.x + w * (float(j) + 0.5) / float(k)
+			CharacterBuilder._box(root, Vector3(x, 0.45, 0.6), Vector3(w / float(k) - 0.05, 0.9, 0.4), stripe_r if j % 2 == 0 else stripe_w)
+			CharacterBuilder._box(root, Vector3(x, 0.05, 0.6), Vector3(0.3, 0.1, 0.9), white)
+	# the gap: yellow arrows on its posts and on the road before it
+	for gx: float in [g0, g1]:
+		CharacterBuilder._box(root, Vector3(gx, 0.8, 0.6), Vector3(0.12, 1.6, 0.12), white)
+		CineFX._box(root, "GapLamp", Vector3(0.22, 0.22, 0.22), Vector3(gx, 1.7, 0.6), _arrow_mat)
+	for a: float in [8.0, 16.0, 24.0]:
+		var ar := Node3D.new()
+		ar.name = "GapArrow"
+		root.add_child(ar)
+		ar.position = Vector3(gd, 0.03, a)
+		for kx: float in [-1.0, 1.0]:
+			CineFX._box(ar, "Bar", Vector3(0.22, 0.04, 1.3), Vector3(kx * 0.36, 0.0, 0.0), _arrow_mat, Vector3(0.0, kx * 0.75, 0.0))
+	return root
 
 
 func _build_drift(p: Dictionary) -> void:

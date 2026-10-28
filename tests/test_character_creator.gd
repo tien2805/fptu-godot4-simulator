@@ -7,7 +7,7 @@
 # Run:  godot --headless --path . --script tests/test_character_creator.gd
 extends SceneTree
 
-const TMP: String = "user://test_creator_save.cfg"
+var TMP: String = "user://test_creator_save_%d.cfg" % OS.get_process_id()
 var fails: Array[String] = []
 var frames: int = 0
 var cc: Node3D

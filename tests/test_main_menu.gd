@@ -16,9 +16,9 @@ var started: bool = false
 var sm: Node
 var fx: Node
 var sd: Node
-const TMP_SAVE: String = "user://test_main_menu_story.cfg"
-const TMP_UNLOCKS: String = "user://test_main_menu_unlocks.cfg"
-const TMP_CHAPTERS: String = "user://test_main_menu_chapters.cfg"
+var TMP_SAVE: String = "user://test_main_menu_story_%d.cfg" % OS.get_process_id()
+var TMP_UNLOCKS: String = "user://test_main_menu_unlocks_%d.cfg" % OS.get_process_id()
+var TMP_CHAPTERS: String = "user://test_main_menu_chapters_%d.cfg" % OS.get_process_id()
 
 func _initialize() -> void:
 	for pair: Array in [["StageManager", "res://scripts/StageManager.gd"], ["GameFX", "res://scripts/GameFX.gd"]]:
@@ -128,6 +128,10 @@ func _process(_d: float) -> bool:
 			if rnd == null or rnd.text != "Hù dọa ngẫu nhiên":
 				_fail("bảng cài đặt thiếu ô Hù dọa ngẫu nhiên")
 				return true
+			var easy: CheckButton = sp.find_child("EasyModeCheck", true, false) as CheckButton
+			if easy == null or easy.text != "Chế độ Dễ":
+				_fail("bảng cài đặt thiếu ô Chế độ Dễ (Q6)")
+				return true
 			if opt.item_count != 2 or opt.get_item_text(0) != "Vice City" or opt.get_item_text(1) != "Cổ điển":
 				_fail("OptionButton phong cách phải có 'Vice City' / 'Cổ điển'")
 				return true
@@ -200,6 +204,9 @@ func _process(_d: float) -> bool:
 				return true
 			if box.find_child("RandomScaresCheck", true, false) == null:
 				_fail("menu tạm dừng thiếu ô Hù dọa ngẫu nhiên")
+				return true
+			if box.find_child("EasyModeCheck", true, false) == null:
+				_fail("menu tạm dừng thiếu ô Chế độ Dễ")
 				return true
 			if not root.get_visible_rect().grow(1.0).encloses(r2):
 				_fail("thẻ tạm dừng tràn khỏi viewport khi mở cài đặt: %s" % str(r2))

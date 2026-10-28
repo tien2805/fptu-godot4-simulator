@@ -6,7 +6,7 @@
 # Run:  godot --headless --path . --script tests/test_story_audio.gd
 extends SceneTree
 
-const TMP_DIR: String = "user://test_story_sfx/"
+var TMP_DIR: String = "user://test_story_sfx_%d/" % OS.get_process_id()
 var fails: Array[String] = []
 
 

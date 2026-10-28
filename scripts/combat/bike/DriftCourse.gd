@@ -1,183 +1,191 @@
 # File: res://scripts/combat/bike/DriftCourse.gd
-# The lap of the Day 2 drift duel (spec D2X-10, plan 2026-10-27-d2x-drift.md) as data: a closed racing line through
-# hand-placed map points (x east, z south as Vector2(x, z)), smoothed with a centripetal Catmull-Rom spline and sampled
-# every SAMPLE_M, with arc length s and a signed lateral offset d (+ = right of travel). Everything else is keyed to the
-# control points: the gates (checkpoints, in order), the drift zones, the cone gates and slaloms, the cone islands of the
-# hairpins, the barrier rows and the chevron signs; the rival's speed profile comes from the line's curvature.
-# rach_ham(): the measured "Cầu Rạch Hầm" lap (about 1.28 km): the bridge deck -> Nguyễn Xiển north with chicane A -> the
-# Y junction (Nguyễn Văn Tăng closed by a barrier) -> Nguyễn Xiển north-east to the open ground at its end -> the teardrop
-# hairpin H1 round a cone island -> back south with the wide S of chicane B -> over the bridge -> the south-bank lot
-# (slalom, hairpin H2, the sweeper) -> the finish on the bridge deck where it started. Static data only, no nodes.
+# The Day 2 race "Rạch Hầm GP" against Sói Xám as data (Wave 2 Day 2 rework, plan 2026-10-29-w2-day2.md; it replaces the
+# 2026-10-27 cone lap on open ground): ONE open racing path on real, lit roads, sampled every SAMPLE_M from a
+# centripetal Catmull-Rom spline through map points (x east, z south as Vector2(x, z)), with arc length s and a signed
+# lateral offset d (+ = right of travel). No wrap: s runs from the grid (0) to the finish line (`length`), then a short
+# run-off over the bridge.
+# rach_ham(): the grid mid-deck on the Rạch Hầm bridge, northbound -> Nguyễn Xiển north -> the Y junction (114 degree left
+# onto Nguyễn Văn Tăng) -> the lap line at Đường số 20 -> LAPS laps of the real loop Nguyễn Văn Tăng (west) -> the hairpin
+# onto Đỗ Thế Diện -> Đường số 20 -> back onto Nguyễn Văn Tăng -> out of the loop (left) after the last lap -> the Y
+# junction -> Nguyễn Xiển south -> the finish line mid-deck where the race started (about 2.1 km; measured 2026-10-29: the
+# line has 3-4 m clear on both sides, lamps 4-21 m off it, none within 45 m of the bridge).
+# Keyed to the path: lap_s (the lap lines), corners (drift corners: [s0, s1, dir (+1 right), label]), gates (reset
+# points every GATE_EVERY m), the prop data for DriftRaceProps (arches, arrows, crowds), the half width of the road, and
+# the rival's speed profile from the curvature. Static data only, no nodes.
 class_name DriftCourse
 extends RefCounted
 
 const SAMPLE_M: float = 2.0
 const WINDOW_M: float = 40.0
-## Corner radius below which the rival drifts visibly (m).
+const ANY_WINDOW_M: float = 220.0
+const GATE_EVERY: float = 110.0
+const LAPS: int = 2
+## Corner radius below which a stretch is a drift corner (the rival drifts it visibly).
 const DRIFT_R: float = 30.0
 ## The rival's speed profile: top speed, lateral grip (v = sqrt(A_LAT x R)), braking and acceleration (m/s, m/s^2).
-const RIVAL_V_TOP: float = 23.5
-const RIVAL_A_LAT: float = 20.0
-const RIVAL_BRAKE: float = 12.0
-const RIVAL_ACCEL: float = 10.0
-## ... and while the player is on his tail or ahead he drifts harder (fight profile).
-const RIVAL_A_LAT_FIGHT: float = 30.0
+## DriftRival scales it by its difficulty pace.
+const RIVAL_V_TOP: float = 27.0
+const RIVAL_A_LAT: float = 34.0
+const RIVAL_BRAKE: float = 13.0
+const RIVAL_ACCEL: float = 11.0
+## ... while the player is on his tail or ahead he takes the corners harder (fight profile).
+const RIVAL_A_LAT_FIGHT: float = 44.0
+## Rounding of sharp vertices (m before and after the vertex; capped at 45 % of the neighbour segments).
+const ROUND_M: float = 7.0
+const ROUND_MIN_DEG: float = 28.0
 
-## The lap's control points (map plane). Index comments name the features the tables below refer to.
-const RACH_HAM_PTS: Array[Vector2] = [
-	Vector2(2125.2, 153.0),    # 0  start / finish: bridge deck middle, northbound lane
-	Vector2(2119.7, 133.5),    # 1  bridge north end
-	Vector2(2108.0, 96.0),     # 2  Nguyễn Xiển north
-	Vector2(2101.2, 71.5),     # 3  chicane A in (east lane)
-	Vector2(2091.3, 52.7),     # 4  chicane A west flick
-	Vector2(2090.0, 31.3),     # 5  chicane A east flick
-	Vector2(2083.7, 12.5),     # 6  chicane A out (Số 19 / Số 21 crossing)
-	Vector2(2062.0, -63.0),    # 7  Nguyễn Xiển north
-	Vector2(2041.4, -135.5),   # 8  Y junction approach
-	Vector2(2041.0, -150.0),   # 9  the bend right (Nguyễn Văn Tăng closed on the left)
-	Vector2(2046.5, -163.0),   # 10
-	Vector2(2056.0, -174.5),   # 11 Nguyễn Xiển north-east
-	Vector2(2068.4, -186.9),   # 12
-	Vector2(2087.6, -217.1),   # 13
-	Vector2(2106.6, -258.3),   # 14
-	Vector2(2120.0, -289.9),   # 15 Nguyễn Xiển north-east, past the lamp posts: the teardrop hairpin H1 (island (2137.9, -336.6))
-	Vector2(2130.2, -313.8),   # 16
-	Vector2(2137.5, -321.6),   # 17 swing right onto the open ground
-	Vector2(2143.9, -327.6),   # 18
-	Vector2(2146.2, -333.1),   # 19 east of the island, heading north
-	Vector2(2146.3, -340.0),   # 20
-	Vector2(2141.5, -344.9),   # 21 the top, heading west
-	Vector2(2134.5, -345.0),   # 22
-	Vector2(2129.6, -340.2),   # 23 west of the island, heading south
-	Vector2(2127.3, -334.6),   # 24
-	Vector2(2127.4, -325.9),   # 25 swing back
-	Vector2(2126.9, -315.2),   # 26
-	Vector2(2117.2, -291.3),   # 27 H1 out, southbound lane
-	Vector2(2103.4, -259.7),   # 28
-	Vector2(2084.4, -218.9),   # 29
-	Vector2(2065.6, -189.1),   # 30
-	Vector2(2054.0, -175.5),   # 31 Nguyễn Xiển south-west
-	Vector2(2043.5, -166.5),   # 32
-	Vector2(2036.0, -154.0),   # 33 the bend left onto Nguyễn Xiển south
-	Vector2(2038.6, -135.2),   # 34
-	Vector2(2059.3, -62.2),    # 35 Nguyễn Xiển south
-	Vector2(2080.3, 14.0),     # 36
-	Vector2(2094.6, 60.5),     # 37 chicane B approach (west lane)
-	Vector2(2100.6, 82.0),     # 38 chicane B in
-	Vector2(2104.6, 103.0),    # 39 chicane B: swing west into the open stretch
-	Vector2(2115.0, 115.5),    # 40 chicane B: swing east
-	Vector2(2114.2, 126.0),    # 41 chicane B out, straight onto the deck
-	Vector2(2116.3, 134.5),    # 42 bridge north end, southbound
-	Vector2(2127.3, 173.5),    # 43 bridge south end
-	Vector2(2131.5, 187.0),    # 44 Nguyễn Xiển south of the bridge
-	Vector2(2136.0, 201.0),    # 45 the left onto the south-bank lot
-	Vector2(2145.0, 212.5),    # 46
-	Vector2(2158.0, 215.0),    # 47 slalom in
-	Vector2(2170.0, 212.0),    # 48 slalom
-	Vector2(2182.0, 215.0),    # 49 slalom
-	Vector2(2192.0, 213.5),    # 50 H2 in (cone island C2 at (2200, 203))
-	Vector2(2203.5, 212.4),    # 51 H2 south-east
-	Vector2(2209.0, 203.0),    # 52 H2 east
-	Vector2(2204.5, 194.8),    # 53 H2 north-east
-	Vector2(2194.0, 193.6),    # 54 H2 out, heading west
-	Vector2(2165.0, 193.0),    # 55 the back straight
-	Vector2(2147.0, 191.0),    # 56 the sweeper right
-	Vector2(2136.5, 185.0),    # 57
-	Vector2(2131.4, 175.5),    # 58 bridge south end, northbound
-]
-## Gates (checkpoints) at these control points, in order; the finish (the lap end) comes after the last one.
-const RACH_HAM_GATES: Array[int] = [6, 11, 14, 21, 34, 41, 45, 54]
-## Drift zones [first control point, last control point, label].
-const RACH_HAM_ZONES: Array = [
-	[3, 6, "CHICANE"], [8, 11, "CUA CHỮ Y"], [16, 27, "KẸP TÓC"], [31, 34, "CUA CHỮ Y"], [38, 41, "CHICANE"],
-	[46, 50, "SLALOM"], [50, 54, "KẸP TÓC"], [55, 58, "CUA VÒNG"]]
-## Cone gates: [control point, half width] (a cone each side of the racing line).
-const RACH_HAM_CONE_GATES: Array = [[3, 2.4], [4, 2.4], [5, 2.4], [39, 2.6], [40, 2.6], [41, 2.4]]
-## Slalom cones: [control point, lateral offset] (one cone beside the line: the line weaves round it).
-const RACH_HAM_SLALOM: Array = [[47, 1.8], [48, -1.8], [49, 1.8], [55, -2.2], [17, 2.6], [25, -2.6]]
-## Cone islands (hairpins): centre, radius of the cone ring.
-const RACH_HAM_ISLANDS: Array = [[Vector2(2137.9, -336.6), 3.5], [Vector2(2200.0, 203.0), 3.0]]
-## Barrier rows [from, to] (physical, block shortcuts): Nguyễn Văn Tăng's mouth at the Y junction, the median of the
-## south-bank loop, the lot's south and east edges.
-const RACH_HAM_BARRIERS: Array = [
-	[Vector2(2027.2, -142.7), Vector2(2020.8, -150.5)],
-	[Vector2(2152.0, 203.5), Vector2(2187.0, 203.5)],
-	[Vector2(2140.0, 224.0), Vector2(2214.0, 224.0)],
-	[Vector2(2218.0, 186.0), Vector2(2218.0, 220.0)],
-]
-## Chevron boards [position, control point whose travel direction they face]: on the two cone islands and on the barrier
-## closing Nguyễn Văn Tăng.
-const RACH_HAM_CHEVRONS: Array = [[Vector2(2137.9, -336.6), 16], [Vector2(2200.0, 203.0), 50], [Vector2(2024.0, -146.6), 33]]
+## Named places (labels of the corners and the arches).
+const P_GRID := Vector2(2123.5, 153.5)        # mid-deck of the Rạch Hầm bridge (grid and finish line)
+const P_BRIDGE_N := Vector2(2118.0, 134.1)
+const P_J1 := Vector2(2081.7, 12.8)           # Nguyễn Xiển / Đường Số 21
+const P_Y := Vector2(2034.0, -155.0)          # the Y junction Nguyễn Xiển / Nguyễn Văn Tăng
+const P_LAP := Vector2(1976.0, -107.0)        # Nguyễn Văn Tăng / Đường số 20: the lap line
+const P_HAIRPIN := Vector2(1717.0, 38.0)      # Nguyễn Văn Tăng / Đỗ Thế Diện
+const P_B := Vector2(1932.0, -159.0)          # Đỗ Thế Diện / Đường số 20
+## The loop after the lap line (Nguyễn Văn Tăng west, the hairpin, Đỗ Thế Diện, to Đường số 20); the lap line closes it.
+## The hairpin is a hand-placed arc of radius HAIRPIN_R (the bike's drift circle is 8.4 m) through the open plaza where
+## Đỗ Thế Diện leaves Nguyễn Văn Tăng: in on the plaza's south side, round to the mouth of Đỗ Thế Diện (measured free).
+const HAIRPIN_R: float = 10.0
+const LOOP_PTS: Array[Vector2] = [Vector2(1946.0, -80.0), Vector2(1905.0, -44.0), Vector2(1825.0, 24.0), Vector2(1816.0, 30.0),
+	Vector2(1803.0, 36.0), Vector2(1789.0, 40.0), Vector2(1775.0, 42.0), Vector2(1757.0, 43.0), Vector2(1745.0, 46.5),
+	Vector2(1736.0, 48.6), Vector2(1727.07, 49.07), Vector2(1723.24, 48.31), Vector2(1720.00, 46.14), Vector2(1717.83, 42.90), Vector2(1717.07, 39.07), Vector2(1717.83, 35.24), Vector2(1720.00, 32.00),
+	Vector2(1726.0, 25.5), Vector2(1774.0, -17.0), Vector2(1835.0, -71.0), Vector2(1883.0, -111.0), P_B, Vector2(1954.0, -133.0)]
+const LOOP_SIDE_FROM: int = 13            # LOOP_PTS from this index on are Đỗ Thế Diện / Đường số 20 (6 m)
+## Rounding (m before and after the vertex) of the junction corners: about the radius the junction has room for
+## (out-in-out); other sharp vertices take ROUND_M.
+const ROUND_AT: Array = [[P_Y, 16.0], [P_B, 11.0], [P_LAP, 9.5]]
+## Half widths (m) of the roads: Nguyễn Xiển / Nguyễn Văn Tăng 8 m, Đỗ Thế Diện / Đường số 20 6 m, the deck between its
+## parapets about 6 m.
+const HW_MAIN: float = 4.0
+const HW_SIDE: float = 3.0
+const HW_DECK: float = 3.0
+const RUNOFF_PTS: Array[Vector2] = [Vector2(2128.9, 173.0), Vector2(2134.5, 193.0)]
+const CORNER_LABELS: Array = [[P_Y, "CUA CHỮ Y"], [P_HAIRPIN, "KẸP TÓC"], [P_B, "CUA SỐ 20"], [P_LAP, "VÀO VÒNG"]]
 
-var pts := PackedVector2Array()        # sampled racing line (closed: the last sample equals the first)
+var pts := PackedVector2Array()        # sampled racing line (open), run-off included
 var cum := PackedFloat32Array()
-var length: float = 0.0
-var ctrl := PackedVector2Array()       # control points
-var ctrl_s := PackedFloat32Array()     # arc length of each control point
-var gates := PackedFloat32Array()      # s of each gate; the finish is `length`
-var zones: Array = []                  # [s0, s1, label]
-var cones: Array = []                  # Vector2 positions
-var barriers: Array = []               # [Vector2, Vector2]
-var chevrons: Array = []               # [Vector2, yaw]
-var islands: Array = []                # [Vector2, radius]
+var hw := PackedFloat32Array()         # road half width at each sample
+var length: float = 0.0                # the finish line (s)
+var total: float = 0.0                 # the last sample (run-off end)
+var ctrl := PackedVector2Array()       # control points after rounding
+var ctrl_s := PackedFloat32Array()
+var lap_s := PackedFloat32Array()      # s of each lap line crossing (LAPS of them) and of the loop exit
+var gates := PackedFloat32Array()      # reset points, in order (the finish is `length`)
+var corners: Array = []                # [s0, s1, dir (+1 right turn, -1 left), label]
+var arches: Array = []                 # [s, label facing riders along +s, label on the back]
+var arrows: Array = []                 # [s, turn dir, corner index]: yellow road arrows before each corner
+var crowds: Array = []                 # [s, side (+1 right of travel), count]
 var radius := PackedFloat32Array()     # corner radius at each sample (m, capped at 999)
 var speed := PackedFloat32Array()      # the rival's profile speed at each sample (m/s)
-var speed_fight := PackedFloat32Array()  # ... with RIVAL_A_LAT_FIGHT
+var speed_fight := PackedFloat32Array()
 
 
 static func rach_ham() -> DriftCourse:
 	var c := DriftCourse.new()
-	c.build(RACH_HAM_PTS, RACH_HAM_GATES, RACH_HAM_ZONES)
-	for g: Array in RACH_HAM_CONE_GATES:
-		var i: int = int(g[0])
-		var s: float = c.ctrl_s[i]
-		c.cones.append(c.world(s, float(g[1])))
-		c.cones.append(c.world(s, -float(g[1])))
-	for sl: Array in RACH_HAM_SLALOM:
-		c.cones.append(c.world(c.ctrl_s[int(sl[0])], float(sl[1])))
-	for isl: Array in RACH_HAM_ISLANDS:
-		c.islands.append([isl[0], float(isl[1])])
-		for k: int in 10:
-			var a: float = TAU * float(k) / 10.0
-			c.cones.append((isl[0] as Vector2) + Vector2(cos(a), sin(a)) * float(isl[1]))
-	for b: Array in RACH_HAM_BARRIERS:
-		c.barriers.append([b[0], b[1]])
-	for ch: Array in RACH_HAM_CHEVRONS:
-		c.chevrons.append([ch[0], c.yaw_at(c.ctrl_s[int(ch[1])])])   # the travel yaw there (the sign faces the rider)
+	var raw: Array[Vector2] = [P_GRID, P_BRIDGE_N, P_J1, P_Y, P_LAP]
+	var widths: Array[float] = [HW_DECK, HW_MAIN, HW_MAIN, HW_MAIN, HW_MAIN]
+	var marks: Array[int] = []             # raw indices of the lap line crossings
+	for lap: int in LAPS:
+		marks.append(raw.size() - 1)
+		for i: int in LOOP_PTS.size():
+			raw.append(LOOP_PTS[i])
+			widths.append(HW_MAIN if i < LOOP_SIDE_FROM else HW_SIDE)
+		raw.append(P_LAP)
+		widths.append(HW_MAIN)
+	marks.append(raw.size() - 1)          # the loop exit
+	var finish_i: int = raw.size() + 3
+	for p: Vector2 in [P_Y, P_J1, P_BRIDGE_N, P_GRID]:
+		raw.append(p)
+		widths.append(HW_MAIN)
+	widths[widths.size() - 2] = HW_DECK     # Nguyễn Xiển's last stretch is the deck: the bridge's north end to the grid
+	widths[widths.size() - 1] = HW_DECK
+	for p2: Vector2 in RUNOFF_PTS:
+		raw.append(p2)
+		widths.append(HW_DECK)
+	c.build(raw, widths, marks, finish_i)
 	return c
 
 
-## Samples the closed spline through `points`, then the gates, zones and the rival's speed profile.
-func build(points: Array[Vector2], gate_idx: Array[int], zone_rows: Array) -> void:
-	ctrl = PackedVector2Array(points)
+## Rounds the sharp vertices, samples the open spline, then laps, corners, gates, prop data and the rival's profile.
+func build(raw: Array[Vector2], widths: Array[float], lap_marks: Array[int], finish_i: int) -> void:
+	# rounding: each vertex turning more than ROUND_MIN_DEG becomes two points ROUND_M before and after it
+	var rp: Array[Vector2] = []
+	var rw: Array[float] = []
+	var map_i: Array[int] = []            # raw index -> first rounded index
+	for i: int in raw.size():
+		map_i.append(rp.size())
+		if i == 0 or i == raw.size() - 1:
+			rp.append(raw[i])
+			rw.append(widths[i])
+			continue
+		var a: Vector2 = raw[i - 1]
+		var b: Vector2 = raw[i]
+		var e: Vector2 = raw[i + 1]
+		var t_in: Vector2 = (b - a).normalized()
+		var t_out: Vector2 = (e - b).normalized()
+		var ang: float = absf(t_in.angle_to(t_out))
+		if rad_to_deg(ang) < ROUND_MIN_DEG:
+			rp.append(b)
+			rw.append(widths[i])
+			continue
+		var seg: float = minf(a.distance_to(b), b.distance_to(e))
+		if seg < 10.0:                       # a hand-placed arc (the hairpin): kept as it is
+			rp.append(b)
+			rw.append(widths[i])
+			continue
+		var want: float = ROUND_M
+		for ra: Array in ROUND_AT:
+			if (ra[0] as Vector2).distance_to(b) < 1.0:
+				want = float(ra[1])
+		var r: float = minf(want, seg * 0.45)
+		rp.append(b - t_in * r)
+		rw.append(widths[i - 1] if i > 0 else widths[i])
+		rp.append(b + t_out * r)
+		rw.append(widths[i])
+	ctrl = PackedVector2Array(rp)
 	var n: int = ctrl.size()
 	pts.clear()
-	ctrl_s.resize(n)
-	var total: float = 0.0
-	pts.append(ctrl[0])
 	cum.clear()
+	hw.clear()
+	ctrl_s.resize(n)
+	var acc: float = 0.0
+	pts.append(ctrl[0])
 	cum.append(0.0)
-	for i: int in n:
-		ctrl_s[i] = total
-		var p0: Vector2 = ctrl[(i - 1 + n) % n]
+	hw.append(rw[0])
+	for i: int in n - 1:
+		ctrl_s[i] = acc
+		var p0: Vector2 = ctrl[i - 1] if i > 0 else ctrl[0] * 2.0 - ctrl[1]
 		var p1: Vector2 = ctrl[i]
-		var p2: Vector2 = ctrl[(i + 1) % n]
-		var p3: Vector2 = ctrl[(i + 2) % n]
-		var seg: float = p1.distance_to(p2)
-		var steps: int = maxi(2, ceili(seg / SAMPLE_M))
+		var p2: Vector2 = ctrl[i + 1]
+		var p3: Vector2 = ctrl[i + 2] if i + 2 < n else ctrl[n - 1] * 2.0 - ctrl[n - 2]
+		var steps: int = maxi(2, ceili(p1.distance_to(p2) / SAMPLE_M))
 		for k: int in range(1, steps + 1):
 			var q: Vector2 = _catmull(p0, p1, p2, p3, float(k) / float(steps))
-			total += pts[pts.size() - 1].distance_to(q)
+			acc += pts[pts.size() - 1].distance_to(q)
 			pts.append(q)
-			cum.append(total)
-	length = total
-	gates.clear()
-	for gi: int in gate_idx:
-		gates.append(ctrl_s[gi])
-	zones.clear()
-	for z: Array in zone_rows:
-		zones.append([ctrl_s[int(z[0])], ctrl_s[int(z[1])], String(z[2])])
+			cum.append(acc)
+			hw.append(rw[i])
+	ctrl_s[n - 1] = acc
+	total = acc
+	length = _raw_s(map_i, finish_i)
+	lap_s.clear()
+	for m: int in lap_marks:
+		lap_s.append(_raw_s(map_i, m))
 	_profile()
+	_corners()
+	gates.clear()
+	var g: float = GATE_EVERY
+	while g < length - 30.0:
+		gates.append(g)
+		g += GATE_EVERY
+	_props()
+
+
+## s of a raw point (its rounded twin pair: the midpoint of the two).
+func _raw_s(map_i: Array[int], i: int) -> float:
+	var a: int = map_i[i]
+	var b: int = map_i[i + 1] - 1 if i + 1 < map_i.size() else ctrl.size() - 1
+	return (ctrl_s[a] + ctrl_s[b]) * 0.5
 
 
 ## Centripetal Catmull-Rom (alpha 0.5): no cusps or loops on uneven point spacing.
@@ -195,17 +203,18 @@ static func _catmull(p0: Vector2, p1: Vector2, p2: Vector2, p3: Vector2, t: floa
 	return b1 * ((t2 - tt) / (t2 - t1)) + b2 * ((tt - t1) / (t2 - t1))
 
 
-## Corner radius per sample (heading change over +/-4 m) and the rival's speed profiles: min(V_TOP, sqrt(a_lat x R)), then
-## a braking pass backwards and an acceleration pass forwards (around the closed lap twice).
+## Corner radius per sample (heading change over +/-4 m) and the rival's speed profiles: min(V_TOP, sqrt(a_lat x R)), then a
+## braking pass backwards and an acceleration pass forwards (open path: from a standing start on the grid).
 func _profile() -> void:
 	var m: int = pts.size()
 	radius.resize(m)
 	for i: int in m:
 		var s: float = cum[i]
-		var ta: Vector2 = tangent(fposmod(s - 4.0, length))
-		var tb: Vector2 = tangent(fposmod(s + 4.0, length))
+		var ta: Vector2 = tangent(maxf(s - 4.0, 0.0))
+		var tb: Vector2 = tangent(minf(s + 4.0, total))
 		var ang: float = absf(ta.angle_to(tb))
-		radius[i] = minf(999.0, 8.0 / maxf(ang, 1e-4))
+		var span: float = minf(s + 4.0, total) - maxf(s - 4.0, 0.0)
+		radius[i] = minf(999.0, span / maxf(ang, 1e-4))
 	speed = _speeds(RIVAL_A_LAT)
 	speed_fight = _speeds(RIVAL_A_LAT_FIGHT)
 
@@ -216,26 +225,84 @@ func _speeds(a_lat: float) -> PackedFloat32Array:
 	sp.resize(m)
 	for i: int in m:
 		sp[i] = minf(RIVAL_V_TOP, sqrt(a_lat * radius[i]))
-	for rep: int in 2:
-		for i2: int in range(m - 2, -1, -1):
-			var ds: float = cum[i2 + 1] - cum[i2]
-			sp[i2] = minf(sp[i2], sqrt(sp[i2 + 1] * sp[i2 + 1] + 2.0 * RIVAL_BRAKE * ds))
-		sp[m - 1] = minf(sp[m - 1], sp[0])
-	for rep2: int in 2:
-		for i3: int in range(1, m):
-			var ds2: float = cum[i3] - cum[i3 - 1]
-			sp[i3] = minf(sp[i3], sqrt(sp[i3 - 1] * sp[i3 - 1] + 2.0 * RIVAL_ACCEL * ds2))
-		sp[0] = minf(sp[0], sp[m - 1])
+	for i2: int in range(m - 2, -1, -1):
+		var ds: float = cum[i2 + 1] - cum[i2]
+		sp[i2] = minf(sp[i2], sqrt(sp[i2 + 1] * sp[i2 + 1] + 2.0 * RIVAL_BRAKE * ds))
+	for i3: int in range(1, m):
+		var ds2: float = cum[i3] - cum[i3 - 1]
+		sp[i3] = minf(sp[i3], sqrt(sp[i3 - 1] * sp[i3 - 1] + 2.0 * RIVAL_ACCEL * ds2))
 	return sp
+
+
+## Drift corners: stretches under DRIFT_R (gaps under 14 m merged), padded 12 m before and 6 m after, labelled by the
+## nearest named place.
+func _corners() -> void:
+	corners.clear()
+	var in_c: bool = false
+	var s0: float = 0.0
+	var s1: float = 0.0
+	for i: int in pts.size():
+		var tight: bool = radius[i] < DRIFT_R and cum[i] < length
+		if tight and not in_c:
+			if not corners.is_empty() and cum[i] - float(corners.back()[1]) < 12.0:   # padded windows overlap: one corner
+				var last: Array = corners.pop_back()
+				s0 = float(last[0])
+			else:
+				s0 = maxf(0.0, cum[i] - 12.0)
+			in_c = true
+		elif not tight and in_c:
+			in_c = false
+			s1 = minf(length, cum[i] + 6.0)
+			corners.append([s0, s1, 0.0, ""])
+	for c: Array in corners:
+		var a: Vector2 = tangent(float(c[0]))
+		var b: Vector2 = tangent(float(c[1]))
+		c[2] = 1.0 if a.cross(b) > 0.0 else -1.0     # x east, z south: a positive cross is a right turn
+		var mid: Vector2 = point((float(c[0]) + float(c[1])) * 0.5)
+		var best: float = 40.0
+		c[3] = "CUA GẮT"
+		for lb: Array in CORNER_LABELS:
+			var dd: float = (lb[0] as Vector2).distance_to(mid)
+			if dd < best:
+				best = dd
+				c[3] = String(lb[1])
+
+
+## Prop data: the arches (grid / finish, the Y junction, the lap line, the hairpin), the road arrows before every corner,
+## the pack's spots on the outside of the corners and along the grid.
+func _props() -> void:
+	arches.clear()
+	arrows.clear()
+	crowds.clear()
+	arches.append([0.0, "BẦY SÓI GP", "VỀ ĐÍCH"])
+	arches.append([s_near(P_Y, 300.0) - 26.0, "CUA CHỮ Y", "VỀ CẦU RẠCH HẦM"])
+	arches.append([lap_s[0] + 14.0, "VÒNG ĐUA", ""])
+	arches.append([s_near(P_HAIRPIN, lap_s[0] + 300.0) - 30.0, "KẸP TÓC", ""])
+	for ci: int in corners.size():
+		var c: Array = corners[ci]
+		for k: int in 3:
+			arrows.append([float(c[0]) - 4.0 - 9.0 * float(k), float(c[2]), ci])
+		var apex: float = (float(c[0]) + float(c[1])) * 0.5
+		if apex < lap_s[1] + 30.0:           # one pack per place (lap 2 rides past the same people)
+			crowds.append([apex, -float(c[2]), 7])
+	crowds.append([30.0, 1.0, 6])
+	crowds.append([30.0, -1.0, 6])
+	crowds.append([lap_s[0] + 150.0, 1.0, 5])
+	crowds.append([s_near(P_B, lap_s[0] + 500.0) - 120.0, -1.0, 5])
+
+
+## s of the path sample nearest to p, searching within ANY_WINDOW_M of s_hint.
+func s_near(p: Vector2, s_hint: float) -> float:
+	return project_any(p, s_hint).x
 
 
 func _seg(s: float) -> int:
 	return clampi(cum.bsearch(s, true) - 1, 0, pts.size() - 2)
 
 
-## s wrapped onto the lap.
+## s clamped onto the path (the old closed-lap API name).
 func wrap_s(s: float) -> float:
-	return fposmod(s, length)
+	return clampf(s, 0.0, total)
 
 
 func point(s: float) -> Vector2:
@@ -267,8 +334,11 @@ func yaw_at(s: float) -> float:
 
 
 func radius_at(s: float) -> float:
-	var i: int = _seg(wrap_s(s))
-	return radius[i]
+	return radius[_seg(wrap_s(s))]
+
+
+func half_width_at(s: float) -> float:
+	return hw[_seg(wrap_s(s))]
 
 
 func speed_at(s: float, fight: bool = false) -> float:
@@ -279,78 +349,81 @@ func speed_at(s: float, fight: bool = false) -> float:
 	return lerpf(sp[i], sp[i + 1], clampf((w - cum[i]) / span, 0.0, 1.0))
 
 
-## The drift zone at s (index into zones), -1 outside.
-func zone_at(s: float) -> int:
-	for i: int in zones.size():
-		var z: Array = zones[i]
-		if s >= float(z[0]) and s <= float(z[1]):
+## The lap at s: 0 before the first lap line, 1..LAPS on the laps, LAPS + 1 on the way back to the finish.
+func lap_at(s: float) -> int:
+	for i: int in lap_s.size():
+		if s < lap_s[i]:
+			return i
+	return lap_s.size()
+
+
+## The drift corner at s (index into corners), -1 outside.
+func corner_at(s: float) -> int:
+	for i: int in corners.size():
+		var c: Array = corners[i]
+		if s >= float(c[0]) and s <= float(c[1]):
 			return i
 	return -1
 
 
-## Closest point of the line to p as Vector2(s, d) over the whole lap (s in 0 .. length).
-func project_any(p: Vector2) -> Vector2:
-	var best_d2: float = INF
-	var best_i: int = 0
-	var best_u: float = 0.0
-	for i: int in pts.size() - 1:
-		var r: Vector3 = _seg_closest(p, i)
-		if r.z < best_d2:
-			best_d2 = r.z
-			best_i = i
-			best_u = r.y
-	return _result(p, best_i, best_u, 0.0)
+## The old closed-lap name of corner_at (drift zones).
+func zone_at(s: float) -> int:
+	return corner_at(s)
 
 
-## Closest point of the line to p as Vector2(s, d), searching only within `window` m of s_hint. s is unwrapped around
-## s_hint, so it can go below 0 behind the start line or past `length` over the finish.
+## Closest point of the line to p as Vector2(s, d), searching only within `window` m of s_hint (the path crosses the same
+## roads several times: never search it all).
 func project_near(p: Vector2, s_hint: float, window: float = WINDOW_M) -> Vector2:
-	var n: int = pts.size() - 1
-	var base: float = s_hint - wrap_s(s_hint)
 	var c: int = _seg(wrap_s(s_hint))
 	var steps: int = ceili(window / SAMPLE_M) + 1
 	var best_d2: float = INF
 	var best_i: int = c
 	var best_u: float = 0.0
-	var best_off: float = 0.0
-	for k: int in range(-steps, steps + 1):
-		var j: int = c + k
-		var off: float = base
-		if j < 0:
-			j += n
-			off -= length
-		elif j >= n:
-			j -= n
-			off += length
-		var r: Vector3 = _seg_closest(p, j)
-		if r.z < best_d2:
-			best_d2 = r.z
+	for j: int in range(maxi(0, c - steps), mini(pts.size() - 2, c + steps) + 1):
+		var r: Vector2 = _seg_closest(p, j)
+		if r.y < best_d2:
+			best_d2 = r.y
 			best_i = j
-			best_u = r.y
-			best_off = off
-	return _result(p, best_i, best_u, best_off)
+			best_u = r.x
+	return _result(p, best_i, best_u)
 
 
-func _result(p: Vector2, i: int, u: float, off: float) -> Vector2:
+## project_near over a wide window (after a teleport or far off the line).
+func project_any(p: Vector2, s_hint: float = 0.0) -> Vector2:
+	return project_near(p, s_hint, ANY_WINDOW_M)
+
+
+func _result(p: Vector2, i: int, u: float) -> Vector2:
 	var a: Vector2 = pts[i]
 	var b: Vector2 = pts[i + 1]
 	var t: Vector2 = (b - a).normalized()
 	var q: Vector2 = a.lerp(b, u)
-	return Vector2(off + cum[i] + (cum[i + 1] - cum[i]) * u, (p - q).dot(Vector2(-t.y, t.x)))
+	return Vector2(cum[i] + (cum[i + 1] - cum[i]) * u, (p - q).dot(Vector2(-t.y, t.x)))
 
 
-## Vector3(unused, u along segment i, squared distance) of the closest point of segment i to p.
-func _seg_closest(p: Vector2, i: int) -> Vector3:
+## Vector2(u along segment i, squared distance) of the closest point of segment i to p.
+func _seg_closest(p: Vector2, i: int) -> Vector2:
 	var a: Vector2 = pts[i]
 	var ab: Vector2 = pts[i + 1] - a
 	var l2: float = maxf(ab.length_squared(), 1e-6)
 	var u: float = clampf((p - a).dot(ab) / l2, 0.0, 1.0)
-	return Vector3(0.0, u, (a + ab * u).distance_squared_to(p))
+	return Vector2(u, (a + ab * u).distance_squared_to(p))
 
 
-## The tightest corner radius of the lap (tests).
+## The tightest corner radius of the race (tests).
 func min_radius() -> float:
 	var r: float = 999.0
-	for v: float in radius:
-		r = minf(r, v)
+	for i: int in pts.size():
+		if cum[i] <= length:
+			r = minf(r, radius[i])
 	return r
+
+
+## The rival's full-pace time from the grid to the finish (tests, tuning; standing start).
+func pace_time(fight: bool = false) -> float:
+	var t: float = 0.0
+	var s: float = 0.0
+	while s < length:
+		t += SAMPLE_M / maxf(speed_at(s + 1.0, fight), 2.0)
+		s += SAMPLE_M
+	return t

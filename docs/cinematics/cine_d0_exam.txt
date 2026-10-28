@@ -6,8 +6,8 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    two-shot from the side
-SHOT S2      0.600  static    over the hero's shoulder: Mr.T and the E1 photo
-SHOT S3      3.600  static    close: the hero, from Mr.T's side
+SHOT S2      0.600  ots       over hero onto mr_t
+SHOT S3      3.600  ots       over mr_t onto hero
 SHOT S4      7.000  static    wide: Phúc runs in
 SHOT S5      9.600  static    three-shot
 SHOT S6     11.000  static    from the front past them: the figure in the opening
@@ -18,6 +18,9 @@ SHOT S8     13.200  static    wide three-shot, deadpan tail
 SUB    0.400 -  3.600  Mr.T: Giỏi lắm em! Ảnh tai nghe này là bằng chứng rõ ràng.
 SUB    3.600 -  7.000  Mr.T: Thầy gửi Phòng Khảo thí ngay. Cảm ơn em, Bạn.
 SUB    8.800 - 10.500  Phúc: Ét o ét! Thi xong chưa?!
-SUB   10.900 - 12.400  Bạn: Xong lâu rồi mày ơi…
-SUB   13.400 - 16.600  Phúc: Thôi đi ăn mì đi, tao bao… à quên, tao hết tiền rồi.
-SUB   16.700 - 17.700  Bạn: …
+SUB   10.900 - 12.400  Bạn: Xong lâu rồi mày ơi...
+SUB   13.400 - 16.650  Phúc: Thôi đi ăn mì đi, tao bao... à quên, tao hết tiền rồi.
+SUB   16.700 - 17.700  Bạn: ...
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE   13.400  Phúc offers noodles, then has no money (shrug, facepalm)

@@ -6,7 +6,7 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  dolly     roadside wide: the scooter's headlight comes down the road at night
-SHOT S2      4.600  track     side tracking close: the protagonist rides, Anh Duy on the radio
+SHOT S2      4.600  push_in   push-in hero
 SHOT S3      9.300  track     behind the scooter: the road ahead to the bridge
 #
 # Subtitles (real start - end, speaker: line)
@@ -19,3 +19,6 @@ SUB   12.750 - 13.750  Bạn: ...Chạy lẹ thôi.
 #
 # Cards (real start - end, kind: what)
 CARD    0.300 - 12.750  screen: radio
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE   10.950  the Dịch: line translates nothing: Ừ. Hên xui.

@@ -47,9 +47,9 @@ func build() -> void:
 	look("phuc", 2.0, 4.5, Vector3(-0.3, 0.2, -1.5))
 	expr("phuc", 0.0, "done")
 	sfx_at(3.0, "sad_trombone", -10.0)
-	shot("S1", 0.0, "static", "wide: the protagonist on the phone, Phúc turns to the bench",
-		{"pos": Vector3(2.2, 1.55, -3.0), "look": Vector3(0.0, 1.0, 0.3), "fov": 48.0})
+	two_shot("S1", 0.0, "hero", "phuc", {"side": -1.0, "look_y": 1.0, "dist": 3.6})   # on the phone, Phúc turns to the bench
 	shot("S2", 2.9, "static", "close: Phúc on the bench, head low",
 		{"pos": Vector3(-0.3, 1.0, -0.6), "look": Vector3(-0.3, 0.9, 1.1), "fov": 40.0})
-	sub(0.4, 2.5, "hero", "Alo, thầy ạ… em có chuyện cần báo.")
-	sub(3.0, 1.4, "phuc", "…Ừ. Tao đáng bị vậy.")
+	sub(0.4, 2.5, "hero", "Alo, thầy ạ... em có chuyện cần báo.")
+	sub(3.0, 1.4, "phuc", "...Ừ. Tao đáng bị vậy.")
+	joke(3.0, "a sad trombone under Phúc's head-low line")

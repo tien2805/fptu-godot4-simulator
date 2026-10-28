@@ -18,12 +18,14 @@ extends SceneTree
 const GATE_MS: float = 3.0
 const WINDOW: int = 120
 const ENGAGE: int = 330                  # frames after the start before measuring (bikers caught up, traffic refilled)
-## Day 2 set pieces live in the window (the start at s 60; ~5.5 s in the player is near s 170): the police from s 80, a
-## drift zone, the melon truck dropping its load ~0.3 s before the window (the truck reaches s 213 at ~5.2 s).
+## Day 2 set pieces live in the window (the start at s 60; ~5.5 s in the player is near s 170): the police from s 80 (no
+## longer in the Day 2 layout, kept here as the worst case: 2 more riders), a drift zone, the melon truck tipping over
+## (Wave 2: its slow motion ends before the window) and its 100 melons rolling through the window, a roadblock ahead.
 const PERF_PIECES: Array = [
 	{"kind": "police", "s": 80.0, "end_s": 900.0, "dur": 25.0},
 	{"kind": "drift", "s": 130.0, "len": 60.0},
-	{"kind": "melons", "s": 213.0},
+	{"kind": "melons", "s": 175.0},
+	{"kind": "roadblock", "s": 420.0, "gap_d": 0.0},
 ]
 
 

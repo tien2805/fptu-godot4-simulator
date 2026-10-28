@@ -97,16 +97,15 @@ func build() -> void:
 	sfx_at(10.6, "ba_dum_tss", -5.0)
 	shot("S1", 0.0, "static", "wide: the canteen at noon, Linh pitches the plan, two identical clones eat behind",
 		{"pos": Vector3(-3.6, 1.7, 3.0), "look": Vector3(0.2, 1.1, -0.4), "fov": 52.0})
-	shot("S2", 3.0, "static", "close: Linh, sharp",
-		{"pos": Vector3(1.5, 1.6, 1.0), "look": Vector3(0.75, 1.5, 0.05), "fov": 38.0, "hand": 0.15})
+	ots_shot("S2", 3.0, "hero", "linh", {"side": -1.0, "hand": 0.15, "look_y": 1.2})   # Q5: Linh, sharp
 	shot("S3", GAG - 0.2, "static", "front: the flyer on the left, Phúc turned to it, Linh glaring at him (the meme situation)",
 		{"pos": Vector3(0.0, 1.5, 3.6), "look": Vector3(-0.35, 1.25, -0.2), "fov": 46.0})
-	shot("S4", 9.1, "static", "close: Phúc caught",
-		{"pos": Vector3(0.7, 1.55, 1.0), "look": Vector3(0.0, 1.5, 0.0), "fov": 38.0})
+	push_in("S4", 9.1, "phuc", {"from": 2.7, "to": 2.3, "side_deg": -55.0, "look_y": 1.2})   # Phúc caught
 	shot("S5", 10.8, "static", "wide three-shot: back to work",
 		{"pos": Vector3(-2.6, 1.6, 3.6), "look": Vector3(0.6, 1.15, 0.3), "fov": 48.0})
 	sub(0.4, 2.6, "linh", "Dolly trốn giữa đám nhân bản ở căn tin.")
 	sub(3.2, 3.1, "linh", "Mình bưng khay giả làm khách, tìm ra con thật.")
 	sub(GAG + 1.3, 0.8, "linh", "Phúc!!!")
-	sub(9.2, 1.5, "phuc", "Tao… chỉ đọc thôi mà!")
+	joke(GAG + 1.3, "the distracted-boyfriend situation with the 'thi hộ' flyer")
+	sub(9.2, 1.5, "phuc", "Tao... chỉ đọc thôi mà!")
 	sub(11.0, 2.4, "linh", "Tập trung! Bưng khay lên, bắt đầu.")

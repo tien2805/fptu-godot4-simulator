@@ -428,9 +428,9 @@ func _wc_wait_start(l: NightBuilding, cap: int = 240) -> bool:
 
 
 func _dolly_wc() -> void:
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://test_wc_none/"))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(("user://test_wc_none_%d/" % OS.get_process_id())))
 	Engine.time_scale = 4.0
-	var la: NightBuilding = await _wc_level(5, "user://test_wc_none/")
+	var la: NightBuilding = await _wc_level(5, ("user://test_wc_none_%d/" % OS.get_process_id()))
 	_check(la.wc != null and la.wc.stream == null, "WC: no monologue file in the test folder: subtitles only")
 	var d: HorrorStalker = la.dolly
 	la.kit.catch_enabled = false
@@ -525,7 +525,7 @@ func _dolly_wc() -> void:
 	await _frames(2)
 
 	# seen -> catch even with the breath held
-	var lb: NightBuilding = await _wc_level(6, "user://test_wc_none/")
+	var lb: NightBuilding = await _wc_level(6, ("user://test_wc_none_%d/" % OS.get_process_id()))
 	var db: HorrorStalker = lb.dolly
 	var ss: HidingSpot = _stall(lb, "WCA", 2)
 	var ex: Vector3 = ss.exit_point()
@@ -548,7 +548,7 @@ func _dolly_wc() -> void:
 	await _frames(2)
 
 	# the clones too: a clone walks into the block (unseen), only one monologue at a time, nobody else interrupts it
-	var lc: NightBuilding = await _wc_level(7, "user://test_wc_none/")
+	var lc: NightBuilding = await _wc_level(7, ("user://test_wc_none_%d/" % OS.get_process_id()))
 	var clone: HorrorStalker = null
 	for st3: HorrorStalker in lc.stalkers:
 		if not st3.is_dolly and clone == null:
@@ -595,7 +595,7 @@ func _dolly_wc() -> void:
 	await _frames(2)
 
 	# with the monologue file: Dolly's voice plays from her, release() stops it
-	var dir: String = "user://test_wc_sfx/"
+	var dir: String = ("user://test_wc_sfx_%d/" % OS.get_process_id())
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
 	StoryAudio.synth("whisper_bed").save_to_wav(dir + "dolly_wc_full.wav")
 	var ld: NightBuilding = await _wc_level(8, dir)

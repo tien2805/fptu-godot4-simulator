@@ -13,7 +13,7 @@
 #   })
 #   c.chosen.connect(func(key: String, timed_out: bool) -> void: ...)
 #
-# Input: mouse click on a button; keys 1 / 2; Left / Right (or A / D) move the focus, Enter / Space picks. A pick shows the
+# Input: mouse click on a button; keys 1 / 2; Left / Right (or A / D) move the focus, Enter / Space picks (after ARM_S). A pick shows the
 # highlighted button for PICK_HOLD s, then `chosen(key, timed_out)` is emitted and the overlay frees itself.
 # Timing runs on real time (Time.get_ticks_usec, PROCESS_MODE_ALWAYS), or on step(dt) when `manual` (tests, CinePlayer manual).
 # Inside a cinematic, CinePlayer opens it at the timeline's choice time and holds its own clock until `chosen`.
@@ -24,6 +24,9 @@ signal chosen(key: String, timed_out: bool)
 
 const TIMEOUT: float = 10.0
 const PICK_HOLD: float = 0.45
+## Enter / Space only pick after ARM_S real seconds (review W2S-1): a player tapping Space / Enter to reveal the cinematic's
+## lines (CinePlayer) must not pick the focused option unread. Keys 1 / 2 and clicks pick at once.
+const ARM_S: float = 0.5
 const LINE_HOLD: float = 1.8          # minimum; a longer timeout line holds 0.06 s per character (line_hold())
 const BAR_W: float = 640.0
 const ORANGE := Color("#F37021")
@@ -298,6 +301,8 @@ func _input(event: InputEvent) -> void:
 		KEY_RIGHT, KEY_D:
 			_set_focus(focus_i + 1)
 		KEY_ENTER, KEY_KP_ENTER, KEY_SPACE:
+			if t < ARM_S:
+				return   # not armed yet: a tap meant for the subtitles
 			pick(focus_i)
 		_:
 			return

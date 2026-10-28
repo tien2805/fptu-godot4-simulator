@@ -123,7 +123,8 @@ func _connect(b: BikerEnemy) -> void:
 			yaws.append(b.yaw)
 		if b.st == BikerEnemy.St.CRASH:
 			crashed = true
-	_check(chase.combat.hits == 1 and String(clock.last_hit.get("tier", "")) == "heavy" and low == 5, "it connects: a heavy impact, 5 frozen frames (%d)" % low)
+	# Wave 2 (plan 2026-10-29-w2-day2.md): the kick that downs a rider is the finisher tier (9 frozen frames)
+	_check(chase.combat.hits == 1 and String(clock.last_hit.get("tier", "")) == "finisher" and low == 9, "it connects: the downing kick is a finisher impact, 9 frozen frames (%d)" % low)
 	_check(chase.combat.kickbacks == kb0 + 1, "the player's bike rocks back from the kick")
 	var swings: int = 0
 	for k: int in range(2, yaws.size()):
@@ -219,7 +220,7 @@ func _stick(s: BikerEnemy, heavy: BikerEnemy) -> void:
 	var broke: Array = []
 	chase.combat.stick_broke.connect(func() -> void: broke.append(chase.hud.popup_text))   # after the chase's own handler
 	for i: int in 2:
-		await _frames(30)
+		await _frames(45)                    # the downing swing's finisher freeze, then his wobble into the crash
 		if not heavy.is_down():
 			_hold(heavy, 0.0, 1.8)
 		await _frames(10)

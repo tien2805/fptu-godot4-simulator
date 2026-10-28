@@ -5,7 +5,11 @@
 # r (REAL, from Time.get_ticks_usec or step(dt), never Engine.time_scale, never clamped) -> s = clock.story_at(r) -> actors,
 # story-time events (SFX, FX, prop glow), prop visibility (opts show_at / hide_at, a pure function of s), FX speed, camera
 # (shot at real progress + whip / punch-in of ramps and timeline punches + handheld noise in story time when the shot has
-# "hand"), overlay (letterbox, fades, subtitle at r, skip bar, debug), music gain. Ends at r = length (exact) or after a hold-Esc skip; emits finished(skipped).
+# "hand"), overlay (letterbox, fades, subtitle at r, skip ring, debug), music gain. Ends at r = length (exact) or after a
+# hold skip (SkipHold: [ESC] or [ENTER] for 0.6 s); emits finished(skipped).
+# Q5 voices: the active subtitle types out at DialogueVoice.fit_cps (in sync with r, seekable) and every new word plays a
+# blip of the speaker's voice (DialogueVoice, worker-built banks, the SFX bus; silent while seeking or before the bank is
+# built); [Space], [E], an [ENTER] press or a click reveals the whole line.
 # PROCESS_MODE_ALWAYS: runs while the host pauses the tree.
 # setup opts: manual (step() drives the clock), debug, music (false = no music even with an owner file).
 # Jump scare v2: the timeline's scare_hit marks run through a CineScare child (duck of the music and the SFX pool, the
@@ -18,7 +22,8 @@ signal finished(skipped: bool)
 ## Phase B: the timeline's choice scene was answered (StoryChoice: key of the option, timed_out = the honest default).
 signal choice_made(id: String, key: String, timed_out: bool)
 
-const ESC_HOLD: float = 0.8
+const ESC_HOLD: float = SkipHold.HOLD
+const VOICE_DB: float = -8.0
 const SKIP_FADE: float = 0.25
 const LETTERBOX_IN: float = 0.4
 const FADE_S: float = 0.18   # hosts fade gameplay to black over this before setup (preroll)
@@ -67,6 +72,14 @@ var scare: CineScare = null              # jump scare v2 marks (scare_hit), null
 var _scare_twitch: Array[String] = []    # actor id per scare hit ("" = none)
 var _sfx_db: PackedFloat32Array = PackedFloat32Array()   # each pool player's own level (the duck goes on top)
 var _fov_off: float = 0.0
+## Q5 typewriter + voices: per subtitle its voice id and typing speed; the active line, its typed count, a revealed line.
+var voice_player: AudioStreamPlayer
+var blips_played: int = 0
+var _sub_voice: PackedStringArray = PackedStringArray()
+var _sub_cps: PackedFloat32Array = PackedFloat32Array()
+var _sub_i: int = -1
+var _sub_n: int = 0
+var _revealed: int = -1
 ## setup: actors adopted (built under the black frame, or opts "actors") and actors cloned from a seeded twin (clone cache).
 var adopted: int = 0
 var clones: int = 0
@@ -189,6 +202,21 @@ func setup(tl: CineTimeline, xf: Transform3D = Transform3D.IDENTITY, opts: Dicti
 	for sh: Dictionary in tl.shots:
 		_shot_r.append(tl.clock.real_at(float(sh["s"])))
 	_sfx_db.resize(_sfx.size())
+	voice_player = AudioStreamPlayer.new()
+	voice_player.name = "Voice"
+	voice_player.bus = _bus("SFX")
+	voice_player.volume_db = VOICE_DB
+	add_child(voice_player)
+	var voices: Array = []
+	for sb: Dictionary in tl.subs:
+		var sp_id: String = String(sb["speaker"])
+		var ao2: Dictionary = (tl.actors[sp_id]["opts"] as Dictionary) if tl.actors.has(sp_id) else {}
+		var v: String = DialogueVoice.voice_for(sp_id, tl.speaker_name(sp_id), ao2)
+		_sub_voice.append(v)
+		_sub_cps.append(DialogueVoice.fit_cps(String(sb["text"]), float(sb["dur"]), float(DialogueVoice.profile(v)["cps"])))
+		if not voices.has(v):
+			voices.append(v)
+	DialogueVoice.warm(voices)
 	if not tl.scare_hits.is_empty():
 		var hl: Array = []
 		for sh: Dictionary in tl.scare_hits:
@@ -632,16 +660,29 @@ func _update_overlay(rr: float, speed: float) -> void:
 		a = maxf(a, _skipping / SKIP_FADE)
 	overlay.set_fade(clampf(a, 0.0, 1.0))
 	var shown: bool = false
-	for sb: Dictionary in timeline.subs:
+	for i: int in timeline.subs.size():
+		var sb: Dictionary = timeline.subs[i]
 		var r0: float = sb["r"]
 		if rr >= r0 and rr < r0 + float(sb["dur"]):
 			var sp: String = sb["speaker"]
 			var col: Color = (timeline.actors[sp]["color"] as Color) if timeline.actors.has(sp) else Color.WHITE
-			overlay.show_sub(timeline.speaker_name(sp), col, String(sb["text"]), String(sb["tr"]))
+			var text: String = String(sb["text"])
+			overlay.show_sub(timeline.speaker_name(sp), col, text, String(sb["tr"]))
+			var n: int = text.length() if _revealed == i else DialogueVoice.chars_at(text, rr - r0, _sub_cps[i])
+			overlay.set_sub_chars(n)
+			if i != _sub_i:
+				_sub_i = i
+				_sub_n = 0
+			if not _seeking and n > _sub_n and _revealed != i:
+				var words: PackedStringArray = DialogueVoice.new_words(text, _sub_n, n)
+				if not words.is_empty():
+					_blip(_sub_voice[i], words[words.size() - 1])
+			_sub_n = n
 			shown = true
 			break
 	if not shown:
 		overlay.hide_sub()
+		_sub_i = -1
 	overlay.set_skip(_hold / ESC_HOLD if _hold > 0.0 and _skipping < 0.0 else -1.0)
 	for cl: CanvasLayer in card_nodes:
 		cl.call("update", rr)
@@ -654,11 +695,39 @@ func _update_overlay(rr: float, speed: float) -> void:
 		overlay.update_debug("r=%.3f  s=%.3f  x%.2f  shot %s  next %s" % [rr, s, speed, current_shot, nxt], _beats, L, rr)
 
 
+## One blip of the speaker's voice (the newest word of this frame; silent until the bank is built).
+func _blip(voice: String, word: String) -> void:
+	var st: AudioStream = DialogueVoice.blip(voice, word)
+	blips_played += 1
+	if st == null or voice_player == null or not voice_player.is_inside_tree():
+		return
+	voice_player.stream = st
+	voice_player.play()
+
+
+## Shows the whole current subtitle at once ([Space] / [E] / [ENTER] press / click).
+func reveal_line() -> void:
+	if _sub_i >= 0:
+		_revealed = _sub_i
+
+
+func _input(event: InputEvent) -> void:
+	if not _playing or _done or _choice_state == 1:
+		return
+	var hit: bool = false
+	if event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo:
+		hit = (event as InputEventKey).physical_keycode in [KEY_SPACE, KEY_E, KEY_ENTER, KEY_KP_ENTER]
+	elif event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
+		hit = (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT
+	if hit:
+		reveal_line()
+
+
 func _skip_logic(dt: float) -> void:
 	if _skipping >= 0.0:
 		_skipping += dt
 		return
-	var held: bool = force_skip_hold or Input.is_physical_key_pressed(KEY_ESCAPE)
+	var held: bool = force_skip_hold or SkipHold.held()
 	_hold = _hold + dt if held else 0.0
 	if _hold >= ESC_HOLD - 1e-6:
 		_skipping = 0.0

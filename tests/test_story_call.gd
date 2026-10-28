@@ -78,7 +78,7 @@ func _run() -> void:
 	_check(c.phase == "voice" and not c.auto_answered, "[E] answers")
 	_check(c.shake_used and c.flash_used, "shake and flash on answer")
 	_run_until(c, 6.0)
-	_check(c.subtitle == "…Mày… còn… 7 ngày…", "typed subtitle reaches the full line: %s" % c.subtitle)
+	_check(c.subtitle == "...Mày... còn... 7 ngày...", "typed subtitle reaches the full line: %s" % c.subtitle)
 	_run_until(c, 10.0)
 	_check(ended == [false], "finishes on its own")
 	var after: float = c.total - c.answered_at
@@ -96,7 +96,7 @@ func _run() -> void:
 	c.free()
 	# 4. hold-Esc skip, generic N
 	c = _make(3, {"manual": true, "reduce": false})
-	_check(c.full_line() == "…Mày… còn… 3 ngày…", "generic in N")
+	_check(c.full_line() == "...Mày... còn... 3 ngày...", "generic in N")
 	_run_until(c, 1.5)
 	c.force_skip_hold = true
 	var n: int = _run_until(c, 2.0)
