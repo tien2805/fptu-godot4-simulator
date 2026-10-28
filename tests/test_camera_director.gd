@@ -17,8 +17,11 @@
 #      framed at rest / top speed / nitro / drift, pulled in (not into) a wall behind.
 #   T  BikeChase takedown cams: a crash cuts to the first clear candidate; walls block candidate 0, then 0 and 1; the
 #      rider framed with a clear view; a kick hit whips the chase cam.
+#   S  Cinematic shot helpers (two_shot, ots, hero, dutch, push_in) at u 0 / 0.5 / 1 for 3 actor spacings: the subjects
+#      inside the letterboxed safe area, OTS keeps the face clear of the foreground head, dutch rolls; the helpers
+#      validate, an unknown actor is refused, and CinePlayer plays a helper timeline with the subjects framed.
 # Counts physics frames (Engine.max_fps = 60).
-# Run:  godot --headless --path . --script tests/test_camera_director.gd
+# Run:  godot --headless --path . --script tests/test_camera_director.gd   (dev: append -- --only=DFCBTS to pick parts)
 extends SceneTree
 
 const World: Script = preload("res://tests/support/mayhem_world.gd")
@@ -60,11 +63,22 @@ func _run() -> void:
 	await _frames(2)
 	_build_arena()
 	await _frames(3)
-	await _part_d()
-	await _part_f()
-	await _part_c()
-	await _part_b()
-	await _part_t()
+	var only: String = ""
+	for a: String in OS.get_cmdline_user_args():
+		if a.begins_with("--only="):
+			only = a.trim_prefix("--only=")   # dev: run some parts only, e.g. -- --only=BT
+	if only == "" or only.contains("D"):
+		await _part_d()
+	if only == "" or only.contains("F"):
+		await _part_f()
+	if only == "" or only.contains("C"):
+		await _part_c()
+	if only == "" or only.contains("B") or only.contains("T"):
+		await _part_b()
+	if only == "" or only.contains("T"):
+		await _part_t()
+	if only == "" or only.contains("S"):
+		await _part_s()
 	_finish()
 
 
@@ -710,3 +724,156 @@ func _part_t() -> void:
 		bike.global_position = Vector3(-300.0, -0.13, 200.0)
 		bike.rotation = Vector3.ZERO
 		bike.current_speed_ms = 0.0
+
+
+# ---------------------------------------------------------------------------
+# S: cinematic shot helpers
+# ---------------------------------------------------------------------------
+## One letterbox bar of the cinematic overlay (2.39:1) as a fraction of the screen height.
+func _letterbox_frac() -> float:
+	var vs: Vector2 = root.get_visible_rect().size
+	return maxf((vs.y - vs.x / 2.39) * 0.5, 0.0) / vs.y
+
+
+## The CinePlayer camera maths for one CineShots.eval result.
+static func _apply_shot(cam: Camera3D, xf: Transform3D, c: Dictionary) -> void:
+	var pos_w: Vector3 = xf * (c["pos"] as Vector3)
+	var look_w: Vector3 = xf * (c["look"] as Vector3)
+	var b: Basis = Basis.looking_at(look_w - pos_w, Vector3.UP)
+	if c.has("roll"):
+		b = b * Basis(Vector3(0.0, 0.0, 1.0), deg_to_rad(float(c["roll"])))
+	cam.global_transform = Transform3D(b, pos_w)
+	cam.fov = float(c["fov"])
+
+
+## The view from cam to the subject's head passes at least 0.22 m from the foreground actor's head and neck (OTS).
+static func _clear_of(cam: Camera3D, subject_head: Vector3, fg: Node3D) -> bool:
+	var pts: PackedVector3Array = CameraFraming.subject_points(fg)
+	var a: Vector3 = cam.global_position
+	for q: Vector3 in [pts[0], pts[0].lerp(pts[1], 0.5)]:
+		var t: float = clampf((q - a).dot(subject_head - a) / maxf((subject_head - a).length_squared(), 1e-6), 0.0, 1.0)
+		if (a + (subject_head - a) * t).distance_to(q) < 0.22:
+			return false
+	return true
+
+
+func _part_s() -> void:
+	print("  S: cinematic shot helpers")
+	var lb: float = _letterbox_frac()
+	var stage := Node3D.new()
+	stage.name = "ShotStage"
+	arena.add_child(stage)
+	stage.global_position = Vector3(400.0, 0.0, -400.0)
+	var a: Node3D = CharacterBuilder.build({"preset": "player", "seed": 3, "rigged": true, "name": "ActorA"})
+	var b: Node3D = CharacterBuilder.build({"preset": "rider", "seed": 4, "rigged": true, "name": "ActorB"})
+	stage.add_child(a)
+	stage.add_child(b)
+	var cam := Camera3D.new()
+	cam.name = "ShotCam"
+	arena.add_child(cam)
+	cam.make_current()
+	var ctx: Dictionary = {"actors": {"a": a, "b": b}}
+	var shots: Array = [
+		["two_shot", {"a": "a", "b": "b"}, ["a", "b"]],
+		["two_shot", {"a": "a", "b": "b", "side": -1.0, "push": 0.2}, ["a", "b"]],
+		["ots", {"over": "a", "at": "b"}, ["b"]],
+		["ots", {"over": "b", "at": "a", "side": -1.0}, ["a"]],
+		["low_hero", {"actor": "a", "fov": 50.0}, ["a"]],
+		["low_hero", {"actor": "b", "side_deg": -30.0, "fov": 50.0}, ["b"]],
+		["dutch", {"actor": "b"}, ["b"]],
+		["dutch", {"actor": "a", "roll": -14.0, "side_deg": -25.0}, ["a"]],
+		["push_in", {"actor": "a"}, ["a"]],
+		["push_in", {"actor": "b", "side_deg": 20.0, "to": 2.0}, ["b"]],
+	]
+	var total: int = 0
+	var ok: int = 0
+	var fails_s: Array[String] = []
+	for sep: float in [1.2, 2.5, 4.0]:
+		a.position = Vector3(-sep * 0.5, 0.0, 0.0)
+		a.rotation.y = deg_to_rad(-90.0)     # faces +X (characters face -Z at yaw 0)
+		b.position = Vector3(sep * 0.5, 0.0, 0.0)
+		b.rotation.y = deg_to_rad(90.0)
+		await _frames(3)
+		for sh: Array in shots:
+			var shot: Dictionary = {"id": "T", "s": 0.0, "rig": sh[0], "what": "", "params": sh[1]}
+			for u: float in [0.0, 0.5, 1.0]:
+				_apply_shot(cam, stage.global_transform, CineShots.eval(shot, u, ctx))
+				var good: bool = true
+				for id: String in sh[2]:
+					var n: Node3D = (ctx["actors"] as Dictionary)[id]
+					var pts: PackedVector3Array = CameraFraming.subject_points(n)
+					var rep: Dictionary = CameraFraming.report(cam, pts, _space(), [], CameraRules.SAFE_MARGIN, lb)
+					if not bool(rep["ok"]):
+						good = false
+						fails_s.append("%s %s sep %.1f u %.1f: %s %s" % [sh[0], str(sh[1]), sep, u, id, CameraFraming.describe(cam, pts, rep)])
+				if String(sh[0]) == "ots":
+					var fg: Node3D = (ctx["actors"] as Dictionary)[String((sh[1] as Dictionary)["over"])]
+					var subj: Node3D = (ctx["actors"] as Dictionary)[String((sh[1] as Dictionary)["at"])]
+					if not _clear_of(cam, CameraFraming.subject_points(subj)[0], fg):
+						good = false
+						fails_s.append("ots %s sep %.1f u %.1f: the foreground head hides the subject's face" % [str(sh[1]), sep, u])
+				if String(sh[0]) == "dutch":
+					var want: float = float((sh[1] as Dictionary).get("roll", 14.0))
+					var got: float = rad_to_deg(asin(clampf(cam.global_basis.x.y, -1.0, 1.0)))
+					if absf(got) < absf(want) * 0.8 or signf(got) != signf(want):
+						good = false
+						fails_s.append("dutch roll %.1f, want ~%.1f" % [got, want])
+				total += 1
+				if good:
+					ok += 1
+	for f: String in fails_s.slice(0, 8):
+		print("    ", f)
+	_check(ok == total, "every shot helper frames its subjects inside the letterboxed safe area, OTS keeps the face clear, dutch rolls (%d / %d)" % [ok, total])
+	cam.queue_free()
+	stage.queue_free()
+	# timelines: the helpers validate, an unknown actor is refused, CinePlayer plays them (roll applied, subjects framed)
+	var tl: CineTimeline = (load("res://tests/support/cine_test_timeline.gd") as GDScript).new()
+	tl.build()
+	tl.shots.clear()
+	tl.two_shot("S1", 0.0, "hero", "dummy")
+	tl.dutch_shot("S2", 1.4, "dummy", {"roll": 14.0})
+	tl.ots_shot("S3", 2.6, "hero", "dummy")
+	tl.push_in("S4", 3.6, "dummy")
+	tl.hero_shot("S5", 4.6, "hero")
+	var errs: PackedStringArray = tl.validate()
+	_check(errs.is_empty(), "a timeline of shot helpers validates (%s)" % str(errs))
+	var bad: CineTimeline = (load("res://tests/support/cine_test_timeline.gd") as GDScript).new()
+	bad.build()
+	bad.shots.clear()
+	bad.two_shot("S1", 0.0, "hero", "nobody")
+	_check(not bad.validate().is_empty(), "a shot helper naming an unknown actor is refused")
+	var cp := CinePlayer.new()
+	cp.name = "ShotPlayer"
+	arena.add_child(cp)
+	var se: PackedStringArray = cp.setup(tl, Transform3D(Basis.IDENTITY, Vector3(400.0, 0.0, -380.0)), {"manual": true, "music": false})
+	_check(se.is_empty(), "CinePlayer sets up the helper timeline (%s)" % str(se))
+	cp.start()
+	var subj: Dictionary = {"S1": ["hero", "dummy"], "S2": ["dummy"], "S3": ["dummy"], "S4": ["dummy"], "S5": ["hero"]}
+	var seen: Dictionary = {}
+	var cp_ok: int = 0
+	var cp_n: int = 0
+	var rolled: bool = false
+	for i: int in 330:
+		cp.step(1.0 / 60.0)
+		if i < 30 or i % 6 != 0 or not subj.has(cp.current_shot):
+			continue
+		await process_frame
+		seen[cp.current_shot] = true
+		var good2: bool = true
+		for id: String in subj[cp.current_shot]:
+			var an: Node3D = cp.actors[id]
+			var pts2: PackedVector3Array = CameraFraming.subject_points(an)
+			var rep2: Dictionary = CameraFraming.report(cp.camera, pts2, _space(), [], CameraRules.SAFE_MARGIN, lb)
+			if not bool(rep2["ok"]):
+				good2 = false
+				print("    cine %s r %.2f %s: %s" % [cp.current_shot, cp.r, id, CameraFraming.describe(cp.camera, pts2, rep2)])
+		if cp.current_shot == "S2" and absf(cp.camera.global_basis.x.y) > sin(deg_to_rad(10.0)):
+			rolled = true
+		cp_n += 1
+		if good2:
+			cp_ok += 1
+	_check(seen.size() == 5, "CinePlayer reached every helper shot (%s)" % str(seen.keys()))
+	_check(rolled, "CinePlayer applies the dutch roll")
+	_check(cp_ok == cp_n, "CinePlayer: the helper shots frame their subjects while the actors move (%d / %d)" % [cp_ok, cp_n])
+	cp.queue_free()
+	await _frames(2)
