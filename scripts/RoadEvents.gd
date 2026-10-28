@@ -8,6 +8,9 @@
 #     (hết Hải Đăng, qua cầu, vào Nguyễn Văn Tăng, trước vòng xoay, vào D1).
 # Bề rộng chướng ngại/cổng theo lòng đường thật (RoadManager.half_width_at). Không có RoadManager thì dùng
 # các offset cũ của đường 14 m. RoadManager tạo node này sau khi dựng đường; HUDManager nối các signal.
+# Wave 2 (plan 2026-10-29-w2-early.md Task 2): set_pieces (RoadSetPieces) adds the bus cut-in, the flooded street and the
+# traffic jam; its banners go out through this node's `banner`. stage_time() is the clock budget for the difficulty
+# (HUDManager reads it): RoadManager.STAGE_TIME on Thường, EASY_TIME_K x that on Dễ.
 class_name RoadEvents
 extends Node3D
 
@@ -15,6 +18,8 @@ signal time_penalty(sec: float, msg: String)
 signal time_bonus(sec: float, msg: String)
 signal banner(text: String, color: Color, duration: float)
 signal rain_changed(is_raining: bool)
+
+const EASY_TIME_K: float = 1.15
 
 var LIGHT_OFFSET: float = 778.0   # vạch đèn đỏ: 34 m trước đầu Cầu Rạch Hầm (setup đặt theo route_marks)
 var DOG_OFFSET: float = 470.0     # chó cô Ba: giữa Đường Cầu Vồng 5
@@ -30,6 +35,7 @@ var curve: Curve3D
 var track_len: float = 1.0
 
 var checkpoints: Array[Dictionary] = []
+var set_pieces: RoadSetPieces
 var pothole_cooldowns: Dictionary = {}
 
 # Chó chạy qua đường
@@ -92,6 +98,15 @@ func setup(path: Path3D, bike: CharacterBody3D, manager: Node = null) -> void:
 	_build_traffic_light()
 	_build_checkpoints()
 	_build_rain()
+	set_pieces = RoadSetPieces.new()
+	set_pieces.name = "SetPieces"
+	add_child(set_pieces)
+	set_pieces.setup(path, bike, manager, self)
+
+
+## Clock budget of the race (s) for the current difficulty (Thường = the base, Dễ = EASY_TIME_K x the base).
+static func stage_time(base: float) -> float:
+	return base * float(Difficulty.pick(1.0, EASY_TIME_K))
 
 ## Offset mốc thật (route_marks) hoặc giá trị dự phòng của đường cũ khi thiếu.
 func _mark(key: String, fallback: float) -> float:
@@ -637,3 +652,5 @@ func _process(delta: float) -> void:
 	_update_traffic_light(delta, player_offset)
 	_update_checkpoints(player_offset)
 	_update_rain(player_offset)
+	if set_pieces:
+		set_pieces.tick(delta, player_offset)

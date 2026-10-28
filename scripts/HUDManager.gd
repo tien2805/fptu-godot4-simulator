@@ -136,7 +136,7 @@ func _ready() -> void:
 			player_bike.connect("curb_hit", _on_curb_hit)
 	if road_manager:
 		if road_manager is RoadManager:
-			stage_duration_sec = RoadManager.STAGE_TIME
+			stage_duration_sec = RoadEvents.stage_time(RoadManager.STAGE_TIME)   # Q6: Dễ gets more time
 		road_manager.connect("zone_changed", _on_zone_changed)
 		road_manager.connect("destination_reached", _on_destination_reached)
 		var ev: Node = road_manager.get("road_events")
