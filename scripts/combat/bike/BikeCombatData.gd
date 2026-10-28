@@ -137,7 +137,7 @@ const POLICE_APPROACH_S: float = 2.5
 const POLICE_BEHIND: float = 7.0
 ## D2X-5 takedowns: crash causes that count (a plain kick crash does not); 0.5 s at 0.3x and a side camera cut, at most
 ## one every TD_GAP_S and none while 2+ attackers wind up within TD_BUSY_M of the player.
-const TAKEDOWN_CAUSES: Array[String] = ["traffic", "pole", "melon", "barrier", "police", "nitro", "spin", "air", "cones"]
+const TAKEDOWN_CAUSES: Array[String] = ["traffic", "pole", "melon", "barrier", "police", "nitro", "spin", "air", "cones", "counter"]
 const TD_SCALE: float = 0.3
 const TD_REAL_S: float = 0.5
 const TD_GAP_S: float = 3.0
@@ -196,6 +196,26 @@ const CAMEO_AWAY: float = 22.0           # ... and leaves on nitro at this much
 const CAMEO_TAUNT_S: float = 2.3
 const CAMEO_PAINT := Color("#8E9AA6")
 const NITRO_FLAME := Color(0.25, 0.55, 1.0)
+
+# ----- Q2 bike feel (plan 2026-10-29-q2-feel.md T3) -----
+const COUNTER_WINDOW: float = 0.25       # a kick toward an attacker this long (or less) before his hit = PHẢN ĐÒN
+const COUNTER_LAT: float = 3.2           # ... within this far to that side ...
+const COUNTER_ALONG: float = 2.2         # ... and this far along the bike
+const COUNTER_PUSH: float = 7.0          # the countered rider is sent flying (m/s)
+const KICKBACK_ROLL: float = 0.14        # a connecting kick rocks the player's bike this much (rad) away from the kick ...
+const KICKBACK_S: float = 0.2            # ... over this long (visual only: the line is kept), and costs 1.5 % speed
+const STICK_SWINGS: int = 3              # a grabbed stick: Q / E swings, then it breaks
+const STICK_REACH_BONUS: float = 1.0     # the swing reaches this much further than a kick ...
+const STICK_ALONG_BONUS: float = 0.5     # ... and this much more along the bike
+const STICK_POWER: int = 2               # kicks' worth of damage per stick hit (a heavy goes down in 2)
+const STICK_PICK_R: float = 1.5          # riding over a dropped stick within this picks it up
+const STICK_LIFE: float = 15.0           # a dropped stick lies on the road this long
+const HURT_WOBBLE_S: float = 0.5         # a hit on the player wobbles the bike this long
+const WOBBLE_VEER: float = 0.9           # rad/s the kicked bike veers off while wobbling to a crash
+const PART_S: float = 2.4                # a crash's flying parts (mirror, helmet) stay this long
+const T_COUNTER: String = "PHẢN ĐÒN!"
+const T_STICK_GOT: String = "Nhặt được gậy! [Q]/[E] vụt"
+const T_STICK_BROKE: String = "Gãy gậy!"
 
 # ----- look (Bầy Sói) -----
 const BIKE_PAINT := Color("#2B2F36")
@@ -260,6 +280,21 @@ const WEAPON_CUES: Array[String] = ["swish", "dep_whoosh"]
 # ----- kick poses (CharacterBuilder joints, character frame; built once) -----
 static var _kick_l: Dictionary = {}
 static var _kick_r: Dictionary = {}
+static var _flail: Dictionary = {}
+
+
+## Q2: the kicked rider flailing on a wobbling bike (arms windmilling, head thrown about; legs keep the ride clip). One
+## reused Dictionary (no allocation per frame).
+static func flail_pose(t: float) -> Dictionary:
+	var f: float = sin(t * 17.0)
+	var g: float = sin(t * 13.0 + 1.1)
+	_flail["shoulder_l"] = Vector3(1.9 + 0.7 * f, 0.0, 0.7 + 0.25 * g)
+	_flail["shoulder_r"] = Vector3(1.9 - 0.7 * f, 0.0, -0.7 - 0.25 * g)
+	_flail["elbow_l"] = Vector3(0.6 + 0.4 * g, 0.0, 0.0)
+	_flail["elbow_r"] = Vector3(0.6 - 0.4 * g, 0.0, 0.0)
+	_flail["torso"] = Vector3(0.25 + 0.1 * g, 0.0, 0.2 * f)
+	_flail["head"] = Vector3(0.3 + 0.15 * f, 0.4 * g, 0.0)
+	return _flail
 
 
 ## Full side kick from the saddle (side -1 left, +1 right): the leg shoots out sideways, the torso leans away. The caller
@@ -295,7 +330,7 @@ static func texts() -> Array[String]:
 	out.append_array(T_TAKEDOWN)
 	out.append_array([T_TD_COUNT % 4, T_AIR_KICK, T_DUCK, T_DUCKED, T_BARRIER_HIT, T_BARRIER_SIGN, T_DRIFT, T_CURB, T_MELONS,
 		T_MELON_HIT, T_TRUCK_SIGN, T_WRONG_WAY, T_CONES, T_RAMP, T_POLICE, T_POLICE_GONE, T_HELMET_HIT, T_PICKUP, T_PICKUP_DOWN,
-		T_STICK_HIT, T_HEAVY_HIT, T_CAMEO_TAUNT, T_CAMEO_NAME])
+		T_STICK_HIT, T_HEAVY_HIT, T_CAMEO_TAUNT, T_CAMEO_NAME, T_COUNTER, T_STICK_GOT, T_STICK_BROKE])
 	for k: String in KIND_NAMES.keys():
 		if String(KIND_NAMES[k]) != "":
 			out.append(String(KIND_NAMES[k]))

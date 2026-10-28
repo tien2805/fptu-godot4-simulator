@@ -16,6 +16,17 @@
 # (take_kick + kick_hit.emit(target, 0); kicked.emit(0) at the start; side 0 = a spin), then a SPIN_HITSTOP hit-stop and
 # a SPIN_COOLDOWN cooldown that blocks side kicks too. A spin that hits nothing emits kick_missed(0). Look: an arc ribbon
 # around the rider, a dust ring under the bike, two swishes, sparks on each hit, camera shake.
+# Q2 feel (plan 2026-10-29-q2-feel.md T3):
+#   - a kick that connects is a heavy Impact (80 ms freeze, camera whip / punch toward the target through the camera
+#     director, else the bike's own shake) and rocks the player's bike KICKBACK_ROLL away from it (visual, the line is kept;
+#     -1.5 % speed); the target wobbles and crashes (BikerEnemy);
+#   - counter-kick "PHẢN ĐÒN!": a kick toward an attacker whose hit is at most COUNTER_WINDOW away (BikerEnemy.time_to_hit)
+#     sends him flying at once (crash cause "counter", a takedown), a finisher Impact and a short slow motion; `countered`;
+#   - grab weapon: drop_stick(pos, vel) (a kicked stick rider) leaves his stick on the road for STICK_LIFE; riding over it
+#     picks it up (`stick_picked`): STICK_SWINGS swings on Q / E with STICK_REACH_BONUS more reach and STICK_POWER damage,
+#     then it breaks (`stick_broke`);
+#   - the spin kick leaves a fading motion-trail arc behind the leg; one hit is heavy, two at once the finisher tier;
+#   - a hit on the player: a red screen-edge flash, a camera jolt and a HURT_WOBBLE_S bike wobble.
 class_name PlayerBikeCombat
 extends Node
 
@@ -24,6 +35,9 @@ signal kick_hit(target: Node3D, side: int)
 signal kick_missed(side: int)
 signal damaged(amount: float, cause: String)
 signal knocked_off
+signal countered(target: Node3D)
+signal stick_picked
+signal stick_broke
 
 const SPIN_DUR: float = 0.5
 const SPIN_HIT_AT: float = 0.18
@@ -79,6 +93,21 @@ var last_spin_targets: Array = []
 var _arc: MeshInstance3D = null
 var _arc_mat: StandardMaterial3D = null
 var _dust: CPUParticles3D = null
+## Q2: counters, the grabbed stick, the spin trail, the hurt wobble.
+var counters: int = 0
+var last_counter: Node3D = null
+var stick_swings: int = 0
+var stick_picks: int = 0
+var stick_hits: int = 0
+var drops: Array[Dictionary] = []        # {"node", "t"} sticks lying on the road
+var kickbacks: int = 0
+var wobble_t: float = 0.0
+var _stick_node: Node3D = null
+var _trail: MeshInstance3D = null
+var _trail_mat: StandardMaterial3D = null
+var _wob_ph: float = 0.0
+var _kb_t: float = 0.0
+var _kb_sign: float = 0.0
 
 
 func setup(b: PlayerBike, opts: Dictionary = {}) -> void:
@@ -134,14 +163,17 @@ func kick(side: int) -> bool:
 		return false
 	if kick_cd > 0.0 or spin_t >= 0.0:
 		return false
-	if bike.is_drifting:
+	var ct: Node3D = counter_target(-1 if side < 0 else 1)
+	if ct != null:
+		return _counter(ct, -1 if side < 0 else 1)
+	if bike.is_drifting and stick_swings <= 0:
 		return spin_kick(side)
 	kick_side = -1 if side < 0 else 1
 	kick_t = 0.0
 	kick_cd = BikeCombatData.KICK_COOLDOWN
 	kick_done = false
 	kicks += 1
-	_cue("swish", bike.global_position + Vector3(0.0, 0.8, 0.0), -4.0)
+	_cue("swish", bike.global_position + Vector3(0.0, 0.8, 0.0), -4.0 if stick_swings <= 0 else 0.0)
 	kicked.emit(kick_side)
 	return true
 
@@ -228,7 +260,9 @@ func kick_target(side: int) -> Node3D:
 		var rel := Vector2(g.x, g.z) - p
 		var lat: float = rel.dot(right2) * float(side)
 		var along: float = rel.dot(fwd2)
-		if lat < BikeCombatData.KICK_MIN or lat > BikeCombatData.KICK_REACH or absf(along) > BikeCombatData.KICK_ALONG:
+		var reach: float = BikeCombatData.KICK_REACH + (BikeCombatData.STICK_REACH_BONUS if stick_swings > 0 else 0.0)
+		var reach_a: float = BikeCombatData.KICK_ALONG + (BikeCombatData.STICK_ALONG_BONUS if stick_swings > 0 else 0.0)
+		if lat < BikeCombatData.KICK_MIN or lat > reach or absf(along) > reach_a:
 			continue
 		var score: float = absf(lat - 1.4) + absf(along) * 0.5
 		if score < best_score:
@@ -246,6 +280,12 @@ func damage(amount: float, cause: String, from_side: int = 0) -> bool:
 	hurt_t = 0.0
 	if bike:
 		bike.add_camera_shake(0.55)
+		# Q2: the red screen edge, a camera jolt from the hit's side, the bike wobbles
+		update_frame()
+		var hd: Vector3 = Vector3(right2.x, 0.0, right2.y) * -float(from_side) if from_side != 0 else Vector3(-fwd2.x, 0.0, -fwd2.y)
+		Impact.punch(self, 0.45, hd, _no_shake)   # no director: the bike's own shake above already jolts
+		Impact.edge_flash(self, Impact.EDGE_RED, 0.7 if cause != "crash" else 0.5)
+		wobble_t = BikeCombatData.HURT_WOBBLE_S
 		if cause == "kick":
 			bike.current_speed_ms *= 0.85
 		if from_side != 0:
@@ -298,8 +338,14 @@ func reset() -> void:
 	knocked = false
 	kick_t = -1.0
 	spin_t = -1.0
+	wobble_t = 0.0
+	_kb_t = 0.0
+	_set_stick(0)
+	clear_drops()
 	if _arc:
 		_arc.visible = false
+	if _trail:
+		_trail.visible = false
 	if bike and is_instance_valid(bike) and bike.rider_node:
 		bike.rider_node.rotation.y = 0.0
 	kick_cd = 0.0
@@ -352,8 +398,13 @@ func _physics_process(delta: float) -> void:
 				_log("hit")
 				var away := Vector2(t.global_position.x - bike.global_position.x, t.global_position.z - bike.global_position.z)
 				away = away.normalized() if away.length_squared() > 1e-4 else right2 * float(kick_side)
-				(t as Object).call("take_kick", away)
-				bike.add_camera_shake(0.3)
+				var stick: bool = stick_swings > 0
+				if stick:
+					stick_hits += 1
+					(t as Object).call("take_kick", away, BikeCombatData.STICK_POWER)
+				else:
+					(t as Object).call("take_kick", away)
+				_connect_feel(t, away, "heavy", 1.25 if stick else 1.0, [["stick_crack", -6.0]] if stick else [])
 				kick_hit.emit(t, kick_side)
 			elif kick_t > BikeCombatData.KICK_ACTIVE_END:
 				kick_done = true
@@ -362,11 +413,23 @@ func _physics_process(delta: float) -> void:
 				kick_missed.emit(kick_side)
 		if kick_t >= BikeCombatData.KICK_DUR:
 			kick_t = -1.0
+			if stick_swings > 0:
+				_use_stick()
 	if enabled and not knocked and hurt_t >= BikeCombatData.REGEN_DELAY and stability < max_stability:
 		stability = minf(max_stability, stability + BikeCombatData.REGEN_RATE * delta)
 	if _shove_t > 0.0 and bike and is_instance_valid(bike):
 		_shove_t -= delta
 		bike.move_and_collide(_shove * delta)
+	if not drops.is_empty():
+		_tick_drops(delta)
+	if wobble_t > 0.0 and bike and is_instance_valid(bike) and not knocked:
+		wobble_t = maxf(0.0, wobble_t - delta)
+		_wob_ph += delta
+		var k: float = wobble_t / BikeCombatData.HURT_WOBBLE_S
+		bike.visual_pivot.rotation.z += sin(_wob_ph * 30.0) * 0.16 * k   # after the bike wrote its lean this frame
+	if _kb_t > 0.0 and bike and is_instance_valid(bike) and not knocked:
+		_kb_t = maxf(0.0, _kb_t - delta)
+		bike.visual_pivot.rotation.z += _kb_sign * BikeCombatData.KICKBACK_ROLL * sin(PI * (1.0 - _kb_t / BikeCombatData.KICKBACK_S))
 
 
 func _tick_spin(delta: float) -> void:
@@ -381,11 +444,14 @@ func _tick_spin(delta: float) -> void:
 			bike.rider_node.rotation.y = 0.0
 		if _arc:
 			_arc.visible = false
+		if _trail:
+			_trail.visible = false
 
 
 ## The spin's hit moment: every target spin_targets() returns takes the kick (normal path, side 0).
 func _spin_hit() -> void:
 	last_spin_targets = spin_targets()
+	var tier: String = "finisher" if last_spin_targets.size() >= 2 else "heavy"   # Q2: a double spin hit is the big one
 	for t: Variant in last_spin_targets:
 		var n3: Node3D = t as Node3D
 		hits += 1
@@ -396,6 +462,7 @@ func _spin_hit() -> void:
 		(t as Object).call("take_kick", away)
 		if fx:
 			fx.burst("sparks", n3.global_position + Vector3(0.0, 0.9, 0.0), Vector3(away.x, 0.4, away.y), 0.8)
+		_connect_feel(n3, away, tier, 1.2, [], false)
 		kick_hit.emit(n3, 0)
 	if last_spin_targets.is_empty():
 		misses += 1
@@ -403,10 +470,7 @@ func _spin_hit() -> void:
 		kick_missed.emit(0)
 	else:
 		bike.add_camera_shake(0.45)
-		_cue("impact_heavy", bike.global_position + Vector3(0.0, 0.9, 0.0), -1.0)
-		var gfx: Node = get_node_or_null("/root/GameFX") if is_inside_tree() else null
-		if gfx and gfx.has_method("hit_stop") and RadialWheel.scale_owner == null:
-			gfx.call("hit_stop", SPIN_HITSTOP, 0.05)   # a chase slow motion owning the time scale is never cut short
+		_cue("impact_heavy", bike.global_position + Vector3(0.0, 0.9, 0.0), -1.0)   # the freeze: _connect_feel (Impact clock)
 	_cue("swish", bike.global_position + Vector3(0.0, 0.8, 0.0), -3.0)
 
 
@@ -472,6 +536,233 @@ func _spin_fx_start() -> void:
 	_arc.visible = true
 	_dust.restart()
 	_dust.emitting = true
+	_trail_start()
+
+
+# ---------------------------------------------------------------------------
+# Q2 FEEL: connecting hits, counter-kick, the grabbed stick, the spin trail
+# ---------------------------------------------------------------------------
+## A connecting kick / swing / spin hit: the Impact tier (freeze, camera punch toward the target, particles, layers) and,
+## for side kicks, a small shove of the player's bike the other way.
+func _connect_feel(t: Node3D, away: Vector2, tier: String, punch_k: float = 1.0, cues: Array = [], kickback: bool = true) -> void:
+	var at: Vector3 = t.global_position + Vector3(0.0, 1.0, 0.0)
+	var d3 := Vector3(away.x, 0.0, away.y)
+	var shake: Callable = bike.add_camera_shake if bike and is_instance_valid(bike) else Callable()
+	Impact.hit(self, tier, {"pos": at, "dir": d3, "fx": fx, "shake_fn": shake, "punch_k": punch_k, "cues": cues})
+	if kickback and bike and is_instance_valid(bike):
+		kickbacks += 1                       # the recoil: the bike rocks away from the kick (visual) and loses a little speed
+		update_frame()
+		_kb_sign = signf(Vector2(away.x, away.y).dot(right2))   # +z rolls the bike left: a right kick rocks it left
+		_kb_t = BikeCombatData.KICKBACK_S
+		bike.current_speed_ms *= 0.985
+
+
+## The attacker a kick toward `side` would counter now: a kickable biker on that side within COUNTER_LAT / COUNTER_ALONG
+## whose hit lands within COUNTER_WINDOW (BikerEnemy.time_to_hit), the soonest first; null = none.
+func counter_target(side: int) -> Node3D:
+	if bike == null or not is_instance_valid(bike):
+		return null
+	update_frame()
+	var p := Vector2(bike.global_position.x, bike.global_position.z)
+	var best: Node3D = null
+	var best_t: float = BikeCombatData.COUNTER_WINDOW + 1e-4
+	for t: Variant in targets:
+		if not is_instance_valid(t) or not (t as Object).has_method("time_to_hit") or not bool((t as Object).call("kickable")):
+			continue
+		var tt: float = float((t as Object).call("time_to_hit"))
+		if tt > best_t or tt < 0.0:
+			continue
+		var g: Vector3 = (t as Object).call("ground_pos")
+		var rel := Vector2(g.x, g.z) - p
+		var lat: float = rel.dot(right2) * float(side)
+		if lat < 0.1 or lat > BikeCombatData.COUNTER_LAT or absf(rel.dot(fwd2)) > BikeCombatData.COUNTER_ALONG:
+			continue
+		best_t = tt
+		best = t
+	return best
+
+
+## PHẢN ĐÒN: the attacker is sent flying before his hit lands (a takedown); the kick leg plays, a finisher Impact, a short
+## slow motion (BikeChase's takedown slow motion takes over when it may), i-frames over his swing.
+func _counter(t: Node3D, side: int) -> bool:
+	kick_side = side
+	kick_t = 0.0
+	kick_done = true
+	kick_cd = BikeCombatData.KICK_COOLDOWN
+	kicks += 1
+	hits += 1
+	counters += 1
+	last_counter = t
+	_log("counter")
+	iframes = maxf(iframes, 0.3)
+	update_frame()
+	var away := Vector2(t.global_position.x - bike.global_position.x, t.global_position.z - bike.global_position.z)
+	away = away.normalized() if away.length_squared() > 1e-4 else right2 * float(side)
+	_cue("swish", bike.global_position + Vector3(0.0, 0.8, 0.0), -2.0)
+	kicked.emit(side)
+	_connect_feel(t, away, "finisher", 1.3, [["keng", -4.0]])
+	var c: Impact = Impact.clock(self)
+	if c != null:
+		c.slowmo(0.35, 0.35, self)
+	if t.has_method("take_counter"):
+		t.call("take_counter", away)
+	else:
+		t.call("take_kick", away)
+	countered.emit(t)
+	kick_hit.emit(t, side)
+	return true
+
+
+## A kicked stick rider's stick on the road at pos (thrown off with vel, landing a little further): picked up by riding over
+## it within STICK_PICK_R while the hands are free; gone after STICK_LIFE.
+func drop_stick(pos: Vector3, vel: Vector3 = Vector3.ZERO) -> Node3D:
+	var n := Node3D.new()
+	n.name = "DroppedStick"
+	n.top_level = true
+	add_child(n)
+	var land: Vector3 = pos + Vector3(vel.x, 0.0, vel.z) * 0.25
+	n.global_position = Vector3(land.x, pos.y, land.z)
+	var wood: StandardMaterial3D = CineFX._mat(Color("#7A5230"), 0.8)
+	var st: MeshInstance3D = CineFX._cyl(n, "Wood", 0.03, 0.036, 1.15, Vector3(0.0, 0.05, 0.0), wood)
+	st.rotation = Vector3(0.0, 0.0, PI * 0.5)
+	var ring := MeshInstance3D.new()
+	ring.name = "PickupRing"
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.55
+	tm.outer_radius = 0.65
+	tm.rings = 20
+	tm.ring_segments = 4
+	var rm := StandardMaterial3D.new()
+	rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	rm.albedo_color = Color(1.0, 0.86, 0.2, 0.8)
+	rm.set_meta("vice_done", true)
+	tm.material = rm
+	ring.mesh = tm
+	ring.scale = Vector3(1.0, 0.2, 1.0)
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	n.add_child(ring)
+	drops.append({"node": n, "t": 0.0})
+	return n
+
+
+func clear_drops() -> void:
+	for d: Dictionary in drops:
+		if is_instance_valid(d["node"]):
+			(d["node"] as Node).queue_free()
+	drops.clear()
+
+
+func _tick_drops(delta: float) -> void:
+	var bp := Vector2(bike.global_position.x, bike.global_position.z) if bike and is_instance_valid(bike) else Vector2(INF, INF)
+	for i: int in range(drops.size() - 1, -1, -1):
+		var d: Dictionary = drops[i]
+		d["t"] = float(d["t"]) + delta
+		var n: Node3D = d["node"] if is_instance_valid(d["node"]) else null
+		if n == null or float(d["t"]) >= BikeCombatData.STICK_LIFE:
+			if n:
+				n.queue_free()
+			drops.remove_at(i)
+			continue
+		if stick_swings <= 0 and enabled and not knocked and riding() \
+				and Vector2(n.global_position.x - bp.x, n.global_position.z - bp.y).length() <= BikeCombatData.STICK_PICK_R:
+			n.queue_free()
+			drops.remove_at(i)
+			stick_picks += 1
+			_set_stick(BikeCombatData.STICK_SWINGS)
+			_cue("bag_drop", bike.global_position + Vector3(0.0, 1.0, 0.0), -2.0)
+			stick_picked.emit()
+
+
+## The grabbed stick on the rider (raised on the right) with n swings left; 0 hides it.
+func _set_stick(n: int) -> void:
+	stick_swings = n
+	if n > 0 and bike and is_instance_valid(bike) and bike.rider_node:
+		if _stick_node == null or not is_instance_valid(_stick_node):
+			_stick_node = Node3D.new()
+			_stick_node.name = "GrabbedStick"
+			bike.rider_node.add_child(_stick_node)
+			CineFX._cyl(_stick_node, "Wood", 0.028, 0.036, 1.15, Vector3(0.0, 0.5, 0.0), CineFX._mat(Color("#7A5230"), 0.8))
+			_stick_node.position = Vector3(0.32, 1.2, 0.05)
+			_stick_node.rotation = Vector3(0.35, 0.0, -0.3)
+		_stick_node.visible = true
+	elif _stick_node and is_instance_valid(_stick_node):
+		_stick_node.visible = false
+
+
+## A swing done: one less; the last one breaks the stick (crack, splinters).
+func _use_stick() -> void:
+	_set_stick(stick_swings - 1)
+	if stick_swings <= 0:
+		var at: Vector3 = bike.global_position + Vector3(0.0, 1.3, 0.0)
+		_cue("stick_crack", at, 0.0)
+		Impact.particles(self, "debris", at, Vector3.UP, 0.7, fx)
+		stick_broke.emit()
+
+
+## The stick's swing pose: cocked during the wind-up, swept flat toward the kick side through the hit window.
+func _pose_stick() -> void:
+	if _stick_node == null or not is_instance_valid(_stick_node) or not _stick_node.visible:
+		return
+	var sd: float = float(kick_side)
+	if kick_t < 0.0:
+		_stick_node.position = Vector3(0.32, 1.2, 0.05)
+		_stick_node.rotation = Vector3(0.35, 0.0, -0.3)
+		return
+	var k: float = clampf((kick_t - BikeCombatData.KICK_WINDUP * 0.5) / (BikeCombatData.KICK_ACTIVE_END - BikeCombatData.KICK_WINDUP * 0.5), 0.0, 1.0)
+	_stick_node.position = Vector3(0.32 * sd, 1.2, 0.05)
+	_stick_node.rotation = Vector3(lerpf(0.75, 0.0, k), 0.0, -sd * lerpf(-0.45, 1.45, k))
+
+
+## The spin's motion trail: a 120 degree ribbon behind the leg, bright at the head and fading to the tail (vertex alpha),
+## built once and turned with the rider (no allocation per frame).
+func _trail_start() -> void:
+	if bike == null or bike.visual_pivot == null:
+		return
+	if _trail == null:
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		var seg: int = 16
+		var arc: float = deg_to_rad(120.0)
+		for i: int in seg:
+			var a0: float = -arc * float(i) / float(seg)
+			var a1: float = -arc * float(i + 1) / float(seg)
+			var c0 := Color(0.85, 0.95, 1.0, 0.9 * (1.0 - float(i) / float(seg)))
+			var c1 := Color(0.85, 0.95, 1.0, 0.9 * (1.0 - float(i + 1) / float(seg)))
+			var ri: float = SPIN_ARC_R - 0.12
+			var ro: float = SPIN_ARC_R + 0.22
+			var p0i := Vector3(sin(a0) * ri, 0.0, -cos(a0) * ri)
+			var p0o := Vector3(sin(a0) * ro, 0.04, -cos(a0) * ro)
+			var p1i := Vector3(sin(a1) * ri, 0.0, -cos(a1) * ri)
+			var p1o := Vector3(sin(a1) * ro, 0.04, -cos(a1) * ro)
+			for v: Array in [[p0i, c0], [p0o, c0], [p1o, c1], [p0i, c0], [p1o, c1], [p1i, c1]]:
+				st.set_color(v[1])
+				st.add_vertex(v[0])
+		_trail = MeshInstance3D.new()
+		_trail.name = "SpinTrail"
+		_trail.mesh = st.commit()
+		_trail_mat = StandardMaterial3D.new()
+		_trail_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_trail_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_trail_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		_trail_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_trail_mat.vertex_color_use_as_albedo = true
+		_trail_mat.set_meta("vice_done", true)
+		_trail.material_override = _trail_mat
+		_trail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_trail.position = Vector3(0.0, 0.55, 0.1)
+		bike.visual_pivot.add_child(_trail)
+	_trail.visible = true
+	_trail.rotation.y = 0.0
+	_trail_mat.albedo_color.a = 1.0
+
+
+func _no_shake(_s: float) -> void:
+	pass
+
+
+func trail_visible() -> bool:
+	return _trail != null and _trail.visible
 
 
 func _log(r: String) -> void:
@@ -487,6 +778,7 @@ func _process(_d: float) -> void:
 	if spin_t >= 0.0 and not knocked:
 		_process_spin()
 		return
+	_pose_stick()
 	var w: float = 0.0 if knocked or kick_t < 0.0 else BikeCombatData.kick_weight(kick_t, BikeCombatData.KICK_WINDUP, BikeCombatData.KICK_ACTIVE_END, BikeCombatData.KICK_DUR)
 	if _sk:
 		if w > 0.001 and (_anim == null or int(_anim.get("_lod_skip")) == 1):
@@ -512,6 +804,10 @@ func _process_spin() -> void:
 		var sc: float = lerpf(0.7, 1.35, u)
 		_arc.scale = Vector3(sc, 0.25, sc)
 		_arc_mat.albedo_color.a = 0.85 * (1.0 - u)
+	if _trail and _trail_mat:
+		_trail.visible = u < 1.0
+		_trail.rotation.y = turn
+		_trail_mat.albedo_color.a = 1.0 - smoothstep(0.65, 1.0, u)
 
 
 func _input(event: InputEvent) -> void:
@@ -531,13 +827,14 @@ func _cue(cue: String, at: Vector3, db: float = 0.0) -> void:
 		return
 	var p: AudioStreamPlayer3D = _sfx[_sfx_i]
 	_sfx_i = (_sfx_i + 1) % _sfx.size()
-	p.stream = WeaponAudio.stream(cue) if WeaponAudio.CUES.has(cue) else CineAudio.sfx(cue)
+	p.stream = ImpactAudio.stream(cue) if ImpactAudio.is_cue(cue) else (WeaponAudio.stream(cue) if WeaponAudio.CUES.has(cue) else CineAudio.sfx(cue))
 	p.volume_db = db
 	p.global_position = at
 	p.play()
 
 
 func _exit_tree() -> void:
+	clear_drops()
 	if _lay and _lay.is_valid():
 		_lay.kill()
 	if bike and is_instance_valid(bike):

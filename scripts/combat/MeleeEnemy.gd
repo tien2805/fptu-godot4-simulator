@@ -864,6 +864,7 @@ func _knockdown(away: Vector3) -> void:
 		combat._cue("body_fall", global_position + Vector3(0.0, 0.3, 0.0))
 
 
+## The one place a knockout is finalised (the look stream's Readability.unrim(body) hook goes here at integration).
 func _knock_out(away: Vector3) -> void:
 	_release_token()
 	_enter(St.KO)

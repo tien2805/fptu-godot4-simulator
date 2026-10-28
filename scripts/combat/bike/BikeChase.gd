@@ -283,6 +283,9 @@ func setup(opts: Dictionary) -> void:
 		bike.crash_occurred.connect(_on_bike_crash)   # before PlayerBikeCombat's own handler: the speed-scaled damage first
 	combat.setup(bike, {"roam": roam, "targets": bikers, "fx": fx})
 	combat.kick_hit.connect(_on_kick_hit)
+	combat.countered.connect(_on_countered)      # Q2: PHẢN ĐÒN, the grabbed stick
+	combat.stick_picked.connect(_on_stick_note.bind(BikeCombatData.T_STICK_GOT))
+	combat.stick_broke.connect(_on_stick_note.bind(BikeCombatData.T_STICK_BROKE))
 	cam = Camera3D.new()
 	cam.name = "ChaseCam"
 	cam.top_level = true
@@ -593,6 +596,7 @@ func enemy_kick(b: BikerEnemy) -> String:
 func on_biker_crash(b: BikerEnemy) -> void:
 	downed_total += 1
 	last_down = b
+	Impact.particles(self, "debris", b.ground_pos() + Vector3(0.0, 0.5, 0.0), Vector3.UP, 1.0, fx)   # Q2: the crash's burst
 	biker_down.emit(b, b.crash_cause)
 	if BikeCombatData.TAKEDOWN_CAUSES.has(b.crash_cause):
 		_takedown(b)
@@ -613,6 +617,7 @@ func on_biker_crash(b: BikerEnemy) -> void:
 	combat.enabled = false
 	end_slow_motion()
 	_cam_restore()
+	Impact.slowmo_orbit(self, b, Impact.ORBIT_S)   # Q2: the last biker's fall in slow motion (camera director orbit)
 	_set_hooks(false)
 	_mark_end()
 	if rec:
@@ -1585,8 +1590,21 @@ func _on_kick_hit(target: Node3D, side: int) -> void:
 		_spin_hits.clear()
 
 
+## Q2: the counter-kick's popup (its takedown follows through on_biker_crash).
+func _on_countered(_t: Node3D) -> void:
+	if hud:
+		hud.popup(BikeCombatData.T_COUNTER, CombatHUD.GOLD, 1.1)
+
+
+func _on_stick_note(text: String) -> void:
+	if hud:
+		hud.popup(text, CombatHUD.GOLD if text == BikeCombatData.T_STICK_GOT else CombatHUD.WARN, 1.0)
+
+
 ## Slow motion for `real_s` real seconds (INF: until end_slow_motion). false when a weapon wheel owns the time scale.
+## Q2: a running Impact hit-stop / combat slow motion gives way (Impact.yield_scale).
 func slow_motion(scale: float, real_s: float, kind: String) -> bool:
+	Impact.yield_scale()
 	if RadialWheel.scale_owner != null and RadialWheel.scale_owner != self and is_instance_valid(RadialWheel.scale_owner):
 		return false
 	RadialWheel.scale_owner = self
