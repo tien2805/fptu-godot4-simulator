@@ -52,6 +52,7 @@ func _part_v() -> void:
 	_check(DialogueVoice.voice_for("mr_t") == "mr_t" and DialogueVoice.voice_for("x", "Anh Duy") == "anh_duy" and DialogueVoice.voice_for("dolly_unmasked") == "dolly"
 		and DialogueVoice.voice_for("lum_van_lo") == "van_lo" and DialogueVoice.voice_for("y", "Lùm Thị Lọ") == "thi_lo", "cast ids and speaker names map to voices")
 	_check(DialogueVoice.voice_for("nobody", "Ai đó") == "generic", "unknown speakers get the generic voice")
+	_check(DialogueVoice.voice_for("Phúc (tin nhắn)", "Phúc (tin nhắn)") == "phuc", "a text from 'Phúc (tin nhắn)' uses Phúc's voice")
 	# distinct timbres: no two profiles share pitch, waveform and speed
 	var seen: Dictionary = {}
 	for id2: String in want:

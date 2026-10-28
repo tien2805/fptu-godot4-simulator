@@ -68,6 +68,9 @@ static func voice_for(actor_id: String, speaker: String = "", opts: Dictionary =
 		return String(BY_ID[actor_id])
 	if BY_NAME.has(speaker):
 		return String(BY_NAME[speaker])
+	var base: String = (speaker if speaker != "" else actor_id).get_slice(" (", 0)   # "Phúc (tin nhắn)" -> "Phúc"
+	if BY_NAME.has(base):
+		return String(BY_NAME[base])
 	if PROFILES.has(actor_id):
 		return actor_id
 	return "generic"
