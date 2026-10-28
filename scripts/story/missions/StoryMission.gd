@@ -12,6 +12,8 @@
 # Phase C: `armed` missions (the lair gunfights) skip the unarmed lock (GunFight forces its own loadout: story lairs allow
 # the Phase W guns, campus stays unarmed); radio(line, dich) shows Anh Duy on the radio with his "Dịch:" line; the host
 # may be FreeRoam or a lair scene (StoryBasement) with the same fields (player, weapons, combat, mounted).
+# Q5 (plan 2026-10-29-w2-story T4): radio lines type out with the speaker's blip voice (StoryRadio); radio_as(speaker, ...)
+# for other speakers (Mr.T on the phone, Linh, Chú Bảy); the beat's StoryRadio.SCRIPTS lines play on the mission clock.
 class_name StoryMission
 extends Node3D
 
@@ -51,6 +53,9 @@ var armed: bool = false
 var radio_panel: PanelContainer
 var radio_label: Label
 var _radio_t: float = 0.0
+var radio_typer: StoryRadio = null
+var _radio_script: Array = []
+var _radio_i: int = 0
 
 
 func setup(r: Node3D, b: Dictionary, o: Dictionary = {}) -> void:
@@ -70,6 +75,8 @@ func begin() -> void:
 	_lock_weapons(true)
 	clock = 0.0
 	state = "running"
+	_radio_script = StoryRadio.lines(String(beat.get("id", "")))
+	_radio_i = 0
 	_start()
 
 
@@ -122,6 +129,8 @@ func hud_visible() -> bool:
 
 
 func advance(dt: float) -> void:
+	if radio_typer != null:
+		radio_typer.step(dt)
 	if _radio_t > 0.0:
 		_radio_t -= dt
 		if _radio_t <= 0.0 and radio_panel:
@@ -133,6 +142,10 @@ func advance(dt: float) -> void:
 	if state != "running":
 		return
 	clock += dt
+	if _radio_i < _radio_script.size() and _radio_t <= 0.0 and clock >= float(_radio_script[_radio_i][0]):
+		var rl: Array = _radio_script[_radio_i]
+		_radio_i += 1
+		radio_as(String(rl[1]), String(rl[2]), String(rl[3]))
 	_tick(dt)
 
 
@@ -289,13 +302,20 @@ func popup(text: String, secs: float = 2.0, col: Color = INK) -> void:
 
 ## Anh Duy on the radio (story spec S-D12): his jargon line and a second "Dịch:" line, bottom left for `secs`.
 func radio(line: String, dich: String, secs: float = 5.0) -> void:
+	radio_as("anh_duy", line, dich, secs)
+
+
+## A radio line from any speaker (StoryRadio.PREFIX), typed with the speaker's voice; stays at least until it is read.
+func radio_as(speaker_id: String, line: String, dich: String = "", secs: float = 5.0) -> void:
 	cues_played.append("radio")
 	if radio_panel == null:
 		return
-	radio_label.text = "ANH DUY (bộ đàm): %s
-Dịch: %s" % [line, dich]
+	if radio_typer == null:
+		radio_typer = StoryRadio.new()
+		add_child(radio_typer)
+	radio_typer.say(radio_label, speaker_id, line, dich)
 	radio_panel.visible = true
-	_radio_t = secs
+	_radio_t = maxf(secs, radio_typer.min_secs())
 
 
 ## Hides the top panel (title / info / meter) when the mission's own HUD shows those (BikeHUD, GunHUD).

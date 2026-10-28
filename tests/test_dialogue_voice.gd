@@ -179,3 +179,55 @@ func _part_t() -> void:
 	_check(not SkipHold.new().step(0.5, false), "no hold, no skip")
 	p.queue_free()
 	await process_frame
+
+
+func _part_r() -> void:
+	print("  R: radio chatter and phone texts")
+	var m := StoryMission.new()
+	m.setup(null, {"id": "d2_chase", "title": "Bầy Sói"}, {"manual": true})
+	root.add_child(m)
+	m.begin()
+	m.radio("Ok e, a ping vị trí Bầy Sói lên map r.", "Đuổi theo tụi nó.")
+	var lbl: Label = m.radio_label
+	_check(lbl.text == "ANH DUY (bộ đàm): Ok e, a ping vị trí Bầy Sói lên map r.\nDịch: Đuổi theo tụi nó.", "Anh Duy's radio text keeps its format (%s)" % lbl.text)
+	_check(lbl.visible_characters >= 0 and lbl.visible_characters <= "ANH DUY (bộ đàm): ".length() + 1, "the line starts typing (%d)" % lbl.visible_characters)
+	_check(m.radio_typer.voice == "anh_duy" and m.radio_typer.player.bus == CinePlayer._bus("SFX"), "Anh Duy's voice on the SFX bus")
+	var dt: float = 1.0 / 60.0
+	var steps: int = 0
+	while not m.radio_typer.done() and steps < 600:
+		m.advance(dt)
+		steps += 1
+	_check(m.radio_typer.done() and lbl.visible_characters == -1, "typed to the end, the Dịch: line shows (%d steps)" % steps)
+	_check(m.radio_typer.blips == 11, "one blip per word on the radio (%d)" % m.radio_typer.blips)
+	# the beat's scripted chatter plays on the mission clock once the panel is free
+	var first: Array = StoryRadio.lines("d2_chase")[0]
+	while m.clock < float(first[0]) + 0.2:
+		m.advance(dt)
+	_check(lbl.text.contains(String(first[2])) and lbl.text.contains("Dịch: " + String(first[3])), "the d2_chase chatter plays at %.0f s" % float(first[0]))
+	m.radio_as("mr_t", "Em nhớ tắt đèn flash.")
+	_check(lbl.text == "MR.T (điện thoại): Em nhớ tắt đèn flash." and m.radio_typer.voice == "mr_t", "radio_as: Mr.T on the phone, his voice")
+	m.abort()
+	# scripts: known speakers, ordered times, plain text
+	for bid: String in StoryRadio.SCRIPTS.keys():
+		var lt: float = -1.0
+		for l: Array in StoryRadio.SCRIPTS[bid]:
+			_check(l.size() == 4 and float(l[0]) > lt and StoryRadio.PREFIX.has(String(l[1])), "%s: radio line %s" % [bid, str(l)])
+			_check(not StoryMissions.beat(bid).is_empty(), "%s is a story beat" % bid)
+			for txt: String in [String(l[2]), String(l[3])]:
+				for i: int in txt.length():
+					_check(txt.unicode_at(i) < 0x2000, "%s: plain text (%s)" % [bid, txt])
+			_check(String(l[1]) != "anh_duy" or String(l[3]) != "", "%s: Anh Duy's lines carry a Dịch: line" % bid)
+			lt = float(l[0])
+	# phone toast typer (UI bus)
+	var ty := StoryRadio.new("UI")
+	root.add_child(ty)
+	var tl2 := Label.new()
+	root.add_child(tl2)
+	ty.type_text(tl2, "Phúc: ", "Ê, mai thi rồi đó!", "", DialogueVoice.voice_for("", "Phúc"))
+	_check(ty.voice == "phuc" and ty.player.bus == CinePlayer._bus("UI"), "a text from Phúc types with his voice on the UI bus")
+	for i2: int in 120:
+		ty.step(dt)
+	_check(ty.done() and tl2.text == "Phúc: Ê, mai thi rồi đó!", "the text completes")
+	ty.queue_free()
+	tl2.queue_free()
+	await process_frame
