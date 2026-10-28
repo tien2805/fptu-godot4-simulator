@@ -203,7 +203,9 @@ func _tumble() -> void:
 	await _frames(25)
 	e.hp = 1.0
 	var y0: float = e.global_position.y
+	var rim0: int = Readability.rimmed_count(e.body)
 	var r: String = combat._strike(e, _info("heavy", 5.0, 5.0, 1.2))
+	_check(rim0 > 0 and Readability.rimmed_count(e.body) == 0, "integration: the knockout drops the Q3 rim (%d -> %d)" % [rim0, Readability.rimmed_count(e.body)])
 	var top: float = 0.0
 	var flipped: float = 0.0
 	for i: int in 120:

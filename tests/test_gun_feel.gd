@@ -137,6 +137,7 @@ func _run() -> void:
 	g.hp = 1.0
 	var mask: Node3D = g.body.find_child("*Mask", true, false) as Node3D
 	_check(mask != null, "test setup: he wears a wolf mask")
+	_check(Readability.rimmed_count(g.body) > 0, "integration: a standing gunman has the Q3 rim")
 	dir.try_fire()
 	var top: float = -99.0
 	for i2: int in 90:
@@ -144,6 +145,7 @@ func _run() -> void:
 		if g.flying_hat:
 			top = maxf(top, g.flying_hat.global_position.y)
 	_check(g.st == Gunman.St.KO and dir.hud.marker_ko and clock.cue_log.has("ko_tick"), "a knockout: the red marker and the knockout tick")
+	_check(Readability.rimmed_count(g.body) == 0 and Readability.rimmed_count(mask) == 0, "integration: the knockout drops the Q3 rim, the flying mask carries none")
 	_check(String(clock.last_hit.get("tier", "")) == "finisher", "a gunshot knockout is a finisher-tier impact")
 	_check(g.flying_hat == mask and top > 2.0 and absf(mask.global_position.y - 0.06) < 0.05, "the mask flies off (%.1f m up) and lies on the floor" % top)
 	# ----- GunFight: the last gunman -----

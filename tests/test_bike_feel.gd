@@ -139,6 +139,7 @@ func _connect(b: BikerEnemy) -> void:
 			if is_instance_valid(e["node"]):
 				max_part_y = maxf(max_part_y, (e["node"] as Node3D).global_position.y - b.floor_y)
 	_check(crashed and b.parts_thrown == 3, "the crash throws 3 parts: 2 mirrors and the helmet (%d)" % b.parts_thrown)
+	_check(Readability.rimmed_count(b) == 0 and Readability.rimmed_count(chase.bikers[0] if chase.bikers[0] != b else chase.bikers[1]) > 0, "integration: the crash drops the Q3 rim (the others keep theirs)")
 	var helmet: Node3D = b.body.find_child("WolfHelmet", true, false) as Node3D
 	_check(max_part_y > 1.5 and helmet != null and not helmet.visible, "the parts fly up (%.1f m), the wolf helmet left the head" % max_part_y)
 	await _frames(int(BikeCombatData.PART_S * 60.0))

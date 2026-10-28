@@ -713,7 +713,8 @@ func take_hit(info: Dictionary) -> String:
 	return "stumble"
 
 
-## The one place a knockout is finalised (the look stream's Readability.unrim(body) hook goes here at integration).
+## The one place a knockout is finalised: the Q3 rim leaves the body here, before the mask flies off (a retry spawns fresh,
+## rimmed gunmen).
 func _knock_out(from: Vector3) -> void:
 	_cancel_shot()
 	_release_slot()
@@ -727,7 +728,7 @@ func _knock_out(from: Vector3) -> void:
 	shout.visible = false
 	jolt_t = 0.0
 	body.rotation = Vector3(0.0, yaw, 0.0)
-	# integration: Readability.unrim(body) must run HERE, before _fling_hat detaches the mask from the head
+	Readability.unrim(body)                  # before _fling_hat detaches the mask from the head (it would keep its rim)
 	_fling_hat(away)
 	_apply_drop()
 	if fight:
@@ -756,7 +757,7 @@ func _tick_jolt(delta: float) -> void:
 
 
 ## The knockout knocks the mask (or a cap) off: it flies up and away from the shot, spinning, bounces once, then lies.
-## Readability.unrim(body) must have run before this (the mask leaves the body here and would keep a rim overlay).
+## Readability.unrim(body) has run before this (_knock_out): the mask leaves the body here without a rim overlay.
 func _fling_hat(away: Vector3) -> void:
 	var at: Vector3 = body.global_position + Vector3(0.0, 1.6, 0.0)
 	var m: Node3D = body.find_child("*Mask", true, false) as Node3D

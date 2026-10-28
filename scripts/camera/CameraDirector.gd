@@ -63,6 +63,9 @@ var _orbit_sweep: float = 0.0
 var _orbit_r: float = CameraRules.ORBIT_R
 var _owns_time: bool = false
 var _excl: Array[RID] = []
+## Engine.time_scale when this frame's physics began (the scale the engine used for this frame's _process delta): a node
+## that changes the time scale during physics (the Impact clock's hit-stop) must not distort the real-time step.
+var _iter_scale: float = 1.0
 
 
 static func ensure(from: Node) -> CameraDirector:
@@ -96,11 +99,15 @@ func _init() -> void:
 func _enter_tree() -> void:
 	add_to_group(GROUP)
 	current = self
+	if not get_tree().physics_frame.is_connected(_on_physics_frame):
+		get_tree().physics_frame.connect(_on_physics_frame)
 	if _pending == self:
 		_pending = null
 
 
 func _exit_tree() -> void:
+	if get_tree().physics_frame.is_connected(_on_physics_frame):
+		get_tree().physics_frame.disconnect(_on_physics_frame)
 	_end_cut(true)
 	if current == self:
 		current = null
@@ -168,8 +175,13 @@ func _gamefx_shake(t: float) -> void:
 		gfx.call("shake", t)
 
 
+func _on_physics_frame() -> void:
+	_iter_scale = Engine.time_scale
+
+
 func _process(delta: float) -> void:
-	var rdt: float = minf(delta / maxf(Engine.time_scale, 0.01), 0.1)
+	# real seconds: this frame's delta was scaled by the time scale at the frame's start, not by one a hit-stop set since
+	var rdt: float = minf(delta / maxf(_iter_scale, 0.01), 0.1)
 	clock += rdt
 	trauma = maxf(0.0, trauma - CameraRules.SHAKE_DECAY * rdt)
 	var k: float = trauma * trauma

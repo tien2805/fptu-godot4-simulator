@@ -21,6 +21,7 @@
 #   clock.hitstop(secs, light := false) -> float     freeze (time scale HITSTOP_SCALE) for round(secs * ticks) physics frames
 #   clock.slowmo(scale, secs, by := null) -> bool    combat slow motion (queued after a running hit-stop)
 #   clock.end_slowmo(by := null), clock.slowmo_active(by := null), clock.hitstop_active()
+#   clock.slowmo_remaining() -> float        real seconds left of the freeze + slow motion (the camera director's orbit)
 #   Impact.punch(ctx, strength, dir, shake_fn := Callable())   camera director punch, else shake_fn, else GameFX.shake
 #   Impact.shake(ctx, trauma, shake_fn := Callable())
 #   Impact.particles(ctx, kind, pos, dir := UP, scale := 1.0, fx := null)   fx_pool.spawn, else WeaponFX bursts
@@ -470,6 +471,19 @@ func slowmo(scale: float, secs: float, by: Object = null) -> bool:
 ## A slow motion is running or queued after the freeze (by: only that requester's).
 func slowmo_active(by: Object = null) -> bool:
 	return (_slow_end >= 0 or _slow_frames > 0) and (by == null or by == _slow_by)
+
+
+## Real seconds left of this clock's hit-stop and the slow motion after it (0 when neither runs). The camera director
+## reads it to hold its orbit exactly as long (CameraDirector.owner_remaining).
+func slowmo_remaining() -> float:
+	var end: int = -1
+	if _slow_end >= 0:
+		end = _slow_end
+	elif _hs_end >= 0:
+		end = _hs_end + _slow_frames
+	if end < 0:
+		return 0.0
+	return maxf(0.0, float(end - Engine.get_physics_frames())) / float(_ticks())
 
 
 func end_slowmo(by: Object = null) -> void:

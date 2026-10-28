@@ -865,8 +865,9 @@ func _knockdown(away: Vector3) -> void:
 		combat._cue("body_fall", global_position + Vector3(0.0, 0.3, 0.0))
 
 
-## The one place a knockout is finalised (the look stream's Readability.unrim(body) hook goes here at integration).
+## The one place a knockout is finalised: the Q3 rim leaves the body here (a retry spawns fresh, rimmed enemies).
 func _knock_out(away: Vector3) -> void:
+	Readability.unrim(body)
 	_release_token()
 	_enter(St.KO)
 	_settle_t = 0.0

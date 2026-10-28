@@ -464,13 +464,14 @@ func take_kick(away: Vector2, power: int = 1) -> String:
 
 ## Comic crash: the rider is thrown off in a somersault, the bike slides on its side (the pickup spins out and stops).
 ## cause "kick" | "traffic" | "pole" | "melon" | "barrier" | "police" | "nitro" | ...; a kick crash takes the takedown tag.
-## The one place a crash is finalised (the look stream's Readability.unrim(body) hook goes here at integration; the
-## Q2 flying parts are separate top-level meshes and carry no rim).
+## The one place a crash is finalised: the Q3 rim leaves the bike and rider here (the Q2 flying parts are separate
+## top-level meshes built without a rim; a retry spawns fresh, rimmed bikers).
 func crash(cause: String, push: Vector2 = Vector2.ZERO) -> void:
 	if is_down():
 		return
 	if kind == "police":
 		return                             # the police never crash (no arrests, no wrecks)
+	Readability.unrim(self)
 	crash_cause = takedown_tag if (cause == "kick" and takedown_tag != "") else cause
 	_release_token()
 	bike_v = vel + push * 0.6
