@@ -69,8 +69,8 @@ func setup(chase: BikeChase, data: Array) -> void:
 		var p: Dictionary = (d as Dictionary).duplicate(true)
 		p["phase"] = "armed"
 		pieces.append(p)
-	_hazard = CineFX._glow_mat(Color(1.0, 0.6, 0.1), 4.0)
-	_arrow_mat = CineFX._glow_mat(Color(1.0, 0.7, 0.15), 3.0)
+	_hazard = Readability.telegraph_material("danger", 4.0)    # Q3 telegraph colours: red = danger
+	_arrow_mat = Readability.telegraph_material("prompt", 3.0) # yellow = prompt
 	for p2: Dictionary in pieces:
 		match String(p2.get("kind", "")):
 			"melons":
@@ -832,8 +832,8 @@ func _chevron(xf: Transform3D, point: float) -> void:
 	add_child(root)
 	root.global_transform = xf
 	CharacterBuilder._cyl(root, Vector3(0.0, 0.6, 0.0), 0.04, 0.04, 1.2, PropBuilder.steel())
-	CharacterBuilder._box(root, Vector3(0.0, 1.45, 0.0), Vector3(1.2, 0.7, 0.06), CineFX._mat(Color("#C62828"), 0.6))
-	var white: StandardMaterial3D = CineFX._glow_mat(Color(1.0, 1.0, 1.0), 1.2)
+	CharacterBuilder._box(root, Vector3(0.0, 1.45, 0.0), Vector3(1.2, 0.7, 0.06), CineFX._mat(Color("#0E3A44"), 0.6))
+	var white: StandardMaterial3D = Readability.telegraph_material("zone", 1.6)   # Q3: cyan = drift zone
 	for k: int in 2:
 		for j: int in 2:
 			var bar := MeshInstance3D.new()

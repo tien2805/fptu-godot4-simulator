@@ -24,6 +24,7 @@ func setup(f: Object, s: int, n: int) -> void:
 func _ready() -> void:
 	model = GunProps.ammo_box()
 	add_child(model)
+	Readability.rim(model, "pickup")   # Q3 rim
 
 
 func reset() -> void:

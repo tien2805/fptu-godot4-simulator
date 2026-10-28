@@ -164,6 +164,7 @@ func setup(opts: Dictionary = {}) -> void:
 		_build_pickup(opts)
 	else:
 		_build_bike_and_rider(opts)
+	Readability.rim(self, "enemy")   # Q3 rim on the bike and rider
 	_label3d = Label3D.new()
 	_label3d.name = "Name"
 	_label3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
