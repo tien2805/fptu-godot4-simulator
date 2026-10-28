@@ -103,3 +103,79 @@ func _crossings(buf: PackedFloat32Array) -> int:
 		if (buf[i - 1] < 0.0) != (buf[i] < 0.0):
 			n += 1
 	return n
+
+
+class VoiceTL extends CineTimeline:
+	func build() -> void:
+		slot = "test_voice"
+		length = 6.0
+		story_end = 6.0
+		actor("mr_t", {"preset": "lecturer", "seed": 1995, "glasses": true}, "Mr.T", Color("#B98CFF"))
+		actor("hero", {"preset": "player", "seed": 2805, "female": true}, "Bạn", Color("#F37021"))
+		key("mr_t", 0.0, Vector3(-0.5, 0.0, 0.0), 90.0)
+		key("hero", 0.0, Vector3(0.5, 0.0, 0.0), -90.0)
+		shot("S1", 0.0, "static", "wide", {"pos": Vector3(0.0, 1.5, 4.0), "look": Vector3(0.0, 1.3, 0.0), "fov": 45.0})
+		sub(0.5, 2.0, "mr_t", "Em xem cái này, tối qua.")
+		sub(3.0, 2.0, "hero", "Dạ, em xem rồi!")
+
+
+func _part_t() -> void:
+	print("  T: typed subtitles and voices in CinePlayer")
+	var tl := VoiceTL.new()
+	tl.build()
+	var p := CinePlayer.new()
+	root.add_child(p)
+	_check(p.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false}).is_empty(), "test timeline sets up")
+	p.start()
+	DialogueVoice.finish_all()
+	_check(p._sub_voice == PackedStringArray(["mr_t", "hero_f"]), "subtitle voices: Mr.T and the female protagonist (%s)" % str(p._sub_voice))
+	_check(p.voice_player.bus == CinePlayer._bus("SFX"), "voices play on the SFX bus")
+	var line: String = "Em xem cái này, tối qua."
+	var dt: float = 1.0 / 60.0
+	var typed: Array[int] = []
+	var mono: bool = true
+	var last: int = -1
+	while p.r < 2.6:
+		p.step(dt)
+		if p.r >= 0.5 and p.r < 2.5:
+			var tt: String = p.overlay.sub_typed_text()
+			mono = mono and tt.length() >= last and line.begins_with(tt)
+			last = tt.length()
+			typed.append(tt.length())
+			_check(p.overlay.sub_text().ends_with(line), "sub_text keeps the whole line")
+	_check(mono, "the line types out letter by letter (prefixes, never shrinking)")
+	_check(typed.size() > 10 and typed[0] <= 2 and typed[typed.size() - 1] == line.length(), "from the first letter to the whole line (%d .. %d)" % [typed[0] if typed.size() > 0 else -1, last])
+	var full_at: int = typed.find(line.length())
+	var full_r: float = 0.5 + float(full_at) * dt
+	_check(full_at > 0 and full_r <= 0.5 + 2.0 * DialogueVoice.FIT_U + 0.05, "typed in sync: complete by 75 %% of the line (%.2f s)" % full_r)
+	_check(p.blips_played == 6, "one blip per word (%d)" % p.blips_played)
+	# seek: silent
+	var b0: int = p.blips_played
+	p.seek(3.6)
+	_check(p.blips_played == b0, "seeking plays no blip")
+	# reveal
+	p.seek(3.02)
+	p.step(dt)
+	_check(p.overlay.sub_typed_text().length() < "Dạ, em xem rồi!".length(), "the second line starts typing from its own start")
+	p.reveal_line()
+	var b1: int = p.blips_played
+	p.step(dt)
+	_check(p.overlay.sub_typed_text() == "Dạ, em xem rồi!", "a reveal shows the whole line (%s)" % p.overlay.sub_typed_text())
+	_check(p.blips_played == b1, "no blip after a reveal")
+	# skip ring
+	_check(p.overlay.skip_label.text == "Giữ để bỏ qua", "skip text 'Giữ để bỏ qua'")
+	_check(not p.overlay.skip_box.visible, "ring hidden while nothing is held")
+	p.force_skip_hold = true
+	for i: int in 12:
+		p.step(dt)
+	var pr: float = p.overlay.skip_progress()
+	_check(pr > 0.2 and pr < 0.5 and p.overlay.skip_box.visible, "the ring fills while held (%.2f)" % pr)
+	_check(is_equal_approx(CinePlayer.ESC_HOLD, 0.6) and is_equal_approx(SkipHold.HOLD, 0.6), "the hold is 0.6 s")
+	var sh := SkipHold.new()
+	var k: int = 0
+	while not sh.step(dt, true) and k < 100:
+		k += 1
+	_check(k + 1 >= 35 and k + 1 <= 37, "SkipHold completes after 0.6 s (%d frames)" % (k + 1))
+	_check(not SkipHold.new().step(0.5, false), "no hold, no skip")
+	p.queue_free()
+	await process_frame

@@ -201,7 +201,8 @@ func _process(_d: float) -> bool:
 					p.step(1.0 / 60.0)
 					n += 1
 				_check(finished_args == [true], "hold Esc skips (finished(true))")
-				_check(n >= 60 and n <= 70, "skip after 0.8 s hold + 0.25 s fade (%d steps)" % n)
+				var want_n: int = int(ceil((CinePlayer.ESC_HOLD + CinePlayer.SKIP_FADE) * 60.0))
+				_check(n >= want_n - 3 and n <= want_n + 4, "skip after a %.1f s hold + 0.25 s fade (%d steps, want ~%d)" % [CinePlayer.ESC_HOLD, n, want_n])
 				p.queue_free()
 				phase = 4
 				frames = 0
