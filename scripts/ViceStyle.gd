@@ -380,7 +380,7 @@ static func window_emission_texture(style: String, mat: BaseMaterial3D = null) -
 # NỘI BỘ
 # ===========================================================================
 static func _find_first(node: Node, cls: String) -> Node:
-	if node.is_class(cls):
+	if node.is_class(cls) and node.name != &"LookFill":   # Q3 LookPresets' fill light is never the scene's sun
 		return node
 	for c: Node in node.get_children():
 		var r: Node = _find_first(c, cls)

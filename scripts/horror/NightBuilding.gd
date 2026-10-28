@@ -185,6 +185,7 @@ func build() -> void:
 	player.camera.make_current()
 	flashlight = HorrorFlashlight.new()
 	add_child(flashlight)
+	add_child(FxPool.new())   # Q3 VFX pool (group "fx_pool")
 	scare = ScareDirector.new()
 	scare.reduce_scares = bool(opts["reduce_scares"]) if opts.has("reduce_scares") else StoryUtil.reduce_scares()
 	scare.budget = clampi(int(opts.get("jump_budget", ScareDirector.MAX_JUMP)), 1, ScareDirector.MAX_JUMP)

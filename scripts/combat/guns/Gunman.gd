@@ -147,6 +147,7 @@ func setup(opts: Dictionary = {}) -> void:
 	pose = GunPose.attach(body)
 	_anim = CharacterBuilder.get_animator(body)
 	_attach_gun()
+	Readability.rim(body, "enemy")   # Q3 rim
 	glint = GunProps.glint()
 	add_child(glint)
 	shout = Label3D.new()

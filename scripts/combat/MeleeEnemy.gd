@@ -150,6 +150,7 @@ func setup(arch: String, opts: Dictionary = {}) -> void:
 		add_child(pose)
 	for mi: Node in body.find_children("*", "MeshInstance3D", true, false):
 		_meshes.append(mi as MeshInstance3D)
+	Readability.rim(body, "enemy", true)   # Q3 rim (shell mode: _set_flash owns material_overlay)
 	_anim = CharacterBuilder.get_animator(body)
 	if bool(stats.get("glow", false)):
 		_build_glow()

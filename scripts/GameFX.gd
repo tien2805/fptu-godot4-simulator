@@ -66,6 +66,10 @@ var fullscreen: bool = false
 var art_style: String = "vice"
 ## Vệt sáng kiểu PS2 lúc hoàng hôn / ban đêm (video/trails). Hiện chỉ lưu cờ; hiệu ứng ở Task VC-7.
 var trails_enabled: bool = true
+## Q3 "Viền sáng nhân vật" (video/rim_light, default on): the fresnel rim on enemies and pickups (Readability).
+var rim_light: bool = true
+## settings.cfg path (tests point it at a temp file so the owner's settings are never touched).
+var settings_path: String = SETTINGS_PATH
 ## "Giảm hù dọa" (story spec S-D6, A2-D14; story/reduce_scares): no violin screech / light flicker, the 3 a.m. call without
 ## shake or flash, horror cues 6 dB quieter (StoryAudio.cue_db).
 var reduce_scares: bool = false
@@ -79,12 +83,13 @@ var _ui_pool_idx: int = 0
 
 func load_settings() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load(SETTINGS_PATH) == OK:
+	if cfg.load(settings_path) == OK:
 		visual_quality = clampi(int(cfg.get_value("video", "quality", 2)), 0, 2)
 		fullscreen = bool(cfg.get_value("video", "fullscreen", false))
 		var st: String = String(cfg.get_value("video", "art_style", "vice"))
 		art_style = st if st in ART_STYLES else "vice"
 		trails_enabled = bool(cfg.get_value("video", "trails", true))
+		rim_light = bool(cfg.get_value("video", "rim_light", true))
 		reduce_scares = bool(cfg.get_value("story", "reduce_scares", false))
 		random_scares = bool(cfg.get_value("story", "random_scares", true))
 		for b: String in AUDIO_BUSES:
@@ -93,6 +98,7 @@ func load_settings() -> void:
 	_apply_window_mode()
 	_apply_volumes()
 	_apply_art_style_statics()
+	Readability.set_enabled(rim_light)
 
 func save_settings() -> void:
 	var cfg := ConfigFile.new()
@@ -100,11 +106,12 @@ func save_settings() -> void:
 	cfg.set_value("video", "fullscreen", fullscreen)
 	cfg.set_value("video", "art_style", art_style)
 	cfg.set_value("video", "trails", trails_enabled)
+	cfg.set_value("video", "rim_light", rim_light)
 	cfg.set_value("story", "reduce_scares", reduce_scares)
 	cfg.set_value("story", "random_scares", random_scares)
 	for b: String in AUDIO_BUSES:
 		cfg.set_value("audio", "vol_" + b.to_lower(), float(volumes[b]))
-	cfg.save(SETTINGS_PATH)
+	cfg.save(settings_path)
 
 # --- Bus âm thanh: Master (limiter) <- Music / SFX / UI. Tạo lúc chạy vì dự án không có bus layout riêng.
 func _setup_audio_buses() -> void:
@@ -226,6 +233,12 @@ func build_style_settings(parent: Control) -> void:
 	trails.text = "Vệt sáng (trails)"
 	trails.add_theme_font_size_override("font_size", 15)
 	row.add_child(trails)
+	var rim := CheckButton.new()
+	rim.name = "RimLightCheck"
+	rim.text = "Viền sáng nhân vật"
+	rim.tooltip_text = "Viền sáng mờ quanh kẻ địch (đỏ cam) và vật nhặt được (vàng) để dễ nhìn thấy"
+	rim.add_theme_font_size_override("font_size", 15)
+	row.add_child(rim)
 	var hint: Label = make_label(ART_STYLE_HINT, 12, Color("#95A5A6"), HORIZONTAL_ALIGNMENT_LEFT)
 	hint.name = "ArtStyleHint"
 	parent.add_child(hint)
@@ -235,6 +248,9 @@ func build_style_settings(parent: Control) -> void:
 		play_ui("pop", -6.0))
 	trails.toggled.connect(func(on: bool) -> void:
 		set_trails(on)
+		play_ui("tick", -10.0, 1.3))
+	rim.toggled.connect(func(on: bool) -> void:
+		set_rim_light(on)
 		play_ui("tick", -10.0, 1.3))
 
 ## Đồng bộ các hàng do build_style_settings() dựng (dưới `root`) với cài đặt hiện tại, không phát tín hiệu.
@@ -247,6 +263,9 @@ func sync_style_settings(root: Node) -> void:
 	var trails: CheckButton = root.find_child("TrailsCheck", true, false) as CheckButton
 	if trails:
 		trails.set_pressed_no_signal(trails_enabled)
+	var rim: CheckButton = root.find_child("RimLightCheck", true, false) as CheckButton
+	if rim:
+		rim.set_pressed_no_signal(rim_light)
 	var scares: CheckButton = root.find_child("ReduceScaresCheck", true, false) as CheckButton
 	if scares:
 		scares.set_pressed_no_signal(reduce_scares)
@@ -290,6 +309,14 @@ func build_story_settings(parent: Control, compact: bool = false) -> void:
 	scares.toggled.connect(func(on: bool) -> void:
 		set_reduce_scares(on)
 		play_ui("tick", -10.0, 1.3))
+
+
+## Q3 rim light on enemies / pickups: Readability adds or removes it on everything alive at once.
+func set_rim_light(on: bool, persist: bool = true) -> void:
+	rim_light = on
+	Readability.set_enabled(on)
+	if persist:
+		save_settings()
 
 
 func set_random_scares(on: bool, persist: bool = true) -> void:
@@ -954,6 +981,7 @@ static func upgrade_scene_visuals(root: Node, preset: String = "outdoor") -> voi
 		return
 	if _art_style() == "vice":
 		ViceStyle.apply(root, preset, _quality(), _trails())
+		LookPresets.refresh(root)   # Q3: an active look preset is written again over the rebuilt environment
 		return
 	# vật liệu đã chuyển kiểu vice trong phiên này (sub-resource .tscn dùng lại khi nạp lại cùng cảnh, vật liệu đang hiển
 	# thị khi đổi phong cách lúc chạy) -> trả về gốc; phiên chỉ chơi cổ điển thì không làm gì
@@ -1062,6 +1090,7 @@ static func upgrade_scene_visuals(root: Node, preset: String = "outdoor") -> voi
 		if key == "dawn":
 			sun.directional_shadow_max_distance = [220.0, 360.0, 520.0][q] # bóng dài buổi sớm
 			sun.light_angular_distance = 1.2
+	LookPresets.refresh(root)
 
 # ---------------------------------------------------------------------------
 # TIỆN ÍCH HUD CHUẨN GODOT 4 (anchors / containers, không offset cứng)

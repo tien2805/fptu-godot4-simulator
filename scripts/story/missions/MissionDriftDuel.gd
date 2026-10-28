@@ -37,6 +37,7 @@ static func drift_slot() -> String:
 
 func _start() -> void:
 	hide_top_panel()
+	LookPresets.apply("tokyo_drift", roam)   # Q3 look (popped in _cleanup)
 	MusicDirector.warm([DRIFT_SLOT, CHASE_SLOT])
 	duel = DriftDuel.new()
 	duel.name = "DriftDuel"
@@ -107,6 +108,7 @@ func _reset() -> void:
 
 
 func _cleanup() -> void:
+	LookPresets.restore(roam, "tokyo_drift")
 	if duel and is_instance_valid(duel):
 		duel.stop()
 		duel.queue_free()

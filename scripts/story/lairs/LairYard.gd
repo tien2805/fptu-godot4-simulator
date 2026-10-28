@@ -68,6 +68,7 @@ func build_in(parent: Node3D) -> void:
 	floor_y = _ground(parent)
 	global_transform = Transform3D(Basis(Vector3.UP, deg_to_rad(YAW)), Vector3(CENTER.x, floor_y, CENTER.y))
 	_build()
+	add_child(LookZone.make(parent, "port_night", global_position, 110.0, 150.0))   # Q3: the yard's look near it
 
 
 func _ground(parent: Node3D) -> float:
