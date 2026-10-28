@@ -18,7 +18,7 @@
 # Run:  godot --headless --path . --script tests/test_story_director.gd
 extends SceneTree
 
-const TMP: String = "user://test_story_director_save.cfg"
+var TMP: String = "user://test_story_director_save_%d.cfg" % OS.get_process_id()
 var fails: Array[String] = []
 var sd: Node
 var counts: Dictionary = {"day": 0, "evidence": 0, "objective": 0, "text": 0, "step": 0}
@@ -199,7 +199,7 @@ func _state() -> void:
 	sd.call("complete_step", "d1_morning")
 	_check(String(sd.get("step")) == "d1_stakeout" and String(sd.get("tod")) == "night", "d1_morning -> d1_stakeout at night")
 	_check(String(sd.get("objective")).contains("cổng chính"), "Day 1 objective: the main gate")
-	var d1: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Ê, tao nghe chuyện rồi… tối nay gặp ở campus nhé.")
+	var d1: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Ê, tao nghe chuyện rồi... tối nay gặp ở campus nhé.")
 	_check(d1.size() == 1 and int(d1[0]["day"]) == 1 and String(d1[0]["from"]) == "Phúc", "Phúc's Day-1 text is stamped Day 1, not Day 0")
 	var mt: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Thầy tin em. Tìm bằng chứng đi.")
 	_check(mt.size() == 1 and int(mt[0]["day"]) == 0, "Mr.T's text arrives with ai_intro (Day 0) and is not repeated on Day 1")
@@ -305,8 +305,8 @@ func _phase_c() -> void:
 	# first beats; Chọn cảnh seeds their chapters
 	var su: String = StoryChapters.unlocks_path
 	var sc: String = StoryChapters.chapters_path
-	StoryChapters.unlocks_path = "user://test_story_director_unlocks.cfg"
-	StoryChapters.chapters_path = "user://test_story_director_chapters.cfg"
+	StoryChapters.unlocks_path = ("user://test_story_director_unlocks_%d.cfg" % OS.get_process_id())
+	StoryChapters.chapters_path = ("user://test_story_director_chapters_%d.cfg" % OS.get_process_id())
 	for old2: Array in [["d2_wait", 2, "d2_chase"], ["d3_wait", 3, "d3_sneak"], ["d5_locked", 5, "d5_stealth"]]:
 		for pth: String in [StoryChapters.unlocks_path, StoryChapters.chapters_path]:
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(pth))

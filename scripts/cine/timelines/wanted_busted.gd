@@ -59,4 +59,4 @@ func build() -> void:
 	else:
 		look("hero", 3.4, 6.2, "cop")
 		sub(3.6, 1.8, "cop", "Mời anh đi lao động công ích!" if police else "Đi lao động công ích với chú nào!")
-	sub(5.9, 0.9, "hero", "Ét o ét…")
+	sub(5.9, 0.9, "hero", "Ét o ét...")

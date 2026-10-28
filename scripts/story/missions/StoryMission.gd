@@ -84,6 +84,7 @@ func begin() -> void:
 func retry() -> void:
 	retries += 1
 	clock = 0.0
+	_radio_i = 0   # the beat's scripted radio lines play again after a fail
 	_lock_weapons(true)
 	_off_bike()
 	state = "running"

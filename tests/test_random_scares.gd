@@ -367,7 +367,7 @@ func _story_phone() -> bool:
 	var sd: Node = root.get_node("StoryDirector")
 	if phase == 6:
 		sd.set("nav_enabled", false)
-		sd.set("save_path", "user://test_random_scares.cfg")
+		sd.set("save_path", ("user://test_random_scares_%d.cfg" % OS.get_process_id()))
 		sd.call("new_story", {"female": false, "name": "Tùng"})
 		sd.call("advance_day", 1)
 		sd.set("step", "d1_stakeout")   # a marker beat: nothing runs by itself (no cinematic in the way)
@@ -403,7 +403,7 @@ func _story_phone() -> bool:
 			rs._end_visual()
 			fr.queue_free()
 			sd.call("reset_state")
-			DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_random_scares.cfg"))
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(("user://test_random_scares_%d.cfg" % OS.get_process_id())))
 			phase = 9
 			frames = 0
 		return false

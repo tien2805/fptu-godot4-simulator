@@ -72,7 +72,7 @@ func play_file(path: String) -> bool:
 	black.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(black)
 	hint = Label.new()
-	hint.text = "Giữ Esc / Enter để bỏ qua"
+	hint.text = "Giữ Esc hoặc Enter để bỏ qua"
 	hint.add_theme_font_size_override("font_size", 14)
 	hint.add_theme_color_override("font_color", Color(0.9, 0.88, 0.95, 0.7))
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)

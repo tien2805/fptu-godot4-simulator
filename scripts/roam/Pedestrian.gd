@@ -59,7 +59,7 @@ const LAUNCH_MAX_S: float = 4.0
 const LAUNCH_SPIN: float = 9.0            # rad/s quanh trục đứng khi bay
 const LAND_MIN_S: float = 0.15
 const PED_LINES: Dictionary = {
-	"bump": ["Ê, nhìn đường chứ bạn!", "Đi đứng kiểu gì vậy trời…", "Từ từ thôi, trễ học hả?", "Xin lỗi một tiếng coi!"],
+	"bump": ["Ê, nhìn đường chứ bạn!", "Đi đứng kiểu gì vậy trời...", "Từ từ thôi, trễ học hả?", "Xin lỗi một tiếng coi!"],
 	"sprint": ["Chạy deadline hả em?!", "Ối giời ơi, đụng người ta rồi!", "Thanh niên gì mà hấp tấp vậy!", "Điểm danh trễ cũng đâu cần chạy vậy!"],
 	"bike": ["Trời đất ơi, chạy xe kiểu gì vậy!", "Có bằng lái không đó?!", "Đi chậm lại giùm cái!", "Gọi bảo vệ bây giờ!"],
 }

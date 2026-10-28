@@ -12,7 +12,7 @@ SHOT S4     12.400  low_hero  hero hero
 SHOT S5     17.400  orbit     orbit under the title card
 #
 # Subtitles (real start - end, speaker: line)
-SUB    9.200 - 11.400  Bạn: Mình… bị đình chỉ thi á?!
+SUB    9.200 - 11.400  Bạn: Mình... bị đình chỉ thi á?!
 SUB   11.450 - 13.150  Bạn: Mới được khen hôm qua mà...
 SUB   14.500 - 17.400  Bạn: Được. Bảy ngày. Phải tìm ra kẻ cài cái kính đó!
 SUB   21.000 - 23.500  Số lạ (tin nhắn): Đừng đào sâu. Mày còn 7 ngày thôi.

@@ -34,7 +34,7 @@ const B_DIALOGUE: Array[String] = ["cine_d1_intro", "cine_d1_corridor", "cine_d1
 const BANNED: Array[String] = ["anh ấy", "cô ấy", "cậu ấy", "chàng", "nàng", " hắn", "anh ta", "cô ta"]
 ## Punctuation allowed above U+2000 in UI / subtitle text (owner rule B-D11: no emoji or decorative symbols).
 const ALLOWED_SYMBOLS: Array[int] = [0x2013, 0x2014, 0x2018, 0x2019, 0x201C, 0x201D, 0x2026]
-const VID_DIR: String = "user://test_story_video/"
+var VID_DIR: String = "user://test_story_video_%d/" % OS.get_process_id()
 var fails: Array[String] = []
 var frames: int = 0
 var sd: Node
@@ -54,7 +54,7 @@ func _process(_d: float) -> bool:
 	sd = root.get_node("StoryDirector")
 	fx = root.get_node("GameFX")
 	sd.set("nav_enabled", false)
-	sd.set("save_path", "user://test_story_cines.cfg")
+	sd.set("save_path", ("user://test_story_cines_%d.cfg" % OS.get_process_id()))
 	sd.call("reset_state")
 	_sync()
 	sd.call("new_story", {"female": true, "name": "Minh Thư", "hair_style": "bun", "variant": 1, "skin": 2, "hair_color": 1})
@@ -84,7 +84,7 @@ func _process(_d: float) -> bool:
 	sd.call("new_story", {"female": false, "name": "Minh", "hair_style": "spiky", "variant": 0, "skin": 1, "hair_color": 0})
 	_occlusion()
 	sd.call("reset_state")
-	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_story_cines.cfg"))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(("user://test_story_cines_%d.cfg" % OS.get_process_id())))
 	if fails.is_empty():
 		print("✅ SUCCESS: STORY CINEMATICS (Day 0, Phase B and Phase C slots valid + in sync, reduce scares, playback, cards, video, cast, shiba, choice 1 and 2, villain cards, screen cards, occlusion, scares, props)")
 		quit(0)
@@ -151,7 +151,7 @@ func _timelines() -> void:
 	sd.call("set_step", "d1_morning")
 	sd.set("day", 1)
 	var ds: CineTimeline = CineTimeline.load_slot("cine_day_start")
-	_check(int(ds.get("days")) == 1 and int(ds.get("left")) == 7 and ds.subs.any(func(sb6: Dictionary) -> bool: return String(sb6["text"]) == "Ê, tao nghe chuyện rồi… tối nay gặp ở campus nhé." and String(sb6["speaker"]).begins_with("Phúc")), "day start Day 1: NGÀY 1 · CÒN 7 NGÀY + Phúc's text")
+	_check(int(ds.get("days")) == 1 and int(ds.get("left")) == 7 and ds.subs.any(func(sb6: Dictionary) -> bool: return String(sb6["text"]) == "Ê, tao nghe chuyện rồi... tối nay gặp ở campus nhé." and String(sb6["speaker"]).begins_with("Phúc")), "day start Day 1: NGÀY 1 · CÒN 7 NGÀY + Phúc's text")
 	_check(ds.cues.any(func(c2: Dictionary) -> bool: return c2["type"] == "move" and c2["move"] == "hold_up"), "the phone is read with hold_up")
 	sd.set("day", 3)
 	var ds3: CineTimeline = CineTimeline.load_slot("cine_day_start")
@@ -374,8 +374,8 @@ func _phase_b_lines() -> void:
 		and _said("cine_d4_intro").contains("Phúc!!!"), "d4 intro: Linh's plan and the flyer gag with Phúc")
 	var st: CineTimeline = CineTimeline.load_slot("cine_d4_stare")
 	var vc: Dictionary = st.cards[0]["data"]
-	_check(String(vc["name"]) == "Cừu Dolly" and String(vc["nick"]) == "trùm thi hộ" and String(vc["wrong_line"]) == "…à nhầm, con kia",
-		"stare: villain card Cừu Dolly - trùm thi hộ, '…à nhầm, con kia'")
+	_check(String(vc["name"]) == "Cừu Dolly" and String(vc["nick"]) == "trùm thi hộ" and String(vc["wrong_line"]) == "...à nhầm, con kia",
+		"stare: villain card Cừu Dolly - trùm thi hộ, '...à nhầm, con kia'")
 	_check(_said("cine_d4").contains("10.13.0.7") and _said("cine_d4").contains("Thứ Năm"), "cine_d4: Dolly spills the schedule and the server")
 	for s: String in SLOTS.keys():
 		if s.begins_with("cine_d1") or s.begins_with("cine_d4") or s == "seg_d4_brawl":
@@ -675,7 +675,7 @@ func _villain_card() -> void:
 	var a: Dictionary = StoryVillainCard.state_at(0.3, true, 0.45)
 	var b: Dictionary = StoryVillainCard.state_at(0.8, true, 0.45)
 	_check(float(a["pointer"]) == 0.0 and bool(a["wrong_line"]) and float(b["pointer"]) == 1.0 and not bool(b["wrong_line"]),
-		"pointer at the wrong clone first with '…à nhầm, con kia', then on Dolly")
+		"pointer at the wrong clone first with '...à nhầm, con kia', then on Dolly")
 	_check(not bool(StoryVillainCard.state_at(-0.1, true)["shown"]) and not bool(StoryVillainCard.state_at(1.0, true)["shown"]), "card only inside its window")
 	var vc := StoryVillainCard.new()
 	vc.data = data

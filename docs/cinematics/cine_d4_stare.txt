@@ -14,7 +14,7 @@ SHOT S5      7.010  push_in   push-in hero
 SHOT S6      8.100  dutch     dutch dolly
 #
 # Subtitles (real start - end, speaker: line)
-SUB    7.200 -  8.200  Bạn: …Thôi xong.
+SUB    7.200 -  8.200  Bạn: ...Thôi xong.
 SUB    8.500 -  9.500  Cừu Dolly: Bắt lấy!
 #
 # Cards (real start - end, kind: what)

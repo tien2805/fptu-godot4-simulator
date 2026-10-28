@@ -15,7 +15,7 @@ SHOT S5      6.400  static    wide: running off to the race
 SUB    1.600 -  3.600  Bạn: Tôi là ai, đây là đâu?
 SUB    4.000 -  5.900  Phúc (tin nhắn): Ê!!! Thi EOS 8h đó, 7h05 rồi!!!
 SUB    5.950 -  6.950  Bạn: CHẾT RỒI!!!
-SUB    7.000 -  7.900  Bạn: Ét o ét…
+SUB    7.000 -  7.900  Bạn: Ét o ét...
 #
 # Pacing (Q5): joke beats and the day-end cliffhanger (real time)
 JOKE    1.600  Tôi là ai, đây là đâu? on a record scratch

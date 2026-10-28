@@ -86,10 +86,10 @@ func build() -> void:
 	shot("S4", 8.8, "static", "low front two-shot: the face rises behind", {"pos": Vector3(0.15, 0.9, -2.6), "look": Vector3(0.0, 1.2, 0.8), "fov": 46.0})
 	shot("S5", 13.8, "static", "close: glasses that are not theirs", {"pos": Vector3(0.45, 1.1, -0.8), "look": Vector3(-0.1, 0.85, -0.15), "fov": 32.0})
 	two_shot("S6", 18.6, "hero", "phuc", {"look_y": 1.1, "height": 1.3, "dist": 3.8})   # Q5: deadpan two-shot
-	sub(1.5, 2.0, "hero", "…Không ngủ được.")
-	sub(6.3, 2.4, "???", "Lọ… Thần…")
+	sub(1.5, 2.0, "hero", "...Không ngủ được.")
+	sub(6.3, 2.4, "???", "Lọ... Thần...")
 	sub(10.6, 1.8, "phuc", "Ủa, chưa ngủ hả?")
 	sub(12.7, 1.4, "hero", "Phúc!!! Hết hồn!!!")
 	joke(12.7, "the ghost is Phúc slurping noodles in a face mask; he laughs")
-	sub(16.3, 2.3, "hero", "…Kính ai đây? Đâu phải của mình…")
+	sub(16.3, 2.3, "hero", "...Kính ai đây? Đâu phải của mình...")
 	sub(19.0, 2.4, "phuc", "Kính xịn vậy, cho tao mượn đeo thử coi!")

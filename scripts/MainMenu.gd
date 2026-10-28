@@ -205,7 +205,7 @@ func _build_ui() -> void:
 	subtitle.add_theme_constant_override("outline_size", 6)
 	subtitle.add_theme_color_override("font_outline_color", Color(0.02, 0.03, 0.06, 0.9))
 	col.add_child(subtitle)
-	var tagline: Label = GameFX.make_label("Cốt truyện TOOL ĐEN – 7 ngày minh oan: sáng thi EOS, đêm bị cài kính gian lận vào ba lô, sáng mai bị đình chỉ thi. Còn 7 ngày để tìm bằng chứng… hoặc cứ đi chơi campus tự do.", 13, Color("#DFE6E9"), HORIZONTAL_ALIGNMENT_LEFT)
+	var tagline: Label = GameFX.make_label("Cốt truyện TOOL ĐEN – 7 ngày minh oan: sáng thi EOS, đêm bị cài kính gian lận vào ba lô, sáng mai bị đình chỉ thi. Còn 7 ngày để tìm bằng chứng... hoặc cứ đi chơi campus tự do.", 13, Color("#DFE6E9"), HORIZONTAL_ALIGNMENT_LEFT)
 	tagline.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tagline.custom_minimum_size = Vector2(440, 0)
 	col.add_child(tagline)

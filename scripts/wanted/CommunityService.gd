@@ -33,7 +33,7 @@ const VEST := Color("#FF7A1A")
 const STRIPE := Color("#D9DEE3")
 const LINES: Array[String] = [
 	"Nhặt cho sạch nha em, rác cũng có cảm xúc đó!",
-	"Lao động là vinh quang, chạy lung tung là… lao động tiếp!",
+	"Lao động là vinh quang, chạy lung tung là... lao động tiếp!",
 	"Bao này nhẹ hơn deadline nhiều, ráng lên!",
 	"Xong tám bao là cho về, khỏi điểm danh lại.",
 	"Áo cam hợp với em ghê, chụp hình đăng nhóm lớp nha?",

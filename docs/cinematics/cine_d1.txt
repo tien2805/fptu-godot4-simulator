@@ -13,8 +13,8 @@ SHOT S5     14.300  two_shot  two-shot hero + c2
 SHOT S6     16.200  push_in   push-in hero
 #
 # Subtitles (real start - end, speaker: line)
-SUB    2.100 -  3.400  Shipper Mũ Đỏ: Ê… đừng… đọc…
-SUB    5.600 -  8.200  Bạn: Sói Xám… hàng đêm nay ở Nguyễn Xiển.
+SUB    2.100 -  3.400  Shipper Mũ Đỏ: Ê... đừng... đọc...
+SUB    5.600 -  8.200  Bạn: Sói Xám... hàng đêm nay ở Nguyễn Xiển.
 SUB   12.700 - 14.300  Bạn: Tối nay vui rồi đây.
 SUB   14.500 - 16.300  Shipper Mũ Đỏ: Ê... trả tao điện thoại đi...
 SUB   16.400 - 17.900  Bạn: ...'Tao thấy mày rồi.'

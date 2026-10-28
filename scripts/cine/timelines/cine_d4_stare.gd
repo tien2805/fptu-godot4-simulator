@@ -50,8 +50,8 @@ func build() -> void:
 		prop("stool%d" % i2, "stool", Vector3(CLONE_X[i2], 0.0, SEAT_Z), 0.0)
 		prop("tray%d" % i2, "tray", Vector3(CLONE_X[i2], 0.756, TABLE_Z - 0.18), 0.0, {"food": true})
 	villain("V1", CARD_R, CARD_LEN, {"name": "Cừu Dolly", "nick": "trùm thi hộ",
-		"joke": "Đếm cừu này thì… trượt môn.", "color": Color("#F2D7A6"),
-		"point_wrong": _screen(_head(WRONG_I)), "point_right": _screen(_head(DOLLY_I)), "wrong_line": "…à nhầm, con kia",
+		"joke": "Đếm cừu này thì... trượt môn.", "color": Color("#F2D7A6"),
+		"point_wrong": _screen(_head(WRONG_I)), "point_right": _screen(_head(DOLLY_I)), "wrong_line": "...à nhầm, con kia",
 		"switch_u": 0.45})
 	var s_card: float = story_time("V1")   # story time stands still on the card
 	# the protagonist with a tray, frozen to the spot
@@ -103,7 +103,7 @@ func build() -> void:
 	# Q5 reveal: the real Dolly stands and points, on a pushing dutch angle (the card itself keeps the static wide row:
 	# its pointer gag is aimed through S4)
 	dutch_shot("S6", s_card + 1.1, _cid(DOLLY_I), {"side_deg": 25.0, "dist": 3.0, "roll": 12.0, "push": 0.15, "look_y": 1.15})
-	sub(7.2, 1.0, "hero", "…Thôi xong.")
+	sub(7.2, 1.0, "hero", "...Thôi xong.")
 	sub(8.5, 1.0, _cid(DOLLY_I), "Bắt lấy!")
 	joke(BURP, "every clone stares in silence, then one burps")
 

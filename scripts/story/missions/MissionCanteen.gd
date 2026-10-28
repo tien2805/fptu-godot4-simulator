@@ -31,12 +31,12 @@ const WRONG_SUS: float = 35.0
 const SPRINT_DROP: float = 5.0
 const MLEM_GAP := Vector2(2.5, 4.5)
 const T_LO_REASON: String = "Cả căn tin quay sang nhìn mày chằm chằm."
-const T_WRONG: String = "Ủa… nhầm người rồi! Nghi ngờ tăng"
-const T_DROP: String = "Rớt khay! Mọi người đang nhìn…"
+const T_WRONG: String = "Ủa... nhầm người rồi! Nghi ngờ tăng"
+const T_DROP: String = "Rớt khay! Mọi người đang nhìn..."
 const T_FOUND: String = "Bắt được rồi nha, Cừu Dolly!"
 const NOTES: Array[String] = ["Đang nhai rau ráu.", "Đang húp canh sùm sụp.", "Đang lướt điện thoại.", "Mlem mlem.",
 	"Đang gắp miếng sườn to nhất.", "Đang ngáp."]
-const DOLLY_NOTE: String = "Đang ngân nga khe khẽ một giai điệu hộp nhạc…"
+const DOLLY_NOTE: String = "Đang ngân nga khe khẽ một giai điệu hộp nhạc..."
 
 var xf: Transform3D = Transform3D.IDENTITY
 var props: Node3D
@@ -246,7 +246,7 @@ func interact() -> String:
 		return ""
 	if not has_tray and near_counter():
 		_give_tray(true)
-		popup("Lấy khay mới. Bình tĩnh nào…", 1.6)
+		popup("Lấy khay mới. Bình tĩnh nào...", 1.6)
 		return "tray"
 	var i: int = facing_clone(ACCUSE_M)
 	if i < 0:

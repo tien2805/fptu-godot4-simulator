@@ -6,7 +6,7 @@
 # Run:  godot --headless --path . --script tests/test_difficulty_ui.gd
 extends SceneTree
 
-const TMP: String = "user://test_difficulty_ui.cfg"
+var TMP: String = "user://test_difficulty_ui_%d.cfg" % OS.get_process_id()
 var fails: Array[String] = []
 
 

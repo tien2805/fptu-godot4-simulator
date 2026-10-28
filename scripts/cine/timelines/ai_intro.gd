@@ -52,7 +52,7 @@ func build() -> void:
 	push_in("S3", 8.0, "hero", {"from": 3.0, "to": 2.1, "side_deg": 12.0, "hand": 0.2, "look_y": 1.2})
 	hero_shot("S4", 12.4, "hero", {"side_deg": -25.0, "dist": 2.4})
 	shot("S5", 17.4, "orbit", "orbit under the title card", {"center": Vector3(0.0, 1.0, 0.0), "radius": 3.2, "deg_from": 200.0, "deg_to": 160.0, "height": 1.5, "fov": 50.0})
-	sub(9.2, 2.2, "hero", "Mình… bị đình chỉ thi á?!")
+	sub(9.2, 2.2, "hero", "Mình... bị đình chỉ thi á?!")
 	sub(11.45, 1.7, "hero", "Mới được khen hôm qua mà...")
 	sub(14.5, 2.9, "hero", "Được. Bảy ngày. Phải tìm ra kẻ cài cái kính đó!")
 	sub(21.0, 2.5, "Số lạ (tin nhắn)", "Đừng đào sâu. Mày còn 7 ngày thôi.")

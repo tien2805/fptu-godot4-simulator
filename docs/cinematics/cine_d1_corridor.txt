@@ -12,7 +12,7 @@ SHOT S4      4.400  static    low behind the protagonist: Lu trots in and bonks 
 SHOT S5      6.000  static    two-shot: the protagonist and Lu, tail wagging
 #
 # Subtitles (real start - end, speaker: line)
-SUB    0.900 -  2.200  Bạn: Có ai… ở đó không?
+SUB    0.900 -  2.200  Bạn: Có ai... ở đó không?
 SUB    5.700 -  6.200  Bạn: Á!!!
 SUB    6.200 -  7.500  Chú Bảy: Lu! Về đây, đừng phá!
 #

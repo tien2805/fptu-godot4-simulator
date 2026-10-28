@@ -166,7 +166,7 @@ class Widget extends Control:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(acc, 0.8), false, 2.0)
 		WeaponIcons.draw(self, hud.slot, Vector2(36.0, size.y * 0.5), 48.0, Color("#F4F1FF"), Color(0.08, 0.05, 0.15, 0.95))
 		_text(f, Vector2(72.0, 24.0), WeaponData.name_of(hud.slot), 19, Color.WHITE)
-		_text(f, Vector2(72.0, 47.0), "Đang nạp…" if hud.reloading else hud.ammo, 18, acc)
+		_text(f, Vector2(72.0, 47.0), "Đang nạp..." if hud.reloading else hud.ammo, 18, acc)
 		_text(ThemeDB.fallback_font, Vector2(72.0, 64.0), "[Chuột giữa] vũ khí", 11, Color(0.85, 0.85, 0.9))
 
 	func _text(f: Font, pos: Vector2, s: String, sz: int, col: Color) -> void:

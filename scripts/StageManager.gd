@@ -404,7 +404,7 @@ func _create_pause_ui() -> void:
 	margin.add_child(vb)
 	pause_title = GameFX.make_label("TẠM DỪNG", 26, GameFX.ui_accent())
 	vb.add_child(pause_title)
-	var sub: Label = GameFX.make_label("Thời gian trong game đã dừng. Giảng viên vẫn chưa điểm danh… tranh thủ đi.", 13, Color("#BDC3C7"))
+	var sub: Label = GameFX.make_label("Thời gian trong game đã dừng. Giảng viên vẫn chưa điểm danh... tranh thủ đi.", 13, Color("#BDC3C7"))
 	vb.add_child(sub)
 
 	pause_resume_btn = _pause_button("TIẾP TỤC  [ESC]")

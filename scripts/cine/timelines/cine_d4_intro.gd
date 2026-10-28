@@ -107,5 +107,5 @@ func build() -> void:
 	sub(3.2, 3.1, "linh", "Mình bưng khay giả làm khách, tìm ra con thật.")
 	sub(GAG + 1.3, 0.8, "linh", "Phúc!!!")
 	joke(GAG + 1.3, "the distracted-boyfriend situation with the 'thi hộ' flyer")
-	sub(9.2, 1.5, "phuc", "Tao… chỉ đọc thôi mà!")
+	sub(9.2, 1.5, "phuc", "Tao... chỉ đọc thôi mà!")
 	sub(11.0, 2.4, "linh", "Tập trung! Bưng khay lên, bắt đầu.")

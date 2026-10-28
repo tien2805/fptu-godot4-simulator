@@ -9,8 +9,8 @@ SHOT S1      0.000  two_shot  two-shot hero + phuc
 SHOT S2      2.900  static    close: Phúc on the bench, head low
 #
 # Subtitles (real start - end, speaker: line)
-SUB    0.400 -  2.900  Bạn: Alo, thầy ạ… em có chuyện cần báo.
-SUB    3.000 -  4.400  Phúc: …Ừ. Tao đáng bị vậy.
+SUB    0.400 -  2.900  Bạn: Alo, thầy ạ... em có chuyện cần báo.
+SUB    3.000 -  4.400  Phúc: ...Ừ. Tao đáng bị vậy.
 #
 # Pacing (Q5): joke beats and the day-end cliffhanger (real time)
 JOKE    3.000  a sad trombone under Phúc's head-low line

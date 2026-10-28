@@ -13,11 +13,11 @@
 # Run:  godot --headless --path . --script tests/test_chapter_select.gd
 extends SceneTree
 
-const TMP_SAVE: String = "user://test_chapter_select_save.cfg"
-const TMP_U: String = "user://test_chapter_select_unlocks.cfg"
-const TMP_C: String = "user://test_chapter_select_chapters.cfg"
-const TMP_B: String = "user://test_chapter_select_backup.cfg"
-const VID: String = "user://test_chapter_select_video/"
+var TMP_SAVE: String = "user://test_chapter_select_save_%d.cfg" % OS.get_process_id()
+var TMP_U: String = "user://test_chapter_select_unlocks_%d.cfg" % OS.get_process_id()
+var TMP_C: String = "user://test_chapter_select_chapters_%d.cfg" % OS.get_process_id()
+var TMP_B: String = "user://test_chapter_select_backup_%d.cfg" % OS.get_process_id()
+var VID: String = "user://test_chapter_select_video_%d/" % OS.get_process_id()
 const DT: float = 1.0 / 60.0
 const P: Dictionary = {"female": true, "name": "Lan", "variant": 1, "hair_style": "bob", "hair_color": 1, "skin": 2}
 var fails: Array[String] = []

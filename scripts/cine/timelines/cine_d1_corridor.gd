@@ -110,7 +110,7 @@ func build() -> void:
 		{"pos": Vector3(1.35, 0.55, 2.6), "look": Vector3(0.0, 0.55, 0.6), "fov": 50.0})
 	shot("S5", 6.0, "static", "two-shot: the protagonist and Lu, tail wagging",
 		{"pos": Vector3(1.25, 1.2, -1.0), "look": Vector3(-0.1, 0.7, 0.5), "fov": 50.0})
-	sub(0.9, 1.3, "hero", "Có ai… ở đó không?")
+	sub(0.9, 1.3, "hero", "Có ai... ở đó không?")
 	sub(BONK + 0.1, 0.5, "hero", "Á!!!")
 	joke(BONK + 0.1, "Lu bonks a calf, the protagonist jumps")
 	sub(6.2, 1.3, "Chú Bảy", "Lu! Về đây, đừng phá!")

@@ -39,5 +39,5 @@ func build() -> void:
 	shot("S2", 2.7, "static", "close: the protagonist, deadpan",
 		{"pos": Vector3(-0.15, 1.58, -0.75), "look": Vector3(0.55, 1.5, 0.1), "fov": 38.0})
 	sub(0.3, 2.4, "phuc", "Mày là nhất! Tao nợ mày một tô mì!")
-	sub(2.8, 1.0, "hero", "…Hai tô.")
+	sub(2.8, 1.0, "hero", "...Hai tô.")
 	joke(2.8, "...Hai tô. on a ba-dum-tss")

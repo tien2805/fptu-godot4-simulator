@@ -50,6 +50,6 @@ func build() -> void:
 	two_shot("S1", 0.0, "hero", "phuc", {"side": -1.0, "look_y": 1.0, "dist": 3.6})   # on the phone, Phúc turns to the bench
 	shot("S2", 2.9, "static", "close: Phúc on the bench, head low",
 		{"pos": Vector3(-0.3, 1.0, -0.6), "look": Vector3(-0.3, 0.9, 1.1), "fov": 40.0})
-	sub(0.4, 2.5, "hero", "Alo, thầy ạ… em có chuyện cần báo.")
-	sub(3.0, 1.4, "phuc", "…Ừ. Tao đáng bị vậy.")
+	sub(0.4, 2.5, "hero", "Alo, thầy ạ... em có chuyện cần báo.")
+	sub(3.0, 1.4, "phuc", "...Ừ. Tao đáng bị vậy.")
 	joke(3.0, "a sad trombone under Phúc's head-low line")

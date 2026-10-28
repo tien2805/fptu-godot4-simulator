@@ -71,13 +71,13 @@ func build() -> void:
 	shot("S4", 6.7, "static", "close: Phúc, the blackmail",
 		{"pos": Vector3(0.35, 1.55, -1.25), "look": Vector3(-0.5, 1.45, -0.35), "fov": 36.0, "hand": 0.15})
 	two_shot("S5", 10.0, "hero", "phuc", {"side": -1.0, "push": 0.1, "look_y": 1.2})   # the frame that freezes for the choice
-	sub(0.5, 2.4, "phuc", "Ê… tao có chuyện phải nói với mày.")
+	sub(0.5, 2.4, "phuc", "Ê... tao có chuyện phải nói với mày.")
 	sub(3.1, 2.3, "phuc", "Tao mua tool rồi... gói Premium.")
 	joke(3.1, "he bought the Premium plan of the cheat tool")
 	sub(5.6, 1.0, "hero", "Mày điên hả?!")
 	sub(6.8, 3.2, "phuc", "Giờ tụi nó tống tiền tao, không trả là báo trường.")
-	sub(10.1, 1.5, "phuc", "Đừng nói với Mr.T nha…")
+	sub(10.1, 1.5, "phuc", "Đừng nói với Mr.T nha...")
 	choice(CHOICE_R, {"id": "phuc", "title": "Lựa chọn 1",
 		"prompt": "Phúc mua tool và đang bị tống tiền. Mày chọn sao?",
 		"options": [{"key": "cover", "label": "Che giấu cho Phúc"}, {"key": "report", "label": "Báo Mr.T"}],
-		"honest": "cover", "timeout_line": "Đứng hình mười giây… Phúc coi như mày gật đầu rồi đó!"})
+		"honest": "cover", "timeout_line": "Đứng hình mười giây... Phúc coi như mày gật đầu rồi đó!"})

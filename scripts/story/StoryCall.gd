@@ -64,7 +64,7 @@ func start(n: int, opts: Dictionary = {}) -> void:
 
 
 func full_line() -> String:
-	return "…Mày… còn… %d ngày…" % days
+	return "...Mày... còn... %d ngày..." % days
 
 
 func _build() -> void:
@@ -97,7 +97,7 @@ func _build() -> void:
 	caller_label = _label("SỐ LẠ", 40, RED)
 	vb.add_child(caller_label)
 	vb.add_child(_label("03:00", 30, Color("#E9E1FF")))
-	status_label = _label("Cuộc gọi đến…", 18, Color("#B8A9D9"))
+	status_label = _label("Cuộc gọi đến...", 18, Color("#B8A9D9"))
 	vb.add_child(status_label)
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0.0, 60.0)
@@ -126,7 +126,7 @@ func _build() -> void:
 	skip_bar.offset_bottom = -20.0
 	skip_bar.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	add_child(skip_bar)
-	var skip_hint: Label = _label("Giữ Esc để bỏ qua", 14, Color(0.85, 0.8, 0.95, 0.75))
+	var skip_hint: Label = _label("Giữ Esc hoặc Enter để bỏ qua", 14, Color(0.85, 0.8, 0.95, 0.75))
 	skip_hint.name = "SkipHint"
 	skip_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	skip_hint.offset_left = -240.0

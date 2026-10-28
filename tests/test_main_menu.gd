@@ -16,9 +16,9 @@ var started: bool = false
 var sm: Node
 var fx: Node
 var sd: Node
-const TMP_SAVE: String = "user://test_main_menu_story.cfg"
-const TMP_UNLOCKS: String = "user://test_main_menu_unlocks.cfg"
-const TMP_CHAPTERS: String = "user://test_main_menu_chapters.cfg"
+var TMP_SAVE: String = "user://test_main_menu_story_%d.cfg" % OS.get_process_id()
+var TMP_UNLOCKS: String = "user://test_main_menu_unlocks_%d.cfg" % OS.get_process_id()
+var TMP_CHAPTERS: String = "user://test_main_menu_chapters_%d.cfg" % OS.get_process_id()
 
 func _initialize() -> void:
 	for pair: Array in [["StageManager", "res://scripts/StageManager.gd"], ["GameFX", "res://scripts/GameFX.gd"]]:

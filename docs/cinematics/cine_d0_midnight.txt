@@ -13,11 +13,11 @@ SHOT S5     13.800  static    close: glasses that are not theirs
 SHOT S6     18.600  two_shot  two-shot hero + phuc
 #
 # Subtitles (real start - end, speaker: line)
-SUB    1.500 -  3.500  Bạn: …Không ngủ được.
-SUB    6.300 -  8.700  ???: Lọ… Thần…
+SUB    1.500 -  3.500  Bạn: ...Không ngủ được.
+SUB    6.300 -  8.700  ???: Lọ... Thần...
 SUB   10.600 - 12.400  Phúc: Ủa, chưa ngủ hả?
 SUB   12.700 - 14.100  Bạn: Phúc!!! Hết hồn!!!
-SUB   16.300 - 18.600  Bạn: …Kính ai đây? Đâu phải của mình…
+SUB   16.300 - 18.600  Bạn: ...Kính ai đây? Đâu phải của mình...
 SUB   19.000 - 21.400  Phúc: Kính xịn vậy, cho tao mượn đeo thử coi!
 #
 # Jump scares v2 (real hit, duck from, twitching actor)

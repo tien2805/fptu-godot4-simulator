@@ -10,7 +10,7 @@ SHOT S2      2.700  static    close: the protagonist, deadpan
 #
 # Subtitles (real start - end, speaker: line)
 SUB    0.300 -  2.700  Phúc: Mày là nhất! Tao nợ mày một tô mì!
-SUB    2.800 -  3.800  Bạn: …Hai tô.
+SUB    2.800 -  3.800  Bạn: ...Hai tô.
 #
 # Pacing (Q5): joke beats and the day-end cliffhanger (real time)
 JOKE    2.800  ...Hai tô. on a ba-dum-tss

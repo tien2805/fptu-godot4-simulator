@@ -53,4 +53,4 @@ func build() -> void:
 	joke(1.6, "Tôi là ai, đây là đâu? on a record scratch")
 	sub(4.0, 1.9, "Phúc (tin nhắn)", "Ê!!! Thi EOS 8h đó, 7h05 rồi!!!")
 	sub(5.95, 1.0, "hero", "CHẾT RỒI!!!")
-	sub(7.0, 0.9, "hero", "Ét o ét…")
+	sub(7.0, 0.9, "hero", "Ét o ét...")
