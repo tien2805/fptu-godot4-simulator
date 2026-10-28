@@ -1,7 +1,9 @@
 # File: res://tests/test_story_day1.gd
 # Headless end-to-end test of story Day 1 "Shipper bóng đêm" (spec B-D5, B-D6; plan 2026-10-25-phase-b-integration.md):
-# Day 1 morning (cine_day_start) -> the main-gate marker (blocked while wanted) -> cine_d1_intro -> the stake-out (seen =
-# restart, the window missed = TOANG! -> THỬ LẠI, a photo too early refused, the photo in the window, 60 s) -> the chase
+# Day 1 morning (cine_day_start) -> the main-gate marker (blocked while wanted) -> cine_d1_intro -> the stake-out (Wave 2
+# tension mini-game: seen in the open while he looks round = BỊ LỘ -> THỬ LẠI; hidden ducked behind a car through the
+# guard's walk-by and Lu's bark until the handover ends = TOANG!; the phone camera: a blurred shot, three clear photos of
+# the three moments with the turns hidden behind a car, a real [Q] / [E]) -> the chase
 # starts by itself (leash lost = TOANG! -> retry, the banana slip with slide_whistle and the replay mark, 60-90 s, the
 # seg_d1_chase replay) -> the brawl (3 couriers, forced unarmed, "Gét gô!", down = TOANG! -> retry from the checkpoint,
 # won -> seg_d1_brawl, the locker key flag) -> the corridor marker -> the horror walk (flicker, figure, blackout, gone,
@@ -45,6 +47,22 @@ func _key(code: Key) -> void:
 		ev.keycode = code
 		ev.pressed = down
 		Input.parse_input_event(ev)
+
+
+## Aims the player's view (yaw / pitch) at the courier's chest from the player's phone eye.
+func _aim(so: MissionStakeout) -> void:
+	var to: Vector3 = so.courier_chest() - so.eye_pos()
+	_player().yaw = atan2(-to.x, -to.z)
+	_player().pitch = asin(clampf(to.y / maxf(to.length(), 0.01), -1.0, 1.0))
+
+
+## A real key press or release through Input.
+func _key_down(code: Key, down: bool) -> void:
+	var ev := InputEventKey.new()
+	ev.physical_keycode = code
+	ev.keycode = code
+	ev.pressed = down
+	Input.parse_input_event(ev)
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -193,47 +211,102 @@ func _process(_d: float) -> bool:
 				phase = 999
 				return false
 			var so: MissionStakeout = m
-			_check(so.guards.size() == 2 and so.courier != null and so.hud.visible and sr.ui.visible, "two guards, the courier, the mission HUD and the objective")
+			_check(so.cars.size() == 7 and so.courier != null and so.buyer != null and so.hud.visible and sr.ui.visible, "the courier, the buyer, six parked cars and his scooter, the mission HUD")
 			var objc: String = String(sd.get("objective"))
 			_check(objc.contains("cổng") or objc.contains("Mr.T"), "objective kept: %s" % objc)
-			# seen = restart
-			var g: Node3D = so.guards[0]
-			_player().teleport(g.global_position + MissionStakeout.fwd_of(g) * 4.0, 0.0)
+			_check(MissionStakeout.tell_s() >= 0.5 and MissionStakeout.bark_tell_s() >= 0.5, "every turn has a telegraph of at least 0.5 s")
+			# seen in the open while he looks round: the meter fills, BỊ LỘ
+			_player().teleport(so.campus(Vector3(112.0, 0.0, 103.5)), 0.0)
+			so.duck_override = false
+			so._begin_tell(0.6, Vector3.ZERO)
+			_check(so.bubble.visible and so.bubble.text == "Hửm?" and so.tells == 1, "the turn telegraph: a red Hửm? bubble")
+			_advance(0.7)
+			_check(so.phase == "look", "then he looks down the lane")
+			_advance(2.0)
+			_check(so.state == "failed" and sr.fail_ui != null and sr.fail_ui.visible and sr.fail_ui.title_label.text == "BỊ LỘ" and so.seen_count >= 1,
+				"seen standing in the open: the meter fills, BỊ LỘ (%s, %.0f)" % [so.state, so.suspicion])
+			sr.fail_ui.press_retry()
+			_check(so.state == "running" and so.clock < 0.01 and so.suspicion == 0.0 and not sr.fail_ui.visible and so.photos.count(true) == 0, "THỬ LẠI restarts the stake-out")
+			# hidden ducked behind a car the whole handover: the guard walks by, Lu barks, the courier spins round; no photos = TOANG!
+			var hide: Vector3 = so.campus(Vector3(94.0, 0.0, 101.3))
+			so.duck_override = true
+			var hn: int = 0
+			while so.state == "running" and hn < 1200:
+				_player().teleport(hide, MissionStakeout.yaw_of(so.courier.global_position - hide))
+				so.advance(0.1)
+				hn += 1
+			_check(so.guard_walks >= 1 and so.barks == 1 and so.cues_played.has("bark") and so.cues_played.has("rustle"), "the guard walked by, Lu barked behind the player (%d, %d)" % [so.guard_walks, so.barks])
+			_check(so.lu_shown and so.scare.fake_count == 1 and so.tells >= 5, "Lu's sting is the one fake-out; the courier kept turning round (%d tells)" % so.tells)
+			_check(so.state == "failed" and sr.fail_ui.visible and sr.fail_ui.title_label.text == "TOANG!", "hidden all along without photos: the handover ends, TOANG! (%s, %.0f)" % [so.state, so.suspicion])
+			sr.fail_ui.press_retry()
+			so.duck_override = false
+			_check(so.state == "running" and so.clock < 0.01, "THỬ LẠI again")
+			# photos: 21 m behind him in the lane while his back is turned
+			var spot: Vector3 = so.campus(Vector3(101.0, 0.0, 103.5))
+			_player().teleport(spot, 0.0)
+			_aim(so)
+			_check(so.take_photo() == "", "[E] without the phone up does nothing")
+			so.raise_phone(true)
+			_check(so.phone_cam.current and so._finder.visible and _player().move_lock, "the phone is up: the viewfinder camera, no walking")
 			so.advance(0.1)
-			_check(so.seen_count == 1 and so.clock < 0.2 and MissionStakeout.flat(_player().global_position, so.campus(MissionStakeout.START)) < 6.0, "seen by a guard: the stake-out restarts at the start")
-			# the window passes without a photo: TOANG!
+			_check(so.take_photo() == "blur" and so.blurs == 1 and so.suspicion > 0.0, "a shot before the view is steady and zoomed: blurred, a little suspicion")
+			_advance(1.2)
+			_check(so.take_photo() == "clear" and so.photos[0], "steady, centred, his back turned: a clear photo of moment 1")
+			_check(so.take_photo() == "done", "the same moment again does not count")
+			so.raise_phone(false)
+			_check(not so.phone_cam.current and not _player().move_lock, "the phone down: the gameplay camera back")
+			# he turns: hide behind a car (ducked) until the next moment
 			var guard_n: int = 0
-			while so.state == "running" and guard_n < 1200:
+			while so.phase != "tell" and guard_n < 200:
 				so.advance(0.1)
 				guard_n += 1
-			_check(so.state == "failed" and sr.fail_ui != null and sr.fail_ui.visible and sr.fail_ui.title_label.text == "TOANG!", "the handover missed: TOANG! (%s)" % so.state)
-			_check(so.lu_shown and so.lu_state == "gone" and so.cues_played.has("rustle") and so.scare.fake_count == 1 and so.shiba == null,
-				"a rustle behind, then Lu trots up and off: the stake-out fake-out (%s, %s)" % [so.lu_state, str(so.cues_played)])
-			sr.fail_ui.press_retry()
-			_check(so.state == "running" and so.clock < 0.01 and not sr.fail_ui.visible, "THỬ LẠI restarts the stake-out")
-			_advance(10.0)
-			_check(not so.take_photo() and not so.photo_taken and not so.popup_label.visible, "[E] before the handover does nothing (no line)")
-			_check(MissionStakeout.T_WINDOW.contains("[E]") and not MissionStakeout.T_WINDOW.contains("[S]"), "the photo key is [E]")
-			while so.clock < 35.0 and so.state == "running":
+			var cover: Vector3 = so.campus(Vector3(101.5, 0.0, 101.3))
+			so.duck_override = true
+			while so.phase != "act" and guard_n < 400:
+				_player().teleport(cover, 0.0)
 				so.advance(0.1)
-			for gd: Dictionary in so._g:
-				gd["t"] = 1.0
-				gd["dir"] = 1.0
-				gd["pause"] = 999.0
-			so.advance(0.1)
-			var spot: Vector3 = so.campus(Vector3(106.0, 0.0, 103.5))
-			_player().teleport(spot, MissionStakeout.yaw_of(so.courier.global_position - spot))
-			_check(so.box.visible and so.hud_prompt.text.contains("[E]"), "the handover is on: the package and the [E] prompt")
-			_key(KEY_E)
+				guard_n += 1
+			_check(so.state == "running" and so.suspicion < 100.0, "ducked behind a car while he looked: not caught (%.0f)" % so.suspicion)
+			so.duck_override = false
+			_player().teleport(spot, 0.0)
+			_aim(so)
+			_key_down(KEY_Q, true)
 			_next(32)
 		32:
 			if frames < 2:
 				return false
 			var so2: MissionStakeout = m as MissionStakeout
-			_check(so2.photo_taken, "a real [E] takes the photo in the window, the courier in frame (16 m)")
-			_advance(30.0)
-			_check(so2.state == "done", "60 s with the photo: done (%s, %.1f s)" % [so2.state, so2.clock])
-			_check(so2.scare.fake_count == 1 and so2.cues_played.count("rustle") == 1, "Lu comes once per mission, not again after THỬ LẠI")
+			_check(so2.phone_up, "a real [Q] raises the phone")
+			_advance(1.0)
+			_aim(so2)
+			_key(KEY_E)
+			_next(35)
+		35:
+			if frames < 2:
+				return false
+			var so3: MissionStakeout = m as MissionStakeout
+			_check(so3.photos.count(true) == 2 and so3.cues_played.has("shutter"), "a real [E] takes the second clear photo (%d)" % so3.photos.count(true))
+			_key_down(KEY_Q, false)
+			var g3: int = 0
+			while so3.phase != "tell" and g3 < 200:
+				so3.advance(0.1)
+				g3 += 1
+			var cover3: Vector3 = so3.campus(Vector3(101.5, 0.0, 101.3))
+			so3.duck_override = true
+			while so3.phase != "act" and g3 < 400:
+				_player().teleport(cover3, 0.0)
+				so3.advance(0.1)
+				g3 += 1
+			so3.duck_override = false
+			var spot3: Vector3 = so3.campus(Vector3(101.0, 0.0, 103.5))
+			_player().teleport(spot3, 0.0)
+			_aim(so3)
+			so3.raise_phone(true)
+			_advance(1.0)
+			_check(so3.take_photo() == "clear" and so3.photos.count(true) == 3, "the third moment: three clear photos")
+			_advance(2.0)
+			_check(so3.state == "done", "three photos: done (%s, %.1f s)" % [so3.state, so3.clock])
+			_check(so3.scare.fake_count == 1, "Lu's fake-out sting came once per mission")
 			_next(4)
 		4:
 			if sr.mission_node == null or not (sr.mission_node is MissionChase):
