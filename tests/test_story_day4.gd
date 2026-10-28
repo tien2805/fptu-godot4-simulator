@@ -120,6 +120,7 @@ func _process(_d: float) -> bool:
 		return _end()
 	match phase:
 		0:
+			Difficulty.set_easy(false)   # Thường (the owner's setting is loaded by GameFX before the first frame)
 			sd.call("new_story", {"female": true, "name": "Thảo", "variant": 0, "hair_style": "bob", "hair_color": 0, "skin": 2})
 			sd.set("day", 3)
 			(sd.get("evidence") as Array).append("E1")
@@ -426,6 +427,24 @@ func _canteen(mc: MissionCanteen) -> void:
 			same = same and String(mc.clones[i].get_meta("cast_id", "")) == "clone"
 	_check(same, "every other student is the same clone")
 	_check(mc.hum != null and mc.hum.get_parent() == dolly, "the music-box hum sits on Dolly")
+	# Wave 2 clue search: only Dolly has all three clues; decoys share one or two
+	var full: int = 0
+	var partial: int = 0
+	for i2: int in mc.clues.size():
+		var cl: Dictionary = mc.clues[i2]
+		var n_cl: int = int(cl["hum"]) + int(cl["wool"]) + int(cl["salad"]) + int(cl["pop"])
+		if bool(cl["hum"]) and bool(cl["wool"]) and bool(cl["salad"]):
+			full += 1
+		elif n_cl > 0:
+			partial += 1
+	_check(full == 1 and bool(mc.clues[mc.dolly_index]["hum"]) and partial == MissionCanteen.decoy_sets().size(), "only Dolly has all three clues; %d decoys share some" % partial)
+	_check(mc.notes[mc.dolly_index].contains("hộp nhạc") and mc.notes[mc.dolly_index].contains("sợi len") and mc.notes[mc.dolly_index].contains("rau"), "her note: hum, wool thread, salad")
+	_check(bool(mc.trays[mc.dolly_index].get_meta("salad", false)), "a grass salad on her tray")
+	var pop_i: int = -1
+	for i3: int in mc.clues.size():
+		if bool(mc.clues[i3]["pop"]):
+			pop_i = i3
+	_check(pop_i >= 0 and not mc.notes[pop_i].contains("hộp nhạc") and mc.decoy_hums.size() >= 1, "a decoy hums pop along to earbuds (not the music box)")
 	_check(mc.has_tray and mc.tray.get_parent() == _player().model, "the tray is carried")
 	var wrong_i: int = (mc.dolly_index + 1) % 12
 	_face(mc, wrong_i)
@@ -458,6 +477,19 @@ func _canteen(mc: MissionCanteen) -> void:
 	_check(mc.state == "failed" and sr.fail_ui.visible and sr.fail_ui.title_label.text == "BỊ LỘ", "a full meter: BỊ LỘ")
 	sr.fail_ui.press_retry()
 	_check(mc.state == "running" and mc.suspicion == 0.0 and mc.has_tray and mc.clones.size() == 12 and mc.retries == 1, "THỬ LẠI: meter, tray and students reset")
+	# Linh's hints over the radio, one clue every 15 s; staring too long raises suspicion
+	var sp: Vector3 = mc.xf * MissionCanteen.START
+	_player().teleport(sp, MissionCanteen.yaw_of(mc.xf.basis * Vector3(0.0, 0.0, 1.0)))
+	for k2: int in 100:
+		mc.advance(0.5)
+	_check(mc.hints_given == 4 and mc.cues_played.count("linh") == 4 and mc.radio_label.text.begins_with("LINH"), "Linh's three hints and a joke over the radio (%d)" % mc.hints_given)
+	_check(mc.state == "running" and mc.suspicion < 5.0, "calm with the tray: no suspicion (%.0f)" % mc.suspicion)
+	var stare_i: int = (mc.dolly_index + 3) % 12
+	_face(mc, stare_i)
+	var s2: float = mc.suspicion
+	for k3: int in int((MissionCanteen.stare_s() + 1.5) / 0.1):
+		mc.advance(0.1)
+	_check(mc.suspicion > s2 + 5.0 and mc.bubble.text == "Nhìn gì mà nhìn?", "staring at a student too long: suspicion (%.0f -> %.0f)" % [s2, mc.suspicion])
 	_check(mc.accuse(mc.dolly_index) == "dolly" and mc.state == "done", "the right accusation: Cừu Dolly found")
 
 

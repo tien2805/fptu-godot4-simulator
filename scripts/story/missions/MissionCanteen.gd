@@ -5,12 +5,18 @@
 #   - 3 table groups, CLONES identical students eating (StoryCast "clone"); one of them is the real Cừu Dolly
 #     (StoryCast "dolly_disguised"): she hums a music-box tune (positional, audible within HUM_M), wears a cream wool cuff
 #     and a sheep keychain; walking up to a student shows what you notice about them.
-#   - The tray is the disguise: carried calmly it lowers the suspicion meter; sprinting drops it (+DROP_SUS) and without a
-#     tray the meter rises (NO_TRAY_SUS / s) until a new one is taken at the counter ([E] there).
+#   - The tray is the disguise: carried calmly it lowers the suspicion meter; sprinting drops it (+drop_sus()) and without a
+#     tray the meter rises (no_tray_sus() / s) until a new one is taken at the counter ([E] there).
 #   - [E] facing a student within ACCUSE_M accuses them (the same radius shows their note and "[E] Tố cáo"): Dolly = done;
-#     anyone else = +WRONG_SUS ("Ủa…"). Dolly's seat is random (opts.seed fixes it for tests).
+#     anyone else = +wrong_sus() ("Ủa..."). Dolly's seat is random (opts.seed fixes it for tests).
 #   - A full meter = "BỊ LỘ" (retry: the meter, the tray and the students reset, Dolly elsewhere).
 #   - Meme: "Mlem mlem" bubbles over the eaters.
+# Wave 2 clue search (plan 2026-10-29-w2-early.md Task 8, master plan Q4b): the real Dolly is the only student with all
+# three CLUES: she hums the music-box tune, a cream wool thread on her sleeve (the cuff), a grass salad on her tray. A few
+# DECOYS share one or two (a student humming pop along to earbuds, another in a cream cardigan eating salad, a salad eater;
+# Thường adds a fourth). Walking up to a student shows what you notice (the note). Linh's hints come as radio chatter, one
+# clue every 15 s (LINH_AT), then a joke beat. Staring at the same student up close longer than stare_s() raises
+# suspicion; a wrong accusation costs wrong_sus(). Every tuned number goes through Difficulty.pick(normal, easy).
 class_name MissionCanteen
 extends StoryMission
 
@@ -24,19 +30,26 @@ const START := Vector3(0.0, 0.0, 3.8)
 const ACCUSE_M: float = 2.2
 const COUNTER_M: float = 2.2
 const HUM_M: float = 6.0
-const DROP_SUS: float = 20.0
-const NO_TRAY_SUS: float = 5.0
-const CALM_SUS: float = 1.5
-const WRONG_SUS: float = 35.0
 const SPRINT_DROP: float = 5.0
+const STARE_M: float = 1.7
+const LINH_AT: Array[float] = [2.5, 17.0, 32.0, 47.0]
+const LINH_LINES: Array[String] = ["Dolly mê bài hộp nhạc lắm, lúc ăn hay ngân nga khe khẽ đó.",
+	"Nghe nói nó tự đan áo len màu kem. Kiểu gì tay áo cũng dính sợi len.",
+	"Nó ăn chay trường. Ý tao là... ăn cỏ. Khay nào toàn rau là đáng nghi.",
+	"Mày đứng nhìn người ta ăn lâu quá, coi chừng bị tưởng đi xin cơm đó."]
+const HUM_NOTE: String = "Đang ngân nga khe khẽ một giai điệu hộp nhạc..."
+const POP_NOTE: String = "Đang ngân nga theo tai nghe, nhạc pop sôi động."
+const WOOL_NOTE: String = "Tay áo dính sợi len màu kem."
+const SALAD_NOTE: String = "Khay toàn rau xanh, không một miếng thịt."
+const SALAD := Color("#5DBB63")
 const MLEM_GAP := Vector2(2.5, 4.5)
 const T_LO_REASON: String = "Cả căn tin quay sang nhìn mày chằm chằm."
-const T_WRONG: String = "Ủa… nhầm người rồi! Nghi ngờ tăng"
-const T_DROP: String = "Rớt khay! Mọi người đang nhìn…"
+const T_WRONG: String = "Ủa... nhầm người rồi! Nghi ngờ tăng"
+const T_DROP: String = "Rớt khay! Mọi người đang nhìn..."
 const T_FOUND: String = "Bắt được rồi nha, Cừu Dolly!"
 const NOTES: Array[String] = ["Đang nhai rau ráu.", "Đang húp canh sùm sụp.", "Đang lướt điện thoại.", "Mlem mlem.",
 	"Đang gắp miếng sườn to nhất.", "Đang ngáp."]
-const DOLLY_NOTE: String = "Đang ngân nga khe khẽ một giai điệu hộp nhạc…"
+const DOLLY_NOTE: String = HUM_NOTE
 
 var xf: Transform3D = Transform3D.IDENTITY
 var props: Node3D
@@ -54,6 +67,44 @@ var bubble: Label3D
 var rng := RandomNumberGenerator.new()
 var _mlem_t: float = 2.0
 var _bubble_t: float = 0.0
+## Per student: {"hum": bool (the music-box tune), "pop": bool (a decoy humming along to earbuds), "wool": bool, "salad": bool}.
+var clues: Array[Dictionary] = []
+var trays: Array[Node3D] = []
+var decoy_hums: Array[AudioStreamPlayer3D] = []
+var hints_given: int = 0
+var stare_t: float = 0.0
+var _stare_i: int = -1
+
+
+## Difficulty-tuned numbers (Thường, Dễ).
+static func drop_sus() -> float:
+	return float(Difficulty.pick(22.0, 14.0))
+
+
+static func no_tray_sus() -> float:
+	return float(Difficulty.pick(6.0, 3.5))
+
+
+static func calm_sus() -> float:
+	return float(Difficulty.pick(1.2, 2.5))
+
+
+static func wrong_sus() -> float:
+	return float(Difficulty.pick(40.0, 25.0))
+
+
+static func stare_s() -> float:
+	return float(Difficulty.pick(3.0, 4.5))
+
+
+static func stare_sus() -> float:
+	return float(Difficulty.pick(12.0, 6.0))
+
+
+## Decoy clue sets (students other than Dolly): Thường four, Dễ two.
+static func decoy_sets() -> Array:
+	return Difficulty.pick([{"pop": true}, {"wool": true, "salad": true}, {"salad": true}, {"pop": true, "wool": true}],
+		[{"pop": true}, {"salad": true}])
 
 
 func _start() -> void:
@@ -70,9 +121,6 @@ func _start() -> void:
 			var t: Node3D = CineFX.build_prop("table")
 			props.add_child(t)
 			t.position = Vector3(tx + dx, 0.0, TABLE_Z)
-			var tr: Node3D = CineFX.build_prop("tray", {"food": true})
-			props.add_child(tr)
-			tr.position = Vector3(tx + dx, 0.76, TABLE_Z + 0.2)
 		var cs := CollisionShape3D.new()
 		var bs := BoxShape3D.new()
 		bs.size = Vector3(2.8, 0.8, 0.8)
@@ -139,6 +187,33 @@ func _reset() -> void:
 			c.queue_free()
 	clones.clear()
 	notes.clear()
+	for tr0: Node3D in trays:
+		if is_instance_valid(tr0):
+			tr0.queue_free()
+	trays.clear()
+	for h0: AudioStreamPlayer3D in decoy_hums:
+		if is_instance_valid(h0):
+			h0.queue_free()
+	decoy_hums.clear()
+	clues.clear()
+	var decoys: Array = decoy_sets()
+	var pick: Array[int] = []
+	while pick.size() < decoys.size():
+		var k: int = rng.randi_range(0, CLONES - 1)
+		if k != dolly_index and not pick.has(k):
+			pick.append(k)
+	for k2: int in CLONES:
+		var cl: Dictionary = {"hum": false, "pop": false, "wool": false, "salad": false}
+		if k2 == dolly_index:
+			cl = {"hum": true, "pop": false, "wool": true, "salad": true}
+		elif pick.has(k2):
+			var dset: Dictionary = decoys[pick.find(k2)]
+			for key: String in dset:
+				cl[key] = true
+		clues.append(cl)
+	hints_given = 0
+	stare_t = 0.0
+	_stare_i = -1
 	var i: int = 0
 	for tx: float in TABLE_X:
 		for dx: float in SEAT_DX:
@@ -150,13 +225,81 @@ func _reset() -> void:
 				c.position = local
 				c.rotation.y = 0.0 if side > 0.0 else PI   # faces the table
 				clones.append(c)
-				notes.append(DOLLY_NOTE if i == dolly_index else NOTES[rng.randi_range(0, NOTES.size() - 1)])
+				var cl2: Dictionary = clues[i]
+				if bool(cl2["wool"]) and i != dolly_index:
+					StoryCast.attach_tells(c, false)   # the cream cuff only (Dolly also has the keychain)
+				trays.append(_seat_tray(local, side, bool(cl2["salad"])))
+				if bool(cl2["pop"]):
+					_decoy_hum(c)
+				notes.append(_note(cl2))
 				i += 1
 	_setup_hum()
 	_give_tray(true)
 	teleport_player(free_spot(xf * START, 3), yaw_of(xf.basis * Vector3(0.0, 0.0, -1.0)))
 	set_meter(0.0, "Nghi ngờ")
 	popup("Bưng khay, đi chậm, tìm Cừu Dolly", 2.6, Color("#FFE66D"))
+
+
+## The note for a student's clues: what you notice up close (ordinary students: a random everyday line).
+func _note(cl: Dictionary) -> String:
+	var parts: PackedStringArray = []
+	if bool(cl["hum"]):
+		parts.append(HUM_NOTE)
+	if bool(cl["pop"]):
+		parts.append(POP_NOTE)
+	if bool(cl["wool"]):
+		parts.append(WOOL_NOTE)
+	if bool(cl["salad"]):
+		parts.append(SALAD_NOTE)
+	if parts.is_empty():
+		return NOTES[rng.randi_range(0, NOTES.size() - 1)]
+	return " ".join(parts)
+
+
+## The student's own tray on the table in front of them; a salad tray is a heap of green leaves.
+func _seat_tray(seat: Vector3, side: float, salad: bool) -> Node3D:
+	var tr: Node3D = CineFX.build_prop("tray", {"food": not salad})
+	props.add_child(tr)
+	tr.position = Vector3(seat.x, 0.76, seat.z - side * 0.42)
+	if salad:
+		var m := StandardMaterial3D.new()
+		m.albedo_color = SALAD
+		for k: int in 4:
+			var leaf := MeshInstance3D.new()
+			var sm := SphereMesh.new()
+			sm.radius = 0.06
+			sm.height = 0.06
+			sm.radial_segments = 6
+			sm.rings = 3
+			leaf.mesh = sm
+			leaf.material_override = m
+			leaf.position = Vector3(-0.1 + 0.07 * float(k), 0.035, 0.03 * float(k % 2))
+			tr.add_child(leaf)
+		tr.set_meta("salad", true)
+	return tr
+
+
+## A decoy humming pop along to earbuds: a quieter, higher tune on the same music-box synth.
+func _decoy_hum(c: Node3D) -> void:
+	var h := AudioStreamPlayer3D.new()
+	h.name = "PopHum"
+	h.unit_size = 1.0
+	h.max_distance = HUM_M + 2.0
+	h.pitch_scale = 1.45
+	h.bus = CinePlayer._bus("SFX")
+	c.add_child(h)
+	h.position = Vector3(0.0, 1.5, 0.0)
+	decoy_hums.append(h)
+
+
+## Linh on the radio (her hint lines, bottom left, in the base radio panel with her name).
+func linh(line: String, secs: float = 6.0) -> void:
+	cues_played.append("linh")
+	if radio_panel == null:
+		return
+	radio_label.text = "LINH (bộ đàm): %s" % line
+	radio_panel.visible = true
+	_radio_t = secs
 
 
 func _setup_hum() -> void:
@@ -203,7 +346,7 @@ func drop_tray() -> void:
 	props.add_child(fallen)
 	fallen.global_position = Vector3(at.x, ground_y(at) + 0.02, at.z)
 	fallen.set_meta("fallen", true)
-	add_suspicion(DROP_SUS)
+	add_suspicion(drop_sus())
 	popup(T_DROP, 2.0, WARN)
 	play_cue("tray_clang", -4.0)
 
@@ -246,7 +389,7 @@ func interact() -> String:
 		return ""
 	if not has_tray and near_counter():
 		_give_tray(true)
-		popup("Lấy khay mới. Bình tĩnh nào…", 1.6)
+		popup("Lấy khay mới. Bình tĩnh nào...", 1.6)
 		return "tray"
 	var i: int = facing_clone(ACCUSE_M)
 	if i < 0:
@@ -265,7 +408,7 @@ func accuse(i: int) -> String:
 	popup(T_WRONG, 2.0, WARN)
 	_bubble(clones[i], "Gì vậy trời?")
 	play_cue("record_scratch", -6.0)
-	add_suspicion(WRONG_SUS)
+	add_suspicion(wrong_sus())
 	return "wrong"
 
 
@@ -281,7 +424,13 @@ func _tick(dt: float) -> void:
 		drop_tray()
 	if state != "running":
 		return
-	add_suspicion((-CALM_SUS if has_tray else NO_TRAY_SUS) * dt)
+	add_suspicion((-calm_sus() if has_tray else no_tray_sus()) * dt)
+	if state != "running":
+		return
+	if hints_given < LINH_AT.size() and clock >= LINH_AT[hints_given]:
+		linh(LINH_LINES[hints_given])
+		hints_given += 1
+	_tick_stare(dt)
 	if state != "running":
 		return
 	_mlem_t -= dt
@@ -295,6 +444,11 @@ func _tick(dt: float) -> void:
 		hum.stream = StoryAudio.stream("music_box")   # warmed on a worker thread at the start: plays once it is ready
 		hum.volume_db = -6.0
 		hum.play()
+		for dh: AudioStreamPlayer3D in decoy_hums:
+			if is_instance_valid(dh) and not dh.playing:
+				dh.stream = hum.stream
+				dh.volume_db = -11.0
+				dh.play()
 	if _bubble_t > 0.0:
 		_bubble_t -= dt
 		if _bubble_t <= 0.0:
@@ -305,6 +459,20 @@ func _tick(dt: float) -> void:
 		return
 	var i: int = facing_clone(ACCUSE_M)
 	set_prompt("%s  [E] Tố cáo" % notes[i] if i >= 0 else "")
+
+
+## Staring at the same student up close for longer than stare_s() raises suspicion ("Nhìn gì mà nhìn?").
+func _tick_stare(dt: float) -> void:
+	var i: int = facing_clone(STARE_M)
+	if i < 0 or i != _stare_i:
+		_stare_i = i
+		stare_t = 0.0
+		return
+	stare_t += dt
+	if stare_t > stare_s():
+		if stare_t - dt <= stare_s():
+			_bubble(clones[i], "Nhìn gì mà nhìn?")
+		add_suspicion(stare_sus() * dt)
 
 
 func _unhandled_input(event: InputEvent) -> void:

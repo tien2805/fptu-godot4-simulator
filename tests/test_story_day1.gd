@@ -177,6 +177,7 @@ func _process(_d: float) -> bool:
 		return _end()
 	match phase:
 		0:
+			Difficulty.set_easy(false)   # Thường (the owner's setting is loaded by GameFX before the first frame)
 			sd.call("new_story", {"female": false, "name": "Minh", "variant": 1, "hair_style": "spiky", "hair_color": 2, "skin": 1})
 			sd.set("step", "d0_intro")
 			sd.call("complete_step", "d0_intro")
