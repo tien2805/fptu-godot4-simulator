@@ -338,6 +338,16 @@ func take_finisher(kind: String, from: Vector3) -> String:
 	return r
 
 
+## Q2: Za Mẫn is never grabbed for a throw (a katana boss in a hip throw breaks his phases and the finale).
+func can_be_thrown() -> bool:
+	return false
+
+
+## Q2: a slam into a wall bends the katana and moves the phases like any other damage.
+func _on_env_damage(r: String) -> void:
+	_on_damage(r)
+
+
 ## A perfect block's riposte: the pattern is dropped, damage, a long stagger, the katana rings and wobbles.
 func _parried(info: Dictionary) -> String:
 	parries += 1

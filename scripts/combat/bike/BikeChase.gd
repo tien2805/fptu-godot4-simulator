@@ -195,6 +195,9 @@ var cam_mode: String = ""                # "" | "open" | "td"
 var _cam_prev: Camera3D = null
 var _cam_target: BikerEnemy = null
 var _cam_side: Vector2 = Vector2.ZERO
+var cam_pick: int = 0                    # Q1: the takedown cut's angle (CameraRules.TD_CANDIDATES index) and re-picks
+var cam_repicks: int = 0
+var _cam_check_t: float = 0.0
 var slow_kind: String = ""               # "" | "open" | "td" | "jump"
 var _slow_left: float = 0.0              # real seconds
 var _rt: float = 0.0                     # real seconds the chase has run
@@ -282,13 +285,19 @@ func setup(opts: Dictionary) -> void:
 	if bike and not bike.crash_occurred.is_connected(_on_bike_crash):
 		bike.crash_occurred.connect(_on_bike_crash)   # before PlayerBikeCombat's own handler: the speed-scaled damage first
 	combat.setup(bike, {"roam": roam, "targets": bikers, "fx": fx})
+	Impact.prepare(self)                     # Q2: the clock and the sound layers ready before the first hit
 	combat.kick_hit.connect(_on_kick_hit)
+	combat.countered.connect(_on_countered)      # Q2: PHẢN ĐÒN, the grabbed stick
+	combat.stick_picked.connect(_on_stick_note.bind(BikeCombatData.T_STICK_GOT))
+	combat.stick_broke.connect(_on_stick_note.bind(BikeCombatData.T_STICK_BROKE))
 	cam = Camera3D.new()
 	cam.name = "ChaseCam"
 	cam.top_level = true
 	cam.fov = 62.0
 	cam.far = 900.0
+	cam.near = 0.08
 	add_child(cam)
+	combat.kick_hit.connect(_cam_on_kick)   # Q1: the chase cam's 0.12 s whip toward a kicked rider
 	_horn = bike.horn_player.stream if (bike and bike.horn_player) else null   # the bike's own horn wav (no file load)
 	for i: int in 4:
 		helmets.append(_make_helmet(i))
@@ -593,6 +602,7 @@ func enemy_kick(b: BikerEnemy) -> String:
 func on_biker_crash(b: BikerEnemy) -> void:
 	downed_total += 1
 	last_down = b
+	Impact.particles(self, "debris", b.ground_pos() + Vector3(0.0, 0.5, 0.0), Vector3.UP, 1.0, fx)   # Q2: the crash's burst
 	biker_down.emit(b, b.crash_cause)
 	if BikeCombatData.TAKEDOWN_CAUSES.has(b.crash_cause):
 		_takedown(b)
@@ -613,6 +623,7 @@ func on_biker_crash(b: BikerEnemy) -> void:
 	combat.enabled = false
 	end_slow_motion()
 	_cam_restore()
+	Impact.slowmo_orbit(self, b, Impact.ORBIT_S)   # Q2: the last biker's fall in slow motion (camera director orbit)
 	_set_hooks(false)
 	_mark_end()
 	if rec:
@@ -1062,7 +1073,7 @@ func _physics_process(delta: float) -> void:
 	var rdt: float = delta / maxf(Engine.time_scale, 0.01)   # real seconds (slow motion scales the physics delta)
 	_update_frame()
 	_tick_slow(rdt)
-	_tick_cam()
+	_tick_cam(rdt)
 	_clean_t -= delta
 	if _clean_t <= 0.0:
 		_clean_t = 0.25
@@ -1585,8 +1596,21 @@ func _on_kick_hit(target: Node3D, side: int) -> void:
 		_spin_hits.clear()
 
 
+## Q2: the counter-kick's popup (its takedown follows through on_biker_crash).
+func _on_countered(_t: Node3D) -> void:
+	if hud:
+		hud.popup(BikeCombatData.T_COUNTER, CombatHUD.GOLD, 1.1)
+
+
+func _on_stick_note(text: String) -> void:
+	if hud:
+		hud.popup(text, CombatHUD.GOLD if text == BikeCombatData.T_STICK_GOT else CombatHUD.WARN, 1.0)
+
+
 ## Slow motion for `real_s` real seconds (INF: until end_slow_motion). false when a weapon wheel owns the time scale.
+## Q2: a running Impact hit-stop / combat slow motion gives way (Impact.yield_scale).
 func slow_motion(scale: float, real_s: float, kind: String) -> bool:
+	Impact.yield_scale()
 	if RadialWheel.scale_owner != null and RadialWheel.scale_owner != self and is_instance_valid(RadialWheel.scale_owner):
 		return false
 	RadialWheel.scale_owner = self
@@ -1636,6 +1660,8 @@ func _cam_restore() -> void:
 	_cam_target = null
 	if cam and is_instance_valid(cam) and cam.current:
 		var back: Camera3D = _cam_prev if (_cam_prev != null and is_instance_valid(_cam_prev) and _cam_prev.is_inside_tree()) else null
+		if back != null and back.has_meta(CameraDirector.META_CUT):
+			back = null                       # a director cut ran when this cut began: back to the bike, not its camera
 		if back == null and bike != null and is_instance_valid(bike) and bike.chase_cam:
 			back = bike.chase_cam
 		if back:
@@ -1645,15 +1671,67 @@ func _cam_restore() -> void:
 	_cam_prev = null
 
 
-## A quick side camera cut on a falling rider (takedown).
+## A quick camera cut on a falling rider (takedown): the first of CameraRules.TD_CANDIDATES (side, front-low, high-rear) with
+## a clear view of the rider (CameraFraming occlusion test), re-checked every TD_RECHECK_S.
 func _cam_cut(b: BikerEnemy) -> void:
 	_cam_target = b
 	_cam_side = p_right * (1.0 if (b.pos2 - p_pos).dot(p_right) >= 0.0 else -1.0)
+	cam_pick = _cam_pick_td()
+	_cam_check_t = CameraRules.TD_RECHECK_S
 	_cam_use("td")
 	_tick_cam()
 
 
-func _tick_cam() -> void:
+## The kick whip (PlayerBikeCombat.kick_hit): the chase cam turns 0.12 s toward the rider.
+func _cam_on_kick(target: Node3D, _side: int) -> void:
+	if bike != null and is_instance_valid(bike) and target != null and is_instance_valid(target) and bike.has_method("cam_whip"):
+		bike.cam_whip(target.global_position - bike.global_position)
+
+
+## The takedown target point (the flying rider, else the bike on the ground) and the camera spot of candidate i.
+func _cam_td_center() -> Vector3:
+	var c: Vector3 = _cam_target.rider_pos if (_cam_target.st == BikerEnemy.St.CRASH and _cam_target.kind != "pickup") else _cam_target.ground_pos()
+	return Vector3(c.x, maxf(c.y, _cam_target.floor_y), c.z)
+
+
+func _cam_td_pos(i: int, c: Vector3) -> Vector3:
+	var o: Vector3 = CameraRules.TD_CANDIDATES[i]
+	var s3 := Vector3(_cam_side.x, 0.0, _cam_side.y)
+	var f3 := Vector3(p_fwd.x, 0.0, p_fwd.y)
+	return c + s3 * o.x + Vector3.UP * o.y + f3 * o.z
+
+
+func _cam_pick_td() -> int:
+	if _cam_target == null or not is_instance_valid(_cam_target) or not is_inside_tree():
+		return 0
+	var c: Vector3 = _cam_td_center()
+	var cands: Array[Vector3] = []
+	for i: int in CameraRules.TD_CANDIDATES.size():
+		cands.append(_cam_td_pos(i, c))
+	return maxi(0, CameraFraming.pick(get_world_3d().direct_space_state, cands, _cam_td_points(c), _cam_td_excl()))
+
+
+## Candidate i still sees the rider (the re-check keeps a clear angle: no flicking between two clear ones).
+func _cam_td_ok(i: int) -> bool:
+	if _cam_target == null or not is_instance_valid(_cam_target) or not is_inside_tree():
+		return false
+	var c: Vector3 = _cam_td_center()
+	return CameraFraming.view_ok(get_world_3d().direct_space_state, _cam_td_pos(i, c), _cam_td_points(c), _cam_td_excl())
+
+
+static func _cam_td_points(c: Vector3) -> PackedVector3Array:
+	return PackedVector3Array([c + Vector3.UP * 0.5, c + Vector3.UP * 1.2])
+
+
+func _cam_td_excl() -> Array[RID]:
+	var excl: Array[RID] = _ray_excl.duplicate()
+	var bw: Variant = roam.get("bank_walls") if roam else null
+	if bw is CollisionObject3D:
+		excl.append((bw as CollisionObject3D).get_rid())
+	return excl
+
+
+func _tick_cam(rdt: float = 0.0) -> void:
 	if cam_mode == "" or bike == null or not is_instance_valid(bike):
 		return
 	var f3 := Vector3(p_fwd.x, 0.0, p_fwd.y)
@@ -1666,9 +1744,16 @@ func _tick_cam() -> void:
 		if _cam_target == null or not is_instance_valid(_cam_target):
 			_cam_restore()
 			return
-		var c: Vector3 = _cam_target.rider_pos if (_cam_target.st == BikerEnemy.St.CRASH and _cam_target.kind != "pickup") else _cam_target.ground_pos()
-		var s3 := Vector3(_cam_side.x, 0.0, _cam_side.y)
-		cam.global_position = Vector3(c.x, maxf(c.y, _cam_target.floor_y), c.z) + s3 * 5.5 + Vector3.UP * 1.5 - f3 * 1.5
+		_cam_check_t -= rdt
+		if _cam_check_t <= 0.0:              # re-check at 10 Hz: only a blocked angle is re-picked (no flicking)
+			_cam_check_t = CameraRules.TD_RECHECK_S
+			if not _cam_td_ok(cam_pick):
+				var np: int = _cam_pick_td()
+				if np != cam_pick:
+					cam_pick = np
+					cam_repicks += 1
+		var c: Vector3 = _cam_td_center()
+		cam.global_position = _cam_td_pos(cam_pick, c)
 		cam.look_at(c + Vector3.UP * 0.5, Vector3.UP)
 
 

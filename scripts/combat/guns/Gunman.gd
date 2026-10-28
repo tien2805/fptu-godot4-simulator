@@ -30,6 +30,9 @@
 # ("sheep" | "wolf" | "fox" | "none"; default by seed), "label", "hp", "accuracy" (scale), "patrol" (Array of Vector3),
 # "ai" (false = HOLD), "alerted" (start alerted), "seed", "yaw", "sight_m" / "fov_deg" (sight before the alert; default
 # GunData.SIGHT_M / FOV_DEG).
+# Q2 feel (plan 2026-10-29-q2-feel.md T4): every hit jolts the body away from the shot (a quick lean that settles in
+# JOLT_S, over the flinch clip); a knockout sends the mask (or a cap when there is none) flying off with a spin and one
+# bounce; it then lies on the floor.
 class_name Gunman
 extends Node3D
 
@@ -110,6 +113,17 @@ var _anim: Node = null
 var _sk: Skeleton3D = null
 var _wrist: int = -1
 var _gun_att: BoneAttachment3D = null
+## Q2: the hit jolt and the flying mask / cap.
+const JOLT_S: float = 0.28
+const JOLT_LEAN: float = 0.3
+var jolts: int = 0
+var jolt_t: float = 0.0
+var flying_hat: Node3D = null
+var _jolt_dir: Vector3 = Vector3.ZERO
+var _hat_v: Vector3 = Vector3.ZERO
+var _hat_spin: Vector3 = Vector3.ZERO
+var _hat_bounced: bool = false
+var _hat_rest: bool = false
 
 
 ## Build the body, mask, pistol, glint and shout label (before add_child). See the header for opts.
@@ -147,6 +161,7 @@ func setup(opts: Dictionary = {}) -> void:
 	pose = GunPose.attach(body)
 	_anim = CharacterBuilder.get_animator(body)
 	_attach_gun()
+	Readability.rim(body, "enemy")   # Q3 rim
 	glint = GunProps.glint()
 	add_child(glint)
 	shout = Label3D.new()
@@ -249,6 +264,10 @@ func _physics_process(delta: float) -> void:
 		_shout_left -= delta
 		if _shout_left <= 0.0:
 			shout.visible = false
+	if jolt_t > 0.0:
+		_tick_jolt(delta)
+	if flying_hat != null and not _hat_rest:
+		_tick_hat(delta)
 	if st == St.KO or st == St.IDLE or st == St.HOLD:
 		_apply_drop()
 		if _anim:
@@ -680,6 +699,7 @@ func take_hit(info: Dictionary) -> String:
 		hear(from)
 		return "none"
 	hp -= float(GunData.GUNMAN_DMG_TAKEN[kind])
+	_jolt(from)
 	if not is_alerted and st != St.HOLD:
 		alert(from)
 	if hp <= 0.0:
@@ -693,6 +713,8 @@ func take_hit(info: Dictionary) -> String:
 	return "stumble"
 
 
+## The one place a knockout is finalised: the Q3 rim leaves the body here, before the mask flies off (a retry spawns fresh,
+## rimmed gunmen).
 func _knock_out(from: Vector3) -> void:
 	_cancel_shot()
 	_release_slot()
@@ -704,10 +726,82 @@ func _knock_out(from: Vector3) -> void:
 	body.rotation.y = yaw
 	CharacterBuilder.play(body, "knockdown")
 	shout.visible = false
+	jolt_t = 0.0
+	body.rotation = Vector3(0.0, yaw, 0.0)
+	Readability.unrim(body)                  # before _fling_hat detaches the mask from the head (it would keep its rim)
+	_fling_hat(away)
 	_apply_drop()
 	if fight:
 		fight.call("play_cue", "body_fall", feet(), -2.0)
 	ko.emit(self)
+
+
+# ---------------------------------------------------------------------------
+# Q2: HIT JOLT, FLYING MASK
+# ---------------------------------------------------------------------------
+## A quick lean away from the shot (body frame), settling in JOLT_S.
+func _jolt(from: Vector3) -> void:
+	_jolt_dir = WeaponMath.flat_dir(feet() - from)
+	if _jolt_dir.length_squared() < 0.01:
+		_jolt_dir = -forward()
+	jolt_t = JOLT_S
+	jolts += 1
+
+
+func _tick_jolt(delta: float) -> void:
+	jolt_t = maxf(0.0, jolt_t - delta)
+	var u: float = 1.0 - jolt_t / JOLT_S
+	var k: float = (u / 0.2 if u < 0.2 else 1.0 - (u - 0.2) / 0.8) * JOLT_LEAN
+	var loc: Vector3 = Basis(Vector3.UP, yaw).inverse() * _jolt_dir    # the push in the body frame (facing -Z)
+	body.rotation = Vector3(loc.z * k, yaw, -loc.x * k)                 # +x tips the top back (+Z), +z tips it left (-X)
+
+
+## The knockout knocks the mask (or a cap) off: it flies up and away from the shot, spinning, bounces once, then lies.
+## Readability.unrim(body) has run before this (_knock_out): the mask leaves the body here without a rim overlay.
+func _fling_hat(away: Vector3) -> void:
+	var at: Vector3 = body.global_position + Vector3(0.0, 1.6, 0.0)
+	var m: Node3D = body.find_child("*Mask", true, false) as Node3D
+	if m != null:
+		at = m.global_position
+		var g: Transform3D = m.global_transform
+		m.get_parent().remove_child(m)
+		add_child(m)
+		m.top_level = true
+		m.global_transform = g
+		flying_hat = m
+	else:
+		var cap := Node3D.new()
+		cap.name = "FlyingCap"
+		CineFX._sphere(cap, "Cap", 0.12, Vector3.ZERO, CineFX._mat(Color("#1C1C20"), 0.8), Vector3(1.0, 0.6, 1.0))
+		CineFX._box(cap, "Brim", Vector3(0.16, 0.015, 0.1), Vector3(0.0, -0.02, -0.12), CineFX._mat(Color("#1C1C20"), 0.8))
+		add_child(cap)
+		cap.top_level = true
+		cap.global_position = at
+		flying_hat = cap
+	_hat_v = away * 2.6 + Vector3(0.0, 4.4, 0.0)
+	_hat_spin = Vector3(_rng.randf_range(7.0, 11.0), _rng.randf_range(-5.0, 5.0), _rng.randf_range(-8.0, 8.0))
+	_hat_bounced = false
+	_hat_rest = false
+
+
+func _tick_hat(delta: float) -> void:
+	if not is_instance_valid(flying_hat):
+		flying_hat = null
+		return
+	_hat_v.y -= 18.0 * delta
+	var p: Vector3 = flying_hat.global_position + _hat_v * delta
+	var fl: float = floor_y + 0.06
+	if p.y < fl and _hat_v.y < 0.0:
+		p.y = fl
+		if not _hat_bounced:
+			_hat_bounced = true
+			_hat_v = Vector3(_hat_v.x * 0.5, -_hat_v.y * 0.3, _hat_v.z * 0.5)
+			_hat_spin *= 0.4
+		else:
+			_hat_rest = true                 # lies on the floor from here on
+	flying_hat.global_position = p
+	if not _hat_rest:
+		flying_hat.rotation += _hat_spin * delta
 
 
 ## The fight was lost: stop shooting and stand down.

@@ -17,6 +17,9 @@
 #   - real revs: rev_blip() plays the owner's sfx_dir/bike_rev (+REV_DB_OVER over the riding engine level, 2 voices),
 #     else a throttle blip of the exhaust loop; set_staged(on) holds the bike on a start line with the engine idling and
 #     each [W] press revving (one start per REV_MIN_GAP).
+# Q1 camera director (spec 2026-10-29): the chase camera is BikeCamRig (scripts/camera/) on the scene's CameraRig /
+# SpringArm3D / Camera3D (CameraRules: low chase cam, distance and FOV by speed, nitro, drift swing to the outside, roll
+# with the lean, road shake); cam_whip(dir) is the 0.12 s whip of a kick hit; add_camera_shake keeps its meaning.
 class_name PlayerBike
 extends CharacterBody3D
 
@@ -207,6 +210,8 @@ var _rev_players: Array[AudioStreamPlayer3D] = []
 var _rev_cd: float = 0.0
 var _blip_t: float = -1.0
 var _rider_base: Vector3 = Vector3(0.0, 0.32, 0.14)
+## Q1: the chase camera rig (scripts/camera/BikeCamRig.gd).
+var cam_rig: BikeCamRig
 
 @onready var visual_pivot: Node3D = $VisualPivot
 @onready var front_wheel: Node3D = $VisualPivot/FrontWheel
@@ -235,6 +240,8 @@ func _ready() -> void:
 	_auto_time_of_day.call_deferred()
 	slipstream_ray.target_position = Vector3(0.0, 0.0, -8.5) # Quét cự ly 8.5m phía trước
 	slipstream_ray.enabled = true
+	cam_rig = BikeCamRig.new(self)
+	cam_rig.attach()
 	floor_snap_length = 0.45 # Chống bay lơ lửng hoặc xuyên dốc Cầu Trau Trảu
 	floor_max_angle = deg_to_rad(50.0)
 
@@ -1551,24 +1558,13 @@ func hit_soft_obstacle() -> void:
 	emit_signal("crash_occurred")
 
 func _update_chase_camera(delta: float, speed_factor: float) -> void:
-	spring_arm.rotation.y = lerpf(spring_arm.rotation.y, -steer_input * (0.22 if is_drifting else 0.14), delta * 6.0)
-	var extra_fov: float = 0.0
-	if is_slipstream_boosting:
-		extra_fov += 6.0
-	if drift_boost_timer > 0.0:
-		extra_fov += 8.0
-	if nitro_left > 0.0:
-		extra_fov += NITRO_FOV + NITRO_FOV_PUNCH * (_nitro_punch / NITRO_PUNCH_S)
+	if cam_rig:
+		cam_rig.update(delta, speed_factor)
 	if _nitro_punch > 0.0:
 		_nitro_punch = maxf(0.0, _nitro_punch - delta)
-	var target_fov: float = 68.0 + speed_factor * 14.0 + extra_fov
-	chase_cam.fov = lerpf(chase_cam.fov, target_fov, delta * 5.0)
 
-	if camera_shake_trauma > 0.0:
-		camera_shake_trauma = maxf(camera_shake_trauma - delta * 2.4, 0.0)
-		var shake: float = camera_shake_trauma * camera_shake_trauma * 0.22
-		chase_cam.h_offset = randf_range(-shake, shake)
-		chase_cam.v_offset = randf_range(-shake, shake)
-	else:
-		chase_cam.h_offset = 0.0
-		chase_cam.v_offset = 0.0
+
+## Q1: the 0.12 s whip of the chase camera toward a world direction (a kick hit; CameraDirector.punch with a dir).
+func cam_whip(dir: Vector3) -> void:
+	if cam_rig:
+		cam_rig.whip(dir)

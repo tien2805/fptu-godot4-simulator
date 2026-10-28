@@ -4,7 +4,7 @@
 # thả phím lúc nước rút, quay thân với tốc độ góc giới hạn và nghiêng người khi cua, Space nhảy (đệm phím + coyote time),
 # rơi: < 2,5 m nhún, 2,5..6 m lăn, > 6 m ngã sóng soài 1,5 s (khoá điều khiển) rồi đứng dậy – không bao giờ mất máu.
 # Trọng lực, bước lên bậc/bó vỉa tới 0,35 m, chuột xoay camera (bắt chuột khi click, thả khi ESC), Z/C xoay quanh nhân
-# vật (không dùng Q/E: [E] là phím vào màn ở cột sáng của FreeRoam), camera 3,2 m phía sau ở độ cao 1,6 m có RayCast3D để
+# vật (không dùng Q/E: [E] là phím vào màn ở cột sáng của FreeRoam), camera 3,2 m phía sau ở độ cao 1,55 m có RayCast3D để
 # tường không che nhân vật, FOV rộng thêm khi nước rút, nhún nhẹ theo bước chạy, rung khi tiếp đất mạnh. Hình nhân vật =
 # CharacterBuilder (preset "player", thân rigged), bước chân theo tốc độ ngang qua CharacterBuilder.set_speed().
 # Tách từ StageExtra_EOSExam._handle_movement() / _update_walk_camera() và Stage5_Canteen._process_walk(), bỏ kẹp phòng.
@@ -24,6 +24,11 @@
 # asked on each jump press (true = the press became a dodge-roll, no jump); dodge_roll() is the LAND_ROLL state with its own
 # duration and speed.
 # Phase C (scripts/combat/guns/PlayerCover): move_lock = no walking input while crouched in cover (the cover holds the spot).
+# Q1 camera director (spec 2026-10-29): the camera is FootCamRig (scripts/camera/), updated once per rendered frame in
+# _process (its position springs on the physics tick: FootCamRig.physics_step): CameraRules shoulder / distance / height, a critically damped follow, look-ahead, a pull-in from probes through
+# cam_ray (keep adding camera exceptions to it), sprint FOV, a landing dip, the combat framing of a PlayerCombat fight and
+# the CameraDirector's punch / shake. yaw / pitch stay the camera's orientation (auto-yaw in combat writes yaw);
+# _update_camera(true) snaps it; the camera carries the CameraDirector.META_FX meta.
 class_name ThirdPersonController
 extends CharacterBody3D
 
@@ -65,9 +70,10 @@ const FLOOR_SNAP: float = 0.4
 const SPRINT_FOV_ADD: float = 6.0
 const FOV_EASE: float = 5.0              # 1/s, như FOV camera xe (PlayerBike)
 const STEP_HEIGHT: float = 0.35
-const CAM_DISTANCE: float = 3.2
-const CAM_HEIGHT: float = 1.6
-const CAM_MARGIN: float = 0.25
+const CAM_DISTANCE: float = CameraRules.FOOT_DIST
+const CAM_HEIGHT: float = CameraRules.FOOT_HEIGHT
+const CAM_SHOULDER: float = CameraRules.FOOT_SHOULDER
+const CAM_MARGIN: float = CameraRules.PULL_MARGIN
 const MOUSE_SENS: float = 0.0022
 const ORBIT_SPEED: float = 2.2          # rad/s khi giữ Z/C
 const ORBIT_LEFT_KEY: Key = KEY_Z
@@ -128,15 +134,15 @@ var _skid_t: float = 0.0
 var _lean: float = 0.0
 var _air_clip: String = ""
 var _splat_phase: int = 0
-var _shake_t: float = 0.0
-var _shake_amp: float = 0.0
-var _fov_base: float = 70.0
-var _bob_phase: float = 0.0
+var _cam_dt: float = 0.0
+var _shake_t: float = 0.0                # seconds left of the last shake() (read by tests; the shake itself is FootCamRig's)
 
 var model: Node3D
 var cam_pivot: Node3D
 var cam_ray: RayCast3D
 var camera: Camera3D
+## Q1: the on-foot camera rig (scripts/camera/FootCamRig.gd).
+var cam_rig: FootCamRig
 var _shape: CollisionShape3D
 var _built: bool = false
 
@@ -174,6 +180,7 @@ func _build() -> void:
 	add_child(cam_pivot)
 	cam_ray = RayCast3D.new()
 	cam_ray.name = "CamRay"
+	cam_ray.top_level = true             # FootCamRig aims it for each probe (world space)
 	cam_ray.target_position = Vector3(0.0, 0.0, CAM_DISTANCE + CAM_MARGIN)
 	cam_ray.collide_with_areas = false
 	cam_ray.collide_with_bodies = true
@@ -186,8 +193,10 @@ func _build() -> void:
 	camera.fov = 70.0
 	camera.near = 0.1
 	camera.far = 6000.0
-	camera.position = Vector3(0.0, 0.0, CAM_DISTANCE)
+	camera.position = Vector3(CAM_SHOULDER, 0.0, CAM_DISTANCE)
+	camera.set_meta(CameraDirector.META_FX, self)
 	cam_pivot.add_child(camera)
+	cam_rig = FootCamRig.new(self)
 	_update_camera(true)
 
 
@@ -257,6 +266,8 @@ func teleport(pos: Vector3, yaw_rad: float) -> void:
 	slow_t = 0.0
 	_lean = 0.0
 	_shake_t = 0.0
+	if cam_rig:
+		cam_rig.trauma = 0.0
 	set_facing(yaw_rad)
 	if model:
 		CharacterBuilder.stop_clip(model)
@@ -293,8 +304,10 @@ func _physics_process(delta: float) -> void:
 	if controls_enabled:
 		if Input.is_physical_key_pressed(ORBIT_LEFT_KEY):
 			yaw += ORBIT_SPEED * delta
+			_look_input()
 		if Input.is_physical_key_pressed(ORBIT_RIGHT_KEY):
 			yaw -= ORBIT_SPEED * delta
+			_look_input()
 	var f := Vector3(-sin(yaw), 0.0, -cos(yaw))
 	var r := Vector3(cos(yaw), 0.0, -sin(yaw))
 	var move: Vector3 = f * (-input_dir.y) + r * input_dir.x
@@ -325,7 +338,13 @@ func _physics_process(delta: float) -> void:
 		CharacterBuilder.set_param(model, "run", 0.45 if sprint_anim else 0.0)
 		CharacterBuilder.set_param(model, "sprint", 1.0 if sprint_anim else 0.0)
 		CharacterBuilder.set_param(model, "lean", _lean)
-	_update_camera(false)
+	if cam_rig:
+		cam_rig.physics_step(delta)          # the camera's position springs move on the same tick as the player
+
+
+func _look_input() -> void:
+	if cam_rig:
+		cam_rig.look_input()
 
 
 func _pressed(action: String) -> bool:
@@ -456,6 +475,8 @@ func _land(drop: float) -> void:
 		_splat_phase = 0
 		_play("knockdown")
 		_shake(0.5)
+	if cam_rig:
+		cam_rig.dip(move_state)
 	landings.append(move_state)
 	landed.emit(move_state, drop)
 
@@ -523,8 +544,9 @@ func _turn(delta: float, move: Vector3, rate: float) -> void:
 
 
 func _shake(amp: float) -> void:
-	_shake_amp = amp
 	_shake_t = 0.35
+	if cam_rig:
+		cam_rig.add_trauma(amp * CameraRules.LOCAL_SHAKE_K)
 
 
 ## Bước lên bậc thấp (bó vỉa 0,15 m, bậc thang 0,17 m, tối đa STEP_HEIGHT): nếu đường đi bị chặn ở độ cao bàn chân
@@ -572,6 +594,8 @@ func knock_down(away: Vector3, power: float = 3.0) -> void:
 		model.rotation.y = atan2(-a.x, -a.z) + PI    # faces the shove, falls on its back away from it
 	_play("knockdown")
 	_shake(0.5)
+	if cam_rig:
+		cam_rig.dip("SPLAT")
 
 
 func is_knocked_down() -> bool:
@@ -589,50 +613,18 @@ func shake(amp: float) -> void:
 func _process(delta: float) -> void:
 	if _built:
 		aim_blend = move_toward(aim_blend, 1.0 if aiming else 0.0, delta / AIM_EASE_S)
+		_shake_t = maxf(0.0, _shake_t - delta)
+		_cam_dt = delta
 		_update_camera(false)
-		_camera_fx(delta)
+		_cam_dt = 0.0
 
 
+## The camera pose through FootCamRig (once per rendered frame from _process; snap = jump there: build, set_facing,
+## teleport, tests).
 func _update_camera(snap: bool) -> void:
-	if cam_pivot == null:
+	if cam_pivot == null or cam_rig == null:
 		return
-	pitch = clampf(pitch, PITCH_MIN, PITCH_MAX)
-	cam_pivot.global_position = global_position + Vector3(0.0, CAM_HEIGHT, 0.0)
-	cam_pivot.global_basis = Basis.from_euler(Vector3(pitch, yaw, 0.0))
-	var full: float = lerpf(CAM_DISTANCE, AIM_DISTANCE, aim_blend)
-	var dist: float = full
-	if cam_ray and cam_ray.enabled:
-		if not snap:
-			cam_ray.force_raycast_update()
-		if cam_ray.is_colliding():
-			var hit: Vector3 = cam_ray.get_collision_point()
-			dist = clampf(cam_pivot.global_position.distance_to(hit) - CAM_MARGIN, 0.6, full)
-	if snap:
-		camera.position = Vector3(0.0, 0.0, dist)
-	else:
-		camera.position.z = lerpf(camera.position.z, dist, 0.35 if dist < camera.position.z else 0.12)
-
-
-## Hiệu ứng camera theo thời gian thật, chỉ chạy từ _process (một lần mỗi khung hình, không phụ thuộc fps): FOV rộng thêm khi
-## nước rút (tiến dần theo 1 - e^(-FOV_EASE·dt), cùng nhịp FOV xe PlayerBike), nhún theo bước chạy (pha cộng dồn theo tốc độ
-## nên đổi tốc độ không giật), rung khi tiếp đất mạnh.
-func _camera_fx(delta: float) -> void:
-	var sprinting: bool = is_sprinting and horizontal_speed > JOG_SPEED + 0.5
-	var base_fov: float = lerpf(_fov_base, AIM_FOV, aim_blend)
-	camera.fov = lerpf(camera.fov, base_fov + (SPRINT_FOV_ADD if sprinting else 0.0), 1.0 - exp(-FOV_EASE * delta))
-	var bob: float = 0.0
-	_bob_phase = fmod(_bob_phase + delta * TAU * horizontal_speed / 2.6, TAU)
-	if move_state == "GROUND" and horizontal_speed > JOG_SPEED - 0.5:
-		bob = sin(_bob_phase) * 0.03 * clampf(horizontal_speed / SPRINT_SPEED, 0.0, 1.0)
-	var sx: float = 0.0
-	var sy: float = 0.0
-	if _shake_t > 0.0:
-		_shake_t -= delta
-		var k: float = _shake_amp * clampf(_shake_t / 0.35, 0.0, 1.0) * 0.12
-		sx = randf_range(-k, k)
-		sy = randf_range(-k, k)
-	camera.position.x = AIM_SIDE * aim_blend + sx
-	camera.position.y = bob + sy
+	cam_rig.update(_cam_dt, snap)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -642,6 +634,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var mm: InputEventMouseMotion = event
 		yaw -= mm.relative.x * MOUSE_SENS
 		pitch = clampf(pitch - mm.relative.y * MOUSE_SENS, PITCH_MIN, PITCH_MAX)
+		_look_input()
 	elif event is InputEventMouseButton:
 		var mb: InputEventMouseButton = event
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and capture_on_click and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:

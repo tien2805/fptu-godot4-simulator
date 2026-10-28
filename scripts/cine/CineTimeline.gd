@@ -7,7 +7,7 @@ class_name CineTimeline
 extends RefCounted
 
 const TIMELINE_DIR: String = "res://scripts/cine/timelines/"
-const RIGS: Array[String] = ["static", "dolly", "orbit", "low_hero", "track", "crane"]
+const RIGS: Array[String] = ["static", "dolly", "orbit", "low_hero", "track", "crane", "two_shot", "ots", "dutch", "push_in"]
 const FX_KINDS: Array[String] = ["sparks", "dust", "flash", "debris", "crate", "stars"]
 const TRANSLATED_SPEAKERS: Array[String] = ["Anh Duy"]
 const PARTS: Array[String] = ["helmet"]
@@ -213,6 +213,40 @@ func shot(id: String, s: float, rig: String, what: String, params: Dictionary = 
 	shots.append({"id": id, "s": s, "rig": rig, "what": what, "params": params})
 
 
+# Q1 camera director shot helpers (CineShots documents the opts; each frames its subjects' head and torso inside the
+# letterboxed safe area). A timeline may use these instead of raw positions.
+## Two-shot of actors a and b from the side of the a->b line (opts: side, dist, height, look_y, fov, push, hand, whip).
+func two_shot(id: String, s: float, a: String, b: String, opts: Dictionary = {}) -> void:
+	shot(id, s, "two_shot", "two-shot %s + %s" % [a, b], _with({"a": a, "b": b}, opts))
+
+
+## Over the shoulder of `over` onto `at` (opts: side, back, height, look_y, fov).
+func ots_shot(id: String, s: float, over: String, at: String, opts: Dictionary = {}) -> void:
+	shot(id, s, "ots", "over %s onto %s" % [over, at], _with({"over": over, "at": at}, opts))
+
+
+## Low hero angle on an actor (the low_hero rig; opts: side_deg, dist, fov).
+func hero_shot(id: String, s: float, actor_id: String, opts: Dictionary = {}) -> void:
+	shot(id, s, "low_hero", "hero %s" % actor_id, _with({"actor": actor_id, "fov": 50.0}, opts))
+
+
+## Dutch angle for a villain (opts: roll, side_deg, dist, height, look_y, fov, push).
+func dutch_shot(id: String, s: float, actor_id: String, opts: Dictionary = {}) -> void:
+	shot(id, s, "dutch", "dutch %s" % actor_id, _with({"actor": actor_id}, opts))
+
+
+## Push-in on an actor's face (opts: from, to, side_deg, height, look_y, fov).
+func push_in(id: String, s: float, actor_id: String, opts: Dictionary = {}) -> void:
+	shot(id, s, "push_in", "push-in %s" % actor_id, _with({"actor": actor_id}, opts))
+
+
+static func _with(base: Dictionary, opts: Dictionary) -> Dictionary:
+	var d: Dictionary = base.duplicate()
+	for k: Variant in opts.keys():
+		d[k] = opts[k]
+	return d
+
+
 func sub(r: float, dur: float, speaker: String, text: String, tr: String = "") -> void:
 	subs.append({"r": r, "dur": dur, "speaker": speaker, "text": text, "tr": tr})
 
@@ -303,6 +337,9 @@ func validate() -> PackedStringArray:
 			var sh2: Dictionary = shots[i]
 			if not RIGS.has(String(sh2["rig"])):
 				err.append("shot %s: unknown rig %s" % [String(sh2["id"]), String(sh2["rig"])])
+			for key: String in CineShots.HELPER_ACTORS.get(String(sh2["rig"]), []):
+				if not actors.has(String((sh2["params"] as Dictionary).get(key, ""))):
+					err.append("shot %s: %s names no actor" % [String(sh2["id"]), key])
 			if i > 0 and float(sh2["s"]) <= float(shots[i - 1]["s"]):
 				err.append("shot %s does not start after %s" % [String(sh2["id"]), String(shots[i - 1]["id"])])
 			if float(sh2["s"]) >= story_end:

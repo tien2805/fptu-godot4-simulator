@@ -476,7 +476,7 @@ func _phase_a4(t: int) -> void:
 	if mark.has("fin") and not mark.has("rp") and chase.replay != null:
 		mark["rp"] = frames
 		var lag: int = frames - int(mark["fin"])
-		_check(lag >= 45 and lag <= 52, "the replay starts 0.8 s after the last fall (%d frames)" % lag)
+		_check(lag >= 62 and lag <= 74, "the replay starts 0.8 s (game) after the last fall, its first 0.5 s real in the Q2 last-enemy slow motion (%d frames)" % lag)
 		_check(paused, "the replay pauses the tree")
 		_check(chase.replay.focus == (chase.last_down as BikerEnemy).body and chase.replay.other == bike, "replay focus = the fallen rider, other = the player's bike")
 		_check(chase.replay_slot == "seg_d2_chase" and won_n == 0, "slot seg_d2_chase, `won` waits for the replay")
@@ -846,9 +846,9 @@ func _phase_a10(t: int) -> void:
 		mark["won"] = t
 		var kicked: int = 0
 		for d: Array in downs:
-			if String(d[1]) == "kick":
+			if String(d[1]) == "kick" or String(d[1]) == "counter":   # Q2: a kick in an attacker's last 0.25 s is a counter
 				kicked += 1
-		print("  A10: won after %.1f s, %d m ridden, %d kicks (%d hits), %d biker attacks, stability %.0f, %d down (%d by kicks)" % [float(t) / 60.0, int(chase.end_s - float(mark["s0"])), chase.combat.kicks, chase.combat.hits, _attacks_total(), chase.combat.stability, downs.size(), kicked])
+		print("  A10: won after %.1f s, %d m ridden, %d kicks (%d hits, %d counters), %d biker attacks, stability %.0f, %d down (%d by kicks: %s)" % [float(t) / 60.0, int(chase.end_s - float(mark["s0"])), chase.combat.kicks, chase.combat.hits, chase.combat.counters, _attacks_total(), chase.combat.stability, downs.size(), kicked, str(downs.map(func(d: Array) -> String: return String(d[1])))])
 		_check(chase.state == "won" and not chase.ended_early and downs.size() == 4 and kicked >= 3, "a full AI chase is won with real steering and kicks (%d down, %d by kicks)" % [downs.size(), kicked])
 		_ride(false)
 		autopilot = false

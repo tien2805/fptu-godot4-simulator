@@ -45,6 +45,7 @@ static func day2_route(md: MapData) -> BikeRoute:
 
 func _start() -> void:
 	hide_top_panel()
+	LookPresets.apply("tokyo_drift", roam)   # Q3 look (popped in _cleanup)
 	var md: MapData = roam.get("md") if roam else null
 	route = day2_route(md)
 	MusicDirector.warm([SLOT, SLOT_B])
@@ -145,6 +146,7 @@ func _resume_music() -> void:
 
 
 func _cleanup() -> void:
+	LookPresets.restore(roam, "tokyo_drift")
 	if card and is_instance_valid(card):
 		card.queue_free()
 	card = null

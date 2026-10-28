@@ -6,6 +6,8 @@
 #   - a short toast with the weapon name when the mouse wheel cycles.
 # Plain custom-drawn Controls (no PanelContainer), vice italic font in vice style (GameFX.vice_font through preload), FPT
 # orange accent in classic. FreeRoam hides it on the bike, in cinematics and while the map is open.
+# Q2: hit_marker(ko) draws an X at the screen centre (aimed or not): white for a hit, red and bigger for a knockout,
+# fading over MARK_S / MARK_KO_S.
 class_name WeaponHUD
 extends CanvasLayer
 
@@ -27,6 +29,13 @@ var widget: Control
 var crosshair: Control
 var toast_label: Label
 var _toast_left: float = 0.0
+## Q2 hit marker: the view, seconds left, knockout flag, how many were shown (tests).
+const MARK_S: float = 0.22
+const MARK_KO_S: float = 0.4
+var marker: Control
+var marker_left: float = 0.0
+var marker_ko: bool = false
+var markers_shown: int = 0
 
 
 func _ready() -> void:
@@ -68,6 +77,18 @@ func _ready() -> void:
 	toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast_label.visible = false
 	add_child(toast_label)
+	var hm := HitMarker.new()
+	hm.name = "HitMarker"
+	hm.hud = self
+	hm.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	hm.offset_left = -40.0
+	hm.offset_right = 40.0
+	hm.offset_top = -40.0
+	hm.offset_bottom = 40.0
+	hm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hm.visible = false
+	add_child(hm)
+	marker = hm
 
 
 static func vice() -> bool:
@@ -109,7 +130,24 @@ func show_toast(text: String) -> void:
 	_toast_left = TOAST_S
 
 
+## A hit on a person: the X at the centre (red, bigger and longer for a knockout).
+func hit_marker(ko: bool) -> void:
+	marker_ko = ko
+	marker_left = MARK_KO_S if ko else MARK_S
+	markers_shown += 1
+	if marker:
+		marker.visible = true
+		marker.modulate.a = 1.0
+		marker.queue_redraw()
+
+
 func _process(delta: float) -> void:
+	if marker_left > 0.0:
+		marker_left -= delta
+		if marker:
+			marker.modulate.a = clampf(marker_left / 0.12, 0.0, 1.0)
+			if marker_left <= 0.0:
+				marker.visible = false
 	if _toast_left <= 0.0:
 		return
 	_toast_left -= delta
@@ -134,6 +172,21 @@ class Widget extends Control:
 	func _text(f: Font, pos: Vector2, s: String, sz: int, col: Color) -> void:
 		draw_string_outline(f, pos, s, HORIZONTAL_ALIGNMENT_LEFT, size.x - pos.x - 6.0, sz, 4, WeaponHUD.INK)
 		draw_string(f, pos, s, HORIZONTAL_ALIGNMENT_LEFT, size.x - pos.x - 6.0, sz, col)
+
+
+class HitMarker extends Control:
+	var hud: WeaponHUD
+
+	func _draw() -> void:
+		var c: Vector2 = size * 0.5
+		var ko: bool = hud.marker_ko
+		var col: Color = Color("#FF3B3B") if ko else Color(1.0, 1.0, 1.0)
+		var g: float = 7.0 if ko else 6.0
+		var l: float = 13.0 if ko else 9.0
+		for d: Vector2 in [Vector2(1.0, 1.0), Vector2(-1.0, 1.0), Vector2(1.0, -1.0), Vector2(-1.0, -1.0)]:
+			var n: Vector2 = d.normalized()
+			draw_line(c + n * g, c + n * (g + l), WeaponHUD.INK, 5.0)
+			draw_line(c + n * g, c + n * (g + l), col, 2.5 if ko else 2.0)
 
 
 class Crosshair extends Control:

@@ -33,6 +33,11 @@
 # so a measured window keeps every biker riding).
 # Takedown tags: takedown_tag ("spin" | "air") set before a kick crash turns its cause into that takedown; air_y lifts the
 # bike (the ramp jump, BikeChase).
+# Q2 feel (plan 2026-10-29-q2-feel.md T3): a kick makes the bike veer on a decaying wobble curve (veering off further when
+# it will crash) while the rider flails (BikeCombatData.flail_pose over the ride clip); a crash throws parts (both mirrors
+# and the wolf helmet / a helmet shell) that fly, spin and bounce for PART_S; time_to_hit() (the counter-kick window),
+# take_counter(away) (PHẢN ĐÒN: sent flying, crash cause "counter"); a stick rider downed by a kick drops his stick on the
+# road (PlayerBikeCombat.drop_stick: the player can grab it).
 class_name BikerEnemy
 extends Node3D
 
@@ -138,6 +143,11 @@ var _prev_vel: Vector2 = Vector2.ZERO
 var _anchor: Node3D = null
 var _frozen: bool = false
 var _wob_sign: float = 1.0
+## Q2: flying crash parts {"node", "v", "spin", "t", "floor"}, counters taken, sticks dropped.
+var parts: Array[Dictionary] = []
+var parts_thrown: int = 0
+var countered_n: int = 0
+var stick_dropped: bool = false
 
 
 func setup(opts: Dictionary = {}) -> void:
@@ -164,6 +174,7 @@ func setup(opts: Dictionary = {}) -> void:
 		_build_pickup(opts)
 	else:
 		_build_bike_and_rider(opts)
+	Readability.rim(self, "enemy")   # Q3 rim on the bike and rider
 	_label3d = Label3D.new()
 	_label3d.name = "Name"
 	_label3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -351,6 +362,19 @@ func telegraphing() -> bool:
 	return st == St.WINDUP
 
 
+## Seconds until this biker's attack lands on its fixed timeline (WINDUP: the rest of it + ENEMY_HIT_AT; KICK before the
+## hit: what is left of ENEMY_HIT_AT); INF when it is not attacking or its attack is not a strike beside the player (the
+## thrower's helmet, the pickup's ram, the police).
+func time_to_hit() -> float:
+	if kind == "thrower" or kind == "pickup" or kind == "police" or ram_target != null:
+		return INF
+	if st == St.WINDUP:
+		return maxf(0.0, float(kp["windup"]) - st_t) + BikeCombatData.ENEMY_HIT_AT
+	if st == St.KICK and not hit_done:
+		return maxf(0.0, BikeCombatData.ENEMY_HIT_AT - st_t)
+	return INF
+
+
 func riding() -> bool:
 	return st != St.CRASH and st != St.DOWN
 
@@ -417,10 +441,10 @@ func start_attack(from_side: float) -> void:
 
 ## A player kick (away = unit direction from the player to this biker on the map plane). "wobble" (hp left: it recovers),
 ## "crash" (it wobbles, then crashes) or "ignored". Airborne (the ramp jump): always a crash, tagged "air".
-func take_kick(away: Vector2) -> String:
+func take_kick(away: Vector2, power: int = 1) -> String:
 	if not kickable() or st == St.WOBBLE:
 		return "ignored"
-	hp -= 1
+	hp -= maxi(1, power)
 	if airborne:
 		hp = 0
 		takedown_tag = "air"
@@ -428,9 +452,11 @@ func take_kick(away: Vector2) -> String:
 	_release_token()
 	vel += away * float(kp.get("push", BikeCombatData.KICK_PUSH))
 	_wob_sign = signf(away.dot(Vector2(-vel.y, vel.x))) if vel.length() > 0.5 else 1.0
+	if _wob_sign == 0.0:
+		_wob_sign = 1.0
 	_enter(St.WOBBLE)
-	if stick and hp <= 0:
-		stick.visible = false
+	if stick and hp <= 0 and stick.visible:
+		_drop_stick(away)
 	if ch:
 		ch.cue("impact_medium", ground_pos() + Vector3(0.0, 1.0, 0.0))
 	return "crash" if hp <= 0 else "wobble"
@@ -438,11 +464,14 @@ func take_kick(away: Vector2) -> String:
 
 ## Comic crash: the rider is thrown off in a somersault, the bike slides on its side (the pickup spins out and stops).
 ## cause "kick" | "traffic" | "pole" | "melon" | "barrier" | "police" | "nitro" | ...; a kick crash takes the takedown tag.
+## The one place a crash is finalised: the Q3 rim leaves the bike and rider here (the Q2 flying parts are separate
+## top-level meshes built without a rim; a retry spawns fresh, rimmed bikers).
 func crash(cause: String, push: Vector2 = Vector2.ZERO) -> void:
 	if is_down():
 		return
 	if kind == "police":
 		return                             # the police never crash (no arrests, no wrecks)
+	Readability.unrim(self)
 	crash_cause = takedown_tag if (cause == "kick" and takedown_tag != "") else cause
 	_release_token()
 	bike_v = vel + push * 0.6
@@ -492,12 +521,40 @@ func crash(cause: String, push: Vector2 = Vector2.ZERO) -> void:
 	_label3d.visible = false
 	if _eye_mat:
 		_eye_mat.emission_energy_multiplier = 1.5
+	_throw_parts(push)
 	_enter(St.CRASH)
 	if ch:
 		ch.cue("helmet_clonk", ground_pos() + Vector3(0.0, 0.8, 0.0))
 		ch.cue("bin_crash", ground_pos(), -3.0)
 		ch.cue("slide_whistle", rider_pos + Vector3(0.0, 1.0, 0.0), -2.0)
 		ch.on_biker_crash(self)
+
+
+## PHẢN ĐÒN (PlayerBikeCombat's counter-kick), worth 2 kicks: a rider with 2 HP or less is sent flying at once (no wobble;
+## a takedown, cause "counter"); a heavy takes the 2 and wobbles.
+func take_counter(away: Vector2) -> String:
+	if not kickable():
+		return "ignored"
+	countered_n += 1
+	kicked_by_player = true
+	if hp > 2:
+		return take_kick(away, 2)            # a counter is worth 2 kicks: a heavy wobbles on
+	hp = 0
+	if stick and stick.visible:
+		_drop_stick(away)
+	crash("counter", away * BikeCombatData.COUNTER_PUSH)
+	rider_v += Vector3(away.x * 2.0, 2.2, away.y * 2.0)   # higher and further than a plain crash
+	return "crash"
+
+
+## The kicked stick rider lets go of his stick: it lands on the road beside him (PlayerBikeCombat.drop_stick).
+func _drop_stick(away: Vector2) -> void:
+	stick.visible = false
+	stick_dropped = true
+	var pc: Object = ch.get("combat") if ch else null
+	if pc != null and pc.has_method("drop_stick"):
+		var at: Vector3 = Vector3(pos2.x, floor_y, pos2.y) + Vector3(away.x, 0.0, away.y) * 0.8
+		pc.call("drop_stick", at, Vector3(vel.x, 0.0, vel.y) * 0.3)
 
 
 ## After the player lost: ride off ahead, then vanish.
@@ -524,6 +581,8 @@ func tick(delta: float) -> void:
 			_floor_ray(3)
 			return
 		St.DOWN:
+			if not parts.is_empty():
+				_tick_parts(delta)
 			if not _frozen and st_t >= BikeCombatData.DOWN_FREEZE_S:
 				_frozen = true
 				body.process_mode = Node.PROCESS_MODE_DISABLED   # the Death pose holds; no animation cost
@@ -715,9 +774,14 @@ func _think(delta: float) -> void:
 		avoid_car = -1
 	_last_target = target
 	if st == St.WOBBLE:
+		# Q2: a decaying wobble curve; a bike that will crash veers off more and more toward its fall
 		pos2 += vel * delta
-		yaw += sin(st_t * 22.0) * 2.2 * delta * _wob_sign
-		lean = sin(st_t * 18.0) * 0.45
+		var wl: float = maxf(float(kp.get("wobble", BikeCombatData.WOBBLE_S)), 0.05)
+		var u: float = clampf(st_t / wl, 0.0, 1.0)
+		var env: float = 1.0 - 0.55 * u
+		var veer: float = BikeCombatData.WOBBLE_VEER * u * (1.0 if hp <= 0 else 0.0)
+		yaw += (sin(st_t * 20.0) * 2.6 * env + veer) * delta * _wob_sign
+		lean = sin(st_t * 16.0) * 0.5 * env + (0.35 * u * _wob_sign if hp <= 0 else 0.0)
 		_place_bike()
 		return
 	_drive(delta, target, max_rel, gain)
@@ -1013,6 +1077,8 @@ func _traffic_contact() -> void:
 # CRASH
 # ---------------------------------------------------------------------------
 func _tumble(delta: float) -> void:
+	if not parts.is_empty():
+		_tick_parts(delta)
 	var bs: float = bike_v.length()
 	if bs > 0.0:
 		bike_v = bike_v.move_toward(Vector2.ZERO, BikeCombatData.BIKE_DECEL * delta)
@@ -1079,8 +1145,75 @@ func rider_gap() -> float:
 # KICK POSE (after the RigAnimator; only on frames it ran, so the layer never compounds)
 # ---------------------------------------------------------------------------
 func _process(_d: float) -> void:
-	if pose_w <= 0.001 or _sk == null or not riding():
+	if _sk == null or not riding():
+		return
+	if st == St.WOBBLE:
+		if _anim == null or int(_anim.get("_lod_skip")) == 1:
+			CharacterBuilder._apply_bone_pose(_sk, BikeCombatData.flail_pose(st_t), clampf(st_t * 10.0, 0.0, 1.0))   # Q2: flailing
+		return
+	if pose_w <= 0.001:
 		return
 	if _anim and int(_anim.get("_lod_skip")) != 1:
 		return
 	CharacterBuilder._apply_bone_pose(_sk, BikeCombatData.kick_pose(-side), pose_w)
+
+
+# ---------------------------------------------------------------------------
+# Q2: CRASH PARTS
+# ---------------------------------------------------------------------------
+## Both mirrors snap off the handlebar and the helmet (the wolf helmet, else a plain shell) flies off the rider: each a
+## small top-level mesh with its own velocity, spin and one bounce, freed after PART_S.
+func _throw_parts(push: Vector2) -> void:
+	var b: Basis = global_transform.basis
+	var fv := Vector3(vel.x, 0.0, vel.y) * 0.6 + Vector3(push.x, 0.0, push.y) * 0.5
+	var mirror_mat: StandardMaterial3D = CineFX._mat(Color("#1C1F24"), 0.4)
+	var glass: StandardMaterial3D = CineFX._mat(Color("#AFC6D8"), 0.1)
+	for sx: float in [-1.0, 1.0]:
+		var m := Node3D.new()
+		m.name = "Mirror"
+		CineFX._cyl(m, "Stalk", 0.01, 0.01, 0.16, Vector3(0.0, -0.08, 0.0), mirror_mat)
+		CineFX._box(m, "Glass", Vector3(0.12, 0.07, 0.02), Vector3(0.0, 0.02, 0.0), glass)
+		var at: Vector3 = global_position + b * Vector3(sx * 0.3, 1.08, -0.45)
+		_add_part(m, at, fv + b * Vector3(sx * 2.4, 3.2, 0.0), Vector3(9.0, 4.0 * sx, 7.0))
+	var helmet: Node3D = body.find_child("WolfHelmet", true, false) as Node3D if body else null
+	var hat_at: Vector3 = body.global_position + Vector3(0.0, 1.55, 0.0) if body else global_position + Vector3(0.0, 1.6, 0.0)
+	if helmet != null:
+		hat_at = helmet.global_position
+		helmet.visible = false
+	var h := Node3D.new()
+	h.name = "FlyingHelmet"
+	CineFX._sphere(h, "Shell", 0.15, Vector3.ZERO, CineFX._mat(BikeCombatData.HELMET_COL, 0.5), Vector3(1.0, 0.85, 1.1))
+	if helmet != null:
+		for sx2: float in [-1.0, 1.0]:
+			CineFX._cyl(h, "Ear", 0.0, 0.04, 0.1, Vector3(sx2 * 0.075, 0.15, 0.01), CineFX._mat(BikeCombatData.HELMET_DARK, 0.6))
+	_add_part(h, hat_at, fv * 1.1 + Vector3(0.0, 4.6, 0.0), Vector3(11.0, 6.0, -5.0))
+
+
+func _add_part(n: Node3D, at: Vector3, v: Vector3, spin: Vector3) -> void:
+	n.top_level = true
+	add_child(n)
+	n.global_position = at
+	parts.append({"node": n, "v": v, "spin": spin, "t": 0.0, "floor": floor_y + 0.06})
+	parts_thrown += 1
+
+
+func _tick_parts(delta: float) -> void:
+	for i: int in range(parts.size() - 1, -1, -1):
+		var e: Dictionary = parts[i]
+		var n: Node3D = e["node"] if is_instance_valid(e["node"]) else null
+		e["t"] = float(e["t"]) + delta
+		if n == null or float(e["t"]) >= BikeCombatData.PART_S:
+			if n:
+				n.queue_free()
+			parts.remove_at(i)
+			continue
+		var v: Vector3 = e["v"]
+		v.y -= BikeCombatData.GRAVITY * delta
+		var p: Vector3 = n.global_position + v * delta
+		if p.y < float(e["floor"]) and v.y < 0.0:
+			p.y = float(e["floor"])
+			v = Vector3(v.x * 0.55, -v.y * 0.3, v.z * 0.55)
+			e["spin"] = (e["spin"] as Vector3) * 0.5
+		e["v"] = v
+		n.global_position = p
+		n.rotation += (e["spin"] as Vector3) * delta
