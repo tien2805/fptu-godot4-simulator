@@ -15,7 +15,7 @@
 # three CLUES: she hums the music-box tune, a cream wool thread on her sleeve (the cuff), a grass salad on her tray. A few
 # DECOYS share one or two (a student humming pop along to earbuds, another in a cream cardigan eating salad, a salad eater;
 # Thường adds a fourth). Walking up to a student shows what you notice (the note). Linh's hints come as radio chatter, one
-# clue every 15 s (LINH_AT), then a joke beat. Staring at the same student up close longer than stare_s() raises
+# clue every 12 s (LINH_AT), then a joke beat; lunch ends after lunch_s() (Dolly slips out: a fail). Staring at the same student up close longer than stare_s() raises
 # suspicion; a wrong accusation costs wrong_sus(). Every tuned number goes through Difficulty.pick(normal, easy).
 class_name MissionCanteen
 extends StoryMission
@@ -32,7 +32,8 @@ const COUNTER_M: float = 2.2
 const HUM_M: float = 6.0
 const SPRINT_DROP: float = 5.0
 const STARE_M: float = 1.7
-const LINH_AT: Array[float] = [2.5, 17.0, 32.0, 47.0]
+const LINH_AT: Array[float] = [2.5, 14.0, 26.0, 38.0]
+const T_LUNCH_OVER: String = "Hết giờ ăn trưa, Cừu Dolly lẩn vào đám đông mất rồi."
 const LINH_LINES: Array[String] = ["Dolly mê bài hộp nhạc lắm, lúc ăn hay ngân nga khe khẽ đó.",
 	"Nghe nói nó tự đan áo len màu kem. Kiểu gì tay áo cũng dính sợi len.",
 	"Nó ăn chay trường. Ý tao là... ăn cỏ. Khay nào toàn rau là đáng nghi.",
@@ -77,28 +78,33 @@ var _stare_i: int = -1
 
 
 ## Difficulty-tuned numbers (Thường, Dễ).
+## Lunch ends: Dolly slips out with the crowd (a fail) after this long.
+static func lunch_s() -> float:
+	return float(Difficulty.pick(44.0, 120.0))
+
+
 static func drop_sus() -> float:
-	return float(Difficulty.pick(22.0, 14.0))
+	return float(Difficulty.pick(25.0, 14.0))
 
 
 static func no_tray_sus() -> float:
-	return float(Difficulty.pick(6.0, 3.5))
+	return float(Difficulty.pick(8.0, 3.5))
 
 
 static func calm_sus() -> float:
-	return float(Difficulty.pick(1.2, 2.5))
+	return float(Difficulty.pick(0.8, 2.5))
 
 
 static func wrong_sus() -> float:
-	return float(Difficulty.pick(40.0, 25.0))
+	return float(Difficulty.pick(60.0, 25.0))
 
 
 static func stare_s() -> float:
-	return float(Difficulty.pick(3.0, 4.5))
+	return float(Difficulty.pick(2.4, 4.5))
 
 
 static func stare_sus() -> float:
-	return float(Difficulty.pick(12.0, 6.0))
+	return float(Difficulty.pick(18.0, 6.0))
 
 
 ## Decoy clue sets (students other than Dolly): Thường four, Dễ two.
@@ -427,6 +433,9 @@ func _tick(dt: float) -> void:
 	add_suspicion((-calm_sus() if has_tray else no_tray_sus()) * dt)
 	if state != "running":
 		return
+	if clock >= lunch_s():
+		fail(T_LUNCH_OVER)
+		return
 	if hints_given < LINH_AT.size() and clock >= LINH_AT[hints_given]:
 		linh(LINH_LINES[hints_given])
 		hints_given += 1
@@ -453,7 +462,7 @@ func _tick(dt: float) -> void:
 		_bubble_t -= dt
 		if _bubble_t <= 0.0:
 			bubble.visible = false
-	set_info("Nghi ngờ: %d%% · %s" % [int(suspicion), "Đang bưng khay" if has_tray else "Mất khay! Tới quầy lấy khay"])
+	set_info("Nghi ngờ: %d%% · Còn %d giây · %s" % [int(suspicion), int(ceil(maxf(lunch_s() - clock, 0.0))), "Đang bưng khay" if has_tray else "Mất khay! Tới quầy lấy khay"])
 	if not has_tray and near_counter():
 		set_prompt("[E] Lấy khay mới")
 		return

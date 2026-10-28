@@ -4,12 +4,14 @@
 # of the lane with his back to the player; parked cars along the lane are the cover.
 #   - The phone camera: hold [Q] or the right mouse button to raise it (a first-person viewfinder at eye height, zooming
 #     in over ZOOM_S; walking stops while it is up). [E] / left click shoots. A CLEAR photo needs the courier's chest
-#     within centre_deg() of the view, the view held still for steady_s(), a clear line and the courier within photo_m().
+#     face within centre_deg() of the view, the view held still for steady_s(), a clear line and the courier within photo_m().
 #     The handover has three moments (he checks the order on his phone, opens the box, hands it over): one clear photo
-#     of each, three in all, wins. A blurred shot (not steady / not centred) clicks loudly: a little suspicion.
+#     of each, three in all, wins (the aim point is his face: over a car roof the phone sees it). His back is turned during
+#     a moment except a side-on window of profile_s() somewhere in it (the prompt "HẮN NGHIÊNG MẶT!"): only then is a
+#     photo clear. A blurred shot (not steady / not centred) clicks loudly: a little suspicion.
 #   - He turns round: every moment ends with a telegraph (he freezes, a red "Hửm?" bubble, a heartbeat) for tell_s(),
 #     then he looks back down the lane for look_s(), sweeping. While he looks, the SUSPICION meter fills when he sees
-#     the player (a ray to the chest: standing 1.25 m, ducked 0.65 m; the parked cars block it). [Ctrl] ducks (a crouch
+#     the player (a ray to the head: standing 1.55 m shows over a car roof, ducked 0.9 m does not). [Ctrl] ducks (a crouch
 #     pose, slow walk; the phone then shoots from 1.0 m: over a car it is blocked). Full meter = "BỊ LỘ" (retry from the
 #     start); the handover over (handover_s()) without the three photos = "TOANG!".
 #   - Distractions: a guard walks the lane by from the far end at guard_at() (his own sight cone fills the meter too);
@@ -28,8 +30,8 @@ const PHONE_FOV: float = 52.0
 const ZOOM_FOV: float = 24.0
 const EYE_STAND: float = 1.55
 const EYE_DUCK: float = 1.0
-const CHEST_STAND: float = 1.25
-const CHEST_DUCK: float = 0.65
+const HEAD_STAND: float = 1.55              # the sight rays aim at the player's head: standing it shows over a car roof,
+const HEAD_DUCK: float = 0.9                # ducked behind a car it does not
 const STEADY_DEG_S: float = 9.0              # the view counts as still below this turn rate
 const HALF_FOV_DEG: float = 38.0
 const NEAR_M: float = 3.0
@@ -37,6 +39,7 @@ const SWEEP_DEG: float = 35.0
 const GUARD_SPEED: float = 1.6
 const GUARD_HALF_DEG: float = 35.0
 const DUCK_SPEED: float = 1.5
+const PROFILE_DEG: float = 75.0
 const BARK_LEAD: float = 1.4                 # rustle this long before Lu barks
 const LU_BEHIND_M: float = 2.6
 const MOMENTS: Array[String] = ["xem đơn trên điện thoại", "mở hộp hàng", "trao hộp hàng"]
@@ -61,6 +64,8 @@ const T_START: String = "Giơ điện thoại [Q] / chuột phải, [E] chụp. 
 const T_LU: String = "Lu! Đừng sủa!!"
 const T_GUARD: String = "Bảo vệ đi tuần tới! Núp sau xe!"
 const T_WINDOW: String = "[E] Chụp"
+const T_BACK: String = "Hắn đang quay lưng. Đợi hắn nghiêng mặt rồi chụp."
+const T_PROFILE: String = "HẮN NGHIÊNG MẶT! [E] CHỤP"
 
 var courier: Node3D
 var buyer: Node3D
@@ -104,6 +109,10 @@ var _last_aim: Vector3 = Vector3.ZERO
 var _pose: GunPose
 var _want_phone: bool = false
 var _won_t: float = -1.0
+## The side-on window of the current moment (phase_t from .. to): his face shows, a photo can be clear.
+var profile_from: float = 1.5
+var in_profile: bool = false
+var profile_rng := RandomNumberGenerator.new()
 
 
 ## Difficulty-tuned numbers (Thường, Dễ).
@@ -127,12 +136,17 @@ static func steady_s() -> float:
 	return float(Difficulty.pick(0.8, 0.5))
 
 
+## In the middle of every moment he turns his face side-on for this long (the only time a photo is clear).
+static func profile_s() -> float:
+	return float(Difficulty.pick(2.2, 3.6))
+
+
 static func act_s() -> float:
-	return float(Difficulty.pick(6.5, 8.0))
+	return float(Difficulty.pick(5.5, 8.0))
 
 
 static func tell_s() -> float:
-	return float(Difficulty.pick(0.8, 1.15))
+	return float(Difficulty.pick(0.6, 1.15))
 
 
 static func look_s() -> float:
@@ -144,7 +158,7 @@ static func bark_tell_s() -> float:
 
 
 static func fill_rate() -> float:
-	return float(Difficulty.pick(70.0, 40.0))     # suspicion / s while he sees the player standing
+	return float(Difficulty.pick(220.0, 40.0))     # suspicion / s while he sees the player standing
 
 
 static func guard_fill() -> float:
@@ -160,11 +174,11 @@ static func duck_seen_k() -> float:
 
 
 static func decay() -> float:
-	return float(Difficulty.pick(10.0, 16.0))
+	return float(Difficulty.pick(2.0, 16.0))
 
 
 static func blur_sus() -> float:
-	return float(Difficulty.pick(8.0, 4.0))
+	return float(Difficulty.pick(12.0, 4.0))
 
 
 static func guard_at() -> Array:
@@ -244,9 +258,21 @@ func _car(p: Vector3, col: Color, i: int) -> Node3D:
 	body.add_child(cs)
 	PropBuilder.build_car(body, col, true)
 	add_child(body)
-	body.global_position = Vector3(p.x, ground_y(p), p.z)
+	body.global_position = Vector3(p.x, floor_y(p), p.z)
 	body.rotation.y = yaw_of(campus_dir(Vector3(1.0, 0.0, 0.0))) + (0.06 if i % 2 == 0 else -0.04)
 	return body
+
+
+## The floor under p from just above it (the parking's bike-shed roofs are under 3 m: StoryMission.ground_y would put a
+## car on a roof).
+func floor_y(p: Vector3) -> float:
+	if not is_inside_tree():
+		return p.y
+	var q := PhysicsRayQueryParameters3D.create(p + Vector3(0.0, 1.0, 0.0), p - Vector3(0.0, 4.0, 0.0))
+	if player:
+		q.exclude = [player.get_rid()]
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
+	return (hit["position"] as Vector3).y if not hit.is_empty() else p.y
 
 
 ## The viewfinder overlay: corner brackets, a centre ring, a steadiness bar and a line.
@@ -314,8 +340,15 @@ func _build_finder() -> void:
 	_finder.add_child(_finder_text)
 
 
+func _new_profile() -> void:
+	profile_from = profile_rng.randf_range(1.0, maxf(1.2, act_s() - profile_s() - 0.6))
+	in_profile = false
+
+
 func _reset() -> void:
 	clock = 0.0
+	profile_rng.seed = int(opts.get("seed", 5)) * 31 + retries
+	_new_profile()
 	photos = [false, false, false]
 	suspicion = 0.0
 	phase = "act"
@@ -383,8 +416,9 @@ func eye_pos() -> Vector3:
 	return player.global_position + Vector3(0.0, EYE_DUCK if ducking else EYE_STAND, 0.0) if player else Vector3.ZERO
 
 
+## The photo target: his face (the phone line then runs level over a car roof from the player's eye height).
 func courier_chest() -> Vector3:
-	return courier.global_position + Vector3(0.0, 1.25, 0.0)
+	return courier.global_position + Vector3(0.0, 1.6, 0.0)
 
 
 func _update_phone_cam(dt: float) -> void:
@@ -432,7 +466,10 @@ func _tick(dt: float) -> void:
 		_last_aim = Vector3.ZERO
 	var left: float = handover_s() - clock
 	set_info("Ảnh rõ: %d/3 · Còn %d giây · Cảnh: %s" % [photos.count(true), int(ceil(maxf(left, 0.0))), MOMENTS[moment] if phase == "act" else "hắn đang nhìn quanh"])
-	set_prompt(T_WINDOW + " (giữ yên)" if phone_up else "[Q] / chuột phải: giơ điện thoại · [Ctrl] núp")
+	if in_profile and phase == "act" and not photos[moment]:
+		set_prompt(T_PROFILE)
+	else:
+		set_prompt(T_WINDOW + " (giữ yên)" if phone_up else "[Q] / chuột phải: giơ điện thoại · [Ctrl] núp")
 	_check_t -= dt
 	if _check_t <= 0.0:
 		_check_t = CHECK_S
@@ -461,7 +498,11 @@ func _tick_courier(dt: float) -> void:
 		"act":
 			box.visible = moment >= 1
 			_face_buyer()
-			courier.rotation.y += sin(clock * 1.3) * 0.12
+			in_profile = phase_t >= profile_from and phase_t <= profile_from + profile_s()
+			if in_profile:
+				courier.rotation.y += deg_to_rad(PROFILE_DEG) * signf(sin(float(moment) + 0.5))   # side-on: his face shows
+			else:
+				courier.rotation.y += sin(clock * 1.3) * 0.12
 			if phase_t >= act_s():
 				_begin_tell(tell_s(), Vector3.ZERO)
 		"tell":
@@ -476,6 +517,7 @@ func _tick_courier(dt: float) -> void:
 				phase = "act"
 				phase_t = 0.0
 				bubble.visible = false
+				_new_profile()
 				moment = (moment + 1) % 3
 				while photos[moment] and photos.count(false) > 0:
 					moment = (moment + 1) % 3
@@ -520,7 +562,7 @@ func _tick_guard(dt: float) -> void:
 	var len_m: float = maxf(flat(a, b), 0.1)
 	var u: float = clampf(_guard_t * GUARD_SPEED / len_m, 0.0, 1.0)
 	var p: Vector3 = a.lerp(b, u)
-	guard.global_position = Vector3(p.x, ground_y(p), p.z)
+	guard.global_position = Vector3(p.x, floor_y(p), p.z)
 	guard.rotation.y = yaw_of(b - a) + sin(_guard_t * 0.9) * 0.5   # glancing left and right
 	CharacterBuilder.set_speed(guard, GUARD_SPEED)
 	if u >= 1.0:
@@ -555,7 +597,7 @@ func _lu_bark() -> void:
 	var yaw: float = player.facing_yaw() if player.has_method("facing_yaw") else player.rotation.y
 	var back := Vector3(sin(yaw), 0.0, cos(yaw))
 	var p: Vector3 = free_spot(player.global_position + back * LU_BEHIND_M, 2)
-	p.y = ground_y(p)
+	p.y = floor_y(p)
 	shiba = StoryCast.build("shiba") as StoryShiba
 	add_child(shiba)
 	shiba.global_position = p
@@ -596,12 +638,12 @@ func _sight(dt: float) -> void:
 		add_suspicion(-decay() * dt)
 
 
-## 0 = not seen, 1 = seen ducked, 2 = seen standing: within range and the cone, and a clear line to the player's chest
-## (ducked: 0.65 m, so a parked car between hides them).
+## 0 = not seen, 1 = seen ducked, 2 = seen standing: within range and the cone, and a clear line to the player's head
+## (standing 1.55 m: over a car roof; ducked 0.9 m: a parked car between hides them).
 func seen_by(eye: Vector3, fwd: Vector3, range_m: float, half_deg: float) -> int:
 	if player == null:
 		return 0
-	var chest: Vector3 = player.global_position + Vector3(0.0, CHEST_DUCK if ducking else CHEST_STAND, 0.0)
+	var chest: Vector3 = player.global_position + Vector3(0.0, HEAD_DUCK if ducking else HEAD_STAND, 0.0)
 	var d := Vector3(chest.x - eye.x, 0.0, chest.z - eye.z)
 	var dist: float = d.length()
 	if dist > range_m:
@@ -649,6 +691,9 @@ func take_photo() -> String:
 	if phase != "act" or photos[moment]:
 		popup(T_SAME, 1.6)
 		return "done"
+	if not in_profile:
+		popup(T_BACK, 1.6)
+		return "back"
 	photos[moment] = true
 	popup(T_PHOTO % [photos.count(true), MOMENTS[moment]], 2.2, Color("#7CFFB2"))
 	if photos.count(true) >= 3:

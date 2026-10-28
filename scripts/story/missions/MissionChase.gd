@@ -4,7 +4,7 @@
 # the back-wing passage into the courtyard (the evening crowd), a loop round the courtyard, back out to the parking lane,
 # west along it, down the west lane to the west gate. Stay within leash_m() of him; farther than that for leash_grace()
 # s = fail ("TOANG!", retry from the start). His speed rubber-bands with the distance (fast when the player is close, slow
-# when far, a taunting stop when very far) and is capped so the run lasts at least MIN_S.
+# when far, a taunting stop when very far) and is capped so he reaches the tackle stretch no earlier than min_s().
 # Set pieces along the path (OBSTACLES, path distances in m):
 #   - parkour: benches and a railing ("vault") and barrier poles ("slide") across the way, with collision: [Space] within
 #     vault_m() in front of one vaults it (VAULT_S arc), [Ctrl] in front of a barrier slides under it (SLIDE_S); going
@@ -35,7 +35,6 @@ const CROWD_D: Array[float] = [48.0, 52.0, 66.0, 70.0, 84.0, 88.0, 106.0, 112.0]
 const SHORTCUT := [Vector3(135.0, 0.0, 66.0), Vector3(146.0, 0.0, 60.0)]   # the loop's chord (campus plot)
 const WARN_M: float = 19.0
 const TAUNT_M: float = 21.0
-const MIN_S: float = 60.0
 const SLIP_U: float = 0.55
 const SLIP_S: float = 2.2
 const VAULT_S: float = 0.45
@@ -48,6 +47,7 @@ const PART_M: float = 6.0
 const TACKLE_FROM_U: float = 0.75
 const TACKLE_S: float = 0.5
 const END_EXTRA_S: float = 12.0
+const LEASH_START_S: float = 6.0
 const T_LOST: String = "Mất dấu shipper rồi!"
 const T_SLIP: String = "Ét o ét!"
 const T_TAUNT: String = "Lêu lêu, đuổi không kịp!"
@@ -96,24 +96,29 @@ var _in_slow: bool = false
 
 
 ## Difficulty-tuned numbers (Thường, Dễ).
+## He reaches the tackle stretch no earlier than this (Thường: he runs flat out, the run is about 45-55 s; Dễ: paced).
+static func min_s() -> float:
+	return float(Difficulty.pick(42.0, 60.0))
+
+
 static func leash_m() -> float:
-	return float(Difficulty.pick(22.0, 28.0))
+	return float(Difficulty.pick(12.0, 26.0))
 
 
 static func leash_grace() -> float:
-	return float(Difficulty.pick(2.2, 3.2))
+	return float(Difficulty.pick(1.2, 3.2))
 
 
 static func speed_close() -> float:
-	return float(Difficulty.pick(5.4, 4.6))
+	return float(Difficulty.pick(6.0, 4.8))
 
 
 static func speed_mid() -> float:
-	return float(Difficulty.pick(4.6, 3.9))
+	return float(Difficulty.pick(5.2, 4.0))
 
 
 static func speed_far() -> float:
-	return float(Difficulty.pick(3.6, 3.2))
+	return float(Difficulty.pick(4.4, 3.4))
 
 
 static func vault_m() -> float:
@@ -121,7 +126,7 @@ static func vault_m() -> float:
 
 
 static func slow_cap() -> float:
-	return float(Difficulty.pick(2.6, 3.6))
+	return float(Difficulty.pick(2.4, 3.6))
 
 
 static func tackle_m() -> float:
@@ -524,17 +529,18 @@ func distance() -> float:
 	return flat(player.global_position, courier.global_position) if player and courier else 0.0
 
 
-## Courier speed for the player's distance, capped so he reaches the tackle stretch no earlier than MIN_S (the run lasts
-## 60-90 s like before) and the end of the path no earlier than MIN_S + END_EXTRA_S.
+## Courier speed for the player's distance, capped so he reaches the tackle stretch no earlier than min_s() and the end of
+## the path no earlier than min_s() + END_EXTRA_S.
 func speed_for(dist: float) -> float:
 	var v: float = speed_close() if dist < 8.0 else (speed_mid() if dist < 15.0 else speed_far())
 	if dist > TAUNT_M:
 		v = 0.0
 	var tackle_d: float = TACKLE_FROM_U * length_m
-	if s < tackle_d and clock < MIN_S:
-		v = minf(v, (tackle_d - s) / maxf(MIN_S - clock, 0.5))
-	elif clock < MIN_S + END_EXTRA_S:
-		v = minf(v, (length_m - s) / maxf(MIN_S + END_EXTRA_S - clock, 0.5))
+	var ms: float = min_s()
+	if s < tackle_d and clock < ms:
+		v = minf(v, (tackle_d - s) / maxf(ms - clock, 0.5))
+	elif clock < ms + END_EXTRA_S:
+		v = minf(v, (length_m - s) / maxf(ms + END_EXTRA_S - clock, 0.5))
 	return v
 
 
@@ -550,8 +556,8 @@ func _tick(dt: float) -> void:
 	_tick_crowd()
 	_tick_shortcut()
 	var dist: float = distance()
-	# leash
-	if dist > leash_m():
+	# leash (not in the first LEASH_START_S: he starts with a head start on the player)
+	if dist > leash_m() and clock > LEASH_START_S:
 		far_t += dt
 		if far_t >= leash_grace():
 			CharacterBuilder.set_speed(courier, 0.0)

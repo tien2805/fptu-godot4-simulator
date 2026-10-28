@@ -480,16 +480,24 @@ func _canteen(mc: MissionCanteen) -> void:
 	# Linh's hints over the radio, one clue every 15 s; staring too long raises suspicion
 	var sp: Vector3 = mc.xf * MissionCanteen.START
 	_player().teleport(sp, MissionCanteen.yaw_of(mc.xf.basis * Vector3(0.0, 0.0, 1.0)))
-	for k2: int in 100:
+	for k2: int in 80:
 		mc.advance(0.5)
 	_check(mc.hints_given == 4 and mc.cues_played.count("linh") == 4 and mc.radio_label.text.begins_with("LINH"), "Linh's three hints and a joke over the radio (%d)" % mc.hints_given)
-	_check(mc.state == "running" and mc.suspicion < 5.0, "calm with the tray: no suspicion (%.0f)" % mc.suspicion)
+	_check(mc.state == "running" and mc.suspicion < 5.0 and mc.clock < MissionCanteen.lunch_s(), "calm with the tray: no suspicion (%.0f)" % mc.suspicion)
 	var stare_i: int = (mc.dolly_index + 3) % 12
 	_face(mc, stare_i)
 	var s2: float = mc.suspicion
 	for k3: int in int((MissionCanteen.stare_s() + 1.5) / 0.1):
 		mc.advance(0.1)
 	_check(mc.suspicion > s2 + 5.0 and mc.bubble.text == "Nhìn gì mà nhìn?", "staring at a student too long: suspicion (%.0f -> %.0f)" % [s2, mc.suspicion])
+	for k4: int in int((MissionCanteen.lunch_s() - mc.clock) / 0.5) + 2:
+		if mc.state != "running":
+			break
+		_player().teleport(sp, MissionCanteen.yaw_of(mc.xf.basis * Vector3(0.0, 0.0, 1.0)))
+		mc.advance(0.5)
+	_check(mc.state == "failed" and sr.fail_ui.visible and sr.fail_ui.title_label.text == "TOANG!", "lunch over without an accusation: TOANG!")
+	sr.fail_ui.press_retry()
+	_check(mc.state == "running" and mc.clock < 0.01 and mc.retries == 2, "THỬ LẠI once more")
 	_check(mc.accuse(mc.dolly_index) == "dolly" and mc.state == "done", "the right accusation: Cừu Dolly found")
 
 
