@@ -27,7 +27,7 @@ const SCRIPTS: Dictionary = {
 		[14.0, "anh_duy", "Tụi nó ping nhau 2h, payload trên Nguyễn Xiển, chạy convoy.", "Hàng đi cả đoàn trên Nguyễn Xiển."],
 		[46.0, "anh_duy", "Con Sói Xám lag 200ms đó e, aggro nó là nó tilt liền.", "Chọc tức nó là nó chạy ẩu."]],
 	"d2_bridge": [
-		[8.0, "anh_duy", "Sói Xám solo không mang team, e cứ 1v1 cho đẹp.", "Nó đi một mình, đánh tay đôi đi."]],
+		[8.0, "anh_duy", "Đàn em nó về hết rồi, gầm cầu chỉ còn mình nó, 1v1 đi e.", "Chỉ còn mình nó, đánh tay đôi đi."]],
 	"d3_gunfight": [
 		[16.0, "anh_duy", "Hàng của Alexander order từ một IP lạ lắm, a đang trace.", "Có người khác đứng sau Alexander."]],
 	"d3_crates": [
