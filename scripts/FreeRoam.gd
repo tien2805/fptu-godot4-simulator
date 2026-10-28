@@ -221,6 +221,7 @@ func _ready() -> void:
 	random_scares = RandomScares.new()
 	add_child(random_scares)
 	random_scares.setup(self)
+	add_child(FxPool.new())   # Q3 VFX pool (group "fx_pool")
 	player.camera.make_current()
 	var sm: Node = get_node_or_null("/root/StageManager")
 	if sm:

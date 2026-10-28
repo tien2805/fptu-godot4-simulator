@@ -75,6 +75,7 @@ func _ready() -> void:
 	level = LairBasement.new()
 	add_child(level)
 	level.build()
+	add_child(FxPool.new())   # Q3 VFX pool (group "fx_pool")
 	_build_player()
 	_build_ui()
 	var fx: Node = get_node_or_null("/root/GameFX")
