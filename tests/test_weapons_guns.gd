@@ -157,8 +157,8 @@ func _on_physics() -> void:
 			if t == 14:
 				_check(dp.state == Pedestrian.State.LAUNCHED and dp.hits.count("launched") == 1, "the shotgun launches the person once (8 pellets, one reaction)")
 				_check(dir.ammo[WeaponData.Slot.SHOTGUN] == 5 and dir._pending_cues.size() == 1, "one shell used, the pump is scheduled")
-			if t == 40:
-				_check(dir._pending_cues.is_empty(), "the pump sound played 0.35 s after the shot")
+			if t == 50:                       # Q2: the knockout's 150 ms freeze delays the game clock by ~9 frames
+				_check(dir._pending_cues.is_empty(), "the pump sound played 0.35 s (game time) after the shot")
 			if t == 80:
 				var moved: float = d_start.z - dp.global_position.z
 				_check(dp.state == Pedestrian.State.KNOCKED_OUT and moved > 3.0 and moved < 6.0, "flung ~4 m back, knocked out (%.2f m)" % moved)

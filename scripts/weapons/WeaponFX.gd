@@ -5,14 +5,22 @@
 # alpha over the last `fade` seconds and grow. CineFX keeps its star rings until it is freed, so the CineFX child is replaced
 # once nothing is alive (RECYCLE_AFTER s after the last burst / star window ended). top_level at the world origin: every
 # position is global. CPUParticles3D only.
+# Q2 gun feel (plan 2026-10-29-q2-feel.md T4): the muzzle flash lights the scene for exactly one physics frame (one pooled
+# OmniLight3D per FX layer), tracers are thicker and last longer, and hard-surface impacts leave pooled bullet-hole decals
+# (DECAL_MAX quads, the oldest reused, fading over their last second).
 class_name WeaponFX
 extends Node3D
 
 const RECYCLE_AFTER: float = 2.0
 const LIFE: Dictionary = {"sparks": 2.5, "dust": 3.2, "flash": 0.2}
-const TRACER_S: float = 0.07
-const TRACER_COL := Color(1.0, 0.85, 0.45, 0.9)
+const TRACER_S: float = 0.09
+const TRACER_W: float = 0.035
+const TRACER_COL := Color(1.0, 0.85, 0.45, 0.95)
 const SCORCH_S: float = 20.0
+const DECAL_MAX: int = 24
+const DECAL_S: float = 12.0
+const DECAL_R: float = 0.07
+const MUZZLE_LIGHT_E: float = 6.0
 
 var cine: CineFX
 var t: float = 0.0
@@ -20,6 +28,14 @@ var recycles: int = 0
 var _busy_until: float = 0.0
 static var _ring_mesh: TorusMesh = null
 var _transient: Array[Dictionary] = []    # {"node", "t0", "life", "kind", "mat", "a0", "fade", "grow"}
+## Q2: the one-frame muzzle light, the decal pool (MeshInstance3D + its material + spawn time).
+var muzzle_light: OmniLight3D = null
+var light_flashes: int = 0
+var _light_pf: int = -1                 # physics frame of the last flash
+var _decals: Array[MeshInstance3D] = []
+var _decal_t := PackedFloat32Array()
+var _decal_i: int = 0
+static var _decal_tex: Texture2D = null
 
 
 func _ready() -> void:
@@ -38,6 +54,12 @@ func _physics_process(delta: float) -> void:
 	t += delta
 	cine.update(t, Engine.time_scale)   # particles already run on scaled time: speed / time_scale = 1
 	_tick_transient()
+	if _light_pf >= 0 and Engine.get_physics_frames() > _light_pf:
+		_light_pf = -1
+		if muzzle_light:
+			muzzle_light.visible = false     # lit for the frame of the shot only (whatever the node order)
+	if not _decals.is_empty():
+		_tick_decals()
 	if t > _busy_until + RECYCLE_AFTER and cine.get_child_count() > 0:
 		cine.queue_free()
 		_new_cine()
@@ -89,10 +111,27 @@ func _tick_transient() -> void:
 			node.scale = Vector3.ONE * (1.0 + float(e["grow"]) * age / life)
 
 
-## Muzzle flash with a few sparks forward.
+## Muzzle flash with a few sparks forward, and the one-frame light.
 func muzzle(pos: Vector3, dir: Vector3, power: float = 1.0) -> void:
 	burst("flash", pos + dir * 0.15, dir, 0.35 * power)
 	burst("sparks", pos + dir * 0.2, dir, 0.25 * power)
+	flash_light(pos + dir * 0.25, power)
+
+
+## A warm omni light at pos for exactly one physics frame (pooled: one per FX layer).
+func flash_light(pos: Vector3, power: float = 1.0) -> void:
+	if muzzle_light == null:
+		muzzle_light = OmniLight3D.new()
+		muzzle_light.name = "MuzzleLight"
+		muzzle_light.light_color = Color(1.0, 0.78, 0.42)
+		muzzle_light.omni_range = 6.0
+		muzzle_light.shadow_enabled = false
+		add_child(muzzle_light)
+	muzzle_light.global_position = pos
+	muzzle_light.light_energy = MUZZLE_LIGHT_E * clampf(power, 0.5, 2.0)
+	muzzle_light.visible = true
+	_light_pf = Engine.get_physics_frames()
+	light_flashes += 1
 
 
 ## Bullet tracer a -> b: a thin unshaded additive box that fades out within TRACER_S.
@@ -103,7 +142,7 @@ func tracer(a: Vector3, b: Vector3) -> void:
 	var mi := MeshInstance3D.new()
 	mi.name = "Tracer"
 	var bm := BoxMesh.new()
-	bm.size = Vector3(0.025, 0.025, dist)
+	bm.size = Vector3(TRACER_W, TRACER_W, dist)
 	mi.mesh = bm
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -119,13 +158,69 @@ func tracer(a: Vector3, b: Vector3) -> void:
 	add_transient(mi, TRACER_S, "tracer", m, TRACER_S)
 
 
-## Bullet impact: dust on a person, sparks + dust on hard surfaces.
+## Bullet impact: dust on a person, sparks + a dust puff + a bullet-hole decal on hard surfaces.
 func impact(pos: Vector3, normal: Vector3, soft: bool) -> void:
 	if soft:
 		burst("dust", pos, normal, 0.35)
 	else:
 		burst("sparks", pos, normal, 0.6)
-		burst("dust", pos, normal, 0.25)
+		burst("dust", pos, normal, 0.32)
+		decal(pos, normal)
+
+
+## A bullet hole on a hard surface: a small dark disc facing out of it (pooled, DECAL_MAX, the oldest reused).
+func decal(pos: Vector3, normal: Vector3) -> MeshInstance3D:
+	var n: Vector3 = normal.normalized() if normal.length_squared() > 1e-6 else Vector3.UP
+	var mi: MeshInstance3D
+	if _decals.size() < DECAL_MAX:
+		mi = MeshInstance3D.new()
+		mi.name = "BulletHole%d" % _decals.size()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(DECAL_R * 2.0, DECAL_R * 2.0)
+		mi.mesh = qm
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		if _decal_tex == null:
+			_decal_tex = CineFX.radial_texture(32, 1.6)
+		m.albedo_texture = _decal_tex
+		m.albedo_color = Color(0.06, 0.05, 0.05, 0.85)
+		m.set_meta("vice_done", true)
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+		_decals.append(mi)
+		_decal_t.append(t)
+		_decal_i = 0
+	else:
+		mi = _decals[_decal_i]
+		_decal_t[_decal_i] = t
+		_decal_i = (_decal_i + 1) % DECAL_MAX
+	var up: Vector3 = Vector3.UP if absf(n.dot(Vector3.UP)) < 0.95 else Vector3.FORWARD
+	mi.transform = Transform3D(Basis.looking_at(-n, up), pos + n * 0.012)   # the quad's front (+Z) faces out of the wall
+	(mi.material_override as StandardMaterial3D).albedo_color.a = 0.85
+	mi.visible = true
+	return mi
+
+
+func decal_count() -> int:
+	var c: int = 0
+	for mi: MeshInstance3D in _decals:
+		if mi.visible:
+			c += 1
+	return c
+
+
+func _tick_decals() -> void:
+	for i: int in _decals.size():
+		var mi: MeshInstance3D = _decals[i]
+		if not mi.visible:
+			continue
+		var age: float = t - _decal_t[i]
+		if age >= DECAL_S:
+			mi.visible = false
+		elif age > DECAL_S - 1.0:
+			(mi.material_override as StandardMaterial3D).albedo_color.a = 0.85 * (DECAL_S - age)
 
 
 ## Rocket explosion: big flash, sparks and dust, a dark smoke puff (4 s) and a scorch mark on the floor below (fades over
