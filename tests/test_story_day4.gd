@@ -178,6 +178,12 @@ func _process(_d: float) -> bool:
 			m = sr.mission_node
 			var mf: MissionFight = m
 			_check(String(sd.get("step")) == "d4_brawl" and mf.fight.waves.size() == 2 and mf.fight.enemies.size() == 4, "the brawl: wave 1 of 4 clones")
+			_check(mf.arena != null and mf.arena.tables.size() == 6 and mf.fight.props.size() == 5, "the canteen arena: 6 tables to slam into, trays and chairs on the floor")
+			var slam_tables: int = 0
+			for t: Dictionary in mf.arena.tables:
+				if (t["body"] as Node).is_in_group("slam_table"):
+					slam_tables += 1
+			_check(slam_tables == 6, "every table is a slam surface")
 			_next(10)
 		10:
 			var mf2: MissionFight = m as MissionFight if is_instance_valid(m) else null
@@ -188,6 +194,11 @@ func _process(_d: float) -> bool:
 					for e: Variant in mf2.fight.enemies:
 						arch.append((e as MeleeEnemy).archetype_id)
 					_check(arch.has("dolly") and arch.size() == 3, "wave 2: Cừu Dolly and two clones (%s)" % str(arch))
+					_food_fight_start(mf2)
+				if mark.has("w2") and not mark.has("food_done"):
+					if frames - int(mark.get("food_t0", frames)) >= 30:
+						_food_fight_throws(mf2)
+					return false
 				for e2: Variant in mf2.fight.alive():
 					var me: MeleeEnemy = e2
 					if me.archetype_id == "dolly" and mark.has("w2") and frames % 30 != 0:
@@ -342,6 +353,63 @@ func _process(_d: float) -> bool:
 			return _end()
 	return false
 
+
+## Wave 2 escalation: the food fight is on (throwers, a preview cut); a table flipped between a thrower and the player.
+func _food_fight_start(mf: MissionFight) -> void:
+	var ar: ArenaDressing = mf.arena
+	_check(ar.food_on and ar.throwers.size() == ArenaDressing.thrower_count() and ar.cuts >= 1, "wave 2: the food fight (%d throwers, a preview cut)" % ar.throwers.size())
+	_check(ArenaDressing.throw_tell_s() >= 0.5, "every throw is telegraphed for at least 0.5 s")
+	for th: Dictionary in ar.throwers:
+		th["t"] = 99.0
+	var tp: Vector3 = (ar.throwers[0]["body"] as Node3D).global_position
+	var best: int = -1
+	var bd: float = 999.0
+	for i: int in ar.tables.size():
+		var d: float = MissionFight.flat((ar.tables[i]["root"] as Node3D).global_position, tp)
+		if d < bd:
+			bd = d
+			best = i
+	var tpos: Vector3 = (ar.tables[best]["root"] as Node3D).global_position
+	var back: Vector3 = Vector3(tpos.x - tp.x, 0.0, tpos.z - tp.z).normalized()
+	var stand: Vector3 = tpos + back * 1.1
+	_player().teleport(stand, MissionFight.yaw_of(-back))
+	_check(ar.flip_target() == best, "the nearest table is in reach for a flip")
+	var hp0: float = mf.fight.combat.hp
+	_check(ar.try_flip() and bool(ar.tables[best]["flipped"]) and ar.flips == 1 and ar.soup_splashes >= 1, "[E] flips the table: soup everywhere")
+	_check(not ar.try_flip() or ar.flips == 2, "")
+	mark["food_t0"] = frames
+	mark["food_stand"] = stand
+	mark["food_hp0"] = hp0
+
+
+## A thrower's bun at the player behind the flipped table is blocked; in the open it splats them.
+func _food_fight_throws(mf: MissionFight) -> void:
+	mark["food_done"] = true
+	var ar: ArenaDressing = mf.arena
+	var stand: Vector3 = mark["food_stand"]
+	_player().teleport(stand, 0.0)
+	ar.throwers[0]["t"] = 0.0
+	var n: int = 0
+	while ar.throws < 1 or not ar.buns.is_empty():
+		_player().teleport(stand, 0.0)
+		mf.advance(0.05)
+		n += 1
+		if n > 80:
+			break
+	_check(ar.throws == 1 and ar.blocked == 1 and ar.food_hits == 0, "behind the flipped table the bun is blocked (%d thrown, %d blocked)" % [ar.throws, ar.blocked])
+	var tp: Vector3 = (ar.throwers[0]["body"] as Node3D).global_position
+	var open: Vector3 = tp - ar.fwd * 4.0
+	open = Vector3(open.x, mf.ground_y(open), open.z)
+	var hp1: float = mf.fight.combat.hp
+	ar.throwers[0]["t"] = 0.0
+	n = 0
+	while ar.throws < 2 or not ar.buns.is_empty():
+		_player().teleport(open, MissionFight.yaw_of(tp - open))
+		mf.advance(0.05)
+		n += 1
+		if n > 80:
+			break
+	_check(ar.food_hits == 1 and mf.fight.combat.hp < hp1, "in the open the bun splats the player (%d hits, hp %.0f -> %.0f)" % [ar.food_hits, hp1, mf.fight.combat.hp])
 
 ## The canteen undercover, scripted.
 func _canteen(mc: MissionCanteen) -> void:

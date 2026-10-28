@@ -427,6 +427,11 @@ func _process(_d: float) -> bool:
 			var mf: MissionFight = m
 			_check(String(sd.get("step")) == "d1_brawl" and mf.fight.enemies.size() == 3 and mf.fight.state == "running", "the brawl: 3 couriers")
 			_check(mf.fight.start_line == "Gét gô!" and mf.fight.force_unarmed, "start line Gét gô!, forced unarmed")
+			_check(mf.arena != null and mf.arena.bikes.size() == 4 and mf.arena.tables.size() == 1 and mf.fight.props.size() == 4,
+				"the west-gate arena: parked bikes and a vendor table to slam into, helmets and lids on the floor")
+			var slam_ok: bool = mf.arena.bikes.all(func(b: Node3D) -> bool: return b.find_child("Collision", false, false).is_in_group("slam_car"))
+			_check(slam_ok and (mf.arena.tables[0]["body"] as Node).is_in_group("slam_table"), "bikes slam as cars, the table as a table")
+			_check(mf.fight.waves.size() == 2 and (mf.fight.waves[1] as Array).size() == MissionFight.d1_backup(), "the escalation wave: %d reinforcements" % MissionFight.d1_backup())
 			mf.fight.combat.receive_attack(mf.fight.enemies[0], {"damage": 999.0})
 			_next(7)
 		7:
@@ -442,6 +447,8 @@ func _process(_d: float) -> bool:
 			_next(8)
 		8:
 			var mf3: MissionFight = m as MissionFight if is_instance_valid(m) else null
+			if mf3 != null and mf3.escalated and mf3.cues_played.has("backup"):
+				mark["d1_escalated"] = true
 			if mf3 != null and mf3.fight != null and is_instance_valid(mf3.fight):
 				for e: Variant in mf3.fight.alive():
 					(e as MeleeEnemy).take_strike({"dmg": 999.0, "stagger": 999.0, "breaks_block": true, "from": _player().global_position})
@@ -450,6 +457,7 @@ func _process(_d: float) -> bool:
 					_check(false, "the brawl was not won / seg_d1_brawl did not start")
 					phase = 999
 				return false
+			_check(bool(mark.get("d1_escalated", false)), "the reinforcements came in (a line, a preview cut)")
 			_check(_finish_cine() == "seg_d1_brawl", "the brawl won: seg_d1_brawl")
 			_next(9)
 		9:
