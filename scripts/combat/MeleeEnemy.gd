@@ -969,6 +969,13 @@ func impact_react(tier: String, dir: Vector3, _opts: Dictionary = {}) -> String:
 			if tier != "light":
 				push_v = away * _knock_speed(0.5)   # stays inside the finisher's reach
 			return "daze"
+		St.HELD, St.BLOCK, St.FINALE:
+			return ""
+	if tier == "heavy" and is_hostile():         # armoured (a wind-up, a swing, a howl): a heavy hit still shoves him back
+		var sp: float = _knock_speed(CombatData.ARMOR_PUSH)
+		if push_v.length() < sp:
+			push_v = away * sp
+		return "pushed"
 	return ""
 
 

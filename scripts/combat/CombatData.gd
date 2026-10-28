@@ -128,6 +128,7 @@ const TUMBLE_BOUNCE: float = 0.35        # the floor bounce keeps this much of t
 const TUMBLE_PIVOT := Vector3(0.0, 0.9, 0.0)
 const REACT_S: float = 0.35              # a directional hit reaction pose
 const PICKUP_R: float = 1.6              # [E] picks up an improvised weapon this close
+const ARMOR_PUSH: float = 1.1            # a heavy hit (the staff thrust) on an armoured wind-up / swing still pushes this far
 
 # ----- texts (plain, Vietnamese) -----
 const T_HP: String = "Máu"
