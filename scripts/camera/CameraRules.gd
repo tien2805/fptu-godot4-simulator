@@ -26,6 +26,10 @@ const PULL_MARGIN: float = 0.25            # m kept between the camera and a hit
 const PULL_MIN: float = 0.6                # closest the camera comes to the shoulder point while there is room ...
 const PULL_HARD_MIN: float = 0.12          # ... and with a wall right behind (never inside it)
 const CRANE_UP: float = 0.45               # m the camera rises as the room behind shrinks below PULL_MIN
+const DOWN_CRANE: float = 0.9              # m the camera rises while the player lies knocked down (SPLAT)
+const CLOSE_SIDE_LO: float = 0.3           # the shoulder offset shrinks to 0 as the distance falls from HI to LO (m)
+const CLOSE_SIDE_HI: float = 1.5
+const LOS_PASSES: int = 2                  # pull-in passes for a blocked view from the player's head / hips
 const PULL_OUT_OMEGA: float = 4.0          # pull-in is instant, the way back out is sprung
 const LOCAL_SHAKE_K: float = 0.7           # ThirdPersonController.shake(amp) -> trauma
 const GUARD_MARGIN: float = 0.11           # framing guard: the player's head / chest / hips kept this far inside the edges
@@ -44,6 +48,10 @@ const COMBAT_VIEW_DEG: float = 75.0        # targets and attackers beyond this o
 const COMBAT_LOOK_IDLE_S: float = 0.5      # auto-yaw waits this long after mouse look
 const COMBAT_DIST_OMEGA: float = 3.0
 const COMBAT_SCAN_S: float = 0.1           # enemy scan at 10 Hz
+const COMBAT_MIN_BEHIND: float = 1.4       # m the camera stays behind the player when a wall shortens the arm
+const COMBAT_SHIFT_OMEGA: float = 6.0      # the focus shift's spring
+const COMBAT_SIDE_ROOM: float = 1.8        # less room than this behind the player (to the target's line): a side view
+const COMBAT_SIDE_DEG: float = 70.0
 
 # --- bike chase cam (BikeCamRig) ---
 const BIKE_GROUND: float = 0.13            # the road surface above the PlayerBike origin
@@ -145,16 +153,24 @@ static func auto_yaw_step(yaw: float, target: float, dt: float) -> float:
 	return yaw + clampf(beyond * minf(1.0, COMBAT_YAW_GAIN * dt), -cap, cap)
 
 
-## Framing guard on one axis: the turn (rad) that brings the angles lo..hi (from the view centre) inside +/-lim (a span too
-## wide for the limit is centred).
-static func guard_fit(lo: float, hi: float, lim: float) -> float:
+## Framing guard on one axis: the turn (rad) that brings the angles lo..hi (from the view centre) inside +/-lim, the
+## smallest such turn (a span too wide for the limit is centred). With a second subject (t_lo <= t_hi, e.g. the combat
+## target): among the turns that keep the first inside, the one that keeps the second inside too, else comes closest.
+static func guard_fit(lo: float, hi: float, lim: float, t_lo: float = INF, t_hi: float = -INF) -> float:
 	if hi - lo > 2.0 * lim:
 		return (hi + lo) * 0.5
-	if hi > lim:
-		return hi - lim
-	if lo < -lim:
-		return lo + lim
-	return 0.0
+	var a: float = hi - lim
+	var b: float = lo + lim
+	if t_lo > t_hi:
+		return clampf(0.0, a, b)
+	var ta: float = t_hi - lim
+	var tb: float = t_lo + lim
+	var ia: float = maxf(a, ta)
+	var ib: float = minf(b, tb)
+	if ia <= ib:
+		return clampf(0.0, ia, ib)
+	var tc: float = (ta + tb) * 0.5 if ta > tb else (ta if ta > b else tb)
+	return clampf(tc, a, b)
 
 
 ## Smooth shake noise in -1..1 (sums of incommensurate sines: deterministic, no allocation).

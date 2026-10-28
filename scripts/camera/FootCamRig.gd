@@ -5,15 +5,22 @@
 # cam_ray (the collision probe: every system adds its camera exceptions to it, so all probes go through it).
 #   - explore: pivot FOOT_HEIGHT above the feet on a critically damped follow (vertical softer), look-ahead in the move
 #     direction, shoulder FOOT_SHOULDER right (a probe pulls it in at a wall on the right), distance FOOT_DIST with a
-#     pull-in from 4 probes (centre, both sides, top; instant in, sprung out), sprint FOV, a small landing dip, a run bob;
+#     pull-in from 3 probes (centre, both sides) and from the player's view (rays from the head and the hips to the camera
+#     spot; instant in, sprung out); close in, the shoulder offset gives way and with no room the camera cranes up;
+#     sprint FOV, a small landing dip, a run bob;
 #   - aim (controller.aim_blend): the Phase W over-the-shoulder pose (AIM_DISTANCE, AIM_SIDE, AIM_FOV);
 #   - combat (hostile enemies of the controller's PlayerCombat within COMBAT_RANGE): the pivot on the 70/30 point toward the
-#     target (the soft lock, else the nearest hostile in view), the distance by the enemy count, and auto-yaw (after
+#     target (the soft lock, else the nearest hostile in view; less when a wall pulls the camera in, so it stays
+#     COMBAT_MIN_BEHIND behind the player), the distance by the enemy count, and auto-yaw (after
 #     COMBAT_LOOK_IDLE_S without mouse look, at most COMBAT_YAW_RATE_DEG per second) that keeps the target and the next
 #     attacker (winding up within COMBAT_VIEW_DEG of the view) in frame; attackers behind are left to the HUD markers;
+#     with the back to a wall (less than COMBAT_SIDE_ROOM behind) it aims at a side view that frames both across;
+#   - knocked down (SPLAT): the pivot follows the body and the camera rises DOWN_CRANE for a high angle;
 #   - framing guard: when the pull-in, a knock-down or a steep pitch would push the player's head, chest or hips out of the
 #     frame, the camera turns just enough (instant in, sprung back) to keep them GUARD_MARGIN inside (off while aiming);
+#     in combat the target is kept in frame too where the player allows it;
 #   - the CameraDirector's punch / shake (fx_offset, fx_rot_deg, fx_fov) on top, plus the controller's own shake().
+# Rays per rendered frame: ~9 through cam_ray (head, shoulder, 3 arm, 2-4 view); 1-3 more at 10 Hz in a fight (side view).
 # The PlayerCombat is found through controller.jump_filter (PlayerCombat.setup binds its try_dodge there) and read by duck
 # typing (enemies, lock; enemies: is_hostile, is_down, incoming), so neither script depends on the other.
 class_name FootCamRig
@@ -25,6 +32,8 @@ var combat_n: int = 0
 var target: Node3D = null
 var attacker: Node3D = null
 var in_combat: bool = false
+## Side view offset (rad) of the combat auto-yaw when the back is to a wall (0 = behind the player).
+var side_yaw: float = 0.0
 ## Current distances (read by tests): the wanted full distance, the shoulder after its probe, the pulled-in distance.
 var full_dist: float = CameraRules.FOOT_DIST
 var side: float = CameraRules.FOOT_SHOULDER
@@ -33,6 +42,7 @@ var trauma: float = 0.0
 var last_auto_yaw_rate: float = 0.0       # rad/s of the last auto-yaw step (tests)
 var _follow: CamSpring = CamSpring.new()
 var _ahead: CamSpring = CamSpring.new()
+var _shift: CamSpring = CamSpring.new()
 var _dip: Vector2 = Vector2.ZERO          # x offset (m, negative = down), v
 var _dist_v: float = 0.0
 var _full_v: float = 0.0
@@ -44,6 +54,7 @@ var _clock: float = 0.0
 var _director: CameraDirector = null
 var _director_t: float = 0.0
 var _last_fx_fov: float = 0.0
+var _down: Vector2 = Vector2.ZERO         # knock-down crane: x m, y spring velocity
 ## Framing guard turn (pitch, yaw; rad) of the last frame (tests).
 var guard: Vector2 = Vector2.ZERO
 var _guard_v: Vector2 = Vector2.ZERO
@@ -95,15 +106,27 @@ func update(delta: float, snap: bool) -> void:
 	var basis := Basis.from_euler(Vector3(c.pitch, c.yaw, 0.0))
 	# pivot: follow spring on the feet + height, look-ahead, the 70/30 combat focus, the landing dip
 	var feet: Vector3 = c.global_position
-	var want: Vector3 = feet + Vector3.UP * CameraRules.FOOT_HEIGHT
+	# knocked down: follow the body (the hips), not the feet it fell from
+	var anchor: Vector3 = feet
+	if c.move_state == "SPLAT" and _resolve_bones():
+		var hb: Vector3 = _bone_point(2)
+		anchor = Vector3(hb.x, feet.y, hb.z)
+	var want: Vector3 = anchor + Vector3.UP * CameraRules.FOOT_HEIGHT
 	var hv := Vector3(c.velocity.x, 0.0, c.velocity.z)
 	var ahead_t := Vector3.ZERO
 	if not in_combat and hv.length_squared() > 0.04 and c.aim_blend < 0.99:
 		ahead_t = hv.normalized() * CameraRules.FOOT_LOOK_AHEAD * clampf(hv.length() / ThirdPersonController.JOG_SPEED, 0.0, 1.0) * (1.0 - c.aim_blend)
+	# the 70/30 focus: a shift toward the target, never so far that the camera would hang over the player (pulled in by
+	# a wall, the camera keeps COMBAT_MIN_BEHIND behind the player)
+	var shift_t := Vector3.ZERO
 	if in_combat and target != null and is_instance_valid(target):
 		var tp: Vector3 = target.global_position
-		want += Vector3(tp.x - feet.x, 0.0, tp.z - feet.z) * CameraRules.COMBAT_SPLIT
+		shift_t = Vector3(tp.x - feet.x, 0.0, tp.z - feet.z) * CameraRules.COMBAT_SPLIT
+		var room: float = maxf(0.0, dist - CameraRules.COMBAT_MIN_BEHIND)
+		if shift_t.length() > room:
+			shift_t = shift_t.normalized() * room
 	if snap:
+		_shift.snap(shift_t)
 		_ahead.snap(ahead_t)
 		_follow.snap(want)
 		_dip = Vector2.ZERO
@@ -111,6 +134,7 @@ func update(delta: float, snap: bool) -> void:
 		_dist_v = 0.0
 	else:
 		_ahead.step(ahead_t, CameraRules.FOOT_AHEAD_OMEGA, dt)
+		_shift.step(shift_t, CameraRules.COMBAT_SHIFT_OMEGA, dt)
 		var p: Vector3 = _follow.pos
 		var hz := Vector2(p.x, p.z)
 		var hw := Vector2(want.x + _ahead.pos.x, want.z + _ahead.pos.z)
@@ -124,9 +148,9 @@ func update(delta: float, snap: bool) -> void:
 		var dd: Vector2 = CamSpring.damp(_combat_dist, _full_v, cd, CameraRules.COMBAT_DIST_OMEGA, dt)
 		_combat_dist = dd.x
 		_full_v = dd.y
-	var pivot: Vector3 = _follow.pos + Vector3(0.0, _dip.x, 0.0)
+	var pivot: Vector3 = _follow.pos + _shift.pos + Vector3(0.0, _dip.x, 0.0)
 	# never lift the pivot through a ceiling or leave it inside a wall: probe from the head
-	var head: Vector3 = feet + Vector3.UP * minf(CameraRules.FOOT_HEIGHT, 1.5)
+	var head: Vector3 = anchor + Vector3.UP * minf(CameraRules.FOOT_HEIGHT, 1.5)
 	var hp: float = _probe(head, pivot)
 	if hp < INF:
 		pivot = head + (pivot - head).normalized() * maxf(0.0, hp - CameraRules.PROBE_SIDE)
@@ -136,19 +160,27 @@ func update(delta: float, snap: bool) -> void:
 	var right: Vector3 = basis.x
 	var sp: float = _probe(pivot, pivot + right * (want_side + CameraRules.PROBE_SIDE))
 	side = want_side if sp == INF else clampf(sp - CameraRules.PROBE_SIDE, 0.0, want_side)
-	var shoulder: Vector3 = pivot + right * side
-	# distance: the full one (explore / combat / aim), then 4 probes back from the shoulder
+	# the arm probes start where the camera will sit sideways (close in, the offset gives way: last frame's distance)
+	var shoulder: Vector3 = pivot + right * (side * smoothstep(CameraRules.CLOSE_SIDE_LO, CameraRules.CLOSE_SIDE_HI, dist))
+	# distance: the full one (explore / combat / aim), then 3 probes back from the shoulder
 	full_dist = lerpf(_combat_dist, ThirdPersonController.AIM_DISTANCE, c.aim_blend)
 	var back: Vector3 = basis.z
-	var up: Vector3 = basis.y
 	var reach: float = full_dist + CameraRules.PULL_MARGIN
 	var hit: float = _probe(shoulder, shoulder + back * reach)
 	var o_r: Vector3 = right * CameraRules.PROBE_SIDE
-	var o_u: Vector3 = up * CameraRules.PROBE_SIDE
 	hit = minf(hit, _probe(shoulder + o_r * 0.5, shoulder + o_r + back * reach))
 	hit = minf(hit, _probe(shoulder - o_r * 0.5, shoulder - o_r + back * reach))
-	hit = minf(hit, _probe(shoulder + o_u * 0.5, shoulder + o_u + back * reach))
 	var allowed: float = full_dist if hit == INF else clampf(hit - CameraRules.PULL_MARGIN, CameraRules.PULL_HARD_MIN, full_dist)
+	# the player must see the camera: rays from the head and the hips to it; a hit pulls the camera in along the arm
+	if _resolve_bones():
+		var head_p: Vector3 = _bone_point(0)
+		var hips_p: Vector3 = _bone_point(2)
+		for pass_i: int in CameraRules.LOS_PASSES:
+			var cp: Vector3 = _cam_point(pivot, right, back, allowed)
+			var f: float = minf(_probe_frac(head_p, cp), _probe_frac(hips_p, cp))
+			if f >= 1.0:
+				break
+			allowed = clampf(allowed * f - CameraRules.PULL_MARGIN, CameraRules.PULL_HARD_MIN, allowed)
 	if snap or allowed < dist:
 		dist = allowed
 		_dist_v = 0.0
@@ -177,14 +209,22 @@ func update(delta: float, snap: bool) -> void:
 	cur = base_fov if snap else lerpf(cur, base_fov, 1.0 - exp(-CameraRules.FOOT_FOV_EASE * dt))
 	_last_fx_fov = fx_fov
 	c.camera.fov = cur + fx_fov
-	# no room behind: crane up (a probe stops it under a ceiling), the guard then tilts the view down onto the player
-	var crane: float = clampf((CameraRules.PULL_MIN - dist) / CameraRules.PULL_MIN, 0.0, 1.0) * CameraRules.CRANE_UP
+	# close in: the shoulder offset gives way to a spot behind the head; no room behind: crane up (a probe stops it under
+	# a ceiling), the guard then tilts the view down onto the player
+	var side_eff: float = side * smoothstep(CameraRules.CLOSE_SIDE_LO, CameraRules.CLOSE_SIDE_HI, dist)
+	# knocked down: a sprung rise to a high angle onto the fallen body and whoever stands over it
+	var down_t: float = CameraRules.DOWN_CRANE if c.move_state == "SPLAT" else 0.0
+	if snap:
+		_down = Vector2(down_t, 0.0)
+	else:
+		_down = CamSpring.damp(_down.x, _down.y, down_t, CameraRules.DIP_OMEGA, dt)
+	var crane: float = maxf(_crane(dist), _down.x)
 	if crane > 0.0:
-		var cpos: Vector3 = shoulder + back * dist
+		var cpos: Vector3 = pivot + right * side_eff + back * dist
 		var hc: float = _probe(cpos, cpos + Vector3.UP * (crane + CameraRules.PULL_MARGIN))
 		if hc < INF:
 			crane = maxf(0.0, hc - CameraRules.PULL_MARGIN)
-	var local := Vector3(side, bob, dist) + basis.inverse() * (Vector3.UP * crane)
+	var local := Vector3(side_eff, bob, dist) + basis.inverse() * (Vector3.UP * crane)
 	_frame_guard(Transform3D(basis, pivot) * Transform3D(Basis.IDENTITY, local), cur, dt, snap)
 	c.camera.position = local + off
 	c.camera.rotation = Vector3(guard.x, guard.y, 0.0) + rot * (PI / 180.0)
@@ -202,16 +242,12 @@ func _frame_guard(cam_xf: Transform3D, fov: float, dt: float, snap: bool) -> voi
 		var lim_v: float = atan(tv * shrink)
 		var lim_h: float = atan(tv * (vs.x / maxf(vs.y, 1.0)) * shrink)
 		var inv: Basis = cam_xf.basis.inverse()
-		var up: Vector3 = _sk.global_basis.y.normalized() * CameraFraming.HEAD_UP
 		var vlo: float = INF
 		var vhi: float = -INF
 		var hlo: float = INF
 		var hhi: float = -INF
 		for i: int in 3:
-			var p: Vector3 = (_sk.global_transform * _sk.get_bone_global_pose(_bones[i])).origin
-			if i == 0:
-				p += up
-			var q: Vector3 = inv * (p - cam_xf.origin)
+			var q: Vector3 = inv * (_bone_point(i) - cam_xf.origin)
 			if q.z > -0.05:
 				continue
 			var av: float = atan2(q.y, -q.z)
@@ -220,8 +256,22 @@ func _frame_guard(cam_xf: Transform3D, fov: float, dt: float, snap: bool) -> voi
 			vhi = maxf(vhi, av)
 			hlo = minf(hlo, ah)
 			hhi = maxf(hhi, ah)
+		# the combat target second: kept in frame too where the player allows it
+		var tvlo: float = INF
+		var tvhi: float = -INF
+		var thlo: float = INF
+		var thhi: float = -INF
+		if in_combat and target != null and is_instance_valid(target):
+			for h: float in [CameraFraming.FALLBACK_H[0] + CameraFraming.HEAD_UP, CameraFraming.FALLBACK_H[2]]:
+				var qt: Vector3 = inv * (target.global_position + Vector3.UP * h - cam_xf.origin)
+				if qt.z > -0.05:
+					continue
+				tvlo = minf(tvlo, atan2(qt.y, -qt.z))
+				tvhi = maxf(tvhi, atan2(qt.y, -qt.z))
+				thlo = minf(thlo, atan2(qt.x, -qt.z))
+				thhi = maxf(thhi, atan2(qt.x, -qt.z))
 		if vhi >= vlo:
-			want = Vector2(CameraRules.guard_fit(vlo, vhi, lim_v), -CameraRules.guard_fit(hlo, hhi, lim_h)) * w
+			want = Vector2(CameraRules.guard_fit(vlo, vhi, lim_v, tvlo, tvhi), -CameraRules.guard_fit(hlo, hhi, lim_h, thlo, thhi)) * w
 	if snap:
 		guard = want
 		_guard_v = Vector2.ZERO
@@ -254,6 +304,37 @@ func _resolve_bones() -> bool:
 			return false
 		_bones.append(b)
 	return true
+
+
+## Camera spot at distance d along the arm: the shoulder offset shrinking as it closes in, the crane.
+func _cam_point(pivot: Vector3, right: Vector3, back: Vector3, d: float) -> Vector3:
+	return pivot + right * (side * smoothstep(CameraRules.CLOSE_SIDE_LO, CameraRules.CLOSE_SIDE_HI, d)) + back * d + Vector3.UP * _crane(d)
+
+
+static func _crane(d: float) -> float:
+	return clampf((CameraRules.PULL_MIN - d) / CameraRules.PULL_MIN, 0.0, 1.0) * CameraRules.CRANE_UP
+
+
+## World point of subject bone i (0 head centre, 1 chest, 2 hips); call after _resolve_bones().
+func _bone_point(i: int) -> Vector3:
+	var p: Vector3 = (_sk.global_transform * _sk.get_bone_global_pose(_bones[i])).origin
+	if i == 0:
+		p += _sk.global_basis.y.normalized() * CameraFraming.HEAD_UP
+	return p
+
+
+## Fraction (0..1) of the line from the subject point to the camera spot that is clear (1 = clear), through cam_ray: from
+## the subject first (the nearest obstacle to it, where the camera must stop), then from the camera (a one-sided surface
+## facing the camera hides the subject although a ray from the subject passes its back face).
+func _probe_frac(subject: Vector3, cam_p: Vector3) -> float:
+	var l: float = subject.distance_to(cam_p)
+	if l < 1e-3:
+		return 1.0
+	var h: float = _probe(subject, cam_p)
+	if h < INF:
+		return clampf(h / l, 0.0, 1.0)
+	var hc: float = _probe(cam_p, subject)
+	return 1.0 if hc == INF else clampf((l - hc) / l, 0.0, 1.0)
 
 
 ## Ray through the controller's cam_ray (its exceptions: the player, people, cars, enemies, invisible walls). Distance to the
@@ -334,6 +415,37 @@ func _scan_combat() -> void:
 	if attacker == target:
 		attacker = null
 	in_combat = combat_n > 0
+	_pick_side()
+
+
+## Back to a wall in a fight: when the room behind the player on the player -> target line is short, the auto-yaw aims at
+## a side view (COMBAT_SIDE_DEG off that line, the side with more room), which frames both across. 10 Hz, 1-3 rays.
+func _pick_side() -> void:
+	if not in_combat or target == null or not is_instance_valid(target):
+		side_yaw = 0.0
+		return
+	var feet: Vector3 = ctrl.global_position
+	var dir := Vector3(target.global_position.x - feet.x, 0.0, target.global_position.z - feet.z)
+	if dir.length_squared() < 0.04:
+		return
+	dir = dir.normalized()
+	var origin: Vector3 = feet + Vector3.UP * CameraRules.FOOT_HEIGHT
+	var reach: float = CameraRules.combat_distance(combat_n)
+	var r0: float = minf(_probe(origin, origin - dir * reach), reach)
+	if r0 >= CameraRules.COMBAT_SIDE_ROOM:
+		side_yaw = 0.0
+		return
+	var best: float = side_yaw
+	var best_r: float = r0 if is_zero_approx(side_yaw) else minf(_probe(origin, origin - dir.rotated(Vector3.UP, side_yaw) * reach), reach)
+	for sgn: float in [1.0, -1.0]:
+		var a: float = sgn * deg_to_rad(CameraRules.COMBAT_SIDE_DEG)
+		if is_equal_approx(a, side_yaw):
+			continue
+		var r: float = minf(_probe(origin, origin - dir.rotated(Vector3.UP, a) * reach), reach)
+		if r > best_r + 0.5:
+			best = a
+			best_r = r
+	side_yaw = best
 
 
 static func _hostile(e: Variant) -> bool:
@@ -364,7 +476,7 @@ func _auto_yaw(dt: float) -> void:
 			var mid: Vector3 = dir + ad.normalized()
 			if mid.length_squared() > 0.01:
 				dir = mid.normalized()
-	var want: float = atan2(-dir.x, -dir.z)
+	var want: float = atan2(-dir.x, -dir.z) + side_yaw
 	var before: float = ctrl.yaw
 	ctrl.yaw = CameraRules.auto_yaw_step(before, want, dt)
 	last_auto_yaw_rate = absf(wrapf(ctrl.yaw - before, -PI, PI)) / dt
