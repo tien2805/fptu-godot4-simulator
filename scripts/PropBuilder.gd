@@ -840,6 +840,7 @@ static func build_table(parent: Node3D, pos: Vector3, size: Vector3 = Vector3(3.
 		CharacterBuilder._cyl(root, Vector3(sx * (size.x * 0.5 - 0.12), 0.18, 0.0), 0.015, 0.015, size.z - 0.24, stl, Vector3(PI * 0.5, 0.0, 0.0))
 	if with_collision:
 		var sb := StaticBody3D.new()
+		sb.add_to_group("slam_table")        # Q2: a fighter knocked into it slams the table (Impact.surface_of)
 		var cs := CollisionShape3D.new()
 		var bs := BoxShape3D.new()
 		bs.size = Vector3(size.x, size.y, size.z)

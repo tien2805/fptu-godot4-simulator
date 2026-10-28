@@ -112,6 +112,23 @@ const HOWL_S: float = 1.4               # Sói Xám's howl (armoured)
 const DODGE_SIDE_S: float = 0.3          # enemy side-step (Dolly)
 const DODGE_SIDE_SPEED: float = 6.0
 
+# ----- Q2 combat feel (plan 2026-10-29-q2-feel.md T2; tiers in Impact.TIERS) -----
+const SLAM_DMG: float = 10.0             # an enemy knocked into a wall, a table or a car
+const SLAM_ARM_S: float = 0.6            # after a heavy / finisher knockback the enemy slams into what it meets this long
+const SLAM_SPEED: float = 2.2            # m/s of knockback at least for a slam
+const THROW_RANGE: float = 1.5           # [E] grabs a staggered / blocking / recovering enemy this close
+const THROW_S: float = 0.6
+const THROW_IMPACT: float = 0.28         # the release, into the move
+const THROW_SPEED: float = 6.0           # m/s along the throw (about 3.5 m with the slide)
+const THROW_UP: float = 3.2
+const THROW_DMG: float = 14.0
+const TUMBLE_UP: float = 4.4             # a knockout's comic flying tumble: up ...
+const TUMBLE_BACK: float = 5.0           # ... and back (m/s; kept in the air, decelerated on the floor)
+const TUMBLE_BOUNCE: float = 0.35        # the floor bounce keeps this much of the landing speed
+const TUMBLE_PIVOT := Vector3(0.0, 0.9, 0.0)
+const REACT_S: float = 0.35              # a directional hit reaction pose
+const PICKUP_R: float = 1.6              # [E] picks up an improvised weapon this close
+
 # ----- texts (plain, Vietnamese) -----
 const T_HP: String = "Máu"
 const T_COUNTER: String = "PHẢN ĐÒN"
@@ -125,6 +142,12 @@ const T_CONTROLS: String = "[Chuột trái] đấm · [Chuột phải] đá tạ
 const T_FIGHT_BIKE: String = "Đang đánh nhau, chưa lấy xe được"
 const T_FIGHT_PHONE: String = "Đang đánh nhau, chưa xem điện thoại được"
 const T_FIGHT_EMOTE: String = "Đang đánh nhau, không phải lúc diễn"
+## Q2: slams, throws, improvised weapons.
+const T_SLAM: Dictionary = {"wall": "ĐẬP TƯỜNG", "car": "ĐẬP XE", "table": "ĐẬP BÀN", "enemy": "HẠ CẢ CHÙM"}
+const T_THROW: String = "QUẬT NGÃ"
+const T_PROP_BREAK: String = "GÃY RỒI"
+const T_PICKUP: String = "[E] Nhặt %s"
+const T_CONTROLS_PROP: String = "[Chuột trái] vụt · [Chuột phải] đập mạnh · [Q] đỡ · [Space] lăn né · [E] quật ngã"
 
 # ----- sounds (CineAudio A1 cues, WeaponAudio Phase W cues) -----
 const CINE_CUES: Array[String] = ["impact_light", "impact_medium", "impact_heavy", "groan", "body_fall", "whoosh_down"]
@@ -135,6 +158,7 @@ const REF_LEN: Dictionary = {"Punch_Left": 0.8333, "Punch_Right": 0.8333, "Sword
 const UPPER_JOINTS: Array[String] = ["torso", "head", "shoulder_l", "shoulder_r", "elbow_l", "elbow_r"]
 static var _pose_cache: Dictionary = {}
 static var _howl_scratch: Dictionary = {}
+static var _react_scratch: Dictionary = {}
 
 
 static func archetype(id: String) -> Dictionary:
@@ -175,6 +199,8 @@ static func pose(pose_name: String, u: float) -> Dictionary:
 			return _pose_cache[pose_name]
 		"stunned", "taunt", "dodge_lean", "hip_throw", "winded":
 			return CineMoves.code_pose(pose_name, u)
+		"react_front", "react_back", "react_l", "react_r":
+			return _react_pose(pose_name, u)
 		"howl":                  # Sói Xám: head thrown back, arms spread, a tremble (loop phase u; one reused Dictionary)
 			var k: float = sin(u * TAU * 3.0) * 0.05
 			var h: Dictionary = _howl_scratch
@@ -188,6 +214,35 @@ static func pose(pose_name: String, u: float) -> Dictionary:
 	if pose_name.begins_with("sw_"):
 		return SwordData.pose(pose_name, u)   # Phase C staff and katana poses
 	return {}
+
+
+## Q2 directional hit reactions, played once (u 0..1): a snap away from the hit in the first 18 %, then back.
+## front: recoil back, head snapped back, arms flung up; back: lurch forward, arms back; r (hit on the right side): twist and
+## lean to the left, the head turned away; l: the mirror. One reused Dictionary (no allocation per frame).
+static func _react_pose(pose_name: String, u: float) -> Dictionary:
+	var k: float = smoothstep(0.0, 0.18, u) if u < 0.18 else 1.0 - smoothstep(0.18, 1.0, u)
+	var h: Dictionary = _react_scratch
+	h.clear()
+	match pose_name:
+		"react_front":
+			h["torso"] = Vector3(0.42 * k, 0.0, 0.0)
+			h["head"] = Vector3(0.5 * k, 0.0, 0.0)
+			h["shoulder_l"] = Vector3(0.9 * k, 0.0, -0.55 * k)
+			h["shoulder_r"] = Vector3(0.9 * k, 0.0, 0.55 * k)
+			h["elbow_l"] = Vector3(0.8 * k, 0.0, 0.0)
+			h["elbow_r"] = Vector3(0.8 * k, 0.0, 0.0)
+		"react_back":
+			h["torso"] = Vector3(-0.5 * k, 0.0, 0.0)
+			h["head"] = Vector3(-0.35 * k, 0.0, 0.0)
+			h["shoulder_l"] = Vector3(-0.55 * k, 0.0, -0.35 * k)
+			h["shoulder_r"] = Vector3(-0.55 * k, 0.0, 0.35 * k)
+		"react_r", "react_l":
+			var s: float = 1.0 if pose_name == "react_r" else -1.0
+			h["torso"] = Vector3(0.12 * k, 0.45 * k * s, 0.32 * k * s)
+			h["head"] = Vector3(0.1 * k, 0.55 * k * s, 0.22 * k * s)
+			h["shoulder_l" if s > 0.0 else "shoulder_r"] = Vector3(0.6 * k, 0.0, -0.8 * k * s)
+			h["shoulder_r" if s > 0.0 else "shoulder_l"] = Vector3(0.35 * k, 0.0, 0.3 * k * s)
+	return h
 
 
 static func _static_pose(pose_name: String) -> Dictionary:

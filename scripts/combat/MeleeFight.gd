@@ -12,7 +12,10 @@
 #       "max_attackers": 2,                     # enemies committed to an attack at once (the others circle and taunt)
 #       "auto_checkpoint": true,                # every wave start is a checkpoint
 #       "start_line": "Gét gô!",                # centre popup at start() ("" = none)
-#       "seed": 1})                             # enemy AI randomness
+#       "seed": 1,                              # enemy AI randomness
+#       "props": [{"kind": "chair", "at": Vector3(...), "yaw": 0.0}, ...]})   # Q2 improvised weapons on the floor ("chair",
+#                                               #   "tray", "helmet", "lid"; [E] picks one up), spawned at prepare() / start()
+#   fight.add_prop("tray", Vector3(...)) -> ImprovisedWeapon   # one more at any time after setup (retry() puts them back)
 #   fight.add_wave([                            # call once per wave, in order
 #       {"archetype": "courier", "at": Vector3(...), "yaw": 0.0,          # yaw optional: default faces the player
 #        "opts": {"label": "Mũ Đỏ", "body": {"helmet_color": Color("#E74C3C"), "seed": 102}}},
@@ -47,6 +50,8 @@
 # and take the fight's enemies out of the PlayerCombat. Knocked-out bodies of a cleared wave are removed
 # WAVE_GAP_S after it is cleared, when the next wave spawns. The fight never changes the story state, the time of day or
 # the camera; it never references an autoload.
+# Q2: while it runs, combat.last_fn tells PlayerCombat which knockout is the last enemy of the last wave (its slow-motion
+# orbit); retry() and stop() take a held improvised weapon out of the player's hand (back on the floor / freed).
 # ===========================================
 class_name MeleeFight
 extends Node3D
@@ -90,6 +95,9 @@ var _gap_left: float = -1.0
 var _spawned: int = 0
 var _staging: bool = false
 var _prepared: bool = false
+## Q2 improvised weapons: the setup's "props" spec and the spawned ones.
+var props_spec: Array = []
+var props: Array = []
 
 
 func setup(opts: Dictionary) -> void:
@@ -109,6 +117,7 @@ func setup(opts: Dictionary) -> void:
 	auto_checkpoint = bool(opts.get("auto_checkpoint", true))
 	start_line = String(opts.get("start_line", ""))
 	fight_seed = int(opts.get("seed", 1))
+	props_spec = opts.get("props", [])
 	if combat == null and player != null:
 		combat = PlayerCombat.new()
 		combat.name = "FightCombat"
@@ -129,6 +138,7 @@ func prepare() -> void:
 	_start_wave(0)
 	_staging = false
 	_prepared = true
+	_spawn_props()
 
 
 func start() -> void:
@@ -138,6 +148,8 @@ func start() -> void:
 	state = "running"
 	combat.fight_active = true
 	combat.revive()
+	combat.last_fn = _is_last
+	_spawn_props()
 	_lock_weapons(true)
 	_off_bike()
 	if start_line != "" and combat.hud:
@@ -173,6 +185,11 @@ func retry() -> void:
 	_off_bike()
 	player.teleport(_cp["pos"], float(_cp["yaw"]))
 	combat.revive()
+	combat.drop_prop()
+	for p: Variant in props:
+		if is_instance_valid(p):
+			(p as ImprovisedWeapon).reset()
+	combat.last_fn = _is_last
 	state = "running"
 	ko_total = 0
 	combat.fight_active = true
@@ -186,6 +203,7 @@ func retry() -> void:
 ## End without a result: enemies freed, the HUD and the wheel back to normal.
 func stop() -> void:
 	_clear_enemies()
+	_clear_props()
 	state = "idle"
 	_finish()
 	_revive_if_down()
@@ -353,6 +371,8 @@ func _physics_process(delta: float) -> void:
 func _finish() -> void:
 	if combat:
 		combat.fight_active = false
+		if combat.last_fn == Callable(self, "_is_last"):
+			combat.last_fn = Callable()
 		if combat.boss != null and enemies.has(combat.boss):
 			combat.boss = null                   # the boss bar goes with the fight (won / stop)
 	_lock_weapons(false)
@@ -370,6 +390,54 @@ func _lock_weapons(on: bool) -> void:
 	elif not on and _locked:
 		weapons.locked = _prev_locked
 		_locked = false
+
+
+# ---------------------------------------------------------------------------
+# Q2: the last enemy, improvised weapons
+# ---------------------------------------------------------------------------
+## The knockout of `e` ends the fight: the last wave runs and no other enemy of it is still fighting.
+func _is_last(e: Object) -> bool:
+	if state != "running" or wave < waves.size() - 1:
+		return false
+	for x: Variant in enemies:
+		if x != e and is_instance_valid(x) and not (x as MeleeEnemy).is_defeated():
+			return false
+	return true
+
+
+## An improvised weapon on the floor at `at` ("chair" | "tray" | "helmet" | "lid"), pickable with [E].
+func add_prop(kind: String, at: Vector3, yaw: float = 0.0) -> ImprovisedWeapon:
+	var p := ImprovisedWeapon.new()
+	p.setup(kind)
+	p.top_level = true
+	p.position = at
+	p.rotation.y = yaw
+	p.home = at
+	p.home_yaw = yaw
+	add_child(p)
+	props.append(p)
+	if combat:
+		combat.add_prop(p)
+	return p
+
+
+func _spawn_props() -> void:
+	if not props.is_empty() or props_spec.is_empty():
+		return
+	for d: Variant in props_spec:
+		var dd: Dictionary = d
+		add_prop(String(dd.get("kind", "chair")), dd.get("at", global_position), float(dd.get("yaw", 0.0)))
+
+
+func _clear_props() -> void:
+	if combat and combat.held_prop != null and props.has(combat.held_prop):
+		combat.drop_prop()
+	for p: Variant in props:
+		if combat:
+			combat.props.erase(p)
+		if is_instance_valid(p):
+			(p as Node).queue_free()
+	props.clear()
 
 
 ## The force-unarmed line (the player tried the wheel or scrolled), at most every LINE_COOLDOWN_S.
@@ -414,6 +482,12 @@ func _exit_tree() -> void:
 		_finish()
 	_revive_if_down()
 	if combat and is_instance_valid(combat):
+		if combat.last_fn == Callable(self, "_is_last"):
+			combat.last_fn = Callable()
+		if combat.held_prop != null and props.has(combat.held_prop):
+			combat.drop_prop()
+		for p: Variant in props:
+			combat.props.erase(p)
 		for e: Variant in enemies:
 			if combat.boss == e:
 				combat.boss = null

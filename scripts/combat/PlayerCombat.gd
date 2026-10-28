@@ -25,6 +25,14 @@
 # staff of SwordData.STAFF); reset_moveset() restores the unarmed defaults below. A move's optional "pose" key plays that
 # code pose once over the move (CombatPose), `idle_pose` is held while idle. `boss` (set by MeleeFight / SwordDuel) gets
 # the HUD's boss bar.
+# Q2 feel (plan 2026-10-29-q2-feel.md T2): every landed strike goes through Impact.hit with a tier (strike_tier: jab / cross
+# light; elbow-daze, heavy kick, counter, guard break, knockdown, improvised weapons heavy; a knockout finisher), the
+# enemy's impact_react giving the directional reaction and knockback; hits on the player get a hit-stop, a camera jolt and a
+# red edge flash; blocked hits spark (a clash). The finisher's slow motion runs on the Impact clock after its freeze;
+# last_fn (MeleeFight) marks the last enemy, whose knockout gets the 0.5 s slow-motion orbit instead. [E] priorities: a dazed
+# enemy in reach = finisher, else a staggered / blocking / recovering one within THROW_RANGE = throw (St.THROW), else an
+# improvised weapon within PICKUP_R = pick it up (props: add_prop / remove_prop; held_prop swaps the move set until it
+# breaks; drop_prop() for retries).
 # Autoloads are never referenced here.
 class_name PlayerCombat
 extends Node
@@ -37,7 +45,7 @@ signal countered(enemy: Node3D)
 signal finisher(enemy: Node3D)
 signal mayhem(heat: float, at: Vector3, cause: String)
 
-enum St { IDLE, LIGHT, HEAVY, COUNTER, FINISHER, HITSTUN, DODGE, DOWN }
+enum St { IDLE, LIGHT, HEAVY, COUNTER, FINISHER, HITSTUN, DODGE, DOWN, THROW }
 
 const LOG_MAX: int = 64
 const TRACK_TURN: float = 12.0
@@ -114,6 +122,16 @@ var blade: bool = false
 var cue_map: Dictionary = {}
 ## The cues _cue played (after the remap; last 32, tests).
 var cues: Array[String] = []
+## Q2: the last enemy test (MeleeFight: Callable(enemy) -> bool), throws, improvised weapons on the floor and in the hand.
+var last_fn: Callable = Callable()
+var throws: int = 0
+var props: Array = []
+var held_prop: ImprovisedWeapon = null
+var prop_picks: int = 0
+var prop_breaks: int = 0
+## The tiers of the landed strikes (last 32, tests).
+var tiers: Array[String] = []
+var _throw_target: Node3D = null
 
 
 func _ready() -> void:
@@ -317,6 +335,7 @@ func revive(hp_v: float = CombatData.PLAYER_HP) -> void:
 	if _fin_target != null and is_instance_valid(_fin_target) and _fin_target.has_method("release_hold"):
 		_fin_target.call("release_hold")
 	_fin_target = null
+	_release_throw()
 	_end_slowmo()
 	if pose:
 		pose.reset()
@@ -329,7 +348,6 @@ func revive(hp_v: float = CombatData.PLAYER_HP) -> void:
 func _physics_process(delta: float) -> void:
 	_t += delta
 	_dt = delta
-	_tick_slowmo(delta / maxf(Engine.time_scale, 0.01))
 	if player == null or not is_instance_valid(player):
 		return
 	state_t += delta
@@ -341,7 +359,7 @@ func _physics_process(delta: float) -> void:
 		hp_changed.emit(hp)
 	var blocked: bool = blocked_fn.is_valid() and bool(blocked_fn.call())   # once per frame
 	var can: bool = _can_act(blocked)
-	if weapons != null and weapons.current != WeaponData.Slot.UNARMED and (state == St.LIGHT or state == St.HEAVY or state == St.COUNTER or state == St.FINISHER):
+	if weapons != null and weapons.current != WeaponData.Slot.UNARMED and (state == St.LIGHT or state == St.HEAVY or state == St.COUNTER or state == St.FINISHER or state == St.THROW):
 		_cancel_move()                       # a weapon switched in mid-move: the pending hit never lands
 	var light: bool = _light_edge(can)
 	var heavy: bool = _heavy_edge(can)
@@ -355,6 +373,8 @@ func _physics_process(delta: float) -> void:
 			_attacking(light, heavy, fin, blk)
 		St.FINISHER:
 			_finishing()
+		St.THROW:
+			_throwing()
 		St.HITSTUN:
 			if state_t >= CombatData.HITSTUN_S and not player.is_knocked_down():
 				_to_idle()
@@ -384,8 +404,14 @@ func _idle(light: bool, heavy: bool, fin: bool, blk: bool) -> void:
 	if blocking:
 		return
 	var ft: Node3D = finisher_target() if fin else null
+	var tt: Node3D = throw_target() if fin and ft == null else null
+	var pt: ImprovisedWeapon = prop_target() if fin and ft == null and tt == null else null
 	if ft != null:
 		_start_finisher(ft)
+	elif tt != null:
+		_start_throw(tt)
+	elif pt != null:
+		_pick_prop(pt)
 	elif heavy:
 		_start_move(heavy_move, St.HEAVY)
 	elif light:
@@ -442,6 +468,7 @@ func _cancel_move() -> void:
 	if state == St.FINISHER and _fin_target != null and is_instance_valid(_fin_target) and _fin_target.has_method("release_hold"):
 		_fin_target.call("release_hold")
 	_fin_target = null
+	_release_throw()
 	hit_done = true
 	if player.model:
 		CharacterBuilder.stop_clip(player.model)
@@ -557,24 +584,53 @@ func _resolve_hit() -> void:
 
 func _strike(e: Node3D, info: Dictionary) -> String:
 	var r: String = String(e.call("take_strike", info))
-	_log(String(info["kind"]), e, r)
+	var kind: String = String(info["kind"])
+	_log(kind, e, r)
 	var at: Vector3 = e.global_position + Vector3(0.0, 1.3, 0.0)
+	var dir: Vector3 = WeaponMath.flat_dir(e.global_position - player.global_position)
+	if dir.length_squared() < 0.01:
+		dir = player.facing_dir()
 	match r:
 		"blocked":
 			_cue("punch", at, -10.0)
-			fx.burst("sparks", at, -player.facing_dir(), 0.15)
+			Impact.particles(self, "sparks", at, -player.facing_dir(), 0.7 if blade else 0.4, fx)   # a clash
+			if blade:
+				Impact.punch(self, 0.12, dir)
 		"dodged", "ignored":
 			_cue("swish", at, -4.0)
 		_:
-			var heavy: bool = String(info["kind"]) == String(heavy_move["id"]) or r == "ko" or r == "knockdown" or r == "guard_break"
-			_cue("impact_heavy" if heavy else "impact_light", at, 0.0 if heavy else -3.0)
-			fx.burst("dust", at, Vector3.UP, 0.35 if heavy else 0.25)
-			if blade:
-				fx.burst("sparks", at, -player.facing_dir(), 0.3 if heavy else 0.2)
+			var tier: String = strike_tier(kind, r)
+			_cue("impact_heavy" if tier != "light" else "impact_light", at, 0.0 if tier != "light" else -3.0)
+			var extra: Array = [["keng", 2.0]] if r == "parried" else []
+			Impact.hit(self, tier, {"pos": at, "dir": dir, "target": e, "fx": fx, "last": r == "ko" and is_last(e), "cues": extra})
+			tiers.append(tier)
+			if tiers.size() > 32:
+				tiers.pop_front()
+			if blade and tier == "light":
+				Impact.particles(self, "sparks", at, -player.facing_dir(), 0.5, fx)
 			if r == "guard_break" and hud:
 				hud.popup(CombatData.T_GUARD_BREAK, CombatHUD.WARN)
-	hit_landed.emit(e, String(info["kind"]), r)
+			if held_prop != null and kind.begins_with("prop_"):
+				_use_prop()
+	hit_landed.emit(e, kind, r)
 	return r
+
+
+## The Impact tier of a landed strike: a knockout is the finisher tier; the heavy kick / staff thrust, a counter or parry,
+## an improvised weapon, and hits that knock down, break the guard, daze or make Sói Xám howl are heavy; the rest light.
+func strike_tier(kind: String, r: String) -> String:
+	if r == "ko":
+		return "finisher"
+	if kind == String(heavy_move["id"]) or kind == String(counter_move["id"]) or kind == "counter" or kind.begins_with("prop_"):
+		return "heavy"
+	if r == "knockdown" or r == "guard_break" or r == "daze" or r == "parried" or r == "howl" or r == "flee":
+		return "heavy"
+	return "light"
+
+
+## The last enemy of the fight (MeleeFight's last_fn): its knockout gets the slow-motion orbit.
+func is_last(e: Object) -> bool:
+	return last_fn.is_valid() and bool(last_fn.call(e))
 
 
 ## Pedestrians and officers (Phase W reactions): the nearest one in the unarmed cone. Light = Phase W combo ("punch" twice,
@@ -625,6 +681,9 @@ func _hit_people(heavy: bool) -> bool:
 	_log(String(info["kind"]), best, r)
 	_cue("punch", best.global_position + Vector3(0.0, 1.3, 0.0))
 	fx.burst("dust", best.global_position + Vector3(0.0, 1.2, 0.0), Vector3.UP, 0.3)
+	if r != "none":
+		Impact.hit(self, "finisher" if r == "knocked_out" else ("heavy" if heavy else "light"), {"pos": best.global_position + Vector3(0.0, 1.2, 0.0),
+			"dir": WeaponMath.flat_dir(best.global_position - pp), "fx": fx, "no_fx": true})
 	if r == "knocked_out":
 		_heat(WeaponData.HEAT_KO_UNARMED, best.global_position, "melee")
 	return true
@@ -656,10 +715,12 @@ func receive_attack(attacker: Node3D, info: Dictionary) -> String:
 			_log("enemy", attacker, "perfect")
 			return "perfect"
 		_cue("punch", player.global_position + Vector3(0.0, 1.3, 0.0), -8.0)
-		fx.burst("sparks", player.global_position + Vector3(0.0, 1.3, 0.0) + player.facing_dir() * 0.3, player.facing_dir(), 0.15)
+		var cp: Vector3 = player.global_position + Vector3(0.0, 1.3, 0.0) + player.facing_dir() * 0.3
+		Impact.particles(self, "sparks", cp, player.facing_dir(), 0.7 if blade else 0.4, fx)   # a clash
+		Impact.punch(self, 0.15 if blade else 0.08, -player.facing_dir())
 		_log("enemy", attacker, "blocked")
 		return "blocked"
-	_take_damage(float(info.get("damage", 8.0)), attacker, heavy)
+	_take_damage(float(info.get("damage", 8.0)), attacker, heavy, bool(info.get("unblockable", false)))
 	_log("enemy", attacker, "hit")
 	return "hit"
 
@@ -684,15 +745,20 @@ func _counter(attacker: Node3D) -> void:
 	countered.emit(attacker)
 
 
-func _take_damage(dmg: float, attacker: Node3D, heavy: bool) -> void:
+func _take_damage(dmg: float, attacker: Node3D, heavy: bool, ranged: bool = false) -> void:
 	if not god:
 		hp = maxf(0.0, hp - dmg)
 	since_damage = 0.0
 	hp_changed.emit(hp)
 	queued = ""
 	blocking = false
+	_release_throw()
 	var away: Vector3 = player.global_position - (attacker.global_position if is_instance_valid(attacker) else player.global_position - player.facing_dir())
 	_cue("impact_heavy" if heavy else "impact_medium", player.global_position + Vector3(0.0, 1.3, 0.0))
+	# Q2: the player feels the hit: a short freeze (none for gunfire), a camera jolt toward the hit, the red screen edge
+	Impact.hit(self, "heavy" if heavy else "light", {"pos": player.global_position + Vector3(0.0, 1.3, 0.0), "dir": WeaponMath.flat_dir(away),
+		"fx": fx, "no_sound": true, "hitstop_k": 0.7, "punch_k": 1.3, "no_hitstop": ranged})
+	Impact.edge_flash(self, Impact.EDGE_RED, 0.8 if heavy else 0.55)
 	if hp <= 0.0:
 		state = St.DOWN
 		state_t = 0.0
@@ -779,8 +845,14 @@ func _finishing() -> void:
 			var at: Vector3 = _fin_target.global_position + Vector3(0.0, 1.0, 0.0)
 			_cue("impact_heavy", at, 2.0)
 			_cue("bonk", at, -2.0)
-			fx.burst("dust", _fin_target.global_position + Vector3(0.0, 0.3, 0.0), Vector3.UP, 0.5)
-			_slowmo()
+			var last: bool = r == "ko" and is_last(_fin_target)
+			Impact.hit(self, "finisher", {"pos": at, "dir": WeaponMath.flat_dir(_fin_target.global_position - player.global_position),
+				"target": _fin_target, "fx": fx, "last": last})
+			tiers.append("finisher")
+			if last:
+				slowmo_count += 1                # the orbit's slow motion replaces the finisher's
+			else:
+				_slowmo()
 			if hud:
 				hud.popup(CombatData.T_FINISHED, CombatHUD.GOLD)
 	if state_t >= CombatData.FINISHER_S:
@@ -789,32 +861,156 @@ func _finishing() -> void:
 		_to_idle()
 
 
+## The finisher's slow motion (SLOWMO_SCALE for SLOWMO_REAL_S real seconds) on the Impact clock, after its freeze; refused
+## while a wheel owns the time scale.
 func _slowmo() -> void:
-	if RadialWheel.scale_owner != null and RadialWheel.scale_owner != self:
-		return                               # a wheel owns the time scale (it is open or easing)
-	RadialWheel.scale_owner = self
-	Engine.time_scale = CombatData.SLOWMO_SCALE
-	_slow_left = CombatData.SLOWMO_REAL_S
-	slowmo_count += 1
-
-
-func _tick_slowmo(real_dt: float) -> void:
-	if _slow_left <= 0.0:
-		return
-	_slow_left -= real_dt
-	if _slow_left <= 0.0:
-		_end_slowmo()
+	var c: Impact = Impact.clock(self)
+	if c != null and c.slowmo(CombatData.SLOWMO_SCALE, CombatData.SLOWMO_REAL_S, self):
+		slowmo_count += 1
 
 
 func _end_slowmo() -> void:
-	_slow_left = 0.0
-	if RadialWheel.scale_owner == self:
-		Engine.time_scale = 1.0
-		RadialWheel.scale_owner = null
+	var c: Impact = Impact.find_clock(self)
+	if c != null:
+		c.end_slowmo(self)
+		c.end_slowmo(c)                      # a last-enemy orbit
 
 
+## A combat slow motion runs (the finisher's or a last-enemy orbit; queued behind a freeze counts).
 func slowmo_active() -> bool:
-	return _slow_left > 0.0
+	var c: Impact = Impact.find_clock(self)
+	return c != null and c.slowmo_active()
+
+
+# ---------------------------------------------------------------------------
+# Q2: THROWS AND IMPROVISED WEAPONS
+# ---------------------------------------------------------------------------
+## The nearest enemy within THROW_RANGE that can be grabbed now (MeleeEnemy.can_be_thrown), or null.
+func throw_target() -> Node3D:
+	if player == null:
+		return null
+	var best: Node3D = null
+	var bd: float = CombatData.THROW_RANGE
+	for e: Variant in enemies:
+		if not _alive(e) or not (e as Object).has_method("can_be_thrown") or not bool((e as Object).call("can_be_thrown")):
+			continue
+		var d: float = WeaponMath.flat((e as Node3D).global_position, player.global_position)
+		if d <= bd:
+			bd = d
+			best = e
+	return best
+
+
+func _start_throw(e: Node3D) -> void:
+	if not bool(e.call("take_grab", self)):
+		return
+	state = St.THROW
+	state_t = 0.0
+	queued = ""
+	blocking = false
+	hit_done = false
+	_throw_target = e
+	throws += 1
+	_face(e)
+	_chase_left = CombatData.LUNGE_MAX
+	if pose:
+		pose.set_pose("hip_throw", 0.0, CombatData.THROW_S * 0.9)
+	_cue("whoosh_down", player.global_position + Vector3(0.0, 1.0, 0.0), -4.0)
+
+
+## The throw's release at THROW_IMPACT along the movement input (else the facing): the enemy flies; a heavy impact.
+func _throwing() -> void:
+	if not hit_done:
+		_track(_throw_target, 0.9)
+	if not hit_done and state_t >= CombatData.THROW_IMPACT:
+		hit_done = true
+		if _throw_target != null and is_instance_valid(_throw_target):
+			var d: Vector3 = _input_dir()
+			if d.length_squared() < 0.01:
+				d = player.facing_dir()
+			var r: String = String(_throw_target.call("take_throw", d, player.global_position))
+			_log("throw", _throw_target, r)
+			var at: Vector3 = _throw_target.global_position + Vector3(0.0, 1.1, 0.0)
+			_cue("impact_heavy", at, 0.0)
+			Impact.hit(self, "finisher" if r == "ko" else "heavy", {"pos": at, "dir": WeaponMath.flat_dir(d), "fx": fx,
+				"last": r == "ko" and is_last(_throw_target), "orbit_target": _throw_target})
+			tiers.append("finisher" if r == "ko" else "heavy")
+			if hud and r != "ignored":
+				hud.popup(CombatData.T_THROW, CombatHUD.GOLD)
+		_throw_target = null
+	if state_t >= CombatData.THROW_S:
+		_throw_target = null
+		_last_end = _t
+		_to_idle()
+
+
+## A grab that will not be thrown lets the enemy go (cancel, hit, revive).
+func _release_throw() -> void:
+	if _throw_target != null and is_instance_valid(_throw_target) and _throw_target.has_method("release_hold"):
+		_throw_target.call("release_hold")
+	_throw_target = null
+
+
+func add_prop(p: ImprovisedWeapon) -> void:
+	if not props.has(p):
+		props.append(p)
+
+
+func remove_prop(p: ImprovisedWeapon) -> void:
+	props.erase(p)
+	if held_prop == p:
+		held_prop = null
+		reset_moveset()
+
+
+## The nearest improvised weapon on the floor within PICKUP_R (empty hands, the unarmed move set), or null.
+func prop_target() -> ImprovisedWeapon:
+	if player == null or held_prop != null or light_moves != CombatData.LIGHT:
+		return null
+	var best: ImprovisedWeapon = null
+	var bd: float = CombatData.PICKUP_R
+	for v: Variant in props:
+		if not is_instance_valid(v) or not (v as ImprovisedWeapon).can_pick():
+			continue
+		var d: float = WeaponMath.flat((v as ImprovisedWeapon).global_position, player.global_position)
+		if d <= bd:
+			bd = d
+			best = v
+	return best
+
+
+func _pick_prop(p: ImprovisedWeapon) -> void:
+	p.hold(player)
+	held_prop = p
+	prop_picks += 1
+	set_moveset(p.moveset())
+	_cue("bag_drop", player.global_position + Vector3(0.0, 1.0, 0.0), -6.0)
+	if hud:
+		hud.popup(p.display_name(), CombatHUD.GOLD)
+
+
+## A landed improvised-weapon hit: one use; used up = the comic break, unarmed again.
+func _use_prop() -> void:
+	if held_prop == null or not is_instance_valid(held_prop):
+		held_prop = null
+		return
+	if held_prop.use():
+		var p: ImprovisedWeapon = held_prop
+		held_prop = null
+		prop_breaks += 1
+		p.break_apart(self)
+		reset_moveset()
+		if hud:
+			hud.popup(CombatData.T_PROP_BREAK, CombatHUD.WARN)
+
+
+## Put a held improvised weapon back where it was spawned (retry / stop): unarmed moves again.
+func drop_prop() -> void:
+	if held_prop != null and is_instance_valid(held_prop):
+		held_prop.reset()
+	if held_prop != null:
+		held_prop = null
+		reset_moveset()
 
 
 # ---------------------------------------------------------------------------
@@ -869,7 +1065,7 @@ func _apply_body() -> void:
 			cap = float(CombatData.SPEED_CAP["heavy"])
 		St.COUNTER:
 			cap = float(CombatData.SPEED_CAP["counter"])
-		St.FINISHER:
+		St.FINISHER, St.THROW:
 			cap = float(CombatData.SPEED_CAP["finisher"])
 		St.HITSTUN:
 			cap = float(CombatData.SPEED_CAP["hitstun"])
@@ -879,7 +1075,10 @@ func _apply_body() -> void:
 			if blocking:
 				cap = float(CombatData.SPEED_CAP["block"])
 	player.combat_speed_cap = cap
-	if player.model and (state == St.LIGHT or state == St.HEAVY or state == St.COUNTER or state == St.FINISHER):
+	if held_prop != null and is_instance_valid(held_prop):
+		var md: float = float(move.get("dur", 0.0))
+		held_prop.swing_u = clampf(state_t / md, 0.0, 1.0) if (state == St.LIGHT or state == St.HEAVY) and md > 0.0 else 0.0
+	if player.model and (state == St.LIGHT or state == St.HEAVY or state == St.COUNTER or state == St.FINISHER or state == St.THROW):
 		player.model.rotation.y = _face_yaw          # hold the strike facing against the controller's turn
 	elif blocking and lock != null and player.model:
 		var dl: Vector3 = lock.global_position - player.global_position
@@ -957,9 +1156,11 @@ func _input(event: InputEvent) -> void:
 	var k: InputEventKey = event
 	if not k.pressed or k.echo or k.physical_keycode != KEY_E or player == null:
 		return
-	if state == St.DOWN or state == St.FINISHER or state == St.HITSTUN or state == St.DODGE:
+	if state == St.DOWN or state == St.FINISHER or state == St.HITSTUN or state == St.DODGE or state == St.THROW:
 		return
-	if not _can_act(blocked_fn.is_valid() and bool(blocked_fn.call())) or finisher_target() == null:
+	if not _can_act(blocked_fn.is_valid() and bool(blocked_fn.call())):
+		return
+	if finisher_target() == null and throw_target() == null and prop_target() == null:
 		return
 	_e_event = true
 	e_consumed += 1

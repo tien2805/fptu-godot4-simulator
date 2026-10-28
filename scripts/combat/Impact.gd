@@ -13,7 +13,7 @@
 #       "pos" (Vector3, the impact point), "dir" (Vector3, attacker -> target), "target" (Node3D: impact_react(tier, dir,
 #       opts) is called when it has it), "fx" (WeaponFX: the particle fallback), "shake_fn" (Callable(strength): camera
 #       fallback, e.g. PlayerBike.add_camera_shake), "last" (bool: last enemy -> slow-motion orbit on "target"),
-#       "hitstop_k" / "punch_k" / "fx_k" (scales), "no_hitstop", "no_punch", "no_fx", "no_sound", "cues" (extra
+#       "orbit_target" (the orbit's subject when it is not "target"), "hitstop_k" / "punch_k" / "fx_k" (scales), "no_hitstop", "no_punch", "no_fx", "no_sound", "cues" (extra
 #       [[cue, db], ...] played with the layers).
 #       Returns {"tier", "hitstop" (s actually added), "punch", "fx" (kinds), "cues" (played), "react"}.
 #   Impact.clock(ctx) -> Impact            the one clock node (group "impact_clock", built on first use under the root)
@@ -62,6 +62,8 @@ const CROWD_GAP: float = 1.2
 const STING_GAP: float = 1.0
 const EDGE_RED := Color(1.0, 0.1, 0.06)
 const UNPOSITIONED: Array[String] = ["crowd_oh", "sting", "hit_tick", "ko_tick"]
+## Slam surfaces (surface_of) and their sound.
+const SLAM_CUE: Dictionary = {"wall": "slam", "car": "metal_slam", "table": "wood_break", "enemy": "body"}
 const LOG_MAX: int = 32
 const EDGE_SHADER := """
 shader_type canvas_item;
@@ -174,6 +176,25 @@ static func knock(tier: String) -> float:
 	return float(tier_of(tier)["knock"])
 
 
+## What a body was slammed into: "table" (group slam_table), "car" (group slam_car, traffic_obstacle or a VehicleBody3D),
+## a node's meta "slam" (any of SLAM_CUE), else "wall".
+static func surface_of(col: Object) -> String:
+	if col == null or not is_instance_valid(col) or not (col is Node):
+		return "wall"
+	var n: Node = col
+	for k: int in 3:                         # the collider or one of its two parents (a prop root holding its body)
+		if n == null:
+			break
+		if n.has_meta("slam") and SLAM_CUE.has(String(n.get_meta("slam"))):
+			return String(n.get_meta("slam"))
+		if n.is_in_group("slam_table"):
+			return "table"
+		if n.is_in_group("slam_car") or n.is_in_group("traffic_obstacle") or n is VehicleBody3D:
+			return "car"
+		n = n.get_parent()
+	return "wall"
+
+
 ## The impact recipe (see the header).
 static func hit(ctx: Node, tier: String, opts: Dictionary = {}) -> Dictionary:
 	var td: Dictionary = tier_of(tier)
@@ -206,8 +227,9 @@ static func hit(ctx: Node, tier: String, opts: Dictionary = {}) -> Dictionary:
 	var t: Variant = opts.get("target", null)
 	if t != null and is_instance_valid(t) and (t as Object).has_method("impact_react"):
 		out["react"] = String((t as Object).call("impact_react", tier, dir, opts))
-	if bool(opts.get("last", false)) and t != null and is_instance_valid(t):
-		slowmo_orbit(ctx, t as Node3D, ORBIT_S)
+	var ot: Variant = opts.get("orbit_target", t)
+	if bool(opts.get("last", false)) and ot != null and is_instance_valid(ot):
+		slowmo_orbit(ctx, ot as Node3D, ORBIT_S)
 	if c != null:
 		c.last_hit = out
 	return out
