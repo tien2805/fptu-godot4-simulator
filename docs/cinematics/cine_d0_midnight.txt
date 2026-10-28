@@ -6,11 +6,11 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    wide: the bench at night
-SHOT S2      2.000  static    close: cannot sleep
-SHOT S3      5.400  static    close: the backpack glows red
+SHOT S2      2.000  push_in   push-in hero
+SHOT S3      5.400  dolly     push-in: the backpack glows red
 SHOT S4      8.800  static    low front two-shot: the face rises behind
-SHOT S5     13.800  static    close: glasses that are not theirs
-SHOT S6     18.600  static    wide: deadpan
+SHOT S5     13.800  dolly     push-in: glasses that are not theirs
+SHOT S6     18.600  two_shot  two-shot hero + phuc
 #
 # Subtitles (real start - end, speaker: line)
 SUB    1.500 -  3.500  Bạn: …Không ngủ được.

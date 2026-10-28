@@ -8,6 +8,8 @@
 # "NGÀY 1 · CÒN 7 NGÀY", then Phase B's Day 1 (night, the main-gate marker), autosave -> leaving for the menu saves the
 # player's spot -> Continue restores Day 1 and a second FreeRoam spawns there with no cinematic -> free play (no story)
 # has no story layer. Day 1 itself is tested by test_story_day1.
+# Wave 2 (plan 2026-10-29-w2-early.md Task 3): the story exam's planted-glasses glint (a slow push-in on the bag with the
+# sting, the exam clock frozen, then the patrol camera back); the standalone exam has none.
 # Run:  godot --headless --path . --script tests/test_story_day0.gd
 extends SceneTree
 
@@ -22,6 +24,8 @@ var sm: Node
 var fr: Node
 var sr: StoryRoam
 var saved_spawn: Transform3D
+var exam: Node
+var mark: Dictionary = {}
 var saves0: int = 0
 var race_spot: Vector2 = Vector2.ZERO
 var cine_frames: int = 0
@@ -299,7 +303,57 @@ func _process(_d: float) -> bool:
 			_check(not bool(fr.get("story_mode")) and fr.get("story_roam") == null and fr.find_child("StoryRoam", true, false) == null, "free play: no story layer")
 			_check(not (fr.get("hotspots") as Array).is_empty(), "free play keeps the stage hotspots")
 			fr.queue_free()
-			return _end()
+			phase = 16
+			frames = 0
+		16:   # Wave 2 (T3): the planted glasses glint in the story exam
+			if frames < 3:
+				return false
+			sm.set("story_context", {"beat": "d0_exam", "stage": 7, "replay": "seg_d0_exam"})
+			exam = (load("res://scenes/StageExtra_EOSExam.tscn") as PackedScene).instantiate()
+			root.add_child(exam)
+			phase = 17
+			frames = 0
+		17:
+			if frames < 3:
+				return false
+			if not mark.has("glint_armed"):
+				mark["glint_armed"] = true
+				_check(bool(exam.get("story")) and exam.get("bag") != null, "story exam: the protagonist's bag by the front desk")
+				exam.set("time_left", float(exam.get("STAGE_TIME")) - float(exam.get("GLINT_AT")) + 0.02)
+				return false
+			if String(exam.get("glint_state")) == "push" and not mark.has("glint_on"):
+				mark["glint_on"] = true
+				mark["glint_left"] = float(exam.get("time_left"))
+				var gc: Camera3D = exam.get("glint_cam")
+				_check(gc != null and gc.current and (exam.get("glint_star") as Node3D).visible, "the glasses glint: a push-in camera on the bag")
+				_check((exam.get("glint_cues") as Array).has("dun_dun_duun"), "with the dun-dun-duun sting")
+			if mark.has("glint_on") and String(exam.get("glint_state")) == "push":
+				var gc2: Camera3D = exam.get("glint_cam")
+				mark["glint_min_fov"] = minf(float(mark.get("glint_min_fov", 99.0)), gc2.fov)
+			if String(exam.get("glint_state")) == "done":
+				_check(is_equal_approx(float(exam.get("time_left")), float(mark.get("glint_left", -1.0))), "the exam clock waits during the push-in")
+				_check(float(mark.get("glint_min_fov", 99.0)) < 40.0, "it pushes in (fov down to %.0f)" % float(mark.get("glint_min_fov", 99.0)))
+				_check((exam.get("walk_cam") as Camera3D).current, "back to the patrol camera")
+				exam.queue_free()
+				sm.set("story_context", {})
+				phase = 18
+				frames = 0
+			elif frames > 600:
+				_check(false, "the glint never ran (%s)" % String(exam.get("glint_state")))
+				return _end()
+		18:
+			if frames < 3:
+				return false
+			if exam == null or not is_instance_valid(exam) or exam.is_queued_for_deletion() or bool(exam.get("story")):
+				exam = (load("res://scenes/StageExtra_EOSExam.tscn") as PackedScene).instantiate()
+				root.add_child(exam)
+				return false
+			if frames == 6:
+				exam.set("time_left", float(exam.get("STAGE_TIME")) - float(exam.get("GLINT_AT")) - 2.0)
+			if frames > 30:
+				_check(String(exam.get("glint_state")) == "" and exam.get("bag") == null, "the standalone exam has no glint")
+				exam.queue_free()
+				return _end()
 	return false
 
 
