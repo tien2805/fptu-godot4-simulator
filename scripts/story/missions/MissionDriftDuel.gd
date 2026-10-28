@@ -1,13 +1,14 @@
 # File: res://scripts/story/missions/MissionDriftDuel.gd
-# Day 2 drift duel with Sói Xám (spec D2X-10, plan 2026-10-27-d2x-drift.md), the beat d2_drift between the bike chase and
-# the bridge horror beat: a DriftDuel on the "Cầu Rạch Hầm" lap. The duel runs the intro, the countdown, the race, its
-# own quick retries after a loss (no fail card: back on the grid in about 3.5 s) and the ending (his line, he rides down
-# under the bridge, a fade); `ended` = done -> d2_bridge.
+# Day 2 race with Sói Xám, "đua + đánh" (Wave 2 Day 2 rework, plan 2026-10-29-w2-day2.md; the beat d2_drift between the
+# bike chase and the bridge horror beat): a DriftDuel on "Rạch Hầm GP" (2 laps on real roads, first to the bridge wins).
+# The duel runs the intro, the countdown, the race, its own quick retries after a loss (no fail card: back on the grid,
+# or the lap 2 grid, in about 3.5 s) and the ending (his line, he rides down under the bridge, a fade); `ended` = done ->
+# d2_bridge.
 # Music (StoryRoam leaves it to this mission, SELF_MUSIC): with the owner's file for race_d2_drift, the track that plays
 # fades out over the countdown (revs and ambience only) and race_d2_drift starts on GO with no crossfade (warmed while
 # the chase ran); without the file the chase track mission_bike_chase keeps playing (started if nothing plays it, e.g.
 # after Continue). drift_slot() / has_drift_track() tell which.
-# opts (tests): seed, intro (false skips Sói Xám's intro line), target (drift points).
+# opts (tests): seed, intro (false skips Sói Xám's intro line), props (false: no arches / pack / fireworks).
 class_name MissionDriftDuel
 extends StoryMission
 
@@ -43,7 +44,7 @@ func _start() -> void:
 	duel.name = "DriftDuel"
 	add_child(duel)
 	duel.setup({"roam": roam, "seed": int(opts.get("seed", 3131)), "intro": bool(opts.get("intro", true)),
-		"target": float(opts.get("target", DriftDuel.TARGET_POINTS))})
+		"props": bool(opts.get("props", true))})
 	duel.countdown_started.connect(_on_countdown)
 	duel.music_cue.connect(_on_music_cue)
 	duel.ended.connect(_on_ended)
@@ -99,7 +100,7 @@ func _director() -> Node:
 
 
 func _on_ended() -> void:
-	finish({"losses": duel.losses, "how": duel.win_how, "points": int(duel.points)})
+	finish({"losses": duel.losses, "how": duel.win_how, "race_s": snappedf(duel.race_t, 0.1)})
 
 
 func _reset() -> void:

@@ -4,9 +4,9 @@
 # corner of the BE6 lobby -> cine_d2_intro -> the "Tokyo Drift" bike chase (spec 2026-10-27: the Stage 1 route from BE6 to
 # just past the Rạch Hầm bridge, the film opening in slow motion with "Tới công chuyện luôn!", the chase profile, the chase
 # track from its start, 3 waves of 14, set pieces; knocked off = TOANG! -> THỬ LẠI without a second opening; the Bầy Sói
-# crashed wave after wave, the Sói Xám cameo with his villain card, wave 3, the replay with no slot of its own) -> the drift
-# duel with Sói Xám (plan 2026-10-27-d2x-drift.md: his intro line, 3-2-1, a loss = a quick retry with no fail card, the
-# win, his ending) -> the bridge horror beat (fog, howl, LED eyes going out, the snap, the synth ringtone; no card any more)
+# crashed wave after wave, the Sói Xám cameo with his villain card, wave 3, the replay with no slot of its own) -> the race
+# with Sói Xám (plan 2026-10-29-w2-day2.md, "đua + đánh": his intro line, 3-2-1 with the kicks on, a loss = a quick retry
+# with no fail card, the win, his ending) -> the bridge horror beat (fog, howl, LED eyes going out, the snap, the synth ringtone; no card any more)
 # -> the duel (soi_xam, the boss bar, down = TOANG! -> retry, KO) -> seg_d2_boss -> the pillar marker with the
 # optional E3 ledger (taken) -> cine_d2 -> bed -> the call N = 5 -> Day 3. Then Continue at d2_end with E3 skipped (no E3
 # after the call), Continue at d2_duel (the bank marker, the fight does not start by itself) and Chọn cảnh: the new beats
@@ -246,7 +246,7 @@ func _process(_d: float) -> bool:
 			_check(mark.has("replay") and mark.has("card") and mark.has("taunt"), "the cameo card, wave 3, then the last fall's replay")
 			_check(is_equal_approx(Engine.time_scale, 1.0), "the time scale is back to 1 after the chase")
 			_next(60)
-		# ----- Tokyo Drift (plan 2026-10-27-d2x-drift.md): the drift duel with Sói Xám, then the bridge -----
+		# ----- Tokyo Drift (plan 2026-10-29-w2-day2.md): the race with Sói Xám ("đua + đánh"), then the bridge -----
 		60:
 			m = _wait_mission("MissionDriftDuel")
 			if m == null:
@@ -265,8 +265,8 @@ func _process(_d: float) -> bool:
 					_check(false, "the duel never raced (%s)" % du61.state)
 					phase = 999
 				return false
-			_check(du61.rival.racing and not fr.get("bike").staged, "3-2-1-ĐI: racing")
-			du61.call("_lose", "gap")
+			_check(du61.rival.racing and not fr.get("bike").staged and du61.combat.enabled, "3-2-1-ĐI: racing, the kicks on")
+			du61.call("_lose", "beaten")
 			_next(62)
 		62:
 			var du62: DriftDuel = (m as MissionDriftDuel).duel
@@ -280,8 +280,7 @@ func _process(_d: float) -> bool:
 		63:
 			var du63: DriftDuel = (m as MissionDriftDuel).duel if is_instance_valid(m) else null
 			if du63 and du63.state == "racing":
-				du63.points = du63.target
-				du63.call("_win", "points")
+				du63.call("_win", "race")
 			if String(sd.get("step")) != "d2_bridge":
 				if frames > 1500:
 					_check(false, "the duel did not end (%s)" % (du63.state if du63 else "gone"))

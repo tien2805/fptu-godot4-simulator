@@ -1,33 +1,31 @@
 # File: res://scripts/combat/bike/DriftDuel.gd
-# Encounter node of the Day 2 drift duel with Sói Xám (spec D2X-10, plan 2026-10-27-d2x-drift.md): one lap of the
-# DriftCourse "Cầu Rạch Hầm" in FreeRoam, Sói Xám (DriftRival) leading, the player tailing him ("bám đuôi").
+# Encounter node of the Day 2 race with Sói Xám, "đua + đánh" (Wave 2 Day 2 rework, plan 2026-10-29-w2-day2.md; it
+# replaces the 2026-10-27 drift-points duel): DriftCourse "Rạch Hầm GP" in FreeRoam, from the grid on the Rạch Hầm bridge,
+# 2 laps of the real Nguyễn Văn Tăng / Đỗ Thế Diện loop and back to the finish line on the bridge. First over the line
+# wins. Sói Xám (DriftRival) rides aggressively: he blocks, kicks and fires nitro; the player kicks back (Q / E,
+# PlayerBikeCombat): 3 kicks make him wobble and lose speed for 2 s. Drift corners charge nitro (x CORNER_CHARGE_MULT in a
+# corner, + CORNER_BONUS for a drifted corner). A loss (he crosses the line first, or his kicks knock the player off)
+# retries quickly: on the grid, or on the lap 2 grid once the player reached lap 2.
 #
 # ===== API (MissionDriftDuel; tests) =====
 #   var duel := DriftDuel.new(); roam.add_child(duel)
 #   duel.setup({"roam": roam,          # FreeRoam (bike, player, traffic read from it); or "bike" [+ "player", "traffic"]
 #       "course": null,                 # default DriftCourse.rach_ham()
 #       "intro": true,                  # Sói Xám beside his bike with his line before the first countdown
-#       "target": TARGET_POINTS,        # drift points needed at the finish
+#       "props": true,                  # the arches, arrows, the pack and the fireworks (DriftRaceProps)
 #       "seed": 3131})
 #   duel.start()                        # mounts and places the player, the intro, then the countdown
-#   signals: countdown_started(retry), music_cue (GO + MUSIC_START_OFFSET), go, won(how) ("points" | "overtake"),
-#            lost(reason) ("gap" | "points"; the duel retries by itself after LOSE_PAUSE_S + a FADE_S fade), ended (after
-#            the ending: his line, he rides down off the bridge, the fade), gate_passed(i), reset_to_gate(i)
-#   duel.retry() (quick retry by hand), duel.stop() (end without a result: props stay until freed, hooks and the bike's
-#   profile / nitro state restored, traffic back)
+#   signals: countdown_started(retry), music_cue (GO + MUSIC_START_OFFSET), go, won(how) ("race"), lost(reason) ("beaten" |
+#            "knocked"; the duel retries by itself after LOSE_PAUSE_S + a FADE_S fade), ended (after the ending: his line,
+#            he rides down off the bridge, the fade), gate_passed(i), reset_to_gate(i), lap_started(lap)
+#   duel.retry() (quick retry by hand), duel.stop() (end without a result: hooks, the bike's profile / nitro state and the
+#   traffic given back)
 #   state: "idle" | "intro" | "countdown" | "racing" | "lost" | "won" | "ending" | "done"
-#   s_p / d_p (the player's progress / lateral offset on the lap), gap() (his progress minus the player's), points,
-#   gate_i (next gate), losses, resets, knocked_cones
-#
-# Rules: gap <= TAIL_GAP_M doubles the drift points ("BÁM ĐUÔI!"); gap > LOSE_GAP_M for LOSE_GAP_S loses (not during
-# RESET_GRACE_S after a reset); points = drift time x speed inside the drift zones (the bike's drift_charge_mult is 1.5
-# there); finishing with `target` points wins, without them loses; OVERTAKE_S ahead of him wins at once ("VƯỢT MẶT!").
-# The rubber band (band_for) holds him within about 35 m unless the player resets. Leaving the course (more than
-# OFF_COURSE_M off the line for OFF_COURSE_S) or riding the wrong way for WRONG_WAY_S resets to the last gate behind a
-# FADE_S fade. Countdown (owner preview mix): counts at 0, 1, 2 s with a bike_rev each (PlayerBike.rev_blip forced; W
-# revs too, rate-limited), Sói Xám answers 0.5 s after each count, GO at COUNTDOWN_S (RETRY_COUNTDOWN_S on a retry).
-# While it runs: traffic parked, FreeRoam's riding hint shows the duel keys, [F] refused, the bike on DUEL_PROFILE with
-# nitro on. Never touches the story state, the music (MissionDriftDuel does on the signals) or autoloads by name.
+#   s_p / d_p (the player on the path), gap() (his progress minus the player's), lap (0 grid run, 1..2 laps, 3 the run
+#   home), lap2_reached (the retry checkpoint), losses, resets, corner_bonuses, combat (PlayerBikeCombat), rival, props
+# While it runs: traffic parked, FreeRoam's riding hint shows the race keys, [F] refused, the bike on DUEL_PROFILE with
+# nitro on, the kicks on (PlayerBikeCombat with Sói Xám its only target). Never touches the story state, the music
+# (MissionDriftDuel does on the signals) or autoloads by name. Every tuned number goes through Difficulty.pick.
 # ===========================================
 class_name DriftDuel
 extends Node3D
@@ -40,65 +38,66 @@ signal lost(reason: String)
 signal ended
 signal gate_passed(index: int)
 signal reset_to_gate(index: int)
+signal lap_started(lap: int)
 
 const COUNTDOWN_S: float = 3.0
 const RETRY_COUNTDOWN_S: float = 2.0
-## Seconds after GO when the duel's track starts (negative = before GO); the coordinator's note: on GO.
+## Seconds after GO when the race's track starts (negative = before GO); owner-approved: on GO.
 const MUSIC_START_OFFSET: float = 0.0
 const RIVAL_ANSWER_S: float = 0.5
 const INTRO_S: float = 2.8
-const RIVAL_LEAD_M: float = 8.0
-const RIVAL_LAT: float = -2.6
-const TAIL_GAP_M: float = 12.0
-const NORMAL_GAP_M: float = 35.0
-const LOSE_GAP_M: float = 40.0
-const LOSE_GAP_S: float = 3.0
-const OVERTAKE_M: float = 3.0
-const OVERTAKE_S: float = 4.0
-const POINTS_PER: float = 10.0            # points per (m/s x s) of drifting inside a zone
-const TAIL_MULT: float = 2.0
-const TARGET_POINTS: float = 1600.0
-const ZONE_CHARGE_MULT: float = 1.5
-const BAND_RATE: float = 4.0              # 1/s the rival's band factor follows band_for
-const BAND_START_M: float = 22.0          # he starts waiting past this gap ...
-const BAND_FULL_M: float = 38.0           # ... and nearly stops (BAND_MIN) here: a rider still moving never drops past 40 m
-const BAND_MIN: float = 0.15
-const OFF_COURSE_M: float = 13.0
-const OFF_COURSE_S: float = 1.2
+const GRID_LAT: float = 1.4               # the player on the right of the line, Sói Xám on the left ...
+const RIVAL_GRID_AHEAD: float = 2.5       # ... and this much ahead (he took pole)
+const LAP2_GRID_AFTER: float = 22.0       # the lap 2 retry grid: this far past the lap line (on the straight)
+const OFF_COURSE_M: float = 3.0           # beyond the road's half width ...
+const OFF_COURSE_S: float = 1.2           # ... this long: back to the last gate
 const WRONG_WAY_S: float = 1.5
-const RESET_GRACE_S: float = 3.0
-const FADE_S: float = 0.2                 # each way (0.4 s in all, under the 0.5 s of the spec)
-const LOSE_PAUSE_S: float = 1.2
-const FINISH_WAIT_S: float = 6.0
-const TAIL_POPUP_EVERY: float = 4.0
-const CONE_HIT_R: float = 0.6
-const CONE_PENALTY: float = 25.0
+const RESET_GRACE_S: float = 3.0          # he eases off after a reset
+const FADE_S: float = 0.2                 # each way
+const LOSE_PAUSE_S: float = 1.6
+const WIN_HOLD_S: float = 2.4             # the finish (orbit, fireworks) before the fade to the ending
+const FINISH_ORBIT_S: float = 0.9
+const CORNER_CHARGE_MULT: float = 1.5
+const CORNER_DRIFT_MIN: float = 0.35      # seconds of drifting in a corner for the bonus
+const CONTACT_LAT: float = 0.95
+const CONTACT_ALONG: float = 1.7
+const CONTACT_CD: float = 0.8
+const TAIL_GAP_M: float = 12.0            # he races harder (fight profile) when the player is this close
 const BIKE_FLOOR_OFFSET: float = 0.13
-## 86 km/h (nitro: +8 m/s): a drift race on 8 m roads between buildings, about 50-55 s for the 1 km lap.
-const DUEL_PROFILE: Dictionary = {"max_speed_ms": 24.0, "slipstream_max_ms": 26.4, "engine_accel": 13.5, "air_drag": 0.014}
+## The race profile (the chase's 100 km/h, 110 in a slipstream; nitro +8 m/s on top).
+const DUEL_PROFILE: Dictionary = {"max_speed_ms": 27.8, "slipstream_max_ms": 30.6, "engine_accel": 14.5, "air_drag": 0.0125}
 ## The ending: the deck middle southbound, Sói Xám facing the player, then down off the deck to the bank under it.
 const ENDING_AT: Vector2 = Vector2(2121.9, 154.0)
 const EXIT_PATH: Array[Vector2] = [Vector2(2127.3, 173.5), Vector2(2134.0, 181.0), Vector2(2143.0, 177.0), Vector2(2147.0, 165.0),
 	Vector2(2145.0, 152.0)]
 const ENDING_LINE_S: float = 2.6
-const T_START: String = "Đua một vòng. Thắng thì tao nói hàng về đâu."
+const T_START: String = "Hai vòng, ai về cầu trước thì thắng. Thắng thì tao nói hàng về đâu."
 const T_END: String = "Hự... được, xuống gầm cầu tao nói."
 const T_GO: String = "ĐI!"
-const T_TAIL: String = "BÁM ĐUÔI!"
-const T_OVERTAKE: String = "VƯỢT MẶT!"
-const T_FAR: String = "Bị bỏ xa! %.1f"
-const T_LOSE_GAP: String = "Sói Xám bỏ xa quá! Làm lại"
-const T_LOSE_POINTS: String = "Chưa đủ điểm drift! Làm lại"
-const T_WIN_POINTS: String = "THẮNG! Đủ điểm drift"
+const T_LAP: String = "VÒNG %d/%d"
+const T_LAST_LAP: String = "VÒNG CUỐI!"
+const T_HOME: String = "VỀ CẦU! VỀ ĐÍCH!"
+const T_LEAD: String = "DẪN ĐẦU"
+const T_SECOND: String = "THỨ HAI"
+const T_GAP_AHEAD: String = "Hơn Sói Xám %d m"
+const T_GAP_BEHIND: String = "Sau Sói Xám %d m"
+const T_WIN: String = "VỀ NHẤT!"
+const T_LOSE_BEATEN: String = "Sói Xám về trước! Làm lại"
+const T_LOSE_KNOCKED: String = "Bị đạp văng khỏi xe! Làm lại"
+const T_RETRY_LAP2: String = "Làm lại từ vòng 2"
 const T_OFF: String = "Ra khỏi đường đua! Về cổng trước"
 const T_WRONG: String = "Đi ngược đường rồi!"
-const T_GATE: String = "Cổng %d/%d"
-const T_ZONE: String = "DRIFT! %s"
-const T_CONE: String = "Đụng nón!"
-const T_POINTS: String = "Điểm drift: %d / %d"
-const T_GAP: String = "Cách Sói Xám %d m"
-const T_AHEAD: String = "Dẫn trước Sói Xám %d m"
-const T_RIDING: String = "[SPACE] drift trong vùng DRIFT · [SHIFT] nitro · [W]/[S] ga/phanh · [A]/[D] lái · [CTRL] cúi"
+const T_CORNER: String = "DRIFT! %s"
+const T_CORNER_BONUS: String = "DRIFT ĐẸP! +NITRO"
+const T_KICK_HIT: String = "ĐẠP TRÚNG! %d/%d"
+const T_WOBBLE: String = "SÓI XÁM LOẠNG CHOẠNG!"
+const T_HE_KICKED: String = "Ăn đạp của Sói Xám!"
+const T_DODGED: String = "NÉ ĐẸP!"
+const T_TURN_LAP2: String = "VÒNG 2: RẼ PHẢI"
+const T_TURN_HOME: String = "VỀ ĐÍCH: RẼ TRÁI"
+const T_STAB: String = "Độ vững xe"
+const T_KICKS: String = "Đạp Sói Xám"
+const T_RIDING: String = "[Q]/[E] đạp · [SPACE] drift · [SHIFT] nitro · [W]/[S] ga/phanh · [A]/[D] lái · [CTRL] cúi"
 const T_NO_DISMOUNT: String = "Đang đua với Sói Xám, không xuống xe được!"
 
 var roam: Node = null
@@ -107,43 +106,49 @@ var player: Node3D
 var traffic: RoamTraffic
 var course: DriftCourse
 var rival: DriftRival
+var combat: PlayerBikeCombat
+var props: DriftRaceProps
+var fx: WeaponFX
 var hud: CanvasLayer
-var target: float = TARGET_POINTS
 var use_intro: bool = true
 var state: String = "idle"
 var t: float = 0.0                        # time in the current state
 var s_p: float = 0.0
 var d_p: float = 0.0
-var points: float = 0.0
+var lap: int = 0
+var lap2_reached: bool = false
 var gate_i: int = 0
 var losses: int = 0
 var resets: int = 0
-var tail_t: float = 0.0                   # seconds spent tailing (tests, tuning)
-var far_t: float = 0.0
-var ahead_t: float = 0.0
+var corner_bonuses: int = 0
+var contacts: int = 0
+var dodges: int = 0
 var off_t: float = 0.0
 var wrong_t: float = 0.0
 var grace_t: float = 0.0
-var finish_wait: float = -1.0
 var win_how: String = ""
 var lose_reason: String = ""
 var retry_count: bool = false
 var race_t: float = 0.0
 var min_gap: float = INF
 var max_gap: float = -INF
-var drift_in_zone_t: float = 0.0
-var knocked_cones: int = 0
+var lead_t: float = 0.0                   # seconds in the lead (tests, tuning)
 var countdown_len: float = COUNTDOWN_S
+var start_s: float = 0.0                  # the grid of the current attempt (0, or the lap 2 grid)
+## Difficulty-picked tuning (refresh_tuning at each start).
+var corner_bonus: float = 12.0
+var band_far: float = 0.93
+var band_lead: float = 1.08
 ## Tests: 1 = count the bike as drifting, 0 = as not drifting, -1 = read bike.is_drifting.
 var force_drift: int = -1
+var _targets: Array = []
 var _counts_done: int = 0
 var _answers_done: int = 0
 var _music_sent: bool = false
-var _zone: int = -1
-var _tail_pop_t: float = 0.0
-var _was_tail: bool = false
-var _combo: float = 0.0
-var _combo_t: float = 0.0
+var _corner: int = -1
+var _corner_drift: float = 0.0
+var _turn_prompt: int = 0
+var _contact_cd: float = 0.0
 var _fade: float = 0.0                    # 0 clear .. 1 black
 var _fade_dir: float = 0.0
 var _fade_then: Callable = Callable()
@@ -151,25 +156,27 @@ var _hooks: bool = false
 var _bike_profile: Dictionary = {}
 var _bike_nitro_prev: bool = false
 var _traffic_off: bool = false
-var _props: Node3D
-var _cone_mm: MultiMeshInstance3D
-var _band_mm: MultiMeshInstance3D
-var _cone_xf: Array[Transform3D] = []
-var _cone_state: PackedFloat32Array = PackedFloat32Array()   # -1 standing, >= 0 seconds since knocked (flying), 99 gone
-var _cone_vel: Array[Vector3] = []
 var _ray_q: PhysicsRayQueryParameters3D
 var _ending_line_t: float = -1.0
+var _win_t: float = 0.0
 # HUD widgets
 var _panel: Control
+var _lap_label: Label
+var _pos_label: Label
 var _gap_label: Label
-var _points_label: Label
-var _gate_label: Label
-var _far_label: Label
 var _popup: Label
 var _popup_left: float = 0.0
-var _combo_label: Label
+var _prompt: Label
 var _sub_label: Label
+var _warn_l: Label
+var _warn_r: Label
 var _fade_rect: ColorRect
+var popup_text: String = ""
+var popups: int = 0
+var subtitle_text: String = ""
+var prompt_text: String = ""
+var warn_side: int = 0
+var _sub_t: float = 0.0
 
 
 func setup(opts: Dictionary) -> void:
@@ -187,8 +194,8 @@ func setup(opts: Dictionary) -> void:
 	course = opts.get("course", null)
 	if course == null:
 		course = DriftCourse.rach_ham()
-	target = float(opts.get("target", TARGET_POINTS))
 	use_intro = bool(opts.get("intro", true))
+	refresh_tuning()
 	_ray_q = PhysicsRayQueryParameters3D.new()
 	var excl: Array[RID] = []
 	if bike:
@@ -201,8 +208,36 @@ func setup(opts: Dictionary) -> void:
 	if bike:
 		rival.ray_exclude.append(bike.get_rid())
 	rival.setup(course, {"seed": int(opts.get("seed", 3131))})
-	_build_props()
+	rival.kick_fn = rival_kick
+	rival.kicked_player.connect(_on_rival_kicked)
+	rival.wobbled.connect(_on_rival_wobble)
+	var pc: Node = roam.get("combat") if roam else null
+	fx = pc.get("fx") as WeaponFX if pc else null
+	if fx == null:
+		fx = WeaponFX.new()
+		fx.name = "RaceFX"
+		add_child(fx)
+	_targets = [rival]
+	combat = PlayerBikeCombat.new()
+	combat.name = "RaceCombat"
+	add_child(combat)
+	combat.setup(bike, {"roam": roam, "targets": _targets, "fx": fx})
+	combat.kick_hit.connect(_on_kick_hit)
+	Impact.prepare(self)
+	if bool(opts.get("props", true)):
+		props = DriftRaceProps.new()
+		add_child(props)
+		props.setup(course, func(p: Vector3) -> Variant: return floor_at(p, 8.0, 8.0), excl)
 	_build_hud()
+
+
+## The difficulty's numbers (Thường, Dễ) for the race rules; the rival reads his own.
+func refresh_tuning() -> void:
+	corner_bonus = float(Difficulty.pick(12.0, 18.0))
+	band_far = float(Difficulty.pick(0.93, 0.84))
+	band_lead = float(Difficulty.pick(1.08, 1.03))
+	if rival:
+		rival.refresh_tuning()
 
 
 # ---------------------------------------------------------------------------
@@ -212,8 +247,10 @@ func start() -> void:
 	if bike == null:
 		push_warning("DriftDuel.start: no bike")
 		return
+	refresh_tuning()
 	_set_hooks(true)
-	_reset_race()
+	lap2_reached = false
+	_reset_race(0.0)
 	if use_intro:
 		_enter("intro")
 		rival.stand_beside(true)
@@ -226,9 +263,11 @@ func start() -> void:
 		_begin_countdown(false)
 
 
-## Quick retry by hand (also what a loss does by itself): the start grid, a short countdown.
+## Quick retry (also what a loss does by itself): the grid, or the lap 2 grid once the player got there; a short countdown.
 func retry() -> void:
-	_reset_race()
+	_reset_race(course.lap_s[1] + LAP2_GRID_AFTER if lap2_reached else 0.0)
+	if lap2_reached:
+		_subtitle(T_RETRY_LAP2, RETRY_COUNTDOWN_S)
 	_begin_countdown(true)
 
 
@@ -247,19 +286,18 @@ func gap() -> float:
 	return rival.s - s_p if rival else 0.0
 
 
-## The rubber band: his speed factor for a gap (m, his progress minus the player's).
-static func band_for(g: float, grace: bool) -> float:
+## The rubber band: his speed factor for a gap (m, his progress minus the player's). He eases off when far ahead (the race
+## stays close enough to win with clean riding) and pushes when passed.
+func band_for(g: float, grace: bool) -> float:
 	if grace:
-		return 0.45
+		return 0.7
+	if g < -25.0:
+		return band_lead + 0.04
 	if g < 0.0:
-		return 1.2
-	if g < 4.0:
-		return 1.06
-	if g < TAIL_GAP_M:
-		return 1.03
-	if g <= BAND_START_M:
+		return band_lead
+	if g < 25.0:
 		return 1.0
-	return lerpf(1.0, BAND_MIN, clampf((g - BAND_START_M) / (BAND_FULL_M - BAND_START_M), 0.0, 1.0))
+	return lerpf(1.0, band_far, clampf((g - 25.0) / 40.0, 0.0, 1.0))
 
 
 func _enter(s: String) -> void:
@@ -267,26 +305,32 @@ func _enter(s: String) -> void:
 	t = 0.0
 
 
-func _reset_race() -> void:
-	points = 0.0
+## Both on the grid at progress s0 (0 = the bridge; else the lap 2 grid): stopped, stability full, nitro empty.
+func _reset_race(s0: float) -> void:
+	start_s = s0
 	gate_i = 0
-	far_t = 0.0
-	ahead_t = 0.0
+	while gate_i < course.gates.size() and course.gates[gate_i] <= s0:
+		gate_i += 1
 	off_t = 0.0
 	wrong_t = 0.0
 	grace_t = 0.0
-	finish_wait = -1.0
 	race_t = 0.0
-	_zone = -1
-	_combo = 0.0
-	_was_tail = false
+	_corner = -1
+	_corner_drift = 0.0
+	_turn_prompt = 0
 	min_gap = INF
 	max_gap = -INF
-	_reset_cones()
-	_place_player(0.0, 0.0)
-	s_p = 0.0
-	d_p = 0.0
-	rival.place_at(RIVAL_LEAD_M, RIVAL_LAT)
+	_win_t = 0.0
+	combat.reset()
+	combat.enabled = false
+	_place_player(s0, GRID_LAT)
+	s_p = s0
+	d_p = GRID_LAT
+	lap = course.lap_at(s0)
+	rival.refresh_tuning()
+	rival.place_at(s0 + RIVAL_GRID_AHEAD, -GRID_LAT)
+	if s0 > 0.0:
+		rival.nitro_left = maxi(1, rival.nitros_per_race / 2)
 	bike.drift_charge = 0.0
 	bike.drift_charge_mult = 1.0
 	_update_hud()
@@ -300,6 +344,7 @@ func _begin_countdown(is_retry: bool) -> void:
 	_music_sent = false
 	rival.stand_beside(false)
 	bike.set_staged(true)
+	combat.enabled = false
 	_enter("countdown")
 	countdown_started.emit(is_retry)
 
@@ -312,13 +357,15 @@ func count_label(i: int) -> String:
 func _physics_process(delta: float) -> void:
 	if bike == null or not is_instance_valid(bike):
 		return
-	t += delta
-	_tick_fade(delta)
-	_tick_popup(delta)
-	_tick_cones(delta)
+	var rdt: float = delta / maxf(Engine.time_scale, 0.01)
+	t += rdt
+	_tick_fade(rdt)
+	_tick_popup(rdt)
+	if props:
+		props.tick(rdt, s_p, bike.global_position)
 	match state:
 		"intro":
-			rival.tick(delta, RIVAL_LEAD_M)
+			rival.tick(delta, RIVAL_GRID_AHEAD)
 			if t >= INTRO_S:
 				_begin_countdown(false)
 		"countdown":
@@ -334,8 +381,9 @@ func _physics_process(delta: float) -> void:
 					_fade_to(0.0))
 		"won":
 			_follow_player()
+			_feed_rival()
 			rival.tick(delta, gap())
-			if t >= 1.0 and _fade_dir == 0.0 and _fade < 0.5:
+			if t >= WIN_HOLD_S and _fade_dir == 0.0 and _fade < 0.5:
 				_fade_to(1.0, _begin_ending)
 		"ending":
 			_tick_ending(delta)
@@ -344,7 +392,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _tick_countdown(delta: float) -> void:
-	rival.tick(delta, RIVAL_LEAD_M)
+	rival.tick(delta, RIVAL_GRID_AHEAD)
 	var n: int = int(round(countdown_len))
 	while _counts_done < n and t >= float(_counts_done):
 		_popup_show(count_label(_counts_done), Color("#FFE14D"), 0.8)
@@ -363,6 +411,7 @@ func _tick_countdown(delta: float) -> void:
 		bike.set_staged(false)
 		rival.start_race()
 		rival.flash_headlight(false)
+		combat.enabled = true
 		_popup_show(T_GO, Color("#7CFF6B"), 0.9)
 		_enter("racing")
 		go.emit()
@@ -377,102 +426,144 @@ func _tick_race(delta: float) -> void:
 		_music_sent = true
 		music_cue.emit()
 	_follow_player()
-	var g: float = gap()
 	if grace_t > 0.0:
 		grace_t -= delta
-	rival.band = lerpf(rival.band, band_for(g, grace_t > 0.0), minf(1.0, delta * BAND_RATE))
+	_contact_cd -= delta
+	var g: float = gap()
+	_feed_rival()
+	rival.band = lerpf(rival.band, band_for(g, grace_t > 0.0), minf(1.0, delta * 3.0))
 	rival.fight = g < TAIL_GAP_M
 	rival.tick(delta, g)
-	if rival.s >= course.length and not rival.finished:
-		rival.finished = true
-		finish_wait = FINISH_WAIT_S
 	min_gap = minf(min_gap, g)
 	max_gap = maxf(max_gap, g)
-	# gates
+	if g < 0.0:
+		lead_t += delta
+	_contact()
+	# he crosses the line first: lost
+	if rival.s >= course.length and not rival.finished:
+		rival.finished = true
+		if s_p < course.length:
+			_lose("beaten")
+			return
+	if combat.knocked:
+		_lose("knocked")
+		return
+	# gates, laps
 	while gate_i < course.gates.size() and s_p >= course.gates[gate_i]:
 		gate_i += 1
 		gate_passed.emit(gate_i - 1)
-		_popup_show(T_GATE % [gate_i, course.gates.size() + 1], Color("#BFE8FF"), 0.7)
-	# drift points inside the zones
-	var z: int = course.zone_at(course.wrap_s(s_p)) if s_p < course.length else -1
-	bike.drift_charge_mult = ZONE_CHARGE_MULT if z >= 0 else 1.0
-	if z != _zone:
-		_zone = z
-		if z >= 0:
-			_popup_show(T_ZONE % String(course.zones[z][2]), Color("#FF9F1C"), 0.8)
-	var tail: bool = g >= 0.0 and g <= TAIL_GAP_M and not rival.finished
-	if tail:
-		tail_t += delta
-	if tail and not _was_tail and _tail_pop_t <= 0.0:
-		_popup_show(T_TAIL, Color("#7CFF6B"), 0.9)
-		_tail_pop_t = TAIL_POPUP_EVERY
-	_was_tail = tail
-	_tail_pop_t -= delta
-	var drifting: bool = bike.is_drifting if force_drift < 0 else force_drift == 1
-	if z >= 0 and drifting:
-		var add: float = absf(bike.current_speed_ms) * delta * POINTS_PER * (TAIL_MULT if tail else 1.0)
-		points += add
-		drift_in_zone_t += delta
-		_combo += add
-		_combo_t = 0.6
-	elif _combo_t > 0.0:
-		_combo_t -= delta
-		if _combo_t <= 0.0:
-			_combo = 0.0
-	# off the course / wrong way
+	var l: int = course.lap_at(s_p)
+	if l != lap:
+		lap = l
+		if lap >= 2:
+			lap2_reached = true
+		lap_started.emit(lap)
+		if lap >= 1 and lap <= DriftCourse.LAPS:
+			_popup_show(T_LAST_LAP if lap == DriftCourse.LAPS else T_LAP % [lap, DriftCourse.LAPS], Color("#FFE14D"), 1.2)
+		elif lap > DriftCourse.LAPS:
+			_popup_show(T_HOME, Color("#FFE14D"), 1.2)
+	_tick_turn_prompt()
+	_tick_corners(delta)
+	# off the course / the wrong way
 	var along: float = Vector2(bike.velocity.x, bike.velocity.z).dot(course.tangent(s_p))
-	off_t = off_t + delta if absf(d_p) > OFF_COURSE_M else 0.0
+	off_t = off_t + delta if absf(d_p) > course.half_width_at(s_p) + OFF_COURSE_M else 0.0
 	wrong_t = wrong_t + delta if along < -3.0 else 0.0
 	if off_t >= OFF_COURSE_S or wrong_t >= WRONG_WAY_S:
 		_reset_to_gate(T_WRONG if wrong_t >= WRONG_WAY_S else T_OFF)
 		return
-	# win / lose
-	if s_p < -OVERTAKE_M or g >= -OVERTAKE_M or rival.finished:
-		ahead_t = 0.0
-	else:
-		ahead_t += delta
-	if ahead_t >= OVERTAKE_S:
-		_win("overtake")
-		return
+	# the finish line
 	if s_p >= course.length and gate_i >= course.gates.size():
-		if points >= target:
-			_win("points")
-		else:
-			_lose("points")
+		_win("race")
 		return
-	if rival.finished:
-		finish_wait -= delta
-		if finish_wait <= 0.0:
-			_lose("gap")
-			return
-	elif g > LOSE_GAP_M and grace_t <= 0.0:
-		far_t += delta
-		if far_t >= LOSE_GAP_S:
-			_lose("gap")
-			return
-	else:
-		far_t = maxf(0.0, far_t - delta * 2.0)
-	_check_cones()
 	_update_hud()
 
 
-## The player's progress and lateral offset on the lap (windowed search; a full search when far off).
+func _feed_rival() -> void:
+	rival.p_s = s_p
+	rival.p_d = d_p
+	rival.p_v = absf(bike.current_speed_ms)
+
+
+## The drift corners: the bike's charge x CORNER_CHARGE_MULT inside one, the corner's name on the way in, and a drifted
+## corner (CORNER_DRIFT_MIN s or more of drift in it) gives corner_bonus nitro charge on the way out.
+func _tick_corners(delta: float) -> void:
+	var z: int = course.corner_at(s_p) if s_p < course.length else -1
+	bike.drift_charge_mult = CORNER_CHARGE_MULT if z >= 0 else 1.0
+	var drifting: bool = bike.is_drifting if force_drift < 0 else force_drift == 1
+	if z != _corner:
+		if _corner >= 0 and _corner_drift >= CORNER_DRIFT_MIN:
+			corner_bonuses += 1
+			if bike.has_method("add_drift_charge"):
+				bike.add_drift_charge(corner_bonus)
+			_popup_show(T_CORNER_BONUS, Color("#27E8FF"), 0.9)
+		_corner = z
+		_corner_drift = 0.0
+		if z >= 0:
+			_popup_show(T_CORNER % String(course.corners[z][3]), Color("#FF9F1C"), 0.8)
+	if z >= 0 and drifting:
+		_corner_drift += delta
+
+
+## The lap junction's turn prompt: right for lap 2, left for the finish (the arrows show it too).
+func _tick_turn_prompt() -> void:
+	var want: int = 0
+	if s_p > course.lap_s[1] - 90.0 and s_p < course.lap_s[1] + 5.0:
+		want = 1
+	elif s_p > course.lap_s[2] - 90.0 and s_p < course.lap_s[2] + 5.0:
+		want = 2
+	if want != _turn_prompt:
+		_turn_prompt = want
+		prompt_text = ["", T_TURN_LAP2, T_TURN_HOME][want]
+		if _prompt:
+			_prompt.text = prompt_text
+			_prompt.visible = want != 0
+
+
+## The player's progress and lateral offset on the path (windowed search; a wide one when far off).
 func _follow_player() -> void:
 	var bp := Vector2(bike.global_position.x, bike.global_position.z)
 	var pr: Vector2 = course.project_near(bp, s_p)
-	if absf(pr.y) > 30.0:
-		var any: Vector2 = course.project_any(bp)
-		if absf(any.y) + 5.0 < absf(pr.y) and absf(any.x - course.wrap_s(s_p)) < 120.0:
-			pr = Vector2(any.x + (s_p - course.wrap_s(s_p)), any.y)
+	if absf(pr.y) > 25.0:
+		var any: Vector2 = course.project_any(bp, s_p)
+		if absf(any.y) + 5.0 < absf(pr.y):
+			pr = any
 	s_p = pr.x
 	d_p = pr.y
+
+
+## Side by side touching: both pushed apart with sparks (no damage); riding into his back wheel caps the player's speed.
+func _contact() -> void:
+	if not rival.racing:
+		return
+	var along: float = rival.s - s_p
+	var lat: float = rival.d - d_p
+	if absf(along) < CONTACT_ALONG and absf(lat) < CONTACT_LAT and _contact_cd <= 0.0:
+		_contact_cd = CONTACT_CD
+		contacts += 1
+		var sgn: float = -signf(lat) if lat != 0.0 else 1.0
+		var r: Vector2 = course.right(s_p) * sgn
+		bike.global_position += Vector3(r.x, 0.0, r.y) * 0.35
+		bike.velocity += Vector3(r.x, 0.0, r.y) * 2.5
+		rival.d_target = clampf(rival.line_d - sgn * 1.0, -3.0, 3.0)
+		var at: Vector3 = (bike.global_position + rival.global_position) * 0.5 + Vector3(0.0, 0.5, 0.0)
+		Impact.particles(self, "sparks", at, Vector3(0.0, 0.7, 0.0), 0.8, fx)
+		Impact.sound(self, "metal_slam", at, -8.0)
+		bike.add_camera_shake(0.3)
+	elif along > 0.4 and along < 2.2 and absf(lat) < 0.8 and bike.current_speed_ms > rival.v:
+		bike.current_speed_ms = maxf(rival.v - 0.5, 0.0)
 
 
 func _win(how: String) -> void:
 	win_how = how
 	_enter("won")
+	combat.enabled = false
 	bike.drift_charge_mult = 1.0
-	_popup_show(T_OVERTAKE if how == "overtake" else T_WIN_POINTS, Color("#7CFF6B"), 1.6)
+	rival.finished = true
+	_popup_show(T_WIN, Color("#7CFF6B"), WIN_HOLD_S)
+	if props:
+		var fp: Vector2 = course.point(course.length)
+		props.fireworks(Vector3(fp.x, bike.global_position.y, fp.y))
+	Impact.slowmo_orbit(self, bike, FINISH_ORBIT_S)   # the signature moment: the line crossed in slow motion, the camera round
 	won.emit(how)
 
 
@@ -480,13 +571,14 @@ func _lose(reason: String) -> void:
 	lose_reason = reason
 	losses += 1
 	_enter("lost")
+	combat.enabled = false
 	bike.drift_charge_mult = 1.0
-	_popup_show(T_LOSE_POINTS if reason == "points" else T_LOSE_GAP, Color("#FF5C7A"), LOSE_PAUSE_S + 0.3)
+	_popup_show(T_LOSE_KNOCKED if reason == "knocked" else T_LOSE_BEATEN, Color("#FF5C7A"), LOSE_PAUSE_S + 0.3)
 	lost.emit(reason)
 
 
-## Off the course or the wrong way: back to the last gate (the start before the first) behind a quick fade, stopped,
-## with RESET_GRACE_S of grace on the gap rule (he waits).
+## Off the course or the wrong way: back to the last gate (the attempt's grid before the first) behind a quick fade,
+## stopped, with RESET_GRACE_S of grace (he eases off).
 func _reset_to_gate(msg: String) -> void:
 	resets += 1
 	off_t = 0.0
@@ -494,19 +586,18 @@ func _reset_to_gate(msg: String) -> void:
 	var g: int = gate_i - 1
 	_popup_show(msg, Color("#FF9F1C"), 1.0)
 	_fade_to(1.0, func() -> void:
-		var s0: float = course.gates[g] if g >= 0 else 0.0
+		var s0: float = maxf(course.gates[g] if g >= 0 else start_s, start_s)
 		_place_player(s0, 0.0)
 		s_p = s0
 		d_p = 0.0
 		grace_t = RESET_GRACE_S
-		far_t = 0.0
 		reset_to_gate.emit(g)
 		_fade_to(0.0))
 
 
 func _begin_ending() -> void:
 	_enter("ending")
-	var es: float = course.project_any(ENDING_AT).x
+	var es: float = course.project_any(ENDING_AT, course.length).x
 	_place_player(es, 0.0)
 	bike.is_controls_locked = true
 	rival.place_at(es + 9.0, -1.0)
@@ -533,9 +624,44 @@ func _tick_ending(delta: float) -> void:
 
 
 # ---------------------------------------------------------------------------
+# KICKS
+# ---------------------------------------------------------------------------
+## Sói Xám's kick lands (DriftRival.kick_fn; side +1 = the player is on his right): stability damage from that side, the
+## shove, the red edge and the jolt (PlayerBikeCombat.damage). true when it hurt.
+func rival_kick(side: int) -> bool:
+	if state != "racing":
+		return false
+	var hurt: bool = combat.damage(rival.kick_dmg, "kick", -side)
+	if hurt:
+		_popup_show(T_HE_KICKED, Color("#FF5C7A"), 0.9)
+	return hurt
+
+
+func _on_rival_kicked(_side: int, hit: bool) -> void:
+	if hit or state != "racing":
+		return
+	if absf(rival.s - s_p) < 4.0 and absf(rival.d - d_p) < 5.5:   # it missed a player in reach of a dodge: a reward
+		dodges += 1
+		_popup_show(T_DODGED, Color("#7CFF6B"), 0.7)
+		bike.add_drift_charge(5.0)
+
+
+func _on_kick_hit(target: Node3D, _side: int) -> void:
+	if target != rival or state != "racing":
+		return
+	if not rival.wobbling():
+		_popup_show(T_KICK_HIT % [rival.hits_taken, DriftRival.KICKS_TO_WOBBLE], Color("#FFE14D"), 0.8)
+
+
+func _on_rival_wobble() -> void:
+	_popup_show(T_WOBBLE, Color("#7CFF6B"), 1.4)
+	bike.add_drift_charge(10.0)
+
+
+# ---------------------------------------------------------------------------
 # PLAYER PLACEMENT / HOOKS
 # ---------------------------------------------------------------------------
-## The bike on the line at progress s, lateral d, facing along it, stopped (mounting the player when on foot).
+## The bike on the path at progress s, lateral d, facing along it, stopped (mounting the player when on foot).
 func _place_player(s: float, d: float) -> void:
 	var p: Vector2 = course.world(s, d)
 	var y: Variant = floor_at(Vector3(p.x, 0.0, p.y), 6.0, 6.0)
@@ -570,7 +696,7 @@ func floor_at(p: Vector3, up: float = 3.0, down: float = 6.0) -> Variant:
 	return (hit["position"] as Vector3).y
 
 
-## FreeRoam hint + [F] refusal, the bike's duel profile and nitro, the traffic parked; all given back when off.
+## FreeRoam hint + [F] refusal, the bike's race profile and nitro, the kicks, the traffic parked; all given back when off.
 func _set_hooks(on: bool) -> void:
 	if on == _hooks:
 		return
@@ -590,6 +716,10 @@ func _set_hooks(on: bool) -> void:
 			if bike.staged:
 				bike.set_staged(false)
 			bike.is_controls_locked = false
+	if combat and is_instance_valid(combat):
+		combat.enabled = false
+		if not on:
+			combat.reset()
 	if roam and is_instance_valid(roam):
 		if on:
 			roam.set("riding_hint", T_RIDING)
@@ -604,7 +734,7 @@ func _set_hooks(on: bool) -> void:
 		hud.visible = on
 
 
-## Traffic parked for the duel (the course is closed), running again after.
+## Traffic parked for the race (the course is closed), running again after.
 func _traffic(run: bool) -> void:
 	if traffic == null or not is_instance_valid(traffic):
 		return
@@ -640,9 +770,9 @@ func fading() -> bool:
 	return _fade_dir != 0.0
 
 
-func _tick_fade(delta: float) -> void:
+func _tick_fade(rdt: float) -> void:
 	if _fade_dir != 0.0:
-		_fade = clampf(_fade + _fade_dir * delta / FADE_S, 0.0, 1.0)
+		_fade = clampf(_fade + _fade_dir * rdt / FADE_S, 0.0, 1.0)
 		if (_fade_dir > 0.0 and _fade >= 1.0) or (_fade_dir < 0.0 and _fade <= 0.0):
 			_fade_dir = 0.0
 			var cb: Callable = _fade_then
@@ -664,11 +794,6 @@ func _popup_show(text: String, col: Color, secs: float) -> void:
 	_popup_left = secs
 
 
-var popup_text: String = ""
-var popups: int = 0
-var subtitle_text: String = ""
-
-
 func _subtitle(text: String, secs: float) -> void:
 	subtitle_text = text
 	if _sub_label:
@@ -677,47 +802,46 @@ func _subtitle(text: String, secs: float) -> void:
 	_sub_t = secs
 
 
-var _sub_t: float = 0.0
-
-
-func _tick_popup(delta: float) -> void:
+func _tick_popup(rdt: float) -> void:
 	if _popup_left > 0.0:
-		_popup_left -= delta
+		_popup_left -= rdt
 		if _popup_left <= 0.0 and _popup:
 			_popup.visible = false
 	if _sub_t > 0.0:
-		_sub_t -= delta
+		_sub_t -= rdt
 		if _sub_t <= 0.0 and _sub_label:
 			_sub_label.visible = false
+	# the side warning while he winds up a kick (Q3: red = danger)
+	var w: int = 0
+	if state == "racing" and rival and rival.mode == "windup":
+		w = -int(rival.kick_side)            # he is on the player's left when the player is on his right
+	if w != warn_side:
+		warn_side = w
+		if _warn_l:
+			_warn_l.visible = w < 0
+			_warn_r.visible = w > 0
 
 
 func _build_hud() -> void:
 	hud = CanvasLayer.new()
-	hud.name = "DriftHUD"
+	hud.name = "RaceHUD"
 	hud.layer = 3
 	add_child(hud)
-	_panel = GapPanel.new()
-	_panel.name = "GapPanel"
+	_panel = RacePanel.new()
+	_panel.name = "RacePanel"
 	_panel.set("duel", self)
 	_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_panel.offset_left = -240.0
-	_panel.offset_right = 240.0
+	_panel.offset_left = -250.0
+	_panel.offset_right = 250.0
 	_panel.offset_top = 16.0
-	_panel.offset_bottom = 112.0
+	_panel.offset_bottom = 128.0
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(_panel)
-	_gap_label = _label(_panel, 18, Color("#F4F1FF"), Vector2(14.0, 6.0), Vector2(300.0, 24.0), HORIZONTAL_ALIGNMENT_LEFT)
-	_gate_label = _label(_panel, 15, Color("#BFE8FF"), Vector2(330.0, 8.0), Vector2(136.0, 22.0), HORIZONTAL_ALIGNMENT_RIGHT)
-	_points_label = _label(_panel, 18, Color("#FFE14D"), Vector2(14.0, 64.0), Vector2(452.0, 24.0), HORIZONTAL_ALIGNMENT_LEFT)
-	_far_label = Label.new()
-	_style(_far_label, 26, Color("#FF5C7A"))
-	_far_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_far_label.offset_left = -240.0
-	_far_label.offset_right = 240.0
-	_far_label.offset_top = 118.0
-	_far_label.offset_bottom = 150.0
-	_far_label.visible = false
-	hud.add_child(_far_label)
+	_lap_label = _label(_panel, 20, Color("#FFE14D"), Vector2(14.0, 6.0), Vector2(200.0, 26.0), HORIZONTAL_ALIGNMENT_LEFT)
+	_pos_label = _label(_panel, 20, Color("#7CFF6B"), Vector2(286.0, 6.0), Vector2(200.0, 26.0), HORIZONTAL_ALIGNMENT_RIGHT)
+	_gap_label = _label(_panel, 16, Color("#F4F1FF"), Vector2(14.0, 32.0), Vector2(472.0, 22.0), HORIZONTAL_ALIGNMENT_CENTER)
+	_label(_panel, 14, Color("#F4F1FF"), Vector2(14.0, 58.0), Vector2(150.0, 20.0), HORIZONTAL_ALIGNMENT_LEFT).text = T_STAB
+	_label(_panel, 14, Color("#F4F1FF"), Vector2(14.0, 84.0), Vector2(150.0, 20.0), HORIZONTAL_ALIGNMENT_LEFT).text = T_KICKS
 	_popup = Label.new()
 	_style(_popup, 52, Color.WHITE)
 	_popup.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -727,15 +851,15 @@ func _build_hud() -> void:
 	_popup.offset_bottom = -130.0
 	_popup.visible = false
 	hud.add_child(_popup)
-	_combo_label = Label.new()
-	_style(_combo_label, 30, Color("#FF9F1C"))
-	_combo_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	_combo_label.offset_left = -200.0
-	_combo_label.offset_right = 200.0
-	_combo_label.offset_top = 70.0
-	_combo_label.offset_bottom = 110.0
-	_combo_label.visible = false
-	hud.add_child(_combo_label)
+	_prompt = Label.new()
+	_style(_prompt, 30, Color("#FFD21F"))
+	_prompt.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_prompt.offset_left = -300.0
+	_prompt.offset_right = 300.0
+	_prompt.offset_top = 70.0
+	_prompt.offset_bottom = 110.0
+	_prompt.visible = false
+	hud.add_child(_prompt)
 	_sub_label = Label.new()
 	_style(_sub_label, 22, Color("#F4F1FF"))
 	_sub_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
@@ -745,8 +869,10 @@ func _build_hud() -> void:
 	_sub_label.offset_bottom = -224.0
 	_sub_label.visible = false
 	hud.add_child(_sub_label)
+	_warn_l = _warn(BikeCombatData.T_WARN_L, Control.PRESET_CENTER_LEFT, 24.0)
+	_warn_r = _warn(BikeCombatData.T_WARN_R, Control.PRESET_CENTER_RIGHT, -224.0)
 	var fade_layer := CanvasLayer.new()
-	fade_layer.name = "DriftFade"
+	fade_layer.name = "RaceFade"
 	fade_layer.layer = 12
 	add_child(fade_layer)
 	_fade_rect = ColorRect.new()
@@ -756,6 +882,20 @@ func _build_hud() -> void:
 	_fade_rect.visible = false
 	fade_layer.add_child(_fade_rect)
 	hud.visible = false
+
+
+func _warn(text: String, preset: int, x: float) -> Label:
+	var l := Label.new()
+	_style(l, 30, Color("#FF3B3B"))
+	l.text = text
+	l.set_anchors_and_offsets_preset(preset)
+	l.offset_left = x
+	l.offset_right = x + 200.0
+	l.offset_top = -30.0
+	l.offset_bottom = 30.0
+	l.visible = false
+	hud.add_child(l)
+	return l
 
 
 func _label(parent: Control, size: int, col: Color, pos: Vector2, sz: Vector2, align: int) -> Label:
@@ -779,11 +919,10 @@ func _style(l: Label, size: int, col: Color) -> void:
 
 
 var _hud_g: int = -9999
-var _hud_p: int = -1
-var _hud_gate: int = -1
-var _hud_far: int = -1
-var _hud_combo: int = -1
-var _hud_tail: bool = false
+var _hud_lap: int = -1
+var _hud_lead: int = -1
+var _hud_stab: int = -1
+var _hud_kicks: int = -1
 
 
 ## Texts rebuilt only when their number changes (no string building per frame).
@@ -793,32 +932,25 @@ func _update_hud() -> void:
 	var g: int = int(round(gap()))
 	if g != _hud_g:
 		_hud_g = g
-		_gap_label.text = T_AHEAD % -g if g < 0 else T_GAP % g
+		_gap_label.text = T_GAP_AHEAD % -g if g < 0 else T_GAP_BEHIND % g
+	var lp: int = clampi(lap, 1, DriftCourse.LAPS)
+	if lp != _hud_lap:
+		_hud_lap = lp
+		_lap_label.text = T_LAP % [lp, DriftCourse.LAPS]
+	var lead: int = 1 if g < 0 else 0
+	if lead != _hud_lead:
+		_hud_lead = lead
+		_pos_label.text = T_LEAD if lead == 1 else T_SECOND
+		_pos_label.add_theme_color_override("font_color", Color("#7CFF6B") if lead == 1 else Color("#FF9F1C"))
+	var st: int = int(ceil(combat.stability))
+	var kk: int = rival.hits_taken + (10 if rival.wobbling() else 0)
+	if st != _hud_stab or kk != _hud_kicks:
+		_hud_stab = st
+		_hud_kicks = kk
 		_panel.queue_redraw()
-	var p: int = int(points)
-	if p != _hud_p or _was_tail != _hud_tail:
-		_hud_p = p
-		_hud_tail = _was_tail
-		_points_label.text = T_POINTS % [p, int(target)] + ("   x2 BÁM ĐUÔI" if _was_tail else "")
-		_panel.queue_redraw()
-	if gate_i != _hud_gate:
-		_hud_gate = gate_i
-		_gate_label.text = T_GATE % [gate_i, course.gates.size() + 1]
-	var f: int = int(ceil((LOSE_GAP_S - far_t) * 10.0)) if far_t > 0.0 and state == "racing" else -1
-	if f != _hud_far:
-		_hud_far = f
-		_far_label.visible = f >= 0
-		if f >= 0:
-			_far_label.text = T_FAR % (float(f) / 10.0)
-	var c: int = int(_combo) if _combo_t > 0.0 else -1
-	if c != _hud_combo:
-		_hud_combo = c
-		_combo_label.visible = c > 0
-		if c > 0:
-			_combo_label.text = "+%d" % c
 
 
-class GapPanel:
+class RacePanel:
 	extends Control
 	var duel: DriftDuel
 
@@ -827,205 +959,17 @@ class GapPanel:
 			return
 		var sz: Vector2 = size
 		draw_rect(Rect2(Vector2.ZERO, sz), Color(0.06, 0.02, 0.12, 0.78))
-		draw_rect(Rect2(Vector2.ZERO, sz), Color("#FF4FA3"), false, 2.0)
-		var bar := Rect2(14.0, 36.0, sz.x - 28.0, 20.0)
-		var scale_m: float = 45.0
-		var x12: float = bar.position.x + bar.size.x * DriftDuel.TAIL_GAP_M / scale_m
-		var x35: float = bar.position.x + bar.size.x * DriftDuel.NORMAL_GAP_M / scale_m
-		var x40: float = bar.position.x + bar.size.x * DriftDuel.LOSE_GAP_M / scale_m
-		draw_rect(Rect2(bar.position, Vector2(x12 - bar.position.x, bar.size.y)), Color(0.25, 0.85, 0.35, 0.75))
-		draw_rect(Rect2(Vector2(x12, bar.position.y), Vector2(x35 - x12, bar.size.y)), Color(0.85, 0.85, 0.9, 0.35))
-		draw_rect(Rect2(Vector2(x35, bar.position.y), Vector2(x40 - x35, bar.size.y)), Color(1.0, 0.8, 0.2, 0.6))
-		draw_rect(Rect2(Vector2(x40, bar.position.y), Vector2(bar.end.x - x40, bar.size.y)), Color(1.0, 0.25, 0.3, 0.7))
-		var g: float = clampf(duel.gap(), 0.0, scale_m)
-		var mx: float = bar.position.x + bar.size.x * g / scale_m
-		draw_rect(Rect2(Vector2(mx - 3.0, bar.position.y - 4.0), Vector2(6.0, bar.size.y + 8.0)), Color.WHITE)
+		draw_rect(Rect2(Vector2.ZERO, sz), Color("#FF3FD2"), false, 2.0)
+		# stability bar
+		var bar := Rect2(170.0, 60.0, sz.x - 184.0, 16.0)
+		var f: float = clampf(duel.combat.stability / maxf(duel.combat.max_stability, 1.0), 0.0, 1.0)
+		draw_rect(bar, Color(1.0, 1.0, 1.0, 0.15))
+		draw_rect(Rect2(bar.position, Vector2(bar.size.x * f, bar.size.y)), Color("#3FE07A") if f > 0.25 else Color("#FF3B3B"))
 		draw_rect(bar, Color(1.0, 1.0, 1.0, 0.4), false, 1.0)
-
-
-# ---------------------------------------------------------------------------
-# PROPS: cones (MultiMesh, knocked analytically), barrier rows (colliders + MultiMesh), chevron boards, gate poles
-# ---------------------------------------------------------------------------
-func _build_props() -> void:
-	_props = Node3D.new()
-	_props.name = "DriftProps"
-	add_child(_props)
-	_props.top_level = true
-	_props.global_transform = Transform3D.IDENTITY
-	# cones
-	var n: int = course.cones.size()
-	_cone_xf.clear()
-	_cone_vel.clear()
-	_cone_state.resize(n)
-	for i: int in n:
-		var c: Vector2 = course.cones[i]
-		var y: Variant = floor_at(Vector3(c.x, 0.0, c.y), 6.0, 6.0)
-		_cone_xf.append(Transform3D(Basis(), Vector3(c.x, (float(y) if y is float else 0.05), c.y)))
-		_cone_vel.append(Vector3.ZERO)
-		_cone_state[i] = -1.0
-	var cone := CylinderMesh.new()
-	cone.top_radius = 0.03
-	cone.bottom_radius = 0.17
-	cone.height = 0.55
-	cone.radial_segments = 10
-	cone.material = _emissive(Color("#FF6A13"), 0.6)
-	_cone_mm = _multimesh("Cones", cone, n, Vector3(0.0, 0.275, 0.0))
-	var band := CylinderMesh.new()
-	band.top_radius = 0.105
-	band.bottom_radius = 0.125
-	band.height = 0.09
-	band.radial_segments = 10
-	band.material = _emissive(Color("#F4F6F8"), 1.2)
-	_band_mm = _multimesh("ConeBands", band, n, Vector3(0.0, 0.3, 0.0))
-	_reset_cones()
-	# barrier rows: one collider per row, red / white segments
-	var segs: Array[Transform3D] = []
-	var cols: Array[Color] = []
-	for b: Array in course.barriers:
-		var a: Vector2 = b[0]
-		var e: Vector2 = b[1]
-		var mid: Vector2 = (a + e) * 0.5
-		var len: float = a.distance_to(e)
-		var dir: Vector2 = (e - a) / maxf(len, 0.01)
-		var yaw: float = atan2(-dir.y, dir.x)
-		var my: Variant = floor_at(Vector3(mid.x, 0.0, mid.y), 6.0, 6.0)
-		var fy: float = float(my) if my is float else 0.05
-		var sb := StaticBody3D.new()
-		sb.name = "Barrier"
-		var cs := CollisionShape3D.new()
-		var bs := BoxShape3D.new()
-		bs.size = Vector3(len, 0.9, 0.6)
-		cs.shape = bs
-		cs.position = Vector3(0.0, 0.45, 0.0)
-		sb.add_child(cs)
-		_props.add_child(sb)
-		sb.global_transform = Transform3D(Basis(Vector3.UP, yaw), Vector3(mid.x, fy, mid.y))
-		var k: int = maxi(1, int(round(len / 2.0)))
-		for j: int in k:
-			var q: Vector2 = a.lerp(e, (float(j) + 0.5) / float(k))
-			segs.append(Transform3D(Basis(Vector3.UP, yaw), Vector3(q.x, fy, q.y)))
-			cols.append(Color("#E8282B") if j % 2 == 0 else Color("#F4F6F8"))
-	var bm := BoxMesh.new()
-	bm.size = Vector3(1.9, 0.85, 0.5)
-	var bmat := StandardMaterial3D.new()
-	bmat.vertex_color_use_as_albedo = true
-	bmat.emission_enabled = true
-	bmat.emission = Color(0.25, 0.25, 0.25)
-	bmat.set_meta("vice_done", true)
-	bm.material = bmat
-	var bmi: MultiMeshInstance3D = _multimesh("Barriers", bm, segs.size(), Vector3(0.0, 0.425, 0.0), true)
-	for j2: int in segs.size():
-		bmi.multimesh.set_instance_transform(j2, segs[j2].translated_local(Vector3(0.0, 0.425, 0.0)))
-		bmi.multimesh.set_instance_color(j2, cols[j2])
-	# chevron boards on the islands and the closed road
-	for ch: Array in course.chevrons:
-		_chevron(ch[0], float(ch[1]))
-	# gate poles: a pair at each gate, an orange glowing top
-	var poles: Array[Transform3D] = []
-	for gi: int in course.gates.size():
-		var gs: float = course.gates[gi]
-		for side: float in [-5.2, 5.2]:
-			var pp: Vector2 = course.world(gs, side)
-			var py: Variant = floor_at(Vector3(pp.x, 0.0, pp.y), 6.0, 6.0)
-			poles.append(Transform3D(Basis(), Vector3(pp.x, (float(py) if py is float else 0.05) + 1.1, pp.y)))
-	var pole := CylinderMesh.new()
-	pole.top_radius = 0.06
-	pole.bottom_radius = 0.06
-	pole.height = 2.2
-	pole.radial_segments = 6
-	pole.material = _emissive(Color("#FF9F1C"), 1.4)
-	var pmi: MultiMeshInstance3D = _multimesh("GatePoles", pole, poles.size(), Vector3.ZERO)
-	for pi: int in poles.size():
-		pmi.multimesh.set_instance_transform(pi, poles[pi])
-
-
-func _multimesh(nm: String, mesh: Mesh, count: int, _lift: Vector3, colors: bool = false) -> MultiMeshInstance3D:
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = colors
-	mm.mesh = mesh
-	mm.instance_count = count
-	var mi := MultiMeshInstance3D.new()
-	mi.name = nm
-	mi.multimesh = mm
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_props.add_child(mi)
-	return mi
-
-
-static func _emissive(col: Color, energy: float) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = col
-	m.emission_enabled = true
-	m.emission = col
-	m.emission_energy_multiplier = energy
-	m.roughness = 0.6
-	m.set_meta("vice_done", true)
-	return m
-
-
-## A yellow-on-black chevron board on two legs, its face toward riders travelling at `travel_yaw`.
-func _chevron(at: Vector2, travel_yaw: float) -> void:
-	var root := Node3D.new()
-	root.name = "Chevron"
-	_props.add_child(root)
-	var y: Variant = floor_at(Vector3(at.x, 0.0, at.y), 6.0, 6.0)
-	root.global_transform = Transform3D(Basis(Vector3.UP, travel_yaw), Vector3(at.x, (float(y) if y is float else 0.05), at.y))
-	var black := _emissive(Color("#15151A"), 0.0)
-	var yellow := _emissive(Color("#FFD21F"), 1.6)
-	CineFX._box(root, "Board", Vector3(1.8, 0.7, 0.05), Vector3(0.0, 1.05, 0.0), black)
-	for sx: float in [-0.75, 0.75]:
-		CineFX._box(root, "Leg", Vector3(0.06, 0.75, 0.06), Vector3(sx, 0.38, 0.0), black)
-	for k: int in 3:
-		var x: float = -0.5 + 0.5 * float(k)
-		CineFX._box(root, "ArrowA", Vector3(0.08, 0.36, 0.02), Vector3(x - 0.06, 1.13, 0.04), yellow, Vector3(0.0, 0.0, 0.7))
-		CineFX._box(root, "ArrowB", Vector3(0.08, 0.36, 0.02), Vector3(x - 0.06, 0.97, 0.04), yellow, Vector3(0.0, 0.0, -0.7))
-
-
-func _reset_cones() -> void:
-	knocked_cones = 0
-	for i: int in _cone_state.size():
-		_cone_state[i] = -1.0
-		_cone_vel[i] = Vector3.ZERO
-		_set_cone(i, _cone_xf[i])
-
-
-func _set_cone(i: int, xf: Transform3D) -> void:
-	if _cone_mm:
-		_cone_mm.multimesh.set_instance_transform(i, xf.translated_local(Vector3(0.0, 0.275, 0.0)))
-		_band_mm.multimesh.set_instance_transform(i, xf.translated_local(Vector3(0.0, 0.3, 0.0)))
-
-
-## A standing cone the bike touches flies off (comic tumble), costs CONE_PENALTY points.
-func _check_cones() -> void:
-	var bp: Vector3 = bike.global_position
-	var r2: float = CONE_HIT_R * CONE_HIT_R
-	for i: int in _cone_state.size():
-		if _cone_state[i] >= 0.0:
-			continue
-		var o: Vector3 = _cone_xf[i].origin
-		var dx: float = o.x - bp.x
-		var dz: float = o.z - bp.z
-		if dx * dx + dz * dz > r2:
-			continue
-		_cone_state[i] = 0.0
-		knocked_cones += 1
-		var push := Vector3(bike.velocity.x, 0.0, bike.velocity.z) * 0.6
-		_cone_vel[i] = push + Vector3(dx, 0.0, dz).normalized() * 2.0 + Vector3(0.0, 4.5, 0.0)
-		points = maxf(0.0, points - CONE_PENALTY)
-		_popup_show(T_CONE, Color("#FF9F1C"), 0.6)
-
-
-func _tick_cones(delta: float) -> void:
-	for i: int in _cone_state.size():
-		var st: float = _cone_state[i]
-		if st < 0.0 or st >= 99.0:
-			continue
-		st += delta
-		_cone_state[i] = st
-		var o: Vector3 = _cone_xf[i].origin + _cone_vel[i] * st + Vector3(0.0, -9.0 * st * st, 0.0)
-		if st >= 1.0:
-			_cone_state[i] = 99.0
-			_set_cone(i, Transform3D(Basis().scaled(Vector3(0.001, 0.001, 0.001)), _cone_xf[i].origin))
-			continue
-		_set_cone(i, Transform3D(Basis(Vector3(1.0, 0.0, 0.0).rotated(Vector3.UP, float(i)), st * 12.0), Vector3(o.x, maxf(o.y, _cone_xf[i].origin.y), o.z)))
+		# his kick pips: lit per kick landed, all lit (green) while he wobbles
+		var wob: bool = duel.rival.wobbling()
+		for i: int in DriftRival.KICKS_TO_WOBBLE:
+			var r := Rect2(170.0 + 34.0 * float(i), 86.0, 26.0, 16.0)
+			var lit: bool = wob or i < duel.rival.hits_taken
+			draw_rect(r, (Color("#7CFF6B") if wob else Color("#FFE14D")) if lit else Color(1.0, 1.0, 1.0, 0.12))
+			draw_rect(r, Color(1.0, 1.0, 1.0, 0.4), false, 1.0)
