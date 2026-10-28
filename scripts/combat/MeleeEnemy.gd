@@ -23,11 +23,19 @@
 # archetype numbers), "seed" (int), "hp_scale" (float), "ai" (false = stands in guard until force_attack: tests, scripted
 # beats).
 # Per frame: no allocation (the sibling list is the fight's array).
+# Q2 feel (plan 2026-10-29-q2-feel.md T2): impact_react(tier, dir) (called by Impact.hit) gives a directional reaction (front /
+# back / left / right: the pack's HitRecieve / HitRecieve_2 clips plus a CombatData react_* code pose) and the tier's
+# knockback; a knockout hit with the finisher tier is a comic flying tumble (a backflip, one floor bounce, stars). For
+# SLAM_ARM_S after a heavy knockback, running into a wall, a table or a car (Impact.surface_of) is a slam: SLAM_DMG, a
+# second heavy impact with the surface's sound, a knock-down off it (or a knockout). Throws: take_grab / take_throw (a
+# staggered, blocking or recovering enemy; bosses only when staggered): it flies ~3.5 m and lands knocked down; thrown into
+# another enemy, both fall.
 class_name MeleeEnemy
 extends CharacterBody3D
 
 signal ko(enemy: MeleeEnemy)
 signal fled(enemy: MeleeEnemy)
+signal slammed(enemy: MeleeEnemy, surface: String)
 
 enum St { APPROACH, CIRCLE, ENGAGE, WINDUP, TELEGRAPH, ATTACK, RECOVER, BLOCK, DODGE, STAGGER, DAZE, KNOCKDOWN, KO, FLEE, FLED,
 	HOLD, IDLE, HELD, HOWL, FINALE }
@@ -105,6 +113,22 @@ var howls: int = 0
 var staged: bool = false
 var _marks := PackedFloat32Array()
 static var _flash_mat: StandardMaterial3D = null
+## Q2 feel: the last directional reaction ("react_front_head", "react_l_body", ...), slams, throws, the KO tumble.
+var last_reaction: String = ""
+var reactions: int = 0
+var slams: int = 0
+var last_slam: String = ""
+var throws_taken: int = 0
+var tumbling: bool = false
+var tumbles: int = 0
+var bounces: int = 0
+var thrown: bool = false
+var _slam_t: float = 0.0
+var _launch_vy: float = 0.0
+var _flip: float = 0.0
+var _flip_rate: float = 0.0
+var _was_air: bool = false
+var _prev_vy: float = 0.0
 
 
 ## Build the body and the collider (before add_child). See the header for opts.
@@ -374,7 +398,9 @@ func _physics_process(delta: float) -> void:
 		St.KO:
 			face_player = false
 			_settle_t += delta
-			if _settle_t > 1.2 and push_v.length_squared() < 0.01 and is_on_floor():
+			if tumbling and _settle_t > 2.5:
+				_end_tumble()                # never left the floor (a low ceiling): stop the flip
+			if not tumbling and _settle_t > 1.2 and push_v.length_squared() < 0.01 and is_on_floor():
 				return                       # lying still: no more physics
 		St.FLEE:
 			face_player = false
@@ -399,12 +425,25 @@ func _physics_process(delta: float) -> void:
 		want += _separation(p, dist)
 	velocity.x = want.x + push_v.x
 	velocity.z = want.z + push_v.z
-	if is_on_floor():
+	if _launch_vy > 0.0:
+		velocity.y = _launch_vy              # a tumble, a throw or a bounce leaves the floor
+		_launch_vy = 0.0
+	elif is_on_floor():
 		velocity.y = minf(velocity.y, 0.0)
 	else:
 		velocity.y -= GRAVITY * delta
+	_prev_vy = velocity.y
 	move_and_slide()
-	push_v = push_v.move_toward(Vector3.ZERO, PUSH_DECEL * delta)
+	var air: bool = not is_on_floor()
+	if _slam_t > 0.0:
+		_slam_t -= delta
+		_check_slam()
+	if not ((tumbling or thrown) and air):   # a flying body keeps its speed until it lands
+		push_v = push_v.move_toward(Vector3.ZERO, PUSH_DECEL * delta)
+	if tumbling:
+		_tick_tumble(delta, air)
+	if thrown and not air and push_v.length_squared() < 0.04:
+		thrown = false
 	_stuck_check(delta, want, dist)
 	if face_player and p and dist > 0.05:
 		_turn_to(atan2(-to_p.x, -to_p.z), delta)
@@ -826,6 +865,7 @@ func _knockdown(away: Vector3) -> void:
 		combat._cue("body_fall", global_position + Vector3(0.0, 0.3, 0.0))
 
 
+## The one place a knockout is finalised (the look stream's Readability.unrim(body) hook goes here at integration).
 func _knock_out(away: Vector3) -> void:
 	_release_token()
 	_enter(St.KO)
@@ -898,6 +938,248 @@ func take_hit(info: Dictionary) -> String:
 	var r: String = take_strike({"kind": "weapon", "dmg": 40.0 if big else 25.0, "stagger": 30.0, "push": 1.5 if big else 0.6,
 		"breaks_block": true, "knockdown": big, "from": info.get("from", global_position)})
 	return "knocked_out" if r == "ko" else ("none" if r == "ignored" else "stumble")
+
+
+# ---------------------------------------------------------------------------
+# Q2 FEEL: reactions, knockback, the KO tumble, slams, throws
+# ---------------------------------------------------------------------------
+## Impact.hit calls this after take_strike resolved the hit. tier "light" | "heavy" | "finisher", dir = attacker -> this.
+## Returns the reaction: "react_front_head" / "react_l_body" / ... (stagger), "knockdown", "daze", "tumble", "ko" or "".
+func impact_react(tier: String, dir: Vector3, _opts: Dictionary = {}) -> String:
+	var parried: bool = String(_opts.get("result", "")) == "parried"   # _parried keeps its own 0.6 m push
+	var away: Vector3 = WeaponMath.flat_dir(dir)
+	if away.length_squared() < 0.01:
+		away = -facing_dir()
+	match st:
+		St.KO:
+			if tier == "finisher" and not tumbling:
+				_start_tumble(away)
+				return "tumble"
+			return "ko"
+		St.KNOCKDOWN:
+			if tier != "light" and not thrown:
+				push_v = away * _knock_speed(Impact.knock(tier))
+				_slam_t = CombatData.SLAM_ARM_S
+			return "knockdown"
+		St.STAGGER:
+			var r: String = _directional(away, tier)
+			if tier != "light" and not parried:
+				push_v = away * _knock_speed(Impact.knock(tier))
+				_slam_t = CombatData.SLAM_ARM_S
+			return r
+		St.DAZE:
+			if tier != "light":
+				push_v = away * _knock_speed(0.5)   # stays inside the finisher's reach
+			return "daze"
+		St.HELD, St.BLOCK, St.FINALE:
+			return ""
+	if tier == "heavy" and is_hostile():         # armoured (a wind-up, a swing, a howl): a heavy hit still shoves him back
+		var sp: float = _knock_speed(CombatData.ARMOR_PUSH)
+		if push_v.length() < sp:
+			push_v = away * sp
+		return "pushed"
+	return ""
+
+
+static func _knock_speed(d: float) -> float:
+	return sqrt(2.0 * PUSH_DECEL * maxf(d, 0.0))
+
+
+## The reaction pose and clip by where the hit came from (front, back, left, right) in this enemy's frame.
+func _directional(away: Vector3, tier: String) -> String:
+	var from: Vector3 = -away
+	var f: float = from.dot(facing_dir())
+	var r: float = from.dot(Vector3(cos(yaw), 0.0, -sin(yaw)))
+	var pname: String = "react_front" if f > 0.55 else ("react_back" if f < -0.45 else ("react_r" if r > 0.0 else "react_l"))
+	var head: bool = pname == "react_front" and tier == "light" and _rng.randf() < 0.6
+	CharacterBuilder.play(body, "flinch" if head else "hit_b", minf(maxf(st_len, 0.3) + 0.1, 0.6))
+	pose.set_pose(pname, 0.0, CombatData.REACT_S * (1.0 if tier == "light" else 1.35))
+	last_reaction = pname + ("_head" if head else "_body")
+	reactions += 1
+	return last_reaction
+
+
+## The knockout's comic flying tumble along `away`: up and back, one backflip in the air, a floor bounce, then lying still.
+func _start_tumble(away: Vector3) -> void:
+	if st != St.KO:
+		return                               # only a knockout tumbles (never a finale, a knock-down or a flight)
+	tumbling = true
+	tumbles += 1
+	bounces = 0
+	_was_air = false
+	push_v = away * CombatData.TUMBLE_BACK
+	_launch_vy = CombatData.TUMBLE_UP
+	_flip = 0.0
+	_flip_rate = TAU / (2.0 * CombatData.TUMBLE_UP / GRAVITY)   # one full flip over the flight
+	_slam_t = CombatData.SLAM_ARM_S + 0.3
+	if combat:
+		combat._cue("whoosh_down", global_position + Vector3(0.0, 1.2, 0.0), -4.0)
+
+
+func _tick_tumble(delta: float, air: bool) -> void:
+	if air:
+		_was_air = true
+		if bounces == 0:
+			_flip += _flip_rate * delta
+	elif _was_air:
+		_was_air = false
+		_flip = roundf(_flip / TAU) * TAU
+		var at: Vector3 = global_position
+		if bounces == 0 and absf(_prev_vy) > 2.0:
+			bounces += 1
+			_launch_vy = absf(_prev_vy) * CombatData.TUMBLE_BOUNCE
+			Impact.particles(self, "dust_ring", at, Vector3.UP, 0.9, fx)
+			if combat:
+				combat._cue("body_fall", at + Vector3(0.0, 0.3, 0.0))
+		else:
+			if combat:
+				combat._cue("body_fall", at + Vector3(0.0, 0.3, 0.0), -4.0)
+			_end_tumble()
+			return
+	_pose_tumble()
+
+
+func _end_tumble() -> void:
+	tumbling = false
+	_flip = 0.0
+	if body:
+		body.transform = Transform3D(Basis(Vector3.UP, yaw), Vector3.ZERO)
+
+
+## The body turned by the flip about its hips (CombatData.TUMBLE_PIVOT), the yaw kept.
+func _pose_tumble() -> void:
+	if body == null:
+		return
+	var b := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, _flip)
+	body.transform = Transform3D(b, CombatData.TUMBLE_PIVOT - b * CombatData.TUMBLE_PIVOT)
+
+
+## While a knockback is armed (_slam_t): running into a wall / table / car faster than SLAM_SPEED is a slam; a thrown
+## body running into another enemy knocks it down too.
+func _check_slam() -> void:
+	var hv := Vector3(push_v.x, 0.0, push_v.z)
+	var sp: float = hv.length()
+	if sp < CombatData.SLAM_SPEED:
+		return
+	hv /= sp
+	for i: int in get_slide_collision_count():
+		var c: KinematicCollision3D = get_slide_collision(i)
+		var n: Vector3 = c.get_normal()
+		if absf(n.y) > 0.7 or n.dot(hv) > -0.35:
+			continue                         # the floor, or not into it
+		var col: Object = c.get_collider()
+		if col is MeleeEnemy:
+			if thrown and col != self:
+				_bowl(col as MeleeEnemy, c.get_position(), hv)
+				return
+			continue
+		if col is CharacterBody3D:
+			continue                         # the player, people
+		_slam(col, c.get_position(), WeaponMath.flat_dir(n))
+		return
+
+
+func _slam(col: Object, at: Vector3, n: Vector3) -> void:
+	_slam_t = 0.0
+	slams += 1
+	var surface: String = Impact.surface_of(col)
+	last_slam = surface
+	var into: Vector3 = -n if n.length_squared() > 0.01 else -facing_dir()
+	var was_ko: bool = st == St.KO
+	if tumbling:
+		_end_tumble()
+	push_v = Vector3.ZERO
+	thrown = false
+	var tier: String = "heavy"
+	if was_ko:
+		hp = 0.0
+	else:
+		var r: String = _env_damage(CombatData.SLAM_DMG, n)   # flee, knockout, howl (KatanaBoss: bend, phases) as for a strike
+		if r == "ko":
+			tier = "finisher"
+		elif r == "":
+			_knockdown(n)                    # falls off it and gets up
+	var last: bool = tier == "finisher" and st == St.KO and combat != null and combat.is_last(self)
+	Impact.hit(self, tier, {"pos": Vector3(at.x, global_position.y + 1.1, at.z), "dir": into, "fx": fx,
+		"cues": [[String(Impact.SLAM_CUE.get(surface, "slam")), 1.0]], "last": last, "orbit_target": self})
+	if combat and combat.hud:
+		combat.hud.popup(String(CombatData.T_SLAM.get(surface, CombatData.T_SLAM["wall"])), CombatHUD.GOLD)
+	slammed.emit(self, surface)
+
+
+## A thrown body into another enemy: that one goes down as well.
+func _bowl(other: MeleeEnemy, at: Vector3, hv: Vector3) -> void:
+	_slam_t = 0.0
+	slams += 1
+	last_slam = "enemy"
+	thrown = false
+	push_v = hv * 1.0
+	if other.is_hostile() and not other.staged:
+		other.take_strike({"kind": "heavy", "dmg": CombatData.THROW_DMG * 0.6, "stagger": 40.0, "knockdown": true, "push": 1.2,
+			"breaks_block": true, "from": global_position})
+	Impact.hit(self, "heavy", {"pos": Vector3(at.x, global_position.y + 1.1, at.z), "dir": hv, "fx": fx, "cues": [["body", 0.0]]})
+	if combat and combat.hud:
+		combat.hud.popup(String(CombatData.T_SLAM["enemy"]), CombatHUD.GOLD)
+	slammed.emit(self, "enemy")
+
+
+## Q2: damage from a slam or a throw runs the same checks as a strike's (MeleeEnemy._after_damage: flee, knockout, the
+## howl; subclasses add theirs in _on_env_damage). Returns _after_damage's result ("" = still fighting).
+func _env_damage(dmg: float, away: Vector3) -> String:
+	hp -= dmg
+	_last_hit_t = _t
+	var r: String = _after_damage(away)
+	_on_env_damage(r)
+	return r
+
+
+## Subclass hook after slam / throw damage (KatanaBoss: the katana bends, the phases).
+func _on_env_damage(_r: String) -> void:
+	pass
+
+
+## [E] near this enemy can grab it now: staggered, blocking or recovering (a boss only when staggered).
+func can_be_thrown() -> bool:
+	if staged or not is_hostile():
+		return false
+	if bool(stats.get("boss", false)):
+		return st == St.STAGGER
+	return st == St.STAGGER or st == St.BLOCK or st == St.RECOVER
+
+
+## PlayerCombat grabs it for a throw: held until take_throw (HELD_MAX_S lets it go otherwise). false = not possible.
+func take_grab(_c: Object) -> bool:
+	if not can_be_thrown():
+		return false
+	_release_token()
+	_enter(St.HELD)
+	CharacterBuilder.stop_clip(body)
+	return true
+
+
+## The throw's release along dir: THROW_DMG, it flies (about 3.5 m) and lands knocked down; at 0 HP a knockout tumble.
+## Returns "thrown" | "ko" | "ignored".
+func take_throw(dir: Vector3, from: Vector3) -> String:
+	if st != St.HELD and not can_be_thrown():
+		return "ignored"
+	var d: Vector3 = WeaponMath.flat_dir(dir)
+	if d.length_squared() < 0.01:
+		d = WeaponMath.flat_dir(global_position - from)
+	throws_taken += 1
+	stagger = 0.0
+	var r: String = _env_damage(CombatData.THROW_DMG, d)   # held: a howl waits for the get-up (KNOCKDOWN end)
+	if r == "ko":
+		if st == St.KO:
+			_start_tumble(d)
+		return "ko"
+	if r != "":
+		return r                             # "flee" (Dolly runs off) / "howl"
+	_knockdown(d)
+	push_v = d * CombatData.THROW_SPEED
+	_launch_vy = CombatData.THROW_UP
+	thrown = true
+	_slam_t = 1.0
+	return "thrown"
 
 
 ## The fight is over (player down / fight stopped): stand down, no more attacks.

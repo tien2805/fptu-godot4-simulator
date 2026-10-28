@@ -19,6 +19,10 @@
 # Phase C lairs (scripts/combat/guns/GunFight): `reserve` = finite spare rounds per slot (empty / -1 = unlimited, W-D9): a
 # reload takes what it needs from it, "12 / 36" in the HUD; add_reserve() for ammo pickups. set_locked_slots(): slots that
 # cannot be equipped (equip refuses, scroll skips them, the wheel greys them with its own text).
+# Q2 gun feel (plan 2026-10-29-q2-feel.md T4): every shot kicks the camera back (Impact.punch: RECOIL per kind, through
+# the camera director, else GameFX.shake); the muzzle flash lights one frame and impacts leave bullet holes (WeaponFX);
+# every hit on a person shows the HUD hit marker with its tick (red with a second tick on a knockout: WeaponHUD.hit_marker,
+# ImpactAudio hit_tick / ko_tick); a bullet / pellet knockout is a finisher-tier Impact (freeze, sting).
 class_name WeaponDirector
 extends Node3D
 
@@ -41,6 +45,8 @@ const IMPOSTOR_BLAST_R: float = 30.0
 const DEP_KO_S: float = 4.0              # dép bonk: pedestrians are out 4 s (officers 10 s, plan P5)
 const THROW_SPEED: float = 11.0
 const THROW_UP: float = 0.42
+## Q2 camera recoil per shot (Impact.punch strength).
+const RECOIL: Dictionary = {"hitscan": 0.12, "pellets": 0.3, "rocket": 0.4}
 
 var player: ThirdPersonController
 var wheel: WeaponWheel
@@ -89,6 +95,7 @@ var locked_slots: Dictionary = {}        # Phase C: slot -> true, cannot be equi
 
 
 func _ready() -> void:
+	Impact.prepare(self)                     # Q2: the clock and the sound layers ready before the first shot
 	rng.seed = 2026
 	ammo.resize(WeaponData.COUNT)
 	for i: int in WeaponData.COUNT:
@@ -418,10 +425,32 @@ func hit_target(n: Node3D, info: Dictionary) -> String:
 	if r == "knocked_out" or r == "launched":
 		var ko: Variant = n.get("ko_left")
 		fx.stars(n, (float(ko) if ko != null else 6.0) + (1.0 if r == "launched" else 0.0))
+	_hit_feedback(n, info, r)
 	hit_log.append({"t": _t, "slot": current, "kind": String(info.get("kind", "")), "target": String(n.name), "reaction": r})
 	if hit_log.size() > LOG_MAX:
 		hit_log.pop_front()
 	return r
+
+
+## Q2: the hit marker and its tick for any hit person; a gunshot knockout is a finisher-tier impact.
+func _hit_feedback(n: Node3D, info: Dictionary, r: String) -> void:
+	if r == "none" or r == "":
+		return
+	var ko: bool = r == "knocked_out" or r == "launched"
+	if hud:
+		hud.hit_marker(ko)
+	Impact.sound(self, "ko_tick" if ko else "hit_tick", n.global_position, -2.0 if ko else -6.0)
+	var kind: String = String(info.get("kind", ""))
+	if ko and (kind == "bullet" or kind == "pellet"):
+		# an encounter enemy (Gunman, a fight's MeleeEnemy) gets the finisher tier; pedestrians and officers the heavy one
+		var tier: String = "finisher" if n.has_method("is_hostile") else "heavy"
+		Impact.hit(self, tier, {"pos": n.global_position + Vector3(0.0, 1.2, 0.0), "dir": WeaponMath.flat_dir(n.global_position - player.global_position),
+			"fx": fx, "no_punch": true, "fx_k": 0.6})
+
+
+## Q2 camera recoil of a shot (kicks back along the aim).
+func _recoil(kind: String, d: Vector3) -> void:
+	Impact.punch(self, float(RECOIL.get(kind, 0.1)), -d)
 
 
 func _heat(amount: float, at: Vector3, cause: String) -> void:
@@ -542,6 +571,7 @@ func _hitscan(w: Dictionary) -> void:
 	fx.muzzle(muzzle, d)
 	fx.tracer(muzzle, h["pos"])
 	play_cue("shot_pistol", muzzle)
+	_recoil("hitscan", d0)
 	if _people_near(player.global_position, WeaponData.NEAR_PEOPLE_M):
 		_heat(WeaponData.HEAT_SHOT_NEAR, player.global_position, "shot")
 	_resolve_bullet(h, d, WeaponData.HEAT_PISTOL_HIT)
@@ -602,6 +632,7 @@ func _pellets(w: Dictionary) -> void:
 				fx.impact(h["pos"], h["normal"], false)
 	fx.muzzle(muzzle, d0, 1.6)
 	play_cue("shot_shotgun", muzzle, 2.0)
+	_recoil("pellets", d0)
 	_pending_cues.append([_t + PUMP_DELAY, "pump", muzzle])
 	if any or _people_near(player.global_position, WeaponData.NEAR_PEOPLE_M):
 		_heat(WeaponData.HEAT_SHOTGUN, player.global_position, "shotgun")
@@ -648,6 +679,7 @@ func _fire_rocket(w: Dictionary) -> void:
 	r.exploded.connect(explode_at)
 	fx.muzzle(from, d, 1.2)
 	play_cue("rocket_launch", from, 2.0)
+	_recoil("rocket", d)
 	rockets_fired += 1
 	if player.model:
 		CharacterBuilder.play(player.model, "flinch", 0.3)

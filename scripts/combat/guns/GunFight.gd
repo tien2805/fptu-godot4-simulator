@@ -158,6 +158,7 @@ func setup(opts: Dictionary) -> void:
 		cover = CoverMap.new()
 		var root: Node = opts.get("cover_root", get_tree().root if is_inside_tree() else null)
 		cover.scan(root)
+	Impact.prepare(self)                     # Q2: the clock and the sound layers ready before the first hit
 	fx = weapons.fx if weapons else null
 	if fx == null:
 		fx = WeaponFX.new()
@@ -564,7 +565,16 @@ func _prune_slots() -> void:
 func _on_ko(e: Node3D) -> void:
 	ko_total += 1
 	holders.erase(e)
+	if state == "running" and wave == waves.size() - 1 and _others_defeated(e):
+		Impact.slowmo_orbit(self, e, Impact.ORBIT_S)   # Q2: the last enemy's knockout in slow motion
 	enemy_ko.emit(e)
+
+
+func _others_defeated(e: Node3D) -> bool:
+	for x: Variant in enemies:
+		if x != e and is_instance_valid(x) and not bool((x as Object).call("is_defeated")):
+			return false
+	return true
 
 
 func _physics_process(delta: float) -> void:

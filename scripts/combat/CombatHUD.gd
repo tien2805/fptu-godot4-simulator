@@ -50,6 +50,11 @@ var popup_text: String = ""
 var popup_left: float = 0.0
 var finisher_shown: bool = false
 var finisher_node: Node3D = null
+## Q2 [E] prompts: "[E] Ném" under a grabbable enemy, "[E] Nhặt <tên>" over an improvised weapon in reach.
+var throw_node: Node3D = null
+var throw_shown: bool = false
+var prop_node: ImprovisedWeapon = null
+var prop_shown: bool = false
 var telegraph_shown: int = 0
 var popups: int = 0
 var edge_markers: int = 0
@@ -160,6 +165,11 @@ func _process(delta: float) -> void:
 		return
 	finisher_node = combat.finisher_target()
 	finisher_shown = visible and finisher_node != null and combat.state != PlayerCombat.St.FINISHER
+	var free: bool = visible and not finisher_shown and (combat.state == PlayerCombat.St.IDLE or combat.state == PlayerCombat.St.LIGHT or combat.state == PlayerCombat.St.HEAVY)
+	throw_node = combat.throw_target() if free else null
+	throw_shown = throw_node != null
+	prop_node = combat.prop_target() if free and not throw_shown else null
+	prop_shown = prop_node != null
 	telegraph_shown = 0
 	for e: Variant in combat.enemies:
 		if is_instance_valid(e) and bool((e as Object).get("flash_on")):
@@ -283,11 +293,20 @@ class WorldLayer extends Control:
 
 	func _draw() -> void:
 		var c: PlayerCombat = hud.combat
-		if c == null or c.enemies.is_empty():
+		if c == null:
 			return
-		_draw_edges()
 		var vp: Viewport = get_viewport()
 		var cam: Camera3D = vp.get_camera_3d() if vp else null
+		if hud.prop_shown and cam != null and is_instance_valid(hud.prop_node):
+			var pp: Vector3 = hud.prop_node.global_position + Vector3(0.0, 0.9, 0.0)
+			if not cam.is_position_behind(pp):
+				var at: Vector2 = cam.unproject_position(pp) - Vector2(110.0, 0.0)
+				var txt: String = CombatData.T_PICKUP % hud.prop_node.display_name()
+				draw_string_outline(CombatHUD.font(), at, txt, HORIZONTAL_ALIGNMENT_CENTER, 220.0, 18, 5, CombatHUD.INK)
+				draw_string(CombatHUD.font(), at, txt, HORIZONTAL_ALIGNMENT_CENTER, 220.0, 18, CombatHUD.GOLD)
+		if c.enemies.is_empty():
+			return
+		_draw_edges()
 		if cam == null:
 			return
 		var f: Font = CombatHUD.font()
@@ -333,6 +352,10 @@ class WorldLayer extends Control:
 				var p: Vector2 = Vector2(sp.x - 80.0, sp.y + 30.0)
 				draw_string_outline(f, p, CombatData.T_FINISHER_PROMPT, HORIZONTAL_ALIGNMENT_CENTER, 160.0, 18, 5, CombatHUD.INK)
 				draw_string(f, p, CombatData.T_FINISHER_PROMPT, HORIZONTAL_ALIGNMENT_CENTER, 160.0, 18, CombatHUD.GOLD)
+			elif e == hud.throw_node and hud.throw_shown:
+				var p2: Vector2 = Vector2(sp.x - 80.0, sp.y + 30.0)
+				draw_string_outline(f, p2, CombatData.T_THROW_PROMPT, HORIZONTAL_ALIGNMENT_CENTER, 160.0, 18, 5, CombatHUD.INK)
+				draw_string(f, p2, CombatData.T_THROW_PROMPT, HORIZONTAL_ALIGNMENT_CENTER, 160.0, 18, CombatHUD.GOLD)
 
 	## Edge markers: an outward arrow head and a pulsing arc, amber (light) or red (heavy).
 	func _draw_edges() -> void:

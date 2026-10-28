@@ -327,6 +327,7 @@ func _block(t: int) -> void:
 	if mark.has("done") and not mark.has("m_forced") and e.st == MeleeEnemy.St.HOLD:
 		mark["m_forced"] = true
 		mark["n3"] = e.results.size()
+		_place(e, Vector3(0.0, 0.0, -1.3))      # Q2: the counter is a heavy impact that knocks him 1.5 m back
 		e.force_attack("light")
 	if mark.has("m_forced") and not mark.has("m_press") and e.st == MeleeEnemy.St.WINDUP:
 		mark["m_press"] = true
@@ -414,17 +415,17 @@ func _daze(t: int) -> void:
 		_key(KEY_E, true)                        # a real key event through the viewport
 	if mark.has("d2") and t == int(mark["d2"]) + 4:
 		_key(KEY_E, false)
-	if mark.has("d2") and t == int(mark["d2"]) + 6:
+	if mark.has("d2") and t == int(mark["d2"]) + 12:     # Q2: the dazing hit's 80 ms freeze delays the queued finisher
 		_check(combat.state == PlayerCombat.St.FINISHER and e2.st == MeleeEnemy.St.HELD, "E starts the takedown finisher (%s)" % e2.state_name())
 		_check(combat.e_consumed == 1, "the finisher's E press is consumed (no marker / call gets it)")
 	if mark.has("d2") and not mark.has("ko") and e2.st == MeleeEnemy.St.KO:
 		mark["ko"] = t
-		_check(combat.slowmo_active() and is_equal_approx(Engine.time_scale, CombatData.SLOWMO_SCALE), "slow motion at the finisher's impact (time scale %.2f)" % Engine.time_scale)
+		_check(combat.slowmo_active() and is_equal_approx(Engine.time_scale, Impact.HITSTOP_SCALE), "the finisher's impact: a 150 ms freeze, its slow motion queued (time scale %.2f)" % Engine.time_scale)
 		_check(is_equal_approx(e2.hp, 0.0) and combat.hud.popup_text == CombatData.T_FINISHED, "the finisher knocks out ('%s')" % combat.hud.popup_text)
 	if mark.has("ko") and not mark.has("slow_end") and is_equal_approx(Engine.time_scale, 1.0):
 		mark["slow_end"] = t
 		var n2: int = t - int(mark["ko"])
-		_check(n2 >= 15 and n2 <= 21, "the slow motion lasts 0.3 real seconds (%d physics frames)" % n2)
+		_check(n2 >= 24 and n2 <= 30, "the freeze (9 frames) then 0.3 real seconds of slow motion (%d physics frames)" % n2)
 	if mark.has("slow_end") and t == int(mark["slow_end"]) + 60:
 		_check(combat.state == PlayerCombat.St.IDLE, "the finisher ends")
 		combat._slowmo()
@@ -822,7 +823,7 @@ func _dolly_finisher(u: int) -> void:
 	if mark.has("df_down") and not mark.has("df_flee") and d.st == MeleeEnemy.St.FLEE:
 		mark["df_flee"] = u
 		var n: int = u - int(mark["df_down"])
-		_check(n >= 132 and n <= 146, "under 30 %% she gets up and flees (%d frames: 2.1 s down, the first 18 frames in the finisher's slow motion)" % n)
+		_check(n >= 141 and n <= 155, "under 30 %% she gets up and flees (%d frames: 2.1 s down, the first 27 frames in the finisher's freeze and slow motion)" % n)
 	if mark.has("df_flee") and not mark.has("df_won") and won_n == 1:
 		mark["df_won"] = u
 		_check(d.st == MeleeEnemy.St.FLED and fight.state == "won", "her flight after the finisher wins the fight")
