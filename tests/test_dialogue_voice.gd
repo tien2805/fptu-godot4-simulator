@@ -7,6 +7,8 @@
 #   T. CinePlayer: a subtitle types out letter by letter in sync with real time, one blip per new word on the SFX bus
 #      (none while seeking), a reveal shows the whole line at once, the next line types from its own start; the skip ring
 #      reads "Giữ để bỏ qua"; the hold skip takes SkipHold.HOLD (Esc or Enter).
+#   C. StoryChoice after a cinematic: a Space / Enter tap in the first frame after the choice opens (meant to reveal the
+#      last line) picks nothing; once armed (StoryChoice.ARM_S) Space picks; key 2 picks at once.
 #   R. Radio and phone: StoryRadio types the line with the speaker's voice and its "Dịch:" line, beat scripts are valid
 #      (known speakers, times in order, no emoji).
 # Run:  godot --headless --path . --script tests/test_dialogue_voice.gd
@@ -34,6 +36,7 @@ func _run() -> void:
 	if has_method("_part_r"):
 		await call("_part_r")
 	_part_g()
+	await _part_c()
 	if fails.is_empty():
 		print("SUCCESS test_dialogue_voice")
 		quit(0)
@@ -249,3 +252,35 @@ func _part_g() -> void:
 	_check((sh["shoulder_r"] as Vector3).z > 0.4 and (sh["shoulder_l"] as Vector3).z < -0.4, "shrug: both arms out")
 	var la: Dictionary = CineMoves.code_pose("laugh", 0.3)
 	_check((la["torso"] as Vector3).x > 0.08 and (la["head"] as Vector3).x < -0.15, "laugh: leaning back, head up")
+
+
+func _part_c() -> void:
+	print("  C: the choice ignores reveal taps until armed")
+	var def: Dictionary = (CineTimeline.load_slot("cine_d1_choice").choice_def as Dictionary).duplicate(true)
+	def["record"] = false   # the story state stays untouched
+	var c: StoryChoice = StoryChoice.open(root, def, true)
+	c.step(1.0 / 60.0)
+	for k: Key in [KEY_SPACE, KEY_ENTER]:
+		var ev := InputEventKey.new()
+		ev.physical_keycode = k
+		ev.pressed = true
+		c._input(ev)
+	_check(c.result == "" and c.phase == 0, "a Space / Enter tap in the first frame after the choice opens picks nothing")
+	while c.t < StoryChoice.ARM_S + 0.02:
+		c.step(1.0 / 60.0)
+	var ev2 := InputEventKey.new()
+	ev2.physical_keycode = KEY_SPACE
+	ev2.pressed = true
+	c._input(ev2)
+	_check(c.result == String((def["options"] as Array)[0]["key"]), "armed: Space picks the focused option (%s)" % c.result)
+	c.step(1.0)
+	var c2: StoryChoice = StoryChoice.open(root, def, true)
+	c2.step(1.0 / 60.0)
+	var ev3 := InputEventKey.new()
+	ev3.physical_keycode = KEY_2
+	ev3.pressed = true
+	c2._input(ev3)
+	_check(c2.result == String((def["options"] as Array)[1]["key"]), "key 2 picks at once")
+	c2.step(1.0)
+	await process_frame
+	paused = false
