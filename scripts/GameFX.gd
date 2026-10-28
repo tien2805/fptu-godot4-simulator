@@ -92,6 +92,7 @@ func load_settings() -> void:
 		rim_light = bool(cfg.get_value("video", "rim_light", true))
 		reduce_scares = bool(cfg.get_value("story", "reduce_scares", false))
 		random_scares = bool(cfg.get_value("story", "random_scares", true))
+		Difficulty.set_easy(String(cfg.get_value("gameplay", "difficulty", "normal")) == "easy")
 		for b: String in AUDIO_BUSES:
 			volumes[b] = clampf(float(cfg.get_value("audio", "vol_" + b.to_lower(), volumes[b])), 0.0, 1.0)
 	_apply_global_quality()
@@ -109,6 +110,7 @@ func save_settings() -> void:
 	cfg.set_value("video", "rim_light", rim_light)
 	cfg.set_value("story", "reduce_scares", reduce_scares)
 	cfg.set_value("story", "random_scares", random_scares)
+	cfg.set_value("gameplay", "difficulty", Difficulty.id())
 	for b: String in AUDIO_BUSES:
 		cfg.set_value("audio", "vol_" + b.to_lower(), float(volumes[b]))
 	cfg.save(settings_path)
@@ -321,6 +323,13 @@ func set_rim_light(on: bool, persist: bool = true) -> void:
 
 func set_random_scares(on: bool, persist: bool = true) -> void:
 	random_scares = on
+	if persist:
+		save_settings()
+
+
+## Q6 difficulty: Thường (false) or Dễ (true), read everywhere through Difficulty.pick().
+func set_easy_mode(on: bool, persist: bool = true) -> void:
+	Difficulty.set_easy(on)
 	if persist:
 		save_settings()
 
