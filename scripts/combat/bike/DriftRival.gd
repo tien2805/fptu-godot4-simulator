@@ -477,13 +477,14 @@ func take_counter(away: Vector2) -> String:
 
 
 ## The Q2 impact reaction: a flinch away from the hit (lean and line), harder on the heavier tiers.
-func impact_react(tier: String, dir: Vector3, _opts: Dictionary = {}) -> void:
+func impact_react(tier: String, dir: Vector3, _opts: Dictionary = {}) -> String:
 	flinch_t = FLINCH_S * (1.6 if tier == "finisher" else 1.0)
 	if course:
 		var r: Vector2 = course.right(s)
 		var k: float = Vector2(dir.x, dir.z).dot(r)
 		if absf(k) > 0.05:
 			flinch_dir = signf(k)
+	return "wobble" if wobble_t > 0.0 else "flinch"
 
 
 func _wobble() -> void:

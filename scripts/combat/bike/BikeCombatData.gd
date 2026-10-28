@@ -137,7 +137,8 @@ const POLICE_APPROACH_S: float = 2.5
 const POLICE_BEHIND: float = 7.0
 ## D2X-5 takedowns: crash causes that count (a plain kick crash does not); 0.5 s at 0.3x and a side camera cut, at most
 ## one every TD_GAP_S and none while 2+ attackers wind up within TD_BUSY_M of the player.
-const TAKEDOWN_CAUSES: Array[String] = ["traffic", "pole", "melon", "barrier", "police", "nitro", "spin", "air", "cones", "counter"]
+const TAKEDOWN_CAUSES: Array[String] = ["traffic", "pole", "melon", "barrier", "police", "nitro", "spin", "air", "cones", "counter", "gap",
+	"roadblock"]
 const TD_SCALE: float = 0.3
 const TD_REAL_S: float = 0.5
 const TD_GAP_S: float = 3.0
@@ -154,7 +155,7 @@ const OPEN_CAM_UP: float = 0.55          # ... and its height
 const SIDE_SPAWN_LAT: float = 3.4        # "side" spawns: this far past the AI half width, out of view beside the player
 const FLARE_S: float = 1.2               # LED eyes flaring after a burst
 ## D2X-6 set pieces.
-const MELON_N: int = 24
+const MELON_N: int = 100                 # Wave 2: the tipped truck spills 100 (one MultiMesh, analytic)
 const MELON_S: float = 5.0               # melons roll this long
 const MELON_DMG: float = 10.0
 const MELON_R: float = 0.85              # player / biker within this of a melon = hit
@@ -171,22 +172,26 @@ const JUMP_REAL_S: float = 1.2           # the scripted jump (real seconds) ...
 const JUMP_SCALE: float = 0.4            # ... in slow motion
 const JUMP_H: float = 1.7
 const POLICE_N: int = 2
+const ROADBLOCK_GAP_W: float = 2.6       # the roadblock's gap (Thường; Dễ 3.4 m)
+const ROADBLOCK_DMG: float = 35.0        # crashing into it (Thường; Dễ 22)
 const POLICE_S: float = 25.0
 const DRIFT_FAST: float = 19.0           # through a drift zone faster than this without drifting = into the curb
 const CURB_DMG: float = 10.0
 const CURB_SLOW: float = 0.6
 const DRIFT_ZONE_BONUS: float = 12.5     # extra charge per second drifting in a zone (PlayerBike's own 25/s x 1.5)
 ## The Day 2 layout on MissionBikeChase.day2_route (route distance s in m; drift zones from s over len, on the real turns).
+## Wave 2 (plan 2026-10-29-w2-day2.md): the truck tips over (melons), the broken road gap (ramp), the police roadblock
+## (it replaces the police joining), the crane beam (barrier) last on Cầu Vồng 5.
 const DAY2_SET_PIECES: Array = [
 	{"kind": "drift", "s": 488.0, "len": 44.0},
 	{"kind": "melons", "s": 690.0},
 	{"kind": "drift", "s": 748.0, "len": 28.0},
-	{"kind": "ramp", "s": 860.0, "d": 1.4},
+	{"kind": "ramp", "s": 860.0},
 	{"kind": "drift", "s": 910.0, "len": 58.0},
 	{"kind": "wrong_way", "s": 1000.0, "len": 250.0},
 	{"kind": "drift", "s": 1266.0, "len": 30.0},
-	{"kind": "police", "s": 1800.0, "end_s": 2230.0, "dur": 25.0},
-	{"kind": "barrier", "s": 1950.0},
+	{"kind": "roadblock", "s": 1820.0, "gap_d": -1.5},
+	{"kind": "barrier", "s": 2080.0},
 ]
 ## D2X-7: Sói Xám rides past after wave 2 once the player is past CAMEO_S (at CAMEO_FORCE_S anyway).
 const CAMEO_S: float = 1470.0
@@ -274,6 +279,15 @@ const T_STICK_HIT: String = "Ăn gậy!"
 const T_HEAVY_HIT: String = "Bị ủi văng!"
 const T_CAMEO_TAUNT: String = "Muốn biết hàng về đâu thì lên cầu Rạch Hầm mà hỏi!"
 const T_CAMEO_NAME: String = "SÓI XÁM - đầu đàn Bầy Sói"
+## Wave 2 set pieces.
+const T_GAP: String = "ĐƯỜNG SỤT! TĂNG TỐC MÀ NHẢY!"
+const T_GAP_JUMP: String = "TĂNG TỐC! NHẢY QUA HỐ!"
+const T_GAP_SHORT: String = "HỤT ĐÀ! Rớt bánh!"
+const T_GAP_SIGN: String = "ĐƯỜNG SỤT\nTĂNG TỐC"
+const T_ROADBLOCK: String = "CHỐT CHẶN! LỌT QUA KHE"
+const T_ROADBLOCK_SEEN: String = "CẢNH SÁT CHẶN ĐƯỜNG!"
+const T_ROADBLOCK_THROUGH: String = "LỌT KHE!"
+const T_ROADBLOCK_HIT: String = "TÔNG CHỐT CHẶN!"
 
 # ----- sounds (CineAudio / StoryAudio / WeaponAudio cues) -----
 const CINE_CUES: Array[String] = ["impact_medium", "impact_heavy", "helmet_clonk", "slide_whistle", "body_fall", "groan", "engine_roar",
@@ -334,13 +348,30 @@ static func texts() -> Array[String]:
 	out.append_array(T_TAKEDOWN)
 	out.append_array([T_TD_COUNT % 4, T_AIR_KICK, T_DUCK, T_DUCKED, T_BARRIER_HIT, T_BARRIER_SIGN, T_DRIFT, T_CURB, T_MELONS,
 		T_MELON_HIT, T_TRUCK_SIGN, T_WRONG_WAY, T_CONES, T_RAMP, T_POLICE, T_POLICE_GONE, T_HELMET_HIT, T_PICKUP, T_PICKUP_DOWN,
-		T_STICK_HIT, T_HEAVY_HIT, T_CAMEO_TAUNT, T_CAMEO_NAME, T_COUNTER, T_STICK_GOT, T_STICK_BROKE])
+		T_STICK_HIT, T_HEAVY_HIT, T_CAMEO_TAUNT, T_CAMEO_NAME, T_COUNTER, T_STICK_GOT, T_STICK_BROKE, T_GAP, T_GAP_JUMP, T_GAP_SHORT,
+		T_GAP_SIGN, T_ROADBLOCK, T_ROADBLOCK_SEEN, T_ROADBLOCK_THROUGH, T_ROADBLOCK_HIT])
 	for k: String in KIND_NAMES.keys():
 		if String(KIND_NAMES[k]) != "":
 			out.append(String(KIND_NAMES[k]))
 	return out
 
 
-## The parameters of an enemy kind (KINDS; an unknown kind is a rider).
+## Q6 Dễ: enemy hits cost this much of their Thường damage, and every wind-up is this much longer.
+const EASY_DMG: float = 0.65
+const EASY_WINDUP: float = 0.2
+static var _easy_kinds: Dictionary = {}
+
+
+## The parameters of an enemy kind (KINDS; an unknown kind is a rider), adjusted for the difficulty (Dễ: softer hits,
+## longer telegraphs; built once per kind, no allocation per call).
 static func kind(k: String) -> Dictionary:
-	return KINDS.get(k, KINDS["rider"])
+	var base: Dictionary = KINDS.get(k, KINDS["rider"])
+	if not Difficulty.easy:
+		return base
+	var key: String = k if KINDS.has(k) else "rider"
+	if not _easy_kinds.has(key):
+		var e: Dictionary = base.duplicate()
+		e["dmg"] = float(base["dmg"]) * EASY_DMG
+		e["windup"] = float(base["windup"]) + EASY_WINDUP
+		_easy_kinds[key] = e
+	return _easy_kinds[key]

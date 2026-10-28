@@ -1047,12 +1047,19 @@ func _day2_data_checks() -> void:
 				drift += 1
 				var mt: float = r.max_turn(s, s + float(d["len"]))
 				_check(mt >= 60.0, "drift zone at %.0f sits on a real turn (%.0f deg)" % [s, mt])
-			"barrier", "ramp":
+			"barrier", "ramp", "roadblock":
 				_check(r.max_turn(s - 40.0, s + 10.0) < 15.0, "%s at %.0f on a straight (%.0f deg)" % [k2, s, r.max_turn(s - 40.0, s + 10.0)])
 			"wrong_way":
 				_check(r.max_turn(s - 30.0, s + float(d["len"])) < 20.0, "wrong way at %.0f on a straight" % s)
-	_check(have.has("melons") and have.has("barrier") and have.has("wrong_way") and have.has("ramp") and have.has("police") and drift >= 3 and drift <= 4,
-		"all six set pieces, 3-4 drift zones (%s, %d drift)" % [str(have.keys()), drift])
+	_check(have.has("melons") and have.has("barrier") and have.has("wrong_way") and have.has("ramp") and have.has("roadblock") and drift >= 3 and drift <= 4,
+		"all six set pieces (the roadblock replaces the police), 3-4 drift zones (%s, %d drift)" % [str(have.keys()), drift])
+	_check(BikeCombatData.MELON_N == 100, "the tipped truck spills 100 melons")
+	Difficulty.set_easy(true)
+	var ek: Dictionary = BikeCombatData.kind("rider")
+	_check(float(ek["dmg"]) < float(BikeCombatData.KINDS["rider"]["dmg"]) and float(ek["windup"]) > float(BikeCombatData.KINDS["rider"]["windup"]),
+		"Dễ: enemy hits softer (%.1f) and telegraphed longer (%.2f s)" % [float(ek["dmg"]), float(ek["windup"])])
+	Difficulty.set_easy(false)
+	_check(BikeCombatData.kind("rider") == BikeCombatData.KINDS["rider"], "Thường: the kinds as tuned")
 	events.sort()
 	var gap: float = 0.0
 	for i: int in range(1, events.size()):
@@ -1247,8 +1254,17 @@ func _phase_c4(t: int) -> void:
 		chase.combat.kick(1)
 	if t == 10 + 14:
 		_check(h1.st == BikerEnemy.St.WOBBLE and h1.hp == 2, "heavy: kick 1 wobbles it (hp %d)" % h1.hp)
+		var lit: int = 0
+		for pip: MeshInstance3D in h1.pips:
+			lit += 1 if pip.visible else 0
+		_check(h1.pips.size() == 3 and lit == 2, "Wave 2: the heavy's HP pips over its name, one out per kick (%d lit)" % lit)
+		var lh: Dictionary = Impact.find_clock(chase).last_hit if Impact.find_clock(chase) else {}
+		_check(h1.reacts >= 1 and String(lh.get("tier", "")) == "heavy" and String(lh.get("react", "")) == "buck", "Wave 2: a kick that does not down the heavy is a heavy hit, he bucks and shrugs (%s)" % str(lh.get("react", "")))
 	if t == 10 + 34:
 		_check(h1.st != BikerEnemy.St.WOBBLE and not h1.is_down(), "heavy: a short wobble (0.35 s), back on (%s)" % h1.state_name())
+	if t == 150 + 14:
+		var lh2: Dictionary = Impact.find_clock(chase).last_hit if Impact.find_clock(chase) else {}
+		_check(String(lh2.get("tier", "")) == "finisher", "Wave 2: the kick that downs him is the finisher tier (%s)" % str(lh2.get("tier", "")))
 	if t == 230:
 		_check(h1.is_down() and h1.crash_cause == "kick" and chase.takedowns == 0, "heavy: down on the 3rd kick (a plain kick crash is no takedown) (%s, hp %d)" % [h1.state_name(), h1.hp])
 		_hold(h2, BikeCombatData.SLOT_ALONG, -2.1)
@@ -1526,16 +1542,18 @@ func _phase_c9(t: int) -> void:
 		_next("c9b")
 
 
-# C10: the set pieces on the arena route, ridden for real: each triggers at its distance (drift curb, melons, the ramp, the
-# barrier with a ducking stub, the wrong way with the AI clamped left and cones, the police for 10 s), then re-arm on
-# retry and the barrier without ducking knocks the player off.
+# C10: the set pieces on the arena route, ridden for real: each triggers at its distance (drift curb, the melon truck
+# tipping over in slow motion with 100 melons, the broken road gap's jump with the director's orbit, the crane beam coming
+# down with a ducking stub, the wrong way with the AI clamped left and cones, the police roadblock threaded and hit), the
+# preview cuts, then re-arm on retry and the beam without ducking knocks the player off.
 const C10_PIECES: Array = [
 	{"kind": "drift", "s": 150.0, "len": 30.0},
 	{"kind": "melons", "s": 330.0},
-	{"kind": "ramp", "s": 520.0, "d": 0.0},
+	{"kind": "ramp", "s": 520.0},
 	{"kind": "barrier", "s": 700.0},
 	{"kind": "wrong_way", "s": 850.0, "len": 150.0},
-	{"kind": "police", "s": 1080.0, "end_s": 1500.0, "dur": 10.0},
+	{"kind": "roadblock", "s": 1110.0, "gap_d": 0.0},
+	{"kind": "roadblock", "s": 1290.0, "gap_d": 3.0},
 ]
 
 
@@ -1581,6 +1599,20 @@ func _phase_c10(t: int) -> void:
 			else:
 				tangent_mode = false
 				auto_yaw = 0.0
+		if chase.slow_kind == "tip":
+			mark["tip_slow"] = true
+		mark["tip"] = maxf(float(mark.get("tip", 0.0)), sp.truck_tip)
+		var rolling: int = 0
+		for mo: int in sp.melon_on:
+			rolling += mo
+		mark["melons"] = maxi(int(mark.get("melons", 0)), rolling)
+		if sp._beams.has(3) and chase.s_p > 600.0 and chase.s_p < 699.0:
+			mark["beam_min"] = minf(float(mark.get("beam_min", 99.0)), float((sp._beams[3] as Node3D).get_meta("h", 99.0)))
+		if chase.s_p > 990.0 and chase.s_p < 1105.0 and sp.prompt == BikeCombatData.T_ROADBLOCK:
+			mark["block_prompt"] = true
+		var cdx: Node = chase.director()
+		if cdx and chase.jumping():
+			mark["orbits"] = maxi(int(mark.get("orbits", 0)), int(cdx.get("orbits")))
 		if sp.melon_t >= 0.0 and not mark.has("melon_poke"):
 			mark["melon_poke"] = true
 			mark["drop_truck_s"] = sp.truck_s
@@ -1598,32 +1630,30 @@ func _phase_c10(t: int) -> void:
 				mark["melon_tgt"] = true
 		if mark.has("melon_poke") and not mark.has("melon_chk"):
 			mark["melon_chk"] = true
-		if chase.police_active() > 0:
-			mark["cops"] = maxi(int(mark.get("cops", 0)), chase.police_active())
-		if sp.fired("police") == 1 and sp.pieces[5]["phase"] == "done" and not mark.has("cops_gone"):
-			mark["cops_gone"] = frames
-		if mark.has("cops_gone") and frames == int(mark["cops_gone"]) + 2:
-			var leaving: int = 0
-			var ram: int = 0
-			for c: Variant in chase.cops:
-				var ce: BikerEnemy = c
-				if ce.st == BikerEnemy.St.LEAVE or ce.gone:
-					leaving += 1
-				ram += ce.attacks
-			print("  C10: fired %s at %s, melon hits %d, cones %d, curb %d, barrier %s, cops %d (rams %d), jump max %.2f" % [str(sp.counts), str(at), sp.melon_hits, sp.cone_hits, sp.curb_hits, str(sp.results), int(mark.get("cops", 0)), ram, float(mark["max_y"])])
+		if sp.block_results.size() >= 2 and not mark.has("blocks_done"):
+			mark["blocks_done"] = frames
+		if mark.has("blocks_done") and frames == int(mark["blocks_done"]) + 2:
+			var cd: Node = chase.director()
+			print("  C10: fired %s at %s, melon hits %d (max %d rolling, tip %.2f), cones %d, curb %d, beam %s (low %.2f m), gap %s, roadblock %s, previews %d, orbits %d, jump max %.2f" % [
+				str(sp.counts), str(at), sp.melon_hits, int(mark.get("melons", 0)), float(mark.get("tip", 0.0)), sp.cone_hits, sp.curb_hits, str(sp.results),
+				float(mark.get("beam_min", 99.0)), str(sp.gap_results), str(sp.block_results), sp.previews, int(mark.get("orbits", 0)), float(mark["max_y"])])
 			_check(at.has("drift") and absf(float(at["drift"]) - 150.0) < 3.0 and sp.curb_hits == 1 and bool(mark.get("drift_prompt", false)), "drift zone: \"DRIFT!\", through it fast without drifting = the curb (%d)" % sp.curb_hits)
-			_check(sp.fired("melons") == 1 and sp.melon_hits >= int(mark.get("mh0", 0)) + 1 and float(mark.get("drop_truck_s", 0.0)) > 280.0 and float(mark.get("drop_truck_s", 0.0)) <= 331.0, "melons: the tailgate drops by s 330 (truck at %.0f), a melon hit (%d)" % [float(mark.get("drop_truck_s", 0.0)), sp.melon_hits])
+			_check(sp.fired("melons") == 1 and sp.melon_hits >= int(mark.get("mh0", 0)) + 1 and float(mark.get("drop_truck_s", 0.0)) > 280.0 and float(mark.get("drop_truck_s", 0.0)) <= 340.0, "melons: the load spills by s 330 (truck at %.0f), a melon hit (%d)" % [float(mark.get("drop_truck_s", 0.0)), sp.melon_hits])
+			_check(float(mark.get("tip", 0.0)) >= 0.99 and bool(mark.get("tip_slow", false)) and int(mark.get("melons", 0)) >= 90, "the truck tips over onto its side in slow motion, about 100 melons roll (%d)" % int(mark.get("melons", 0)))
 			var mel: int = 0
 			for dn: Array in downs:
 				if String(dn[1]) == "melon":
 					mel += 1
 			_check(mark.has("melon_tgt") and mel >= 1, "melons: a biker hitting one crashes (a takedown) (%d)" % mel)
-			_check(at.has("ramp") and absf(float(at["ramp"]) - 520.0) < 3.0 and float(mark["max_y"]) > 1.2, "the ramp: a jump at s 520 (apex %.2f m)" % float(mark["max_y"]))
+			_check(at.has("ramp") and absf(float(at["ramp"]) - 520.0) < 3.0 and float(mark["max_y"]) > 1.2 and sp.gap_results == ["jump"], "the broken road gap: a real jump at s 520 (apex %.2f m)" % float(mark["max_y"]))
+			_check(cd == null or int(mark.get("orbits", 0)) >= 1, "the jump in the director's slow-motion orbit")
 			_check(at.has("barrier") and absf(float(at["barrier"]) - 700.0) < 3.0 and sp.results.size() == 1 and sp.results[0] == "ducked" and lost_n == int(mark.get("lost0", lost_n)) and bool(mark.get("duck_prompt", false)),
-				"the barrier: \"[CTRL] CÚI XUỐNG\" from the signs; ducking (stub) passes under it (%s)" % str(sp.results))
+				"the crane beam: [CTRL] CUI XUONG from the signs; ducking (stub) passes under it (%s)" % str(sp.results))
+			_check(absf(float(mark.get("beam_min", 99.0)) - BikeCombatData.BARRIER_Y) < 0.05, "the crane lowers the beam to chest height before the player gets there (%.2f m)" % float(mark.get("beam_min", 99.0)))
 			_check(at.has("wrong_way") and bool(mark["clamp"]) and sp.cone_hits >= 1, "the wrong way: the AI keeps to the left half, riding into the cones hurts (%d)" % sp.cone_hits)
-			_check(int(mark.get("cops", 0)) == 2 and leaving == 2 and at.has("police") and absf(float(at["police"]) - 1080.0) < 3.0, "the police: 2 cops join at s 1080 and drop back after their time (%d leaving)" % leaving)
-			_check(ram >= 1, "the police ram (%d)" % ram)
+			_check(sp.block_results == ["through", "hit"] and bool(mark.get("block_prompt", false)) and absf(float(at.get("roadblock", 0.0)) - 1290.0) < 3.0,
+				"the police roadblock: the prompt, through the gap, then a crash into the next one (%s)" % str(sp.block_results))
+			_check(cd == null or sp.previews >= 4, "each big set piece opens with a 0.6 s preview cut (%d)" % sp.previews)
 			# retry: every piece after the checkpoint is armed again
 			mark["rearm"] = true
 			mark["duck"] = false
@@ -1634,11 +1664,11 @@ func _phase_c10(t: int) -> void:
 			for p: Dictionary in sp.pieces:
 				if String(p["phase"]) == "armed":
 					armed += 1
-			_check(armed == sp.pieces.size() and chase.cops.is_empty() and sp.melon_t < 0.0, "retry(): every set piece is armed again (%d / %d)" % [armed, sp.pieces.size()])
-			_check(is_equal_approx(sp.safe_checkpoint_s(660.0), 620.0) and is_equal_approx(sp.safe_checkpoint_s(600.0), 600.0) and is_equal_approx(sp.safe_checkpoint_s(720.0), 720.0),
-				"a checkpoint inside the barrier's warning stretch moves back to its first sign")
-			sp.rearm(1200.0)
-			_check(is_equal_approx(float(sp.pieces[5].get("at", -1.0)), 1200.0 + BikeSetPieces.POLICE_REJOIN_M), "a retry past the police start: they rejoin 80 m later, not on top of it")
+			_check(armed == sp.pieces.size() and sp.melon_t < 0.0 and sp.truck_tip == 0.0 and is_equal_approx(float((sp._beams[3] as Node3D).get_meta("h")), BikeSetPieces.BEAM_TOP),
+				"retry(): every set piece is armed again, the truck upright, the beam back up (%d / %d)" % [armed, sp.pieces.size()])
+			_check(is_equal_approx(sp.safe_checkpoint_s(660.0), 620.0) and is_equal_approx(sp.safe_checkpoint_s(600.0), 600.0) and is_equal_approx(sp.safe_checkpoint_s(720.0), 720.0)
+				and is_equal_approx(sp.safe_checkpoint_s(1050.0), 1110.0 - BikeSetPieces.ROADBLOCK_PREVIEW_M),
+				"a checkpoint inside the beam's warning stretch (or the roadblock's preview) moves back before it")
 			sp.rearm(60.0)
 			bike.global_transform = chase.route_transform(650.0)
 			bike.current_speed_ms = 17.0

@@ -38,6 +38,10 @@
 # and the wolf helmet / a helmet shell) that fly, spin and bounce for PART_S; time_to_hit() (the counter-kick window),
 # take_counter(away) (PHẢN ĐÒN: sent flying, crash cause "counter"); a stick rider downed by a kick drops his stick on the
 # road (PlayerBikeCombat.drop_stick: the player can grab it).
+# Wave 2 (plan 2026-10-29-w2-day2.md): impact_react(tier, dir, opts) - every kind answers the Q2 impact recipe: the LED eyes
+# flare, the bike rocks away from the hit (REACT_ROLL x the tier), a heavy bucks its back wheel and shrugs off a kick that
+# does not down it (sparks off its armour), a thrower's pillion reels; a biker with more than one hit point shows HP pips
+# (red boxes) over its name, one going out per kick.
 class_name BikerEnemy
 extends Node3D
 
@@ -49,6 +53,9 @@ const LABEL_Y: float = 2.25
 const SPIN_PIVOT: float = 0.9            # the somersault turns about a point this high above the rider's root
 ## Kinds BikeChase gives the flank / front / back roles (the others keep their own slot).
 const ROLE_KINDS: Array[String] = ["rider", "stick", "heavy"]
+const REACT_S: float = 0.35
+const REACT_ROLL: Dictionary = {"light": 0.12, "heavy": 0.3, "finisher": 0.45}
+const PIP_SIZE := Vector3(0.16, 0.07, 0.03)
 
 var ch: BikeChase
 var kind: String = "rider"
@@ -148,6 +155,12 @@ var parts: Array[Dictionary] = []
 var parts_thrown: int = 0
 var countered_n: int = 0
 var stick_dropped: bool = false
+## Wave 2: the impact reaction (react_t real-time countdown, roll away from the hit, a heavy's buck), the HP pips.
+var react_t: float = 0.0
+var react_roll: float = 0.0
+var react_pitch: float = 0.0
+var reacts: int = 0
+var pips: Array[MeshInstance3D] = []
 
 
 func setup(opts: Dictionary = {}) -> void:
@@ -186,6 +199,19 @@ func setup(opts: Dictionary = {}) -> void:
 	_label3d.text = label
 	_label3d.no_depth_test = false
 	add_child(_label3d)
+	if max_hp > 1:
+		var pip_mat: StandardMaterial3D = Readability.telegraph_material("danger", 3.0)
+		for i: int in max_hp:
+			var mi := MeshInstance3D.new()
+			mi.name = "HpPip%d" % i
+			var bm := BoxMesh.new()
+			bm.size = PIP_SIZE
+			mi.mesh = bm
+			mi.material_override = pip_mat
+			mi.position = _label3d.position + Vector3((float(i) - float(max_hp - 1) * 0.5) * 0.22, 0.28, 0.0)
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(mi)
+			pips.append(mi)
 	process_priority = 11                  # the kick pose layer runs after the RigAnimator (10)
 
 
@@ -455,6 +481,7 @@ func take_kick(away: Vector2, power: int = 1) -> String:
 	if _wob_sign == 0.0:
 		_wob_sign = 1.0
 	_enter(St.WOBBLE)
+	_update_pips()
 	if stick and hp <= 0 and stick.visible:
 		_drop_stick(away)
 	if ch:
@@ -472,6 +499,8 @@ func crash(cause: String, push: Vector2 = Vector2.ZERO) -> void:
 	if kind == "police":
 		return                             # the police never crash (no arrests, no wrecks)
 	Readability.unrim(self)
+	for pip: MeshInstance3D in pips:
+		pip.visible = false
 	crash_cause = takedown_tag if (cause == "kick" and takedown_tag != "") else cause
 	_release_token()
 	bike_v = vel + push * 0.6
@@ -557,6 +586,31 @@ func _drop_stick(away: Vector2) -> void:
 		pc.call("drop_stick", at, Vector3(vel.x, 0.0, vel.y) * 0.3)
 
 
+## The Q2 impact reaction (Impact.hit calls it with the tier and the hit's direction): the eyes flare, the bike rocks away
+## from the hit; a heavy that is not going down bucks and shrugs (sparks off its armour, a body thud); a thrower's pillion
+## reels.
+func impact_react(tier: String, dir: Vector3, _opts: Dictionary = {}) -> String:
+	reacts += 1
+	react_t = REACT_S
+	var r := Vector2(cos(yaw), -sin(yaw))     # the bike's right on the map
+	var away: float = signf(Vector2(dir.x, dir.z).dot(r))
+	react_roll = -away * float(REACT_ROLL.get(tier, 0.2))
+	react_pitch = 0.0
+	flare(0.35)
+	if kind == "heavy" and hp > 0:
+		react_pitch = -0.22                   # a buck of the back wheel: he takes it
+		Impact.particles(self, "sparks", global_position + Vector3(0.0, 1.0, 0.0), Vector3(dir.x, 0.5, dir.z), 0.9)
+		Impact.sound(self, "body", global_position + Vector3(0.0, 1.0, 0.0), -2.0)
+	if pillion:
+		pillion.rotation.z = -away * 0.5
+	return "buck" if react_pitch != 0.0 else "rock"
+
+
+func _update_pips() -> void:
+	for i: int in pips.size():
+		pips[i].visible = i < hp
+
+
 ## After the player lost: ride off ahead, then vanish.
 func stand_down() -> void:
 	if is_down() or st == St.LEAVE:
@@ -593,6 +647,10 @@ func tick(delta: float) -> void:
 			_eye_mat.emission_energy_multiplier = 3.0 + 9.0 * clampf(flare_t / 0.4, 0.0, 1.0)
 	if fall_back_t > 0.0:
 		fall_back_t -= delta
+	if react_t > 0.0:
+		react_t = maxf(0.0, react_t - delta)
+		if pillion and react_t <= 0.0:
+			pillion.rotation.z = 0.0
 	_think(delta)
 	if st == St.CRASH:
 		return
@@ -927,6 +985,9 @@ func _on_line(along: float) -> Vector2:
 
 func _place_bike() -> void:
 	var b := Basis(Vector3.UP, yaw) * Basis(Vector3(0.0, 0.0, 1.0), lean)
+	if react_t > 0.0:
+		var k: float = react_t / REACT_S
+		b = b * Basis(Vector3(0.0, 0.0, 1.0), react_roll * k * sin(k * PI)) * Basis(Vector3(1.0, 0.0, 0.0), react_pitch * k * sin(k * PI))
 	global_transform = Transform3D(b, Vector3(pos2.x, floor_y + air_y, pos2.y))
 
 
