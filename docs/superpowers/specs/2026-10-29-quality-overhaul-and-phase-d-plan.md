@@ -206,6 +206,43 @@ The Q2 bike combat upgrades (counter-kick, grab weapon) are added to Day 2.
 
 **Free roam:** night street-lamp pools and the look presets.
 
+### Q4b Earlier phases: Days 0, 1 and 4
+
+Added 2026-10-29 after the owner asked "bạn có thể sửa cả những phase trước luôn không?". These days get the same quality-bar pass as Day 2.
+
+**Day 0 (Phase A):**
+- **Morning race to the exam** (Stage 1 on the real route).
+  - The signature moment is a flooded street section ("đường ngập", the Saigon rain meme): the bike throws spray, slows, and the player picks a lane between stalled bikes.
+  - A traffic-jam weave: stopped cars, with a squeeze along the kerb.
+  - A bus cutting in, shown with a preview cut.
+  - The stage music plays throughout.
+  - The race keeps its 90 s clock tuning, but is retuned with the sloppy bot.
+- **The exam** (Extra EOS evidence workflow): the moment the planted glasses glint gets a slow push-in with a sting.
+- **Midnight at BE6:** the Q3 look and the Q1 shots for the glowing glasses and the whisper.
+
+**Day 1 (Phase B):**
+- **Stake-out:** a tension mini-game.
+  - Zoom the phone camera on the courier and get 3 clear photos.
+  - When he turns around, duck behind a car before a "suspicion" meter fills.
+  - Distractions: chú Bảy's shiba barks, a guard walks by.
+- **Foot chase through the campus:**
+  - parkour assists: Space near a bench or railing vaults it, Ctrl slides under barriers;
+  - the courier knocks over trash cans and a fruit cart behind him (preview cuts);
+  - the crowd parts;
+  - a shortcut through the canteen;
+  - a slow-motion flying tackle to finish.
+- **First fight:** the Q2 melee (slams into parked bikes, improvised helmets) in an arena dressed with props.
+- **Corridor horror:** the Q3 look, plus a staged camera for the sheep figure.
+
+**Day 4 (Phase B):**
+- **Canteen undercover:**
+  - spotting the real Dolly becomes clue-based: humming, a wool thread on the sleeve, a grass salad on the tray;
+  - a suspicion meter, with Linh's hints as radio chatter.
+- **Brawl:** a food-fight escalation: trays as weapons, table flips (cover and slams), a comic soup splash.
+- **Night escape** (already polished): the Q1 camera and the Q3 look.
+
+The original study stages (Stages 2-6, Extra) are not in scope unless the owner asks.
+
 ### Q5 Story and cinematics
 
 **Dialogue voices:**
@@ -345,11 +382,11 @@ Agents follow `scratchpad/agent_rules.md`, the quality bar (section 2) and the n
 | Wave | Streams (effort) | Rough quota |
 |---|---|---|
 | 1. Phase Q base | Q1 camera director (xhigh); Q2 combat feel (xhigh); Q3 look presets, VFX library, readability (high) | about 12-15 % |
-| 2. Phase Q content | Q4 Day 2 rework (xhigh); Q4 Days 1/4 melee and props (xhigh); Q5 story and cinematics, with Q6 difficulty and the sloppy bot (high) | about 10-12 % |
+| 2. Phase Q content | Q4 Day 2 rework (xhigh); Q4b Days 0/1/4 content pass, with melee arenas and props (xhigh); Q5 story and cinematics, with Q6 difficulty and the sloppy bot (high) | about 14-17 % |
 | 3. Days 3 and 5 wow | three streams as in the 2026-10-27 spec (xhigh) | about 10-12 % |
 | 4. Phase D | Day 6 boat and shop (xhigh); Day 7 tower and final boss (xhigh); endings, summary, gallery, free-roam activities, night events (high) | about 25-30 % |
 
-**Total:** about 60-70 % of one weekly quota.
+**Total:** about 65-75 % of one weekly quota.
 
 **Interfaces fixed before Wave 1 starts:**
 - Q1 provides `CameraDirector.punch / shake / preview_cut / slowmo_orbit`;
