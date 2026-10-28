@@ -7,6 +7,19 @@
 #            (camera at center + (sin a·r, 0, cos a·r), y = height; constant angular speed)
 #   low_hero actor, side_deg, dist, fov      (0.25 m above ground in front-side of the actor, looking up at its chest)
 #   track    actor, offset, look (offset from the actor or from look_actor), fov
+# Q1 camera director shot helpers (spec 2026-10-29 Q1; CineTimeline.two_shot / ots_shot / hero_shot / dutch_shot /
+# push_in name them): they frame head, chest and hips of their subjects inside the letterboxed 8 % safe area
+# (tests/test_camera_director.gd part S). Positions follow the actors as they move.
+#   two_shot a, b, side (+1: camera on the right of the a->b line), dist (0 = fit both: two_shot_dist), height 1.45,
+#            look_y 1.3, fov 40, push (0..1 of the distance over the shot, never closer than medium_min_dist)
+#   ots      over, at, side (+1: over the right shoulder of `over`), back 1.1, height 1.6, look_y 1.3, fov 42 (the camera
+#            moves out sideways for close actors so the face stays OTS_CLEAR beside the foreground head)
+#   dutch    actor, roll (deg, default 14; villains), side_deg 25 (off the actor's facing), dist 2.8, height 1.15, look_y 1.3,
+#            fov 45, push 0.1
+#   push_in  actor, from 4.2, to 2.2 (m in front of the actor; never closer than medium_min_dist), side_deg 0, height 1.5,
+#            look_y 1.3, fov 40 (eased dolly ending on a medium close-up)
+#   low_hero (above) is the hero angle: CineTimeline.hero_shot.
+# A rig may return "roll" (deg, about the view axis); CinePlayer applies it.
 # Every rig also takes "hand" (handheld feel, 0 = locked off, 1 = a tight handheld operator; see handheld()) and "whip"
 # (false = no whip / punch-in on the hits inside the shot).
 class_name CineShots
@@ -14,11 +27,40 @@ extends RefCounted
 
 const WHIP_DEG: Dictionary = {"light": 6.0, "medium": 9.0, "heavy": 12.0, "finisher": 12.0, "accent": 4.0, "card": 0.0}
 const FOV_PUNCH: Dictionary = {"light": -2.0, "medium": -4.0, "heavy": -7.0, "finisher": -8.0, "accent": 0.0, "card": 0.0}
+const ASPECT: float = 16.0 / 9.0
+const SAFE: float = 0.08
+const BODY_MARGIN: float = 0.55          # m beside each actor of a two-shot (shoulders, a raised arm)
+const LETTERBOX_BAND: float = 0.744      # picture height left between the 2.39:1 bars at 16:9
+const BODY_HALF_H: float = 0.45          # m above / below look_y a medium shot keeps (head centre .. hips)
+const OTS_CLEAR: float = 0.32            # m the view to the subject's face passes beside the foreground head
+## Rigs of the Q1 shot helpers and their actor params (CineTimeline.validate checks them).
+const HELPER_ACTORS: Dictionary = {"two_shot": ["a", "b"], "ots": ["over", "at"], "dutch": ["actor"], "push_in": ["actor"]}
 
 
 static func _apos(ctx: Dictionary, id: String) -> Vector3:
 	var a: Node3D = (ctx["actors"] as Dictionary).get(id)
 	return a.position if a else Vector3.ZERO
+
+
+static func _ayaw(ctx: Dictionary, id: String) -> float:
+	var a: Node3D = (ctx["actors"] as Dictionary).get(id)
+	return a.rotation.y if a else 0.0
+
+
+## Horizontal half-extent (tan) of the 8 % safe area at a vertical fov (deg), 16:9.
+static func safe_tan_h(fov: float) -> float:
+	return tan(deg_to_rad(fov) * 0.5) * ASPECT * (1.0 - 2.0 * SAFE)
+
+
+## Closest a medium shot comes at a vertical fov (deg): BODY_HALF_H above and below the look point inside the
+## letterboxed safe area.
+static func medium_min_dist(fov: float) -> float:
+	return BODY_HALF_H / (tan(deg_to_rad(fov) * 0.5) * LETTERBOX_BAND * (1.0 - 2.0 * SAFE)) + 0.2
+
+
+## Two-shot distance that keeps both actors (sep m apart) plus BODY_MARGIN inside the safe area (and the medium minimum).
+static func two_shot_dist(sep: float, fov: float) -> float:
+	return maxf(medium_min_dist(fov), (sep * 0.5 + BODY_MARGIN) / safe_tan_h(fov) + 0.3)
 
 
 static func eval(shot: Dictionary, u: float, ctx: Dictionary) -> Dictionary:
@@ -48,6 +90,46 @@ static func eval(shot: Dictionary, u: float, ctx: Dictionary) -> Dictionary:
 			var base: Vector3 = _apos(ctx, String(p["actor"]))
 			var look_base: Vector3 = _apos(ctx, String(p["look_actor"])) if p.has("look_actor") else base
 			return {"pos": base + (p["offset"] as Vector3), "look": look_base + (p.get("look", Vector3(0.0, 1.2, 0.0)) as Vector3), "fov": fov}
+		"two_shot":
+			var fa: float = float(p.get("fov", 40.0))
+			var pa: Vector3 = _apos(ctx, String(p["a"]))
+			var pb: Vector3 = _apos(ctx, String(p["b"]))
+			var ab := Vector3(pb.x - pa.x, 0.0, pb.z - pa.z)
+			var sep: float = ab.length()
+			var along: Vector3 = ab / sep if sep > 0.01 else Vector3.RIGHT
+			var perp := Vector3(-along.z, 0.0, along.x) * (-1.0 if float(p.get("side", 1.0)) >= 0.0 else 1.0)
+			var d2: float = float(p.get("dist", 0.0))
+			if d2 <= 0.0:
+				d2 = two_shot_dist(sep, fa)
+			d2 = maxf(d2 * (1.0 - float(p.get("push", 0.0)) * e), medium_min_dist(fa))
+			var mid: Vector3 = (pa + pb) * 0.5
+			return {"pos": mid + perp * d2 + Vector3(0.0, float(p.get("height", 1.45)), 0.0), "look": mid + Vector3(0.0, float(p.get("look_y", 1.3)), 0.0), "fov": fa}
+		"ots":
+			var fo: float = float(p.get("fov", 42.0))
+			var po: Vector3 = _apos(ctx, String(p["over"]))
+			var pt: Vector3 = _apos(ctx, String(p["at"]))
+			var dir := Vector3(pt.x - po.x, 0.0, pt.z - po.z)
+			dir = dir.normalized() if dir.length_squared() > 1e-4 else Vector3.FORWARD
+			var rt := Vector3(-dir.z, 0.0, dir.x) * (1.0 if float(p.get("side", 1.0)) >= 0.0 else -1.0)
+			var sep_o: float = maxf(Vector2(pt.x - po.x, pt.z - po.z).length(), 0.5)
+			var back: float = maxf(float(p.get("back", 1.1)), medium_min_dist(fo) - sep_o)   # the subject never closer than a medium
+			var lat: float = maxf(0.45, OTS_CLEAR * (sep_o + back) / sep_o)   # close actors: wider, so the face stays clear
+			var cam_p: Vector3 = po - dir * back + rt * lat + Vector3(0.0, float(p.get("height", 1.6)), 0.0)
+			return {"pos": cam_p, "look": pt + Vector3(0.0, float(p.get("look_y", 1.3)), 0.0) - rt * 0.2, "fov": fo}
+		"dutch":
+			var fd: float = float(p.get("fov", 45.0))
+			var ad: Vector3 = _apos(ctx, String(p["actor"]))
+			var yd: float = _ayaw(ctx, String(p["actor"])) + deg_to_rad(float(p.get("side_deg", 25.0)))
+			var dd: float = float(p.get("dist", 2.8)) * (1.0 - float(p.get("push", 0.1)) * e)
+			return {"pos": ad + Vector3(-sin(yd), 0.0, -cos(yd)) * dd + Vector3(0.0, float(p.get("height", 1.15)), 0.0),
+				"look": ad + Vector3(0.0, float(p.get("look_y", 1.3)), 0.0), "fov": fd, "roll": float(p.get("roll", 14.0))}
+		"push_in":
+			var fp: float = float(p.get("fov", 40.0))
+			var ap2: Vector3 = _apos(ctx, String(p["actor"]))
+			var yp: float = _ayaw(ctx, String(p["actor"])) + deg_to_rad(float(p.get("side_deg", 0.0)))
+			var dp: float = maxf(lerpf(float(p.get("from", 4.2)), float(p.get("to", 2.2)), e), medium_min_dist(fp))
+			return {"pos": ap2 + Vector3(-sin(yp), 0.0, -cos(yp)) * dp + Vector3(0.0, float(p.get("height", 1.5)), 0.0),
+				"look": ap2 + Vector3(0.0, float(p.get("look_y", 1.3)), 0.0), "fov": fp}
 	return {"pos": Vector3(0.0, 2.0, 5.0), "look": Vector3.ZERO, "fov": fov}
 
 

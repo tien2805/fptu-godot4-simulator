@@ -613,6 +613,8 @@ func _update_camera(rr: float) -> void:
 		var b: Basis = Basis.looking_at(d, up)
 		b = Basis(Vector3.UP, deg_to_rad(float(w["yaw"]))) * b
 		b = b * Basis.from_euler((hh["rot"] as Vector3) * (PI / 180.0))
+		if c.has("roll"):
+			b = b * Basis(Vector3(0.0, 0.0, 1.0), deg_to_rad(float(c["roll"])))   # Q1 dutch angle
 		camera.global_transform = Transform3D(b, pos_w + b * (hh["pos"] as Vector3))
 	_fov_off = scare.fov_offset(rr) if scare != null else 0.0
 	camera.fov = float(c["fov"]) + float(w["fov"]) + _fov_off
