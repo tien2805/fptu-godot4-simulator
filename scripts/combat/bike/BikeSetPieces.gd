@@ -5,7 +5,7 @@
 # triggers at its distance and re-arms on retry (rearm(checkpoint_s): every piece not wholly behind the checkpoint comes
 # back).
 #   melons    {"s"}: a melon truck shows MELON_TRUCK_LEAD m before s ahead in the right lane (hazard lights blinking); at s
-#             (or the player 35 m behind it) the preview cut shows it hit a bump and TIP OVER onto its side in slow motion
+#             (or the player 35 m behind it) the preview cut (TIP_REAL_S long) shows it hit a bump and TIP OVER onto its side in slow motion
 #             (BikeChase.slow_motion "tip"), sliding with sparks; MELON_N (100) pooled melons (one MultiMesh, analytic
 #             bounces, no rigid bodies) burst out of the bed and roll across the lanes for MELON_S s. The truck lies in the
 #             right lane until it is passed. A melon hit: melon_dmg, a wobble, a green and pink splash; a biker that hits one
@@ -24,7 +24,7 @@
 #             director's slow-motion orbit round the bike (riders alongside fly too: air kick); slower = a short hop and a
 #             hard landing (gap_short_dmg). Bikers behind it fall in one in two ("gap": a takedown).
 #   roadblock {"s", "gap_d"}: a POLICE ROADBLOCK (two police cars across the road, barricades, blue and red lightbars) with
-#             a gap of roadblock_gap_w at gap_d m right of the centre line, marked with yellow arrows; the preview cut
+#             a gap of roadblock_gap_w (frozen per piece when built: "gap_w") at gap_d m right of the centre line, marked with yellow arrows; the preview cut
 #             ROADBLOCK_PREVIEW_M before it, the prompt "CHỐT CHẶN! LỌT QUA KHE"; at s: in the gap = "LỌT KHE!", else a crash
 #             into it (roadblock_dmg, speed x0.3). The AI funnels into the gap (d_lo / d_hi), one in three crash
 #             ("roadblock": a takedown).
@@ -167,9 +167,9 @@ func _fire(p: Dictionary, phase: String) -> void:
 	ch.set_piece.emit(k, phase)
 
 
-## The 0.6 s preview cut on a hazard (BikeChase.preview: the camera director's cut, when nothing else holds the screen).
-func _preview(target: Node3D) -> void:
-	if ch.preview(target, PREVIEW_S):
+## The preview cut on a hazard (0.6 s; BikeChase.preview: the camera director's cut, when nothing else holds the screen).
+func _preview(target: Node3D, secs: float = PREVIEW_S) -> void:
+	if ch.preview(target, secs):
 		previews += 1
 
 
@@ -186,6 +186,7 @@ func rearm(cp_s: float) -> void:
 			p.erase("bikers_s")
 			p.erase("at")
 			p.erase("previewed")
+			p.erase("spilled")                   # a knock-off during the melon window: the load spills again
 			if String(p.get("kind", "")) == "police" and cp_s > float(p["s"]):
 				p["at"] = cp_s + POLICE_REJOIN_M
 				if float(p["at"]) >= _end_s(p) - 40.0:
@@ -544,7 +545,7 @@ func _tick_roadblock(i: int, p: Dictionary, s: float, ps: float, delta: float) -
 			ch.hud.popup(BikeCombatData.T_ROADBLOCK_SEEN, CombatHUD.WARN, 1.6)
 	if p["phase"] == "tele":
 		if s >= ps - 70.0:                    # the bikers funnel into the gap too
-			var half: float = roadblock_gap_w * 0.5 - 0.35
+			var half: float = float(p.get("gap_w", roadblock_gap_w)) * 0.5 - 0.35
 			var lo: float = (gd - half) * ch.dir_sign
 			var hi: float = (gd + half) * ch.dir_sign
 			ch.d_lo = minf(lo, hi)
@@ -555,7 +556,7 @@ func _tick_roadblock(i: int, p: Dictionary, s: float, ps: float, delta: float) -
 			p["bikers_s"] = {}
 			_fire(p, "active")
 			var lat: float = ch.d_p * ch.dir_sign
-			if absf(lat - gd) <= roadblock_gap_w * 0.5 - 0.3:
+			if absf(lat - gd) <= float(p.get("gap_w", roadblock_gap_w)) * 0.5 - 0.3:
 				block_results.append("through")
 				ch.add_charge(10.0)
 				ch.cue("whoosh_down", ch.bike.global_position + Vector3(0.0, 1.0, 0.0), -2.0)
@@ -711,7 +712,7 @@ func _tip_over() -> void:
 	ch.cue("horn", truck.global_position + Vector3(0.0, 1.5, 0.0), 2.0, 0.6)
 	ch.cue("impact_medium", truck.global_position, 0.0)
 	ch.slow_motion(TIP_SCALE, TIP_REAL_S, "tip")
-	_preview(truck)
+	_preview(truck, TIP_REAL_S)               # the cut lasts the whole tip: the truck on its side and the spill
 	if ch.hud:
 		ch.hud.popup(BikeCombatData.T_MELONS, CombatHUD.WARN, 1.6)
 
@@ -1086,6 +1087,7 @@ func _build_roadblock(p: Dictionary) -> Node3D:
 	var hw: float = _hw()
 	var gd: float = float(p.get("gap_d", -1.6))
 	var gw: float = roadblock_gap_w
+	p["gap_w"] = gw                           # frozen: the hit window always matches the gap that was built
 	var root := Node3D.new()
 	root.name = "Roadblock"
 	root.top_level = true

@@ -166,6 +166,7 @@ var _traffic_off: bool = false
 var _ray_q: PhysicsRayQueryParameters3D
 var _ending_line_t: float = -1.0
 var _win_t: float = 0.0
+var _prev_speed: float = 0.0              # the bike's speed at the end of the last physics frame (crash damage)
 # HUD widgets
 var _panel: Control
 var _lap_label: Label
@@ -365,9 +366,14 @@ func count_label(i: int) -> String:
 	return str(int(round(countdown_len)) - i)
 
 
+func _ready() -> void:
+	process_physics_priority = 1             # after the PlayerBike (0): reads where it ended up this frame
+
+
 func _physics_process(delta: float) -> void:
 	if bike == null or not is_instance_valid(bike):
 		return
+	_prev_speed = absf(bike.current_speed_ms)
 	var rdt: float = delta / maxf(Engine.time_scale, 0.01)
 	t += rdt
 	_tick_fade(rdt)
@@ -669,7 +675,7 @@ func _on_kick_hit(target: Node3D, _side: int) -> void:
 func _on_bike_crash() -> void:
 	if state != "racing" or combat == null or not combat.enabled:
 		return
-	var u: float = clampf((absf(bike.current_speed_ms) - 6.0) / 20.0, 0.0, 1.0)
+	var u: float = clampf((_prev_speed - 6.0) / 20.0, 0.0, 1.0)   # the speed before PlayerBike's own crash cut
 	combat.damage(lerpf(CRASH_DMG_MIN, CRASH_DMG_MAX, u) * float(Difficulty.pick(1.0, 0.6)), "crash")
 
 

@@ -1659,6 +1659,7 @@ func _phase_c10(t: int) -> void:
 			mark["duck"] = false
 			_ride(false)
 			autopilot = false
+			sp.pieces[1]["spilled"] = 1          # as if knocked off inside the melon window: the retry must spill again
 			chase.retry()
 			var armed: int = 0
 			for p: Dictionary in sp.pieces:
@@ -1670,7 +1671,7 @@ func _phase_c10(t: int) -> void:
 				and is_equal_approx(sp.safe_checkpoint_s(1050.0), 1110.0 - BikeSetPieces.ROADBLOCK_PREVIEW_M),
 				"a checkpoint inside the beam's warning stretch (or the roadblock's preview) moves back before it")
 			sp.rearm(60.0)
-			bike.global_transform = chase.route_transform(650.0)
+			bike.global_transform = chase.route_transform(200.0)   # the second pass: the melons again, then the beam
 			bike.current_speed_ms = 17.0
 			mark["lost0"] = lost_n
 			_ride(true)
@@ -1679,11 +1680,16 @@ func _phase_c10(t: int) -> void:
 			_check(false, "C10 timed out (s %.0f, %s, barrier %s, %s, lost %d, knocked %s)" % [chase.s_p, str(sp.counts), str(sp.results), chase.state, lost_n, str(chase.combat.knocked)])
 			_end_chase("c11")
 		return
+	var rolling2: int = 0
+	for mo2: int in sp.melon_on:
+		rolling2 += mo2
+	mark["melons2"] = maxi(int(mark.get("melons2", 0)), rolling2)
 	if lost_n > int(mark["lost0"]) and not mark.has("knocked"):
 		mark["knocked"] = true
+		_check(int(mark.get("melons2", 0)) >= 90, "a retry after a knock-off in the melon window spills the melons again (%d)" % int(mark.get("melons2", 0)))
 		_check(sp.results.back() == "hit" and chase.state == "lost" and chase.combat.knocked, "the barrier without ducking knocks the player off: lost, back to the checkpoint (%s)" % str(sp.results))
 		_end_chase("c11")
-	elif t > 60 * 120:
+	elif t > 60 * 150:
 		_check(false, "C10: the barrier never knocked the player off (%s)" % str(sp.results))
 		_end_chase("c11")
 
