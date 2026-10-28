@@ -1101,6 +1101,7 @@ func set_time_of_day(preset: String) -> void:
 	if we and _base_env:
 		we.environment = _base_env
 	GameFXScript.upgrade_scene_visuals(self, key)
+	LookPresets.set_base(self, LookPresets.for_roam_tod(key))   # Q3: night_city at night, campus_day by day
 	if traffic: traffic.set_night_lamps(RoamTraffic.is_dark_preset(key))   # OB-D6 traffic lamps
 	_refresh_lab_hotspot()
 	if bike:

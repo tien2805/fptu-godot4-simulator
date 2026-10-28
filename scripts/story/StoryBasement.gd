@@ -123,6 +123,7 @@ func _build_env() -> void:
 	e.glow_intensity = 0.7
 	env.environment = e
 	add_child(env)
+	LookPresets.set_base(self, "server_red")   # Q3: red emergency haze, blue screen fill
 
 
 func _build_player() -> void:

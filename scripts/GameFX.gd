@@ -954,6 +954,7 @@ static func upgrade_scene_visuals(root: Node, preset: String = "outdoor") -> voi
 		return
 	if _art_style() == "vice":
 		ViceStyle.apply(root, preset, _quality(), _trails())
+		LookPresets.refresh(root)   # Q3: an active look preset is written again over the rebuilt environment
 		return
 	# vật liệu đã chuyển kiểu vice trong phiên này (sub-resource .tscn dùng lại khi nạp lại cùng cảnh, vật liệu đang hiển
 	# thị khi đổi phong cách lúc chạy) -> trả về gốc; phiên chỉ chơi cổ điển thì không làm gì
@@ -1062,6 +1063,7 @@ static func upgrade_scene_visuals(root: Node, preset: String = "outdoor") -> voi
 		if key == "dawn":
 			sun.directional_shadow_max_distance = [220.0, 360.0, 520.0][q] # bóng dài buổi sớm
 			sun.light_angular_distance = 1.2
+	LookPresets.refresh(root)
 
 # ---------------------------------------------------------------------------
 # TIỆN ÍCH HUD CHUẨN GODOT 4 (anchors / containers, không offset cứng)
