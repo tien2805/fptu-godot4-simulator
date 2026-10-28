@@ -528,12 +528,15 @@ func crash(cause: String, push: Vector2 = Vector2.ZERO) -> void:
 		ch.on_biker_crash(self)
 
 
-## PHẢN ĐÒN (PlayerBikeCombat's counter-kick): no wobble, sent flying at once (a takedown, cause "counter").
+## PHẢN ĐÒN (PlayerBikeCombat's counter-kick), worth 2 kicks: a rider with 2 HP or less is sent flying at once (no wobble;
+## a takedown, cause "counter"); a heavy takes the 2 and wobbles.
 func take_counter(away: Vector2) -> String:
 	if not kickable():
 		return "ignored"
 	countered_n += 1
 	kicked_by_player = true
+	if hp > 2:
+		return take_kick(away, 2)            # a counter is worth 2 kicks: a heavy wobbles on
 	hp = 0
 	if stick and stick.visible:
 		_drop_stick(away)

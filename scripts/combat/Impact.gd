@@ -16,6 +16,7 @@
 #       "orbit_target" (the orbit's subject when it is not "target"), "hitstop_k" / "punch_k" / "fx_k" (scales), "no_hitstop", "no_punch", "no_fx", "no_sound", "cues" (extra
 #       [[cue, db], ...] played with the layers).
 #       Returns {"tier", "hitstop" (s actually added), "punch", "fx" (kinds), "cues" (played), "react"}.
+#   Impact.prepare(ctx)                    at encounter setup: warms the sound layers and builds the clock this frame
 #   Impact.clock(ctx) -> Impact            the one clock node (group "impact_clock", built on first use under the root)
 #   clock.hitstop(secs, light := false) -> float     freeze (time scale HITSTOP_SCALE) for round(secs * ticks) physics frames
 #   clock.slowmo(scale, secs, by := null) -> bool    combat slow motion (queued after a running hit-stop)
@@ -56,6 +57,9 @@ const TIERS: Dictionary = {
 const HITSTOP_SCALE: float = 0.05
 const LIGHT_CAP: float = 0.06            # s of light hit-stop at most ...
 const LIGHT_WINDOW: float = 0.2          # ... within any window this long
+const HEAVY_CAP: float = 0.08            # s of heavy / finisher hit-stop at most ...
+const HEAVY_WINDOW: float = 0.4          # ... within any window this long (a heavy right after a finisher gets none)
+const FINISHER_GAP: float = 1.5          # one finisher freeze per this long; another one in it freezes like a heavy
 const ORBIT_S: float = 0.5
 const ORBIT_SCALE: float = 0.3
 const CROWD_GAP: float = 1.2
@@ -83,6 +87,8 @@ var rt: float = 0.0
 # (frame F's delta is already computed) and the clock releases it in its tick of frame _hs_end; same for slow motion.
 var _hs_end: int = -1
 var _light_frames := PackedInt32Array()  # frame indices of the light freeze frames granted (for the cap)
+var _heavy_frames := PackedInt32Array()  # ... of the heavy / finisher freeze frames
+var _last_fin_pf: int = -1000000         # physics frame of the last finisher freeze
 var _slow_end: int = -1                  # last slow-motion frame (-1: none running)
 var _slow_frames: int = 0                # length of a slow motion queued after the freeze (0: none)
 var _slow_scale: float = 1.0
@@ -105,6 +111,8 @@ var hitstops: Array[Dictionary] = []
 var hitstop_count: int = 0
 var skipped: int = 0
 var light_capped: int = 0
+var heavy_capped: int = 0
+var finisher_downgraded: int = 0
 var slow_count: int = 0
 var orbit_count: int = 0
 var punches: Array[float] = []
@@ -120,6 +128,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	process_physics_priority = -100          # first in the frame: a freeze ends before the others read the time scale
 	ImpactAudio.warm()
+	_ensure_edge()                           # built now, never on the first hit
 	var bus: StringName = WeaponAudio.bus()
 	for i: int in 6:
 		var p := AudioStreamPlayer3D.new()
@@ -159,6 +168,21 @@ static func clock(ctx: Node) -> Impact:
 	n.name = "ImpactClock"
 	tree.root.add_child(n)
 	return n
+
+
+## Encounter setup (MeleeFight, BikeChase, GunFight, WeaponDirector, PlayerCombat): the sound layers start building on
+## worker threads now and the clock is built at the end of this frame, so the first hit never builds or synthesizes.
+static func prepare(ctx: Node) -> void:
+	ImpactAudio.warm()
+	if ctx == null or not is_instance_valid(ctx):
+		return
+	var build := func() -> void:
+		if is_instance_valid(ctx) and ctx.is_inside_tree():
+			clock(ctx)
+	if ctx.is_inside_tree():
+		build.call_deferred()                # deferred: the root may be busy adding children right now
+	else:
+		ctx.tree_entered.connect(build, CONNECT_ONE_SHOT | CONNECT_DEFERRED)
 
 
 ## The clock if one exists (no build).
@@ -350,7 +374,8 @@ static func _foreign_owner(me: Object) -> bool:
 
 
 ## Freeze for round(secs * ticks) physics frames (at least one). Skipped (0) while another node owns the time scale or this
-## clock's slow motion runs; light hits are capped (LIGHT_CAP per LIGHT_WINDOW). Returns the seconds of freeze added.
+## clock's slow motion runs; light hits are capped (LIGHT_CAP per LIGHT_WINDOW), heavy and finisher ones together
+## (HEAVY_CAP per HEAVY_WINDOW), and a second finisher within FINISHER_GAP freezes like a heavy. Returns the seconds added.
 func hitstop(secs: float, light: bool = false, tier: String = "") -> float:
 	if secs <= 0.0:
 		return 0.0
@@ -358,19 +383,35 @@ func hitstop(secs: float, light: bool = false, tier: String = "") -> float:
 		skipped += 1
 		return 0.0
 	var pf: int = Engine.get_physics_frames()
+	if tier == "finisher":
+		if pf - _last_fin_pf < roundi(FINISHER_GAP * float(_ticks())):
+			tier = "heavy"
+			secs = minf(secs, float(TIERS["heavy"]["hitstop"]))
+			finisher_downgraded += 1
+		else:
+			_last_fin_pf = pf
 	var want_end: int = pf + maxi(1, roundi(secs * float(_ticks())))
 	var cur_end: int = _hs_end if _hs_end >= pf else pf
 	var add: int = want_end - cur_end
 	if add <= 0:
 		return 0.0                           # covered by the freeze already running (same-frame hits: the longest wins)
 	if light:
-		add = _light_allowance(cur_end + 1, add)
+		add = _allowance(_light_frames, cur_end + 1, add, LIGHT_WINDOW, int(floor(LIGHT_CAP * float(_ticks()) + 1e-4)))
 		if add <= 0:
 			skipped += 1
 			light_capped += 1
 			return 0.0
 		for k: int in add:
 			_light_frames.append(cur_end + 1 + k)
+	elif tier == "heavy" or tier == "finisher":
+		if tier == "heavy":
+			add = _allowance(_heavy_frames, cur_end + 1, add, HEAVY_WINDOW, roundi(HEAVY_CAP * float(_ticks())))
+			if add <= 0:
+				skipped += 1
+				heavy_capped += 1
+				return 0.0
+		for k2: int in add:
+			_heavy_frames.append(cur_end + 1 + k2)
 	_hs_end = cur_end + add
 	RadialWheel.scale_owner = self
 	Engine.time_scale = HITSTOP_SCALE
@@ -381,15 +422,15 @@ func hitstop(secs: float, light: bool = false, tier: String = "") -> float:
 	return float(add) / float(_ticks())
 
 
-## How many of `add` new light frames starting at frame `first` fit the cap in every window that would contain them.
-func _light_allowance(first: int, add: int) -> int:
-	var win: int = maxi(1, roundi(LIGHT_WINDOW * float(_ticks())))
-	var cap: int = int(floor(LIGHT_CAP * float(_ticks()) + 1e-4))
+## How many of `add` new freeze frames starting at frame `first` fit `cap` frames in every `window_s` window that would
+## contain them, given the frames already granted in `granted`.
+func _allowance(granted: PackedInt32Array, first: int, add: int, window_s: float, cap: int) -> int:
+	var win: int = maxi(1, roundi(window_s * float(_ticks())))
 	var ok: int = 0
 	for n: int in range(1, add + 1):
 		var e: int = first + n - 1          # the window ending on the newest frame (earlier ones were checked at n - 1)
 		var cnt: int = n
-		for f: int in _light_frames:
+		for f: int in granted:
 			if f > e - win and f <= e:
 				cnt += 1
 		if cnt > cap:
@@ -482,6 +523,8 @@ func _physics_process(_d: float) -> void:
 			_release()
 	if _light_frames.size() > 32:
 		_light_frames = _light_frames.slice(_light_frames.size() - 16)
+	if _heavy_frames.size() > 64:
+		_heavy_frames = _heavy_frames.slice(_heavy_frames.size() - 32)
 	if _edge_s > 0.0:
 		_edge_s = maxf(0.0, _edge_s - _edge_decay * dt)
 		if _edge_mat:
@@ -528,9 +571,10 @@ func play(cue: String, pos: Vector3, db: float = 0.0) -> bool:
 	return true
 
 
+## The cue's stream; an ImpactAudio layer still building on its worker is skipped (null), never waited for.
 static func _stream(cue: String) -> AudioStream:
 	if ImpactAudio.is_cue(cue):
-		return ImpactAudio.stream(cue)
+		return ImpactAudio.ready_stream(cue)
 	if WeaponAudio.CUES.has(cue):
 		return WeaponAudio.stream(cue)
 	if SwordAudio.is_cue(cue):
@@ -540,6 +584,17 @@ static func _stream(cue: String) -> AudioStream:
 
 ## The red screen-edge flash: strength now, fading to 0 over secs.
 func flash_edge(color: Color, strength: float, secs: float) -> void:
+	_ensure_edge()
+	_edge_s = clampf(maxf(_edge_s, strength), 0.0, 1.0)
+	_edge_decay = _edge_s / maxf(secs, 0.05)
+	_edge_mat.set_shader_parameter("tint", Color(color.r, color.g, color.b, 1.0))
+	_edge_mat.set_shader_parameter("strength", _edge_s)
+	_edge_layer.visible = true
+	edge_flashes += 1
+
+
+## The edge-flash layer (built in _ready, hidden until a flash).
+func _ensure_edge() -> void:
 	if _edge_layer == null:
 		_edge_layer = CanvasLayer.new()
 		_edge_layer.name = "ImpactEdge"
@@ -555,12 +610,7 @@ func flash_edge(color: Color, strength: float, secs: float) -> void:
 		_edge_mat.shader = sh
 		r.material = _edge_mat
 		_edge_layer.add_child(r)
-	_edge_s = clampf(maxf(_edge_s, strength), 0.0, 1.0)
-	_edge_decay = _edge_s / maxf(secs, 0.05)
-	_edge_mat.set_shader_parameter("tint", Color(color.r, color.g, color.b, 1.0))
-	_edge_mat.set_shader_parameter("strength", _edge_s)
-	_edge_layer.visible = true
-	edge_flashes += 1
+		_edge_layer.visible = false
 
 
 func edge_strength() -> float:

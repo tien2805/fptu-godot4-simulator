@@ -138,7 +138,7 @@ const T_FINISHED: String = "HẠ GỤC"
 const T_GUARD_BREAK: String = "PHÁ THẾ THỦ"
 const T_UNARMED_ONLY: String = "Nhiệm vụ này chỉ dùng tay không"
 ## Control hint under the HP bar during a fight (key glyphs: allowed in control hints).
-const T_CONTROLS: String = "[Chuột trái] đấm · [Chuột phải] đá tạt · [Q] đỡ · [Space] lăn né · [E] hạ gục"
+const T_CONTROLS: String = "[Chuột trái] đấm · [Chuột phải] đá tạt · [Q] đỡ · [Space] lăn né · [E] hạ gục, ném, nhặt đồ"
 ## Refusals while a fight runs (MeleeFight / FreeRoam).
 const T_FIGHT_BIKE: String = "Đang đánh nhau, chưa lấy xe được"
 const T_FIGHT_PHONE: String = "Đang đánh nhau, chưa xem điện thoại được"
@@ -148,7 +148,8 @@ const T_SLAM: Dictionary = {"wall": "ĐẬP TƯỜNG", "car": "ĐẬP XE", "tabl
 const T_THROW: String = "QUẬT NGÃ"
 const T_PROP_BREAK: String = "GÃY RỒI"
 const T_PICKUP: String = "[E] Nhặt %s"
-const T_CONTROLS_PROP: String = "[Chuột trái] vụt · [Chuột phải] đập mạnh · [Q] đỡ · [Space] lăn né · [E] quật ngã"
+const T_THROW_PROMPT: String = "[E] Ném"
+const T_CONTROLS_PROP: String = "[Chuột trái] vụt · [Chuột phải] đập mạnh · [Q] đỡ · [Space] lăn né · [E] hạ gục, ném"
 
 # ----- sounds (CineAudio A1 cues, WeaponAudio Phase W cues) -----
 const CINE_CUES: Array[String] = ["impact_light", "impact_medium", "impact_heavy", "groan", "body_fall", "whoosh_down"]

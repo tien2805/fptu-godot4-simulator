@@ -282,6 +282,7 @@ func setup(opts: Dictionary) -> void:
 	if bike and not bike.crash_occurred.is_connected(_on_bike_crash):
 		bike.crash_occurred.connect(_on_bike_crash)   # before PlayerBikeCombat's own handler: the speed-scaled damage first
 	combat.setup(bike, {"roam": roam, "targets": bikers, "fx": fx})
+	Impact.prepare(self)                     # Q2: the clock and the sound layers ready before the first hit
 	combat.kick_hit.connect(_on_kick_hit)
 	combat.countered.connect(_on_countered)      # Q2: PHẢN ĐÒN, the grabbed stick
 	combat.stick_picked.connect(_on_stick_note.bind(BikeCombatData.T_STICK_GOT))

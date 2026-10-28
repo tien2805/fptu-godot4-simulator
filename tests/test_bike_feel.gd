@@ -95,6 +95,8 @@ func _run() -> void:
 	_check(riders.size() == 2 and stick_b.size() == 1 and heavy_b.size() == 1, "kinds: 2 riders, a stick rider, a heavy")
 	await _connect(riders[0] as BikerEnemy)
 	await _counter(riders[1] as BikerEnemy)
+	await _counter_heavy(heavy_b[0] as BikerEnemy)
+	_hold(heavy_b[0] as BikerEnemy, -18.0, -3.0)
 	await _stick(stick_b[0] as BikerEnemy, heavy_b[0] as BikerEnemy)
 	await _spin_and_hurt()
 	chase.stop()
@@ -159,24 +161,53 @@ func _counter(b: BikerEnemy) -> void:
 	await _frames(1)
 	_check(chase.combat.counters == 1 and b.countered_n == 1 and b.crash_cause == "counter" and b.is_down(), "PHẢN ĐÒN: he is sent flying (%s, %s)" % [b.crash_cause, b.state_name()])
 	_check(chase.takedowns == td0 + 1 and chase.hud.popup_text == BikeCombatData.T_COUNTER, "a takedown, '%s'" % chase.hud.popup_text)
+	_check(chase.combat.counter_slowmos == 1, "the counter's slow motion (%d)" % chase.combat.counter_slowmos)
 	await _frames(60)
 	_check(is_equal_approx(chase.combat.stability, st0) and b.results.is_empty(), "his kick never lands (stability %.0f)" % chase.combat.stability)
 	await _frames(40)
 
 
+## A counter is worth 2 kicks: a heavy (3) wobbles on with 1 left, no slow motion for a rider who stays up.
+func _counter_heavy(h: BikerEnemy) -> void:
+	_hold(h, 0.0, 1.8)
+	await _frames(25)
+	var n0: int = chase.combat.counter_slowmos
+	chase.combat._counter(h, 1)
+	await _frames(2)
+	_check(h.hp == h.max_hp - 2 and h.st == BikerEnemy.St.WOBBLE and not h.is_down() and chase.combat.counter_slowmos == n0,
+		"a counter on a heavy counts as 2 kicks: he wobbles on (hp %d, %s)" % [h.hp, h.state_name()])
+	await _frames(90)
+	h.hp = h.max_hp                          # whole again for the stick test
+
+
 func _stick(s: BikerEnemy, heavy: BikerEnemy) -> void:
+	# at chase speed (no teleport): the kicked stick flies into the rider's hands
+	Input.action_press("gas")
+	bike.current_speed_ms = 22.0
+	await _frames(30)                            # up to speed first: _hold places him at the player's speed
 	_hold(s, 0.0, 1.8)
 	await _frames(25)
+	var got: Array = []
+	chase.combat.stick_picked.connect(func() -> void: got.append(chase.hud.popup_text))   # after the chase's own handler
 	chase.combat.kick(1)
-	await _frames(15)
-	_check(s.stick_dropped and not s.stick.visible and chase.combat.drops.size() == 1, "the kicked stick rider drops his stick on the road")
-	await _frames(60)
-	var drop: Node3D = chase.combat.drops[0]["node"] if not chase.combat.drops.is_empty() else null
-	_check(drop != null and chase.combat.stick_swings == 0, "not picked up while away from it")
-	if drop:
-		drop.global_position = Vector3(bike.global_position.x, drop.global_position.y, bike.global_position.z)
-	await _frames(2)
-	_check(chase.combat.stick_picks == 1 and chase.combat.stick_swings == BikeCombatData.STICK_SWINGS and chase.hud.popup_text == BikeCombatData.T_STICK_GOT, "riding over it picks it up: 3 swings (%d, '%s')" % [chase.combat.stick_swings, chase.hud.popup_text])
+	var z_drop: float = INF
+	var z_catch: float = INF
+	for i0: int in 70:
+		await physics_frame
+		if z_drop == INF and s.stick_dropped:
+			z_drop = bike.global_position.z
+			_check(not s.stick.visible and chase.combat.drops.size() == 1 and chase.combat.stick_flying(), "the kicked stick rider lets go of his stick: it flies")
+		if z_catch == INF and chase.combat.stick_picks > 0:
+			z_catch = bike.global_position.z
+	_check(chase.combat.stick_picks == 1 and chase.combat.stick_swings == BikeCombatData.STICK_SWINGS and got == [BikeCombatData.T_STICK_GOT],
+		"caught at %.0f km/h: 3 swings (%d, %s)" % [absf(bike.current_speed_ms) * 3.6, chase.combat.stick_swings, str(got)])
+	_check(z_drop != INF and z_catch != INF and z_drop - z_catch > 4.0, "the bike rode on %.1f m while it flew" % (z_drop - z_catch))
+	# hands full: a second stick misses and lies on the road with its pickup ring
+	chase.combat.drop_stick(bike.global_position + Vector3(2.0, 0.13, -2.0))
+	await _frames(40)
+	var d0: Dictionary = chase.combat.drops[0] if not chase.combat.drops.is_empty() else {}
+	_check(not d0.is_empty() and not bool(d0["flying"]) and (d0["ring"] as Node3D).visible and chase.combat.stick_picks == 1, "hands full: the stick drops onto the road, ringed")
+	chase.combat.clear_drops()
 	# the heavy (3 kicks) beyond a kick's reach but inside the stick's
 	_hold(heavy, 0.0, BikeCombatData.KICK_REACH + 0.6)
 	await _frames(25)
@@ -195,6 +226,8 @@ func _stick(s: BikerEnemy, heavy: BikerEnemy) -> void:
 	await _frames(40)
 	_check(chase.combat.stick_swings == 0 and broke.size() == 1 and broke[0] == BikeCombatData.T_STICK_BROKE, "the third swing breaks the stick (%s)" % str(broke))
 	_check(heavy.is_down(), "the heavy went down (%s)" % heavy.state_name())
+	Input.action_release("gas")
+	bike.current_speed_ms = 0.0
 	await _frames(30)
 
 

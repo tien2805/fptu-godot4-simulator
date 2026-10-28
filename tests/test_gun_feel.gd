@@ -98,8 +98,11 @@ func _run() -> void:
 		"pistol recoil: the camera kicks back (%s)" % str(dirn.punches))
 	_check(fx.decal_count() == 1, "a bullet hole on the wall")
 	await physics_frame
+	_check(fx.muzzle_light.visible, "the muzzle light is still on the next frame")
 	await physics_frame
-	_check(not fx.muzzle_light.visible, "the muzzle light is off after the shot's frame")
+	await physics_frame
+	await physics_frame
+	_check(not fx.muzzle_light.visible, "the muzzle light is off after ~50 ms (%d frames)" % WeaponFX.MUZZLE_LIGHT_FRAMES)
 	for i: int in WeaponFX.DECAL_MAX + 6:
 		fx.decal(Vector3(float(i) * 0.1, 1.5, -11.84), Vector3(0.0, 0.0, 1.0))
 	_check(fx.decal_count() == WeaponFX.DECAL_MAX, "bullet holes are pooled (%d, max %d)" % [fx.decal_count(), WeaponFX.DECAL_MAX])

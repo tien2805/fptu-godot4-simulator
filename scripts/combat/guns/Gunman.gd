@@ -726,6 +726,7 @@ func _knock_out(from: Vector3) -> void:
 	shout.visible = false
 	jolt_t = 0.0
 	body.rotation = Vector3(0.0, yaw, 0.0)
+	# integration: Readability.unrim(body) must run HERE, before _fling_hat detaches the mask from the head
 	_fling_hat(away)
 	_apply_drop()
 	if fight:
@@ -754,6 +755,7 @@ func _tick_jolt(delta: float) -> void:
 
 
 ## The knockout knocks the mask (or a cap) off: it flies up and away from the shot, spinning, bounces once, then lies.
+## Readability.unrim(body) must have run before this (the mask leaves the body here and would keep a rim overlay).
 func _fling_hat(away: Vector3) -> void:
 	var at: Vector3 = body.global_position + Vector3(0.0, 1.6, 0.0)
 	var m: Node3D = body.find_child("*Mask", true, false) as Node3D

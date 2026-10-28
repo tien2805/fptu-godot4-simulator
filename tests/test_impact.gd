@@ -178,6 +178,20 @@ func _run() -> void:
 	_check(is_zero_approx(clock.hitstop(0.08)), "no freeze while the tree is paused")
 	paused = false
 	await _frames(3)
+	# ----- heavy / finisher caps -----
+	await _frames(100)
+	var hc0: int = clock.heavy_capped
+	var h1: float = clock.hitstop(0.08, false, "heavy")
+	await _frames(10)
+	var h2: float = clock.hitstop(0.08, false, "heavy")
+	_check(h1 > 0.0 and is_zero_approx(h2) and clock.heavy_capped == hc0 + 1, "a second heavy freeze within 0.4 s is capped (80 ms per 0.4 s)")
+	await _frames(40)
+	var fa: float = clock.hitstop(0.15, false, "finisher")
+	await _frames(40)
+	var fd0: int = clock.finisher_downgraded
+	var fb: float = clock.hitstop(0.15, false, "finisher")
+	_check(is_equal_approx(fa, 9.0 / 60.0) and fb <= 5.0 / 60.0 + 1e-4 and clock.finisher_downgraded == fd0 + 1, "one finisher freeze per 1.5 s, a second one freezes like a heavy (%.3f, %.3f)" % [fa, fb])
+	await _frames(100)
 	# ----- director, pool, target -----
 	var dirn := Director.new()
 	dirn.name = "Director"

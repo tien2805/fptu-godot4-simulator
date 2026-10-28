@@ -945,6 +945,7 @@ func take_hit(info: Dictionary) -> String:
 ## Impact.hit calls this after take_strike resolved the hit. tier "light" | "heavy" | "finisher", dir = attacker -> this.
 ## Returns the reaction: "react_front_head" / "react_l_body" / ... (stagger), "knockdown", "daze", "tumble", "ko" or "".
 func impact_react(tier: String, dir: Vector3, _opts: Dictionary = {}) -> String:
+	var parried: bool = String(_opts.get("result", "")) == "parried"   # _parried keeps its own 0.6 m push
 	var away: Vector3 = WeaponMath.flat_dir(dir)
 	if away.length_squared() < 0.01:
 		away = -facing_dir()
@@ -961,7 +962,7 @@ func impact_react(tier: String, dir: Vector3, _opts: Dictionary = {}) -> String:
 			return "knockdown"
 		St.STAGGER:
 			var r: String = _directional(away, tier)
-			if tier != "light":
+			if tier != "light" and not parried:
 				push_v = away * _knock_speed(Impact.knock(tier))
 				_slam_t = CombatData.SLAM_ARM_S
 			return r
@@ -999,6 +1000,8 @@ func _directional(away: Vector3, tier: String) -> String:
 
 ## The knockout's comic flying tumble along `away`: up and back, one backflip in the air, a floor bounce, then lying still.
 func _start_tumble(away: Vector3) -> void:
+	if st != St.KO:
+		return                               # only a knockout tumbles (never a finale, a knock-down or a flight)
 	tumbling = true
 	tumbles += 1
 	bounces = 0
@@ -1086,20 +1089,16 @@ func _slam(col: Object, at: Vector3, n: Vector3) -> void:
 		_end_tumble()
 	push_v = Vector3.ZERO
 	thrown = false
-	hp -= CombatData.SLAM_DMG
-	_last_hit_t = _t
 	var tier: String = "heavy"
 	if was_ko:
 		hp = 0.0
-	elif hp <= 0.0 and not _should_flee():
-		hp = 0.0
-		_knock_out(n)
-		tier = "finisher"
 	else:
-		if _should_flee():
-			hp = maxf(hp, 1.0)
-		_knockdown(n)                        # falls off it (and gets up; Dolly flees then)
-	var last: bool = tier == "finisher" and combat != null and combat.is_last(self)
+		var r: String = _env_damage(CombatData.SLAM_DMG, n)   # flee, knockout, howl (KatanaBoss: bend, phases) as for a strike
+		if r == "ko":
+			tier = "finisher"
+		elif r == "":
+			_knockdown(n)                    # falls off it and gets up
+	var last: bool = tier == "finisher" and st == St.KO and combat != null and combat.is_last(self)
 	Impact.hit(self, tier, {"pos": Vector3(at.x, global_position.y + 1.1, at.z), "dir": into, "fx": fx,
 		"cues": [[String(Impact.SLAM_CUE.get(surface, "slam")), 1.0]], "last": last, "orbit_target": self})
 	if combat and combat.hud:
@@ -1121,6 +1120,21 @@ func _bowl(other: MeleeEnemy, at: Vector3, hv: Vector3) -> void:
 	if combat and combat.hud:
 		combat.hud.popup(String(CombatData.T_SLAM["enemy"]), CombatHUD.GOLD)
 	slammed.emit(self, "enemy")
+
+
+## Q2: damage from a slam or a throw runs the same checks as a strike's (MeleeEnemy._after_damage: flee, knockout, the
+## howl; subclasses add theirs in _on_env_damage). Returns _after_damage's result ("" = still fighting).
+func _env_damage(dmg: float, away: Vector3) -> String:
+	hp -= dmg
+	_last_hit_t = _t
+	var r: String = _after_damage(away)
+	_on_env_damage(r)
+	return r
+
+
+## Subclass hook after slam / throw damage (KatanaBoss: the katana bends, the phases).
+func _on_env_damage(_r: String) -> void:
+	pass
 
 
 ## [E] near this enemy can grab it now: staggered, blocking or recovering (a boss only when staggered).
@@ -1152,15 +1166,13 @@ func take_throw(dir: Vector3, from: Vector3) -> String:
 		d = WeaponMath.flat_dir(global_position - from)
 	throws_taken += 1
 	stagger = 0.0
-	_last_hit_t = _t
-	hp -= CombatData.THROW_DMG
-	if _should_flee():
-		hp = maxf(hp, 1.0)                   # Dolly: thrown, then she flees after getting up
-	elif hp <= 0.0:
-		hp = 0.0
-		_knock_out(d)
-		_start_tumble(d)
+	var r: String = _env_damage(CombatData.THROW_DMG, d)   # held: a howl waits for the get-up (KNOCKDOWN end)
+	if r == "ko":
+		if st == St.KO:
+			_start_tumble(d)
 		return "ko"
+	if r != "":
+		return r                             # "flee" (Dolly runs off) / "howl"
 	_knockdown(d)
 	push_v = d * CombatData.THROW_SPEED
 	_launch_vy = CombatData.THROW_UP

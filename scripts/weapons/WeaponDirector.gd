@@ -95,6 +95,7 @@ var locked_slots: Dictionary = {}        # Phase C: slot -> true, cannot be equi
 
 
 func _ready() -> void:
+	Impact.prepare(self)                     # Q2: the clock and the sound layers ready before the first shot
 	rng.seed = 2026
 	ammo.resize(WeaponData.COUNT)
 	for i: int in WeaponData.COUNT:
@@ -441,7 +442,9 @@ func _hit_feedback(n: Node3D, info: Dictionary, r: String) -> void:
 	Impact.sound(self, "ko_tick" if ko else "hit_tick", n.global_position, -2.0 if ko else -6.0)
 	var kind: String = String(info.get("kind", ""))
 	if ko and (kind == "bullet" or kind == "pellet"):
-		Impact.hit(self, "finisher", {"pos": n.global_position + Vector3(0.0, 1.2, 0.0), "dir": WeaponMath.flat_dir(n.global_position - player.global_position),
+		# an encounter enemy (Gunman, a fight's MeleeEnemy) gets the finisher tier; pedestrians and officers the heavy one
+		var tier: String = "finisher" if n.has_method("is_hostile") else "heavy"
+		Impact.hit(self, tier, {"pos": n.global_position + Vector3(0.0, 1.2, 0.0), "dir": WeaponMath.flat_dir(n.global_position - player.global_position),
 			"fx": fx, "no_punch": true, "fx_k": 0.6})
 
 

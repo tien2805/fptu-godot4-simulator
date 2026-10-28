@@ -104,12 +104,17 @@ func _run() -> void:
 	var hs0: int = clock.hitstop_count
 	while boss.hit_log.size() == n:
 		await physics_frame
+	var p_par: Vector3 = boss.global_position
 	var low: int = 0
 	for i: int in 12:
 		await physics_frame
 		if Engine.time_scale < 0.5:
 			low += 1
 	_check(String(boss.hit_log.back()["result"]) == "perfect" and boss.parries == 1, "a perfect block: the parry (%s)" % String(boss.hit_log.back()["result"]))
+	_check(boss.st == MeleeEnemy.St.STAGGER and not boss.can_be_thrown() and combat.throw_target() == null, "Za Mẫn cannot be grabbed for a throw, even staggered")
+	await _frames(30)
+	var pd: float = Vector2(boss.global_position.x - p_par.x, boss.global_position.z - p_par.z).length()
+	_check(pd < 0.8, "the parry pushes him only its own 0.6 m (%.2f m)" % pd)
 	_check(clock.hitstop_count > hs0 and low >= 4, "the parry freezes (%d frames)" % low)
 	var big: bool = false
 	for k: int in range(pu0, clock.punches.size()):

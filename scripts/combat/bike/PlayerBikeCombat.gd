@@ -22,8 +22,9 @@
 #     -1.5 % speed); the target wobbles and crashes (BikerEnemy);
 #   - counter-kick "PHẢN ĐÒN!": a kick toward an attacker whose hit is at most COUNTER_WINDOW away (BikerEnemy.time_to_hit)
 #     sends him flying at once (crash cause "counter", a takedown), a finisher Impact and a short slow motion; `countered`;
-#   - grab weapon: drop_stick(pos, vel) (a kicked stick rider) leaves his stick on the road for STICK_LIFE; riding over it
-#     picks it up (`stick_picked`): STICK_SWINGS swings on Q / E with STICK_REACH_BONUS more reach and STICK_POWER damage,
+#   - grab weapon: drop_stick(pos, vel) (a kicked stick rider): the stick flies in an arc into the rider's hands (caught
+#     within STICK_CATCH_LAT / STICK_CATCH_ALONG of its landing spot; else it lies on the road for STICK_LIFE, riding over
+#     it picks it up) (`stick_picked`): STICK_SWINGS swings on Q / E with STICK_REACH_BONUS more reach and STICK_POWER damage,
 #     then it breaks (`stick_broke`);
 #   - the spin kick leaves a fading motion-trail arc behind the leg; one hit is heavy, two at once the finisher tier;
 #   - a hit on the player: a red screen-edge flash, a camera jolt and a HURT_WOBBLE_S bike wobble.
@@ -108,6 +109,8 @@ var _trail_mat: StandardMaterial3D = null
 var _wob_ph: float = 0.0
 var _kb_t: float = 0.0
 var _kb_sign: float = 0.0
+var counter_slowmos: int = 0
+var _counter_slow_rt: float = -99.0      # Impact clock real time of the last counter slow motion
 
 
 func setup(b: PlayerBike, opts: Dictionary = {}) -> void:
@@ -129,6 +132,7 @@ func setup(b: PlayerBike, opts: Dictionary = {}) -> void:
 func _ready() -> void:
 	process_priority = 11
 	process_physics_priority = 2
+	Impact.prepare(self)
 	for i: int in 3:
 		var p := AudioStreamPlayer3D.new()
 		p.name = "BikeSfx%d" % i
@@ -600,10 +604,13 @@ func _counter(t: Node3D, side: int) -> bool:
 	away = away.normalized() if away.length_squared() > 1e-4 else right2 * float(side)
 	_cue("swish", bike.global_position + Vector3(0.0, 0.8, 0.0), -2.0)
 	kicked.emit(side)
-	_connect_feel(t, away, "finisher", 1.3, [["keng", -4.0]])
+	var downs: bool = int(t.get("hp")) <= 2 if t.get("hp") != null else true   # a counter is worth 2 kicks (a heavy survives)
+	_connect_feel(t, away, "finisher" if downs else "heavy", 1.3, [["keng", -4.0]])
 	var c: Impact = Impact.clock(self)
-	if c != null:
-		c.slowmo(0.35, 0.35, self)
+	if c != null and downs and c.rt - _counter_slow_rt >= BikeCombatData.TD_GAP_S:   # rate-limited like takedowns
+		if c.slowmo(0.35, 0.35, self):
+			_counter_slow_rt = c.rt
+			counter_slowmos += 1
 	if t.has_method("take_counter"):
 		t.call("take_counter", away)
 	else:
@@ -613,17 +620,19 @@ func _counter(t: Node3D, side: int) -> bool:
 	return true
 
 
-## A kicked stick rider's stick on the road at pos (thrown off with vel, landing a little further): picked up by riding over
-## it within STICK_PICK_R while the hands are free; gone after STICK_LIFE.
-func drop_stick(pos: Vector3, vel: Vector3 = Vector3.ZERO) -> Node3D:
+## A kicked stick rider lets go of his stick at pos: it flies in an arc (STICK_FLIGHT_S, STICK_ARC_H) to where the rider's
+## hands will be (the bike's spot STICK_FLIGHT_S ahead at its speed) and is caught when the bike arrives within STICK_CATCH_LAT
+## to the side and STICK_CATCH_ALONG along it with free hands; otherwise it drops onto the road there, with a pickup ring:
+## riding over it within STICK_PICK_R still picks it up, until STICK_LIFE.
+func drop_stick(pos: Vector3, _vel: Vector3 = Vector3.ZERO) -> Node3D:
 	var n := Node3D.new()
 	n.name = "DroppedStick"
 	n.top_level = true
 	add_child(n)
-	var land: Vector3 = pos + Vector3(vel.x, 0.0, vel.z) * 0.25
-	n.global_position = Vector3(land.x, pos.y, land.z)
+	var from: Vector3 = Vector3(pos.x, pos.y + 1.2, pos.z)
+	n.global_position = from
 	var wood: StandardMaterial3D = CineFX._mat(Color("#7A5230"), 0.8)
-	var st: MeshInstance3D = CineFX._cyl(n, "Wood", 0.03, 0.036, 1.15, Vector3(0.0, 0.05, 0.0), wood)
+	var st: MeshInstance3D = CineFX._cyl(n, "Wood", 0.03, 0.036, 1.15, Vector3.ZERO, wood)
 	st.rotation = Vector3(0.0, 0.0, PI * 0.5)
 	var ring := MeshInstance3D.new()
 	ring.name = "PickupRing"
@@ -641,9 +650,21 @@ func drop_stick(pos: Vector3, vel: Vector3 = Vector3.ZERO) -> Node3D:
 	ring.mesh = tm
 	ring.scale = Vector3(1.0, 0.2, 1.0)
 	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ring.visible = false                     # only once it lies on the road
+	ring.top_level = true
 	n.add_child(ring)
-	drops.append({"node": n, "t": 0.0})
+	drops.append({"node": n, "ring": ring, "t": 0.0, "from": from, "to": hands_ahead(BikeCombatData.STICK_FLIGHT_S), "flying": true})
 	return n
+
+
+## Where the rider's hands will be in `secs` at the bike's current speed and heading (the stick's catch point).
+func hands_ahead(secs: float) -> Vector3:
+	if bike == null or not is_instance_valid(bike):
+		return Vector3.ZERO
+	var z: Vector3 = bike.global_transform.basis.z
+	var f := Vector3(-z.x, 0.0, -z.z)
+	f = f.normalized() if f.length_squared() > 1e-6 else Vector3.FORWARD
+	return bike.global_position + f * bike.current_speed_ms * secs + Vector3(0.0, 1.3, 0.0)
 
 
 func clear_drops() -> void:
@@ -659,19 +680,52 @@ func _tick_drops(delta: float) -> void:
 		var d: Dictionary = drops[i]
 		d["t"] = float(d["t"]) + delta
 		var n: Node3D = d["node"] if is_instance_valid(d["node"]) else null
-		if n == null or float(d["t"]) >= BikeCombatData.STICK_LIFE:
-			if n:
-				n.queue_free()
+		if n == null:
 			drops.remove_at(i)
 			continue
-		if stick_swings <= 0 and enabled and not knocked and riding() \
-				and Vector2(n.global_position.x - bp.x, n.global_position.z - bp.y).length() <= BikeCombatData.STICK_PICK_R:
+		var hands_free: bool = stick_swings <= 0 and enabled and not knocked and riding()
+		if bool(d["flying"]):
+			var u: float = clampf(float(d["t"]) / BikeCombatData.STICK_FLIGHT_S, 0.0, 1.0)
+			n.global_position = (d["from"] as Vector3).lerp(d["to"], u) + Vector3(0.0, BikeCombatData.STICK_ARC_H * sin(PI * u), 0.0)
+			n.rotation = Vector3(0.0, u * TAU * 1.5, 0.4 * sin(u * 9.0))
+			if u < 1.0:
+				continue
+			update_frame()
+			var rel := Vector2(n.global_position.x - bp.x, n.global_position.z - bp.y)
+			if hands_free and absf(rel.dot(right2)) <= BikeCombatData.STICK_CATCH_LAT and absf(rel.dot(fwd2)) <= BikeCombatData.STICK_CATCH_ALONG:
+				_take_stick(i, n)
+				continue
+			d["flying"] = false              # missed (steered away, braked, hands full): it drops onto the road
+			d["t"] = 0.0
+			n.global_position = Vector3(n.global_position.x, bike.global_position.y + 0.18, n.global_position.z)
+			n.rotation = Vector3(0.0, n.rotation.y, 0.0)
+			var ring: Node3D = d["ring"]
+			ring.visible = true
+			ring.global_position = n.global_position - Vector3(0.0, 0.04, 0.0)
+			continue
+		if float(d["t"]) >= BikeCombatData.STICK_LIFE:
 			n.queue_free()
 			drops.remove_at(i)
-			stick_picks += 1
-			_set_stick(BikeCombatData.STICK_SWINGS)
-			_cue("bag_drop", bike.global_position + Vector3(0.0, 1.0, 0.0), -2.0)
-			stick_picked.emit()
+			continue
+		if hands_free and Vector2(n.global_position.x - bp.x, n.global_position.z - bp.y).length() <= BikeCombatData.STICK_PICK_R:
+			_take_stick(i, n)
+
+
+func _take_stick(i: int, n: Node3D) -> void:
+	n.queue_free()
+	drops.remove_at(i)
+	stick_picks += 1
+	_set_stick(BikeCombatData.STICK_SWINGS)
+	_cue("bag_drop", bike.global_position + Vector3(0.0, 1.0, 0.0), -2.0)
+	stick_picked.emit()
+
+
+## The stick still in the air (tests).
+func stick_flying() -> bool:
+	for d: Dictionary in drops:
+		if bool(d["flying"]):
+			return true
+	return false
 
 
 ## The grabbed stick on the rider (raised on the right) with n swings left; 0 hides it.
@@ -827,7 +881,10 @@ func _cue(cue: String, at: Vector3, db: float = 0.0) -> void:
 		return
 	var p: AudioStreamPlayer3D = _sfx[_sfx_i]
 	_sfx_i = (_sfx_i + 1) % _sfx.size()
-	p.stream = ImpactAudio.stream(cue) if ImpactAudio.is_cue(cue) else (WeaponAudio.stream(cue) if WeaponAudio.CUES.has(cue) else CineAudio.sfx(cue))
+	var st: AudioStream = ImpactAudio.ready_stream(cue) if ImpactAudio.is_cue(cue) else (WeaponAudio.stream(cue) if WeaponAudio.CUES.has(cue) else CineAudio.sfx(cue))
+	if st == null:
+		return                               # a Q2 layer still building on its worker: skipped, never waited for
+	p.stream = st
 	p.volume_db = db
 	p.global_position = at
 	p.play()

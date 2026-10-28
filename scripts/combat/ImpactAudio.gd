@@ -9,8 +9,9 @@
 #   hit_tick    the gun hit marker tick                     ko_tick    the gun knockout marker (two ticks)
 #   stick_crack a wooden stick snapping
 # Owner override: user://sfx/<cue>.ogg | .mp3 (WeaponAudio.owner_file: local only, never committed).
-# warm() builds each missing cue on its own WorkerThreadPool task (never synthesize on a frame); stream(cue) adopts finished
-# tasks, waits for a pending one, or builds it as a last resort. Main thread only (static cache); synth(cue) is pure.
+# warm() builds each missing cue on its own WorkerThreadPool task (never synthesize on a frame); ready_stream(cue) (the
+# Impact clock's) returns a cue only when it is ready and never waits; stream(cue) adopts finished tasks, waits for a
+# pending one, or builds it as a last resort (tests, tools). Main thread only (static cache); synth(cue) is pure.
 class_name ImpactAudio
 extends RefCounted
 
@@ -62,6 +63,19 @@ static func _adopt(cue: String) -> void:
 	if not _cache.has(cue) and st != null:
 		_cache[cue] = st
 		warm_builds += 1
+
+
+## The cue only if it is ready now: cached, or its worker task just finished. A pending task is not waited for and a
+## missing cue starts building (both return null: the caller skips the sound this time).
+static func ready_stream(cue: String) -> AudioStream:
+	if _cache.has(cue):
+		return _cache[cue]
+	if _tasks.has(cue):
+		if WorkerThreadPool.is_task_completed(int((_tasks[cue] as Dictionary)["task"])):
+			_adopt(cue)
+		return _cache.get(cue)
+	warm([cue])
+	return null
 
 
 static func stream(cue: String) -> AudioStream:

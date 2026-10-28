@@ -230,6 +230,10 @@ func _throws() -> void:
 	await _frames(20)
 	e.force_block(3.0)
 	_check(e.can_be_thrown() and combat.throw_target() == e, "a blocking enemy within 1.5 m can be grabbed")
+	combat.fight_active = true                   # the combat HUD shows
+	await _frames(2)
+	_check(combat.hud.throw_shown and combat.hud.throw_node == e and not combat.hud.finisher_shown, "'%s' shows under him" % CombatData.T_THROW_PROMPT)
+	combat.fight_active = false
 	var p0: Vector3 = e.global_position
 	var hp0: float = e.hp
 	combat.finisher_override = true
@@ -256,6 +260,31 @@ func _throws() -> void:
 	_drop(e)
 	_drop(e2)
 	await _frames(3)
+	# Sói Xám (a boss): only staggered can he be thrown, and a throw over his howl line still makes him howl (on the get-up)
+	player.teleport(Vector3.ZERO, 0.0)
+	var w := MeleeEnemy.new()
+	w.name = "FeelWolf"
+	w.setup("soi_xam", {"stats": {"block_chance": 0.0, "dodge_chance": 0.0}, "seed": 21, "ai": false})
+	w.top_level = true
+	w.position = Vector3(0.0, 0.0, -1.2)
+	arena.add_child(w)
+	w.set_yaw(PI)
+	w.bind(combat, null, sibs, combat.fx)
+	sibs.append(w)
+	combat.add_enemy(w)
+	await _frames(20)
+	w.force_block(1.0)
+	_check(not w.can_be_thrown(), "a boss in his guard cannot be grabbed")
+	await _frames(70)
+	w.hp = w.max_hp * float(w.stats["howl_at"]) + 5.0
+	combat._strike(w, _info("jab", 1.0, 5.0))
+	combat.finisher_override = true
+	await _frames(3)
+	_check(combat.state == PlayerCombat.St.THROW and w.st == MeleeEnemy.St.HELD, "staggered, he is grabbed")
+	await _frames(170)
+	_check(w.throws_taken == 1 and w.howls == 1, "thrown under his howl line: he howls after getting up (%d, %s)" % [w.howls, w.state_name()])
+	_drop(w)
+	await _frames(3)
 
 
 func _props() -> void:
@@ -277,6 +306,7 @@ func _props() -> void:
 	await _frames(3)
 	var chair: ImprovisedWeapon = fight.props[0]
 	_check(combat.props.has(chair) and chair.can_pick() and combat.prop_target() == chair, "the fight's chair lies on the floor, in reach")
+	_check(combat.hud.prop_shown and combat.hud.prop_node == chair, "'%s' shows over it" % (CombatData.T_PICKUP % chair.display_name()))
 	combat.finisher_override = true
 	await _frames(3)
 	_check(combat.held_prop == chair and chair.state == "held" and String(combat.light_moves[0]["id"]) == "prop_swing" and combat.controls_text == CombatData.T_CONTROLS_PROP,

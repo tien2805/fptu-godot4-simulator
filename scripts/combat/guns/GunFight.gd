@@ -158,6 +158,7 @@ func setup(opts: Dictionary) -> void:
 		cover = CoverMap.new()
 		var root: Node = opts.get("cover_root", get_tree().root if is_inside_tree() else null)
 		cover.scan(root)
+	Impact.prepare(self)                     # Q2: the clock and the sound layers ready before the first hit
 	fx = weapons.fx if weapons else null
 	if fx == null:
 		fx = WeaponFX.new()

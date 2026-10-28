@@ -136,6 +136,7 @@ var _throw_target: Node3D = null
 
 func _ready() -> void:
 	process_physics_priority = 5         # after ThirdPersonController (0): its turn / move of this frame is overridden
+	Impact.prepare(self)                 # Q2: the clock and the sound layers ready before the first hit
 	for i: int in 4:
 		var p := AudioStreamPlayer3D.new()
 		p.name = "CombatSfx%d" % i
@@ -602,7 +603,7 @@ func _strike(e: Node3D, info: Dictionary) -> String:
 			var tier: String = strike_tier(kind, r)
 			_cue("impact_heavy" if tier != "light" else "impact_light", at, 0.0 if tier != "light" else -3.0)
 			var extra: Array = [["keng", 2.0]] if r == "parried" else []
-			Impact.hit(self, tier, {"pos": at, "dir": dir, "target": e, "fx": fx, "last": r == "ko" and is_last(e), "cues": extra})
+			Impact.hit(self, tier, {"pos": at, "dir": dir, "target": e, "fx": fx, "last": r == "ko" and is_last(e), "cues": extra, "result": r})
 			tiers.append(tier)
 			if tiers.size() > 32:
 				tiers.pop_front()
@@ -682,7 +683,7 @@ func _hit_people(heavy: bool) -> bool:
 	_cue("punch", best.global_position + Vector3(0.0, 1.3, 0.0))
 	fx.burst("dust", best.global_position + Vector3(0.0, 1.2, 0.0), Vector3.UP, 0.3)
 	if r != "none":
-		Impact.hit(self, "finisher" if r == "knocked_out" else ("heavy" if heavy else "light"), {"pos": best.global_position + Vector3(0.0, 1.2, 0.0),
+		Impact.hit(self, "heavy" if (r == "knocked_out" or heavy) else "light", {"pos": best.global_position + Vector3(0.0, 1.2, 0.0),
 			"dir": WeaponMath.flat_dir(best.global_position - pp), "fx": fx, "no_fx": true})
 	if r == "knocked_out":
 		_heat(WeaponData.HEAT_KO_UNARMED, best.global_position, "melee")

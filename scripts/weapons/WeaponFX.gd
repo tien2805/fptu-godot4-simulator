@@ -5,8 +5,8 @@
 # alpha over the last `fade` seconds and grow. CineFX keeps its star rings until it is freed, so the CineFX child is replaced
 # once nothing is alive (RECYCLE_AFTER s after the last burst / star window ended). top_level at the world origin: every
 # position is global. CPUParticles3D only.
-# Q2 gun feel (plan 2026-10-29-q2-feel.md T4): the muzzle flash lights the scene for exactly one physics frame (one pooled
-# OmniLight3D per FX layer), tracers are thicker and last longer, and hard-surface impacts leave pooled bullet-hole decals
+# Q2 gun feel (plan 2026-10-29-q2-feel.md T4): the muzzle flash lights the scene for MUZZLE_LIGHT_FRAMES physics frames
+# (~50 ms real; one pooled OmniLight3D per FX layer), tracers are thicker and last longer, and hard-surface impacts leave pooled bullet-hole decals
 # (DECAL_MAX quads, the oldest reused, fading over their last second).
 class_name WeaponFX
 extends Node3D
@@ -21,6 +21,7 @@ const DECAL_MAX: int = 24
 const DECAL_S: float = 12.0
 const DECAL_R: float = 0.07
 const MUZZLE_LIGHT_E: float = 6.0
+const MUZZLE_LIGHT_FRAMES: int = 3       # physics frames the flash light stays on (~50 ms of real time at 60 Hz)
 
 var cine: CineFX
 var t: float = 0.0
@@ -54,10 +55,10 @@ func _physics_process(delta: float) -> void:
 	t += delta
 	cine.update(t, Engine.time_scale)   # particles already run on scaled time: speed / time_scale = 1
 	_tick_transient()
-	if _light_pf >= 0 and Engine.get_physics_frames() > _light_pf:
+	if _light_pf >= 0 and Engine.get_physics_frames() >= _light_pf + MUZZLE_LIGHT_FRAMES:
 		_light_pf = -1
 		if muzzle_light:
-			muzzle_light.visible = false     # lit for the frame of the shot only (whatever the node order)
+			muzzle_light.visible = false     # lit for MUZZLE_LIGHT_FRAMES physics frames (~50 ms real, any node order)
 	if not _decals.is_empty():
 		_tick_decals()
 	if t > _busy_until + RECYCLE_AFTER and cine.get_child_count() > 0:
@@ -118,7 +119,7 @@ func muzzle(pos: Vector3, dir: Vector3, power: float = 1.0) -> void:
 	flash_light(pos + dir * 0.25, power)
 
 
-## A warm omni light at pos for exactly one physics frame (pooled: one per FX layer).
+## A warm omni light at pos for MUZZLE_LIGHT_FRAMES physics frames (pooled: one per FX layer).
 func flash_light(pos: Vector3, power: float = 1.0) -> void:
 	if muzzle_light == null:
 		muzzle_light = OmniLight3D.new()

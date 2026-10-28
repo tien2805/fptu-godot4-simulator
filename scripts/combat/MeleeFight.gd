@@ -118,6 +118,7 @@ func setup(opts: Dictionary) -> void:
 	start_line = String(opts.get("start_line", ""))
 	fight_seed = int(opts.get("seed", 1))
 	props_spec = opts.get("props", [])
+	Impact.prepare(self)                     # Q2: the clock and the sound layers ready before the first hit
 	if combat == null and player != null:
 		combat = PlayerCombat.new()
 		combat.name = "FightCombat"

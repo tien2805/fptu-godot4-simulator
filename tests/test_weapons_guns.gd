@@ -176,6 +176,8 @@ func _on_physics() -> void:
 				dir.fire_override = false
 				_check(dir.shots - shots0 == 3, "the shotgun fires every 0.8 s (3 shots in 100 frames, got %d)" % (dir.shots - shots0))
 				dir.equip(WeaponData.Slot.PISTOL)
+				for old: Node in arena.find_children("*", "Pedestrian", true, false):
+					old.queue_free()                 # the earlier steps' people (one fled into the line of fire after Q2's freezes)
 				World.wall(arena, Vector3(0.0, 1.5, -8.0), Vector3(6.0, 3.0, 0.5))
 				targets.append(World.ped(arena, Vector3(0.0, 0.0, -12.0), 85, player))
 				_next("wall")
