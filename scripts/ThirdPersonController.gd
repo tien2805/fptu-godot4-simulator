@@ -25,7 +25,7 @@
 # duration and speed.
 # Phase C (scripts/combat/guns/PlayerCover): move_lock = no walking input while crouched in cover (the cover holds the spot).
 # Q1 camera director (spec 2026-10-29): the camera is FootCamRig (scripts/camera/), updated once per rendered frame in
-# _process: CameraRules shoulder / distance / height, a critically damped follow, look-ahead, a pull-in from probes through
+# _process (its position springs on the physics tick: FootCamRig.physics_step): CameraRules shoulder / distance / height, a critically damped follow, look-ahead, a pull-in from probes through
 # cam_ray (keep adding camera exceptions to it), sprint FOV, a landing dip, the combat framing of a PlayerCombat fight and
 # the CameraDirector's punch / shake. yaw / pitch stay the camera's orientation (auto-yaw in combat writes yaw);
 # _update_camera(true) snaps it; the camera carries the CameraDirector.META_FX meta.
@@ -338,6 +338,8 @@ func _physics_process(delta: float) -> void:
 		CharacterBuilder.set_param(model, "run", 0.45 if sprint_anim else 0.0)
 		CharacterBuilder.set_param(model, "sprint", 1.0 if sprint_anim else 0.0)
 		CharacterBuilder.set_param(model, "lean", _lean)
+	if cam_rig:
+		cam_rig.physics_step(delta)          # the camera's position springs move on the same tick as the player
 
 
 func _look_input() -> void:

@@ -7,16 +7,20 @@
 #   D  CameraDirector: installed on demand (one, in the group), punch decays, shake on the player's camera and through
 #      GameFX on another camera, preview_cut and slowmo_orbit frame their target (walls block candidates), slow motion only
 #      through RadialWheel.scale_owner (another owner wins), the camera and the time scale come back, a pause ends a cut,
-#      a stale restore of the director camera hands back.
+#      a stale restore of the director camera hands back; the back-to-wall orbit (review probe layout) never sits in a wall;
+#      the orbit lasts as long as another owner's slow motion (its slowmo_remaining, else 0.65 s).
 #   F  FootCamRig: shoulder / distance / height, framing, pull-in against walls behind / beside / in a corner (never in
-#      geometry), look-ahead, sprint FOV, landing dip.
+#      geometry), look-ahead, sprint FOV, landing dip; a thin pole behind-right (review probe layout) never pumps the camera
+#      (< 2 reversals per second, < 0.05 m once settled); render frames above 60 Hz between physics ticks never move it.
 #   C  Combat framing in a MeleeFight with 1-4 enemies: distance by count, the player and the target framed, the auto-yaw
-#      never faster than 90 deg/s, an attacker straight behind stays behind (test_melee_combat's edge markers).
+#      never faster than 90 deg/s, an attacker straight behind stays behind (test_melee_combat's edge markers); while the
+#      mouse looks around the framing guard turns nothing sideways.
 #   B  BikeCamRig: height 1.35 m, distance 3.8 -> 5.2 m and FOV 70 -> 86 with speed, +8 with nitro, the drift swing to the
 #      outside, roll 30 % of the lean, the whip (cam_whip and a director punch with a dir), small road shake, the rider
 #      framed at rest / top speed / nitro / drift, pulled in (not into) a wall behind.
 #   T  BikeChase takedown cams: a crash cuts to the first clear candidate; walls block candidate 0, then 0 and 1; the
-#      rider framed with a clear view; a kick hit whips the chase cam.
+#      rider framed with a clear view; a clear angle is kept (no flicking); a kick hit whips the chase cam once, even when
+#      a director punch asks too.
 #   S  Cinematic shot helpers (two_shot, ots, hero, dutch, push_in) at u 0 / 0.5 / 1 for 3 actor spacings: the subjects
 #      inside the letterboxed safe area, OTS keeps the face clear of the foreground head, dutch rolls; the helpers
 #      validate, an unknown actor is refused, and CinePlayer plays a helper timeline with the subjects framed.
@@ -25,6 +29,13 @@
 extends SceneTree
 
 const World: Script = preload("res://tests/support/mayhem_world.gd")
+
+class FakeClock extends RefCounted:
+	var left: float = 1.0
+
+	func slowmo_remaining() -> float:
+		return left
+
 
 var fails: Array[String] = []
 var arena: Node3D
@@ -246,13 +257,14 @@ func _part_d() -> void:
 	# punch
 	await _frames(5)
 	d.punch(0.6, Vector3(1.0, 0.0, 0.0))
-	var peak: float = 0.0
-	var rpeak: float = 0.0
+	# the peaks from the impulses (frame-time independent: a loaded machine samples the 38 ms peak late)
+	var peak: float = CamSpring.impulse_peak(d._punch.vel.length(), CameraRules.PUNCH_OMEGA)
+	var rpeak: float = CamSpring.impulse_peak(d._punch_rot.vel.length(), CameraRules.PUNCH_OMEGA)
+	var seen: float = 0.0
 	for i: int in 30:
 		await _frames(1)
-		peak = maxf(peak, d.fx_offset.length())
-		rpeak = maxf(rpeak, d.fx_rot_deg.length())
-	_check(peak > 0.08 and peak < 0.2, "punch 0.6 kicks the camera ~0.12 m (%.3f)" % peak)
+		seen = maxf(seen, d.fx_offset.length())
+	_check(absf(peak - 0.6 * CameraRules.PUNCH_M) < 0.005 and seen > 0.03, "punch 0.6 kicks the camera 0.12 m (peak %.3f, seen %.3f)" % [peak, seen])
 	_check(rpeak > 1.0, "punch turns the camera a few degrees (%.2f)" % rpeak)
 	_check(d.fx_offset.length() < 0.01 and absf(d.fx_fov) < 0.1, "the punch springs back within 0.5 s (%.4f)" % d.fx_offset.length())
 	# shake on the player's camera
@@ -339,6 +351,53 @@ func _part_d() -> void:
 	await _frames(5)
 	_check(player.camera.current and is_equal_approx(Engine.time_scale, 1.0) and RadialWheel.scale_owner == null, "orbit over: the player's camera, normal time")
 	wl.queue_free()
+	# the review's back-to-wall room: a wall 0.8 m behind the player, side walls 2.5 m out, the target 2 m ahead
+	_place(Vector3(0.0, 0.0, 120.0), 0.0)
+	var room: Array[Node] = []
+	room.append(_wall(Vector3(0.0, 2.0, 120.0 + 0.8 + 0.25), Vector3(12.0, 4.0, 0.5)))
+	room.append(_wall(Vector3(-2.5 - 0.25, 2.0, 118.0), Vector3(0.5, 4.0, 8.0)))
+	room.append(_wall(Vector3(2.5 + 0.25, 2.0, 118.0), Vector3(0.5, 4.0, 8.0)))
+	var tgt2 := Node3D.new()
+	arena.add_child(tgt2)
+	tgt2.global_position = Vector3(0.0, 0.0, 118.0)
+	await _frames(60)
+	var started: bool = d.slowmo_orbit(tgt2, 0.5)
+	var in_wall: int = 0
+	var blocked: int = 0
+	var cut_frames: int = 0
+	for i: int in 40:
+		await _frames(1)
+		if d.cut_kind != "orbit":
+			continue
+		cut_frames += 1
+		var rep: Dictionary = CameraFraming.report(d.cam, CameraFraming.subject_points(tgt2), _space(), _excl())
+		if bool(rep["in_geo"]):
+			in_wall += 1
+		if not bool(rep["los"]):
+			blocked += 1
+	_check(in_wall == 0 and blocked == 0, "back to a wall: the orbit %s, 0 frames in a wall, 0 blocked (%d / %d / %d frames)" % ["plays" if started else "is refused", in_wall, blocked, cut_frames])
+	for w: Node in room:
+		w.queue_free()
+	tgt2.queue_free()
+	await _frames(5)
+	# the orbit lasts as long as another owner's slow motion: its slowmo_remaining(), else ORBIT_OWNED_S
+	_place(Vector3(0.0, 0.0, 0.0), 0.0)
+	await _frames(5)
+	var ck := FakeClock.new()
+	for case_i: int in 2:
+		RadialWheel.scale_owner = ck if case_i == 0 else RefCounted.new()
+		var want_s: float = ck.left if case_i == 0 else CameraRules.ORBIT_OWNED_S
+		var own: Object = RadialWheel.scale_owner
+		d.slowmo_orbit(enemy, 0.5)
+		var n_cut: int = 0
+		for i: int in 90:
+			await _frames(1)
+			if d.cut_kind == "orbit":
+				n_cut += 1
+		_check(absf(float(n_cut) - want_s * 60.0) <= 3.0, "under another owner's slow motion the orbit lasts %.2f s (%d frames)" % [want_s, n_cut])
+		if RadialWheel.scale_owner == own:
+			RadialWheel.scale_owner = null
+	Engine.time_scale = 1.0
 	# a pause ends a cut at once
 	d.slowmo_orbit(enemy, 2.0)
 	paused = true
@@ -442,6 +501,74 @@ func _part_f() -> void:
 	_check(landed_at >= 0 and low <= -0.08, "a roll landing dips the camera (%.3f m)" % low)
 	_check(absf(rig._dip.x) < 0.01, "the dip recovers (%.3f)" % rig._dip.x)
 	_check(_framed("foot_landed", player.camera, player), "after the landing: framed")
+	# the review's pole layout: a 0.2 m pole behind-right; the distance must settle, never pump
+	var worst_amp: float = 0.0
+	var worst_rev: float = 0.0
+	var pole_framed: int = 0
+	var k: int = 0
+	for lx: float in [0.3, 0.45, 0.6]:
+		for bz: float in [0.9, 1.2]:
+			var base := Vector3(-200.0 + 30.0 * float(k), 0.0, -200.0)
+			k += 1
+			var pole: StaticBody3D = _wall(base + Vector3(lx, 2.0, bz), Vector3(0.2, 4.0, 0.2))
+			_place(base, 0.0)
+			for i: int in 90:
+				await process_frame
+			var lo: float = INF
+			var hi: float = -INF
+			var flips: int = 0
+			var last: float = rig.dist
+			var sgn: float = 0.0
+			for i: int in 120:
+				await process_frame
+				var dd: float = rig.dist
+				lo = minf(lo, dd)
+				hi = maxf(hi, dd)
+				var ns: float = signf(dd - last) if absf(dd - last) > 1e-5 else 0.0
+				if ns != 0.0 and sgn != 0.0 and ns != sgn:
+					flips += 1
+				if ns != 0.0:
+					sgn = ns
+				last = dd
+			worst_amp = maxf(worst_amp, hi - lo)
+			worst_rev = maxf(worst_rev, float(flips) / 2.0)
+			if _framed("foot_pole", player.camera, player):
+				pole_framed += 1
+			pole.free()
+	_check(worst_rev < 2.0 and worst_amp < 0.05, "a thin pole behind-right never pumps the camera (worst %.1f reversals/s, %.3f m)" % [worst_rev, worst_amp])
+	_check(pole_framed == 6, "pole layouts: the player framed, the camera not in the pole (%d / 6)" % pole_framed)
+	# render frames above 60 Hz: between physics ticks the camera does not move (its position springs step on the tick)
+	_place(Vector3(-100.0, 0.0, -300.0), 0.0)
+	await _frames(5)
+	player.walk_override = true
+	player.input_override = Vector2(0.0, -1.0)
+	Engine.max_fps = 144
+	await _frames(30)
+	# the camera read at a process_frame was posed by the previous frame's _process, so it belongs to the physics count
+	# read one frame earlier: a change between two reads with the same physics count is a move without a physics tick
+	await process_frame
+	var pf_prev: int = Engine.get_physics_frames()
+	var pf_pose: int = -1
+	var last_cam: Vector3 = player.camera.global_position
+	var between: int = 0
+	var moved: int = 0
+	for i: int in 240:
+		await process_frame
+		var cp2: Vector3 = player.camera.global_position
+		var pf_now: int = Engine.get_physics_frames()
+		if i > 0 and pf_prev == pf_pose:
+			between += 1
+			if cp2.distance_to(last_cam) > 1e-4:
+				moved += 1
+		pf_pose = pf_prev
+		pf_prev = pf_now
+		last_cam = cp2
+	Engine.max_fps = 60
+	player.walk_override = false
+	player.input_override = null
+	print("    above 60 Hz: %d render frames between physics ticks, the camera moved in %d" % [between, moved])
+	_check(between > 20 and moved == 0, "render frames between physics ticks never move the camera (%d of %d)" % [moved, between])
+	await _frames(10)
 
 
 # ---------------------------------------------------------------------------
@@ -516,6 +643,28 @@ func _part_c() -> void:
 	_check(absf(wrapf(player.yaw - yaw0, -PI, PI)) < 0.05, "the camera never swings round to it (yaw moved %.1f deg)" % rad_to_deg(absf(wrapf(player.yaw - yaw0, -PI, PI))))
 	fb.stop()
 	fb.queue_free()
+	await _frames(3)
+	# while the mouse looks around, the framing guard turns nothing sideways (the mouse wins)
+	var ga: float = deg_to_rad(60.0)
+	var fg := MeleeFight.new()
+	fg.name = "FightGuard"
+	arena.add_child(fg)
+	fg.setup({"player": player, "seed": 6})
+	fg.add_wave([{"archetype": "courier", "at": Vector3(300.0 - sin(ga) * 4.0, 0.0, 30.0 - cos(ga) * 4.0), "opts": {"label": "G", "hp_scale": 50.0}}])
+	_place(Vector3(300.0, 0.0, 30.0), 0.0)
+	fg.start()
+	fg.combat.god = true
+	(fg.enemies[0] as MeleeEnemy).ai = false
+	var gmax: float = 0.0
+	for step: int in 7:
+		player.yaw = deg_to_rad(-10.0 * float(step))
+		for f: int in 20:
+			rig.look_input()
+			await _frames(1)
+			gmax = maxf(gmax, absf(rig.guard.y))
+	_check(gmax < 1e-4, "mouse look in a fight: the guard never turns the view sideways (max %.4f rad)" % gmax)
+	fg.stop()
+	fg.queue_free()
 	await _frames(3)
 
 
@@ -700,6 +849,11 @@ func _part_t() -> void:
 		await _frames(2)
 		b0.crash("traffic")
 		_check(c.cam_mode == "td" and c.cam.current, "round %d: the takedown cuts to the chase camera" % round_i)
+		if round_i == 0 and c._cam_td_ok(1):
+			c.cam_pick = 1                       # another clear angle: the re-check keeps it
+			await _frames(15)
+			_check(c.cam_pick == 1, "a clear takedown angle is kept at the re-check (no flicking)")
+			c.cam_pick = 0
 		_check(c.cam_pick == round_i, "round %d: candidate %d picked (got %d)" % [round_i, round_i, c.cam_pick])
 		var ok_n: int = 0
 		var n: int = 0
@@ -716,7 +870,9 @@ func _part_t() -> void:
 		if round_i == 0:
 			var w0: int = bike.cam_rig.whips
 			c.combat.kick_hit.emit(b1, -1)
-			_check(bike.cam_rig.whips == w0 + 1, "a kick hit whips the chase cam")
+			var dd: CameraDirector = CameraDirector.live()
+			dd.punch(0.35, b1.global_position - bike.global_position)   # the Impact punch of the same kick
+			_check(bike.cam_rig.whips == w0 + 1, "a kick hit whips the chase cam once, even with a director punch on top (%d)" % (bike.cam_rig.whips - w0))
 		c.stop()
 		c.queue_free()
 		for wn: Node in walls:

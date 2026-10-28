@@ -1689,12 +1689,27 @@ func _cam_pick_td() -> int:
 	var cands: Array[Vector3] = []
 	for i: int in CameraRules.TD_CANDIDATES.size():
 		cands.append(_cam_td_pos(i, c))
-	var pts := PackedVector3Array([c + Vector3.UP * 0.5, c + Vector3.UP * 1.2])
+	return maxi(0, CameraFraming.pick(get_world_3d().direct_space_state, cands, _cam_td_points(c), _cam_td_excl()))
+
+
+## Candidate i still sees the rider (the re-check keeps a clear angle: no flicking between two clear ones).
+func _cam_td_ok(i: int) -> bool:
+	if _cam_target == null or not is_instance_valid(_cam_target) or not is_inside_tree():
+		return false
+	var c: Vector3 = _cam_td_center()
+	return CameraFraming.view_ok(get_world_3d().direct_space_state, _cam_td_pos(i, c), _cam_td_points(c), _cam_td_excl())
+
+
+static func _cam_td_points(c: Vector3) -> PackedVector3Array:
+	return PackedVector3Array([c + Vector3.UP * 0.5, c + Vector3.UP * 1.2])
+
+
+func _cam_td_excl() -> Array[RID]:
 	var excl: Array[RID] = _ray_excl.duplicate()
 	var bw: Variant = roam.get("bank_walls") if roam else null
 	if bw is CollisionObject3D:
 		excl.append((bw as CollisionObject3D).get_rid())
-	return maxi(0, CameraFraming.pick(get_world_3d().direct_space_state, cands, pts, excl))
+	return excl
 
 
 func _tick_cam(rdt: float = 0.0) -> void:
@@ -1711,12 +1726,13 @@ func _tick_cam(rdt: float = 0.0) -> void:
 			_cam_restore()
 			return
 		_cam_check_t -= rdt
-		if _cam_check_t <= 0.0:              # re-check at 10 Hz: a wall coming between switches to the next clear angle
+		if _cam_check_t <= 0.0:              # re-check at 10 Hz: only a blocked angle is re-picked (no flicking)
 			_cam_check_t = CameraRules.TD_RECHECK_S
-			var np: int = _cam_pick_td()
-			if np != cam_pick:
-				cam_pick = np
-				cam_repicks += 1
+			if not _cam_td_ok(cam_pick):
+				var np: int = _cam_pick_td()
+				if np != cam_pick:
+					cam_pick = np
+					cam_repicks += 1
 		var c: Vector3 = _cam_td_center()
 		cam.global_position = _cam_td_pos(cam_pick, c)
 		cam.look_at(c + Vector3.UP * 0.5, Vector3.UP)

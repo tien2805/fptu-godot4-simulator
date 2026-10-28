@@ -57,6 +57,8 @@ func snap() -> void:
 
 ## Whip toward a world direction (the kicked target): the side by the bike's right axis.
 func whip(dir: Vector3) -> void:
+	if _whip_t >= 0.0 and _whip_t < CameraRules.BIKE_WHIP_S:
+		return                               # one whip per kick (the chase's kick_hit and an Impact punch both ask for it)
 	var r: Vector3 = bike.global_basis.x
 	var s: float = Vector2(dir.x, dir.z).dot(Vector2(r.x, r.z))
 	if absf(s) < 1e-3:

@@ -14,7 +14,10 @@
 #                                 side, angle picked by an occlusion test, pushing in a little; slow motion CUT_SCALE while
 #                                 it runs; then the previous camera. false when it cannot run (no target, no camera).
 #   slowmo_orbit(target, secs=0.5) last-enemy knockouts: slow motion ORBIT_SCALE and an orbit of ORBIT_DEG round the target
-#                                 (the clear side, by occlusion test), then the previous camera and normal time.
+#                                 (the clear side, by occlusion test; from a start spot that sees the target, the radius
+#                                 shrunk toward it when a wall is there; false below ORBIT_R_MIN, the gameplay camera
+#                                 stays), lasting as long as a running slow motion of another owner (owner_remaining, else
+#                                 ORBIT_OWNED_S), then the previous camera and normal time.
 #   cutting() / cut_kind ("" | "preview" | "orbit"), cam (the director camera, made on the first cut), cuts / orbits.
 # Slow motion only through RadialWheel.scale_owner: never over another owner (the cut still plays, in normal time) and the
 # scale goes back to 1.0 only while this node owns it. A pause (cinematic), a disable or leaving the tree ends a cut at once.
@@ -57,6 +60,7 @@ var _cut_look: Vector3 = Vector3.ZERO    # last look point (a freed target keeps
 var _orbit_a0: float = 0.0
 var _orbit_sign: float = 1.0
 var _orbit_sweep: float = 0.0
+var _orbit_r: float = CameraRules.ORBIT_R
 var _owns_time: bool = false
 var _excl: Array[RID] = []
 
@@ -233,28 +237,83 @@ func slowmo_orbit(target: Node3D, secs: float = 0.5) -> bool:
 	var pts: PackedVector3Array = _cut_points(target, look)
 	var excl: Array[RID] = _excl_for(target)
 	var space: PhysicsDirectSpaceState3D = _space()
+	# the start spot must see the target and not be in a wall; else the radius shrinks to the clear distance toward it,
+	# and below ORBIT_R_MIN the orbit is refused (the gameplay camera stays)
+	var r: float = CameraRules.ORBIT_R
+	if not CameraFraming.view_ok(space, _orbit_pos(look, a0, r), pts, excl):
+		var v: Vector3 = _orbit_pos(look, a0, r) - look
+		var f: float = _clear_frac(space, look, look + v, excl)
+		r = (v.length() * f - CameraRules.PULL_MARGIN) * (r / v.length())
+		if r < CameraRules.ORBIT_R_MIN or not CameraFraming.view_ok(space, _orbit_pos(look, a0, r), pts, excl):
+			return false
 	var best_sign: float = 1.0
-	var best_sweep: float = -1.0
+	var best_sweep: float = 0.0
 	for sgn: float in [1.0, -1.0]:
 		var sweep: float = 0.0
 		for step: int in range(1, 4):         # the arc at 1/3, 2/3 and the end
 			var a: float = a0 + sgn * deg_to_rad(CameraRules.ORBIT_DEG) * float(step) / 3.0
-			if not CameraFraming.view_ok(space, _orbit_pos(look, a), pts, excl):
+			if not CameraFraming.view_ok(space, _orbit_pos(look, a, r), pts, excl):
 				break
 			sweep = deg_to_rad(CameraRules.ORBIT_DEG) * float(step) / 3.0
 		if sweep > best_sweep:
 			best_sweep = sweep
 			best_sign = sgn
-	_begin_cut("orbit", target, view, secs)
+	# as long as the slow motion that is running (an Impact clock's), at least secs
+	var length: float = secs
+	var owner_obj: Object = RadialWheel.scale_owner
+	if owner_obj != null and owner_obj != self and is_instance_valid(owner_obj):
+		var rem: float = owner_remaining(owner_obj)
+		length = maxf(secs, rem if rem > 0.0 else CameraRules.ORBIT_OWNED_S)
+	_begin_cut("orbit", target, view, length)
 	_orbit_a0 = a0
 	_orbit_sign = best_sign
-	_orbit_sweep = maxf(best_sweep, deg_to_rad(15.0))
+	_orbit_sweep = best_sweep              # 0 = a held shot from the clear start (never swings into a wall)
+	_orbit_r = r
 	_cut_look = look
 	cam.fov = CameraRules.ORBIT_FOV
 	_slow(CameraRules.ORBIT_SCALE)
 	orbits += 1
 	_tick_cut(0.0)
 	return true
+
+
+## Real seconds left of the slow motion a time-scale owner runs: its slowmo_remaining() when it has one, else an Impact
+## clock's frame counters; -1 when unknown.
+static func owner_remaining(o: Object) -> float:
+	if o == null or not is_instance_valid(o):
+		return -1.0
+	if o.has_method("slowmo_remaining"):
+		return float(o.call("slowmo_remaining"))
+	var se: Variant = o.get("_slow_end")
+	var sf: Variant = o.get("_slow_frames")
+	var he: Variant = o.get("_hs_end")
+	if se is int and sf is int and he is int:
+		var end: int = -1
+		if int(se) >= 0:
+			end = int(se)
+		elif int(he) >= 0 and int(sf) > 0:
+			end = int(he) + int(sf)
+		if end >= 0:
+			return float(end - Engine.get_physics_frames()) / float(Engine.physics_ticks_per_second)
+	return -1.0
+
+
+## Fraction of a -> b clear of static geometry.
+static func _clear_frac(space: PhysicsDirectSpaceState3D, a: Vector3, b: Vector3, excl: Array[RID]) -> float:
+	if space == null:
+		return 1.0
+	var rq := PhysicsRayQueryParameters3D.create(a, b)
+	rq.collide_with_areas = false
+	var ex: Array[RID] = excl.duplicate()
+	for i: int in CameraFraming.MAX_PASSES:
+		rq.exclude = ex
+		var h: Dictionary = space.intersect_ray(rq)
+		if h.is_empty():
+			return 1.0
+		if CameraFraming.is_blocker(h.get("collider")):
+			return a.distance_to(h["position"]) / maxf(a.distance_to(b), 1e-4)
+		ex.append(h["rid"])
+	return 1.0
 
 
 func _cut_ready(target: Node3D, view: Camera3D) -> bool:
@@ -296,7 +355,7 @@ func _tick_cut(rdt: float) -> void:
 	if cut_kind == "preview":
 		pos = _cut_look + _cut_off * (1.0 - CameraRules.CUT_PUSH * e)
 	else:
-		pos = _orbit_pos(_cut_look, _orbit_a0 + _orbit_sign * _orbit_sweep * e)
+		pos = _orbit_pos(_cut_look, _orbit_a0 + _orbit_sign * _orbit_sweep * e, _orbit_r)
 	var d: Vector3 = _cut_look - pos
 	if d.length_squared() > 1e-4:
 		var up: Vector3 = Vector3.UP if absf(d.normalized().y) < 0.995 else Vector3.FORWARD
@@ -323,8 +382,8 @@ func _end_cut(quiet: bool) -> void:
 	_cut_target = null
 
 
-func _orbit_pos(look: Vector3, a: float) -> Vector3:
-	return look + Vector3(sin(a), 0.0, cos(a)) * CameraRules.ORBIT_R + Vector3.UP * CameraRules.ORBIT_UP
+func _orbit_pos(look: Vector3, a: float, r: float = CameraRules.ORBIT_R) -> Vector3:
+	return look + Vector3(sin(a), 0.0, cos(a)) * r + Vector3.UP * CameraRules.ORBIT_UP
 
 
 ## The chest of a character (subject points), else the node's origin + 1 m.
