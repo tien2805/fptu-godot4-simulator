@@ -237,6 +237,10 @@ func _process(_d: float) -> bool:
 					phase = 999
 				return false
 			var nb: NightBuilding = esc.night
+			if not mark.has("nb_look"):
+				mark["nb_look"] = true
+				_check(LookPresets.active(nb) == "campus_horror", "the night building wears the campus_horror look (%s)" % LookPresets.active(nb))
+				_check(nb.player.cam_rig != null, "the night escape runs on the Q1 foot camera rig")
 			_check(nb.stalkers.size() == 4 and bool(nb.player.character_opts.get("female", false)), "4 stalkers, the protagonist as the player")
 			if not mark.has("run2"):
 				nb._on_caught(nb.stalkers[0])

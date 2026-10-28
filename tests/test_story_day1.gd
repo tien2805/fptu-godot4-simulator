@@ -477,6 +477,8 @@ func _process(_d: float) -> bool:
 			_check(mc.events.has("flicker") and mc.scare.flicker_events >= 1, "the tubes stutter")
 			_corridor_to(mc, 0.3)
 			_check(mc.figure.visible, "the figure stands at the far end")
+			_check(mc.cuts == 1, "a staged director cut onto the figure")
+			_check(LookPresets.active(fr) == MissionCorridor.LOOK, "the corridor walk wears the campus_horror look (%s)" % LookPresets.active(fr))
 			_corridor_to(mc, 0.35)
 			_check(mc.events.has("window") and mc.slam.playing, "a sheep face slams against the dark window (%s)" % str(mc.events))
 			_advance(12.0)
@@ -507,6 +509,7 @@ func _process(_d: float) -> bool:
 				return false
 			_check(_finish_cine() == "cine_d1_corridor", "cine_d1_corridor follows the walk")
 			_check(is_inf(_player().combat_speed_cap), "the walk cap is lifted")
+			_check(LookPresets.active(fr) != MissionCorridor.LOOK, "the horror look is popped after the walk (%s)" % LookPresets.active(fr))
 			_next(11)
 		11:
 			if frames < 5:
