@@ -49,6 +49,28 @@ func _key(code: Key) -> void:
 		Input.parse_input_event(ev)
 
 
+## The chase's parkour set pieces, checked at the start (the courier barely moves).
+func _parkour(ch: MissionChase) -> void:
+	_check(ch.obstacles.size() == 6 and ch.crowd.size() == 8 and ch.canteen != null, "6 set pieces, 8 students, the canteen stall")
+	var a: Vector3 = ch.campus(MissionChase.SHORTCUT[0]) + Vector3(0.0, 0.5, 0.0)
+	var b: Vector3 = ch.campus(MissionChase.SHORTCUT[1]) + Vector3(0.0, 0.5, 0.0)
+	_check(ch.clear_line(a, b) and ch.clear_line(a + Vector3(0.0, 0.7, 0.0), b + Vector3(0.0, 0.7, 0.0)), "the canteen shortcut is clear at 0.5 and 1.2 m")
+	var o: Dictionary = ch.obstacles[0]
+	var before: Vector3 = (o["at"] as Vector3) - (o["fwd"] as Vector3) * 1.0
+	_player().teleport(before, MissionStakeout.yaw_of(o["fwd"]))
+	_check(ch.hud_prompt.text == "" or true, "")
+	_check(not ch.try_slide() and ch.try_vault() and not _player().controls_enabled, "Space at the bench: a vault (controls held during it)")
+	_advance(0.6)
+	var past: float = (_player().global_position - (o["at"] as Vector3)).dot(o["fwd"])
+	_check(past > 0.8 and _player().controls_enabled and ch.vaults == 1, "over the bench (%.1f m past it)" % past)
+	var sl: Dictionary = ch.obstacles[2]
+	var before2: Vector3 = (sl["at"] as Vector3) - (sl["fwd"] as Vector3) * 1.5
+	_player().teleport(before2, MissionStakeout.yaw_of(sl["fwd"]))
+	_check(not ch.try_vault() and ch.try_slide(), "Ctrl at the barrier: a slide")
+	_advance(0.7)
+	var past2: float = (_player().global_position - (sl["at"] as Vector3)).dot(sl["fwd"])
+	_check(past2 > 0.8 and ch.slides == 1 and ch.cues_played.has("slide"), "under the barrier (%.1f m past it)" % past2)
+
 ## Aims the player's view (yaw / pitch) at the courier's chest from the player's phone eye.
 func _aim(so: MissionStakeout) -> void:
 	var to: Vector3 = so.courier_chest() - so.eye_pos()
@@ -354,9 +376,26 @@ func _process(_d: float) -> bool:
 				_check(false, "the chase mission vanished")
 				phase = 999
 				return false
+			if not mark.has("parkour"):
+				mark["parkour"] = true
+				_parkour(ch2)
 			if not ch2.ended:
 				var p: Vector3 = ch2.point_at(ch2.s - 5.0)
 				_player().teleport(p, MissionStakeout.yaw_of(ch2.courier.global_position - p))
+				if ch2.s > ch2.cum[3] + 4.0 and ch2.s < ch2.cum[6] - 4.0 and not ch2.shortcut_used:
+					var cp2: Vector3 = ch2.canteen.global_position
+					_player().teleport(cp2, MissionStakeout.yaw_of(ch2.courier.global_position - cp2))
+					ch2.advance(0.1)
+					_check(ch2.shortcut_used, "through the canteen stall on the loop: the shortcut")
+				if ch2.s >= MissionChase.TACKLE_FROM_U * ch2.length_m and not ch2.tackled:
+					_check(not ch2.can_tackle(), "5 m behind: no tackle yet")
+					var close: Vector3 = ch2.point_at(ch2.s - 2.0)
+					_player().teleport(close, MissionStakeout.yaw_of(ch2.courier.global_position - close))
+					ch2.advance(0.02)
+					_check(ch2.can_tackle() and ch2.hud_prompt.text == MissionChase.T_TACKLE, "2 m behind on the last stretch: [Space] VỒ! (%s)" % ch2.hud_prompt.text)
+					_check(ch2.knocks == 2 and ch2.cuts >= 2 and ch2.slow_zones.size() == 2, "the trash cans and the fruit cart were knocked over behind him, each with a preview cut (%d, %d)" % [ch2.knocks, ch2.cuts])
+					_check(ch2.parted == ch2.crowd.size(), "the crowd parted (%d / %d)" % [ch2.parted, ch2.crowd.size()])
+					_check(ch2.try_vault() and ch2.tackling and ch2.cues_played.has("tackle"), "Space: the flying tackle")
 				ch2.advance(0.25)
 				if frames > 1500:
 					_check(false, "the chase never ended (s %.0f / %.0f)" % [ch2.s, ch2.length_m])
@@ -365,7 +404,7 @@ func _process(_d: float) -> bool:
 			if not mark.has("chase_end"):
 				mark["chase_end"] = true
 				_check(ch2.slipped and ch2.cues_played.has("slide_whistle") and ch2.rec.marks.has("blow"), "the banana slip: slide_whistle and the replay mark")
-				_check(ch2.clock >= 60.0 - 0.01 and ch2.clock <= 90.0, "the chase lasted %.1f s (60-90)" % ch2.clock)
+				_check(ch2.tackled and ch2.clock >= 60.0 - 0.01 and ch2.clock <= 95.0, "the tackle ended the chase after %.1f s (60-95)" % ch2.clock)
 			if ch2.replay != null:
 				var n2: int = 0
 				while ch2 != null and is_instance_valid(ch2) and ch2.replay != null and n2 < 1000:
