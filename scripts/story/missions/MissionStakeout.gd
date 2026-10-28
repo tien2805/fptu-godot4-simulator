@@ -109,6 +109,8 @@ var _last_aim: Vector3 = Vector3.ZERO
 var _pose: GunPose
 var _want_phone: bool = false
 var _won_t: float = -1.0
+var _combat: Node = null                      # the roam's PlayerCombat, off for the stake-out ([Q] is the phone, not a block)
+var _combat_was: bool = true
 ## The side-on window of the current moment (phase_t from .. to): his face shows, a photo can be clear.
 var profile_from: float = 1.5
 var in_profile: bool = false
@@ -242,6 +244,10 @@ func _start() -> void:
 	_build_finder()
 	if player and player.model:
 		_pose = GunPose.attach(player.model)
+	_combat = roam.get("combat") if roam else null
+	if _combat != null and is_instance_valid(_combat):
+		_combat_was = bool(_combat.get("enabled"))
+		_combat.set("enabled", false)
 	_reset()
 
 
@@ -729,6 +735,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _cleanup() -> void:
+	if _combat != null and is_instance_valid(_combat):
+		_combat.set("enabled", _combat_was)
+	_combat = null
 	raise_phone(false)
 	if player and is_instance_valid(player):
 		player.move_lock = false
