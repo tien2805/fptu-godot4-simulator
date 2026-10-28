@@ -89,6 +89,8 @@ var player: ThirdPersonController
 var bike: PlayerBike
 var pedestrians: PedestrianSpawner
 var traffic: RoamTraffic
+## Q3 street lamps, light pools, near-player lamp lights, brighter lane paint and glowing signs at night (NightRoads).
+var night_roads: NightRoads
 ## false = không dựng người đi đường / xe chạy (test_free_roam đặt trước add_child để các pha kiểm tra cố định)
 var crowd_enabled: bool = true
 ## false = no weapons / wanted level (Phase W): test_free_roam sets it before add_child so its phases stay deterministic.
@@ -197,6 +199,7 @@ func _ready() -> void:
 	_build_ground()
 	_build_regions()
 	_build_campus()
+	_build_night_roads()
 	_build_player()
 	_build_bike()
 	if not story_mode:
@@ -500,6 +503,14 @@ func _build_regions() -> void:
 	var plot: PackedVector2Array = MapData.poly(md.landmark("campus_plot"))
 	if plot.size() >= 3:
 		_cull_region_inside_plot(campus, plot)
+
+
+## Q3 night roads: lamps along the drawn carriageways of the three regions, none inside the campus plot.
+func _build_night_roads() -> void:
+	night_roads = NightRoads.new()
+	add_child(night_roads)
+	var plot: PackedVector2Array = MapData.poly(md.landmark("campus_plot")) if md.landmark("campus_plot") is Array else PackedVector2Array()
+	night_roads.build(md, ["vinhomes", "corridor", "campus"], plot)
 
 
 ## OSM có đường nội bộ + 4 cầu thang trong lô FPT; FPTUCampusBuilder đã dựng sân/đường riêng ở đó nên các tam giác
@@ -1103,6 +1114,7 @@ func set_time_of_day(preset: String) -> void:
 		we.environment = _base_env
 	GameFXScript.upgrade_scene_visuals(self, key)
 	LookPresets.set_base(self, LookPresets.for_roam_tod(key))   # Q3: night_city at night, campus_day by day
+	if night_roads: night_roads.set_night(key == "night")      # Q3 lamp pools / near lamp lights at night only
 	if traffic: traffic.set_night_lamps(RoamTraffic.is_dark_preset(key))   # OB-D6 traffic lamps
 	_refresh_lab_hotspot()
 	if bike:
