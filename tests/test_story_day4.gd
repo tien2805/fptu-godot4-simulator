@@ -120,6 +120,7 @@ func _process(_d: float) -> bool:
 		return _end()
 	match phase:
 		0:
+			Difficulty.set_easy(false)   # Thường (the owner's setting is loaded by GameFX before the first frame)
 			sd.call("new_story", {"female": true, "name": "Thảo", "variant": 0, "hair_style": "bob", "hair_color": 0, "skin": 2})
 			sd.set("day", 3)
 			(sd.get("evidence") as Array).append("E1")
@@ -178,6 +179,12 @@ func _process(_d: float) -> bool:
 			m = sr.mission_node
 			var mf: MissionFight = m
 			_check(String(sd.get("step")) == "d4_brawl" and mf.fight.waves.size() == 2 and mf.fight.enemies.size() == 4, "the brawl: wave 1 of 4 clones")
+			_check(mf.arena != null and mf.arena.tables.size() == 6 and mf.fight.props.size() == 5, "the canteen arena: 6 tables to slam into, trays and chairs on the floor")
+			var slam_tables: int = 0
+			for t: Dictionary in mf.arena.tables:
+				if (t["body"] as Node).is_in_group("slam_table"):
+					slam_tables += 1
+			_check(slam_tables == 6, "every table is a slam surface")
 			_next(10)
 		10:
 			var mf2: MissionFight = m as MissionFight if is_instance_valid(m) else null
@@ -188,6 +195,11 @@ func _process(_d: float) -> bool:
 					for e: Variant in mf2.fight.enemies:
 						arch.append((e as MeleeEnemy).archetype_id)
 					_check(arch.has("dolly") and arch.size() == 3, "wave 2: Cừu Dolly and two clones (%s)" % str(arch))
+					_food_fight_start(mf2)
+				if mark.has("w2") and not mark.has("food_done"):
+					if frames - int(mark.get("food_t0", frames)) >= 30:
+						_food_fight_throws(mf2)
+					return false
 				for e2: Variant in mf2.fight.alive():
 					var me: MeleeEnemy = e2
 					if me.archetype_id == "dolly" and mark.has("w2") and frames % 30 != 0:
@@ -226,6 +238,10 @@ func _process(_d: float) -> bool:
 					phase = 999
 				return false
 			var nb: NightBuilding = esc.night
+			if not mark.has("nb_look"):
+				mark["nb_look"] = true
+				_check(LookPresets.active(nb) == "campus_horror", "the night building wears the campus_horror look (%s)" % LookPresets.active(nb))
+				_check(nb.player.cam_rig != null, "the night escape runs on the Q1 foot camera rig")
 			_check(nb.stalkers.size() == 4 and bool(nb.player.character_opts.get("female", false)), "4 stalkers, the protagonist as the player")
 			if not mark.has("run2"):
 				nb._on_caught(nb.stalkers[0])
@@ -343,6 +359,63 @@ func _process(_d: float) -> bool:
 	return false
 
 
+## Wave 2 escalation: the food fight is on (throwers, a preview cut); a table flipped between a thrower and the player.
+func _food_fight_start(mf: MissionFight) -> void:
+	var ar: ArenaDressing = mf.arena
+	_check(ar.food_on and ar.throwers.size() == ArenaDressing.thrower_count() and ar.cuts >= 1, "wave 2: the food fight (%d throwers, a preview cut)" % ar.throwers.size())
+	_check(ArenaDressing.throw_tell_s() >= 0.5, "every throw is telegraphed for at least 0.5 s")
+	for th: Dictionary in ar.throwers:
+		th["t"] = 99.0
+	var tp: Vector3 = (ar.throwers[0]["body"] as Node3D).global_position
+	var best: int = -1
+	var bd: float = 999.0
+	for i: int in ar.tables.size():
+		var d: float = MissionFight.flat((ar.tables[i]["root"] as Node3D).global_position, tp)
+		if d < bd:
+			bd = d
+			best = i
+	var tpos: Vector3 = (ar.tables[best]["root"] as Node3D).global_position
+	var back: Vector3 = Vector3(tpos.x - tp.x, 0.0, tpos.z - tp.z).normalized()
+	var stand: Vector3 = tpos + back * 1.1
+	_player().teleport(stand, MissionFight.yaw_of(-back))
+	_check(ar.flip_target() == best, "the nearest table is in reach for a flip")
+	var hp0: float = mf.fight.combat.hp
+	_check(ar.try_flip() and bool(ar.tables[best]["flipped"]) and ar.flips == 1 and ar.soup_splashes >= 1, "[E] flips the table: soup everywhere")
+	_check(not ar.try_flip() or ar.flips == 2, "")
+	mark["food_t0"] = frames
+	mark["food_stand"] = stand
+	mark["food_hp0"] = hp0
+
+
+## A thrower's bun at the player behind the flipped table is blocked; in the open it splats them.
+func _food_fight_throws(mf: MissionFight) -> void:
+	mark["food_done"] = true
+	var ar: ArenaDressing = mf.arena
+	var stand: Vector3 = mark["food_stand"]
+	_player().teleport(stand, 0.0)
+	ar.throwers[0]["t"] = 0.0
+	var n: int = 0
+	while ar.throws < 1 or not ar.buns.is_empty():
+		_player().teleport(stand, 0.0)
+		mf.advance(0.05)
+		n += 1
+		if n > 80:
+			break
+	_check(ar.throws == 1 and ar.blocked == 1 and ar.food_hits == 0, "behind the flipped table the bun is blocked (%d thrown, %d blocked)" % [ar.throws, ar.blocked])
+	var tp: Vector3 = (ar.throwers[0]["body"] as Node3D).global_position
+	var open: Vector3 = tp - ar.fwd * 4.0
+	open = Vector3(open.x, mf.ground_y(open), open.z)
+	var hp1: float = mf.fight.combat.hp
+	ar.throwers[0]["t"] = 0.0
+	n = 0
+	while ar.throws < 2 or not ar.buns.is_empty():
+		_player().teleport(open, MissionFight.yaw_of(tp - open))
+		mf.advance(0.05)
+		n += 1
+		if n > 80:
+			break
+	_check(ar.food_hits == 1 and mf.fight.combat.hp < hp1, "in the open the bun splats the player (%d hits, hp %.0f -> %.0f)" % [ar.food_hits, hp1, mf.fight.combat.hp])
+
 ## The canteen undercover, scripted.
 func _canteen(mc: MissionCanteen) -> void:
 	_check(mc.clones.size() == 12, "12 students at the tables")
@@ -354,6 +427,24 @@ func _canteen(mc: MissionCanteen) -> void:
 			same = same and String(mc.clones[i].get_meta("cast_id", "")) == "clone"
 	_check(same, "every other student is the same clone")
 	_check(mc.hum != null and mc.hum.get_parent() == dolly, "the music-box hum sits on Dolly")
+	# Wave 2 clue search: only Dolly has all three clues; decoys share one or two
+	var full: int = 0
+	var partial: int = 0
+	for i2: int in mc.clues.size():
+		var cl: Dictionary = mc.clues[i2]
+		var n_cl: int = int(cl["hum"]) + int(cl["wool"]) + int(cl["salad"]) + int(cl["pop"])
+		if bool(cl["hum"]) and bool(cl["wool"]) and bool(cl["salad"]):
+			full += 1
+		elif n_cl > 0:
+			partial += 1
+	_check(full == 1 and bool(mc.clues[mc.dolly_index]["hum"]) and partial == MissionCanteen.decoy_sets().size(), "only Dolly has all three clues; %d decoys share some" % partial)
+	_check(mc.notes[mc.dolly_index].contains("hộp nhạc") and mc.notes[mc.dolly_index].contains("sợi len") and mc.notes[mc.dolly_index].contains("rau"), "her note: hum, wool thread, salad")
+	_check(bool(mc.trays[mc.dolly_index].get_meta("salad", false)), "a grass salad on her tray")
+	var pop_i: int = -1
+	for i3: int in mc.clues.size():
+		if bool(mc.clues[i3]["pop"]):
+			pop_i = i3
+	_check(pop_i >= 0 and not mc.notes[pop_i].contains("hộp nhạc") and mc.decoy_hums.size() >= 1, "a decoy hums pop along to earbuds (not the music box)")
 	_check(mc.has_tray and mc.tray.get_parent() == _player().model, "the tray is carried")
 	var wrong_i: int = (mc.dolly_index + 1) % 12
 	_face(mc, wrong_i)
@@ -386,6 +477,27 @@ func _canteen(mc: MissionCanteen) -> void:
 	_check(mc.state == "failed" and sr.fail_ui.visible and sr.fail_ui.title_label.text == "BỊ LỘ", "a full meter: BỊ LỘ")
 	sr.fail_ui.press_retry()
 	_check(mc.state == "running" and mc.suspicion == 0.0 and mc.has_tray and mc.clones.size() == 12 and mc.retries == 1, "THỬ LẠI: meter, tray and students reset")
+	# Linh's hints over the radio, one clue every 15 s; staring too long raises suspicion
+	var sp: Vector3 = mc.xf * MissionCanteen.START
+	_player().teleport(sp, MissionCanteen.yaw_of(mc.xf.basis * Vector3(0.0, 0.0, 1.0)))
+	for k2: int in 80:
+		mc.advance(0.5)
+	_check(mc.hints_given == 4 and mc.cues_played.count("linh") == 4 and mc.radio_label.text.begins_with("LINH"), "Linh's three hints and a joke over the radio (%d)" % mc.hints_given)
+	_check(mc.state == "running" and mc.suspicion < 5.0 and mc.clock < MissionCanteen.lunch_s(), "calm with the tray: no suspicion (%.0f)" % mc.suspicion)
+	var stare_i: int = (mc.dolly_index + 3) % 12
+	_face(mc, stare_i)
+	var s2: float = mc.suspicion
+	for k3: int in int((MissionCanteen.stare_s() + 1.5) / 0.1):
+		mc.advance(0.1)
+	_check(mc.suspicion > s2 + 5.0 and mc.bubble.text == "Nhìn gì mà nhìn?", "staring at a student too long: suspicion (%.0f -> %.0f)" % [s2, mc.suspicion])
+	for k4: int in int((MissionCanteen.lunch_s() - mc.clock) / 0.5) + 2:
+		if mc.state != "running":
+			break
+		_player().teleport(sp, MissionCanteen.yaw_of(mc.xf.basis * Vector3(0.0, 0.0, 1.0)))
+		mc.advance(0.5)
+	_check(mc.state == "failed" and sr.fail_ui.visible and sr.fail_ui.title_label.text == "TOANG!", "lunch over without an accusation: TOANG!")
+	sr.fail_ui.press_retry()
+	_check(mc.state == "running" and mc.clock < 0.01 and mc.retries == 2, "THỬ LẠI once more")
 	_check(mc.accuse(mc.dolly_index) == "dolly" and mc.state == "done", "the right accusation: Cừu Dolly found")
 
 

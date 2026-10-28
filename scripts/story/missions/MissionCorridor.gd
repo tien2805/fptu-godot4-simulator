@@ -16,6 +16,9 @@
 # "Giảm hù dọa": no blackout (a slow dim), quieter cues, no stutter strobe (ScareDirector.reduce_scares); the locker opens
 # slower, a soft sting.
 # No fail state: a discovery walk (the beat's retry is not needed).
+# Wave 2 (plan 2026-10-29-w2-early.md Task 7): the Q3 look "campus_horror" is pushed on the roam for the walk (popped in
+# _cleanup); the figure's first appearance gets a staged director cut (a slow 1.0 s preview cut showing it standing at the
+# far end), the "behind you" moment a camera punch toward it ("Giảm hù dọa": no punch).
 class_name MissionCorridor
 extends StoryMission
 
@@ -40,6 +43,8 @@ const TURN_S: float = 0.5
 ## The locker stands on the right wall a little past the LOCKER_P point (local z).
 const LOCKER_Z: float = 0.6
 const LOCKER_D: float = 0.5
+const LOOK: String = "campus_horror"
+const FIGURE_CUT_S: float = 1.0
 
 var set_root: Node3D
 var corridor: Node3D
@@ -58,6 +63,8 @@ var _yaws: Array[Vector2] = []
 var _behind_t: float = -1.0
 const _MASK_IN := Vector3(0.0, 1.45, 0.0)
 var _blackout_t: float = -1.0
+var cuts: int = 0
+var _look_on: bool = false
 
 
 func _start() -> void:
@@ -86,6 +93,9 @@ func _start() -> void:
 	if tube:
 		scare.register_light_groups([{"pos": xf * Vector3(0.0, HEIGHT_M, Z0 - LEN_M * 0.5), "mat": tube, "energy": tube.emission_energy_multiplier}])
 	StoryAudio.warm(["sheep_bleat_distorted", "whisper_bed", "metal_creak", "heartbeat", "locker_slam"])
+	if roam:
+		LookPresets.apply(LOOK, roam)
+		_look_on = true
 	_reset()
 
 
@@ -286,6 +296,7 @@ func _tick(dt: float) -> void:
 	if progress >= 0.25 and not "figure" in events:
 		events.append("figure")
 		figure.visible = true
+		_stage_figure()
 	if progress >= WINDOW_P and not "window" in events:
 		events.append("window")
 		slam.start(scare, xf * Vector3(-WIDTH_M * 0.5 + 0.1, 1.6, WINDOW_Z), xf.basis * Vector3(-1.0, 0.0, 0.0), player.global_position, 1.6)
@@ -308,6 +319,9 @@ func _tick(dt: float) -> void:
 			_behind_t = BEHIND_S
 			scare.loud_sting()
 			scare.screen_hit()
+			var d: CameraDirector = CameraDirector.live()
+			if d != null:
+				d.punch(0.5, -f)   # the camera recoils from the face
 	if progress >= LOCKER_P and not "locker" in events and not "blackout" in events and scare.try_fake_out("locker"):
 		events.append("locker")
 		burst_locker()
@@ -335,7 +349,18 @@ func _tick(dt: float) -> void:
 			set_prompt("...Có tiếng gì đó sau lưng?")
 
 
+## The staged camera for the figure: a slow director cut onto it standing at the far end, then back to the walk.
+func _stage_figure() -> void:
+	cuts += 1
+	var d: CameraDirector = CameraDirector.live()
+	if d != null and figure.is_inside_tree():
+		d.preview_cut(figure, FIGURE_CUT_S)
+
+
 func _cleanup() -> void:
+	if _look_on and roam and is_instance_valid(roam):
+		LookPresets.restore(roam, LOOK)
+	_look_on = false
 	if slam and is_instance_valid(slam):
 		slam.stop()
 	if scare and is_instance_valid(scare):

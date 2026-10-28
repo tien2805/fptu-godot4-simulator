@@ -19,8 +19,8 @@ const VOICE_DB: float = -10.0
 ## beat id -> [[t, speaker, line, dich], ...] (mission clock seconds, in order)
 const SCRIPTS: Dictionary = {
 	"d1_stakeout": [
-		[9.0, "mr_t", "Chụp được mặt người nhận hàng là đủ. Đừng xông vào nha em.", ""],
-		[38.0, "mr_t", "À, em nhớ tắt đèn flash. Lần trước thầy chụp lộ mất.", ""]],
+		[9.0, "mr_t", "Chụp rõ mặt shipper đủ 3 cảnh là được. Đừng xông vào nha em.", ""],
+		[24.0, "mr_t", "Bãi xe có bảo vệ đi tuần đó em. Thấy ổng thì núp phía bên kia xe.", ""]],
 	"d1_chase": [
 		[12.0, "chu_bay", "Thằng mũ đỏ chạy về phía cổng Tây đó con! Lu đuổi không kịp!", ""]],
 	"d2_chase": [

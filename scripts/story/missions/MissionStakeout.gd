@@ -1,68 +1,198 @@
 # File: res://scripts/story/missions/MissionStakeout.gd
-# Day 1 stake-out (spec B-D5 beat 3): the real D1 parking at night (FPTUCampusBuilder.parking_center_local). Shipper Mũ
-# Đỏ waits in the lane with a buyer, two guards patrol the lane. Stay out of the three watchers' sight for DURATION s and
-# photograph the handover with [E] while it happens (WINDOW), the courier in frame within PHOTO_M (the Extra-stage idea).
-# Seen (a 70° cone of SIGHT_M with a clear ray, or closer than NEAR_M) = "Bị phát hiện!", the stake-out restarts from the
-# start spot. The handover window over without a photo = fail ("TOANG!", retry). DURATION s with the photo = done.
-# The photo key is [E] (consumed; S is the walk-back key). The "too far" / "not in frame" lines show only during the
-# handover window; before it [E] does nothing.
-# Sight checks run at 10 Hz.
-# Horror polish (H-D7): once per mission, at RUSTLE_AT s, leaves rustle behind the player (rustle), LU_DELAY s later the
-# shiba Lu trots up from behind (a short sting, "Lu! Mày làm tao hết hồn."), sits, then trots off: a fake-out within the
-# mission ScareDirector's fake-out budget (no loops, no flicker; "Giảm hù dọa": a soft sting, quieter cues).
+# Day 1 stake-out as a tension mini-game (spec B-D5 beat 3; Wave 2 rework, plan 2026-10-29-w2-early.md Task 4, master plan
+# Q4b): the real D1 parking at night (FPTUCampusBuilder parking lane, v = 103.5). Shipper Mũ Đỏ meets a buyer at the far end
+# of the lane with his back to the player; parked cars along the lane are the cover.
+#   - The phone camera: hold [Q] or the right mouse button to raise it (a first-person viewfinder at eye height, zooming
+#     in over ZOOM_S; walking stops while it is up). [E] / left click shoots. A CLEAR photo needs the courier's chest
+#     face within centre_deg() of the view, the view held still for steady_s(), a clear line and the courier within photo_m().
+#     The handover has three moments (he checks the order on his phone, opens the box, hands it over): one clear photo
+#     of each, three in all, wins (the aim point is his face: over a car roof the phone sees it). His back is turned during
+#     a moment except a side-on window of profile_s() somewhere in it (the prompt "HẮN NGHIÊNG MẶT!"): only then is a
+#     photo clear. A blurred shot (not steady / not centred) clicks loudly: a little suspicion.
+#   - He turns round: every moment ends with a telegraph (he freezes, a red "Hửm?" bubble, a heartbeat) for tell_s(),
+#     then he looks back down the lane for look_s(), sweeping. While he looks, the SUSPICION meter fills when he sees
+#     the player (a ray to the head: standing 1.55 m shows over a car roof, ducked 0.9 m does not). [Ctrl] ducks (a crouch
+#     pose, slow walk; the phone then shoots from 1.0 m: over a car it is blocked). Full meter = "BỊ LỘ" (retry from the
+#     start); the handover over (handover_s()) without the three photos = "TOANG!".
+#   - Distractions: a guard walks the lane by from the far end at guard_at() (his own sight cone fills the meter too);
+#     at bark_at() leaves rustle behind the player and chú Bảy's shiba Lu trots up and barks: the courier spins round
+#     toward the bark at once (a short telegraph, bark_tell_s()). Lu's appearance sting is the mission ScareDirector's one
+#     fake-out ("Giảm hù dọa": a soft sting, quieter cues); the bark itself comes every attempt.
+# Sight checks run at 10 Hz. Every tuned number goes through Difficulty.pick(normal, easy).
+# Tests: raise_phone(on), set duck_override, aim with the player's yaw / pitch, take_photo() returns
+# "clear" | "blur" | "far" | "blocked" | "done" | "" (no phone / not running).
 class_name MissionStakeout
 extends StoryMission
 
-const DURATION: float = 60.0
-const WINDOW := Vector2(34.0, 48.0)
-const SIGHT_M: float = 12.0
-const HALF_FOV_DEG: float = 35.0
-const NEAR_M: float = 2.5
-const PHOTO_M: float = 22.0
 const CHECK_S: float = 0.1
-const GUARD_SPEED: float = 1.3
-const GUARD_PAUSE: float = 1.6
-## Campus-plot local spots (u, 0, v): the lane centre is v = 103.5.
-const HANDOVER := Vector3(122.0, 0.0, 103.5)
-const BUYER := Vector3(120.6, 0.0, 103.5)
-const START := Vector3(90.0, 0.0, 103.5)
-const GUARD_A := [Vector3(108.0, 0.0, 101.6), Vector3(138.0, 0.0, 101.6)]
-const GUARD_B := [Vector3(104.0, 0.0, 105.6), Vector3(138.0, 0.0, 105.6)]
-const T_SEEN: String = "Bị phát hiện! Rình lại từ đầu."
-const T_MISSED: String = "Lỡ mất khoảnh khắc giao hàng rồi."
-const T_PHOTO: String = "Đã chụp! Ảnh giao hàng rõ mồn một."
-const T_TOO_FAR: String = "Xa quá, ảnh mờ tịt. Lại gần hơn."
-const T_NO_FRAME: String = "Quay camera về phía shipper rồi chụp."
-const T_WINDOW: String = "ĐANG GIAO HÀNG! [E] Chụp ảnh"
-const T_START: String = "Núp kín, đừng để bảo vệ thấy. Lúc giao hàng thì bấm [E] chụp ảnh."
-const RUSTLE_AT: float = 18.0
-const LU_DELAY: float = 1.6
-const LU_STAY: float = 3.0
-const LU_LEAVE: float = 1.6
+const ZOOM_S: float = 0.5
+const PHONE_FOV: float = 52.0
+const ZOOM_FOV: float = 24.0
+const EYE_STAND: float = 1.55
+const EYE_DUCK: float = 1.0
+const HEAD_STAND: float = 1.55              # the sight rays aim at the player's head: standing it shows over a car roof,
+const HEAD_DUCK: float = 0.9                # ducked behind a car it does not
+const STEADY_DEG_S: float = 9.0              # the view counts as still below this turn rate
+const HALF_FOV_DEG: float = 38.0
+const NEAR_M: float = 3.0
+const SWEEP_DEG: float = 35.0
+const GUARD_SPEED: float = 1.6
+const GUARD_HALF_DEG: float = 35.0
+const DUCK_SPEED: float = 1.5
+const PROFILE_DEG: float = 75.0
+const BARK_LEAD: float = 1.4                 # rustle this long before Lu barks
 const LU_BEHIND_M: float = 2.6
-const T_LU: String = "Lu! Mày làm tao hết hồn."
+const MOMENTS: Array[String] = ["xem đơn trên điện thoại", "mở hộp hàng", "trao hộp hàng"]
+## Campus-plot local spots (u, 0, v): the lane centre is v = 103.5; the courier faces +u (away from the player).
+const HANDOVER := Vector3(122.0, 0.0, 103.5)
+const BUYER := Vector3(123.5, 0.0, 103.5)
+const START := Vector3(90.0, 0.0, 103.5)
+const GUARD_PATH := [Vector3(138.0, 0.0, 103.5), Vector3(84.0, 0.0, 103.5)]
+const CARS: Array[Vector3] = [Vector3(97.0, 0.0, 101.3), Vector3(104.0, 0.0, 101.3), Vector3(111.0, 0.0, 101.3),
+	Vector3(100.5, 0.0, 105.7), Vector3(107.5, 0.0, 105.7), Vector3(114.5, 0.0, 105.7)]
+const CAR_PAINT: Array[Color] = [Color("#C0392B"), Color("#DFE6E9"), Color("#2D3436"), Color("#2980B9"), Color("#BDC3C7"), Color("#16A085")]
+const T_SEEN: String = "Hắn thấy mày rồi!"
+const T_MISSED: String = "Giao hàng xong mất rồi, chưa đủ 3 ảnh."
+const T_LO_REASON: String = "Shipper Mũ Đỏ nhìn thẳng vào mày: \"Ê, chụp gì đó?!\""
+const T_PHOTO: String = "Ảnh rõ! (%d/3) %s"
+const T_BLUR: String = "Ảnh mờ! Giữ yên máy, canh giữa shipper."
+const T_TOO_FAR: String = "Xa quá, ảnh nhòe. Lại gần hơn (núp sau xe)."
+const T_BLOCKED: String = "Bị che mất rồi, đổi góc khác."
+const T_SAME: String = "Khoảnh khắc này chụp rồi, đợi cảnh tiếp theo."
+const T_TELL: String = "Hắn sắp quay lại! NÚP [Ctrl]!"
+const T_START: String = "Giơ điện thoại [Q] / chuột phải, [E] chụp. Chụp rõ 3 khoảnh khắc. Hắn quay lại thì núp sau xe [Ctrl]."
+const T_LU: String = "Lu! Đừng sủa!!"
+const T_GUARD: String = "Bảo vệ đi tuần tới! Núp sau xe!"
+const T_WINDOW: String = "[E] Chụp"
+const T_BACK: String = "Hắn đang quay lưng. Đợi hắn nghiêng mặt rồi chụp."
+const T_PROFILE: String = "HẮN NGHIÊNG MẶT! [E] CHỤP"
 
 var courier: Node3D
 var buyer: Node3D
-var guards: Array[Node3D] = []
+var guard: Node3D
 var box: MeshInstance3D
-var photo_taken: bool = false
-var seen_count: int = 0
-var photo_tries: int = 0
-var _g: Array[Dictionary] = []   # per guard: {a, b, t (0..1 along a-b), dir (+1 / -1), pause}
-var _check_t: float = 0.0
-var _flash: ColorRect
-## The Lu fake-out: "" (not yet) | rustle | lu | leave | gone; lu_shown once Lu appeared.
+var cars: Array[Node3D] = []
+var bubble: Label3D
 var scare: ScareDirector
 var shiba: StoryShiba
-var lu_state: String = ""
+## The courier's cycle: act (a moment, his back turned) -> tell -> look -> the next moment.
+var phase: String = "act"
+var phase_t: float = 0.0
+var moment: int = 0
+var photos: Array[bool] = [false, false, false]
+var suspicion: float = 0.0
+var seen_count: int = 0
+var photo_tries: int = 0
+var blurs: int = 0
+var tells: int = 0
+var barks: int = 0
+var guard_walks: int = 0
+var look_dir: Vector3 = Vector3(-1.0, 0.0, 0.0)
+var phone_up: bool = false
+var zoom_t: float = 0.0
+var steady_t: float = 0.0
+var phone_cam: Camera3D
+var duck_override: Variant = null             # tests: true / false forces the duck, null reads [Ctrl]
+var ducking: bool = false
+var lu_state: String = ""                     # "" | rustle | barked | gone (per attempt)
 var lu_shown: bool = false
+var guard_state: String = ""                  # "" | walking | gone (per attempt, one walk per guard_at entry)
+var guard_i: int = 0
+var _guard_t: float = 0.0
 var _lu_t: float = 0.0
-var _lu_home: Vector3 = Vector3.ZERO
+var _check_t: float = 0.0
+var _flash: ColorRect
+var _finder: Control
+var _finder_steady: ProgressBar
+var _finder_text: Label
+var _last_aim: Vector3 = Vector3.ZERO
+var _pose: GunPose
+var _want_phone: bool = false
+var _won_t: float = -1.0
+var _combat: Node = null                      # the roam's PlayerCombat, off for the stake-out ([Q] is the phone, not a block)
+var _combat_was: bool = true
+## The side-on window of the current moment (phase_t from .. to): his face shows, a photo can be clear.
+var profile_from: float = 1.5
+var in_profile: bool = false
+var profile_rng := RandomNumberGenerator.new()
+
+
+## Difficulty-tuned numbers (Thường, Dễ).
+static func handover_s() -> float:
+	return float(Difficulty.pick(80.0, 100.0))
+
+
+static func photo_m() -> float:
+	return float(Difficulty.pick(23.0, 28.0))
+
+
+static func sight_m() -> float:
+	return float(Difficulty.pick(27.0, 22.0))
+
+
+static func centre_deg() -> float:
+	return float(Difficulty.pick(3.0, 4.5))
+
+
+static func steady_s() -> float:
+	return float(Difficulty.pick(0.8, 0.5))
+
+
+## In the middle of every moment he turns his face side-on for this long (the only time a photo is clear).
+static func profile_s() -> float:
+	return float(Difficulty.pick(2.2, 3.6))
+
+
+static func act_s() -> float:
+	return float(Difficulty.pick(5.5, 8.0))
+
+
+static func tell_s() -> float:
+	return float(Difficulty.pick(0.6, 1.15))
+
+
+static func look_s() -> float:
+	return float(Difficulty.pick(2.8, 2.2))
+
+
+static func bark_tell_s() -> float:
+	return float(Difficulty.pick(0.55, 0.9))
+
+
+static func fill_rate() -> float:
+	return float(Difficulty.pick(220.0, 40.0))     # suspicion / s while he sees the player standing
+
+
+static func guard_fill() -> float:
+	return float(Difficulty.pick(55.0, 32.0))
+
+
+static func guard_m() -> float:
+	return float(Difficulty.pick(13.0, 10.0))
+
+
+static func duck_seen_k() -> float:
+	return float(Difficulty.pick(0.45, 0.3))      # seen while ducked in the open fills slower
+
+
+static func decay() -> float:
+	return float(Difficulty.pick(2.0, 16.0))
+
+
+static func blur_sus() -> float:
+	return float(Difficulty.pick(12.0, 4.0))
+
+
+static func guard_at() -> Array:
+	return Difficulty.pick([20.0, 56.0], [30.0])
+
+
+static func bark_at() -> float:
+	return float(Difficulty.pick(40.0, 55.0))
 
 
 func _start() -> void:
-	StoryAudio.warm(["success_fanfare", "rustle"])
+	StoryAudio.warm(["success_fanfare", "rustle", "heartbeat", "record_scratch"])
 	scare = ScareDirector.new()
 	scare.loops_enabled = false
 	scare.flicker_enabled = false
@@ -74,9 +204,13 @@ func _start() -> void:
 	var bp: Vector3 = campus(BUYER)
 	courier = spawn_body("courier_do", h, yaw_of(bp - h))
 	buyer = spawn_body("clone", bp, yaw_of(h - bp), {"seed": 31})
-	for i: int in 2:
-		var g: Node3D = spawn_body("chu_bay", Vector3.ZERO, 0.0, {"seed": 61 + i, "name": "Guard%d" % i})
-		guards.append(g)
+	var scoot: Node3D = CineFX.build_prop("scooter", {"color": Color("#E74C3C")})
+	add_child(scoot)
+	scoot.global_position = campus(HANDOVER + Vector3(0.6, 0.0, 1.6))
+	scoot.rotation.y = yaw_of(campus_dir(Vector3(1.0, 0.0, 0.0)))
+	cars.append(scoot)
+	for i: int in CARS.size():
+		cars.append(_car(campus(CARS[i]), CAR_PAINT[i % CAR_PAINT.size()], i))
 	box = MeshInstance3D.new()
 	box.name = "Package"
 	var bm := BoxMesh.new()
@@ -87,209 +221,533 @@ func _start() -> void:
 	box.material_override = mat
 	add_child(box)
 	box.global_position = (h + bp) * 0.5 + Vector3(0.0, 1.0, 0.0)
+	bubble = Label3D.new()
+	bubble.name = "Hmm"
+	bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	bubble.font_size = 64
+	bubble.pixel_size = 0.008
+	bubble.outline_size = 12
+	bubble.modulate = WARN
+	bubble.position = Vector3(0.0, 2.35, 0.0)
+	bubble.visible = false
+	courier.add_child(bubble)
+	phone_cam = Camera3D.new()
+	phone_cam.name = "PhoneCam"
+	phone_cam.near = 0.05
+	phone_cam.fov = PHONE_FOV
+	add_child(phone_cam)
 	_flash = ColorRect.new()
 	_flash.color = Color(1.0, 1.0, 1.0, 0.0)
 	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
 	hud.add_child(_flash)
+	_build_finder()
+	if player and player.model:
+		_pose = GunPose.attach(player.model)
+	_combat = roam.get("combat") if roam else null
+	if _combat != null and is_instance_valid(_combat):
+		_combat_was = bool(_combat.get("enabled"))
+		_combat.set("enabled", false)
 	_reset()
+
+
+## A parked car with collision (the cover), facing along the lane.
+func _car(p: Vector3, col: Color, i: int) -> Node3D:
+	var body := StaticBody3D.new()
+	body.name = "ParkedCar%d" % i
+	body.add_to_group("slam_car")
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(1.7, 1.5, 3.9)
+	cs.shape = bs
+	cs.position = Vector3(0.0, 0.75, 0.0)
+	body.add_child(cs)
+	PropBuilder.build_car(body, col, true)
+	add_child(body)
+	body.global_position = Vector3(p.x, floor_y(p), p.z)
+	body.rotation.y = yaw_of(campus_dir(Vector3(1.0, 0.0, 0.0))) + (0.06 if i % 2 == 0 else -0.04)
+	return body
+
+
+## The floor under p from just above it (the parking's bike-shed roofs are under 3 m: StoryMission.ground_y would put a
+## car on a roof).
+func floor_y(p: Vector3) -> float:
+	if not is_inside_tree():
+		return p.y
+	var q := PhysicsRayQueryParameters3D.create(p + Vector3(0.0, 1.0, 0.0), p - Vector3(0.0, 4.0, 0.0))
+	if player:
+		q.exclude = [player.get_rid()]
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
+	return (hit["position"] as Vector3).y if not hit.is_empty() else p.y
+
+
+## The viewfinder overlay: corner brackets, a centre ring, a steadiness bar and a line.
+func _build_finder() -> void:
+	_finder = Control.new()
+	_finder.name = "Viewfinder"
+	_finder.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_finder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_finder.visible = false
+	hud.add_child(_finder)
+	var col := Color(1.0, 1.0, 1.0, 0.85)
+	for c: Vector2 in [Vector2(0.18, 0.2), Vector2(0.82, 0.2), Vector2(0.18, 0.8), Vector2(0.82, 0.8)]:
+		for horiz: bool in [true, false]:
+			var r := ColorRect.new()
+			r.color = col
+			r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			r.anchor_left = c.x
+			r.anchor_right = c.x
+			r.anchor_top = c.y
+			r.anchor_bottom = c.y
+			var sx: float = -1.0 if c.x > 0.5 else 1.0
+			var sy: float = -1.0 if c.y > 0.5 else 1.0
+			if horiz:
+				r.offset_left = minf(0.0, sx * 60.0)
+				r.offset_right = maxf(0.0, sx * 60.0)
+				r.offset_top = minf(0.0, sy * 4.0)
+				r.offset_bottom = maxf(0.0, sy * 4.0)
+			else:
+				r.offset_left = minf(0.0, sx * 4.0)
+				r.offset_right = maxf(0.0, sx * 4.0)
+				r.offset_top = minf(0.0, sy * 60.0)
+				r.offset_bottom = maxf(0.0, sy * 60.0)
+			_finder.add_child(r)
+	var ring := Label.new()
+	ring.text = "[  +  ]"
+	ring.add_theme_font_size_override("font_size", 30)
+	ring.add_theme_color_override("font_color", col)
+	ring.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	ring.offset_left = -60.0
+	ring.offset_right = 60.0
+	ring.offset_top = -22.0
+	ring.offset_bottom = 22.0
+	ring.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_finder.add_child(ring)
+	_finder_steady = ProgressBar.new()
+	_finder_steady.show_percentage = false
+	_finder_steady.max_value = 1.0
+	_finder_steady.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_finder_steady.offset_left = -80.0
+	_finder_steady.offset_right = 80.0
+	_finder_steady.offset_top = 34.0
+	_finder_steady.offset_bottom = 44.0
+	_finder_steady.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color("#7CFFB2")
+	_finder_steady.add_theme_stylebox_override("fill", fill)
+	_finder.add_child(_finder_steady)
+	_finder_text = _label("", 18, col)
+	_finder_text.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_finder_text.offset_left = -300.0
+	_finder_text.offset_right = 300.0
+	_finder_text.offset_top = -150.0
+	_finder_text.offset_bottom = -120.0
+	_finder.add_child(_finder_text)
+
+
+func _new_profile() -> void:
+	profile_from = profile_rng.randf_range(1.0, maxf(1.2, act_s() - profile_s() - 0.6))
+	in_profile = false
 
 
 func _reset() -> void:
 	clock = 0.0
-	photo_taken = false
-	_g = [{"a": campus(GUARD_A[0]), "b": campus(GUARD_A[1]), "t": 0.73, "dir": -1.0, "pause": 0.0},
-		{"a": campus(GUARD_B[0]), "b": campus(GUARD_B[1]), "t": 0.24, "dir": 1.0, "pause": 0.0}]
-	_place_guards(0.0)
-	box.visible = false
-	var s: Vector3 = campus(START)
-	teleport_player(free_spot(s), yaw_of(campus(HANDOVER) - s))
-	set_prompt("")
-	popup(T_START, 3.5, Color("#FFE66D"))
-	_check_t = CHECK_S
-	if lu_state != "":
-		_lu_gone()   # once per mission: a restart does not bring Lu back
-
-
-func _lu_gone() -> void:
-	lu_state = "gone"
+	profile_rng.seed = int(opts.get("seed", 5)) * 31 + retries
+	_new_profile()
+	photos = [false, false, false]
+	suspicion = 0.0
+	phase = "act"
+	phase_t = 0.0
+	moment = 0
+	_won_t = -1.0
+	steady_t = 0.0
+	zoom_t = 0.0
+	guard_i = 0
+	guard_state = ""
+	lu_state = ""
+	_place_guard_off()
 	if shiba != null and is_instance_valid(shiba):
 		shiba.queue_free()
 	shiba = null
+	raise_phone(false)
+	_want_phone = false
+	bubble.visible = false
+	box.visible = false
+	_face_buyer()
+	var s: Vector3 = campus(START)
+	teleport_player(free_spot(s), yaw_of(campus(HANDOVER) - s))
+	set_meter(0.0, "Nghi ngờ")
+	set_prompt("")
+	popup(T_START, 4.0, Color("#FFE66D"))
+	_check_t = CHECK_S
 
 
-## The Lu fake-out (H-D7): rustle behind, then Lu from behind, then off again.
+func _place_guard_off() -> void:
+	if guard != null and is_instance_valid(guard):
+		guard.visible = false
+
+
+func _face_buyer() -> void:
+	courier.rotation.y = yaw_of(campus(BUYER) - campus(HANDOVER))
+
+
+## Raise / lower the phone (tests call it; the keys set _want_phone).
+func raise_phone(on: bool) -> void:
+	if on == phone_up:
+		return
+	phone_up = on
+	zoom_t = 0.0
+	steady_t = 0.0
+	if _finder:
+		_finder.visible = on
+	if player:
+		player.move_lock = on
+	if on:
+		_update_phone_cam(0.0)
+		if phone_cam.is_inside_tree():
+			phone_cam.make_current()
+	elif player and player.camera and player.camera.is_inside_tree() and phone_cam.current:
+		player.camera.make_current()
+
+
+## The view direction of the player's camera (controller yaw / pitch, as FootCamRig builds it).
+func aim_dir() -> Vector3:
+	if player == null:
+		return Vector3.FORWARD
+	return Basis.from_euler(Vector3(player.pitch, player.yaw, 0.0)) * Vector3(0.0, 0.0, -1.0)
+
+
+func eye_pos() -> Vector3:
+	return player.global_position + Vector3(0.0, EYE_DUCK if ducking else EYE_STAND, 0.0) if player else Vector3.ZERO
+
+
+## The photo target: his face (the phone line then runs level over a car roof from the player's eye height).
+func courier_chest() -> Vector3:
+	return courier.global_position + Vector3(0.0, 1.6, 0.0)
+
+
+func _update_phone_cam(dt: float) -> void:
+	zoom_t = minf(1.0, zoom_t + dt / ZOOM_S)
+	var e: Vector3 = eye_pos()
+	phone_cam.global_transform = Transform3D(Basis.from_euler(Vector3(player.pitch, player.yaw, 0.0)), e + aim_dir() * 0.25)
+	phone_cam.fov = lerpf(PHONE_FOV, ZOOM_FOV, zoom_t * zoom_t * (3.0 - 2.0 * zoom_t))
+
+
+## Degrees between the view and the courier's chest.
+func off_centre_deg() -> float:
+	var to: Vector3 = courier_chest() - eye_pos()
+	if to.length_squared() < 0.01:
+		return 0.0
+	return rad_to_deg(aim_dir().angle_to(to.normalized()))
+
+
+func _tick(dt: float) -> void:
+	if _flash.color.a > 0.0:
+		_flash.color.a = maxf(0.0, _flash.color.a - dt * 2.5)
+	if _won_t >= 0.0:
+		_won_t -= dt
+		if _won_t < 0.0:
+			finish({"seen": seen_count, "photos": 3, "blurs": blurs})
+		return
+	ducking = bool(duck_override) if duck_override != null else (not manual and Input.is_physical_key_pressed(KEY_CTRL))
+	if not manual and _want_phone != phone_up:
+		raise_phone(_want_phone)
+	_tick_duck()
+	_tick_courier(dt)
+	_tick_guard(dt)
+	_tick_lu(dt)
+	if phone_up:
+		_update_phone_cam(dt)
+		var aim: Vector3 = aim_dir()
+		var rate: float = rad_to_deg(aim.angle_to(_last_aim)) / maxf(dt, 0.001) if _last_aim != Vector3.ZERO else 0.0
+		_last_aim = aim
+		if rate < STEADY_DEG_S and off_centre_deg() <= centre_deg():
+			steady_t += dt
+		else:
+			steady_t = 0.0
+		_finder_steady.value = clampf(steady_t / steady_s(), 0.0, 1.0)
+		_finder_text.text = ("RÕ NÉT: [E] CHỤP" if steady_t >= steady_s() else "Giữ yên, canh giữa...") + "   x%.1f" % (PHONE_FOV / phone_cam.fov)
+	else:
+		_last_aim = Vector3.ZERO
+	var left: float = handover_s() - clock
+	set_info("Ảnh rõ: %d/3 · Còn %d giây · Cảnh: %s" % [photos.count(true), int(ceil(maxf(left, 0.0))), MOMENTS[moment] if phase == "act" else "hắn đang nhìn quanh"])
+	if in_profile and phase == "act" and not photos[moment]:
+		set_prompt(T_PROFILE)
+	else:
+		set_prompt(T_WINDOW + " (giữ yên)" if phone_up else "[Q] / chuột phải: giơ điện thoại · [Ctrl] núp")
+	_check_t -= dt
+	if _check_t <= 0.0:
+		_check_t = CHECK_S
+		_sight(CHECK_S)
+	if state != "running":
+		return
+	if clock >= handover_s():
+		raise_phone(false)
+		fail(T_MISSED)
+
+
+func _tick_duck() -> void:
+	if player == null:
+		return
+	player.combat_speed_cap = DUCK_SPEED if ducking else INF
+	if _pose:
+		if ducking:
+			_pose.set_pose("cover_crouch")
+		elif _pose.active():
+			_pose.clear()
+
+
+## The courier's cycle: act k (back turned, the moment's prop) -> tell -> look (sweeping toward the player's side).
+func _tick_courier(dt: float) -> void:
+	phase_t += dt
+	match phase:
+		"act":
+			box.visible = moment >= 1
+			_face_buyer()
+			in_profile = phase_t >= profile_from and phase_t <= profile_from + profile_s()
+			if in_profile:
+				courier.rotation.y += deg_to_rad(PROFILE_DEG) * signf(sin(float(moment) + 0.5))   # side-on: his face shows
+			else:
+				courier.rotation.y += sin(clock * 1.3) * 0.12
+			if phase_t >= act_s():
+				_begin_tell(tell_s(), Vector3.ZERO)
+		"tell":
+			if phase_t >= float(bubble.get_meta("tell_s", tell_s())):
+				phase = "look"
+				phase_t = 0.0
+				bubble.text = "!"
+		"look":
+			var base: float = yaw_of(look_dir)
+			courier.rotation.y = base + sin(phase_t / look_s() * TAU) * deg_to_rad(SWEEP_DEG)
+			if phase_t >= look_s():
+				phase = "act"
+				phase_t = 0.0
+				bubble.visible = false
+				_new_profile()
+				moment = (moment + 1) % 3
+				while photos[moment] and photos.count(false) > 0:
+					moment = (moment + 1) % 3
+
+
+## The turn telegraph: freeze, the red bubble, a heartbeat, then he looks toward `toward` (ZERO = down the lane).
+func _begin_tell(secs: float, toward: Vector3) -> void:
+	phase = "tell"
+	phase_t = 0.0
+	tells += 1
+	bubble.text = "Hửm?"
+	bubble.visible = true
+	bubble.set_meta("tell_s", secs)
+	var lane_back: Vector3 = campus_dir(Vector3(-1.0, 0.0, 0.0))
+	if toward != Vector3.ZERO:
+		var d: Vector3 = toward - courier.global_position
+		d.y = 0.0
+		look_dir = d.normalized() if d.length() > 0.1 else lane_back
+	else:
+		look_dir = lane_back
+	play_cue("heartbeat", -4.0)
+	popup(T_TELL, secs + 0.4, WARN)
+
+
+## A guard walks the lane by from the far end at each guard_at() time.
+func _tick_guard(dt: float) -> void:
+	var times: Array = guard_at()
+	if guard_state != "walking" and guard_i < times.size() and clock >= float(times[guard_i]):
+		guard_i += 1
+		guard_state = "walking"
+		guard_walks += 1
+		_guard_t = 0.0
+		if guard == null or not is_instance_valid(guard):
+			guard = spawn_body("chu_bay", campus(GUARD_PATH[0]), 0.0, {"seed": 61, "name": "Guard"})
+		guard.visible = true
+		popup(T_GUARD, 2.4, Color("#FFE66D"))
+	if guard_state != "walking":
+		return
+	_guard_t += dt
+	var a: Vector3 = campus(GUARD_PATH[0])
+	var b: Vector3 = campus(GUARD_PATH[1])
+	var len_m: float = maxf(flat(a, b), 0.1)
+	var u: float = clampf(_guard_t * GUARD_SPEED / len_m, 0.0, 1.0)
+	var p: Vector3 = a.lerp(b, u)
+	guard.global_position = Vector3(p.x, floor_y(p), p.z)
+	guard.rotation.y = yaw_of(b - a) + sin(_guard_t * 0.9) * 0.5   # glancing left and right
+	CharacterBuilder.set_speed(guard, GUARD_SPEED)
+	if u >= 1.0:
+		guard_state = "gone"
+		guard.visible = false
+
+
+## Lu: rustle behind the player, then the shiba trots up and barks: the courier spins toward the bark.
 func _tick_lu(dt: float) -> void:
 	match lu_state:
 		"":
-			if clock >= RUSTLE_AT and scare.try_fake_out("shiba"):
+			if clock >= bark_at() - BARK_LEAD:
 				lu_state = "rustle"
-				_lu_t = LU_DELAY
+				_lu_t = BARK_LEAD
 				play_cue("rustle", -3.0)
 		"rustle":
 			_lu_t -= dt
 			if _lu_t <= 0.0:
-				_lu_appear()
-		"lu":
+				_lu_bark()
+		"barked":
 			_lu_t -= dt
-			var to: Vector3 = player.global_position - shiba.global_position
-			to.y = 0.0
-			if to.length() > 0.9 and _lu_t > LU_STAY - 0.9:
-				shiba.global_position += to.normalized() * 1.6 * dt
-			elif shiba.motion != "idle":
-				shiba.play("idle")
-			if _lu_t <= 0.0:
-				lu_state = "leave"
-				_lu_t = LU_LEAVE
-				shiba.play("walk")
-				shiba.rotation.y = yaw_of(_lu_home - shiba.global_position)
-		"leave":   # back the way it came (a free spot), then gone
-			_lu_t -= dt
-			var home: Vector3 = _lu_home - shiba.global_position
-			home.y = 0.0
-			if home.length() > 0.1:
-				shiba.global_position += home.normalized() * minf(2.2 * dt, home.length())
-			if _lu_t <= 0.0 or home.length() <= 0.1:
-				_lu_gone()
+			if shiba != null and is_instance_valid(shiba) and _lu_t <= 0.0:
+				shiba.queue_free()
+				shiba = null
+				lu_state = "gone"
 
 
-func _lu_appear() -> void:
+func _lu_bark() -> void:
+	lu_state = "barked"
+	barks += 1
+	_lu_t = 3.0
 	var yaw: float = player.facing_yaw() if player.has_method("facing_yaw") else player.rotation.y
-	var back := Vector3(sin(yaw), 0.0, cos(yaw))   # behind the player (characters face -Z at their yaw)
-	var p: Vector3 = free_spot(player.global_position + back * LU_BEHIND_M, 2)   # never inside a hedge or a wall
-	if not clear_line(player.global_position + Vector3(0.0, 0.5, 0.0), p + Vector3(0.0, 0.3, 0.0)):
-		p = free_spot(player.global_position + back * 1.4, 1)
-	p.y = ground_y(p)
-	_lu_home = p
+	var back := Vector3(sin(yaw), 0.0, cos(yaw))
+	var p: Vector3 = free_spot(player.global_position + back * LU_BEHIND_M, 2)
+	p.y = floor_y(p)
 	shiba = StoryCast.build("shiba") as StoryShiba
 	add_child(shiba)
 	shiba.global_position = p
-	shiba.rotation.y = yaw_of(player.global_position - p)
-	shiba.play("walk")
-	lu_state = "lu"
+	shiba.rotation.y = yaw_of(campus(HANDOVER) - p)
+	shiba.play("idle")
+	if not lu_shown and scare.try_fake_out("shiba"):
+		scare.fake_sting(-12.0)
 	lu_shown = true
-	_lu_t = LU_STAY
-	scare.fake_sting(-12.0)
-	popup(T_LU, 2.4, StoryCast.color("shiba"))
+	MissionSfx.play(self, "bark", -2.0)
+	cues_played.append("bark")
+	popup(T_LU, 2.0, StoryCast.color("shiba"))
+	if phase != "look":
+		_begin_tell(bark_tell_s(), p)
 
 
-func _tick(dt: float) -> void:
-	_place_guards(dt)
-	_tick_lu(dt)
-	# the courier glances around (±50° around the buyer), the buyer fidgets
-	var base: float = yaw_of(campus(BUYER) - campus(HANDOVER))
-	courier.rotation.y = base + sin(clock * 0.55) * 0.87
-	var in_window: bool = clock >= WINDOW.x and clock <= WINDOW.y
-	box.visible = in_window
-	if _flash.color.a > 0.0:
-		_flash.color.a = maxf(0.0, _flash.color.a - dt * 2.5)
-	if photo_taken:
-		set_info("Đã có ảnh. Giữ kín thêm %d giây" % int(ceil(DURATION - clock)))
-		set_prompt("")
+## Sight at 10 Hz: the courier while he looks (and right next to him), the walking guard; the meter decays otherwise.
+func _sight(dt: float) -> void:
+	var fill: float = 0.0
+	if courier and flat(courier.global_position, player.global_position) < NEAR_M:
+		fill = 300.0
+	elif phase == "look":
+		var eye: Vector3 = courier.global_position + Vector3(0.0, 1.6, 0.0)
+		var f: Vector3 = Vector3(-sin(courier.rotation.y), 0.0, -cos(courier.rotation.y))
+		var seen: int = seen_by(eye, f, sight_m(), HALF_FOV_DEG)
+		if seen > 0:
+			fill = fill_rate() * (1.0 if seen == 2 else duck_seen_k())
+	if guard_state == "walking" and guard != null:
+		var geye: Vector3 = guard.global_position + Vector3(0.0, 1.6, 0.0)
+		var gf: Vector3 = Vector3(-sin(guard.rotation.y), 0.0, -cos(guard.rotation.y))
+		var gs: int = seen_by(geye, gf, guard_m(), GUARD_HALF_DEG)
+		if gs > 0:
+			fill = maxf(fill, guard_fill() * (1.0 if gs == 2 else duck_seen_k()))
+		if flat(guard.global_position, player.global_position) < 1.6:
+			fill = 300.0
+	if fill > 0.0:
+		add_suspicion(fill * dt)
 	else:
-		set_info("Rình: %d / %d giây · Chưa có ảnh" % [int(clock), int(DURATION)])
-		set_prompt(T_WINDOW if in_window else "")
-	if clock > WINDOW.y and not photo_taken:
-		fail(T_MISSED)
-		return
-	if clock >= DURATION and photo_taken:
-		finish({"seen": seen_count, "photo": true})
-		return
-	_check_t -= dt
-	if _check_t > 0.0:
-		return
-	_check_t = CHECK_S
-	if watcher_sees():
-		spotted()
+		add_suspicion(-decay() * dt)
 
 
-## Moves the guards along their beats (a pause and a look back at each end).
-func _place_guards(dt: float) -> void:
-	for i: int in _g.size():
-		var g: Dictionary = _g[i]
-		var a: Vector3 = g["a"]
-		var b: Vector3 = g["b"]
-		var len_m: float = maxf(flat(a, b), 0.1)
-		if float(g["pause"]) > 0.0:
-			g["pause"] = float(g["pause"]) - dt
-			CharacterBuilder.set_speed(guards[i], 0.0)
-		else:
-			var t: float = float(g["t"]) + float(g["dir"]) * GUARD_SPEED * dt / len_m
-			if t >= 1.0 or t <= 0.0:
-				t = clampf(t, 0.0, 1.0)
-				g["dir"] = -float(g["dir"])
-				g["pause"] = GUARD_PAUSE
-			g["t"] = t
-			CharacterBuilder.set_speed(guards[i], GUARD_SPEED if dt > 0.0 else 0.0)
-		var p: Vector3 = a.lerp(b, float(g["t"]))
-		guards[i].global_position = p
-		var dir: Vector3 = (b - a) * float(g["dir"])
-		guards[i].rotation.y = yaw_of(dir)
-
-
-## Forward (flat) of a body facing -Z at its yaw.
-static func fwd_of(n: Node3D) -> Vector3:
-	return Vector3(-sin(n.rotation.y), 0.0, -cos(n.rotation.y))
-
-
-## true when a guard or the courier sees the player (cone + clear ray, or right next to them).
-func watcher_sees() -> bool:
+## 0 = not seen, 1 = seen ducked, 2 = seen standing: within range and the cone, and a clear line to the player's head
+## (standing 1.55 m: over a car roof; ducked 0.9 m: a parked car between hides them).
+func seen_by(eye: Vector3, fwd: Vector3, range_m: float, half_deg: float) -> int:
 	if player == null:
-		return false
-	for w: Node3D in [guards[0], guards[1], courier]:
-		var eye: Vector3 = w.global_position + Vector3(0.0, 1.6, 0.0)
-		if flat(w.global_position, player.global_position) < NEAR_M:
-			return true
-		if sees_player(eye, fwd_of(w), SIGHT_M, HALF_FOV_DEG):
-			return true
-	return false
+		return 0
+	var chest: Vector3 = player.global_position + Vector3(0.0, HEAD_DUCK if ducking else HEAD_STAND, 0.0)
+	var d := Vector3(chest.x - eye.x, 0.0, chest.z - eye.z)
+	var dist: float = d.length()
+	if dist > range_m:
+		return 0
+	if dist > 0.01 and fwd.dot(d / dist) < cos(deg_to_rad(half_deg)):
+		return 0
+	if not clear_line(eye, chest):
+		return 0
+	return 1 if ducking else 2
 
 
-## Seen: the stake-out restarts (no fail card: B-D5 "being seen restarts it").
-func spotted() -> void:
-	seen_count += 1
-	popup(T_SEEN, 2.2, WARN)
-	play_cue("record_scratch")
-	_reset()
+func add_suspicion(v: float) -> void:
+	var before: float = suspicion
+	suspicion = clampf(suspicion + v, 0.0, 100.0)
+	set_meter(suspicion)
+	if v > 0.0 and before < 1.0 and suspicion >= 1.0:
+		seen_count += 1
+		popup(T_SEEN, 1.4, WARN)
+	if suspicion >= 100.0 and state == "running":
+		raise_phone(false)
+		play_cue("record_scratch")
+		fail(T_LO_REASON, T_LO)
 
 
-## [E]: photographs the courier when the handover is on, the courier in frame, close enough and in a clear line. Outside
-## the window it does nothing (no line).
-func take_photo() -> bool:
-	if state != "running" or photo_taken or clock < WINDOW.x or clock > WINDOW.y:
-		return false
+## [E]: a photo through the raised phone. "clear" counts the current moment; see the header for the other results.
+func take_photo() -> String:
+	if state != "running" or not phone_up or _won_t >= 0.0:
+		return ""
 	photo_tries += 1
-	var cam: Camera3D = get_viewport().get_camera_3d()
-	var chest: Vector3 = courier.global_position + Vector3(0.0, 1.2, 0.0)
-	if cam == null or not cam.is_position_in_frustum(chest):
-		popup(T_NO_FRAME, 1.6)
-		return false
-	if flat(player.global_position, courier.global_position) > PHOTO_M:
+	_flash.color.a = 0.55
+	MissionSfx.play(self, "shutter", -4.0)
+	cues_played.append("shutter")
+	var dist: float = flat(player.global_position, courier.global_position)
+	if dist > photo_m():
 		popup(T_TOO_FAR, 1.6)
-		return false
-	if not clear_line(cam.global_position, chest):
-		popup(T_TOO_FAR, 1.6)
-		return false
-	photo_taken = true
-	_flash.color.a = 0.9
-	popup(T_PHOTO, 2.4, Color("#7CFFB2"))
-	play_cue("success_fanfare", -6.0)
-	return true
+		return "far"
+	if steady_t < steady_s() or off_centre_deg() > centre_deg() or zoom_t < 0.9:
+		blurs += 1
+		popup(T_BLUR, 1.6, WARN)
+		add_suspicion(blur_sus())
+		return "blur"
+	if not clear_line(eye_pos() + aim_dir() * 0.3, courier_chest()):
+		popup(T_BLOCKED, 1.6)
+		return "blocked"
+	if phase != "act" or photos[moment]:
+		popup(T_SAME, 1.6)
+		return "done"
+	if not in_profile:
+		popup(T_BACK, 1.6)
+		return "back"
+	photos[moment] = true
+	popup(T_PHOTO % [photos.count(true), MOMENTS[moment]], 2.2, Color("#7CFFB2"))
+	if photos.count(true) >= 3:
+		play_cue("success_fanfare", -6.0)
+		raise_phone(false)
+		_won_t = 1.2
+	return "clear"
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if state != "running" or not (event is InputEventKey):
+	if state != "running":
 		return
-	var k: InputEventKey = event
-	if k.pressed and not k.echo and k.physical_keycode == KEY_E:
-		take_photo()
-		get_viewport().set_input_as_handled()
+	if event is InputEventKey:
+		var k: InputEventKey = event
+		if k.echo:
+			return
+		if k.physical_keycode == KEY_Q:
+			_want_phone = k.pressed
+			if manual:
+				raise_phone(k.pressed)
+			get_viewport().set_input_as_handled()
+		elif k.physical_keycode == KEY_E and k.pressed:
+			take_photo()
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event
+		if mb.button_index == MOUSE_BUTTON_RIGHT:
+			_want_phone = mb.pressed
+			get_viewport().set_input_as_handled()
+		elif mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed and phone_up:
+			take_photo()
+			get_viewport().set_input_as_handled()
 
 
 func _cleanup() -> void:
-	var all: Array = [courier, buyer, box, shiba]
-	all.append_array(guards)
+	if _combat != null and is_instance_valid(_combat):
+		_combat.set("enabled", _combat_was)
+	_combat = null
+	raise_phone(false)
+	if player and is_instance_valid(player):
+		player.move_lock = false
+	if _pose and is_instance_valid(_pose):
+		_pose.queue_free()
+	_pose = null
+	var all: Array = [courier, buyer, box, shiba, guard, phone_cam]
+	all.append_array(cars)
 	for n: Variant in all:
 		if n != null and is_instance_valid(n):
 			(n as Node).queue_free()
-	guards.clear()
+	cars.clear()
