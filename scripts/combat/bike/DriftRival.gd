@@ -201,7 +201,7 @@ func setup(c: DriftCourse, opts: Dictionary = {}) -> void:
 
 ## The difficulty's numbers (Thường, Dễ).
 func refresh_tuning() -> void:
-	pace = float(Difficulty.pick(1.0, 0.9))
+	pace = float(Difficulty.pick(1.04, 0.95))
 	kick_dmg = float(Difficulty.pick(20.0, 12.0))
 	kick_windup = float(Difficulty.pick(0.5, 0.75))
 	kick_cooldown = float(Difficulty.pick(2.4, 4.2))

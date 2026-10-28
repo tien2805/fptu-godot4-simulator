@@ -45,10 +45,10 @@ const P_B := Vector2(1932.0, -159.0)          # Đỗ Thế Diện / Đường s
 ## The loop after the lap line (Nguyễn Văn Tăng west, the hairpin, Đỗ Thế Diện, to Đường số 20); the lap line closes it.
 ## The hairpin is a hand-placed arc of radius HAIRPIN_R (the bike's drift circle is 8.4 m) through the open plaza where
 ## Đỗ Thế Diện leaves Nguyễn Văn Tăng: in on the plaza's south side, round to the mouth of Đỗ Thế Diện (measured free).
-const HAIRPIN_R: float = 8.0
+const HAIRPIN_R: float = 10.0
 const LOOP_PTS: Array[Vector2] = [Vector2(1946.0, -80.0), Vector2(1905.0, -44.0), Vector2(1825.0, 24.0), Vector2(1816.0, 30.0),
-	Vector2(1803.0, 36.0), Vector2(1789.0, 40.0), Vector2(1775.0, 42.0), Vector2(1757.0, 43.0), Vector2(1743.0, 43.5),
-	Vector2(1734.0, 44.6), Vector2(1726.0, 46.0), Vector2(1720.3, 43.7), Vector2(1718.0, 38.0), Vector2(1720.3, 32.3),
+	Vector2(1803.0, 36.0), Vector2(1789.0, 40.0), Vector2(1775.0, 42.0), Vector2(1757.0, 43.0), Vector2(1745.0, 46.5),
+	Vector2(1736.0, 48.6), Vector2(1727.07, 49.07), Vector2(1723.24, 48.31), Vector2(1720.00, 46.14), Vector2(1717.83, 42.90), Vector2(1717.07, 39.07), Vector2(1717.83, 35.24), Vector2(1720.00, 32.00),
 	Vector2(1726.0, 25.5), Vector2(1774.0, -17.0), Vector2(1835.0, -71.0), Vector2(1883.0, -111.0), P_B, Vector2(1954.0, -133.0)]
 const LOOP_SIDE_FROM: int = 13            # LOOP_PTS from this index on are Đỗ Thế Diện / Đường số 20 (6 m)
 ## Rounding (m before and after the vertex) of the junction corners: about the radius the junction has room for

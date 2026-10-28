@@ -24,7 +24,7 @@ const ENEMY_KICK_DMG: float = 22.0       # = KINDS.rider.dmg
 const CRASH_DMG: float = 25.0            # PlayerBike.crash_occurred: traffic, curb, pothole, fall (PlayerBikeCombat's own)
 const CRASH_DMG_MIN: float = 15.0        # D2X-4: BikeChase scales a crash by the speed before it: 15 at 6 m/s ...
 const CRASH_DMG_MAX: float = 25.0        # ... 25 at the chase top speed
-const WAVE_REFILL: float = 25.0          # D2X-4: a cleared wave gives back this much stability
+const WAVE_REFILL: float = 15.0          # D2X-4: a cleared wave gives back this much stability (Wave 2 Thường; Dễ 40)
 const RAM_DMG: float = 6.0               # riding into the front biker's back wheel
 const HURT_IFRAMES: float = 0.6
 const REGEN_DELAY: float = 5.0
@@ -157,7 +157,7 @@ const FLARE_S: float = 1.2               # LED eyes flaring after a burst
 ## D2X-6 set pieces.
 const MELON_N: int = 100                 # Wave 2: the tipped truck spills 100 (one MultiMesh, analytic)
 const MELON_S: float = 5.0               # melons roll this long
-const MELON_DMG: float = 10.0
+const MELON_DMG: float = 12.0
 const MELON_R: float = 0.85              # player / biker within this of a melon = hit
 const MELON_TRUCK_LEAD: float = 90.0     # the truck shows this far before the drop point
 const TRUCK_SPEED: float = 15.0
@@ -172,7 +172,7 @@ const JUMP_REAL_S: float = 1.2           # the scripted jump (real seconds) ...
 const JUMP_SCALE: float = 0.4            # ... in slow motion
 const JUMP_H: float = 1.7
 const POLICE_N: int = 2
-const ROADBLOCK_GAP_W: float = 2.6       # the roadblock's gap (Thường; Dễ 3.4 m)
+const ROADBLOCK_GAP_W: float = 2.4       # the roadblock's gap (Thường; Dễ 3.4 m)
 const ROADBLOCK_DMG: float = 35.0        # crashing into it (Thường; Dễ 22)
 const POLICE_S: float = 25.0
 const DRIFT_FAST: float = 19.0           # through a drift zone faster than this without drifting = into the curb

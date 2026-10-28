@@ -5,7 +5,8 @@
 # wins. Sói Xám (DriftRival) rides aggressively: he blocks, kicks and fires nitro; the player kicks back (Q / E,
 # PlayerBikeCombat): 3 kicks make him wobble and lose speed for 2 s. Drift corners charge nitro (x CORNER_CHARGE_MULT in a
 # corner, + CORNER_BONUS for a drifted corner). A loss (he crosses the line first, or his kicks knock the player off)
-# retries quickly: on the grid, or on the lap 2 grid once the player reached lap 2.
+# retries quickly: on the grid, or on the lap 2 grid once the player reached lap 2; each loss (up to MERCY_MAX) eases his
+# pace by mercy_step, so a struggling player gets there within a few retries.
 #
 # ===== API (MissionDriftDuel; tests) =====
 #   var duel := DriftDuel.new(); roam.add_child(duel)
@@ -63,6 +64,11 @@ const CONTACT_LAT: float = 0.95
 const CONTACT_ALONG: float = 1.7
 const CONTACT_CD: float = 0.8
 const TAIL_GAP_M: float = 12.0            # he races harder (fight profile) when the player is this close
+const BAND_START_M: float = 20.0          # he eases off past this lead ...
+const BAND_FULL_M: float = 60.0           # ... down to band_far here
+const MERCY_MAX: int = 3                  # losses that ease him (mercy_step of pace each)
+const CRASH_DMG_MIN: float = 8.0          # a wall at 6 m/s ...
+const CRASH_DMG_MAX: float = 18.0         # ... and at 26 m/s (Dễ x0.6)
 const BIKE_FLOOR_OFFSET: float = 0.13
 ## The race profile (the chase's 100 km/h, 110 in a slipstream; nitro +8 m/s on top).
 const DUEL_PROFILE: Dictionary = {"max_speed_ms": 27.8, "slipstream_max_ms": 30.6, "engine_accel": 14.5, "air_drag": 0.0125}
@@ -139,6 +145,7 @@ var start_s: float = 0.0                  # the grid of the current attempt (0, 
 var corner_bonus: float = 12.0
 var band_far: float = 0.93
 var band_lead: float = 1.08
+var mercy_step: float = 0.025
 ## Tests: 1 = count the bike as drifting, 0 = as not drifting, -1 = read bike.is_drifting.
 var force_drift: int = -1
 var _targets: Array = []
@@ -218,6 +225,8 @@ func setup(opts: Dictionary) -> void:
 		fx.name = "RaceFX"
 		add_child(fx)
 	_targets = [rival]
+	if bike and not bike.crash_occurred.is_connected(_on_bike_crash):
+		bike.crash_occurred.connect(_on_bike_crash)   # before PlayerBikeCombat's own flat crash damage (it lands in the i-frames)
 	combat = PlayerBikeCombat.new()
 	combat.name = "RaceCombat"
 	add_child(combat)
@@ -234,8 +243,9 @@ func setup(opts: Dictionary) -> void:
 ## The difficulty's numbers (Thường, Dễ) for the race rules; the rival reads his own.
 func refresh_tuning() -> void:
 	corner_bonus = float(Difficulty.pick(12.0, 18.0))
-	band_far = float(Difficulty.pick(0.93, 0.84))
-	band_lead = float(Difficulty.pick(1.08, 1.03))
+	band_far = float(Difficulty.pick(0.92, 0.8))
+	band_lead = float(Difficulty.pick(1.08, 1.05))
+	mercy_step = float(Difficulty.pick(0.025, 0.04))
 	if rival:
 		rival.refresh_tuning()
 
@@ -295,9 +305,9 @@ func band_for(g: float, grace: bool) -> float:
 		return band_lead + 0.04
 	if g < 0.0:
 		return band_lead
-	if g < 25.0:
+	if g < BAND_START_M:
 		return 1.0
-	return lerpf(1.0, band_far, clampf((g - 25.0) / 40.0, 0.0, 1.0))
+	return lerpf(1.0, band_far, clampf((g - BAND_START_M) / (BAND_FULL_M - BAND_START_M), 0.0, 1.0))
 
 
 func _enter(s: String) -> void:
@@ -328,6 +338,7 @@ func _reset_race(s0: float) -> void:
 	d_p = GRID_LAT
 	lap = course.lap_at(s0)
 	rival.refresh_tuning()
+	rival.pace *= 1.0 - mercy_step * float(mini(losses, MERCY_MAX))   # each loss eases him a little (at most MERCY_MAX steps)
 	rival.place_at(s0 + RIVAL_GRID_AHEAD, -GRID_LAT)
 	if s0 > 0.0:
 		rival.nitro_left = maxi(1, rival.nitros_per_race / 2)
@@ -651,6 +662,15 @@ func _on_kick_hit(target: Node3D, _side: int) -> void:
 		return
 	if not rival.wobbling():
 		_popup_show(T_KICK_HIT % [rival.hits_taken, DriftRival.KICKS_TO_WOBBLE], Color("#FFE14D"), 0.8)
+
+
+## A crash into a wall or a kerb while racing: CRASH_DMG_MIN..MAX by the speed (x the difficulty), not PlayerBikeCombat's flat
+## 25 (that one falls inside the i-frames this hit gives).
+func _on_bike_crash() -> void:
+	if state != "racing" or combat == null or not combat.enabled:
+		return
+	var u: float = clampf((absf(bike.current_speed_ms) - 6.0) / 20.0, 0.0, 1.0)
+	combat.damage(lerpf(CRASH_DMG_MIN, CRASH_DMG_MAX, u) * float(Difficulty.pick(1.0, 0.6)), "crash")
 
 
 func _on_rival_wobble() -> void:
