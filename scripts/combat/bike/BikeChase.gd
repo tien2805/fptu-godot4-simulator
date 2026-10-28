@@ -99,6 +99,8 @@ const BEHIND_M: float = 16.0
 const AHEAD_M: float = 60.0              # "ahead" spawns: the first of these distances that is out of view ...
 const AHEAD_TRY: Array[float] = [60.0, 90.0, 120.0, 150.0]   # ... else from behind as the front blocker
 const SPAWN_STEP_M: float = 4.0
+const SHORT_JUMP_S: float = 0.45         # too slow for the gap: a hop this long (real s) ...
+const SHORT_JUMP_H: float = 0.5          # ... this high
 const LANE_M: float = 2.2
 
 var roam: Node = null
@@ -214,6 +216,7 @@ var d_lo: float = -INF                   # extra clamp of the AI's lateral targe
 var d_hi: float = INF
 var jump_left: float = 0.0               # real seconds left of the ramp jump (BikeSetPieces)
 var jump_len: float = 1.0
+var jump_short: bool = false
 var _air: Array = []                     # bikers airborne with the player
 var helmets: Array = []                  # pooled thrown helmets {"node", "mark", "t", "from", "to", "active", "by"}
 var helmets_thrown: int = 0
@@ -223,6 +226,7 @@ var police_player_t: float = 0.0         # the police's next go at the player wa
 var attack_hits: int = 0                 # enemy attacks that cost stability
 var _prev_speed: float = 0.0
 var _horn: AudioStream = null
+var previews: int = 0                    # set-piece preview cuts that ran (tests)
 
 
 func setup(opts: Dictionary) -> void:
@@ -568,7 +572,8 @@ func release_token(e: Object) -> void:
 
 ## The current wave's attacker cap (wave opts "max_attackers", else the setup value).
 func attacker_cap() -> int:
-	return int(wave_opt(wave, "max_attackers", max_attackers))
+	var cap: int = int(wave_opt(wave, "max_attackers", max_attackers))
+	return cap - int(Difficulty.pick(0, 1)) if cap > 2 else cap   # Dễ: one attacker fewer
 
 
 ## An enemy's attack lands now (its hit moment): within its kind's reach to the side and along the player's bike =
@@ -611,7 +616,7 @@ func on_biker_crash(b: BikerEnemy) -> void:
 	if state != "running" or not pending.is_empty() or alive_count() > 0:
 		return
 	wave_cleared.emit(wave)
-	combat.stability = minf(combat.max_stability, combat.stability + BikeCombatData.WAVE_REFILL)
+	combat.stability = minf(combat.max_stability, combat.stability + float(Difficulty.pick(BikeCombatData.WAVE_REFILL, 40.0)))
 	if wave + 1 < waves.size():
 		if bool(wave_opt(wave + 1, "after_cameo", false)) and not cameo_opts.is_empty() and cameo_state != "done":
 			if cameo_state == "":
@@ -637,6 +642,10 @@ func _takedown(b: BikerEnemy) -> void:
 	takedowns += 1
 	add_charge(BikeCombatData.TD_CHARGE)
 	takedown.emit(b, b.crash_cause)
+	if not b.kicked_by_player or b.crash_cause in ["traffic", "melon", "barrier", "gap", "roadblock", "police", "nitro", "pole"]:
+		# Wave 2: the world did it (a kick's crash already had its finisher at the kick): the finisher's burst and layers
+		Impact.hit(self, "finisher", {"pos": b.ground_pos() + Vector3(0.0, 0.8, 0.0), "dir": Vector3(b.vel.x, 0.0, b.vel.y).normalized(),
+			"fx": fx, "no_hitstop": true, "punch_k": 0.5})
 	if hud:
 		var line: String = BikeCombatData.T_AIR_KICK if b.crash_cause == "air" else BikeCombatData.T_TAKEDOWN[_td_i % BikeCombatData.T_TAKEDOWN.size()]
 		if b.kind == "pickup":
@@ -1574,7 +1583,7 @@ func _on_bike_crash() -> void:
 		return
 	var top: float = float(profile.get("max_speed_ms", 27.8))
 	var u: float = clampf((_prev_speed - 6.0) / maxf(top - 6.0, 1.0), 0.0, 1.0)
-	combat.damage(lerpf(BikeCombatData.CRASH_DMG_MIN, BikeCombatData.CRASH_DMG_MAX, u), "crash")
+	combat.damage(lerpf(BikeCombatData.CRASH_DMG_MIN, BikeCombatData.CRASH_DMG_MAX, u) * float(Difficulty.pick(1.0, 0.6)), "crash")
 
 
 ## PlayerBikeCombat.kick_hit: a spin kick (side 0, agent B) that hits two riders within SPIN_PAIR_S downs both, tagged
@@ -1605,6 +1614,30 @@ func _on_countered(_t: Node3D) -> void:
 func _on_stick_note(text: String) -> void:
 	if hud:
 		hud.popup(text, CombatHUD.GOLD if text == BikeCombatData.T_STICK_GOT else CombatHUD.WARN, 1.0)
+
+
+## The camera director of the scene (group "camera_director"), null without one.
+func director() -> Node:
+	return get_tree().get_first_node_in_group("camera_director") if is_inside_tree() else null
+
+
+## A set piece's 0.6 s preview cut (the readability rule): the camera director shows `target` ahead; skipped during the
+## opening, the cameo, a takedown cut or another director cut. true when it runs.
+func preview(target: Node3D, secs: float = 0.6) -> bool:
+	if target == null or state != "running" or opening_on or cameo_state == "running" or cam_mode != "":
+		return false
+	var cd: Node = director()
+	if cd == null or not cd.has_method("preview_cut") or (cd.has_method("cutting") and bool(cd.call("cutting"))):
+		return false
+	var ok: bool = bool(cd.call("preview_cut", target, secs))
+	if ok:
+		previews += 1
+	return ok
+
+
+## Real seconds left of this chase's slow motion (the camera director's orbit lasts as long), -1 when none.
+func slowmo_remaining() -> float:
+	return _slow_left if slow_kind != "" and _slow_left != INF else -1.0
 
 
 ## Slow motion for `real_s` real seconds (INF: until end_slow_motion). false when a weapon wheel owns the time scale.
@@ -1921,7 +1954,7 @@ func _tick_helmets(delta: float) -> void:
 		if state == "running" and Vector2(b.x, b.z).distance_to(p_pos) <= BikeCombatData.THROW_R:
 			var by: BikerEnemy = h["by"] as BikerEnemy if is_instance_valid(h["by"]) else null
 			var lat: float = (Vector2(b.x, b.z) - p_pos).dot(b_right)
-			var dmg: float = float(BikeCombatData.KINDS["thrower"]["dmg"])
+			var dmg: float = float(BikeCombatData.kind("thrower")["dmg"])
 			if combat.damage(dmg, "helmet", 1 if lat > 0.0 else -1):
 				helmets_hit += 1
 				if by:
@@ -1930,14 +1963,19 @@ func _tick_helmets(delta: float) -> void:
 					hud.popup(BikeCombatData.T_HELMET_HIT, CombatHUD.WARN, 0.9)
 
 
-## The ramp (BikeSetPieces): a scripted jump of JUMP_REAL_S real seconds in slow motion; riders alongside fly too (a kick
-## on one in the air is an "air" takedown). The landing is always safe.
-func start_jump() -> void:
+## The ramp (BikeSetPieces' broken road gap): a scripted jump of JUMP_REAL_S real seconds in slow motion; riders
+## alongside fly too (a kick on one in the air is an "air" takedown). The landing is safe. short = too slow for the gap:
+## a quick hop of SHORT_JUMP_S (no slow motion, nobody flies with it) and a hard landing (BikeSetPieces.short_landing).
+func start_jump(short: bool = false) -> void:
 	if cam_mode == "td":
 		_cam_restore()                       # the jump is seen from the bike's own camera
-	jump_len = BikeCombatData.JUMP_REAL_S
+	jump_short = short
+	jump_len = SHORT_JUMP_S if short else BikeCombatData.JUMP_REAL_S
 	jump_left = jump_len
 	_air.clear()
+	if short:
+		cue("engine_roar", bike.global_position, -4.0)
+		return
 	for b: Variant in bikers:
 		var e: BikerEnemy = b as BikerEnemy
 		if e == null or not is_instance_valid(e) or not e.is_active() or e.kind == "pickup":
@@ -1961,7 +1999,7 @@ func _tick_jump(rdt: float) -> void:
 		return
 	jump_left -= rdt
 	var u: float = clampf(1.0 - jump_left / maxf(jump_len, 0.01), 0.0, 1.0)
-	var h: float = BikeCombatData.JUMP_H * 4.0 * u * (1.0 - u)
+	var h: float = (SHORT_JUMP_H if jump_short else BikeCombatData.JUMP_H) * 4.0 * u * (1.0 - u)
 	if jump_left <= 0.0:
 		h = 0.0
 	if bike.visual_pivot:
@@ -1975,7 +2013,11 @@ func _tick_jump(rdt: float) -> void:
 
 
 func _land() -> void:
+	var was_short: bool = jump_short and jump_left <= 0.0 and state == "running"
+	jump_short = false
 	jump_left = 0.0
+	if was_short and set_pieces:
+		set_pieces.short_landing()
 	for b: Variant in _air:
 		var e: BikerEnemy = b as BikerEnemy
 		if e != null and is_instance_valid(e):

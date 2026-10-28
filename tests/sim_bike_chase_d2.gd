@@ -5,19 +5,27 @@
 # Bots (real steering, gas / brake / drift actions, kicks through PlayerBikeCombat.kick):
 #   first    a first-time player: reacts to a telegraph 55 % of the time after 0.38 s, kicks a rider in reach after 0.3 s
 #            with 70 % odds, ducks under the barrier 70 % of the time, drifts in a drift zone 30 % of the time;
-#   skilled  reacts 90 % after 0.2 s, kicks at once, always ducks, drifts in every zone.
+#   skilled  reacts 90 % after 0.2 s, kicks at once, always ducks, drifts in every zone;
+#   sloppy   the Q6 standard (plan 2026-10-29-w2-day2.md): 250-400 ms reaction delay on every decision, 15 % of them wrong
+#            or late (a dodge the wrong way, a kick to the wrong side, no duck, a roadblock gap missed, +0.3 s), reads 65 %
+#            of the telegraphs, a slow lateral wander off the line so it hits traffic sometimes.
 # Run (fast, no real-time sync):
-#   godot --headless --path . --fixed-fps 60 --script tests/sim_bike_chase_d2.gd -- first 1 3
-#   (bot, first seed, runs)
+#   godot --headless --path . --fixed-fps 60 --script tests/sim_bike_chase_d2.gd -- sloppy 1 3 normal
+#   (bot, first seed, runs, difficulty normal | easy)
 extends SceneTree
 
 const BOTS: Dictionary = {
 	"first": {"react": 0.55, "delay": 0.38, "kick_p": 0.7, "kick_delay": 0.3, "duck": 0.7, "drift": 0.3, "corner_brake": 0.6},
 	"skilled": {"react": 0.9, "delay": 0.2, "kick_p": 1.0, "kick_delay": 0.08, "duck": 1.0, "drift": 1.0, "corner_brake": 1.0},
+	"sloppy": {"react": 0.65, "delay": 0.25, "delay_max": 0.4, "kick_p": 0.8, "kick_delay": 0.25, "duck": 0.85, "drift": 0.7,
+		"corner_brake": 0.85, "wrong": 0.15, "wander": 1.1, "gap_p": 0.85},
 }
 const MAX_GAME_S: float = 480.0
 
 var bot: String = "first"
+var diff: String = "normal"
+var _wander_ph: float = 0.0
+var _block_aim: Dictionary = {}          # roadblock s -> [aim from (game s), lateral aim]
 var bp: Dictionary = {}
 var seed0: int = 1
 var runs: int = 3
@@ -62,6 +70,8 @@ func _initialize() -> void:
 		seed0 = int(a[1])
 	if a.size() >= 3:
 		runs = int(a[2])
+	if a.size() >= 4:
+		diff = a[3]
 	bp = BOTS[bot]
 	print("--- SIM DAY 2 CHASE (bot %s, seeds %d..%d) ---" % [bot, seed0, seed0 + runs - 1])
 	for pair: Array in [["StageManager", "res://scripts/StageManager.gd"], ["GameFX", "res://scripts/GameFX.gd"]]:
@@ -78,7 +88,10 @@ func _initialize() -> void:
 
 
 func _start_run() -> void:
+	Difficulty.set_easy(diff == "easy")      # after GameFX loaded the owner's setting
 	rng.seed = seed0 + run_i
+	_wander_ph = rng.randf_range(0.0, TAU)
+	_block_aim.clear()
 	fails = 0
 	fail_causes.clear()
 	dmg.clear()
@@ -160,7 +173,8 @@ func _end_run() -> void:
 		"state": chase.state, "escaped": chase.escaped, "downed": chase.downed_total, "takedowns": chase.takedowns,
 		"kicks": chase.combat.kicks, "hits": chase.combat.hits, "dmg": dmg.duplicate(), "waves": wave_t.duplicate(), "cameo": cameo_t,
 		"melons": chase.set_pieces.melon_hits, "cones": chase.set_pieces.cone_hits, "curbs": chase.set_pieces.curb_hits,
-		"barrier": chase.set_pieces.results.duplicate(), "helmets": "%d/%d" % [chase.helmets_hit, chase.helmets_thrown]}
+		"barrier": chase.set_pieces.results.duplicate(), "helmets": "%d/%d" % [chase.helmets_hit, chase.helmets_thrown],
+		"gap": chase.set_pieces.gap_results.duplicate(), "block": chase.set_pieces.block_results.duplicate()}
 	var left: Array[String] = []
 	for b: Variant in chase.bikers:
 		if is_instance_valid(b) and not (b as BikerEnemy).is_down():
@@ -171,6 +185,7 @@ func _end_run() -> void:
 	var dm: Array[String] = []
 	for k: String in dmg.keys():
 		dm.append("%s %.0f" % [k, float(dmg[k])])
+	print("  gap %s, roadblock %s, previews %d" % [str(r["gap"]), str(r["block"]), chase.set_pieces.previews])
 	print("  run %d (seed %d): %s in %.0f s real (%d fails %s), downed %d, escaped %d, takedowns %d, kicks %d/%d, dmg {%s}, waves at %s (cleared %s), cameo %.0f, enemy attacks %d (%d hit), melons %d, cones %d, curbs %d, barrier %s, helmets %s, left %s" % [
 		run_i, seed0 + run_i, chase.state, float(real_f) / 60.0, fails, str(fail_causes), chase.downed_total, chase.escaped, chase.takedowns,
 		chase.combat.hits, chase.combat.kicks, ", ".join(dm), str(wave_t.map(func(x: float) -> int: return int(x))), str(clear_t.map(func(x2: float) -> int: return int(x2))), cameo_t, chase.attack_starts, chase.attack_hits,
@@ -213,7 +228,12 @@ func _summary() -> void:
 		t += float(r["real_s"])
 		if String(r["state"]) == "won" or String(r["state"]) == "finishing":
 			won += 1
-	print("SUMMARY bot %s: %d runs, %d finished, fails per run %.2f, average %.0f s real per run (with retries)" % [bot, results.size(), won, float(f) / maxf(results.size(), 1.0), t / maxf(results.size(), 1.0)])
+	var per: Array = []
+	for r2: Dictionary in results:
+		per.append(int(r2["fails"]))
+	print("SUMMARY bot %s (%s): %d runs, %d finished, fails per run %s = %.2f on average, average %.0f s real per run (with retries)" % [bot, diff, results.size(), won, str(per),
+		float(f) / maxf(results.size(), 1.0), t / maxf(results.size(), 1.0)])
+	Difficulty.set_easy(false)
 	quit(0)
 
 
@@ -237,15 +257,16 @@ func _bot(dt: float) -> void:
 			continue
 		if e.telegraphing() and e.kind != "thrower" and e.pos2.distance_to(chase.p_pos) < 8.0:
 			if not _seen.has(e):
-				_seen[e] = [game_t, false, _roll(float(bp["react"]))]
+				_seen[e] = [game_t, false, _roll(float(bp["react"])), _delay()]
 			var sv: Array = _seen[e]
-			if bool(sv[2]) and not bool(sv[1]) and game_t - float(sv[0]) >= float(bp["delay"]):
+			if bool(sv[2]) and not bool(sv[1]) and game_t - float(sv[0]) >= float(sv[3]):
 				sv[1] = true
 				var lat: float = (e.pos2 - chase.p_pos).dot(chase.p_right)
+				var wrong: bool = _roll(float(bp.get("wrong", 0.0)))
 				if e.kind == "stick" or e.kind == "pickup":
-					_brake_left = 0.55
+					_brake_left = 0.55 if not wrong else 0.0
 				else:
-					_shift = -signf(lat) * 2.2
+					_shift = -signf(lat) * 2.2 * (-1.0 if wrong else 1.0)
 					_shift_left = 0.55
 		elif _seen.has(e) and not e.is_attacking():
 			_seen.erase(e)
@@ -273,10 +294,10 @@ func _bot(dt: float) -> void:
 			if tg == null:
 				continue
 			_reach_t[tg] = float(_reach_t.get(tg, 0.0)) + dt
-			if float(_reach_t[tg]) >= float(bp["kick_delay"]):
+			if float(_reach_t[tg]) >= (_delay() if bp.has("delay_max") else float(bp["kick_delay"])):
 				_reach_t.erase(tg)
 				if _roll(float(bp["kick_p"])):
-					chase.combat.kick(sd)
+					chase.combat.kick(-sd if _roll(float(bp.get("wrong", 0.0))) else sd)
 				break
 	# set pieces: the barrier and the drift zones
 	duck_now = false
@@ -298,8 +319,19 @@ func _bot(dt: float) -> void:
 	# steering toward the route ahead (+ a dodge shift)
 	var look: float = 9.0 + spd * 0.35
 	var want_d: float = 0.0
+	if bp.has("wander"):                      # the sloppy bot is never exactly on the line (it meets traffic)
+		want_d = (sin(game_t * 0.45 + _wander_ph) * 0.75 + sin(game_t * 1.2 + _wander_ph * 1.7) * 0.25) * float(bp["wander"])
 	if _shift_left > 0.0:
 		want_d = _shift
+	# the roadblock: aim for its gap once seen (after a reaction delay; sometimes off)
+	for p3: Dictionary in chase.set_pieces.pieces:
+		if String(p3["kind"]) == "roadblock" and String(p3["phase"]) == "tele":
+			var key3: float = float(p3["s"])
+			if not _block_aim.has(key3):
+				var off: float = 1.8 if not _roll(float(bp.get("gap_p", 1.0))) else 0.0
+				_block_aim[key3] = [game_t + _delay(), float(p3.get("gap_d", 0.0)) + off]
+			if game_t >= float(_block_aim[key3][0]):
+				want_d = float(_block_aim[key3][1]) * chase.dir_sign
 	for p2: Dictionary in chase.set_pieces.pieces:
 		if String(p2["kind"]) == "wrong_way" and String(p2["phase"]) == "active":
 			want_d = minf(want_d, -1.4) if chase.dir_sign > 0.0 else want_d
@@ -314,6 +346,16 @@ func _bot(dt: float) -> void:
 	if sharp > 55.0 and spd > 15.0 and not drift and _roll(float(bp["corner_brake"]) * 0.2 + 0.8 * float(bp["corner_brake"])):
 		brake = true
 	_controls(not brake, brake, drift and absf(steer) > 0.15, steer)
+
+
+## A reaction delay: the bot's own, the sloppy bot's 250-400 ms (+0.3 s when late).
+func _delay() -> float:
+	if not bp.has("delay_max"):
+		return float(bp["delay"])
+	var d: float = rng.randf_range(float(bp["delay"]), float(bp["delay_max"]))
+	if _roll(float(bp.get("wrong", 0.0)) * 0.5):
+		d += 0.3
+	return d
 
 
 func _controls(gas: bool, brake: bool, drift: bool, steer: float) -> void:
