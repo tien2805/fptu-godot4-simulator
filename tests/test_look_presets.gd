@@ -215,6 +215,20 @@ func _part_e() -> bool:
 	if not _check(LookPresets.fill_light(plain) == null and LookPresets.active(plain) == "server_red", "plain Node owner"):
 		return false
 	LookPresets.set_base(plain, "")
+	# basement case: no sun of its own; a quality change re-runs ViceStyle, which must not take LookFill for the sun
+	var cave := Node3D.new()
+	var cwe := WorldEnvironment.new()
+	cwe.name = "WorldEnvironment"
+	cwe.environment = Environment.new()
+	cave.add_child(cwe)
+	holder.add_child(cave)
+	LookPresets.set_base(cave, "server_red")
+	GameFXScript.upgrade_scene_visuals(cave, "night")
+	var cf: DirectionalLight3D = LookPresets.fill_light(cave)
+	var fill_ok: bool = cf != null and not cf.shadow_enabled and is_zero_approx(cf.light_indirect_energy) 		and is_equal_approx(cf.light_energy, float(LookPresets.PRESETS["server_red"]["fill"]["energy"])) and LookPresets.active(cave) == "server_red"
+	cave.free()
+	if not _check(fill_ok, "LookFill turned into a sun after ViceStyle.apply in a scene without a sun"):
+		return false
 	bare.free()
 	plain.free()
 	# quality 0: the GameFX autoload's visual_quality (set directly: set_visual_quality would save the owner's settings)

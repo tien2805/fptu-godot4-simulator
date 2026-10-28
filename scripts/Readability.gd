@@ -105,10 +105,18 @@ static func rim(root: Node, kind: String = "enemy", shell: bool = false) -> int:
 	return _attach(root) if _enabled else 0
 
 
-## Removes the rim from root's meshes (the root stays registered).
+## Removes the rim (shell or overlay) from root's meshes for good: knockouts and crashes call it (the integration step);
+## the root also leaves the group, so switching the setting on again does not bring it back.
 static func unrim(root: Node) -> void:
 	if root == null:
 		return
+	_strip(root)
+	if root.is_in_group(GROUP):
+		root.remove_from_group(GROUP)
+
+
+## Removes the rim from root's meshes; the root stays registered (the settings toggle).
+static func _strip(root: Node) -> void:
 	for n: Node in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		if mi.has_meta("rim_shell_node"):
@@ -131,7 +139,7 @@ static func set_enabled(on: bool) -> void:
 		if on:
 			_attach(n)
 		else:
-			unrim(n)
+			_strip(n)
 
 
 ## Meshes of root carrying the rim (overlay or shell); tests and the render budget.

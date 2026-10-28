@@ -41,8 +41,9 @@ const HEAD_RANGE: float = 650.0
 const POOL_RANGE: float = 220.0
 const POOL_FADE: float = 40.0
 const LIGHTS: int = 4
-const LIGHT_RANGE: float = 14.0
-const LIGHT_ENERGY: float = 1.3
+const LIGHT_RANGE: float = 16.0
+const LIGHT_ENERGY: float = 4.0
+const LIGHT_ATTEN: float = 0.7                       # ~7 m up: visibly lights the road and riders under the lamp
 const LIGHT_HZ: float = 4.0
 const LIGHT_NEAR: float = 70.0
 const LINE_NIGHT_ENERGY: float = 0.8
@@ -307,7 +308,7 @@ func _build_lights() -> void:
 		l.light_color = SODIUM
 		l.light_energy = LIGHT_ENERGY
 		l.omni_range = LIGHT_RANGE
-		l.omni_attenuation = 1.4
+		l.omni_attenuation = LIGHT_ATTEN
 		l.shadow_enabled = false
 		l.light_specular = 0.3
 		l.visible = false
@@ -366,8 +367,8 @@ func _update_lights() -> void:
 		_near_i[k] = -1
 		_near_d[k] = INF
 	var hc := Vector2i(int(floor(p.x / HASH)), int(floor(p.z / HASH)))
-	for dx: int in [-2, -1, 0, 1, 2]:
-		for dy: int in [-2, -1, 0, 1, 2]:
+	for dx: int in range(-2, 3):
+		for dy: int in range(-2, 3):
 			var key := Vector2i(hc.x + dx, hc.y + dy)
 			if not _hash.has(key):
 				continue

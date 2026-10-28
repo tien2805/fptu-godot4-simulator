@@ -193,7 +193,22 @@ func _part_e() -> bool:
 	var after: int = _total_rimmed()
 	if not _check(after >= before + 2, "toggle on: %d rims, before %d" % [after, before]):
 		return false
-	print("  E: toggle off -> 0 rims, on -> %d" % after)
+	# unrim (knockout / crash): shell and overlay removed, and the setting toggled again does not bring it back
+	var me: MeleeEnemy = null
+	for n: Node in get_nodes_in_group(Readability.GROUP):
+		if n.get_parent() is MeleeEnemy:
+			me = n.get_parent() as MeleeEnemy
+	if not _check(me != null, "no rimmed MeleeEnemy for unrim"):
+		return false
+	Readability.unrim(me.body)
+	Readability.unrim(b)
+	if not _check(Readability.rimmed_count(me.body) == 0 and me.body.find_child(Readability.SHELL_NAME, true, false) == null and Readability.rimmed_count(b) == 0, "unrim left a rim"):
+		return false
+	Readability.set_enabled(false)
+	Readability.set_enabled(true)
+	if not _check(Readability.rimmed_count(me.body) == 0 and Readability.rimmed_count(b) == 0 and not b.is_in_group(Readability.GROUP), "an unrimmed root came back with the toggle"):
+		return false
+	print("  E: toggle off -> 0 rims, on -> %d; unrim (shell + overlay) stays off" % after)
 	return true
 
 

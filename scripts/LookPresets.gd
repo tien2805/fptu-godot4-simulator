@@ -64,9 +64,9 @@ const PRESETS: Dictionary = {
 		"brightness": 1.0, "contrast": 1.15, "sat": 1.0, "amb": 0.35, "amb_col": Color("#6b5a3a"),
 		"key": {"col": Color("#ffd68a"), "energy": 0.6, "shadow": 0.6},
 		"fill": {"col": Color("#2a2a40"), "energy": 0.1, "elev": 25.0, "azim": 200.0}},
-	# Campus / free roam by day (Days 1 and 4): warm sun, softer shadows (a cool sky fill lifts them), a slight bloom.
-	# Threshold stays 2.4 like ViceStyle's day look (lower puts halos on sunlit lane paint).
-	"campus_day": {"exposure": 1.16, "glow": 0.5, "glow_strength": 1.0, "thr": 2.4, "cap": 12.0, "bloom": 0.04,
+	# Campus / free roam by day (Days 1 and 4): warm sun, softer shadows (a cool sky fill lifts them); the "slight bloom" is glow 0.5 on emissives only.
+	# Threshold 2.4 and no bloom like ViceStyle's day / noon look (lower or bloom puts halos on sunlit lane paint and mats).
+	"campus_day": {"exposure": 1.16, "glow": 0.5, "glow_strength": 1.0, "thr": 2.4, "cap": 12.0, "bloom": 0.0,
 		"fog": Color("#e2eef0"), "fog_begin": 140.0, "fog_end": 1800.0, "fog_density": 0.9,
 		"brightness": 1.02, "contrast": 1.0, "sat": 1.18, "amb": 1.1, "amb_col": Color("#d2e2e6"),
 		"key": {"col": Color("#fff0d4"), "energy": 1.5, "shadow": 0.62},
@@ -248,11 +248,11 @@ static func _write_fill(owner: Node, f: Dictionary) -> void:
 		fill = DirectionalLight3D.new()
 		fill.name = FILL_NAME
 		fill.set_meta("look_fill", true)
-		fill.shadow_enabled = false
 		fill.light_specular = 0.0          # a fill lifts shadows; no second highlight
-		fill.light_indirect_energy = 0.0
 		owner.add_child(fill)
 	fill.visible = true
+	fill.shadow_enabled = false            # every render: never a second sun (ViceStyle skips it, see ViceStyle._find_first)
+	fill.light_indirect_energy = 0.0
 	fill.light_color = f["col"]
 	fill.light_energy = float(f["energy"])
 	fill.rotation_degrees = Vector3(-float(f.get("elev", 30.0)), float(f.get("azim", 0.0)), 0.0)

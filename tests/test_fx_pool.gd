@@ -1,7 +1,8 @@
 # File: res://tests/test_fx_pool.gd
 # Headless test of the Q3 VFX pool (plan 2026-10-29-q3-look.md Task 3):
 #   A: the pool joins the group "fx_pool" (FxPool.find), prebuilds every kind's budget of CPUParticles3D;
-#   B: every kind spawns at the position with its +Y along dir; unknown kinds are refused;
+#   B: every kind spawns at the position; dust / dust_ring / smoke / fire / rain_burst stay upright whatever dir is,
+#      sparks / debris / splash / speed_lines / nitro_flame follow dir; unknown kinds are refused;
 #   C: spawning past the budget never adds emitters: the one that frees soonest is reused (steals counted);
 #   D: no object is created by 200 spawns + clock steps (Performance OBJECT_COUNT), no node is added;
 #   E: continuous kinds stop emitting after their duration, every emitter frees after its particles' life;
@@ -87,10 +88,17 @@ func _part_b() -> bool:
 		if not _check(pool.active_count(k) == 1, "%s: active %d after one spawn" % [k, pool.active_count(k)]):
 			return false
 		var e: CPUParticles3D = _emitters(k)[0]
-		if not _check(e.global_position.is_equal_approx(at) and e.global_transform.basis.y.normalized().is_equal_approx(Vector3.RIGHT), "%s: emitter not at pos / not along dir" % k):
+		var want: Vector3 = Vector3.UP if k in FxPool.UP_KINDS else Vector3.RIGHT   # the dir contract
+		if not _check(e.global_position.is_equal_approx(at) and e.global_transform.basis.y.normalized().is_equal_approx(want), "%s: emitter not at pos / wrong orientation (want +Y %s)" % [k, str(want)]):
 			return false
 		var cont: bool = float(FxPool.KINDS[k]["dur"]) > 0.0
 		if not _check(e.emitting and e.one_shot == (not cont), "%s: emitting %s one_shot %s" % [k, str(e.emitting), str(e.one_shot)]):
+			return false
+	for k: String in ["sparks", "debris", "splash", "speed_lines", "nitro_flame"]:
+		if not _check(not FxPool.UP_KINDS.has(k), "%s must follow dir" % k):
+			return false
+	for k: String in ["dust", "dust_ring", "smoke", "fire", "rain_burst"]:
+		if not _check(FxPool.UP_KINDS.has(k), "%s must stay upright" % k):
 			return false
 	if not _check(not pool.spawn("lava", at), "unknown kind accepted"):
 		return false
@@ -98,7 +106,7 @@ func _part_b() -> bool:
 	pool.stop_all()
 	if not _check(pool.active_count() == 0, "stop_all left active emitters"):
 		return false
-	print("  B: every kind spawns at the position along dir")
+	print("  B: every kind spawns at the position; upright kinds ignore dir, the others follow it")
 	return true
 
 

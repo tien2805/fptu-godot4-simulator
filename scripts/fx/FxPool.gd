@@ -7,8 +7,11 @@
 # Kinds (KINDS): sparks, dust, dust_ring, smoke, debris, splash, fire, rain_burst, speed_lines, nitro_flame. Every kind owns
 # a fixed number of prebuilt CPUParticles3D emitters (its budget), all built in _ready with shared meshes, materials,
 # colour ramps and curves (static caches): spawning never creates a node or a resource. A spawn takes a free emitter of
-# the kind, else steals the one that frees soonest (`steals` counts them); the emitter moves to pos with its local +Y along
-# dir (world-space particles: moving it later never drags live particles). One-shot kinds burst once; continuous kinds
+# the kind, else steals the one that frees soonest (`steals` counts them); the emitter moves to pos (world-space particles:
+# moving it later never drags live particles).
+# dir contract: dust, dust_ring, smoke, fire and rain_burst always stand upright (local +Y = UP, dir is ignored: a
+# horizontal attacker-to-target dir never tips a dust ring into a vertical disc); sparks, debris, splash, speed_lines
+# and nitro_flame point their local +Y along dir (UP_KINDS lists the upright ones). One-shot kinds burst once; continuous kinds
 # (fire, rain_burst, speed_lines, nitro_flame) emit for their "dur" seconds (x scale) and are stopped by the pool's
 # _process, which only walks the few continuous emitters. scale multiplies particle size and emission radius, speeds by
 # sqrt(scale). Quality 0 (GameFX THẤP) halves every particle amount (decided once in _ready).
@@ -32,6 +35,8 @@ const KINDS: Dictionary = {
 	"speed_lines": {"budget": 2, "amount": 24, "life": 0.25, "dur": 0.6},
 	"nitro_flame": {"budget": 2, "amount": 24, "life": 0.18, "dur": 0.4},
 }
+## Kinds that ignore spawn()'s dir and always emit upright (ground puffs, rising smoke and flames, falling rain).
+const UP_KINDS: Array[String] = ["dust", "dust_ring", "smoke", "fire", "rain_burst"]
 ## Spawn order of the kinds in the flat emitter list (fixed, so indices are stable).
 const ORDER: Array[String] = ["sparks", "dust", "dust_ring", "smoke", "debris", "splash", "fire", "rain_burst", "speed_lines", "nitro_flame"]
 
@@ -120,7 +125,7 @@ func spawn(kind: String, pos: Vector3, dir: Vector3 = Vector3.UP, scale: float =
 	spawns += 1
 	var sc: float = clampf(scale, 0.1, 6.0)
 	var p: CPUParticles3D = _all[pick]
-	p.global_transform = Transform3D(_basis_up(dir), pos)
+	p.global_transform = Transform3D(_basis_up(Vector3.UP if kind in UP_KINDS else dir), pos)
 	p.scale_amount_max = _base_scale[pick] * sc
 	p.scale_amount_min = _base_scale[pick] * sc * 0.55
 	var vs: float = sqrt(sc)
