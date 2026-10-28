@@ -5,8 +5,11 @@
 # id   kind      real_hit  freeze_end  slowmo_from  slowmo_to  speed  story_s  what
 #
 # Shots (real start, rig, what)
-SHOT S1      0.000  static    two-shot side on: the cup down on the desk, the handshake
+SHOT S1      0.000  two_shot  two-shot hero + za
 SHOT S2      2.450  static    close: the protagonist's smug look, the fire behind
 #
 # Subtitles (real start - end, speaker: line)
 SUB    1.300 -  2.700  Za Mẫn: Chào mừng sếp mới.
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE    1.300  a smug handshake: welcome, new boss

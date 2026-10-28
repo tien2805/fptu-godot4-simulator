@@ -72,29 +72,27 @@ func build() -> void:
 	move("hero", 13.75, "hold_up", {"fade": 0.2})
 	look("hero", 13.8, 14.6, Vector3(0.6, 1.3, 0.25))
 	look("hero", 14.7, 16.3, "alex")
+	move("hero", 15.0, "shrug", {"fade": 0.15})
+	move("hero", 16.2, "hold_up", {"fade": 0.2})
 	expr("hero", 0.0, "open")
 	expr("hero", 6.1, "angry")
 	expr("hero", 13.6, "surprised")
-	expr("hero", 16.2, "done")
-	var exit := Vector3(3.0, 0.0, 3.6)
-	var y_ex: float = CineTimeline.face(HERO, exit)
-	key("hero", 16.3, HERO, CineTimeline.face(HERO, USB))
-	key("hero", 16.7, HERO, y_ex)
-	key("hero", 18.0, HERO.lerp(exit, 0.55), y_ex, {"mode": "in"})
-	move("hero", 16.75, "walk", {"fade": 0.2})
+	expr("hero", 16.5, "surprised")
+	# Q5 cliffhanger: Alexander warns that Za Mẫn is already watching; the protagonist looks round
+	look("hero", 16.4, 18.0, Vector3(2.5, 2.2, -3.0))
 	sfx_at(6.5, "party_horn", 0.0)
 	sfx_at(6.7, "record_scratch", -6.0)
 	sfx_at(11.05, "slide_whistle", -10.0)
 	sfx_at(11.35, "freeze_tick", -6.0)
 	sfx_at(13.7, "dun_dun_duun", -6.0)
+	sfx_at(16.9, "cliff_sting", -3.0)
 	shot("S1", 0.0, "static", "wide: the toppled forklift, Alexander dazed on the ground, containers behind",
 		{"pos": Vector3(3.4, 1.8, 3.6), "look": Vector3(-0.2, 0.9, -1.0), "fov": 50.0})
 	shot("S2", 0.4, "static", "close: Alexander, \"Các người có biết ta là ai không?\"",
 		{"pos": Vector3(-0.15, 0.95, 0.35), "look": Vector3(-0.45, 0.8, -0.75), "fov": 40.0, "hand": 0.15})
 	shot("S3", 2.7, "static", "close: the protagonist, \"Không.\"",
 		{"pos": Vector3(0.1, 1.45, -0.2), "look": Vector3(0.45, 1.5, 0.65), "fov": 38.0})
-	shot("S4", 3.5, "static", "side two-shot: the endless name begins",
-		{"pos": Vector3(-2.7, 1.3, 0.6), "look": Vector3(0.0, 1.0, -0.1), "fov": 46.0})
+	two_shot("S4", 3.5, "hero", "alex", {"side": 1.0, "look_y": 0.95, "dist": 3.8})   # the endless name begins
 	shot("S5", 6.3, "static", "close over Alexander: the party horn blast cuts the name off",
 		{"pos": Vector3(-0.75, 1.25, -0.1), "look": Vector3(0.45, 1.5, 0.65), "fov": 40.0})
 	shot("S6", 7.3, "static", "close: the protagonist, \"Ngắn thôi. Hàng của ai?\"",
@@ -107,8 +105,7 @@ func build() -> void:
 		{"pos": Vector3(0.55, 1.5, 1.6), "look": Vector3(0.45, 1.35, 0.65), "fov": 40.0})
 	shot("S10", 14.6, "static", "close: Alexander, \"Đừng cắm vô máy trường nha!\"",
 		{"pos": Vector3(-0.15, 0.95, 0.35), "look": Vector3(-0.45, 0.8, -0.75), "fov": 40.0})
-	shot("S11", 16.4, "static", "wide: the protagonist walks off, Alexander mutters",
-		{"pos": Vector3(-3.0, 1.6, 3.2), "look": Vector3(0.6, 0.9, 0.6), "fov": 48.0})
+	dutch_shot("S11", 16.3, "alex", {"side_deg": -25.0, "dist": 2.5, "height": 0.85, "look_y": 0.6, "roll": -12.0, "push": 0.15})   # the warning
 	sub(0.5, 2.1, "alex", "Các người có biết ta là ai không?")
 	sub(2.8, 0.6, "hero", "Không.")
 	sub(3.6, 3.0, "alex", "Ta là Alexander ABCXYZ DEFGH IJKLMN OPQRS TUVW...")
@@ -116,4 +113,6 @@ func build() -> void:
 	sub(9.1, 2.6, "alex", "...Ta chỉ là trung gian. Ông chủ thật là...")
 	sub(13.6, 0.9, "hero", "Za Mẫn Labs?")
 	sub(14.7, 1.7, "alex", "Đừng cắm vô máy trường nha!")
-	sub(16.5, 1.4, "alex", "...tên ta dài lắm mà...")
+	sub(16.45, 1.5, "alex", "Za Mẫn đang nhìn cậu đó.")
+	joke(6.5, "the party horn blast cuts the endless name off")
+	cliffhanger(16.45)

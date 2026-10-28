@@ -50,8 +50,7 @@ func build() -> void:
 	shot("S1", 0.0, "dolly", "roadside wide: the scooter's headlight comes down the road at night",
 		{"from": Vector3(-2.8, 1.25, -3.0), "to": Vector3(-2.8, 1.25, -3.6), "look_from": Vector3(1.0, 1.0, 7.0),
 		"look_to": Vector3(1.0, 1.0, -9.0), "fov": 48.0})
-	shot("S2", 4.6, "track", "side tracking close: the protagonist rides, Anh Duy on the radio",
-		{"actor": "hero", "offset": Vector3(-1.7, 1.15, -0.4), "look": Vector3(0.0, 1.05, 0.0), "fov": 42.0, "hand": 0.3})
+	push_in("S2", 4.6, "hero", {"from": 4.4, "to": 3.5, "side_deg": 20.0, "look_y": 1.1, "hand": 0.3})   # Q5: rides with the scooter
 	shot("S3", 9.3, "track", "behind the scooter: the road ahead to the bridge",
 		{"actor": "hero", "offset": Vector3(0.5, 1.5, 3.0), "look": Vector3(0.0, 0.9, -7.0), "fov": 50.0, "hand": 0.3})
 	card("screen", 0.3, 12.45, {"kind": "radio", "sender": "Anh Duy"})
@@ -61,4 +60,5 @@ func build() -> void:
 	sub(5.65, 4.2, "duy", "Anh loop camera bến được 30 giây.", "Dịch: Camera đứng hình 30 giây thôi.")
 	sub(9.95, 0.9, "hero", "Ba mươi giây?!")
 	sub(10.95, 1.7, "duy", "Ừ. Hên xui.", "Dịch: Ừ. Hên xui.")
+	joke(10.95, "the Dịch: line translates nothing: Ừ. Hên xui.")
 	sub(12.75, 1.0, "hero", "...Chạy lẹ thôi.")

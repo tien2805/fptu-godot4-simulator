@@ -72,10 +72,10 @@ func build() -> void:
 			{"pos": Vector3(2.8, 1.4, 2.6), "look": Vector3(0.0, 1.5, -3.0), "fov": 56.0})
 	shot("S5", FREEZE - 0.1, "static", "the wall: every screen freezes on \"Lọ Thần đã gặp sự cố\"",
 		{"pos": Vector3(0.0, 1.6, 0.0), "look": Vector3(0.0, 1.5, -4.6), "fov": 60.0})
-	shot("S6", 7.6, "static", "close: the protagonist, \"...Nó tự sập kìa.\"",
-		{"pos": Vector3(0.35, 1.6, -0.3), "look": Vector3(0.0, 1.55, 0.8), "fov": 38.0})
+	push_in("S6", 7.6, "hero", {"from": 2.6, "to": 2.2, "side_deg": 15.0, "look_y": 1.2})   # Q5: "...Nó tự sập kìa."
 	sub(3.9, 2.2, "za", "Ha ha ha! Chào mừng tới Lọ Thần 9.0!")
 	sub(7.8, 1.3, "hero", "...Nó tự sập kìa.")
+	joke(7.8, "the evil tool crashes on its own: Lọ Thần đã gặp sự cố")
 
 
 ## The carried server room shared by the Day 5 slots: walls and ceiling (set dressing), two rows of racks along the sides

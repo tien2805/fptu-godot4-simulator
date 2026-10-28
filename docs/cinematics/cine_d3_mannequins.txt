@@ -10,9 +10,9 @@ SHOT S1      0.000  static    over the protagonist's shoulder: six containers in
 SHOT S2      0.900  dolly     push to the open door: rows of mannequins in smart glasses, heads turned away
 SHOT S3      1.400  static    at the door: every head snaps to the camera at once
 SHOT S4      1.950  static    wide: all six containers open, hundreds of red LEDs staring
-SHOT S5      2.050  static    Alexander hops out blowing a party horn: "Surprise!"; the card freezes this frame
-SHOT S6      7.120  static    side two-shot: he recites his endless name again
-SHOT S7      9.500  static    close: the protagonist, deadpan
+SHOT S5      2.050  dutch     dutch alex
+SHOT S6      7.120  two_shot  two-shot hero + alex
+SHOT S7      9.500  push_in   push-in hero
 #
 # Subtitles (real start - end, speaker: line)
 SUB    0.120 -  1.580  Bạn: Có ai trong đó không...?
@@ -25,3 +25,6 @@ SCARE    1.600  duck  1.200  -
 #
 # Cards (real start - end, kind: what)
 CARD    3.000 -  7.000  villain: Alexander ABCXYZ
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE    2.200  the horror reveal is Alexander with a party horn: Surprise!

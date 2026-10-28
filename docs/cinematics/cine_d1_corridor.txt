@@ -6,7 +6,7 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    over the shoulder down the corridor: the sheep figure at the far end
-SHOT S2      2.400  static    close: the protagonist's face
+SHOT S2      2.400  push_in   push-in hero
 SHOT S3      3.000  static    the protagonist's view: the tubes go dark, come back, the corridor is empty
 SHOT S4      4.400  static    low behind the protagonist: Lu trots in and bonks a calf
 SHOT S5      6.000  static    two-shot: the protagonist and Lu, tail wagging
@@ -18,3 +18,6 @@ SUB    6.200 -  7.500  Chú Bảy: Lu! Về đây, đừng phá!
 #
 # Jump scares v2 (real hit, duck from, twitching actor)
 SCARE    3.500  duck  3.100  sheep
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE    5.700  Lu bonks a calf, the protagonist jumps

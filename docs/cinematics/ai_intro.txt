@@ -7,10 +7,16 @@
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    wide: morning, reading the phone
 SHOT S2      1.400  static    close over the shoulder: the email
-SHOT S3      8.000  static    close: the face
-SHOT S4     12.400  static    low hero shot: determined
+SHOT S3      8.000  push_in   push-in hero
+SHOT S4     12.400  low_hero  hero hero
 SHOT S5     17.400  orbit     orbit under the title card
 #
 # Subtitles (real start - end, speaker: line)
 SUB    9.200 - 11.400  Bạn: Mình… bị đình chỉ thi á?!
+SUB   11.450 - 13.150  Bạn: Mới được khen hôm qua mà...
 SUB   14.500 - 17.400  Bạn: Được. Bảy ngày. Phải tìm ra kẻ cài cái kính đó!
+SUB   21.000 - 23.500  Số lạ (tin nhắn): Đừng đào sâu. Mày còn 7 ngày thôi.
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE   11.450  Mới được khen hôm qua mà... with a facepalm
+CLIFF  21.000

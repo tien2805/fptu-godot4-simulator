@@ -87,21 +87,19 @@ func build() -> void:
 	sfx_at(16.9, "dun_dun_duun", -6.0)
 	shot("S1", 0.0, "static", "wide: a keynote stage at night, LỌ THẦN 10.0 on the screen, an audience of mannequins",
 		{"pos": Vector3(4.6, 2.2, 4.6), "look": Vector3(-0.4, 1.4, -2.0), "fov": 54.0})
-	shot("S2", 3.25, "static", "close: the CEO in a black turtleneck and round glasses",
-		{"pos": Vector3(0.35, 2.0, -0.85), "look": Vector3(0.0, 2.0, -2.0), "fov": 38.0})
+	push_in("S2", 3.25, "hero", {"from": 2.9, "to": 2.3, "side_deg": 15.0, "look_y": 1.2})   # Q5: the CEO
 	shot("S3", 6.5, "static", "reverse over the stage: rows of mannequins, red LEDs, clapping on cue",
 		{"pos": Vector3(-1.6, 2.3, -1.4), "look": Vector3(0.4, 1.2, 2.4), "fov": 56.0})
 	shot("S4", 10.1, "static", "close: Phúc in smart glasses, dead eyes, \"Tuyệt vời...\"",
 		{"pos": Vector3(3.45, 1.55, -0.35), "look": Vector3(3.75, 1.5, 0.75), "fov": 38.0})
-	shot("S5", 12.4, "static", "two-shot: Za Mẫn brings the coffee, \"Sếp ơi, server lại cháy.\"",
-		{"pos": Vector3(-0.2, 1.85, 0.6), "look": Vector3(-0.45, 1.85, -2.1), "fov": 42.0})
-	shot("S6", 14.4, "static", "close: the CEO, \"Ổn mà, mọi thứ vẫn ổn.\"",
-		{"pos": Vector3(-0.15, 2.0, -0.85), "look": Vector3(0.0, 2.0, -2.0), "fov": 38.0})
+	two_shot("S5", 12.4, "hero", "za", {"side": -1.0, "look_y": 1.2})   # "Sếp ơi, server lại cháy."
+	hero_shot("S6", 14.4, "hero", {"side_deg": 20.0, "dist": 2.4})   # "Ổn mà, mọi thứ vẫn ổn."
 	shot("S7", 16.2, "dolly", "wide pull back: the smug bow, applause; the credits roll",
 		{"from": Vector3(2.2, 2.0, 2.2), "to": Vector3(3.4, 2.6, 4.4), "look_from": Vector3(0.0, 1.5, -2.0), "look_to": Vector3(0.0, 1.5, -1.8),
 		"fov": 50.0})
 	sub(3.4, 3.25, "hero", "Xin chào. Tôi là %s, CEO Lọ Thần 10.0." % hero_name)
 	sub(6.7, 3.1, "hero", "Thi hộ bằng AI. Đậu hay rớt... đều không hoàn tiền.")
+	joke(6.7, "the CEO pitch: pass or fail, no refunds")
 	sub(10.3, 1.6, "phuc", "Tuyệt vời... tuyệt vời...")
 	sub(12.6, 1.6, "za", "Sếp ơi, server lại cháy.")
 	sub(14.5, 1.5, "hero", "Ổn mà, mọi thứ vẫn ổn.")

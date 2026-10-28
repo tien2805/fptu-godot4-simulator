@@ -6,11 +6,11 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    wide: a keynote stage at night, LỌ THẦN 10.0 on the screen, an audience of mannequins
-SHOT S2      3.250  static    close: the CEO in a black turtleneck and round glasses
+SHOT S2      3.250  push_in   push-in hero
 SHOT S3      6.500  static    reverse over the stage: rows of mannequins, red LEDs, clapping on cue
 SHOT S4     10.100  static    close: Phúc in smart glasses, dead eyes, "Tuyệt vời..."
-SHOT S5     12.400  static    two-shot: Za Mẫn brings the coffee, "Sếp ơi, server lại cháy."
-SHOT S6     14.400  static    close: the CEO, "Ổn mà, mọi thứ vẫn ổn."
+SHOT S5     12.400  two_shot  two-shot hero + za
+SHOT S6     14.400  low_hero  hero hero
 SHOT S7     16.200  dolly     wide pull back: the smug bow, applause; the credits roll
 #
 # Subtitles (real start - end, speaker: line)
@@ -22,3 +22,6 @@ SUB   14.500 - 16.000  Bạn: Ổn mà, mọi thứ vẫn ổn.
 #
 # Cards (real start - end, kind: what)
 CARD   18.000 - 26.000  screen: credits
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE    6.700  the CEO pitch: pass or fail, no refunds

@@ -74,26 +74,29 @@ func build() -> void:
 	key("hero", 3.9, hero, y_soi)
 	key("hero", 4.3, hero, CineTimeline.face(hero, phone))
 	strike("hero", 4.6, "pickup", {"dur": 0.6})
-	hold("hero", 4.6, 12.0, "phone", {"offset": Vector3(0.0, 0.0, -0.02), "glow": true})
+	hold("hero", 4.6, 18.0, "phone", {"offset": Vector3(0.0, 0.0, -0.02), "glow": true})
 	move("hero", 5.0, "hold_up", {"fade": 0.25})
 	look("hero", 5.2, 8.4, _m(Vector3(-1.05, 1.3, -1.0)))
 	key("hero", 8.3, hero, CineTimeline.face(hero, phone))
 	key("hero", 8.7, hero, y_soi)
-	look("hero", 8.6, 16.3, "soi")
+	look("hero", 8.6, 15.9, "soi")
+	look("hero", 16.3, 18.0, hero + Vector3(0.0, 1.25, 0.0) + (EXIT - hero).normalized() * 0.4)
 	move("hero", 12.0, "arms_crossed", {"fade": 0.3})
 	expr("hero", 0.0, "angry")
 	expr("hero", 5.4, "surprised")
 	expr("hero", 9.0, "open")
 	expr("hero", 15.0, "done")
+	# Q5 cliffhanger: the phone buzzes again; the protagonist turns away to read it
 	var y_ex: float = CineTimeline.face(hero, EXIT)
-	key("hero", 16.3, hero, y_soi)
-	key("hero", 16.75, hero, y_ex)
-	key("hero", 18.0, hero.lerp(EXIT, 0.42), y_ex, {"mode": "in"})
-	move("hero", 16.8, "walk", {"fade": 0.2})
+	key("hero", 15.9, hero, y_soi)
+	key("hero", 16.3, hero, y_ex)
+	move("hero", 16.1, "hold_up", {"fade": 0.2})
+	expr("hero", 16.5, "surprised")
 	sfx_at(3.5, "ringtone_synth", -4.0)
 	sfx_at(5.3, "ringtone_synth", -6.0)
 	sfx_at(9.2, "ba_dum_tss", -10.0)
-	sfx_at(17.0, "wolf_howl", -6.0)
+	sfx_at(16.1, "phone_buzz", -3.0)
+	sfx_at(16.8, "cliff_sting", -3.0)
 	shot("S1", 0.0, "static", "wide under the bridge: Sói Xám tied to the pillar, the bike's headlight on him",
 		{"pos": _m(Vector3(-4.3, 1.7, 2.3)), "look": _m(Vector3(-1.5, 0.9, -1.4)), "fov": 50.0, "hand": 0.2})
 	shot("S2", 1.9, "static", "close: the wolf helmet, LED eyes dark, \"Tao không nói đâu!\"",
@@ -102,19 +105,18 @@ func build() -> void:
 		{"pos": _m(Vector3(-1.95, 0.55, -0.7)), "look": phone, "fov": 36.0})
 	shot("S4", 5.1, "static", "side on: the protagonist reads the message from \"Ngài Alexander\", Sói Xám watching",
 		{"pos": _m(Vector3(0.45, 1.5, -1.25)), "look": _m(Vector3(-1.4, 1.1, -1.1)), "fov": 44.0, "hand": 0.15})
-	shot("S5", 8.5, "static", "close: Sói Xám gives in",
-		{"pos": _m(Vector3(-2.45, 1.0, -0.7)), "look": _m(Vector3(-2.0, 0.85, -1.8)), "fov": 38.0, "hand": 0.15})
+	dutch_shot("S5", 8.5, "soi", {"look_y": 0.75, "height": 0.95, "dist": 2.6, "roll": 14.0, "hand": 0.15})   # Q5: the villain gives in
 	shot("S6", 11.9, "static", "close: the protagonist, \"Alexander nào?\"",
 		{"pos": _m(Vector3(-1.7, 1.55, -1.45)), "look": _m(Vector3(-1.2, 1.5, -0.62)), "fov": 38.0})
-	shot("S7", 13.2, "static", "two-shot from the side: the endless name",
-		{"pos": _m(Vector3(1.4, 1.35, -1.0)), "look": _m(Vector3(-1.6, 1.0, -1.3)), "fov": 44.0})
-	shot("S8", 16.5, "static", "wide: the protagonist walks off, a feeble howl from the dark helmet",
-		{"pos": _m(Vector3(-4.1, 1.5, 0.9)), "look": _m(Vector3(-1.2, 0.9, -1.0)), "fov": 48.0})
+	two_shot("S7", 13.2, "hero", "soi", {"look_y": 1.0, "dist": 3.6})   # the endless name (the joke)
+	push_in("S8", 16.1, "hero", {"from": 3.4, "to": 2.4, "side_deg": 50.0, "look_y": 1.2})   # the cliffhanger text
 	card("screen", 5.4, 3.0, {"kind": "phone", "sender": "Ngài Alexander", "text": "Hàng về bến container chưa? Nhớ khóa kho kỹ.", "time": "02:41"})
 	sub(0.5, 1.3, "hero", "Hàng đi đâu? Nói.")
 	sub(2.0, 1.3, "soi", "Tao không nói đâu!")
 	sub(3.8, 0.9, "soi", "...Đừng nghe!")
 	sub(8.6, 3.2, "soi", "Thôi được! Hàng về bến container của ngài Alexander.")
 	sub(12.0, 1.1, "hero", "Alexander nào?")
-	sub(13.3, 3.6, "soi", "Alexander ABCXYZ... tên dài lắm, tao chưa đọc hết bao giờ.")
-	sub(17.0, 0.8, "soi", "Ao... u...")
+	sub(13.3, 3.0, "soi", "Alexander ABCXYZ... tên dài lắm, tao chưa đọc hết.")
+	sub(16.4, 1.4, "hero", "...'Sói? Ta đang tới.'")
+	joke(13.3, "Sói Xám has never read Alexander's whole name either")
+	cliffhanger(16.4)

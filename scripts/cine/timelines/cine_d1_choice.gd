@@ -65,16 +65,15 @@ func build() -> void:
 	sfx_at(8.0, "heartbeat", -8.0)
 	shot("S1", 0.0, "static", "wide: the courtyard bench at night, Phúc walks up",
 		{"pos": Vector3(1.6, 1.6, -4.4), "look": Vector3(-0.8, 1.0, -0.2), "fov": 50.0})
-	shot("S2", 2.9, "static", "close over the protagonist's shoulder: Phúc confesses",
-		{"pos": Vector3(1.05, 1.62, 0.55), "look": Vector3(-0.5, 1.45, -0.35), "fov": 38.0, "hand": 0.15})
+	ots_shot("S2", 2.9, "hero", "phuc", {"hand": 0.15, "look_y": 1.2})
 	shot("S3", 5.5, "static", "close: the protagonist, \"Mày điên hả?!\"",
 		{"pos": Vector3(-0.15, 1.58, -0.75), "look": Vector3(0.55, 1.5, 0.1), "fov": 38.0, "hand": 0.2})
 	shot("S4", 6.7, "static", "close: Phúc, the blackmail",
 		{"pos": Vector3(0.35, 1.55, -1.25), "look": Vector3(-0.5, 1.45, -0.35), "fov": 36.0, "hand": 0.15})
-	shot("S5", 10.0, "static", "two-shot side on: the frame that freezes for the choice",
-		{"pos": Vector3(0.2, 1.5, -2.6), "look": Vector3(0.0, 1.25, -0.1), "fov": 46.0})
+	two_shot("S5", 10.0, "hero", "phuc", {"side": -1.0, "push": 0.1, "look_y": 1.2})   # the frame that freezes for the choice
 	sub(0.5, 2.4, "phuc", "Ê… tao có chuyện phải nói với mày.")
-	sub(3.1, 2.3, "phuc", "Tao mua tool rồi. Cái Lọ Thần đó.")
+	sub(3.1, 2.3, "phuc", "Tao mua tool rồi... gói Premium.")
+	joke(3.1, "he bought the Premium plan of the cheat tool")
 	sub(5.6, 1.0, "hero", "Mày điên hả?!")
 	sub(6.8, 3.2, "phuc", "Giờ tụi nó tống tiền tao, không trả là báo trường.")
 	sub(10.1, 1.5, "phuc", "Đừng nói với Mr.T nha…")

@@ -6,9 +6,9 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    wide: the canteen at noon, Linh pitches the plan, two identical clones eat behind
-SHOT S2      3.000  static    close: Linh, sharp
+SHOT S2      3.000  ots       over hero onto linh
 SHOT S3      6.700  static    front: the flyer on the left, Phúc turned to it, Linh glaring at him (the meme situation)
-SHOT S4      9.100  static    close: Phúc caught
+SHOT S4      9.100  push_in   push-in phuc
 SHOT S5     10.800  static    wide three-shot: back to work
 #
 # Subtitles (real start - end, speaker: line)
@@ -17,3 +17,6 @@ SUB    3.200 -  6.300  Linh: Mình bưng khay giả làm khách, tìm ra con th�
 SUB    8.200 -  9.000  Linh: Phúc!!!
 SUB    9.200 - 10.700  Phúc: Tao… chỉ đọc thôi mà!
 SUB   11.000 - 13.400  Linh: Tập trung! Bưng khay lên, bắt đầu.
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE    8.200  the distracted-boyfriend situation with the 'thi hộ' flyer

@@ -57,7 +57,7 @@ func build() -> void:
 	sfx_at(TAKE + 0.05, "whoosh_down", -8.0)
 	shot("S1", 0.0, "static", "close: the protagonist, \"Không.\"",
 		{"pos": Vector3(0.0, 1.6, 0.35), "look": Vector3(0.35, 1.55, 1.3), "fov": 40.0})
-	shot("S2", 0.7, "static", "wide side on: Za Mẫn puts the cup down and takes up a bent katana off the desk",
-		{"pos": Vector3(-3.4, 1.5, 0.9), "look": Vector3(-0.6, 1.1, -1.0), "fov": 46.0})
+	two_shot("S2", 0.7, "hero", "za", {"side": 1.0, "look_y": 1.2})   # Q5: the cup down, a bent katana up
 	sub(0.15, 0.5, "hero", "Không.")
 	sub(1.5, 2.3, "za", "Tiếc ghê. Vậy tôi pivot sang... chém.")
+	joke(1.5, "startup talk: he pivots to slashing")

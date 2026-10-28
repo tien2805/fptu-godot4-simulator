@@ -10,8 +10,8 @@ SHOT S1      0.000  static    over the protagonist's shoulder: six identical clo
 SHOT S2      1.000  static    low from the tables: every clone stops and stares
 SHOT S3      2.000  static    close: one burps
 SHOT S4      2.650  static    wide row: masks on; the villain card freezes this frame
-SHOT S5      7.010  static    close: the protagonist, "…Thôi xong."
-SHOT S6      8.100  static    wide side: the clones stand, Dolly points
+SHOT S5      7.010  push_in   push-in hero
+SHOT S6      8.100  dutch     dutch dolly
 #
 # Subtitles (real start - end, speaker: line)
 SUB    7.200 -  8.200  Bạn: …Thôi xong.
@@ -19,3 +19,6 @@ SUB    8.500 -  9.500  Cừu Dolly: Bắt lấy!
 #
 # Cards (real start - end, kind: what)
 CARD    3.700 -  7.000  villain: Cừu Dolly
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE    2.150  every clone stares in silence, then one burps

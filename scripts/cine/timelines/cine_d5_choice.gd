@@ -45,6 +45,7 @@ func build() -> void:
 	key("za", 8.6, ZA, CineTimeline.face(ZA, STONKS))
 	key("za", 9.0, ZA, y_za)
 	look("za", 9.0, 14.0, "hero")
+	move("za", 7.1, "shrug", {"fade": 0.15})
 	move("za", 9.0, "talk", {"fade": 0.3})
 	move("za", 11.4, "sip", {"fade": 0.3})
 	expr("za", 0.0, "happy")
@@ -75,19 +76,17 @@ func build() -> void:
 		{"pos": Vector3(-0.25, 1.6, -0.35), "look": Vector3(-0.6, 1.55, -1.3), "fov": 38.0, "hand": 0.15})
 	shot("S3", 2.2, "static", "close: the protagonist points at the flames",
 		{"pos": Vector3(0.0, 1.6, 0.35), "look": Vector3(0.35, 1.55, 1.3), "fov": 40.0})
-	shot("S4", 3.4, "static", "two-shot side on: \"Cháy là dấu hiệu tăng trưởng nóng.\"",
-		{"pos": Vector3(-3.2, 1.5, 0.6), "look": Vector3(-0.1, 1.3, -0.1), "fov": 44.0})
+	two_shot("S4", 3.4, "hero", "za", {"side": 1.0, "look_y": 1.2})   # Q5: "Cháy là dấu hiệu tăng trưởng nóng."
 	shot("S5", 5.7, "static", "insert: the STONKS chart dives, a red ticker",
 		{"pos": STONKS + Vector3(-1.0, 1.45, 2.2), "look": STONKS + Vector3(0.0, 1.4, 0.0), "fov": 42.0})
 	shot("S6", 7.0, "static", "close: Za Mẫn glances back, \"...Điều chỉnh kỹ thuật thôi.\"",
 		{"pos": Vector3(-0.2, 1.6, -0.4), "look": Vector3(-0.6, 1.55, -1.3), "fov": 38.0})
-	shot("S7", 8.9, "static", "close: the offer",
-		{"pos": Vector3(-0.25, 1.6, -0.35), "look": Vector3(-0.6, 1.55, -1.3), "fov": 36.0, "hand": 0.1})
-	shot("S8", 11.4, "static", "two-shot side on: the frame that freezes for the choice",
-		{"pos": Vector3(3.0, 1.5, -0.3), "look": Vector3(-0.1, 1.3, 0.0), "fov": 46.0})
+	dutch_shot("S7", 8.9, "za", {"side_deg": 20.0, "dist": 2.6, "roll": 12.0, "push": 0.15, "look_y": 1.2, "hand": 0.1})   # the offer
+	two_shot("S8", 11.4, "hero", "za", {"side": -1.0, "look_y": 1.2})   # the frame that freezes for the choice
 	sub(0.6, 1.5, "za", "Ổn mà, mọi thứ vẫn ổn.")
 	sub(2.3, 1.0, "hero", "Phòng cháy kìa!")
 	sub(3.5, 2.2, "za", "Cháy là dấu hiệu tăng trưởng nóng.")
+	joke(3.5, "the burning server room is 'hot growth'")
 	sub(7.1, 1.8, "za", "...Điều chỉnh kỹ thuật thôi.")
 	sub(9.0, 2.3, "za", "Về phe tôi đi, %s." % StoryCast.speaker("hero"))
 	sub(11.45, 2.1, "za", "Xoá án đình chỉ, tặng equity 0,01%.")

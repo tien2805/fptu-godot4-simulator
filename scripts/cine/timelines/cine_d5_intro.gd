@@ -61,16 +61,15 @@ func build() -> void:
 		{"pos": Vector3(0.22, 1.32, 0.62), "look": Vector3(0.0, 1.18, -0.72), "fov": 40.0, "hand": 0.15})
 	shot("S2", 1.75, "static", "insert: the USB slides into the laptop",
 		{"pos": Vector3(0.5, 0.95, -0.15), "look": USB_PORT, "fov": 34.0})
-	shot("S3", 2.4, "static", "two-shot side on: decrypting",
-		{"pos": Vector3(-2.3, 1.45, -1.4), "look": Vector3(0.3, 1.2, -1.0), "fov": 44.0})
-	shot("S4", 10.2, "static", "close: the protagonist, \"Ngay dưới chỗ tao ngủ?!\"",
-		{"pos": Vector3(1.05, 1.6, -0.3), "look": Vector3(0.78, 1.55, -1.42), "fov": 38.0, "hand": 0.15})
+	two_shot("S3", 2.4, "duy", "hero", {"look_y": 1.05, "dist": 3.4})   # Q5: decrypting
+	push_in("S4", 10.2, "hero", {"from": 2.7, "to": 2.3, "side_deg": 50.0, "look_y": 1.2, "hand": 0.15})
 	shot("S5", 11.0, "static", "close over the laptops: Anh Duy, pleased with himself",
 		{"pos": Vector3(0.22, 1.32, 0.62), "look": Vector3(0.0, 1.18, -0.72), "fov": 40.0})
 	shot("S6", 11.85, "static", "wide: \"Đêm nay xuống hầm.\"",
 		{"pos": Vector3(2.4, 1.65, 1.9), "look": Vector3(0.3, 1.0, -0.9), "fov": 50.0})
 	# Anh Duy's lines show with their Dịch line: timed for both (0.06 s per character of the two)
 	sub(0.4, 3.4, "duy", "AES-256, mà pass là 123456.", "Dịch: Khóa xịn, mật khẩu dỏm.")
+	joke(0.4, "military-grade encryption, password 123456")
 	sub(3.9, 1.2, "hero", "Rồi trong đó có gì?")
 	sub(5.2, 5.0, "duy", "IP nội bộ, trỏ về server dưới hầm The Beverly.", "Dịch: Máy chủ nằm dưới hầm tòa mày ở.")
 	sub(10.3, 1.4, "hero", "Ngay dưới chỗ tao ngủ?!")

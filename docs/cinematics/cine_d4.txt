@@ -6,15 +6,22 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    wide: night outside the lobby, Dolly cornered, the protagonist and Linh close in
-SHOT S2      3.600  static    close: Dolly pulls the sheep mask off
+SHOT S2      3.600  push_in   push-in dolly
 SHOT S3      6.900  static    side-on along the wall: the protagonist asks for the schedule, Dolly in profile
-SHOT S4      8.400  static    close: Dolly spills the schedule and the server
-SHOT S5     16.200  static    medium: Linh, the phone recording, deadpan
+SHOT S4      8.400  dutch     dutch dolly
+SHOT S4b    10.600  two_shot  two-shot hero + dolly
+SHOT S5     13.900  static    medium: Linh, the phone recording, deadpan
+SHOT S6     15.200  push_in   push-in dolly
 #
 # Subtitles (real start - end, speaker: line)
 SUB    1.800 -  3.600  Linh: Hết đường chạy rồi, Dolly.
 SUB    4.600 -  6.900  Cừu Dolly: Được rồi, được rồi! Tôi khai hết!
 SUB    7.100 -  8.300  Bạn: Lịch thi hộ đâu?
-SUB    8.500 - 12.300  Cừu Dolly: Thứ Năm, ca hai, phòng 311 và 402. Mười hai đứa thi thay.
-SUB   12.500 - 16.200  Cừu Dolly: Đáp án đẩy về từ server dưới hầm The Beverly, 10.13.0.7.
-SUB   16.300 - 17.600  Linh: Ghi âm hết rồi nhé.
+SUB    8.500 - 10.600  Cừu Dolly: Thứ Năm, ca hai, phòng 311 và 402.
+SUB   10.700 - 13.900  Cừu Dolly: Đáp án đẩy về server 10.13.0.7 dưới hầm The Beverly.
+SUB   14.000 - 15.200  Linh: Ghi âm hết rồi nhé.
+SUB   15.300 - 17.500  Cừu Dolly: Xuống đó... là không ai ra được đâu.
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE   14.000  Linh was recording the whole time; a sad trombone for Dolly
+CLIFF  15.300

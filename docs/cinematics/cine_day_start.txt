@@ -6,7 +6,12 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    wide: stepping out of the lobby, the page above
+SHOT S1b     2.300  push_in   push-in hero
 SHOT S2      4.800  static    over the shoulder: the day's first text
 #
 # Subtitles (real start - end, speaker: line)
+SUB    2.500 -  4.500  Bạn: Hôm nay chắc yên bình...
 SUB    5.600 -  8.785  Phúc (tin nhắn): Ê, tao nghe chuyện rồi… tối nay gặp ở campus nhé.
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE    2.500  Hôm nay chắc yên bình... and the phone buzzes at once
