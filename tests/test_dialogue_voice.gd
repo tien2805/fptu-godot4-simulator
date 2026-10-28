@@ -33,6 +33,7 @@ func _run() -> void:
 		await call("_part_t")
 	if has_method("_part_r"):
 		await call("_part_r")
+	_part_g()
 	if fails.is_empty():
 		print("SUCCESS test_dialogue_voice")
 		quit(0)
@@ -231,3 +232,19 @@ func _part_r() -> void:
 	ty.queue_free()
 	tl2.queue_free()
 	await process_frame
+
+
+func _part_g() -> void:
+	print("  G: gestures")
+	for mv: String in ["talk_ual", "fold_arms", "head_no", "facepalm", "shrug", "laugh", "point", "arms_crossed"]:
+		_check(CineMoves.has_move(mv), "move %s" % mv)
+	var src: Array = (CineMoves.MOVES["fold_arms"] as Dictionary)["src"]
+	_check(String(src[0]["t"]) == "ual2" and String(src[0]["a"]) == "Idle_FoldArms" and String(src[src.size() - 1]["t"]) == "code", "fold_arms: the UAL clip first, a code fallback")
+	var fp: Dictionary = CineMoves.code_pose("facepalm", 0.5)
+	_check((fp["elbow_r"] as Vector3).x > 2.0 and (fp["head"] as Vector3).x > 0.3, "facepalm: the hand at the face, head down")
+	var f0: Dictionary = CineMoves.code_pose("facepalm", 0.0)
+	_check((f0["elbow_r"] as Vector3).x < 0.4, "facepalm eases in from rest")
+	var sh: Dictionary = CineMoves.code_pose("shrug", 0.5)
+	_check((sh["shoulder_r"] as Vector3).z > 0.4 and (sh["shoulder_l"] as Vector3).z < -0.4, "shrug: both arms out")
+	var la: Dictionary = CineMoves.code_pose("laugh", 0.3)
+	_check((la["torso"] as Vector3).x > 0.08 and (la["head"] as Vector3).x < -0.15, "laugh: leaning back, head up")

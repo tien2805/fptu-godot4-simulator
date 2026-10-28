@@ -181,6 +181,15 @@ const MOVES: Dictionary = {
 	# the hands at the hips, so this is a code pose on every tier)
 	"block_high": {"dur": 0.8, "hit_u": 0.45, "src": [{"t": "code", "a": "block_high", "hit": 0.45}]},
 	"handshake": {"dur": 1.2, "loop": true, "src": [{"t": "code", "a": "handshake"}]},
+	# --- Q5 acting (plan 2026-10-29-w2-story T5): gestures for the talking actors. The UAL packs have Idle_Talking,
+	# Idle_FoldArms and Idle_No (used first, code poses as fallback); facepalm, shrug and laugh exist in no pack, so they
+	# are code poses on every tier (one-shots ease in and out, laugh loops).
+	"talk_ual": {"dur": 2.4, "loop": true, "src": [{"t": "ual1", "a": "Idle_Talking"}, {"t": "code", "a": "talk"}]},
+	"fold_arms": {"dur": 3.0, "loop": true, "src": [{"t": "ual2", "a": "Idle_FoldArms"}, {"t": "code", "a": "arms_crossed"}]},
+	"head_no": {"dur": 1.2, "src": [{"t": "ual2", "a": "Idle_No"}, {"t": "code", "a": "head_shake"}]},
+	"facepalm": {"dur": 1.8, "src": [{"t": "code", "a": "facepalm"}]},
+	"shrug": {"dur": 1.2, "src": [{"t": "code", "a": "shrug"}]},
+	"laugh": {"dur": 1.0, "loop": true, "src": [{"t": "code", "a": "laugh"}]},
 }
 
 ## Two-handed overhead smash (a chair or the soup pot held between both hands): wind up over the head, bring it down on
@@ -838,6 +847,21 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 			return {"shoulder_r": Vector3(0.62 + hp, 0.0, 0.05), "elbow_r": Vector3(0.55, 0.0, 0.0),
 				"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0),
 				"torso": Vector3(0.06, 0.0, 0.0), "head": Vector3(0.05, 0.0, 0.0)}
+		"facepalm":   # the right palm to the forehead, head down, a slow shake; eases in and out
+			var fe: float = _sm(u / 0.22) * (1.0 - _sm((u - 0.8) / 0.2))
+			return {"shoulder_r": Vector3(0.1 + 1.15 * fe, 0.0, 0.12 - 0.42 * fe), "elbow_r": Vector3(0.25 + 2.1 * fe, 0.0, 0.0),
+				"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25, 0.0, 0.0),
+				"head": Vector3(0.38 * fe, 0.12 * sin(u * TAU * 2.0) * fe, 0.0), "torso": Vector3(-0.08 * fe, 0.0, 0.0)}
+		"shrug":      # both forearms up and out, palms up, shoulders back, head tilted; eases in and out
+			var se: float = _sm(u / 0.3) * (1.0 - _sm((u - 0.7) / 0.3))
+			return {"shoulder_l": Vector3(0.1 + 0.3 * se, 0.0, -0.12 - 0.42 * se), "elbow_l": Vector3(0.25 + 1.2 * se, 0.0, 0.0),
+				"shoulder_r": Vector3(0.1 + 0.3 * se, 0.0, 0.12 + 0.42 * se), "elbow_r": Vector3(0.25 + 1.2 * se, 0.0, 0.0),
+				"head": Vector3(-0.05 * se, 0.0, 0.18 * se), "torso": Vector3(0.06 * se, 0.0, 0.0)}
+		"laugh":      # leaning back, hands on the belly, shoulders bouncing (loop phase u)
+			var lb: float = sin(u * TAU * 4.0)
+			return {"torso": Vector3(0.16 + 0.05 * lb, 0.0, 0.0), "head": Vector3(-0.28 + 0.06 * lb, 0.0, 0.0),
+				"shoulder_l": Vector3(0.45 + 0.05 * lb, 0.0, 0.22), "elbow_l": Vector3(1.55, 0.0, 0.0),
+				"shoulder_r": Vector3(0.45 + 0.05 * lb, 0.0, -0.22), "elbow_r": Vector3(1.55, 0.0, 0.0)}
 		"block_high":   # arms up over the head (a weapon held across it), braced for the blow, then down a little
 			var bh: float = _sm(u / 0.35) * (1.0 - 0.3 * _sm((u - 0.6) / 0.4))
 			return {"shoulder_l": Vector3(2.7 * bh, 0.0, -0.35 * bh), "elbow_l": Vector3(0.7 * bh, 0.0, 0.0),
