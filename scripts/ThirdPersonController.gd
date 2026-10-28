@@ -135,6 +135,7 @@ var _lean: float = 0.0
 var _air_clip: String = ""
 var _splat_phase: int = 0
 var _cam_dt: float = 0.0
+var _shake_t: float = 0.0                # seconds left of the last shake() (read by tests; the shake itself is FootCamRig's)
 
 var model: Node3D
 var cam_pivot: Node3D
@@ -264,6 +265,7 @@ func teleport(pos: Vector3, yaw_rad: float) -> void:
 	is_sprinting = false
 	slow_t = 0.0
 	_lean = 0.0
+	_shake_t = 0.0
 	if cam_rig:
 		cam_rig.trauma = 0.0
 	set_facing(yaw_rad)
@@ -540,6 +542,7 @@ func _turn(delta: float, move: Vector3, rate: float) -> void:
 
 
 func _shake(amp: float) -> void:
+	_shake_t = 0.35
 	if cam_rig:
 		cam_rig.add_trauma(amp * CameraRules.LOCAL_SHAKE_K)
 
@@ -608,6 +611,7 @@ func shake(amp: float) -> void:
 func _process(delta: float) -> void:
 	if _built:
 		aim_blend = move_toward(aim_blend, 1.0 if aiming else 0.0, delta / AIM_EASE_S)
+		_shake_t = maxf(0.0, _shake_t - delta)
 		_cam_dt = delta
 		_update_camera(false)
 		_cam_dt = 0.0

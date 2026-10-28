@@ -256,12 +256,13 @@ func _part_d() -> void:
 	_check(rpeak > 1.0, "punch turns the camera a few degrees (%.2f)" % rpeak)
 	_check(d.fx_offset.length() < 0.01 and absf(d.fx_fov) < 0.1, "the punch springs back within 0.5 s (%.4f)" % d.fx_offset.length())
 	# shake on the player's camera
+	var rot0: Vector3 = player.camera.rotation
 	d.shake(0.8)
 	await _frames(3)
-	var rot: float = player.camera.rotation.length()
+	var rot: float = (player.camera.rotation - rot0).length()
 	_check(rot > 0.001, "shake moves the player's camera (%.4f rad)" % rot)
 	await _frames(45)
-	_check(d.trauma == 0.0 and player.camera.rotation.length() < 1e-4, "the shake is over after 0.8 / decay s (%.3f)" % d.trauma)
+	_check(d.trauma == 0.0 and (player.camera.rotation - rot0).length() < 1e-4, "the shake is over after 0.8 / decay s (%.3f)" % d.trauma)
 	# shake on a camera without a rig: GameFX
 	var other := Camera3D.new()
 	arena.add_child(other)

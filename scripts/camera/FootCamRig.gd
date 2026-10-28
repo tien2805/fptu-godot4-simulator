@@ -7,7 +7,8 @@
 #     direction, shoulder FOOT_SHOULDER right (a probe pulls it in at a wall on the right), distance FOOT_DIST with a
 #     pull-in from 3 probes (centre, both sides) and from the player's view (rays from the head and the hips to the camera
 #     spot; instant in, sprung out); close in, the shoulder offset gives way and with no room the camera cranes up;
-#     sprint FOV, a small landing dip, a run bob;
+#     the view converges on the player's line at the first body or wall straight ahead (else FOOT_CONVERGE; the crosshair =
+#     the hip-fire line), sprint FOV, a small landing dip, a run bob;
 #   - aim (controller.aim_blend): the Phase W over-the-shoulder pose (AIM_DISTANCE, AIM_SIDE, AIM_FOV);
 #   - combat (hostile enemies of the controller's PlayerCombat within COMBAT_RANGE): the pivot on the 70/30 point toward the
 #     target (the soft lock, else the nearest hostile in view; less when a wall pulls the camera in, so it stays
@@ -55,6 +56,9 @@ var _director: CameraDirector = null
 var _director_t: float = 0.0
 var _last_fx_fov: float = 0.0
 var _down: Vector2 = Vector2.ZERO         # knock-down crane: x m, y spring velocity
+var _conv: Vector2 = Vector2.ZERO         # convergence yaw: x rad, y spring velocity
+var _conv_d: float = CameraRules.FOOT_CONVERGE
+var _conv_q: PhysicsRayQueryParameters3D = null
 ## Framing guard turn (pitch, yaw; rad) of the last frame (tests).
 var guard: Vector2 = Vector2.ZERO
 var _guard_v: Vector2 = Vector2.ZERO
@@ -95,7 +99,8 @@ func update(delta: float, snap: bool) -> void:
 	_clock += rdt
 	_look_idle += rdt
 	_scan_t -= dt
-	if snap or _scan_t <= 0.0:
+	var scanned: bool = snap or _scan_t <= 0.0
+	if scanned:
 		_scan_t = CameraRules.COMBAT_SCAN_S
 		_scan_combat()
 	if in_combat and not snap and _look_idle >= CameraRules.COMBAT_LOOK_IDLE_S and c.controls_enabled and c.aim_blend < 0.5:
@@ -225,9 +230,17 @@ func update(delta: float, snap: bool) -> void:
 		if hc < INF:
 			crane = maxf(0.0, hc - CameraRules.PULL_MARGIN)
 	var local := Vector3(side_eff, bob, dist) + basis.inverse() * (Vector3.UP * crane)
-	_frame_guard(Transform3D(basis, pivot) * Transform3D(Basis.IDENTITY, local), cur, dt, snap)
+	if scanned:                                              # with the 10 Hz scan
+		_conv_d = _converge_dist(pivot, basis)
+	var conv_t: float = atan2(side_eff, dist + _conv_d) * (1.0 - c.aim_blend)
+	if snap:
+		_conv = Vector2(conv_t, 0.0)
+	else:
+		_conv = CamSpring.damp(_conv.x, _conv.y, conv_t, CameraRules.FOOT_CONVERGE_OMEGA, dt)
+	var conv: float = _conv.x
+	_frame_guard(Transform3D(basis, pivot) * Transform3D(Basis(Vector3.UP, conv), local), cur, dt, snap)
 	c.camera.position = local + off
-	c.camera.rotation = Vector3(guard.x, guard.y, 0.0) + rot * (PI / 180.0)
+	c.camera.rotation = Vector3(guard.x, guard.y + conv, 0.0) + rot * (PI / 180.0)
 
 
 ## Framing guard (see the header): from the camera pose without it, the turn that keeps the player's head, chest and hips
@@ -304,6 +317,23 @@ func _resolve_bones() -> bool:
 			return false
 		_bones.append(b)
 	return true
+
+
+## Distance from the pivot to the first body or wall straight ahead of the view (people and cars count: the crosshair
+## lands on them), clamped; FOOT_CONVERGE when nothing is there.
+func _converge_dist(pivot: Vector3, basis: Basis) -> float:
+	if not ctrl.is_inside_tree():
+		return CameraRules.FOOT_CONVERGE
+	if _conv_q == null:
+		_conv_q = PhysicsRayQueryParameters3D.new()
+		_conv_q.collide_with_areas = false
+		_conv_q.exclude = [ctrl.get_rid()]
+	_conv_q.from = pivot
+	_conv_q.to = pivot - basis.z * CameraRules.FOOT_CONVERGE_MAX
+	var h: Dictionary = ctrl.get_world_3d().direct_space_state.intersect_ray(_conv_q)
+	if h.is_empty():
+		return CameraRules.FOOT_CONVERGE
+	return clampf(pivot.distance_to(h["position"]), CameraRules.FOOT_CONVERGE_MIN, CameraRules.FOOT_CONVERGE_MAX)
 
 
 ## Camera spot at distance d along the arm: the shoulder offset shrinking as it closes in, the crane.

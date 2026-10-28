@@ -237,6 +237,16 @@ func _foot_buildings() -> void:
 			_place(sp, float(yaws[k]))
 			await _frames(30)
 			_sample("F1_building", player.camera, player, "%s wall %s" % [str(sp.snapped(Vector3.ONE * 0.1)), k])
+	# cost of one on-foot camera update next to a real wall (rays included), for the perf notes
+	if not b_spots.is_empty():
+		_place(b_spots[0][0], _yaw_of(b_spots[0][1]))
+		await _frames(10)
+		var t0: int = Time.get_ticks_usec()
+		for i: int in 300:
+			player.cam_rig.update(1.0 / 60.0, false)
+		var us: float = float(Time.get_ticks_usec() - t0) / 300.0
+		print("  on-foot camera update next to a wall: %.1f us" % us)
+		_check(us < 400.0, "one on-foot camera update stays well under 0.4 ms (%.1f us)" % us)
 
 
 func _foot_palms() -> void:
