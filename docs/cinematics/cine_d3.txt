@@ -8,14 +8,14 @@
 SHOT S1      0.000  static    wide: the toppled forklift, Alexander dazed on the ground, containers behind
 SHOT S2      0.400  static    close: Alexander, "Các người có biết ta là ai không?"
 SHOT S3      2.700  static    close: the protagonist, "Không."
-SHOT S4      3.500  static    side two-shot: the endless name begins
+SHOT S4      3.500  two_shot  two-shot hero + alex
 SHOT S5      6.300  static    close over Alexander: the party horn blast cuts the name off
 SHOT S6      7.300  static    close: the protagonist, "Ngắn thôi. Hàng của ai?"
 SHOT S7      9.000  static    close: Alexander squirms; something slips out of his pocket
 SHOT S8     11.450  static    insert: the USB on the ground, "ZA MẪN LABS"
 SHOT S9     13.500  static    close: the protagonist reads the USB
 SHOT S10    14.600  static    close: Alexander, "Đừng cắm vô máy trường nha!"
-SHOT S11    16.400  static    wide: the protagonist walks off, Alexander mutters
+SHOT S11    16.300  dutch     dutch alex
 #
 # Subtitles (real start - end, speaker: line)
 SUB    0.500 -  2.600  Alexander: Các người có biết ta là ai không?
@@ -25,4 +25,8 @@ SUB    7.400 -  8.900  Bạn: Ngắn thôi. Hàng của ai?
 SUB    9.100 - 11.700  Alexander: ...Ta chỉ là trung gian. Ông chủ thật là...
 SUB   13.600 - 14.500  Bạn: Za Mẫn Labs?
 SUB   14.700 - 16.400  Alexander: Đừng cắm vô máy trường nha!
-SUB   16.500 - 17.900  Alexander: ...tên ta dài lắm mà...
+SUB   16.450 - 17.950  Alexander: Za Mẫn đang nhìn cậu đó.
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE    6.500  the party horn blast cuts the endless name off
+CLIFF  16.450

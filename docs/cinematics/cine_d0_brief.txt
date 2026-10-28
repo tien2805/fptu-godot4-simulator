@@ -5,12 +5,15 @@
 # id   kind      real_hit  freeze_end  slowmo_from  slowmo_to  speed  story_s  what
 #
 # Shots (real start, rig, what)
-SHOT S1      0.000  static    two-shot in the courtyard, the module behind
-SHOT S2      4.600  static    over the hero's shoulder: Mr.T
+SHOT S1      0.000  two_shot  two-shot hero + mr_t
+SHOT S2      4.600  ots       over hero onto mr_t
 SHOT S3      9.000  static    close: the nod
 SHOT S4      9.800  dolly     push-in on the room 311 door
 #
 # Subtitles (real start - end, speaker: line)
 SUB    0.400 -  4.700  Mr.T: Bạn! Phòng 311 thiếu giám thị, em phụ thầy được không?
 SUB    4.800 -  9.200  Mr.T: Thầy nghe đồn có tool tên 'Lọ Thần'. Thấy gì lạ thì chụp lại giúp thầy.
-SUB    9.400 - 10.400  Bạn: Dạ!
+SUB    9.400 - 11.600  Bạn: Dạ! ...Có được cộng điểm không thầy?
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE    9.400  asks for bonus marks; Mr.T laughs it off

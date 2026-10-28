@@ -8,11 +8,11 @@
 SHOT S1      0.000  static    wide: the burning server room, Za Mẫn sipping a coffee in the middle of it
 SHOT S2      0.500  static    close: Za Mẫn, "Ổn mà, mọi thứ vẫn ổn."
 SHOT S3      2.200  static    close: the protagonist points at the flames
-SHOT S4      3.400  static    two-shot side on: "Cháy là dấu hiệu tăng trưởng nóng."
+SHOT S4      3.400  two_shot  two-shot hero + za
 SHOT S5      5.700  static    insert: the STONKS chart dives, a red ticker
 SHOT S6      7.000  static    close: Za Mẫn glances back, "...Điều chỉnh kỹ thuật thôi."
-SHOT S7      8.900  static    close: the offer
-SHOT S8     11.400  static    two-shot side on: the frame that freezes for the choice
+SHOT S7      8.900  dutch     dutch za
+SHOT S8     11.400  two_shot  two-shot hero + za
 #
 # Subtitles (real start - end, speaker: line)
 SUB    0.600 -  2.100  Za Mẫn: Ổn mà, mọi thứ vẫn ổn.
@@ -21,5 +21,8 @@ SUB    3.500 -  5.700  Za Mẫn: Cháy là dấu hiệu tăng trưởng nóng.
 SUB    7.100 -  8.900  Za Mẫn: ...Điều chỉnh kỹ thuật thôi.
 SUB    9.000 - 11.300  Za Mẫn: Về phe tôi đi, Bạn.
 SUB   11.450 - 13.550  Za Mẫn: Xoá án đình chỉ, tặng equity 0,01%.
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE    3.500  the burning server room is 'hot growth'
 #
 CHOICE 13.600  zaman_offer: accept = Nhận lời | refuse = Từ chối  (timeout 10 s -> refuse)

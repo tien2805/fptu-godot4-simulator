@@ -2,7 +2,7 @@
 # The 3 a.m. call (spec A2-D8): an overlay above the HUD. Black fade (0.8 s), then a phone screen "SỐ LẠ · 03:00" ringing
 # (phone_ring_3am, loops); answer with [E] or a click, or it auto-answers after RING_MAX s. Then a distorted "voice" made of
 # whisper_bed + static_burst only (no recorded or real voice) under slowly typed subtitles "…Mày… còn… N ngày…", the line
-# goes dead (call_hangup) and the screen fades out: about 10 s when answered at once. Hold Esc 0.8 s to skip. On answer a
+# goes dead (call_hangup) and the screen fades out: about 10 s when answered at once. Hold Esc or Enter 0.6 s to skip (SkipHold). On answer a
 # small screen shake and a white flash, both off with "Giảm hù dọa" (horror cues are also 6 dB quieter via StoryAudio).
 # Generic in N (later days). PROCESS_MODE_ALWAYS (the host pauses the game); manual = step(dt) drives it (tests). While it
 # runs StageManager.cinematic_active is set, so Esc never opens the pause menu.
@@ -20,7 +20,7 @@ const TYPE_FROM: float = 0.6
 const TYPE_LEN: float = 5.0
 const HANGUP_LEN: float = 1.4
 const FADE_OUT: float = 0.8
-const ESC_HOLD: float = 0.8
+const ESC_HOLD: float = SkipHold.HOLD
 const RED := Color("#FF3B5C")
 
 var days: int = 7
@@ -42,7 +42,7 @@ var caller_label: Label
 var status_label: Label
 var hint_label: Label
 var sub_label: Label
-var skip_bar: ProgressBar
+var skip_bar: SkipHold.Ring
 var loop_player: AudioStreamPlayer
 var sfx_player: AudioStreamPlayer
 var _hold: float = 0.0
@@ -64,7 +64,7 @@ func start(n: int, opts: Dictionary = {}) -> void:
 
 
 func full_line() -> String:
-	return "…Mày… còn… %d ngày…" % days
+	return "...Mày... còn... %d ngày..." % days
 
 
 func _build() -> void:
@@ -97,7 +97,7 @@ func _build() -> void:
 	caller_label = _label("SỐ LẠ", 40, RED)
 	vb.add_child(caller_label)
 	vb.add_child(_label("03:00", 30, Color("#E9E1FF")))
-	status_label = _label("Cuộc gọi đến…", 18, Color("#B8A9D9"))
+	status_label = _label("Cuộc gọi đến...", 18, Color("#B8A9D9"))
 	vb.add_child(status_label)
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0.0, 60.0)
@@ -118,17 +118,15 @@ func _build() -> void:
 	flash_rect.color = Color(1.0, 1.0, 1.0, 0.0)
 	flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(flash_rect)
-	skip_bar = ProgressBar.new()
+	skip_bar = SkipHold.Ring.new()
 	skip_bar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	skip_bar.offset_left = -220.0
-	skip_bar.offset_top = -40.0
+	skip_bar.offset_top = -44.0
 	skip_bar.offset_right = -24.0
-	skip_bar.offset_bottom = -26.0
-	skip_bar.max_value = 1.0
-	skip_bar.show_percentage = false
-	skip_bar.visible = false
+	skip_bar.offset_bottom = -20.0
+	skip_bar.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	add_child(skip_bar)
-	var skip_hint: Label = _label("Giữ Esc để bỏ qua", 14, Color(0.85, 0.8, 0.95, 0.75))
+	var skip_hint: Label = _label("Giữ Esc hoặc Enter để bỏ qua", 14, Color(0.85, 0.8, 0.95, 0.75))
 	skip_hint.name = "SkipHint"
 	skip_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	skip_hint.offset_left = -240.0
@@ -260,10 +258,9 @@ func step(dt: float) -> void:
 
 
 func _skip_logic(dt: float) -> void:
-	var held: bool = force_skip_hold or (not manual and Input.is_physical_key_pressed(KEY_ESCAPE))
+	var held: bool = force_skip_hold or (not manual and SkipHold.held())
 	_hold = _hold + dt if held else 0.0
-	skip_bar.visible = _hold > 0.0
-	skip_bar.value = _hold / ESC_HOLD
+	skip_bar.set_progress(_hold / ESC_HOLD if _hold > 0.0 else -1.0)
 	if _hold >= ESC_HOLD - 1e-6:
 		_finish(true)
 

@@ -20,9 +20,9 @@
 # Run:  godot --headless --path . --script tests/test_story_day1.gd
 extends SceneTree
 
-const TMP: String = "user://test_story_day1.cfg"
-const SNAP: String = "user://test_story_day1_snap.cfg"
-const VID: String = "user://test_story_day1_video/"
+var TMP: String = "user://test_story_day1_%d.cfg" % OS.get_process_id()
+var SNAP: String = "user://test_story_day1_snap_%d.cfg" % OS.get_process_id()
+var VID: String = "user://test_story_day1_video_%d/" % OS.get_process_id()
 const DT: float = 1.0 / 60.0
 var fails: Array[String] = []
 var frames: int = 0

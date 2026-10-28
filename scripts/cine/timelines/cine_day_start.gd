@@ -41,8 +41,11 @@ func build() -> void:
 	sfx_at(3.6, "whoosh_down", -6.0)   # the page tears off (StoryDayCard.TEAR_AT)
 	sfx_at(4.9, "phone_buzz", -3.0)
 	shot("S1", 0.0, "static", "wide: stepping out of the lobby, the page above", {"pos": Vector3(1.6, 1.4, -3.4), "look": Vector3(0.0, 1.4, 1.4), "fov": 52.0})
+	push_in("S1b", 2.3, "hero", {"from": 3.6, "to": 2.4, "look_y": 1.2})   # Q5: in on "Hôm nay chắc yên bình..."
 	shot("S2", 4.8, "static", "over the shoulder: the day's first text", {"pos": Vector3(0.55, 1.75, 1.6), "look": Vector3(0.12, 1.2, 0.3), "fov": 44.0, "hand": 0.15})
 	# >= 0.06 s per character, never past the 9 s end (a longer text of a later day reads in 3.4 s)
+	sub(2.5, 2.0, "hero", "Hôm nay chắc yên bình...")
+	joke(2.5, "Hôm nay chắc yên bình... and the phone buzzes at once")
 	sub(5.6, minf(3.4, maxf(3.0, 0.065 * float(line.length()))), sender + " (tin nhắn)", line)
 
 

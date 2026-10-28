@@ -8,10 +8,10 @@
 SHOT S1      0.000  static    wide: the scorched server room, Za Mẫn slumped against the racks with a broken katana
 SHOT S2      0.400  static    close: Za Mẫn, "Bảo hành... bảy ngày..."
 SHOT S3      2.000  static    over the protagonist's shoulder: the transaction logs on the laptop
-SHOT S4      9.700  static    close: the protagonist, "...Trà Sữa Lọ?"
+SHOT S4      9.700  push_in   push-in hero
 SHOT S5     10.900  static    close: Za Mẫn, dreamy: the milk tea
-SHOT S6     13.400  static    wide side on: "Lọ Thần. Trà Sữa Lọ. Lọ hết trơn."
-SHOT S7     15.600  static    close: the phone buzzes in the protagonist's hand
+SHOT S6     13.400  two_shot  two-shot hero + za
+SHOT S7     15.600  push_in   push-in hero
 #
 # Subtitles (real start - end, speaker: line)
 SUB    0.500 -  2.000  Za Mẫn: Bảo hành... bảy ngày...
@@ -19,7 +19,11 @@ SUB    2.200 -  4.100  Bạn: Tiền của Lọ Thần chảy về đâu?
 SUB    9.800 - 10.800  Bạn: ...Trà Sữa Lọ?
 SUB   11.000 - 13.300  Za Mẫn: Trà sữa ngon lắm... size L, ít đá...
 SUB   13.500 - 15.550  Bạn: Lọ Thần. Trà Sữa Lọ. Lọ hết trơn.
-SUB   15.800 - 17.200  Bạn: Chủ quán là ai đây...
+SUB   15.800 - 17.970  Bạn: ...'Trà sữa size L, ít đá. Tao mời.'
 #
 # Cards (real start - end, kind: what)
 CARD    4.400 -  9.600  screen: flow
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE   11.000  Za Mẫn, beaten, dreams of milk tea: size L, ít đá
+CLIFF  15.800

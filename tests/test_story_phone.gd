@@ -25,7 +25,7 @@ func _initialize() -> void:
 	sd = (load("res://scripts/story/StoryDirector.gd") as Script).new()
 	sd.name = "PhoneDirector"
 	sd.set("nav_enabled", false)
-	sd.set("save_path", "user://test_story_phone.cfg")
+	sd.set("save_path", ("user://test_story_phone_%d.cfg" % OS.get_process_id()))
 	root.add_child(sd)
 	target = ThirdPersonController.new()
 	target.capture_on_click = false
@@ -42,7 +42,7 @@ func _process(_d: float) -> bool:
 	if frames < 2:
 		return false
 	_run()
-	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_story_phone.cfg"))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(("user://test_story_phone_%d.cfg" % OS.get_process_id())))
 	if fails.is_empty():
 		print("✅ SUCCESS: STORY PHONE (threads, unread, evidence slots, missions, input block)")
 		quit(0)

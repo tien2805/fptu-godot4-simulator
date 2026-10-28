@@ -11,8 +11,8 @@
 # Run:  godot --headless --path . --script tests/test_story_day0.gd
 extends SceneTree
 
-const TMP: String = "user://test_story_day0.cfg"
-const VID: String = "user://test_story_day0_video/"
+var TMP: String = "user://test_story_day0_%d.cfg" % OS.get_process_id()
+var VID: String = "user://test_story_day0_video_%d/" % OS.get_process_id()
 const DT: float = 1.0 / 60.0
 var fails: Array[String] = []
 var frames: int = 0
@@ -248,7 +248,7 @@ func _process(_d: float) -> bool:
 			_check(String(sd.get("objective")).contains("cổng chính") and sr.markers.has("d1_stakeout") and sr.markers.size() == 1, "Day 1 objective and its main-gate marker")
 			_check(int((sd.call("read_save", TMP) as Dictionary).get("day", -1)) == 1, "Day 1 autosaved")
 			var mr: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Thầy tin em. Tìm bằng chứng đi.")
-			var ph: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Ê, tao nghe chuyện rồi… tối nay gặp ở campus nhé." and int(m["day"]) == 1)
+			var ph: Array = (sd.get("texts") as Array).filter(func(m: Dictionary) -> bool: return String(m["text"]) == "Ê, tao nghe chuyện rồi... tối nay gặp ở campus nhé." and int(m["day"]) == 1)
 			_check(mr.size() == 1 and ph.size() == 1, "Mr.T's text once (ai_intro) and Phúc's Day-1 text")
 			# phone opens and blocks input
 			var pk := InputEventKey.new()

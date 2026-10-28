@@ -99,8 +99,7 @@ func build() -> void:
 	sfx_at(BONK + 0.1, "slide_whistle", -10.0)
 	shot("S1", 0.0, "static", "over the shoulder down the corridor: the sheep figure at the far end",
 		{"pos": Vector3(0.65, 1.7, 2.6), "look": Vector3(-0.2, 1.3, -6.0), "fov": 42.0, "hand": 0.3})
-	shot("S2", 2.4, "static", "close: the protagonist's face",
-		{"pos": Vector3(0.35, 1.6, -0.75), "look": Vector3(0.1, 1.55, 0.35), "fov": 38.0, "hand": 0.3})
+	push_in("S2", 2.4, "hero", {"from": 2.6, "to": 2.2, "side_deg": 8.0, "hand": 0.3, "look_y": 1.2})   # Q5: the face
 	if calm:
 		shot("S3", 3.4, "static", "the protagonist's view: the corridor is empty",
 			{"pos": Vector3(0.3, 1.6, 0.9), "look": Vector3(-0.2, 1.3, -6.0), "fov": 40.0, "hand": 0.2})
@@ -111,6 +110,7 @@ func build() -> void:
 		{"pos": Vector3(1.35, 0.55, 2.6), "look": Vector3(0.0, 0.55, 0.6), "fov": 50.0})
 	shot("S5", 6.0, "static", "two-shot: the protagonist and Lu, tail wagging",
 		{"pos": Vector3(1.25, 1.2, -1.0), "look": Vector3(-0.1, 0.7, 0.5), "fov": 50.0})
-	sub(0.9, 1.3, "hero", "Có ai… ở đó không?")
+	sub(0.9, 1.3, "hero", "Có ai... ở đó không?")
 	sub(BONK + 0.1, 0.5, "hero", "Á!!!")
+	joke(BONK + 0.1, "Lu bonks a calf, the protagonist jumps")
 	sub(6.2, 1.3, "Chú Bảy", "Lu! Về đây, đừng phá!")

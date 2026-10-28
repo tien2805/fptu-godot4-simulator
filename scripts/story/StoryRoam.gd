@@ -80,6 +80,7 @@ var _hud_saved: Dictionary = {}
 var _audio_wait: float = 0.0
 var _marker_info: Dictionary = {}   # beat id -> {"kind", "title"} (hint_text without a beat lookup per tick)
 var _toasts: Array[Array] = []        # queued [text, cue] while a toast is showing
+var toast_typer: StoryRadio = null    # Q5: a phone text types out with the sender's voice (UI bus)
 ## Phase B: the running roam mission (StoryMission), the fail card, extra mission opts (tests: manual, clock_scale,
 ## manual_replay), side markers (side id -> side dict) and whether the current step was entered while this roam ran.
 var mission_node: StoryMission = null
@@ -449,7 +450,8 @@ func toast(text: String, cue: String = "phone_buzz") -> void:
 		return
 	toast_label.text = text
 	toast_panel.visible = true
-	_toast_t = TOAST_S
+	_type_toast(text, cue)
+	_toast_t = maxf(TOAST_S, toast_typer.min_secs())
 	if cue != "" and roam.is_inside_tree():
 		var sp := AudioStreamPlayer.new()
 		sp.bus = CinePlayer._bus("SFX")
@@ -457,6 +459,19 @@ func toast(text: String, cue: String = "phone_buzz") -> void:
 		add_child(sp)
 		sp.play()
 		sp.finished.connect(sp.queue_free)
+
+
+## Q5: a text message "Sender: text" types out with the sender's blip voice; other toasts show at once.
+func _type_toast(text: String, cue: String) -> void:
+	if toast_typer == null:
+		toast_typer = StoryRadio.new("UI")
+		add_child(toast_typer)
+	var sep: int = text.find(": ")
+	var sender: String = text.substr(0, sep) if sep > 0 else ""
+	if cue != "phone_buzz" or sender == "":
+		toast_typer.type_text(toast_label, text, "")
+		return
+	toast_typer.type_text(toast_label, text.substr(0, sep + 2), text.substr(sep + 2), "", DialogueVoice.voice_for("", sender))
 
 
 func _on_objective(text: String) -> void:
@@ -1133,6 +1148,8 @@ func _process(delta: float) -> void:
 		_obj_t -= delta
 		if _obj_t <= 0.0:
 			objective_panel.visible = false
+	if toast_typer != null:
+		toast_typer.step(delta)
 	if _toast_t > 0.0:
 		_toast_t -= delta
 		if _toast_t <= 0.0:

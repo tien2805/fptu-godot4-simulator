@@ -13,6 +13,8 @@ const TRANSLATED_SPEAKERS: Array[String] = ["Anh Duy"]
 const PARTS: Array[String] = ["helmet"]
 ## Phase B 2D card layers (CinePlayer builds them): StoryVillainCard, StoryScreenCard.
 const CARD_KINDS: Array[String] = ["villain", "screen"]
+## Q5 stings that may close a day on its cliffhanger (StoryAudio / CineAudio cues; owner files override them).
+const STINGS: Array[String] = ["cliff_sting", "dun_dun_duun", "toang_sting", "sub_boom"]
 
 var slot: String = ""
 var length: float = 25.0
@@ -38,6 +40,8 @@ var punches: Array[Dictionary] = []    # {"at", "preset"}: camera punch-in / whi
 var scare_hits: Array[Dictionary] = [] # {"at", "opts"}: jump scare v2 marks (CineScare): duck before, hit at, twitch
 var cards: Array[Dictionary] = []      # {"kind", "r", "dur", "data"}: 2D card layers on REAL time (Phase B)
 var choice_def: Dictionary = {}        # {"r", "id", "prompt", "options", "honest", "timeout_line", ...}: StoryChoice (Phase B)
+var jokes: Array[Dictionary] = []      # {"r", "what"}: Q5 pacing marks, one joke beat per dialogue scene (REAL time)
+var cliff_r: float = -1.0              # Q5: real time of the day-end cliffhanger line (-1 = none); a sting follows it
 var _last_yaw: Dictionary = {}         # actor -> last keyed yaw (keeps yaw continuous)
 
 
@@ -207,6 +211,16 @@ func villain(name: String, r: float, dur: float, data: Dictionary) -> void:
 func choice(r: float, def: Dictionary) -> void:
 	choice_def = def.duplicate()
 	choice_def["r"] = r
+
+
+## Q5 pacing: the scene's joke beat at REAL time r (listed in the beat sheet, checked by tests/test_story_framing.gd).
+func joke(r: float, what: String) -> void:
+	jokes.append({"r": r, "what": what})
+
+
+## Q5 day end: the subtitle starting at REAL time r is the cliffhanger line; a sting (STINGS) must play from it to the end.
+func cliffhanger(r: float) -> void:
+	cliff_r = r
 
 
 func shot(id: String, s: float, rig: String, what: String, params: Dictionary = {}) -> void:
@@ -403,6 +417,19 @@ func validate() -> PackedStringArray:
 		var has_card: bool = cards.any(func(cd2: Dictionary) -> bool: return String(cd2["kind"]) == "villain" and absf(float(cd2["r"]) - float(p2["r_hit"])) < 0.001)
 		if String(p2["preset"]) == "card" and not has_card:
 			err.append("%s: card freeze without a villain card at real %.3f" % [String(p2["name"]), float(p2["r_hit"])])
+	for jk: Dictionary in jokes:
+		if float(jk["r"]) < 0.0 or float(jk["r"]) > length + 1e-6:
+			err.append("joke '%s' at %.3f outside 0..%.3f s" % [String(jk["what"]), float(jk["r"]), length])
+	if cliff_r >= 0.0:
+		if not subs.any(func(sb: Dictionary) -> bool: return absf(float(sb["r"]) - cliff_r) < 0.001):
+			err.append("cliffhanger at %.3f: no subtitle starts there" % cliff_r)
+		var stung: bool = false
+		for e3: Dictionary in sfx:
+			var rr3: float = clock.real_at(story_time(e3["at"])) if story_time(e3["at"]) >= 0.0 else -1.0
+			if STINGS.has(String(e3["cue"])) and rr3 >= cliff_r - 0.5 and rr3 <= length:
+				stung = true
+		if not stung:
+			err.append("cliffhanger at %.3f: no sting (%s) after it" % [cliff_r, ", ".join(STINGS)])
 	if not choice_def.is_empty():
 		var opts: Array = choice_def.get("options", [])
 		var keys: Array = opts.map(func(o: Dictionary) -> String: return String(o.get("key", "")))
@@ -460,6 +487,13 @@ func beat_sheet() -> String:
 			if String(cd["kind"]) == "screen":
 				what = "%s %s" % [String(dd.get("kind", "")), String(dd.get("text", dd.get("place", "")))]
 			L.append("CARD %8.3f - %6.3f  %s: %s" % [float(cd["r"]), float(cd["r"]) + float(cd["dur"]), String(cd["kind"]), what.strip_edges()])
+	if not jokes.is_empty() or cliff_r >= 0.0:
+		L.append("#")
+		L.append("# Pacing (Q5): joke beats and the day-end cliffhanger (real time)")
+		for jk2: Dictionary in jokes:
+			L.append("JOKE %8.3f  %s" % [float(jk2["r"]), String(jk2["what"])])
+		if cliff_r >= 0.0:
+			L.append("CLIFF %7.3f" % cliff_r)
 	if not choice_def.is_empty():
 		L.append("#")
 		var labels: PackedStringArray = []

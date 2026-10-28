@@ -6,8 +6,11 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    close: the protagonist, "Không."
-SHOT S2      0.700  static    wide side on: Za Mẫn puts the cup down and takes up a bent katana off the desk
+SHOT S2      0.700  two_shot  two-shot hero + za
 #
 # Subtitles (real start - end, speaker: line)
 SUB    0.150 -  0.650  Bạn: Không.
 SUB    1.500 -  3.800  Za Mẫn: Tiếc ghê. Vậy tôi pivot sang... chém.
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE    1.500  startup talk: he pivots to slashing

@@ -7,16 +7,19 @@
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    wide from the side: Mr.T and the protagonist at the laptop by the gate, night
 SHOT S2      1.600  static    over the laptop: both faces lit by the screen (the CCTV card plays over it)
-SHOT S3      7.600  static    close: the protagonist
-SHOT S4      8.200  static    two-shot from Mr.T's side: the stake-out order
+SHOT S3      7.600  push_in   push-in hero
+SHOT S4      8.200  two_shot  two-shot hero + mr_t
 SHOT S5     12.400  static    wide: Chú Bảy dozing by the booth, Lu at his feet; the protagonist nods
 #
 # Subtitles (real start - end, speaker: line)
 SUB    0.500 -  3.500  Mr.T: Em xem cái này. Camera bãi xe D1, tối qua.
 SUB    3.600 -  6.600  Mr.T: Shipper giao 'hàng' cho sinh viên lúc nửa đêm.
 SUB    6.800 -  8.100  Bạn: Hàng gì vậy thầy?
-SUB    8.200 - 10.600  Mr.T: Tool đó. Tối nay em ra bãi xe canh,
-SUB   10.700 - 13.500  Mr.T: chụp được cảnh giao hàng là có bằng chứng.
+SUB    8.200 - 10.600  Mr.T: Tool đó. Tối nay em ra bãi xe canh.
+SUB   10.700 - 13.500  Chú Bảy: Khò... hàng gì... chú cũng ký nhận...
 #
 # Cards (real start - end, kind: what)
 CARD    2.000 -  7.600  screen: cctv BÃI XE D1
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE   10.700  Chú Bảy talks in his sleep by the booth

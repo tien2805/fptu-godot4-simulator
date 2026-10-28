@@ -13,11 +13,11 @@
 # Run:  godot --headless --path . --script tests/test_story_day5.gd
 extends SceneTree
 
-const TMP: String = "user://test_story_day5.cfg"
-const SNAP: String = "user://test_story_day5_snap.cfg"
-const TMP_U: String = "user://test_story_day5_unlocks.cfg"
-const TMP_C: String = "user://test_story_day5_chapters.cfg"
-const TMP_B: String = "user://test_story_day5_backup.cfg"
+var TMP: String = "user://test_story_day5_%d.cfg" % OS.get_process_id()
+var SNAP: String = "user://test_story_day5_snap_%d.cfg" % OS.get_process_id()
+var TMP_U: String = "user://test_story_day5_unlocks_%d.cfg" % OS.get_process_id()
+var TMP_C: String = "user://test_story_day5_chapters_%d.cfg" % OS.get_process_id()
+var TMP_B: String = "user://test_story_day5_backup_%d.cfg" % OS.get_process_id()
 const DT: float = 1.0 / 60.0
 const BASEMENT: String = "res://scenes/story/StoryBasement.tscn"
 var fails: Array[String] = []

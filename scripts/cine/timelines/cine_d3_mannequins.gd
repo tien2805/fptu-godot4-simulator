@@ -58,6 +58,7 @@ func build() -> void:
 	move("hero", 1.0, "idle", {"fade": 0.25})
 	move("hero", SCARE, "startled", {"dur": 0.6, "fade": 0.05})
 	move("hero", SCARE + 0.6, "idle", {"fade": 0.2})
+	move("hero", s_card + 2.6, "facepalm", {"fade": 0.15})
 	look("hero", 0.0, POP, Vector3(0.0, 1.5, -1.0))
 	look("hero", POP, story_end, "alex")
 	expr("hero", 0.0, "open")
@@ -93,13 +94,12 @@ func build() -> void:
 		{"pos": Vector3(0.0, 1.6, 0.4), "look": Vector3(0.0, 1.55, -1.2), "fov": 46.0})
 	shot("S4", SCARE + 0.35, "static", "wide: all six containers open, hundreds of red LEDs staring",
 		{"pos": Vector3(2.6, 1.9, 5.6), "look": Vector3(0.0, 2.5, -2.0), "fov": 60.0})
-	shot("S5", POP, "static", "Alexander hops out blowing a party horn: \"Surprise!\"; the card freezes this frame",
-		{"pos": Vector3(1.7, 1.45, 3.1), "look": Vector3(-0.45, 1.3, 0.9), "fov": 42.0})
-	shot("S6", s_card + 0.12, "static", "side two-shot: he recites his endless name again",
-		{"pos": Vector3(-2.6, 1.5, 2.6), "look": Vector3(0.2, 1.35, 2.2), "fov": 44.0})
-	shot("S7", s_card + 2.5, "static", "close: the protagonist, deadpan",
-		{"pos": Vector3(0.25, 1.6, 2.55), "look": Vector3(0.0, 1.55, 3.6), "fov": 38.0})
+	# Q5: Alexander pops out "Surprise!"; the villain card freezes this frame while the dutch angle keeps pushing in
+	dutch_shot("S5", POP, "alex", {"side_deg": 30.0, "dist": 3.2, "push": 0.2, "roll": 12.0, "look_y": 1.2})
+	two_shot("S6", s_card + 0.12, "hero", "alex", {"side": 1.0, "look_y": 1.2})   # he recites his endless name again
+	push_in("S7", s_card + 2.5, "hero", {"from": 2.8, "to": 2.3, "side_deg": 30.0, "look_y": 1.2})   # deadpan
 	sub(0.12, 1.46, "hero", "Có ai trong đó không...?")
 	sub(2.2, 0.75, "alex", "Surprise!")
+	joke(2.2, "the horror reveal is Alexander with a party horn: Surprise!")
 	sub(7.1, 2.2, "alex", "Ta là Alexander ABCXYZ DEFGH IJK...")
 	sub(9.4, 0.55, "hero", "Dài ghê.")

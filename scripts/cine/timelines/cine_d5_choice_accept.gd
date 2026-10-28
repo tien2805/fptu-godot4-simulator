@@ -55,8 +55,8 @@ func build() -> void:
 	sfx_at(0.1, "fire_crackle", -10.0)
 	sfx_at(PUT, "freeze_tick", -14.0)
 	sfx_at(2.4, "dun_dun_duun", -5.0)
-	shot("S1", 0.0, "static", "two-shot side on: the cup down on the desk, the handshake",
-		{"pos": Vector3(3.0, 1.5, -0.3), "look": Vector3(-0.3, 1.2, -0.8), "fov": 44.0})
+	two_shot("S1", 0.0, "hero", "za", {"side": -1.0, "look_y": 1.2})   # Q5: the cup down on the desk, the handshake
 	shot("S2", 2.45, "static", "close: the protagonist's smug look, the fire behind",
 		{"pos": Vector3(0.5, 1.62, -1.15), "look": Vector3(-0.22, 1.55, -0.5), "fov": 38.0})
 	sub(1.3, 1.4, "za", "Chào mừng sếp mới.")
+	joke(1.3, "a smug handshake: welcome, new boss")

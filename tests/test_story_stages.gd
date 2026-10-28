@@ -9,7 +9,7 @@
 # Run:  godot --headless --path . --script tests/test_story_stages.gd
 extends SceneTree
 
-const TMP: String = "user://test_story_stages.cfg"
+var TMP: String = "user://test_story_stages_%d.cfg" % OS.get_process_id()
 var fails: Array[String] = []
 var frames: int = 0
 var phase: int = 0

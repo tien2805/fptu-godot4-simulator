@@ -9,10 +9,10 @@ SHOT S1      0.000  static    wide under the bridge: Sói Xám tied to the pilla
 SHOT S2      1.900  static    close: the wolf helmet, LED eyes dark, "Tao không nói đâu!"
 SHOT S3      3.450  static    insert: his phone lights up and rings, a cheesy synth tune
 SHOT S4      5.100  static    side on: the protagonist reads the message from "Ngài Alexander", Sói Xám watching
-SHOT S5      8.500  static    close: Sói Xám gives in
+SHOT S5      8.500  dutch     dutch soi
 SHOT S6     11.900  static    close: the protagonist, "Alexander nào?"
-SHOT S7     13.200  static    two-shot from the side: the endless name
-SHOT S8     16.500  static    wide: the protagonist walks off, a feeble howl from the dark helmet
+SHOT S7     13.200  two_shot  two-shot hero + soi
+SHOT S8     16.100  push_in   push-in hero
 #
 # Subtitles (real start - end, speaker: line)
 SUB    0.500 -  1.800  Bạn: Hàng đi đâu? Nói.
@@ -20,8 +20,12 @@ SUB    2.000 -  3.300  Sói Xám: Tao không nói đâu!
 SUB    3.800 -  4.700  Sói Xám: ...Đừng nghe!
 SUB    8.600 - 11.800  Sói Xám: Thôi được! Hàng về bến container của ngài Alexander.
 SUB   12.000 - 13.100  Bạn: Alexander nào?
-SUB   13.300 - 16.900  Sói Xám: Alexander ABCXYZ... tên dài lắm, tao chưa đọc hết bao giờ.
-SUB   17.000 - 17.800  Sói Xám: Ao... u...
+SUB   13.300 - 16.300  Sói Xám: Alexander ABCXYZ... tên dài lắm, tao chưa đọc hết.
+SUB   16.400 - 17.800  Bạn: ...'Sói? Ta đang tới.'
 #
 # Cards (real start - end, kind: what)
 CARD    5.400 -  8.400  screen: phone Hàng về bến container chưa? Nhớ khóa kho kỹ.
+#
+# Pacing (Q5): joke beats and the day-end cliffhanger (real time)
+JOKE   13.300  Sói Xám has never read Alexander's whole name either
+CLIFF  16.400

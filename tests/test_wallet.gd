@@ -7,7 +7,7 @@
 # Chạy:  godot --headless --path . --script tests/test_wallet.gd
 extends SceneTree
 
-const TMP_PATH: String = "user://test_wallet_progress.cfg"
+var TMP_PATH: String = "user://test_wallet_progress_%d.cfg" % OS.get_process_id()
 
 var sm: Node
 var frames: int = 0
@@ -93,7 +93,7 @@ func _process(_d: float) -> bool:
 	var b2: Dictionary = (sm.get("best_stats") as Dictionary).get(2, {})
 	if not _check(int(b2.get("score", 0)) == 900 and String(b2.get("rank", "")) == "A", "load_progress(path) keeps the stage records (got %s)" % str(b2)):
 		return true
-	sm.call("load_progress", "user://test_wallet_missing.cfg")
+	sm.call("load_progress", ("user://test_wallet_missing_%d.cfg" % OS.get_process_id()))
 	if not _check(int(sm.get("wallet")) == 0, "a missing progress file means an empty wallet"):
 		return true
 

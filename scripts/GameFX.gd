@@ -274,10 +274,13 @@ func sync_style_settings(root: Node) -> void:
 	var rnd: CheckButton = root.find_child("RandomScaresCheck", true, false) as CheckButton
 	if rnd:
 		rnd.set_pressed_no_signal(random_scares)
+	var easy: CheckButton = root.find_child("EasyModeCheck", true, false) as CheckButton
+	if easy:
+		easy.set_pressed_no_signal(Difficulty.easy)
 
 
-## Story settings (main-menu settings and the pause settings): CheckButtons "Giảm hù dọa" (ReduceScaresCheck) and "Hù dọa
-## ngẫu nhiên" (RandomScaresCheck, random free-roam scares in both modes). compact: the checks join the ArtStyleRow built by
+## Story settings (main-menu settings and the pause settings): CheckButtons "Giảm hù dọa" (ReduceScaresCheck), "Hù dọa
+## ngẫu nhiên" (RandomScaresCheck, random free-roam scares in both modes) and "Chế độ Dễ" (EasyModeCheck, Q6 Difficulty). compact: the checks join the ArtStyleRow built by
 ## build_style_settings (the pause card must stay inside 720 px), no hint label.
 func build_story_settings(parent: Control, compact: bool = false) -> void:
 	var row: HBoxContainer = parent.find_child("ArtStyleRow", false, false) as HBoxContainer if compact else null
@@ -303,6 +306,16 @@ func build_story_settings(parent: Control, compact: bool = false) -> void:
 	row.add_child(rnd)
 	rnd.toggled.connect(func(on: bool) -> void:
 		set_random_scares(on)
+		play_ui("tick", -10.0, 1.3))
+	var easy := CheckButton.new()
+	easy.name = "EasyModeCheck"
+	easy.text = "Chế độ Dễ"
+	easy.tooltip_text = "Đánh nhau, đua xe và đấu súng nhẹ tay hơn (mặc định: Thường, khó)"
+	easy.add_theme_font_size_override("font_size", 15)
+	easy.set_pressed_no_signal(Difficulty.easy)
+	row.add_child(easy)
+	easy.toggled.connect(func(on: bool) -> void:
+		set_easy_mode(on)
 		play_ui("tick", -10.0, 1.3))
 	if not compact:
 		var hint: Label = make_label("(cốt truyện: bớt cảnh hù, âm thanh kinh dị nhỏ hơn)", 12, Color("#95A5A6"), HORIZONTAL_ALIGNMENT_LEFT)

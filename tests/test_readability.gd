@@ -13,7 +13,7 @@
 # Run: godot --headless --path . --script tests/test_readability.gd
 extends SceneTree
 
-const TMP_SETTINGS: String = "user://test_readability_settings.cfg"
+var TMP_SETTINGS: String = "user://test_readability_settings_%d.cfg" % OS.get_process_id()
 
 var done: bool = false
 var frame: int = 0

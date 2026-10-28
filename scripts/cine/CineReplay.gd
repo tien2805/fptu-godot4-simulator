@@ -15,7 +15,7 @@ extends Node3D
 
 signal finished
 
-const ESC_HOLD: float = 0.8
+const ESC_HOLD: float = SkipHold.HOLD
 const LETTERBOX_IN: float = 0.4
 const FADE_IN: float = 0.25
 const FADE_OUT: float = 0.3
@@ -160,7 +160,7 @@ func _process(_d: float) -> void:
 func step(dt: float) -> void:
 	if not _playing or _done:
 		return
-	var held: bool = force_skip_hold or Input.is_physical_key_pressed(KEY_ESCAPE)
+	var held: bool = force_skip_hold or SkipHold.held()
 	_hold = _hold + dt if held else 0.0
 	overlay.set_skip(_hold / ESC_HOLD if _hold > 0.0 else -1.0)
 	if _hold >= ESC_HOLD - 1e-6:

@@ -187,7 +187,7 @@ func _end_run() -> void:
 	set_prompt("")
 	CharacterBuilder.set_speed(courier, 0.0)
 	courier.rotation.y = yaw_of(player.global_position - courier.global_position)
-	_say("Hết đường chạy rồi…", Color("#FFE66D"))
+	_say("Hết đường chạy rồi...", Color("#FFE66D"))
 	var t := get_tree().create_timer(StoryStage.REPLAY_AFTER if not manual else 0.0)
 	t.timeout.connect(func() -> void:
 		if state != "running":

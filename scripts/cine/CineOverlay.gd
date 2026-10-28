@@ -1,7 +1,8 @@
 # File: res://scripts/cine/CineOverlay.gd
 # 2D layer of the cinematic player (spec A1-D12): 2.39:1 letterbox bars that slide in from the screen edges, a black fade,
-# bottom-centre subtitles (BBCode "Speaker:" in the speaker's colour, plus the "Dịch:" translation line), the "hold Esc to
-# skip" bar, a tag (replays: "▶ REPLAY") and a debug read-out with a beat strip (white tick per impact, red playhead).
+# bottom-centre subtitles (BBCode "Speaker:" in the speaker's colour, plus the "Dịch:" translation line; Q5: the line types
+# out letter by letter through set_sub_chars, the "Dịch:" line shows once it is complete), the hold-to-skip ring
+# (SkipHold.Ring: "Giữ để bỏ qua"), a tag (replays: "▶ REPLAY") and a debug read-out with a beat strip (white tick per impact, red playhead).
 # Layout follows the viewport every frame; every accessor returns the live value. GameFX is reached only through
 # get_node_or_null("/root/GameFX") + call() (vice font in vice style), so headless tests run without the autoload.
 class_name CineOverlay
@@ -22,15 +23,17 @@ var fade_rect: ColorRect
 var sub_box: VBoxContainer
 var sub_rich: RichTextLabel
 var sub_tr: Label
-var skip_box: HBoxContainer
+var skip_box: SkipHold.Ring
 var skip_label: Label
-var skip_bar: ProgressBar
 var tag_label: Label
 var debug_label: Label
 var strip: BeatStrip
 var _letterbox: float = 0.0
 var _fade: float = 0.0
 var _sub_plain: String = ""
+var _sub_text: String = ""      # the line's own text (no speaker)
+var _sub_head: int = 0          # visible characters of "Speaker: "
+var _sub_n: int = -1            # typed characters of the line (-1 = all)
 var _debug: bool = false
 
 
@@ -89,27 +92,11 @@ func _init() -> void:
 	sub_tr.visible = false
 	sub_box.add_child(sub_tr)
 	sub_box.visible = false
-	# skip bar (top right)
-	skip_box = HBoxContainer.new()
+	# hold-to-skip ring (top right)
+	skip_box = SkipHold.Ring.new()
 	skip_box.name = "Skip"
-	skip_box.add_theme_constant_override("separation", 8)
-	skip_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(skip_box)
-	skip_label = Label.new()
-	skip_label.text = "Giữ ESC để bỏ qua"
-	skip_label.add_theme_font_size_override("font_size", 18)
-	skip_label.add_theme_constant_override("outline_size", 4)
-	skip_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	skip_box.add_child(skip_label)
-	skip_bar = ProgressBar.new()
-	skip_bar.min_value = 0.0
-	skip_bar.max_value = 1.0
-	skip_bar.step = 0.0
-	skip_bar.show_percentage = false
-	skip_bar.custom_minimum_size = Vector2(120.0, 12.0)
-	skip_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	skip_box.add_child(skip_bar)
-	skip_box.visible = false
+	skip_label = skip_box.label
 	# tag (top left)
 	tag_label = Label.new()
 	tag_label.name = "Tag"
@@ -216,10 +203,33 @@ func show_sub(speaker: String, color: Color, text: String, tr: String = "") -> v
 	if plain == _sub_plain and sub_box.visible:
 		return
 	_sub_plain = plain
+	_sub_text = text
+	_sub_head = speaker.length() + 2
+	_sub_n = -1
 	sub_rich.text = "[center][color=#%s]%s:[/color] %s[/center]" % [color.to_html(false), _esc(speaker), _esc(text)]
+	sub_rich.visible_characters = -1
 	sub_tr.text = tr
 	sub_tr.visible = tr != ""
 	sub_box.visible = true
+
+
+## Q5 typewriter: n characters of the current line are shown (the speaker's name always; n < 0 or >= the length: all of it);
+## the "Dịch:" line appears once the line is complete.
+func set_sub_chars(n: int) -> void:
+	var full: bool = n < 0 or n >= _sub_text.length()
+	var nn: int = -1 if full else n
+	if nn == _sub_n:
+		return
+	_sub_n = nn
+	sub_rich.visible_characters = -1 if full else _sub_head + n
+	sub_tr.visible = full and sub_tr.text != ""
+
+
+## The typed part of the current line ("" when no subtitle shows).
+func sub_typed_text() -> String:
+	if not sub_box.visible:
+		return ""
+	return _sub_text if _sub_n < 0 else _sub_text.substr(0, _sub_n)
 
 
 func hide_sub() -> void:
@@ -231,11 +241,13 @@ static func _esc(t: String) -> String:
 	return t.replace("[", "[lb]")
 
 
-## progress 0..1 of the Esc hold; < 0 hides the bar.
+## progress 0..1 of the skip hold (Esc / Enter); < 0 hides the ring.
 func set_skip(progress: float) -> void:
-	skip_box.visible = progress >= 0.0
-	if progress >= 0.0:
-		skip_bar.value = clampf(progress, 0.0, 1.0)
+	skip_box.set_progress(progress)
+
+
+func skip_progress() -> float:
+	return skip_box.ring.value if skip_box.visible else -1.0
 
 
 func set_tag(text: String) -> void:

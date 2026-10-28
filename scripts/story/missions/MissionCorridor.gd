@@ -29,7 +29,7 @@ const MIN_S: float = 30.0
 const WALK_CAP: float = 2.0
 const BLACKOUT_S: float = 1.4
 const FIGURE_Z: float = -18.6
-const T_FEAR: String = "Chân run quá, không chạy nổi…"
+const T_FEAR: String = "Chân run quá, không chạy nổi..."
 const LOCKER_P: float = 0.4
 const WINDOW_P: float = 0.33
 const WINDOW_Z: float = 6.0
@@ -332,7 +332,7 @@ func _tick(dt: float) -> void:
 		if clock >= MIN_S:
 			finish({"events": events.size()})
 		else:
-			set_prompt("…Có tiếng gì đó sau lưng?")
+			set_prompt("...Có tiếng gì đó sau lưng?")
 
 
 func _cleanup() -> void:

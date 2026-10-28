@@ -468,7 +468,7 @@ func _fx_sfx() -> void:
 
 
 func _subs() -> void:
-	sub(0.4, 1.5, "hero", "Từ từ… nói chuyện đã.")
+	sub(0.4, 1.5, "hero", "Từ từ... nói chuyện đã.")
 	sub(1.95, 0.6, "dolly", "Lên!")
 	sub(22.4, 0.9, "dolly", "Bai bai!")
-	sub(23.6, 1.0, "hero", "…Lại chạy.")
+	sub(23.6, 1.0, "hero", "...Lại chạy.")
