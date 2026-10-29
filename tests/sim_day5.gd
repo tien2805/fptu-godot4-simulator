@@ -2,17 +2,25 @@
 # W3 Day 5 T8 (plan 2026-10-30-w3-day5.md): sloppy-bot tuning harness of the four basement missions, in the StoryBasement
 # scene (no story running), on the missions' manual clocks, one advance per physics frame. Run with --fixed-fps 60 so a
 # 90 s mission does not take 90 real seconds:
-#   godot --headless --fixed-fps 60 --path . --script tests/sim_day5.gd -- <normal|easy> <seed> <runs> [stealth|gunfight|hack|duel]
+#   godot --headless --fixed-fps 60 --path . --script tests/sim_day5.gd -- <normal|easy> <seed> <runs> [stealth|gunfight|hack|duel] [dive]
 # Each run plays a mission until it is won (THỬ LẠI after every fail, at most MAX_TRIES) and prints
 #   SIM d5 <mission> <difficulty> seed <s>: fails F time T dmg D ko K
-# then a summary line per mission (the par numbers for StoryRank and the table in the plan).
+# then a summary line per mission (the par numbers for StoryRank and the table in the plan), and the RANK letter the run
+# earns (StoryRank.evaluate on the run's stats and done info).
 # The models (master plan Q6, shared plan "Sloppy gun bot", restated here; no helper shared across the parallel branches):
-#   - gun bot: 250-400 ms reaction on every decision (+0.3 s when late); 15 % wrong or late (stays popped out 0.8 s too
-#     long, reloads in the open, takes the nearest slot even when it does not protect); reads 65 % of the muzzle glints
-#     (hides when it reads one); a shaky aim (hit chance 55 % at 15 m standing, clamped 25-85 %, x0.8 moving); real cover
-#     through PlayerCover (hold_override) and real exposure through WeaponDirector.aim_override; the gunmen are the real AI;
-#     shoots a labelled rack when two or more gunmen stand in its fall (read 65 %); no dive (bullet time is the shared
-#     stream's: re-run at integration);
+#   - gun bot: 250-400 ms reaction on every decision (+0.3 s when late); 15 % wrong or late (stays popped out too long
+#     (3.5 s), reloads in the open, takes a slot that does not protect); reads 65 % of the muzzle glints (ducks when it
+#     reads one); a shaky aim (hit chance 55 % at 15 m standing, clamped 15-85 %, x0.6 moving, x1.3 in a dive); finding a
+#     target after popping up or switching is a decision (it waits the reaction; it keeps its target while he is up and in
+#     sight, a new one only when he is lost); real cover through PlayerCover
+#     (hold_override) and real exposure through WeaponDirector.aim_override; the gunmen are the real AI; a flanker who
+#     shoots it while crouched makes it move to a slot that also covers him; shoots a labelled rack when two or more
+#     gunmen stand in its fall (read 65 % once per chance, after the reaction); with "dive": a dive at most once per 20 s,
+#     only with full focus and 3+ gunmen up (it leaves cover, aims, Space), waits for the dive to start, fires one round
+#     per weapon cycle of real time in it, then walks back to a slot;
+#     Wave 3 integration: the w3-shared T11 fixes are in (the clock reset before the timers, per-attempt dive counters,
+#     the real-time cadence in a dive, waiting for the dive, re-taking a slot after it, the flank reaction, the
+#     target-finding reaction, the difficulty set again after GameFX loaded the settings, printed as the gun row);
 #   - sneaker: walks the east lane at 2.2 m/s, reads 65 % of the guards turning its way or walking up close (stops after
 #     250-400 ms until he looks away), 15 % of those looks it moves anyway; waits before the cross aisle while its patrol
 #     walks toward the lane (read 65 %) and never stops inside it; flashes the [F] torch in the dark now and then (15 % per
@@ -23,6 +31,7 @@
 #     QTE presses land 250-400 ms after each prompt, 15 % wrong key.
 extends SceneTree
 
+const TimeAudit: Script = preload("res://tests/support/time_scale_audit.gd")
 const DT: float = 1.0 / 60.0
 var MAX_TRIES: int = int(OS.get_environment("SIM_MAX_TRIES")) if OS.get_environment("SIM_MAX_TRIES") != "" else 8
 const TRY_CAP_S: float = 240.0           # an attempt still running after this long counts as a fail (a stuck bot)
@@ -91,23 +100,33 @@ func _run_all() -> void:
 	var a: PackedStringArray = OS.get_cmdline_user_args()
 	var seed0: int = int(a[1]) if a.size() > 1 else 3
 	var runs: int = int(a[2]) if a.size() > 2 else 4
-	var list: Array = [a[3]] if a.size() > 3 else ["stealth", "gunfight", "hack", "duel"]
+	var list: Array = [a[3]] if a.size() > 3 and a[3] in ["stealth", "gunfight", "hack", "duel"] else ["stealth", "gunfight", "hack", "duel"]
 	Difficulty.set_easy(a.size() > 0 and a[0] == "easy")   # again: GameFX applies the settings file after _initialize
+	use_dive = a.has("dive")
+	print("gun row: easy %s, telegraph %.2f s, shooters %d, accuracy x%.1f, dmg %.0f, regen %.0f s, dive %s" % [str(Difficulty.easy),
+		GunData.telegraph_s(), GunData.max_shooters(), GunData.accuracy_k(), GunData.gunman_dmg(), GunData.regen_delay(), str(use_dive)])
 	var tag: String = Difficulty.id()
 	for mission: Variant in list:
+		var audit: Node = TimeAudit.new()     # Wave 3 integration: the time-scale audit over the mission's runs
+		root.add_child(audit)
 		var fl: Array[int] = []
 		var tt: float = 0.0
 		var dd: float = 0.0
+		var letters: Array[String] = []
 		for r: int in runs:
 			var res: Dictionary = await _run(String(mission), seed0 + r)
 			fl.append(int(res["fails"]))
 			tt += float(res["time"])
 			dd += float(res["dmg"])
-			print("SIM d5 %s %s seed %d: fails %d time %.1f dmg %.0f ko %d |%s" % [mission, tag, seed0 + r, res["fails"], res["time"], res["dmg"], res["ko"], res.get("info", "")])
+			letters.append(String(res.get("rank", "")))
+			print("SIM d5 %s %s seed %d: fails %d time %.1f dmg %.0f ko %d dives %d rank %s %.0f |%s" % [mission, tag, seed0 + r, res["fails"], res["time"], res["dmg"],
+				res["ko"], int(res.get("dives", 0)), String(res.get("rank", "")), float(res.get("score", 0.0)), res.get("info", "")])
 		var tot: int = 0
 		for f: int in fl:
 			tot += f
-		print("SIM d5 %s %s SUMMARY: fails %s mean %.2f max %d | mean time %.1f s | mean dmg %.0f" % [mission, tag, str(fl), float(tot) / float(fl.size()), fl.max(), tt / runs, dd / runs])
+		print("SIM d5 %s %s SUMMARY: fails %s mean %.2f max %d | mean time %.1f s | mean dmg %.0f | ranks %s" % [mission, tag, str(fl), float(tot) / float(fl.size()), fl.max(), tt / runs, dd / runs, " ".join(PackedStringArray(letters))])
+		print("SIM d5 %s %s %s" % [mission, tag, String(audit.call("report"))])
+		audit.queue_free()
 	StoryBasement.test_opts = {}
 	Difficulty.set_easy(false)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))
@@ -134,6 +153,7 @@ func _run(mission: String, sd: int) -> Dictionary:
 	ko_count = 0
 	e_shots = 0
 	e_hits = 0
+	b_dives_run = 0
 	var last_fight: GunFight = null
 	m.done.connect(func(i: Dictionary) -> void:
 		done_flag = true
@@ -146,6 +166,7 @@ func _run(mission: String, sd: int) -> Dictionary:
 	var hp0: float = bs.combat.hp
 	var try_t: float = 0.0
 	var trace: bool = OS.get_cmdline_user_args().has("--trace")
+	var breach_s: float = 0.0
 	var tf: int = 0
 	_reset_bot()
 	while not done_flag and fails < MAX_TRIES:
@@ -163,6 +184,8 @@ func _run(mission: String, sd: int) -> Dictionary:
 			m.advance(DT)
 			time += DT
 			try_t += DT
+			if m is MissionHack and (m as MissionHack).phase in ["breach", "return"]:
+				breach_s += DT                   # the countdown spent away from the keyboard
 			if m.state == "running":
 				_bot(mission)
 				tf += 1
@@ -183,6 +206,8 @@ func _run(mission: String, sd: int) -> Dictionary:
 			hp0 = bs.combat.hp
 			_reset_bot()
 	ko = ko_count
+	var rk: Dictionary = m.rank_eval.duplicate() if m != null and is_instance_valid(m) else {}
+	var st: Dictionary = m.stats.duplicate() if m != null and is_instance_valid(m) else {}
 	bs._free_mission()
 	for k: int in 3:
 		await physics_frame
@@ -191,12 +216,17 @@ func _run(mission: String, sd: int) -> Dictionary:
 		info += " %s=%s" % [str(k2), str(done_info[k2])]
 	if e_shots > 0:
 		info += " enemy_shots=%d hits=%d" % [e_shots, e_hits]
+	if breach_s > 0.0:
+		info += " away_s=%.0f (%.0f per try)" % [breach_s, breach_s / float(fails + 1)]
 	if OS.get_cmdline_user_args().has("--states"):
 		var keys: Array = st_hist.keys()
 		for k3: Variant in keys:
 			info += " %s=%.0f" % [str(k3), float(st_hist[k3])]
 		st_hist.clear()
-	return {"fails": fails, "time": time, "dmg": dmg, "ko": ko, "info": info}
+	if not st.is_empty():
+		info += " stats{time %.0f dmg %.0f fails %d ko %d}" % [float(st.get("time", 0.0)), float(st.get("dmg", 0.0)), int(st.get("fails", 0)), int(st.get("ko", 0))]
+	return {"fails": fails, "time": time, "dmg": dmg, "ko": ko, "info": info, "dives": b_dives_run, "rank": String(rk.get("letter", "")),
+		"score": float(rk.get("score", 0.0))}
 
 
 func _diag(mission: String) -> String:
@@ -338,6 +368,18 @@ var b_reload_until: float = -1.0
 var b_shot_cd: float = 0.0
 var b_nolos: float = 0.0
 var bt: float = 0.0
+# Wave 3 integration (the w3-shared T11 model): the target-finding reaction, the flank reaction, the dive
+var use_dive: bool = false
+var b_aim_g: Object = null               # the target being acquired / held (untyped: it may be freed)
+var b_aim_at: float = 0.0                # first shot at it from this time (a reaction after a pop or a target switch)
+var b_hit_from := Vector3.ZERO           # where the last shot that hit it while crouched came from
+var b_hit_t: float = -99.0
+var b_hit_fight: GunFight = null         # the fight whose player_hit is connected
+var b_last_dive: float = -99.0           # on the bot clock bt (reset with it: a stale value stopped the dives)
+var b_dive_seen: bool = false            # the queued dive really started (BulletTime picks the press up a frame later)
+var b_dives_run: int = 0
+var b_dive_from: int = -1                # the slot it dived out of (it takes it again after the dive)
+var b_label: Dictionary = {}             # rack row -> [read it?, reaction left] while that domino chance lasts
 var gr_nodes: Array[Vector3] = []
 var gr_edges: Array = []
 var gr_key: int = -1
@@ -355,7 +397,14 @@ func _gun_reset() -> void:
 	b_shot_cd = 0.0
 	b_nolos = 0.0
 	b_slot = -1
-	bt = 0.0
+	bt = 0.0                                 # the clock first: every timer below is set from it
+	b_aim_g = null
+	b_hit_t = -99.0
+	b_last_dive = -99.0
+	b_dive_seen = false
+	b_label.clear()
+	if bs and bs.player:
+		bs.player.jump_override = false
 	r_path.clear()
 	r_goal = Vector3.INF
 	_stop_walk()
@@ -371,7 +420,12 @@ func _gun(f: GunFight) -> void:
 		gr_key = -1
 		b_slot = -1
 		b_pending.clear()
+		b_aim_g = null
 		_set_state("cover", _react())
+	if b_hit_fight != f:
+		b_hit_fight = f
+		if not f.player_hit.is_connected(_on_player_hit):
+			f.player_hit.connect(_on_player_hit)
 	bt += DT
 	_watch_glints(f)
 	b_shot_cd -= DT
@@ -398,7 +452,7 @@ func _gun(f: GunFight) -> void:
 			_stop_walk()
 			bs.weapons.aim_override = false
 			f.cover_ctl.hold_override = true
-			if not _has("move") and ((b_slot >= 0 and not f.cover.protects(b_slot, _threat(f))) or not f.cover_ctl.in_cover):
+			if not _has("move") and ((b_slot >= 0 and (not f.cover.protects(b_slot, _threat(f)) or _flanked(f, b_slot))) or not f.cover_ctl.in_cover):
 				_later("move")
 			if bt >= b_until and not _has("pop"):
 				_later("pop", 0.3 if _wrong() else 0.0)
@@ -419,6 +473,21 @@ func _gun(f: GunFight) -> void:
 			if bt >= b_until and not _has("duck"):
 				_later("duck")
 				b_until = INF
+			if use_dive and bt - b_last_dive >= 20.0 and f.bullet_time and f.bullet_time.enabled 					and f.bullet_time.focus >= BulletTime.FOCUS_MAX - 0.01 and f.alive().size() >= 3 and not _has("dive"):
+				_later("dive", 0.3 if _wrong() else 0.0)
+		"dive":
+			_stop_walk()
+			bs.weapons.aim_override = true
+			_shoot(f, true)
+			var btm: BulletTime = f.bullet_time
+			if btm != null and btm.state != "idle":
+				b_dive_seen = true
+			if btm == null or (btm.state == "idle" and (b_dive_seen or bt >= b_until - 1.7)):   # over, or refused
+				b_slot = _back_slot(f)
+				if b_slot >= 0:
+					_set_state("move", MOVE_S)     # back to a slot it walks to (never snaps in from afar)
+				else:
+					_set_state("pop", rng.randf_range(1.2, 2.0))
 		"move":
 			bs.weapons.aim_override = false
 			f.cover_ctl.hold_override = false
@@ -497,6 +566,21 @@ func _do(f: GunFight, action: String) -> void:
 		"pop":
 			if b_state == "cover":
 				_set_state("pop", 3.5 if _wrong() else rng.randf_range(1.2, 2.0))
+				b_aim_g = null
+				b_label.clear()                  # every pop is a new look at the labels
+		"dive":
+			if b_state == "pop" and f.bullet_time:
+				f.cover_ctl.hold_override = false
+				f.cover_ctl.leave()
+				bs.weapons.aim_override = true
+				bs.player.input_override = null
+				bs.player.jump_override = true
+				b_last_dive = bt
+				b_dive_from = b_slot
+				b_dives_run += 1
+				b_aim_g = null
+				b_dive_seen = false
+				_set_state("dive", 2.0)
 		"duck":
 			if b_state == "pop":
 				_set_state("cover", rng.randf_range(0.8, 1.6))
@@ -528,6 +612,18 @@ func _on_glint(_g: Gunman) -> void:
 		_later("duck", 0.3 if _wrong() else 0.0)
 
 
+## Shot while crouched: that cover does not protect against him (the flank reaction).
+func _on_player_hit(src: Node3D, _d: float) -> void:
+	if b_state == "cover" and is_instance_valid(src):
+		b_hit_from = src.global_position
+		b_hit_t = bt
+
+
+## Hit while crouched in slot i within the last 1.5 s by a shooter that slot does not protect against.
+func _flanked(f: GunFight, i: int) -> bool:
+	return bt - b_hit_t < 1.5 and not f.cover.protects(i, b_hit_from)
+
+
 func _threat(f: GunFight) -> Vector3:
 	var acc := Vector3.ZERO
 	var n: int = 0
@@ -555,6 +651,14 @@ func _target(f: GunFight) -> Gunman:
 	return best
 
 
+## The held target is still up and in sight (a human keeps aiming at him; the nearest one is picked only when he is lost).
+func _holds(f: GunFight, o: Variant, eye: Vector3) -> bool:
+	if o == null or not is_instance_valid(o) or not f.alive().has(o):
+		return false                         # (untyped: a knocked-out target may be freed already)
+	var g: Gunman = o
+	return f.clear_line(eye, g.feet() + Vector3(0.0, 1.2 - g.drop, 0.0))
+
+
 ## The best free slot within max_d that protects against the threat (wrong: one that does not) and, in the basement's
 ## aisles, from which a gunman can be seen when it pops out (else the nearest protecting one).
 func _pick_slot(f: GunFight, wrong: bool, max_d: float) -> int:
@@ -567,7 +671,8 @@ func _pick_slot(f: GunFight, wrong: bool, max_d: float) -> int:
 	for i: int in f.cover.count():
 		if f.taken.has(i) and f.taken[i] != bs.player:
 			continue
-		if f.cover.protects(i, th) == wrong:
+		var prot: bool = f.cover.protects(i, th) and not (bt - b_hit_t < 3.0 and not f.cover.protects(i, b_hit_from))
+		if prot == wrong:
 			continue
 		var d: float = StoryMission.flat(f.cover.pos[i], p)
 		if d >= max_d or StoryMission.flat(f.cover.pos[i], th) <= 4.0:
@@ -581,6 +686,24 @@ func _pick_slot(f: GunFight, wrong: bool, max_d: float) -> int:
 	return best if best >= 0 else any
 
 
+## After a dive: the slot it dived out of when it is free and still protects, else the nearest protecting one (any view).
+func _back_slot(f: GunFight) -> int:
+	var th: Vector3 = _threat(f)
+	if b_dive_from >= 0 and b_dive_from < f.cover.count() and f.cover.protects(b_dive_from, th) 			and not (f.taken.has(b_dive_from) and f.taken[b_dive_from] != bs.player):
+		return b_dive_from
+	var p: Vector3 = bs.player.global_position
+	var best: int = -1
+	var bd: float = 14.0
+	for i: int in f.cover.count():
+		if (f.taken.has(i) and f.taken[i] != bs.player) or not f.cover.protects(i, th):
+			continue
+		var d: float = StoryMission.flat(f.cover.pos[i], p)
+		if d < bd:
+			bd = d
+			best = i
+	return best
+
+
 ## A gunman's standing chest is in sight from the slot's standing eye.
 func _slot_sees(f: GunFight, i: int) -> bool:
 	var eye: Vector3 = f.cover.pos[i] + Vector3(0.0, 1.5, 0.0)
@@ -591,7 +714,7 @@ func _slot_sees(f: GunFight, i: int) -> bool:
 
 
 ## One round per pistol cycle while popped: a label (the domino), else the target. True when it had something in sight.
-func _shoot(f: GunFight) -> bool:
+func _shoot(f: GunFight, diving: bool = false) -> bool:
 	if b_reload_until > 0.0:
 		return true
 	if _ammo() <= 0:
@@ -603,11 +726,10 @@ func _shoot(f: GunFight) -> bool:
 		else:
 			_swap_or_scavenge(f)
 		return true
-	if b_shot_cd > 0.0:
-		return true
 	var eye: Vector3 = bs.player.global_position + Vector3(0.0, 1.35, 0.0)
 	var lv: LairBasement = bs.level
 	var foes: Array = f.alive()
+	var label: Node3D = null                 # a domino chance read and reacted to (ticked every frame, not per shot)
 	for i: int in lv.racks.size():
 		var rd: Dictionary = lv.racks[i]
 		if float(rd["t"]) >= 0.0:
@@ -619,20 +741,38 @@ func _shoot(f: GunFight) -> bool:
 			if fp.has_point(Vector2(lp.x, lp.z)):
 				n += 1
 		var lt: Node3D = rd["target"]
-		if n >= 2 and f.clear_line(eye, lt.global_position + Vector3(0.0, 0.9, 0.0)) and _reads():
-			_fire()
-			if rng.randf() < _hit_p(eye.distance_to(lt.global_position)):
-				bs.weapons.hit_target(lt, {"kind": "bullet", "from": bs.player.global_position})
-			return true
-	var g: Gunman = _target(f)
+		if n >= 2 and f.clear_line(eye, lt.global_position + Vector3(0.0, 0.9, 0.0)):
+			if not b_label.has(i):
+				b_label[i] = [_reads(), _react()]   # one read per chance (not a roll per frame), then the reaction
+			var lr: Array = b_label[i]
+			lr[1] = float(lr[1]) - DT
+			if bool(lr[0]) and float(lr[1]) <= 0.0 and label == null:
+				label = lt
+		else:
+			b_label.erase(i)
+	if b_shot_cd > 0.0:
+		return true
+	if label != null:
+		_fire()
+		if rng.randf() < _hit_p(eye.distance_to(label.global_position)):
+			bs.weapons.hit_target(label, {"kind": "bullet", "from": bs.player.global_position})
+		return true
+	var g: Gunman = (b_aim_g as Gunman) if _holds(f, b_aim_g, eye) else _target(f)   # keeps its target while it is in sight
 	if g == null:
 		return false
+	if g != b_aim_g:                         # a new target (or the first after popping up): a reaction to find it
+		b_aim_g = g
+		b_aim_at = bt + _react()
+	if bt < b_aim_at:
+		return true
 	_fire()
 	var d: float = bs.player.global_position.distance_to(g.feet())
 	var shotgun: bool = bs.weapons.current == WeaponData.Slot.SHOTGUN
 	var p: float = clampf(1.25 - d / 14.0, 0.05, 0.95) if shotgun else _hit_p(d)
-	if bs.player.horizontal_speed > 1.0:
+	if bs.player.horizontal_speed > 1.0 and not diving:
 		p *= 0.6
+	if diving:
+		p = minf(0.95, p * 1.3)
 	if rng.randf() < p:
 		bs.weapons.hit_target(g, {"kind": "pellet" if shotgun else "bullet", "from": bs.player.global_position})
 	return true
@@ -813,6 +953,12 @@ func _sneak() -> void:
 	if ms.fight.cover_ctl:
 		ms.fight.cover_ctl.hold_override = false
 	bs.weapons.aim_override = false
+	if ms.spotted:
+		# after the fight: the rest of the way with the real controls and the hall's waypoints (the fight leaves it anywhere;
+		# the sneak's direct steps could push it into a rack for good: the old "stuck at 240 s" fails)
+		if w_i < ROUTE.size() and _walk(ms.fight, bs.level.world(ROUTE[w_i])):
+			w_i += 1
+		return
 	_stop_walk()
 	if ms.blackout:
 		s_torch_cd -= DT

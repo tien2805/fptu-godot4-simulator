@@ -10,8 +10,13 @@
 # roam -> bed -> the call N = 2 -> the Day 6 placeholder. Then Continue mid-day (d5_hack: the marker, the scene resumes at
 # the terminal, the wall frozen, no fire yet) and Chọn cảnh back to d5_choice: "Nhận lời" -> the accept tail -> end_c in
 # free roam -> the save finished with ending C -> the main menu; Continue refuses it, the chapter snapshots remain.
+# Wave 3 integration: a time-scale audit (tests/support/time_scale_audit.gd) watches the whole run (the domino and QTE slow
+# motions, the director cuts, Impact): no frame with the scale off 1 and no owner, no owner holding it over 6 s, clean at
+# the end.
 # Run:  godot --headless --path . --script tests/test_story_day5.gd
 extends SceneTree
+
+const TimeAudit: Script = preload("res://tests/support/time_scale_audit.gd")
 
 var TMP: String = "user://test_story_day5_%d.cfg" % OS.get_process_id()
 var SNAP: String = "user://test_story_day5_snap_%d.cfg" % OS.get_process_id()
@@ -31,6 +36,7 @@ var sr: StoryRoam
 var bs: StoryBasement
 var m: StoryMission
 var mark: Dictionary = {}
+var audit: Node = null
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -56,6 +62,9 @@ func _initialize() -> void:
 	var fx: Node = root.get_node_or_null("GameFX")
 	if fx:
 		fx.set("reduce_scares", false)
+	audit = TimeAudit.new()
+	audit.name = "TimeScaleAudit"
+	root.add_child(audit)
 
 
 func _roam() -> void:
@@ -230,6 +239,9 @@ func _process(_d: float) -> bool:
 			var mg: MissionBasementGunfight = m
 			_check(mg.fight.waves.size() == 3 and mg.fight.alive().size() == MissionBasementGunfight.WAVES[0], "the basement gunfight on Thường: 3 waves, the first down the stairs")
 			_check(mg.fight.max_shooters == MissionBasementGunfight.SHOOTERS, "Thường: the mission's shooter cap")
+			var w2: Array = mg.fight.waves[1]
+			_check(String((w2.back() as Dictionary)["opts"].get("kind", "")) == "shield" and mg.fight.bullet_time != null and mg.fight.bullet_time.enabled,
+				"wave 2 ends with the pallet-shield guard, bullet time on (the shared gun core live)")
 			Difficulty.set_easy(true)
 			var easy_sizes: Array = Difficulty.pick(MissionBasementGunfight.WAVES, MissionBasementGunfight.WAVES_EASY)
 			Difficulty.set_easy(false)
@@ -544,6 +556,9 @@ func _process(_d: float) -> bool:
 
 
 func _end() -> bool:
+	if audit:
+		print("  ", audit.call("report"))
+		_check(bool(audit.call("clean", 6.0)), "the time scale stayed in the owner protocol (%s)" % String(audit.call("report")))
 	for p: String in [TMP, SNAP, TMP_U, TMP_C, TMP_B]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 	StoryChapters.unlocks_path = StoryChapters.UNLOCKS_PATH

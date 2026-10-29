@@ -109,6 +109,7 @@ func _process(_d: float) -> bool:
 			_check(h.paused and not h.visible and bs.player.controls_enabled, "the terminal hides, typing paused, the player moves")
 			_check(m.fight != null and m.fight.state == "running" and m.fight.alive().size() == MissionHack.BREACH_GUARDS and bs.weapons.current == WeaponData.Slot.PISTOL, "the breach guards on Thường, the guns out")
 			_check(m.fire.stage == 1, "60 s left: fire stage 1")
+			_check(m.fight.bullet_time != null and m.fight.bullet_time.enabled, "bullet time on in the breach")
 			snap = {"hp": h.hp, "leaks": h.leaks, "ys": _bullet_ys(), "t": h.t}
 			_next(4)
 		4:
@@ -125,6 +126,7 @@ func _process(_d: float) -> bool:
 			_check(m._desk_ring != null and is_instance_valid(m._desk_ring), "the ring at the desk")
 			_check(m.return_to_desk() and m.phase == "typing" and not h.paused and h.visible and not bs.player.controls_enabled, "[E]: typing resumes")
 			_check(is_equal_approx(h.hp, float(snap["hp"])) and bs.weapons.current == WeaponData.Slot.UNARMED, "progress kept, guns away again")
+			_check(m.fight == null or m.fight.bullet_time == null or not m.fight.bullet_time.enabled, "bullet time off while typing")
 			m.time_left = m.countdown_s - MissionHack.BREACH_AT[1] + 0.01
 			_next(6)
 		6:
