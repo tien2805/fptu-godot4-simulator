@@ -9,6 +9,10 @@
 #   C  The results card (StoryRankCard): off by default on a headless run; a manual run shows it without holding `done`
 #      (info gains "rank"); a real run holds `done` until the card closes ([E] or the 2.5 s hold on real time); the card's
 #      letter, criteria lines and "Kỷ lục" text are plain (no emoji, no star glyphs); skip_all = no card, no hold.
+#   D  Save and rewind (temp files only): StoryDirector.record_rank keeps the better letter, the save carries "ranks", an
+#      old save loads with none, an edited save cannot add junk, the chapter unlock file mirrors the best ranks and only
+#      grows, a rewind merges them back (never loses a rank), StoryRank.best reads the save and the unlock file, a
+#      finished mission records its rank, d4_escape is ranked from its catches when the horror beat completes.
 # Run:  godot --headless --path . --script tests/test_story_rank.gd
 extends SceneTree
 
@@ -51,6 +55,7 @@ func _initialize() -> void:
 	_part_a()
 	_part_b()
 	await _part_c()
+	_part_d()
 	_end()
 
 
@@ -266,6 +271,86 @@ func _part_c() -> void:
 	(r7[0] as Node).queue_free()
 	StoryRankCard.skip_all = true
 	await process_frame
+
+
+func _part_d() -> void:
+	print("  [part] D save")
+	var pid: int = OS.get_process_id()
+	var tmp_save: String = "user://test_story_rank_save_%d.cfg" % pid
+	var tmp_u: String = "user://test_story_rank_unlocks_%d.cfg" % pid
+	var tmp_c: String = "user://test_story_rank_chapters_%d.cfg" % pid
+	var tmp_b: String = "user://test_story_rank_backup_%d.cfg" % pid
+	var sd: Node = root.get_node("StoryDirector")
+	var old_path: String = String(sd.get("save_path"))
+	var old_nav: bool = bool(sd.get("nav_enabled"))
+	var old_paths: Array = [StoryChapters.unlocks_path, StoryChapters.chapters_path, StoryChapters.backup_path]
+	sd.set("save_path", tmp_save)
+	sd.set("nav_enabled", false)
+	StoryChapters.unlocks_path = tmp_u
+	StoryChapters.chapters_path = tmp_c
+	StoryChapters.backup_path = tmp_b
+	for f: String in [tmp_save, tmp_u, tmp_c, tmp_b]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
+	sd.call("new_story", {"female": false, "name": "Khoa", "variant": 0, "hair_style": "short", "hair_color": 0, "skin": 1})
+	_check((sd.get("ranks") as Dictionary).is_empty(), "D: a new story starts without ranks")
+	var n: int = 0
+	while String(sd.get("step")) != "d1_brawl" and n < 80:
+		sd.call("complete_step", String(sd.get("step")))
+		n += 1
+	_check(String(sd.get("step")) == "d1_brawl", "D: walked to d1_brawl")
+	_check(bool(sd.call("record_rank", "d1_brawl", "B")) and not bool(sd.call("record_rank", "d1_brawl", "C")) and bool(sd.call("record_rank", "d1_brawl", "A")),
+		"D: record_rank keeps only a better letter")
+	_check(not bool(sd.call("record_rank", "d1_morning", "S")) and not bool(sd.call("record_rank", "d1_brawl", "X")), "D: unranked beats and junk letters are refused")
+	_check(StoryChapters.best_rank("d1_brawl") == "A" and StoryRank.best("d1_brawl") == "A", "D: the unlock file mirrors it, StoryRank.best reads it")
+	sd.call("save_game")
+	var saved: Dictionary = sd.call("read_save", tmp_save)
+	_check((saved.get("ranks", {}) as Dictionary) == {"d1_brawl": "A"}, "D: the save carries the ranks (%s)" % str(saved.get("ranks")))
+	sd.call("reset_state")
+	_check((sd.get("ranks") as Dictionary).is_empty(), "D: reset_state clears the save's ranks")
+	_check(bool(sd.call("load_game", tmp_save)) and String((sd.get("ranks") as Dictionary).get("d1_brawl", "")) == "A", "D: reload restores them")
+	var old: Dictionary = saved.duplicate(true)
+	old.erase("ranks")
+	sd.call("from_dict", old)
+	_check((sd.get("ranks") as Dictionary).is_empty() and String(sd.get("step")) == "d1_brawl", "D: an old save without ranks loads with none")
+	var junk: Dictionary = saved.duplicate(true)
+	junk["ranks"] = {"d1_brawl": "Z", "d0_wake": "S", "d1_chase": "B", "x": 3}
+	sd.call("from_dict", junk)
+	_check((sd.get("ranks") as Dictionary) == {"d1_chase": "B"}, "D: an edited save cannot add junk (%s)" % str(sd.get("ranks")))
+	_check(StoryChapters.best_rank("d1_chase") == "B" and StoryChapters.best_rank("d1_brawl") == "A", "D: a loaded save's ranks are mirrored, the file never loses one")
+	# a finished ranked mission records its rank; the rewind keeps the best
+	sd.call("load_game", tmp_save)
+	while String(sd.get("step")) != "d1_corridor" and n < 160:
+		sd.call("complete_step", String(sd.get("step")))
+		n += 1
+	var host := FakeHost.new()
+	world.add_child(host)
+	var m := ProbeMission.new()
+	m.setup(host, {"id": "d1_corridor", "title": "Hành lang tối"}, {"manual": true})
+	host.add_child(m)
+	m.begin()
+	m.advance(10.0)
+	m.finish({})
+	_check(m.rank == "S" and String((sd.get("ranks") as Dictionary).get("d1_corridor", "")) == "S" and StoryChapters.best_rank("d1_corridor") == "S",
+		"D: a finished mission records its rank in the save and the unlock file (%s)" % m.rank)
+	host.queue_free()
+	sd.call("save_game")
+	_check(StoryChapters.rewind(sd, "d1_brawl"), "D: rewind to d1_brawl")
+	var rk: Dictionary = sd.get("ranks")
+	_check(String(rk.get("d1_brawl", "")) == "A" and String(rk.get("d1_corridor", "")) == "S" and String(rk.get("d1_chase", "")) == "B",
+		"D: the rewind merges the best ranks back (%s)" % str(rk))
+	# the horror beat d4_escape: ranked from the catches when it completes (no card)
+	sd.call("from_dict", saved)
+	sd.set("step", "d4_escape")
+	sd.call("on_horror_result", 0, false)
+	_check(String((sd.get("ranks") as Dictionary).get("d4_escape", "")) == "S", "D: d4_escape never caught -> S (%s)" % str(sd.get("ranks")))
+	sd.call("reset_state")
+	sd.set("save_path", old_path)
+	sd.set("nav_enabled", old_nav)
+	StoryChapters.unlocks_path = old_paths[0]
+	StoryChapters.chapters_path = old_paths[1]
+	StoryChapters.backup_path = old_paths[2]
+	for f2: String in [tmp_save, tmp_u, tmp_c, tmp_b]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(f2))
 
 
 func _end() -> void:

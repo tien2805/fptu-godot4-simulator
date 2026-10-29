@@ -141,6 +141,9 @@ func finish(info: Dictionary = {}) -> void:
 	var out: Dictionary = info.duplicate()
 	out["rank"] = rank
 	var best_before: String = StoryRank.best(id)
+	var sd: Node = get_node_or_null("/root/StoryDirector") if is_inside_tree() else null
+	if sd != null and sd.has_method("record_rank"):
+		sd.call("record_rank", id, rank)       # T9: the best rank goes into the save (and the chapter unlock file)
 	if StoryRankCard.skip_all:
 		done.emit(out)
 		return

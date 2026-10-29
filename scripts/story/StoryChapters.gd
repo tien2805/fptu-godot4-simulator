@@ -11,6 +11,9 @@
 # Beats added after players already had saves (INSERTED, e.g. the Day 2 drift duel d2_drift): an unlock file that
 # reached the beat after one of them lists it unlocked, and its snapshot is derived from that next beat's snapshot (the
 # same state, its own step, objective and time of day), so Chọn cảnh can rewind to it.
+# Wave 3 ranks (plan 2026-10-30-w3-shared.md T9): the unlock file's [ranks] <beat id> = best letter mirrors every best
+# rank ever recorded (record_ranks: only a better letter replaces one, it only grows); a rewind merges them back into the
+# rewound state (merge_ranks) so it never loses a rank; chapters() rows carry "rank" ("" = none) for Chọn cảnh.
 class_name StoryChapters
 extends RefCounted
 
@@ -157,6 +160,51 @@ static func _add_unlocks(beats: Array, cines: Array) -> void:
 
 
 # ---------------------------------------------------------------------------
+# Wave 3 ranks
+# ---------------------------------------------------------------------------
+## Every best rank in the unlock file {beat id: letter}.
+static func best_ranks() -> Dictionary:
+	var cfg: ConfigFile = _load(unlocks_path)
+	var out: Dictionary = {}
+	if cfg.has_section("ranks"):
+		for k: String in cfg.get_section_keys("ranks"):
+			var l: String = String(cfg.get_value("ranks", k, ""))
+			if l in StoryRank.LETTERS:
+				out[k] = l
+	return out
+
+
+static func best_rank(id: String) -> String:
+	return String(best_ranks().get(id, ""))
+
+
+## Mirrors ranks {beat id: letter} into the unlock file: a letter is written only when it beats the stored one.
+static func record_ranks(rk: Dictionary) -> void:
+	if _guarded(unlocks_path) or rk.is_empty():
+		return
+	var cfg: ConfigFile = _load(unlocks_path)
+	var changed: bool = false
+	for k: Variant in rk.keys():
+		var l: String = String(rk[k])
+		if StoryRank.better(l, String(cfg.get_value("ranks", String(k), ""))):
+			cfg.set_value("ranks", String(k), l)
+			changed = true
+	if changed:
+		cfg.save(unlocks_path)
+
+
+## The unlock file's best ranks merged into StoryDirector.ranks (the better letter wins).
+static func merge_ranks(sd: Node) -> void:
+	if sd == null or not ("ranks" in sd):
+		return
+	var cur: Dictionary = sd.get("ranks")
+	var best: Dictionary = best_ranks()
+	for k: Variant in best.keys():
+		cur[k] = StoryRank.best_of(String(cur.get(k, "")), String(best[k]))
+	sd.set("ranks", cur)
+
+
+# ---------------------------------------------------------------------------
 # Snapshots
 # ---------------------------------------------------------------------------
 static func snapshot(id: String) -> Dictionary:
@@ -233,6 +281,7 @@ static func rewind(sd: Node, id: String) -> bool:
 	if not (sd.call("read_save", save) as Dictionary).is_empty():
 		_copy(save, backup_path)
 	sd.call("from_dict", snap)
+	merge_ranks(sd)                          # a rewind never loses a rank
 	sd.set("active", true)
 	if not bool(sd.call("save_game")):
 		return false
@@ -257,10 +306,11 @@ static func restore_backup(sd: Node) -> bool:
 # ---------------------------------------------------------------------------
 # Lists for the UI
 # ---------------------------------------------------------------------------
-## Every replayable beat of the chain in story order: {id, day, title, state: "open" | "need_play" | "locked"}.
+## Every replayable beat of the chain in story order: {id, day, title, state: "open" | "need_play" | "locked", rank}.
 static func chapters() -> Array[Dictionary]:
 	var beats: Array = unlocked_beats()
 	var snaps: ConfigFile = _load(chapters_path)
+	var rk: Dictionary = best_ranks()
 	var out: Array[Dictionary] = []
 	for id: String in chain():
 		var b: Dictionary = StoryMissions.beat(id)
@@ -269,7 +319,7 @@ static func chapters() -> Array[Dictionary]:
 		var state: String = "locked"
 		if id in beats:
 			state = "open" if snaps.has_section_key("chapters", id) or (INSERTED.has(id) and not snapshot(id).is_empty()) else "need_play"
-		out.append({"id": id, "day": int(b["day"]), "title": String(b["title"]), "state": state})
+		out.append({"id": id, "day": int(b["day"]), "title": String(b["title"]), "state": state, "rank": String(rk.get(id, ""))})
 	return out
 
 

@@ -6,7 +6,7 @@
 #   StoryRank.report(beat_id, stats, info := {}) -> String   "S" | "A" | "B" | "C", "" for an unranked beat
 #   StoryRank.evaluate(beat_id, stats, info := {}) -> Dictionary   {"letter", "score" (0..100), "lines": [{"key",
 #       "label", "value" (text), "k" (0..1), "weight"}]} ({} for an unranked beat): the results card reads it
-#   StoryRank.best(beat_id) -> String     the best letter recorded (StoryDirector.ranks)
+#   StoryRank.best(beat_id) -> String     the best letter recorded (StoryDirector.ranks or the chapter unlock file)
 #   StoryRank.better(a, b) -> bool        letter a beats b ("" loses to every letter)
 #   StoryRank.MISSIONS                    thresholds per ranked beat id (19 beats of Days 1-5; Day 0 stages keep their own)
 # ===============
@@ -176,7 +176,7 @@ static func best_of(a: String, b: String) -> String:
 	return a if better(a, b) or (LETTERS.has(a) and a == b) else (b if LETTERS.has(b) else "")
 
 
-## The best letter recorded for a beat (StoryDirector.ranks, the story save).
+## The best letter recorded for a beat: StoryDirector.ranks (this save) or the chapter unlock file (every playthrough).
 static func best(beat_id: String) -> String:
 	var ml: MainLoop = Engine.get_main_loop()
 	var tree: SceneTree = ml as SceneTree
@@ -184,4 +184,4 @@ static func best(beat_id: String) -> String:
 	var r: String = ""
 	if sd != null and "ranks" in sd:
 		r = String((sd.get("ranks") as Dictionary).get(beat_id, ""))
-	return r
+	return best_of(r, StoryChapters.best_rank(beat_id))

@@ -13,6 +13,10 @@
 # the consecutive lair beats -> leave_lair back to story free roam); an "ending" beat (ending C) marks the save finished
 # when it completes (finish_story: ending = "C", the story stops, the main menu; Continue refuses a finished save, Chọn cảnh
 # can still rewind it).
+# Wave 3 ranks (plan 2026-10-30-w3-shared.md T9): `ranks` {beat id: best letter} is part of the save (old saves load with
+# none); record_rank(id, letter) keeps only a better letter and mirrors it into the chapter unlock file (StoryChapters,
+# which only grows); a loaded save's ranks are mirrored there too. StoryMission.finish records a ranked mission; the
+# horror beat d4_escape (not a StoryMission) is ranked here from its time (launch -> escape) and its catches, no card.
 extends Node
 
 const GameFXScript: Script = preload("res://scripts/GameFX.gd")
@@ -43,6 +47,8 @@ var objective: String = ""
 var spawn: Variant = null
 ## Phase C: "" while the story runs, else the ending it finished on ("C").
 var ending: String = ""
+## Wave 3: the best rank per ranked beat {beat id: "S" | "A" | "B" | "C"}.
+var ranks: Dictionary = {}
 
 # ----- runtime -----
 ## Save file (tests point it at a temp file).
@@ -58,6 +64,8 @@ var migrated: bool = false
 var result_layer: CanvasLayer
 var result_title: Label
 var result_buttons: Dictionary = {}
+## Wave 3: when the current horror beat was launched (Time ticks ms, -1 = unknown): its rank's time.
+var _horror_t0_ms: int = -1
 
 
 func _ready() -> void:
@@ -80,6 +88,7 @@ func reset_state() -> void:
 	objective = ""
 	spawn = null
 	ending = ""
+	ranks = {}
 
 
 ## Starts a new story with the creator's protagonist {female, name, variant, hair_style, hair_color, skin}; autosaves.
@@ -262,7 +271,7 @@ func day_chip_text() -> String:
 func to_dict() -> Dictionary:
 	return {"active": active, "day": day, "tod": tod, "step": step, "evidence": evidence.duplicate(),
 		"choices": choices.duplicate(true), "flags": flags.duplicate(true), "protagonist": protagonist.duplicate(true),
-		"texts": texts.duplicate(true), "objective": objective, "spawn": spawn, "ending": ending}
+		"texts": texts.duplicate(true), "objective": objective, "spawn": spawn, "ending": ending, "ranks": ranks.duplicate()}
 
 
 func from_dict(d: Dictionary) -> void:
@@ -289,6 +298,13 @@ func from_dict(d: Dictionary) -> void:
 	spawn = sp if sp is Transform3D else null
 	active = bool(d.get("active", true))
 	ending = String(d.get("ending", ""))
+	var rk: Variant = d.get("ranks", {})
+	if rk is Dictionary:
+		for k: Variant in (rk as Dictionary).keys():
+			var letter: String = str(rk[k])
+			if StoryRank.is_ranked(str(k)) and letter in StoryRank.LETTERS:   # an edited save cannot add junk
+				ranks[str(k)] = letter
+	StoryChapters.record_ranks(ranks)
 	_read_old_days()
 	migrated = false
 	var mig: String = StoryMissions.migrate(step)
@@ -635,8 +651,21 @@ func launch_horror_beat(id: String, win_xf: Variant = null, fail_xf: Variant = n
 	if sm:
 		sm.set("story_context", {"beat": id, "horror": true, "replay": String(b.get("replay", "")), "win_xf": win_xf,
 			"fail_xf": fail_xf})
+	_horror_t0_ms = Time.get_ticks_msec()
 	save_game()
 	_nav("horror:" + String(b.get("scene", StoryMissions.HORROR_SCENE)))
+	return true
+
+
+## Wave 3: keeps `letter` as the beat's best rank when it beats the recorded one (true) and mirrors it into the chapter
+## unlock file. Saved with the next autosave (complete_step).
+func record_rank(id: String, letter: String) -> bool:
+	if not StoryRank.is_ranked(id) or not (letter in StoryRank.LETTERS):
+		return false
+	if not StoryRank.better(letter, String(ranks.get(id, ""))):
+		return false
+	ranks[id] = letter
+	StoryChapters.record_ranks({id: letter})
 	return true
 
 
@@ -661,6 +690,11 @@ func on_horror_result(caught_count: int, go_roam: bool = true) -> bool:
 	flags["d4_caught"] = caught_count
 	if ctx.get("win_xf") is Transform3D:
 		spawn = ctx["win_xf"]
+	var hs: Dictionary = {"fails": caught_count}   # Wave 3: ranked from the time and the catches (no card: known gap)
+	if _horror_t0_ms >= 0:
+		hs["time"] = float(Time.get_ticks_msec() - _horror_t0_ms) / 1000.0
+	_horror_t0_ms = -1
+	record_rank(step, StoryRank.report(step, hs))
 	complete_step(step)
 	if go_roam:
 		enter_roam()
