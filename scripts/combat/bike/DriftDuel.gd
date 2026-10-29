@@ -256,7 +256,7 @@ func setup(opts: Dictionary) -> void:
 		guide.name = "Guide"
 		add_child(guide)
 		guide.setup({"path": course, "bike": bike, "roam": roam, "s_fn": func() -> float: return s_p, "end_s": course.length,
-			"floor_fn": floor_at, "targets": [], "boss": rival, "panel_half_w": 250.0, "occlude_rids": excl})
+			"floor_fn": floor_at, "targets": [], "boss": rival, "occlude_rids": excl})
 
 
 ## The difficulty's numbers (Thường, Dễ) for the race rules; the rival reads his own.

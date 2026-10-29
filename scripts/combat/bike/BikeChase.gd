@@ -360,7 +360,7 @@ func setup(opts: Dictionary) -> void:
 		add_child(guide)
 		guide.setup({"path": route, "bike": bike, "roam": roam, "s_fn": func() -> float: return s_p,
 			"end_s": end_at_s if end_at_s >= 0.0 else route.length - BikeCombatData.END_MARGIN, "floor_fn": floor_at,
-			"targets": bikers, "panel_half_w": BikeHUD.PANEL_SIZE.x * 0.5})
+			"targets": bikers})
 	var sp_data: Array = opts.get("set_pieces", [])
 	if not sp_data.is_empty():
 		set_pieces = BikeSetPieces.new()
@@ -400,7 +400,7 @@ static func day2_waves() -> Array:
 		{"from": "side", "lane": -1, "delay": 0.4, "opts": {"kind": "stick", "label": "Sói Gậy", "aggression": 0.6}},
 		{"from": "behind", "lane": 1, "delay": 6.0, "opts": {"label": "Sói Còi", "hp": 2, "aggression": 0.5}}],
 		[{"from": "behind", "lane": 1, "opts": {"label": "Sói Bạc", "hp": 2, "aggression": 0.7}},
-		{"from": "behind", "lane": -1, "delay": 1.0, "opts": {"kind": "heavy", "label": "Sói Bự", "aggression": 0.6}},
+		{"from": "behind", "lane": -1, "delay": 1.0, "opts": {"kind": "heavy", "label": "Sói Bự", "hp": 4, "aggression": 0.6}},
 		{"from": "behind", "lane": 1, "delay": 7.0, "opts": {"kind": "thrower", "label": "Sói Ném", "aggression": 0.7}},
 		{"from": "behind", "lane": 1, "delay": 13.0, "opts": {"kind": "stick", "label": "Sói Gậy 2", "hp": 2, "aggression": 0.7}},
 		{"from": "behind", "lane": -1, "delay": 19.0, "opts": {"label": "Sói Phó", "hp": 2, "aggression": 0.8}}],

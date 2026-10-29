@@ -8,7 +8,8 @@
 #     floor height comes from one cached ray (at most RAYS_PER_FRAME a frame), a slot without one stays hidden.
 #   - The next turn: find_turns() lists the real turns of the path once (heading change over +/-TURN_SPAN m above
 #     TURN_RUN_DEG, at least TURN_MIN_DEG in all; same-way turns closer than TURN_MERGE_M merge). From TURN_SHOW_M before a
-#     turn the HUD panel (beside the top panel) shows a drawn bent arrow, "RẼ TRÁI" / "RẼ PHẢI" (or "CUA GẮT ..." past
+#     turn the HUD panel (top left, under the stats line, above the radar: the 1280 x 720 layout keeps the top centre for
+#     the owner's panel and popups and the top right for the money column) shows a drawn bent arrow, "RẼ TRÁI" / "RẼ PHẢI" (or "CUA GẮT ..." past
 #     TURN_SHARP_DEG) and the distance to it ("80 m"); a second turn within TURN_THEN_M after it shows as "RỒI RẼ ...".
 #   - Enemies: every active target (the owner's live `targets` array, BikerEnemy.is_active()) and the `boss` (Sói Xám) off
 #     screen or behind the camera gets a red edge arrow on the screen border pointing at it, bigger when nearer, pulsing
@@ -59,7 +60,7 @@ const BLIP_HZ: float = 10.0
 const OCCLUDE_S: float = 0.1
 const MAX_BLIPS: int = 10
 const PANEL_SIZE := Vector2(236.0, 108.0)
-const PANEL_GAP: float = 14.0
+const PANEL_POS := Vector2(24.0, 92.0)
 const RED := Color(1.0, 0.14, 0.1)
 const T_LEFT: String = "RẼ TRÁI"
 const T_RIGHT: String = "RẼ PHẢI"
@@ -78,7 +79,6 @@ var floor_fn: Callable
 var end_s: float = 0.0
 var targets: Array = []
 var boss: Node3D = null
-var panel_half_w: float = 220.0
 var active: bool = false
 var hud_on: bool = true
 var metrics_on: bool = false
@@ -163,7 +163,6 @@ func setup(opts: Dictionary) -> void:
 	floor_fn = opts.get("floor_fn", Callable())
 	targets = opts.get("targets", [])
 	boss = opts.get("boss", null)
-	panel_half_w = float(opts.get("panel_half_w", 220.0))
 	if opts.has("occlude_rids"):
 		_occl = true
 		_occl_q = PhysicsRayQueryParameters3D.new()
@@ -659,7 +658,7 @@ func _exit_tree() -> void:
 	_radar_route(false)
 
 
-## The turn panel (beside the owner's top panel), the edge arrows and the boss marker, drawn in one Control.
+## The turn panel (top left), the edge arrows and the boss marker, drawn in one Control.
 class Overlay extends Control:
 	var guide: RouteGuide
 
@@ -702,11 +701,8 @@ class Overlay extends Control:
 			_text(f, p - d * (s + 34.0) + Vector2(-80.0, 6.0), guide.boss_dist_text, 16, Color(1.0, 0.75, 0.7), 160.0)
 
 	func _turn_panel(f: Font) -> void:
-		var x0: float = size.x * 0.5 + guide.panel_half_w + RouteGuide.PANEL_GAP
 		var ps: Vector2 = RouteGuide.PANEL_SIZE
-		if x0 + ps.x > size.x - 8.0:
-			x0 = size.x - 8.0 - ps.x
-		var r := Rect2(Vector2(x0, 16.0), ps)
+		var r := Rect2(RouteGuide.PANEL_POS, ps)
 		draw_rect(r, Color(0.03, 0.02, 0.08, 0.72))
 		draw_rect(r, Color(RouteGuide.CHEV_COL, 0.95), false, 3.0)
 		# the bent arrow (left part of the panel)
