@@ -49,6 +49,8 @@ func _start() -> void:
 	duel.music_cue.connect(_on_music_cue)
 	duel.ended.connect(_on_ended)
 	duel.start()   # mounts the player when on foot (FreeRoam then asks for the roam track)
+	if duel.combat:
+		duel.combat.kick_hit.connect(func(_t: Node3D, _s: int) -> void: add_stat("ko"))   # Wave 3 ranks: kicks that land
 	if not has_drift_track():
 		_chase_track()
 

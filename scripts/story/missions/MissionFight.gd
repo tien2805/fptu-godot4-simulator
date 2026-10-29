@@ -69,6 +69,7 @@ func _start() -> void:
 	fight.won.connect(_on_won)
 	fight.lost.connect(_on_lost)
 	fight.wave_started.connect(_on_wave)
+	fight.enemy_ko.connect(func(_e: MeleeEnemy) -> void: add_stat("ko"))   # Wave 3 ranks
 	fight.start()
 	set_info(_info())
 

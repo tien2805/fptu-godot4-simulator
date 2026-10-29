@@ -3,6 +3,12 @@
 #   A  StoryRank scoring: the 19 ranked beats exist in StoryMissions; an unranked beat gives ""; the letter edges (85 / 65 /
 #      45); perfect stats give S and the worst give C on every beat; linear criteria; a criterion that does not apply
 #      passes its weight on; the optional objective (want / max / min); better() / best_of(); plain-text letters and labels.
+#   B  StoryMission stats on a scripted run (manual clock, a fake host with combat.hp): time on the mission clock, every HP
+#      drop summed into dmg (regeneration ignored), add_stat / set_stat, a fail counts and samples the last drop, a retry
+#      keeps every stat, the stats give a letter.
+#   C  The results card (StoryRankCard): off by default on a headless run; a manual run shows it without holding `done`
+#      (info gains "rank"); a real run holds `done` until the card closes ([E] or the 2.5 s hold on real time); the card's
+#      letter, criteria lines and "Kỷ lục" text are plain (no emoji, no star glyphs); skip_all = no card, no hold.
 # Run:  godot --headless --path . --script tests/test_story_rank.gd
 extends SceneTree
 
@@ -11,6 +17,24 @@ const RANKED: Array[String] = ["d1_stakeout", "d1_chase", "d1_brawl", "d1_corrid
 	"d5_gunfight", "d5_hack", "d5_duel"]
 
 var fails: Array[String] = []
+var world: Node
+
+
+class FakeCombat extends RefCounted:
+	var hp: float = 100.0
+
+
+class FakeHost extends Node3D:
+	var player: ThirdPersonController = null
+	var combat: FakeCombat = FakeCombat.new()
+	var weapons: WeaponDirector = null
+	var mounted: bool = false
+
+
+class ProbeMission extends StoryMission:
+	var resets: int = 0
+	func _reset() -> void:
+		resets += 1
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -21,7 +45,12 @@ func _check(ok: bool, msg: String) -> void:
 
 func _initialize() -> void:
 	print("--- TEST STORY RANK (W-3) ---")
+	world = Node.new()
+	world.name = "RankTestWorld"
+	root.add_child(world)
 	_part_a()
+	_part_b()
+	await _part_c()
 	_end()
 
 
@@ -105,6 +134,138 @@ func _part_a() -> void:
 		_check(plain(String(StoryRank.LABELS[k])), "A: label %s is plain text" % k)
 	for k2: String in StoryRank.OPT_LABELS.keys():
 		_check(plain(String(StoryRank.OPT_LABELS[k2])), "A: optional label %s is plain text" % k2)
+
+
+func _part_b() -> void:
+	print("  [part] B stats")
+	var host := FakeHost.new()
+	host.name = "FakeHost"
+	world.add_child(host)
+	var m := ProbeMission.new()
+	m.setup(host, {"id": "d1_brawl"}, {"manual": true})
+	host.add_child(m)
+	m.begin()
+	_check(m.stats.get("time") == 0.0 and int(m.stats.get("fails")) == 0 and float(m.stats.get("dmg")) == 0.0, "B: a fresh run starts at zero (%s)" % str(m.stats))
+	for i: int in 10:
+		m.advance(0.5)
+	_check(is_equal_approx(float(m.stats["time"]), 5.0), "B: time follows the mission clock (%.2f)" % float(m.stats["time"]))
+	host.combat.hp = 80.0
+	m.advance(0.1)
+	host.combat.hp = 70.0
+	m.advance(0.1)
+	host.combat.hp = 100.0                   # regeneration: not damage, not a refund
+	m.advance(0.1)
+	host.combat.hp = 90.0
+	m.advance(0.1)
+	_check(is_equal_approx(float(m.stats["dmg"]), 40.0), "B: every HP drop adds up, regeneration ignored (%.1f)" % float(m.stats["dmg"]))
+	m.add_stat("ko")
+	m.add_stat("ko")
+	m.add_stat("ko", 3)
+	m.set_stat("custom", "x")
+	_check(int(m.stats["ko"]) == 5 and m.stats["custom"] == "x", "B: add_stat / set_stat (%s)" % str(m.stats))
+	host.combat.hp = 0.0                     # down: the fail samples the last drop
+	m.fail("test")
+	_check(m.state == "failed" and int(m.stats["fails"]) == 1 and is_equal_approx(float(m.stats["dmg"]), 130.0), "B: a fail counts and samples the last drop (%s)" % str(m.stats))
+	m.advance(1.0)
+	_check(is_equal_approx(float(m.stats["time"]), 5.4), "B: no time counted while failed (%.2f)" % float(m.stats["time"]))
+	host.combat.hp = 100.0                   # the checkpoint revives
+	m.retry()
+	_check(m.resets == 1 and int(m.stats["fails"]) == 1 and int(m.stats["ko"]) == 5 and is_equal_approx(float(m.stats["dmg"]), 130.0)
+		and is_equal_approx(float(m.stats["time"]), 5.4), "B: a retry keeps every stat (%s)" % str(m.stats))
+	m.advance(1.0)
+	host.combat.hp = 95.0
+	m.advance(0.1)
+	_check(is_equal_approx(float(m.stats["time"]), 6.5) and is_equal_approx(float(m.stats["dmg"]), 135.0), "B: after the retry the run goes on counting (%s)" % str(m.stats))
+	var letter: String = StoryRank.report("d1_brawl", m.stats)
+	_check(letter == "B", "B: the scripted run ranks B (one retry, 135 HP lost, 6.5 s) (%s, %.1f)" % [letter, float(StoryRank.evaluate("d1_brawl", m.stats)["score"])])
+	m.finish({})
+	_check(m.state == "done", "B: the run finishes")
+	host.queue_free()
+
+
+func _probe(manual_run: bool, id: String = "d1_brawl") -> Array:
+	var host := FakeHost.new()
+	host.name = "CardHost"
+	world.add_child(host)
+	var m := ProbeMission.new()
+	m.setup(host, {"id": id, "title": "Ba shipper"}, {"manual": manual_run})
+	host.add_child(m)
+	m.begin()
+	var got: Array = []
+	m.done.connect(func(info: Dictionary) -> void: got.append(info))
+	return [host, m, got]
+
+
+func _part_c() -> void:
+	print("  [part] C card")
+	await process_frame   # nodes added from here on are ready at once (inside the main loop)
+	_check(StoryRankCard.skip_all, "C: the card is off by default on a headless run (story tests keep their flow)")
+	StoryRankCard.skip_all = false
+	# manual run: the card shows, done is not held
+	var r1: Array = _probe(true)
+	var m1: ProbeMission = r1[1]
+	m1.advance(30.0)
+	m1.finish({"ko": 3})
+	var got1: Array = r1[2]
+	_check(got1.size() == 1 and String((got1[0] as Dictionary).get("rank", "")) == m1.rank and m1.rank != "", "C: a manual run emits done at once with the rank (%s)" % str(got1))
+	var c1: StoryRankCard = m1.rank_card
+	_check(c1 != null and c1.is_inside_tree() and c1.is_open and c1.letter == m1.rank, "C: the card shows the letter %s" % m1.rank)
+	_check(c1.line_texts.size() == 3 and c1.line_texts[0].begins_with(StoryRank.LABELS["time"]), "C: one line per criterion (%s)" % str(c1.line_texts))
+	var bad: Array[String] = []
+	for t: String in c1.texts():
+		if not plain(t):
+			bad.append(t)
+	_check(bad.is_empty(), "C: every card string is plain text (%s)" % str(bad))
+	c1.step(StoryRankCard.HOLD_S + 0.1)
+	_check(not c1.is_open, "C: the hold runs out")
+	(r1[0] as Node).queue_free()
+	# a real run: done waits for the card; [E] skips it
+	var r2: Array = _probe(false)
+	var m2: ProbeMission = r2[1]
+	m2.finish({})
+	var got2: Array = r2[2]
+	_check(got2.is_empty() and m2.rank_card != null and m2.rank_card.is_open, "C: a real run holds done while the card shows")
+	var ev := InputEventKey.new()
+	ev.pressed = true
+	ev.physical_keycode = KEY_E
+	m2.rank_card._input(ev)
+	_check(got2.size() == 1 and String((got2[0] as Dictionary).get("rank", "")) != "", "C: [E] closes the card and done follows (%s)" % str(got2))
+	(r2[0] as Node).queue_free()
+	# the hold on real time
+	var r3: Array = _probe(false)
+	var m3: ProbeMission = r3[1]
+	m3.finish({})
+	var got3: Array = r3[2]
+	var w0: int = Time.get_ticks_msec()     # the hold runs on the wall clock (a slow motion never stretches it)
+	while Time.get_ticks_msec() - w0 < 1200:
+		await process_frame
+	_check(got3.is_empty(), "C: still held after 1.2 s")
+	while Time.get_ticks_msec() - w0 < 2800:
+		await process_frame
+	_check(got3.size() == 1, "C: done follows the 2.5 s hold on its own")
+	(r3[0] as Node).queue_free()
+	# best text
+	var c4: StoryRankCard = StoryRankCard.make({"letter": "B", "lines": []}, "x", "A")
+	var c5: StoryRankCard = StoryRankCard.make({"letter": "S", "lines": []}, "x", "A")
+	_check(c4.best_text == StoryRankCard.T_BEST % "A" and c5.best_text == StoryRankCard.T_NEW_BEST, "C: \"Kỷ lục: A\" / \"Kỷ lục mới\" (%s / %s)" % [c4.best_text, c5.best_text])
+	c4.free()
+	c5.free()
+	# skip_all: no card, no hold
+	StoryRankCard.skip_all = true
+	var r6: Array = _probe(false)
+	var m6: ProbeMission = r6[1]
+	m6.finish({})
+	_check((r6[2] as Array).size() == 1 and m6.rank_card == null and m6.rank != "", "C: skip_all: no card, done at once, still ranked")
+	(r6[0] as Node).queue_free()
+	# an unranked beat: no card, no rank
+	StoryRankCard.skip_all = false
+	var r7: Array = _probe(false, "d1_morning")
+	var m7: ProbeMission = r7[1]
+	m7.finish({})
+	_check((r7[2] as Array).size() == 1 and m7.rank_card == null and m7.rank == "" and not ((r7[2] as Array)[0] as Dictionary).has("rank"), "C: an unranked beat: no card")
+	(r7[0] as Node).queue_free()
+	StoryRankCard.skip_all = true
+	await process_frame
 
 
 func _end() -> void:
