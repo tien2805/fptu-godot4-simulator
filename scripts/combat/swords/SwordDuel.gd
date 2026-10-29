@@ -38,6 +38,12 @@
 # the player's dodge slides wet_slide (Thường 35 %, Dễ 45 %) further: slide_k, written to PlayerCombat.dodge_speed_k when
 # it exists (the shared stream's knob, guarded); his lunges overshoot 20 % (KatanaBoss.lunge_k). retry(), the win, stop()
 # and freeing put everything back (sprinklers off, slide 1.0, the look popped).
+# W3 T6 (the QTE finisher): at 0 HP (KatanaBoss.qte_reached) instead of the immediate finale: SwordQTE runs the three
+# prompts ([Q] gạt, [Chuột trái] chém, [E] hạ gục), each qte_window real seconds (Thường 0.9, Dễ 1.2), under slow motion
+# (Impact.clock().slowmo, the scale owner protocol) and its own Camera3D with three code-driven shots framed on both
+# fighters; the boss and the player's moves are frozen meanwhile. A miss: he recovers QTE_RECOVER of his HP, the duel goes
+# on and the QTE comes again at 0; a pass: the existing snap finale, then `won`. qte_clean = the first QTE passed. Every
+# exit (pass, miss, retry, stop, freeing) gives the time scale and the camera back. opts "qte": false = the old finale.
 # ===========================================
 class_name SwordDuel
 extends Node3D
@@ -46,6 +52,12 @@ signal won
 signal lost
 signal phase_changed(phase: int)
 signal sprinklers_started
+signal qte_started
+
+const QTE_SCALE: float = 0.3
+const QTE_RECOVER: float = 0.1
+const QTE_FOV: float = 52.0
+const T_QTE_MISS: String = "Hụt! Hắn gượng dậy rồi!"
 
 const SPRINKLE_AT: float = 0.5
 const SPRINKLER_N: int = 6
@@ -83,6 +95,17 @@ var heads: Node3D = null
 var _rain: AudioStreamPlayer = null
 var _wet_acc: float = 0.0
 var _looked: bool = false
+## T6 the QTE finisher
+var qte: SwordQTE = null
+var qte_on: bool = true
+var qte_window: float = 0.9
+var qte_attempts: int = 0
+var qte_clean: bool = false
+var in_qte: bool = false
+var qte_cam: Camera3D = null
+var qte_shots: int = 0
+var _prev_cam: Camera3D = null
+var _qte_ctrl: bool = true
 
 
 func setup(opts: Dictionary) -> void:
@@ -112,6 +135,18 @@ func setup(opts: Dictionary) -> void:
 	centre = Vector3((at.x + p0.x) * 0.5, p0.y, (at.z + p0.z) * 0.5)
 	look_host = opts.get("look_host", opts.get("roam", null))
 	_build_sprinklers(opts.get("steam_at", []))
+	qte_on = bool(opts.get("qte", true))
+	qte_window = float(Difficulty.pick(0.9, 1.2))
+	qte = SwordQTE.new()
+	add_child(qte)
+	qte.prompt_shown.connect(_on_qte_prompt)
+	qte.passed.connect(_on_qte_passed)
+	qte.missed.connect(_on_qte_missed)
+	qte_cam = Camera3D.new()
+	qte_cam.name = "QteCam"
+	qte_cam.fov = QTE_FOV
+	qte_cam.top_level = true
+	add_child(qte_cam)
 
 
 ## Spawn Za Mẫn before the fight (a villain card can frame him): he stands in his guard, invulnerable, until start().
@@ -135,7 +170,10 @@ func retry() -> void:
 	if fight == null:
 		return
 	_sprinklers(false)
+	_qte_exit()
 	sprinkler_starts = 0                      # once per run
+	qte_attempts = 0
+	qte_clean = false
 	_arm(true)
 	state = "running"
 	fight.retry()
@@ -144,6 +182,7 @@ func retry() -> void:
 ## End without a result: the boss freed, the unarmed move set, the wheel and the HUD back to normal.
 func stop() -> void:
 	_sprinklers(false)
+	_qte_exit()
 	if fight:
 		fight.stop()
 	state = "idle"
@@ -158,6 +197,8 @@ func _on_wave(_i: int) -> void:
 	if boss:
 		boss.phase_changed.connect(_on_phase)
 		boss.hp_changed.connect(_on_hp)
+		boss.qte_armed = qte_on
+		boss.qte_reached.connect(_on_qte_reached)
 
 
 func _on_phase(ph: int) -> void:
@@ -167,12 +208,14 @@ func _on_phase(ph: int) -> void:
 
 func _on_won() -> void:
 	_sprinklers(false)
+	_qte_exit()
 	state = "won"
 	_arm(false)                                  # the staff goes away with the win: nothing left glued to the hand
 	won.emit()
 
 
 func _on_lost() -> void:
+	_qte_exit()
 	state = "lost"
 	lost.emit()
 
@@ -197,14 +240,107 @@ func _arm(on: bool) -> void:
 
 func _exit_tree() -> void:
 	_sprinklers(false)
+	_qte_exit()
 	_arm(false)
+
+
+# ---------------------------------------------------------------------------
+# T6: the QTE finisher
+# ---------------------------------------------------------------------------
+func _on_qte_reached() -> void:
+	if state != "running" or in_qte:
+		return
+	in_qte = true
+	qte_attempts += 1
+	_qte_ctrl = player.controls_enabled if player else true
+	if player:
+		player.controls_enabled = false              # the player's moves frozen (the boss is staged by KatanaBoss)
+	if is_inside_tree():
+		Impact.clock(self).slowmo(QTE_SCALE, qte_window * float(SwordQTE.PROMPTS.size()) + 0.4, self)
+		_prev_cam = get_viewport().get_camera_3d()
+	qte_shots = 0
+	qte.start(SwordQTE.PROMPTS, qte_window)
+	qte_started.emit()
+
+
+## A prompt shows: the camera cuts to its shot.
+func _on_qte_prompt(i: int) -> void:
+	if not in_qte or qte_cam == null or boss == null or player == null or not qte_cam.is_inside_tree():
+		return
+	qte_cam.global_transform = qte_shot(i)
+	qte_cam.make_current()
+	qte_shots += 1
+
+
+## The three code-driven shots, framed on both fighters (look at the midpoint at chest height from far enough to hold
+## both): 0 a low side two-shot, 1 over the player's shoulder at Za Mẫn, 2 a low hero angle from Za Mẫn's side.
+func qte_shot(i: int) -> Transform3D:
+	var b: Vector3 = boss.global_position
+	var p: Vector3 = player.global_position
+	var axis := Vector3(b.x - p.x, 0.0, b.z - p.z)
+	var gap: float = axis.length()
+	axis = axis / gap if gap > 0.05 else Vector3.FORWARD
+	var side: Vector3 = axis.cross(Vector3.UP).normalized()
+	var mid: Vector3 = (b + p) * 0.5 + Vector3(0.0, 1.25, 0.0)
+	var d: float = maxf(3.4, gap * 1.2 + 2.4)
+	var at: Vector3
+	var look: Vector3 = mid
+	match i:
+		0:
+			at = mid + side * d + Vector3(0.0, -0.45, 0.0)
+		1:
+			at = p + Vector3(0.0, 1.75, 0.0) - axis * 2.3 + side * 0.75
+			look = b + Vector3(0.0, 1.35, 0.0)
+		_:
+			at = mid - side * d * 0.85 + axis * 0.4 + Vector3(0.0, -0.7, 0.0)
+	return Transform3D(Basis.looking_at(look - at, Vector3.UP), at)
+
+
+func _on_qte_passed() -> void:
+	if not in_qte:
+		return
+	if qte_attempts == 1:
+		qte_clean = true
+	_qte_exit()
+	if boss and is_instance_valid(boss):
+		boss.qte_pass()                              # the snap finale, then the knockout and `won`
+
+
+func _on_qte_missed() -> void:
+	if not in_qte:
+		return
+	_qte_exit()
+	if boss and is_instance_valid(boss):
+		boss.qte_recover(QTE_RECOVER)
+	if combat and combat.hud:
+		combat.hud.popup(T_QTE_MISS, CombatHUD.WARN)
+
+
+## Every QTE exit: the prompts gone, the time scale, the camera and the player's controls given back.
+func _qte_exit() -> void:
+	if qte and qte.active:
+		qte.stop()
+	if not in_qte:
+		return
+	in_qte = false
+	if is_inside_tree():
+		Impact.clock(self).end_slowmo(self)
+	if qte_cam and qte_cam.current:
+		qte_cam.clear_current(false)
+	if _prev_cam and is_instance_valid(_prev_cam) and _prev_cam.is_inside_tree():
+		_prev_cam.make_current()
+	elif player and player.camera and player.camera.is_inside_tree():
+		player.camera.make_current()
+	_prev_cam = null
+	if player and is_instance_valid(player):
+		player.controls_enabled = _qte_ctrl
 
 
 # ---------------------------------------------------------------------------
 # T5: the sprinklers
 # ---------------------------------------------------------------------------
 func _on_hp(frac: float) -> void:
-	if frac <= SPRINKLE_AT and not sprinklers_on and state == "running" and sprinkler_starts == 0:
+	if frac <= SPRINKLE_AT and frac > 0.0 and not in_qte and not sprinklers_on and state == "running" and sprinkler_starts == 0:
 		_sprinklers(true)
 
 

@@ -64,7 +64,7 @@ func _start() -> void:
 
 
 func _on_won() -> void:
-	finish({"phase": duel.phase})
+	finish({"phase": duel.phase, "qte_clean": duel.qte_clean})
 
 
 func _on_lost() -> void:

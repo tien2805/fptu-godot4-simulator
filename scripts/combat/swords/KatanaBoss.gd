@@ -14,6 +14,9 @@
 # Spawned by SwordDuel through MeleeFight (spawn key "make"). opts as MeleeEnemy ("body", "body_fn", "label", "stats",
 # "seed", "hp_scale", "ai"); stats are SwordData.ZA_MAN with the caller's "stats" over them (those keys then stay fixed
 # through the phases). Tests / scripted beats: force_pattern(name) (a pattern or a single step name), force_attack().
+# W3 T6: with qte_armed (SwordDuel) 0 HP does not start the finale at once: he holds at 0 HP, frozen and invulnerable
+# (staged, St.IDLE), and emits `qte_reached` (qte_ready() is true); qte_pass() then plays the snap finale, qte_recover(frac)
+# gives him frac of his HP back and the duel goes on (the QTE comes again at the next 0).
 class_name KatanaBoss
 extends MeleeEnemy
 
@@ -54,6 +57,11 @@ var _finale_away: Vector3 = Vector3.ZERO
 var _finale_done: bool = false
 ## W3 T5: the sprinklers' wet floor makes his lunges overshoot (1.2); 1.0 dry.
 var lunge_k: float = 1.0
+## W3 T6: the QTE finisher (armed by SwordDuel), passed once the finale may run.
+var qte_armed: bool = false
+var qte_passed: bool = false
+var _qte_wait: bool = false
+var _qte_away: Vector3 = Vector3.ZERO
 var _finale_line: bool = false
 
 
@@ -414,7 +422,51 @@ func _knock_out(away: Vector3) -> void:
 	if _finale_done:
 		super._knock_out(away)
 		return
+	if qte_armed and not qte_passed:
+		_qte_hold(away)
+		return
 	_start_finale(away)
+
+
+## At 0 HP waiting for the QTE (SwordDuel runs it).
+func qte_ready() -> bool:
+	return _qte_wait
+
+
+## 0 HP with the QTE armed: he freezes, invulnerable, until qte_pass() or qte_recover().
+func _qte_hold(away: Vector3) -> void:
+	_qte_wait = true
+	_qte_away = away
+	hp = 0.0
+	_release_token()
+	if katana:
+		katana.set_glint(false)
+	_set_flash(false)
+	push_v = Vector3.ZERO
+	staged = true
+	_enter(St.IDLE)
+	pose.set_pose("sw_kat_guard", 0.15)
+	qte_reached.emit()
+
+
+## The QTE was passed: the katana snaps (the existing finale), the knockout follows.
+func qte_pass() -> void:
+	if not _qte_wait:
+		return
+	_qte_wait = false
+	qte_passed = true
+	staged = false
+	_start_finale(_qte_away)
+
+
+## The QTE was missed: frac of his HP back, the duel goes on.
+func qte_recover(frac: float) -> void:
+	if not _qte_wait:
+		return
+	_qte_wait = false
+	staged = false
+	hp = max_hp * clampf(frac, 0.01, 1.0)
+	_enter(St.APPROACH if ai else St.HOLD)
 
 
 ## 0 HP: the katana snaps (slow motion, sparks, the snap cue), the stare; the knockout comes FINALE_S later.

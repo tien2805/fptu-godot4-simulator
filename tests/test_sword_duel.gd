@@ -637,6 +637,11 @@ func _break(t: int) -> void:
 	if t == 2:
 		var r: String = _hit_to(0.0)
 		_check(r == "ko", "the last hit: ko (%s)" % r)
+		# W3 T6: 0 HP opens the QTE finisher; passing its three prompts plays the snap finale
+		_check(boss.qte_ready() and duel.in_qte and duel.qte.active and not player.controls_enabled, "0 HP: the QTE finisher instead of the finale")
+		for k: String in ["q", "lmb", "e"]:
+			duel.qte.press(k)
+		_check(not duel.in_qte and duel.qte_clean and player.controls_enabled, "the QTE passed first time (qte_clean)")
 		_check(boss.st == MeleeEnemy.St.FINALE and not boss.is_hostile() and not boss.is_defeated(), "the finale, not yet knocked out (%s)" % boss.state_name())
 		_check(boss.katana.broken and boss.katana.piece != null and boss.katana.piece.top_level, "the katana snaps, the tip flies off")
 		_check(combat.slowmo_active() and combat.cues.has("katana_snap"), "slow motion and the snap")

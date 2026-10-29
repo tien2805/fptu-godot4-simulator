@@ -371,7 +371,11 @@ func _process(_d: float) -> bool:
 			_next(15)
 		15:
 			var md15: MissionDuel = m as MissionDuel if is_instance_valid(m) else null
-			if md15 and md15.duel and md15.duel.boss and md15.duel.state == "running":
+			if md15 and md15.duel and md15.duel.in_qte:
+				for k: String in ["q", "lmb", "e"]:
+					md15.duel.qte.press(k)          # W3 T6: the QTE finisher at 0 HP
+				mark["qte"] = md15.duel.qte_clean
+			elif md15 and md15.duel and md15.duel.boss and md15.duel.state == "running":
 				md15.duel.boss.take_strike({"kind": "slash1", "dmg": 999.0, "stagger": 0.0, "from": bs.player.global_position})
 			if bs.cine_player == null:
 				if frames > 1200:
@@ -380,6 +384,7 @@ func _process(_d: float) -> bool:
 				return false
 			_check(bs.cine_player.timeline.slot == "seg_d5_boss" and sd.call("has_evidence", "E6"), "the katana snaps: seg_d5_boss, E6 guaranteed")
 			_check(bs.looks.is_empty() and LookPresets.active(bs) == "server_red", "the duel's look restored when it ended")
+			_check(bool(mark.get("qte", false)), "the katana QTE finisher passed first time")
 			_finish_cine_in(bs)
 			_next(16)
 		16:
