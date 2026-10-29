@@ -44,8 +44,16 @@ const KATANA_TILT: float = 0.45
 ## Every boss hit lands exactly TELL_S after its glint + sound (W3 T7: tell_s() = TELL_S on Thường, TELL_S_EASY on Dễ).
 const TELL_S: float = 0.5
 const TELL_S_EASY: float = 0.62
-## W3 T7: the Day 5 boss's HP scale (Thường / Dễ).
-const HP_SCALE_EASY: float = 0.8
+## W3 T7 / T8: the Day 5 boss's HP scale (Thường / Dễ), tuned against the sloppy fighter (sim_day5).
+const HP_SCALE: float = 1.5
+const HP_SCALE_EASY: float = 1.1
+## ... and his katana's damage scale (KatanaBoss._strike; the player regenerates between his patterns).
+const DMG_SCALE: float = 1.8
+const DMG_SCALE_EASY: float = 1.2
+
+
+static func dmg_scale() -> float:
+	return float(Difficulty.pick(DMG_SCALE, DMG_SCALE_EASY))
 ## MeleeEnemy stats (callers' "stats" opts override them); heavy_chance 0: KatanaBoss picks patterns itself.
 const ZA_MAN: Dictionary = {"hp": 300.0, "stagger_max": 180.0, "speed": 4.0, "circle_speed": 1.5, "circle_r": 3.4, "reach": 1.9,
 	"light_dmg": 10.0, "heavy_dmg": 20.0, "heavy_chance": 0.0, "windup": 0.25, "recover": 0.9, "chain": 1,

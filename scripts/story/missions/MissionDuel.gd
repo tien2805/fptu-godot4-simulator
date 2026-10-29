@@ -33,7 +33,7 @@ func _start() -> void:
 	add_child(duel)
 	var o: Dictionary = {"roam": roam, "start_line": START_LINE, "seed": int(opts.get("seed", 5)),
 		"boss": {"label": "Lê Minh Za Mẫn", "body_fn": func(_look: Dictionary) -> Node3D: return StoryCast.build("za_man"),
-			"hp_scale": float(Difficulty.pick(1.0, SwordData.HP_SCALE_EASY))}}
+			"hp_scale": float(Difficulty.pick(SwordData.HP_SCALE, SwordData.HP_SCALE_EASY))}}
 	if pts.has("boss_at"):
 		o["at"] = pts["boss_at"]
 	if pts.has("boss_yaw"):

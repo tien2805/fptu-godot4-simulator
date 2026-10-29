@@ -285,7 +285,7 @@ func _strike() -> void:
 	var r: String = "miss"
 	var p: Node3D = combat.player if combat else null
 	if p and _in_reach():
-		r = combat.receive_attack(self, {"damage": float(step["dmg"]), "heavy": bool(step["unblockable"]), "kind": String(step["kind"])})
+		r = combat.receive_attack(self, {"damage": float(step["dmg"]) * SwordData.dmg_scale(), "heavy": bool(step["unblockable"]), "kind": String(step["kind"])})
 	results.append(r)
 	if results.size() > 32:
 		results.pop_front()

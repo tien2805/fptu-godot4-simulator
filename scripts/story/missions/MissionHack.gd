@@ -27,6 +27,9 @@ const BREACH_AT: Array[float] = [30.0, 60.0]
 const CUT_S: float = 0.6
 const RETURN_R: float = 1.8
 const FIRE_LEFT: Array[float] = [60.0, 30.0, 10.0]   # seconds left where stages 1, 2, 3 start
+## The share of StoryHack's integrity to wipe (Thường / Dễ; T8 sloppy-bot tuning).
+const TYPING_LOAD: float = 1.0
+const TYPING_LOAD_EASY: float = 0.7
 
 var hack: StoryHack
 var core: Node3D
@@ -117,7 +120,7 @@ func _fresh_run(seed_val: int) -> void:
 	_alarm_on(true)
 	_to_desk()
 	hack.start(seed_val)
-	hack.hp = StoryHack.MAX_HP * float(Difficulty.pick(1.0, 0.8))   # the typing load
+	hack.hp = StoryHack.MAX_HP * float(Difficulty.pick(TYPING_LOAD, TYPING_LOAD_EASY))   # the typing load (T8 tuned)
 	set_prompt("")
 	_refresh_countdown()
 
