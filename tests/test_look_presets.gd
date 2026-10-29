@@ -83,9 +83,9 @@ func _part_a() -> bool:
 	var base_thr: float = base.glow_hdr_threshold
 	var sun: DirectionalLight3D = _sun(o)
 	var sun0: Dictionary = {"col": sun.light_color, "energy": sun.light_energy, "shadow": sun.shadow_opacity}
-	if not _check(LookPresets.names().size() == 8, "8 presets expected, got %d" % LookPresets.names().size()):
+	if not _check(LookPresets.names().size() == 10, "10 presets expected, got %d" % LookPresets.names().size()):
 		return false
-	for n: String in ["night_city", "tokyo_drift", "port_night", "server_red", "canal_night", "penthouse", "campus_day", "campus_horror"]:
+	for n: String in ["night_city", "tokyo_drift", "port_night", "server_red", "canal_night", "penthouse", "campus_day", "campus_horror", "server_blackout", "server_sprinkler"]:
 		if not _check(LookPresets.has(n), "missing preset " + n):
 			return false
 		var p: Dictionary = LookPresets.PRESETS[n]

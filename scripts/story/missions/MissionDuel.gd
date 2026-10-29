@@ -5,7 +5,9 @@
 # runs once (StoryVillainCard.show_for; flag zaman_card so a retry or a Continue does not show it again), then the duel
 # starts. `won` = done (StoryBasement plays the beat's "after" seg_d5_boss, then E6 is granted with the beat); `lost` =
 # "TOANG!" -> retry() = a fresh Za Mẫn, full HP.
-# opts: "points" (start, start_yaw, boss_at, boss_yaw), "manual_card" (tests step `card`), "seed".
+# W3 (plan 2026-10-30-w3-day5.md T5 / T6): the sprinklers at 50 % (SwordDuel: the look on the host, steam at the level's
+# first two fires) and the QTE finisher at 0 HP (SwordQTE through SwordDuel).
+# opts: "points" (start, start_yaw, boss_at, boss_yaw), "level" (steam spots), "manual_card" (tests step `card`), "seed".
 class_name MissionDuel
 extends StoryMission
 
@@ -15,6 +17,8 @@ const START_LINE: String = "Bảo hành bảy ngày đó nha!"
 var duel: SwordDuel
 var card: StoryVillainCard = null
 var pts: Dictionary = {}
+## T9 readability: an edge arrow toward Za Mẫn while he is off screen (his lunge from behind), hidden in the QTE.
+var guide: BasementGuide = null
 
 
 func setup(r: Node3D, b: Dictionary, o: Dictionary = {}) -> void:
@@ -30,12 +34,23 @@ func _start() -> void:
 	duel.name = "Duel"
 	add_child(duel)
 	var o: Dictionary = {"roam": roam, "start_line": START_LINE, "seed": int(opts.get("seed", 5)),
-		"boss": {"label": "Lê Minh Za Mẫn", "body_fn": func(_look: Dictionary) -> Node3D: return StoryCast.build("za_man")}}
+		"boss": {"label": "Lê Minh Za Mẫn", "body_fn": func(_look: Dictionary) -> Node3D: return StoryCast.build("za_man"),
+			"hp_scale": float(Difficulty.pick(SwordData.HP_SCALE, SwordData.HP_SCALE_EASY))}}
 	if pts.has("boss_at"):
 		o["at"] = pts["boss_at"]
 	if pts.has("boss_yaw"):
 		o["yaw"] = float(pts["boss_yaw"])
+	var lv: Variant = opts.get("level", null)
+	if lv is LairBasement:
+		var st: Array = []
+		for f: Array in LairBasement.FIRES.slice(0, 2):
+			st.append((lv as LairBasement).world(f[0]))
+		o["steam_at"] = st                     # W3 T5: steam where the sprinklers meet the burning racks
 	duel.setup(o)
+	guide = BasementGuide.new()
+	add_child(guide)
+	guide.setup(self)
+	guide.hide_fn = func() -> bool: return duel == null or not is_instance_valid(duel) or duel.in_qte or card != null
 	duel.won.connect(_on_won)
 	duel.lost.connect(_on_lost)
 	var sd: Node = StoryUtil.director()
@@ -55,8 +70,13 @@ func _start() -> void:
 			duel.start(), CONNECT_ONE_SHOT)
 
 
+func _tick(_dt: float) -> void:
+	if guide and duel and guide.extra != duel.boss:
+		guide.watch_node(duel.boss)
+
+
 func _on_won() -> void:
-	finish({"phase": duel.phase})
+	finish({"phase": duel.phase, "qte_clean": duel.qte_clean})
 
 
 func _on_lost() -> void:

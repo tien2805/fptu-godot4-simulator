@@ -31,6 +31,23 @@
 # duel (the knocked-out boss stays until stop() or free).
 # The boss bar shows while the duel runs. The duel never changes the story state, the time of day or the camera; it never
 # references an autoload.
+# W3 T5 (plan 2026-10-30-w3-day5.md, D5W-3): at SPRINKLE_AT (50 %) boss HP the sprinklers start once per run: a 0.6 s
+# preview cut on the ceiling heads, water from SPRINKLER_N pooled emitters, steam where it meets the burning racks (opts
+# "steam_at"), glossy puddles (PUDDLES round the arena centre), the "server_sprinkler" look on opts "look_host" (its
+# look() / unlook() when it has them, else LookPresets on it), the synthesized rain loop (SwordAudio "rain"). On a puddle
+# the player's dodge slides wet_slide (Thường 35 %, Dễ 45 %) further: slide_k, written to PlayerCombat.dodge_speed_k when
+# it exists (the shared stream's knob, guarded); his lunges overshoot 20 % (KatanaBoss.lunge_k). retry(), the win, stop()
+# and freeing put everything back (sprinklers off, slide 1.0, the look popped).
+# W3 T6 (the QTE finisher): at 0 HP (KatanaBoss.qte_reached) instead of the immediate finale: SwordQTE runs the three
+# prompts ([Q] gạt, [Chuột trái] chém, [E] hạ gục), each qte_window real seconds (Thường 0.9, Dễ 1.2), under slow motion
+# (Impact.clock().slowmo, the scale owner protocol) and its own Camera3D with three code-driven shots framed on both
+# fighters; the boss and the player's moves are frozen meanwhile. A miss: he recovers QTE_RECOVER of his HP, the duel goes
+# on and the QTE comes again at 0; a pass: the existing snap finale, then `won`. qte_clean = the first QTE passed. Every
+# exit (pass, miss, retry, stop, freeing) gives the time scale and the camera back. opts "qte": false = the old finale.
+# Fix round: the killing blow that opens the QTE is not a "last enemy" knockout (PlayerCombat.last_fn wraps MeleeFight's:
+# false while the boss holds at 0 HP or the QTE runs, so no 0.5 s orbit takes the camera and the time scale from it), and
+# while the QTE runs (tree not paused) its slow motion and its camera are asked for again if anything ended them (a pause
+# of the tree ends Impact's slow motion).
 # ===========================================
 class_name SwordDuel
 extends Node3D
@@ -38,6 +55,25 @@ extends Node3D
 signal won
 signal lost
 signal phase_changed(phase: int)
+signal sprinklers_started
+signal qte_started
+
+const QTE_SCALE: float = 0.3
+const QTE_RECOVER: float = 0.1
+const QTE_FOV: float = 52.0
+const T_QTE_MISS: String = "Hụt! Hắn gượng dậy rồi!"
+
+const SPRINKLE_AT: float = 0.5
+const SPRINKLER_N: int = 6
+## Puddles round the arena centre: [offset, radius].
+const PUDDLES: Array = [[Vector3(0.0, 0.0, 0.0), 1.3], [Vector3(-1.9, 0.0, 1.3), 1.0], [Vector3(1.7, 0.0, -1.1), 1.1],
+	[Vector3(-0.9, 0.0, -2.3), 0.9], [Vector3(2.3, 0.0, 1.9), 1.0], [Vector3(-2.6, 0.0, -0.6), 0.9]]
+const CEIL_Y: float = 3.25
+const CUT_S: float = 0.6
+const LUNGE_WET: float = 1.2
+const WET_DT: float = 0.1
+const LOOK: String = "server_sprinkler"
+const T_SPRINKLERS: String = "Hệ thống phun nước bật! Sàn trơn!"
 
 var fight: MeleeFight
 var combat: PlayerCombat
@@ -48,6 +84,35 @@ var state: String = "idle"
 var staff: Node3D = null
 var _staff_pivot: Node3D = null
 var _armed: bool = false
+## T5 the sprinklers
+var sprinklers_on: bool = false
+var sprinkler_starts: int = 0
+var slide_k: float = 1.0
+var wet_slide: float = 1.35
+var cuts: int = 0
+var centre: Vector3 = Vector3.ZERO
+var look_host: Node = null
+var emitters: Array[CPUParticles3D] = []
+var steam: Array[CPUParticles3D] = []
+var puddles: Array[MeshInstance3D] = []
+var heads: Node3D = null
+var _rain: AudioStreamPlayer = null
+var _wet_acc: float = 0.0
+var _looked: bool = false
+## T6 the QTE finisher
+var qte: SwordQTE = null
+var qte_on: bool = true
+var qte_window: float = 0.9
+var qte_attempts: int = 0
+var qte_clean: bool = false
+var in_qte: bool = false
+var qte_cam: Camera3D = null
+var qte_shots: int = 0
+var _prev_cam: Camera3D = null
+var _qte_ctrl: bool = true
+var _fight_last: Callable = Callable()
+## Times the QTE had to ask again for its slow motion or its camera (tests).
+var qte_rearms: int = 0
 
 
 func setup(opts: Dictionary) -> void:
@@ -72,6 +137,23 @@ func setup(opts: Dictionary) -> void:
 	fight.wave_started.connect(_on_wave)
 	fight.won.connect(_on_won)
 	fight.lost.connect(_on_lost)
+	wet_slide = float(Difficulty.pick(1.35, 1.45))
+	var p0: Vector3 = player.global_position if player else at
+	centre = Vector3((at.x + p0.x) * 0.5, p0.y, (at.z + p0.z) * 0.5)
+	look_host = opts.get("look_host", opts.get("roam", null))
+	_build_sprinklers(opts.get("steam_at", []))
+	qte_on = bool(opts.get("qte", true))
+	qte_window = float(Difficulty.pick(0.9, 1.2))
+	qte = SwordQTE.new()
+	add_child(qte)
+	qte.prompt_shown.connect(_on_qte_prompt)
+	qte.passed.connect(_on_qte_passed)
+	qte.missed.connect(_on_qte_missed)
+	qte_cam = Camera3D.new()
+	qte_cam.name = "QteCam"
+	qte_cam.fov = QTE_FOV
+	qte_cam.top_level = true
+	add_child(qte_cam)
 
 
 ## Spawn Za Mẫn before the fight (a villain card can frame him): he stands in his guard, invulnerable, until start().
@@ -88,19 +170,29 @@ func start() -> void:
 	_arm(true)
 	state = "running"
 	fight.start()
+	_wrap_last()
 
 
 ## After `lost` (or any time): a fresh boss, the player back at the start spot with full HP.
 func retry() -> void:
 	if fight == null:
 		return
+	_sprinklers(false)
+	_qte_exit()
+	sprinkler_starts = 0                      # once per run
+	qte_attempts = 0
+	qte_clean = false
 	_arm(true)
 	state = "running"
 	fight.retry()
+	_wrap_last()
 
 
 ## End without a result: the boss freed, the unarmed move set, the wheel and the HUD back to normal.
 func stop() -> void:
+	_sprinklers(false)
+	_qte_exit()
+	_unwrap_last()
 	if fight:
 		fight.stop()
 	state = "idle"
@@ -114,6 +206,9 @@ func _on_wave(_i: int) -> void:
 	phase = 1
 	if boss:
 		boss.phase_changed.connect(_on_phase)
+		boss.hp_changed.connect(_on_hp)
+		boss.qte_armed = qte_on
+		boss.qte_reached.connect(_on_qte_reached)
 
 
 func _on_phase(ph: int) -> void:
@@ -122,12 +217,16 @@ func _on_phase(ph: int) -> void:
 
 
 func _on_won() -> void:
+	_sprinklers(false)
+	_qte_exit()
+	_unwrap_last()
 	state = "won"
 	_arm(false)                                  # the staff goes away with the win: nothing left glued to the hand
 	won.emit()
 
 
 func _on_lost() -> void:
+	_qte_exit()
 	state = "lost"
 	lost.emit()
 
@@ -151,4 +250,316 @@ func _arm(on: bool) -> void:
 
 
 func _exit_tree() -> void:
+	_sprinklers(false)
+	_qte_exit()
+	_unwrap_last()
 	_arm(false)
+
+
+## PlayerCombat.last_fn through the duel: MeleeFight's answer (taken at start / retry), but never while the boss holds at
+## 0 HP for the QTE or the QTE runs.
+func _wrap_last() -> void:
+	if combat == null or not is_instance_valid(combat):
+		return
+	if combat.last_fn != Callable(self, "_duel_last"):
+		_fight_last = combat.last_fn
+	combat.last_fn = _duel_last
+
+
+func _unwrap_last() -> void:
+	if combat and is_instance_valid(combat) and combat.last_fn == Callable(self, "_duel_last"):
+		combat.last_fn = Callable()
+	_fight_last = Callable()
+
+
+func _duel_last(e: Object) -> bool:
+	if in_qte or (boss and is_instance_valid(boss) and boss.qte_ready()):
+		return false
+	return _fight_last.is_valid() and bool(_fight_last.call(e))
+
+
+# ---------------------------------------------------------------------------
+# T6: the QTE finisher
+# ---------------------------------------------------------------------------
+func _on_qte_reached() -> void:
+	if state != "running" or in_qte:
+		return
+	in_qte = true
+	qte_attempts += 1
+	_qte_ctrl = player.controls_enabled if player else true
+	if player:
+		player.controls_enabled = false              # the player's moves frozen (the boss is staged by KatanaBoss)
+	if is_inside_tree():
+		Impact.clock(self).slowmo(QTE_SCALE, qte_window * float(SwordQTE.PROMPTS.size()) + 0.4, self)
+		_prev_cam = get_viewport().get_camera_3d()
+	qte_shots = 0
+	qte.start(SwordQTE.PROMPTS, qte_window)
+	qte_started.emit()
+
+
+## While the QTE runs (and the tree is not paused): its slow motion for the prompts left, its camera current.
+func _keep_qte() -> void:
+	if not is_inside_tree() or get_tree().paused or qte == null or not qte.active:
+		return
+	var clk: Impact = Impact.clock(self)
+	if not clk.slowmo_active(self):
+		var left: float = maxf(0.2, qte.window - qte.t + qte.window * float(qte.prompts.size() - 1 - qte.index)) + 0.2
+		if clk.slowmo(QTE_SCALE, left, self):
+			qte_rearms += 1
+	if qte_cam and qte_cam.is_inside_tree() and not qte_cam.current and qte_shots > 0:
+		qte_cam.make_current()
+		qte_rearms += 1
+
+
+## A prompt shows: the camera cuts to its shot.
+func _on_qte_prompt(i: int) -> void:
+	if not in_qte or qte_cam == null or boss == null or player == null or not qte_cam.is_inside_tree():
+		return
+	qte_cam.global_transform = qte_shot(i)
+	qte_cam.make_current()
+	qte_shots += 1
+
+
+## The three code-driven shots, framed on both fighters (look at the midpoint at chest height from far enough to hold
+## both): 0 a low side two-shot, 1 over the player's shoulder at Za Mẫn, 2 a low hero angle from Za Mẫn's side.
+func qte_shot(i: int) -> Transform3D:
+	var b: Vector3 = boss.global_position
+	var p: Vector3 = player.global_position
+	var axis := Vector3(b.x - p.x, 0.0, b.z - p.z)
+	var gap: float = axis.length()
+	axis = axis / gap if gap > 0.05 else Vector3.FORWARD
+	var side: Vector3 = axis.cross(Vector3.UP).normalized()
+	var mid: Vector3 = (b + p) * 0.5 + Vector3(0.0, 1.25, 0.0)
+	var d: float = maxf(3.4, gap * 1.2 + 2.4)
+	var at: Vector3
+	var look: Vector3 = mid
+	match i:
+		0:
+			at = mid + side * d + Vector3(0.0, -0.45, 0.0)
+		1:
+			at = p + Vector3(0.0, 1.75, 0.0) - axis * 2.3 + side * 0.75
+			look = b + Vector3(0.0, 1.35, 0.0)
+		_:
+			at = mid - side * d * 0.85 + axis * 0.4 + Vector3(0.0, -0.7, 0.0)
+	return Transform3D(Basis.looking_at(look - at, Vector3.UP), at)
+
+
+func _on_qte_passed() -> void:
+	if not in_qte:
+		return
+	if qte_attempts == 1:
+		qte_clean = true
+	_qte_exit()
+	if boss and is_instance_valid(boss):
+		boss.qte_pass()                              # the snap finale, then the knockout and `won`
+
+
+func _on_qte_missed() -> void:
+	if not in_qte:
+		return
+	_qte_exit()
+	if boss and is_instance_valid(boss):
+		boss.qte_recover(QTE_RECOVER)
+	if combat and combat.hud:
+		combat.hud.popup(T_QTE_MISS, CombatHUD.WARN)
+
+
+## Every QTE exit: the prompts gone, the time scale, the camera and the player's controls given back.
+func _qte_exit() -> void:
+	if qte and qte.active:
+		qte.stop()
+	if not in_qte:
+		return
+	in_qte = false
+	if is_inside_tree():
+		Impact.clock(self).end_slowmo(self)
+	if qte_cam and qte_cam.current:
+		qte_cam.clear_current(false)
+	if _prev_cam and is_instance_valid(_prev_cam) and _prev_cam.is_inside_tree():
+		_prev_cam.make_current()
+	elif player and player.camera and player.camera.is_inside_tree():
+		player.camera.make_current()
+	_prev_cam = null
+	if player and is_instance_valid(player):
+		player.controls_enabled = _qte_ctrl
+
+
+# ---------------------------------------------------------------------------
+# T5: the sprinklers
+# ---------------------------------------------------------------------------
+func _on_hp(frac: float) -> void:
+	if frac <= SPRINKLE_AT and frac > 0.0 and not in_qte and not sprinklers_on and state == "running" and sprinkler_starts == 0:
+		_sprinklers(true)
+
+
+## The sprinklers on (the cut, water, steam, puddles, the look, the rain, the wet lunges) or off (all restored).
+func _sprinklers(on: bool) -> void:
+	if on == sprinklers_on:
+		if not on:
+			_set_slide(1.0)
+		return
+	sprinklers_on = on
+	for e: CPUParticles3D in emitters:
+		e.emitting = on
+	for st: CPUParticles3D in steam:
+		st.emitting = on
+	for pd: MeshInstance3D in puddles:
+		pd.visible = on
+	if boss and is_instance_valid(boss):
+		boss.lunge_k = LUNGE_WET if on else 1.0
+	_look(on)
+	if on:
+		sprinkler_starts += 1
+		if _rain and is_inside_tree():
+			_rain.stream = SwordAudio.stream("rain")
+			_rain.play()
+		if combat and combat.hud:
+			combat.hud.popup(T_SPRINKLERS, CombatHUD.WARN)
+		if heads and heads.is_inside_tree():
+			cuts += 1
+			var cd: CameraDirector = CameraDirector.live()
+			if cd:
+				cd.preview_cut(heads, CUT_S)
+		sprinklers_started.emit()
+	else:
+		if _rain:
+			_rain.stop()
+		_set_slide(1.0)
+
+
+func _look(on: bool) -> void:
+	if look_host == null or not is_instance_valid(look_host) or on == _looked:
+		return
+	_looked = on
+	if look_host.has_method("look"):
+		look_host.call("look" if on else "unlook", LOOK)
+	elif on:
+		LookPresets.apply(LOOK, look_host)
+	else:
+		LookPresets.restore(look_host, LOOK)
+
+
+## The dodge's slide factor (PlayerCombat.dodge_speed_k when the shared knob exists).
+func _set_slide(k: float) -> void:
+	slide_k = k
+	if combat and is_instance_valid(combat) and "dodge_speed_k" in combat:
+		combat.set("dodge_speed_k", k)
+
+
+## On a puddle while the sprinklers run (10 Hz); the QTE's slow motion and camera kept while it runs.
+func _physics_process(delta: float) -> void:
+	if in_qte:
+		_keep_qte()
+	if not sprinklers_on or player == null:
+		return
+	_wet_acc += delta
+	if _wet_acc < WET_DT:
+		return
+	_wet_acc = 0.0
+	var wet: bool = false
+	for pr: Array in PUDDLES:
+		var c: Vector3 = centre + (pr[0] as Vector3)
+		if Vector2(player.global_position.x - c.x, player.global_position.z - c.z).length() <= float(pr[1]):
+			wet = true
+			break
+	var k: float = wet_slide if wet else 1.0
+	if not is_equal_approx(k, slide_k):
+		_set_slide(k)
+
+
+func _build_sprinklers(steam_at: Array) -> void:
+	var root := Node3D.new()
+	root.name = "Sprinklers"
+	root.top_level = true
+	add_child(root)
+	root.global_position = Vector3.ZERO
+	var wmat := StandardMaterial3D.new()
+	wmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	wmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	wmat.albedo_color = Color(0.75, 0.88, 1.0, 0.5)
+	wmat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	wmat.set_meta("vice_done", true)
+	var head_mat: StandardMaterial3D = CineFX._mat(Color("#B8BEC6"), 0.3)
+	for i: int in mini(SPRINKLER_N, PUDDLES.size()):
+		var at: Vector3 = centre + (PUDDLES[i][0] as Vector3) + Vector3(0.0, CEIL_Y, 0.0)
+		CineFX._cyl(root, "SprinklerHead", 0.05, 0.08, 0.08, at + Vector3(0.0, 0.05, 0.0), head_mat)
+		var e := CPUParticles3D.new()
+		e.name = "Water"
+		e.emitting = false
+		e.amount = 36
+		e.lifetime = 0.85
+		e.local_coords = false
+		e.direction = Vector3.DOWN
+		e.spread = 28.0
+		e.gravity = Vector3(0.0, -9.8, 0.0)
+		e.initial_velocity_min = 0.8
+		e.initial_velocity_max = 2.0
+		e.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+		e.emission_sphere_radius = 0.12
+		e.scale_amount_min = 0.6
+		e.scale_amount_max = 1.0
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.025, 0.22)
+		qm.material = wmat
+		e.mesh = qm
+		root.add_child(e)
+		e.global_position = at
+		emitters.append(e)
+	heads = Node3D.new()
+	heads.name = "CeilingHeads"
+	root.add_child(heads)
+	heads.global_position = centre + Vector3(0.0, CEIL_Y - 0.4, 0.0)
+	var smat := StandardMaterial3D.new()
+	smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	smat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	smat.albedo_color = Color(0.9, 0.9, 0.92, 0.22)
+	smat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	smat.set_meta("vice_done", true)
+	for sp: Variant in steam_at:
+		var st := CPUParticles3D.new()
+		st.name = "Steam"
+		st.emitting = false
+		st.amount = 14
+		st.lifetime = 2.0
+		st.local_coords = false
+		st.direction = Vector3.UP
+		st.spread = 30.0
+		st.gravity = Vector3(0.0, 0.8, 0.0)
+		st.initial_velocity_min = 0.4
+		st.initial_velocity_max = 1.0
+		st.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+		st.emission_sphere_radius = 0.5
+		st.scale_amount_min = 1.0
+		st.scale_amount_max = 2.0
+		var q2 := QuadMesh.new()
+		q2.size = Vector2(0.8, 0.8)
+		q2.material = smat
+		st.mesh = q2
+		root.add_child(st)
+		st.global_position = (sp as Vector3) + Vector3(0.0, 0.8, 0.0)
+		steam.append(st)
+	var pmat := StandardMaterial3D.new()
+	pmat.albedo_color = Color(0.1, 0.12, 0.16, 0.6)
+	pmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	pmat.metallic = 0.3
+	pmat.roughness = 0.04
+	pmat.metallic_specular = 1.0
+	pmat.set_meta("vice_done", true)
+	for pr: Array in PUDDLES:
+		var pd := MeshInstance3D.new()
+		pd.name = "Puddle"
+		var pm := PlaneMesh.new()
+		var r: float = float(pr[1])
+		pm.size = Vector2(r * 2.0, r * 1.7)
+		pd.mesh = pm
+		pd.material_override = pmat
+		pd.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		pd.visible = false
+		root.add_child(pd)
+		pd.global_position = centre + (pr[0] as Vector3) + Vector3(0.0, 0.012, 0.0)
+		puddles.append(pd)
+	_rain = AudioStreamPlayer.new()
+	_rain.name = "Rain"
+	_rain.bus = CinePlayer._bus("SFX")
+	_rain.volume_db = -13.0
+	add_child(_rain)

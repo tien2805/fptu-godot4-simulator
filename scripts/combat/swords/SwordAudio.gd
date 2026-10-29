@@ -3,7 +3,8 @@
 # _to_wav): no recording, no melody. Cues:
 #   staff_swish, staff_hit, staff_hit_heavy (the Vovinam staff), blade_clash (staff on katana), parry_ring (a parry),
 #   glint / glint_red (the katana boss's tell 0.5 s before a hit: blockable / unblockable), katana_slash, katana_boing (the
-#   cheap blade bending), katana_snap (it breaks), howl (Sói Xám's howl phase).
+#   cheap blade bending), katana_snap (it breaks), howl (Sói Xám's howl phase), rain (W3 T5: the sprinklers' loop, a
+#   seamless 2 s band of filtered noise, LOOP_FORWARD).
 # Owner override: user://sfx/<cue>.ogg | .mp3 (WeaponAudio.owner_file: local only, never committed).
 # warm(cues) builds each missing cue on its own WorkerThreadPool task (Phase W / A2 lesson: never synthesize or load on a
 # frame): the owner's file is loaded there when he has one, else the cue is synthesized; stream(cue) adopts finished
@@ -12,7 +13,7 @@ class_name SwordAudio
 extends RefCounted
 
 const CUES: Array[String] = ["staff_swish", "staff_hit", "staff_hit_heavy", "blade_clash", "parry_ring", "glint", "glint_red",
-	"katana_slash", "katana_boing", "katana_snap", "howl"]
+	"katana_slash", "katana_boing", "katana_snap", "howl", "rain"]
 static var _cache: Dictionary = {}
 static var _tasks: Dictionary = {}       # cue -> {"task": id, "box": [AudioStreamWAV]}
 ## Cues built by worker tasks (tests).
@@ -154,6 +155,19 @@ static func synth(cue: String) -> AudioStreamWAV:
 			return CineAudio._to_wav(buf)
 		"howl":              # a wolf's howl: a voiced glide up, a long held note, a fall; soft breath under it
 			return synth_howl()
+		"rain":              # the sprinklers: a steady hiss with a soft patter, looping seamlessly
+			var hiss: PackedFloat32Array = CineAudio._mix([CineAudio._noise(2.0, 0.2, 0.0, 89, 0.55), CineAudio._noise(2.0, 0.08, 0.0, 90, 0.92)])
+			var fade: int = int(0.05 * CineAudio.SR)
+			for i3: int in fade:                    # cross-fade the ends so the loop never clicks
+				var k: float = float(i3) / float(fade)
+				var j: int = hiss.size() - fade + i3
+				hiss[i3] = hiss[i3] * k + hiss[j] * (1.0 - k)
+			hiss.resize(hiss.size() - fade)
+			var wav: AudioStreamWAV = CineAudio._to_wav(hiss)
+			wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			wav.loop_begin = 0
+			wav.loop_end = hiss.size()
+			return wav
 	return CineAudio._to_wav(CineAudio._tone(0.08, 800.0, 800.0, 0.3, 20.0))
 
 

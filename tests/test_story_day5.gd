@@ -199,12 +199,18 @@ func _process(_d: float) -> bool:
 			_basement()
 			_next(5)
 		5:
-			m = _wait_bs_mission("MissionSneak")
+			m = _wait_bs_mission("MissionBasementStealth")
 			if m == null:
 				return false
 			_check(bs.level != null and bs.level.wall.state == "off" and not bs.level.fire_on, "the basement: the monitor wall off, no fire yet")
 			_check(StoryBasement.LAIR_MUSIC["stealth"] == "mission_basement" and (m as MissionSneak).fight.gunmen.size() == 3, "the stealth: 3 guards, mission_basement")
 			_check(bs.weapons.current == WeaponData.Slot.PISTOL, "lair rule: armed in the basement")
+			# W3 T1: the task looks go over the base and come off with the task
+			_check(LookPresets.active(bs) == "server_red", "the basement base look: server_red")
+			bs.look("server_blackout")
+			_check(LookPresets.active(bs) == "server_blackout" and bs.looks == ["server_blackout"], "a task look applies over the base")
+			var hk: String = String(StoryBasement.LAIR_MUSIC["hack"])
+			_check(hk == (StoryBasement.FIRE_HACK_SLOT if MusicDirector.SLOTS.has(StoryBasement.FIRE_HACK_SLOT) else "mission_typing"), "the hack plays mission_fire_hack once the slot exists")
 			bs.player.teleport((m as MissionSneak).pts["goal"], 0.0)
 			_next(6)
 		6:
@@ -216,17 +222,60 @@ func _process(_d: float) -> bool:
 			_check(_finish_cine_in(bs) == "cine_d5_monitors", "the face on 50 monitors")
 			_next(7)
 		7:
-			m = _wait_bs_mission("MissionGunfight")
+			m = _wait_bs_mission("MissionBasementGunfight")
 			if m == null:
 				return false
 			_check(bs.level.wall.state == "error" and bs.level.wall.get_parent().visible, "the wall frozen on Lọ Thần đã gặp sự cố")
-			var mg: MissionGunfight = m
-			_check(mg.fight.waves.size() == 2 and mg.fight.alive().size() == 4, "the basement gunfight: 2 waves of 4")
+			_check(LookPresets.active(bs) == "server_red" and bs.looks.is_empty(), "the stealth's look restored when it ended")
+			var mg: MissionBasementGunfight = m
+			_check(mg.fight.waves.size() == 3 and mg.fight.alive().size() == MissionBasementGunfight.WAVES[0], "the basement gunfight on Thường: 3 waves, the first down the stairs")
+			_check(mg.fight.max_shooters == MissionBasementGunfight.SHOOTERS, "Thường: the mission's shooter cap")
+			Difficulty.set_easy(true)
+			var easy_sizes: Array = Difficulty.pick(MissionBasementGunfight.WAVES, MissionBasementGunfight.WAVES_EASY)
+			Difficulty.set_easy(false)
+			_check(easy_sizes.size() == 2 and mg.wave_sizes.size() == 3, "Dễ: 2 waves (the mission reads Difficulty.pick)")
+			_check(mg.cuts == 1 and mg.beats.has("stairs"), "wave 1: a preview cut down the stairs")
+			_check(bs.extra_targets.size() == LairBasement.RACK_ROWS.size(), "one labelled rack per row, shootable")
+			# the domino: row 0 (x -7, tips +x into the left aisle); one guard under it, one beside it
+			var tg: Node3D = bs.level.racks[0]["target"]
+			var o: Vector3 = bs.player.global_position + Vector3(0.0, 1.5, 0.0)
+			var h: Dictionary = bs.weapons.first_hit(o, (tg.global_position + Vector3(0.0, 0.9, 0.0) - o).normalized(), 60.0)
+			_check(String(h["kind"]) == "soft" and h.get("node") == tg, "a bullet at the label hits it (soft target)")
+			mark["cover0"] = mg.fight.cover.count()
+			mark["under"] = mg.fight.alive()[0]
+			mark["beside"] = mg.fight.alive()[1]
+			bs.weapons.hit_target(tg, {"kind": "bullet", "from": bs.player.global_position})
+			_check(float(bs.level.racks[0]["t"]) >= 0.0 and mg.dominoes == 1 and mg.beats.has("domino"), "shooting the label tips the row")
+			_next(71)
+		71:
+			var gu: Gunman = mark["under"]
+			var gb: Gunman = mark["beside"]
+			if RadialWheel.scale_owner is Impact and Engine.time_scale < 0.5:
+				mark["slow"] = true
+			if not bool(bs.level.racks[0]["fallen"]):
+				gu.global_position = bs.level.world(Vector3(-5.5, 0.0, 14.0))
+				gb.global_position = bs.level.world(Vector3(-3.0, 0.0, 14.0))
+				if frames > 600:
+					_check(false, "the row did not fall")
+					phase = 999
+				return false
+			var mg71: MissionBasementGunfight = m
+			_check(gu.is_defeated() and not gb.is_defeated() and mg71.domino_kos == 1, "the domino knocks out only the guard under the racks")
+			_check(mark.has("slow"), "the fall in slow motion (Impact clock, after the preview cut)")
+			_check(mg71.cover_rows.has(0) and mg71.fight.cover.count() > int(mark["cover0"]), "the fallen racks are new low cover slots")
+			_next(72)
+		72:
+			if frames < 90:
+				return false
+			_check(RadialWheel.scale_owner == null and is_equal_approx(Engine.time_scale, 1.0), "the slow motion handed the time scale back")
 			_next(8)
 		8:
 			var mg8: MissionGunfight = m as MissionGunfight if is_instance_valid(m) else null
 			if mg8 and mg8.fight and mg8.fight.state == "running":
 				_ko_all(mg8.fight)
+			if mg8 and mg8 is MissionBasementGunfight:
+				mark["gf_cuts"] = (mg8 as MissionBasementGunfight).cuts
+				mark["gf_beats"] = (mg8 as MissionBasementGunfight).beats.duplicate()
 			if mg8 and _step_replay(mg8):
 				mark["gf"] = true
 			if String(sd.get("step")) != "d5_hack":
@@ -235,6 +284,8 @@ func _process(_d: float) -> bool:
 					phase = 999
 				return false
 			_check(mark.has("gf"), "the seg_d5_gunfight replay")
+			_check(mark.has("gf_cuts") and int(mark["gf_cuts"]) == 3, "a preview cut per wave (stairs, door, labelled rack): %s" % str(mark.get("gf_cuts", -1)))
+			_check(mark.has("gf_beats") and (mark["gf_beats"] as Array).has("door") and (mark["gf_beats"] as Array).has("both_ends") and (mark["gf_beats"] as Array).has("taunt") and bs.level.door_open, "the side door kicked open, both ends, Za Mẫn's taunts")
 			DirAccess.copy_absolute(ProjectSettings.globalize_path(TMP), ProjectSettings.globalize_path(SNAP))
 			_next(9)
 		9:
@@ -263,7 +314,7 @@ func _process(_d: float) -> bool:
 			_check(bs.fail_ui.title_label.text == "TOANG!", "TOANG! in the basement")
 			bs.fail_ui.press_retry()
 			var h10: StoryHack = (m as MissionHack).hack
-			_check(h10.active and h10.leaks == 0 and is_equal_approx(h10.hp, StoryHack.MAX_HP), "retry: a fresh run")
+			_check(h10.active and h10.leaks == 0 and is_equal_approx(h10.hp, h10.hp_max), "retry: a fresh run")
 			# kill every process until the final command
 			var n10: int = 0
 			while h10.final_bullet.is_empty() and n10 < 400:
@@ -300,6 +351,8 @@ func _process(_d: float) -> bool:
 			var md: MissionDuel = m
 			_check(md.card != null and String(md.card.data.get("name", "")) == "Lê Minh Za Mẫn" and String(md.card.data.get("nick", "")) == "CTO · đang pivot", "the villain card: Lê Minh Za Mẫn, CTO · đang pivot")
 			_check(md.duel.boss != null and md.duel.boss.staged and md.duel.state != "running", "Za Mẫn stands staged during the card")
+			_check(LookPresets.active(bs) == "server_red", "the duel starts on the base look")
+			bs.look("server_sprinkler")
 			var n13: int = 0
 			while md.card != null and n13 < 600:
 				md.card.step(DT)
@@ -319,7 +372,11 @@ func _process(_d: float) -> bool:
 			_next(15)
 		15:
 			var md15: MissionDuel = m as MissionDuel if is_instance_valid(m) else null
-			if md15 and md15.duel and md15.duel.boss and md15.duel.state == "running":
+			if md15 and md15.duel and md15.duel.in_qte:
+				for k: String in ["q", "lmb", "e"]:
+					md15.duel.qte.press(k)          # W3 T6: the QTE finisher at 0 HP
+				mark["qte"] = md15.duel.qte_clean
+			elif md15 and md15.duel and md15.duel.boss and md15.duel.state == "running":
 				md15.duel.boss.take_strike({"kind": "slash1", "dmg": 999.0, "stagger": 0.0, "from": bs.player.global_position})
 			if bs.cine_player == null:
 				if frames > 1200:
@@ -327,6 +384,8 @@ func _process(_d: float) -> bool:
 					phase = 999
 				return false
 			_check(bs.cine_player.timeline.slot == "seg_d5_boss" and sd.call("has_evidence", "E6"), "the katana snaps: seg_d5_boss, E6 guaranteed")
+			_check(bs.looks.is_empty() and LookPresets.active(bs) == "server_red", "the duel's look restored when it ended")
+			_check(bool(mark.get("qte", false)), "the katana QTE finisher passed first time")
 			_finish_cine_in(bs)
 			_next(16)
 		16:

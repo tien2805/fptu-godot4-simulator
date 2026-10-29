@@ -4,7 +4,8 @@
 # player stack duck-typed like FreeRoam for the story missions and the combat encounters (player: ThirdPersonController,
 # weapons: WeaponDirector + wheel + HUD, combat: PlayerCombat; wanted / story_roam / pedestrians null, mounted false) and a
 # small story HUD (the objective, hints), then runs the CURRENT beat and every following basement beat:
-#   kind "lair"  task stealth (MissionSneak) | gunfight (MissionGunfight) | hack (MissionHack) | duel (MissionDuel), each
+#   kind "lair"  task stealth (MissionBasementStealth) | gunfight (MissionBasementGunfight) | hack (MissionHack) | duel
+#                (MissionDuel), each
 #                with the level's mission_points(task), its owner music slot (LAIR_MUSIC; no file = silence), the fail card
 #                StoryFail ("TOANG!", THỬ LẠI = retry at the checkpoint, VỀ THẾ GIỚI MỞ = back to story free roam beside the
 #                marker, the beat stays), the beat's "after" cinematic on the win (the beat completes first: autosave);
@@ -24,12 +25,16 @@ extends Node3D
 signal cinematic_finished(slot: String, skipped: bool)
 signal handed_back
 
-const MISSION_SCRIPTS: Dictionary = {"stealth": "res://scripts/story/missions/MissionSneak.gd",
-	"gunfight": "res://scripts/story/missions/MissionGunfight.gd", "hack": "res://scripts/story/missions/MissionHack.gd",
+## Wave 3 (plan 2026-10-30-w3-day5.md): the stealth and the gunfight run the basement subclasses (the blackout, the rack
+## domino); the hack is the burning countdown (MissionHack), the duel gets the sprinklers and the QTE (SwordDuel).
+const MISSION_SCRIPTS: Dictionary = {"stealth": "res://scripts/story/missions/MissionBasementStealth.gd",
+	"gunfight": "res://scripts/story/missions/MissionBasementGunfight.gd", "hack": "res://scripts/story/missions/MissionHack.gd",
 	"duel": "res://scripts/story/missions/MissionDuel.gd"}
-## C-D11: the owner music slot of each task while it runs.
-const LAIR_MUSIC: Dictionary = {"stealth": "mission_basement", "gunfight": "mission_gunfight_d5", "hack": "mission_typing",
-	"duel": "boss_d5"}
+## D5W-1: the burning countdown's owner slot (MusicDirector, the shared stream); "mission_typing" until that slot exists.
+const FIRE_HACK_SLOT: String = "mission_fire_hack"
+## C-D11: the owner music slot of each task while it runs (no file = silence).
+static var LAIR_MUSIC: Dictionary = {"stealth": "mission_basement", "gunfight": "mission_gunfight_d5",
+	"hack": FIRE_HACK_SLOT if MusicDirector.SLOTS.has(FIRE_HACK_SLOT) else "mission_typing", "duel": "boss_d5"}
 const AFTER_MONITORS: Array[String] = ["d5_gunfight", "d5_hack", "d5_choice", "d5_choice_tail", "d5_duel", "d5_end"]
 const BURNING: Array[String] = ["d5_choice", "d5_choice_tail", "d5_duel", "d5_end"]
 const HINT_S: float = 2.6
@@ -66,6 +71,10 @@ var _opts: Dictionary = {}
 var _run_t: float = -1.0
 var _hint_t: float = 0.0
 var _cine_saved: Dictionary = {}
+## Looks a task pushed over the base "server_red" (look / unlook; all popped when the task ends).
+var looks: Array[String] = []
+## Soft targets of the weapons besides the fight's enemies (T3: the labelled racks; the gunfight sets and clears them).
+var extra_targets: Array = []
 
 
 func _ready() -> void:
@@ -89,7 +98,7 @@ func _ready() -> void:
 		director.connect("objective_changed", _on_objective)
 		_on_objective(String(director.get("objective")))
 	_apply_state()
-	StoryAudio.warm(["heartbeat", "toang_sting", "success_fanfare"])
+	StoryAudio.warm(["heartbeat", "toang_sting", "success_fanfare", "sub_boom", "locker_slam", "whisper_bed", "alarm_siren"])
 	MusicDirector.warm(LAIR_MUSIC.values())   # every task track decodes on a worker now, not when its task starts
 	_run_t = 0.3
 
@@ -153,8 +162,9 @@ func _build_player() -> void:
 	combat.setup({"player": player, "weapons": weapons, "targets_fn": _no_targets, "blocked_fn": weapons_blocked})
 
 
+## The level's own shootables a task registers (T3: the rack labels), else none.
 func _no_targets() -> Array:
-	return []
+	return extra_targets
 
 
 ## Weapons off during a cinematic / replay, with the player hidden, and outside the armed tasks' fights.
@@ -220,6 +230,27 @@ func flash_hint(text: String) -> void:
 
 func player_xf() -> Variant:
 	return null   # leaving for the menu keeps the save beside the marker in free roam
+
+
+## A task's look over the base (LookPresets "server_blackout" / "server_sprinkler"): pushed once, popped by unlook(), a
+## retry or the end of the task (clear_looks).
+func look(preset: String) -> void:
+	if preset in looks or not LookPresets.has(preset):
+		return
+	looks.append(preset)
+	LookPresets.apply(preset, self)
+
+
+func unlook(preset: String) -> void:
+	if not (preset in looks):
+		return
+	looks.erase(preset)
+	LookPresets.restore(self, preset)
+
+
+func clear_looks() -> void:
+	while not looks.is_empty():
+		unlook(looks[looks.size() - 1])
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +375,8 @@ func _free_mission() -> void:
 			mission_node.queue_free()
 	mission_node = null
 	mission_beat = {}
+	extra_targets = []
+	clear_looks()
 	_music("")
 
 
