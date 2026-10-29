@@ -197,8 +197,8 @@ func _process(_d: float) -> bool:
 			# playtest fixes (plan 2026-10-30-d2-playtest-fixes.md): the GPS line, the turn panel, the radar route
 			var vh: Variant = fr.get("vice_hud")
 			var rad_ok: bool = vh == null or ((vh as ViceHUD).radar.guide_route.size() > 50)
-			_check(ch.guide != null and ch.guide.active and ch.guide.mmi.visible and ch.guide.turns.size() >= 8 and rad_ok,
-				"the guide: chevrons on the road, %d turns to announce, the route on the radar" % (ch.guide.turns.size() if ch.guide else 0))
+			_check(ch.guide != null and ch.guide.active and not ch.guide.mmi.visible and not ch.guide.hud.visible and ch.guide.turns.size() >= 8 and rad_ok,
+				"the guide: on with %d turns and the route on the radar; no chevrons or arrows over the film opening" % (ch.guide.turns.size() if ch.guide else 0))
 			ch.combat.damage(999.0, "kick", 1)
 			_next(5)
 		5:

@@ -186,10 +186,10 @@ func setup(opts: Dictionary = {}) -> void:
 	kp = BikeCombatData.kind(kind)
 	label = String(opts.get("label", ""))
 	max_hp = maxi(1, int(opts.get("hp", int(kp["hp"]))))
+	ai = bool(opts.get("ai", true))
 	if max_hp >= 2 and ai and (kind != "heavy" or max_hp > int(kp["hp"])):
 		max_hp -= int(Difficulty.pick(0, 1))   # Dễ: the tougher riders (and a tougher-than-usual heavy) go down a kick sooner
 	hp = max_hp
-	ai = bool(opts.get("ai", true))
 	traffic_proof = bool(opts.get("traffic_proof", false))
 	aggression = clampf(float(opts.get("aggression", 0.5)), 0.0, 1.0)
 	_rng.seed = int(opts.get("seed", 1))
@@ -930,11 +930,16 @@ func _drive(delta: float, target: Vector2, max_rel: float, gain: float) -> void:
 ## at the band; the soft limit in _drive keeps this rare).
 func _leash_clamp() -> void:
 	var al: float = (pos2 - ch.p_pos).dot(ch.p_fwd)
+	var ex: float = (vel - ch.p_vel).dot(ch.p_fwd)   # its speed along the player's line beyond his
 	if al > BikeCombatData.LEASH_AHEAD:
 		pos2 -= ch.p_fwd * (al - BikeCombatData.LEASH_AHEAD)
+		if ex > 0.0:
+			vel -= ch.p_fwd * ex                  # no sliding along the clamp: it rides at his speed there
 		leash_hits += 1
 	elif al < -BikeCombatData.LEASH_BEHIND:
 		pos2 += ch.p_fwd * (-BikeCombatData.LEASH_BEHIND - al)
+		if ex < 0.0:
+			vel -= ch.p_fwd * ex
 		leash_hits += 1
 
 

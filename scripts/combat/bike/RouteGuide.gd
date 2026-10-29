@@ -40,6 +40,7 @@ const CHEV_ALPHA: float = 0.85
 const CHEV_COL := Color(0.15, 0.9, 1.0)
 const CHEV_ENERGY: float = 2.2
 const RAYS_PER_FRAME: int = 2
+const RETRY_S: float = 0.25               # a slot whose rays keep missing (a car on it) is retried this often
 const TURN_SPAN: float = 15.0
 const TURN_STEP: float = 2.0
 const TURN_RUN_DEG: float = 25.0
@@ -135,6 +136,7 @@ var lit_near: float = INF                 # nearest / farthest lit chevron dista
 var lit_far: float = -INF
 var _s: float = 0.0
 var _prev_s: float = -1.0
+var _retry_cd: float = 0.0
 # HUD
 var hud: CanvasLayer
 var _draw: Control
@@ -318,6 +320,7 @@ func _physics_process(delta: float) -> void:
 	if not active:
 		_prev_s = _s
 		return
+	_retry_cd -= delta
 	if _s >= 0.0:
 		_tick_turns()
 		_tick_chevrons()
@@ -335,9 +338,10 @@ func _tick_turns() -> void:
 	if turns.is_empty():
 		turn_visible = false
 		return
-	# a jump back (a retry at a checkpoint): find the next turn again
-	if _prev_s >= 0.0 and _s < _prev_s - 30.0:
-		turn_i = 0
+	# a jump back (a retry at a checkpoint, a reset): step back to the next turn ahead again
+	if _prev_s >= 0.0 and _s < _prev_s:
+		while turn_i > 0 and float(turns[turn_i - 1][0]) >= _s - 0.5:
+			turn_i -= 1
 	while turn_i < turns.size() and float(turns[turn_i][0]) < _s - 0.5:
 		var passed: bool = _prev_s >= 0.0 and _prev_s <= float(turns[turn_i][0]) + 0.5 and _s - _prev_s < 30.0
 		if passed:
@@ -419,7 +423,10 @@ func _cast(k: int, cs: float, fy: float) -> void:
 	var p: Vector2 = path.call("point", cs)
 	var tries: int = _try[k]
 	if tries >= 6:
-		return
+		if _retry_cd > 0.0:
+			return                           # a dark slot (a car on it): retried every RETRY_S, never given up
+		_retry_cd = RETRY_S
+		tries = 4
 	_try[k] = tries + 1
 	var off: float = 4.0 if tries % 2 == 0 else -3.0
 	var y: Variant = floor_fn.call(Vector3(p.x, fy + off, p.y))

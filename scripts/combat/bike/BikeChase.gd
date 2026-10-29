@@ -1206,8 +1206,12 @@ func _tick_watch(rdt: float) -> void:
 		_cam_near_t -= rdt
 	_set_cam_combat(state == "running" and _cam_near_t > 0.0)
 	if guide:
-		guide.metrics_on = state == "running" and not opening_on and cameo_state != "running"
-		guide.set_hud_visible(not opening_on and cameo_state != "running")
+		var story_shot: bool = opening_on or cameo_state == "running"     # the owner-approved opening and the cameo stay clean
+		guide.metrics_on = state == "running" and not story_shot
+		guide.mmi.visible = guide.active and not story_shot
+		var cd: Node = director()
+		var cut: bool = cam_mode != "" or (cd != null and cd.has_method("cutting") and bool(cd.call("cutting")))
+		guide.set_hud_visible(not story_shot and not cut)   # no HUD arrows over a preview / takedown cut
 
 
 func _set_cam_combat(on: bool) -> void:
