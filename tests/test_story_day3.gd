@@ -197,7 +197,28 @@ func _process(_d: float) -> bool:
 			if m == null:
 				return false
 			var ms: MissionSneak = m
-			_check(ms.fight.gunmen.size() == 3 and ms.fight.state == "running", "the sneak: 3 patrolling guards")
+			_check(ms.fight.gunmen.size() == 6 and ms.fight.state == "running", "the sneak: 3 patrols + the pair partner + the sleeper + the phone guard (%d)" % ms.fight.gunmen.size())
+			# W3 T2: the floodlight sweep, the sleeper, the phone guard
+			var my: MissionYardSneak = m
+			var yd: LairYard = sr.yard
+			_check(my.beams.size() == 2 and my.preview_cuts == 0, "two floodlight beams, no cut yet")
+			my.advance(1.05)
+			_check(my.preview_cuts == 1 and my.events_done.has("flood") and not my.spotted, "the first sweep opens with a preview cut (the start spot is dark)")
+			var b0: Dictionary = my.beams[0]
+			var open_p: Vector3 = yd.world(Vector3(-15.5, 0.0, 7.0))
+			my.set_beam_point(b0, open_p)
+			_check(my.beam_sees(b0, open_p + Vector3(0.0, 1.0, 0.0)), "the floodlight finds a player in its disc")
+			var hid_p: Vector3 = yd.world(Vector3(-15.0, 0.0, 1.0))
+			my.set_beam_point(b0, hid_p)
+			_check(not my.beam_sees(b0, hid_p + Vector3(0.0, 1.0, 0.0)), "a container between the lamp and the player hides him")
+			_check(not my.beam_sees(b0, open_p + Vector3(0.0, 1.0, 0.0)), "outside the disc: not seen")
+			my._place_beam(b0)
+			_check(my.sleeper != null and my.asleep and my.sleeper.state_name() == "hold", "a guard asleep on the pallets")
+			var slp: Vector3 = my.sleeper.global_position
+			_check(not my.wake_check(slp + Vector3(2.0, 0.0, 0.0), false), "walking right past the sleeper: he sleeps on")
+			_check(my.wake_check(slp + Vector3(4.0, 0.0, 0.0), true), "a sprint within 6 m wakes him")
+			_check(not my.wake_check(slp + Vector3(9.0, 0.0, 0.0), true), "a sprint far off does not")
+			_check(my.phone_guard != null and is_equal_approx(my.phone_guard.patrol_sight_m, HorrorStalker.SIGHT * 0.5), "the guard on his phone: half sight")
 			var g0: Gunman = ms.fight.gunmen[0]
 			_check(not g0.is_alerted and is_equal_approx(g0.patrol_sight_m, HorrorStalker.SIGHT) and is_equal_approx(g0.patrol_fov_deg, 70.0), "the horror sight rules while patrolling (14 m, 70 deg)")
 			var w: WeaponDirector = fr.get("weapons")
@@ -233,7 +254,9 @@ func _process(_d: float) -> bool:
 			var calm: bool = true
 			for e3: Variant in ms6.fight.alive():
 				calm = calm and not (e3 as Gunman).is_alerted
-			_check(not ms6.spotted and calm and ms6.fight.alive().size() == 3, "THỬ LẠI: the patrol again, unalerted")
+			_check(not ms6.spotted and calm and ms6.fight.alive().size() == 6, "THỬ LẠI: the patrol again, unalerted")
+			var my6: MissionYardSneak = m
+			_check(my6.asleep and my6.sleeper != null and my6.sleeper.state_name() == "hold" and not my6.flood_spotted, "THỬ LẠI: the sleeper dozes again, the beams cyan")
 			# spotted again, the patrol knocked out, then the goal
 			var g2: Gunman = ms6.fight.gunmen[0]
 			_player().teleport(g2.global_position + g2.forward() * 4.0, 0.0)
