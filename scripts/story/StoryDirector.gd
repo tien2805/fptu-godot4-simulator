@@ -16,7 +16,8 @@
 # Wave 3 ranks (plan 2026-10-30-w3-shared.md T9): `ranks` {beat id: best letter} is part of the save (old saves load with
 # none); record_rank(id, letter) keeps only a better letter and mirrors it into the chapter unlock file (StoryChapters,
 # which only grows); a loaded save's ranks are mirrored there too. StoryMission.finish records a ranked mission; the
-# horror beat d4_escape (not a StoryMission) is ranked here from its time (launch -> escape) and its catches, no card.
+# horror beat d4_escape (not a StoryMission) is ranked here from its catches only (its time cannot be measured across a
+# Continue, so it is not a criterion), no card.
 extends Node
 
 const GameFXScript: Script = preload("res://scripts/GameFX.gd")
@@ -64,8 +65,6 @@ var migrated: bool = false
 var result_layer: CanvasLayer
 var result_title: Label
 var result_buttons: Dictionary = {}
-## Wave 3: when the current horror beat was launched (Time ticks ms, -1 = unknown): its rank's time.
-var _horror_t0_ms: int = -1
 
 
 func _ready() -> void:
@@ -651,7 +650,6 @@ func launch_horror_beat(id: String, win_xf: Variant = null, fail_xf: Variant = n
 	if sm:
 		sm.set("story_context", {"beat": id, "horror": true, "replay": String(b.get("replay", "")), "win_xf": win_xf,
 			"fail_xf": fail_xf})
-	_horror_t0_ms = Time.get_ticks_msec()
 	save_game()
 	_nav("horror:" + String(b.get("scene", StoryMissions.HORROR_SCENE)))
 	return true
@@ -690,11 +688,7 @@ func on_horror_result(caught_count: int, go_roam: bool = true) -> bool:
 	flags["d4_caught"] = caught_count
 	if ctx.get("win_xf") is Transform3D:
 		spawn = ctx["win_xf"]
-	var hs: Dictionary = {"fails": caught_count}   # Wave 3: ranked from the time and the catches (no card: known gap)
-	if _horror_t0_ms >= 0:
-		hs["time"] = float(Time.get_ticks_msec() - _horror_t0_ms) / 1000.0
-	_horror_t0_ms = -1
-	record_rank(step, StoryRank.report(step, hs))
+	record_rank(step, StoryRank.report(step, {"fails": caught_count}))   # Wave 3: ranked from the catches (no card: known gap)
 	complete_step(step)
 	if go_roam:
 		enter_roam()

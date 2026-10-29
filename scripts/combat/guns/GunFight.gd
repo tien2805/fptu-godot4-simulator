@@ -14,7 +14,7 @@
 #       "force_loadout": true,                  # default: only the loadout + Tay không can be equipped
 #       "lock_funny": true,                     # default: rocket, dép, sầu riêng, loa locked (when force_loadout is false)
 #       "reserve": {WeaponData.Slot.PISTOL: 48, WeaponData.Slot.SHOTGUN: 12},   # spare rounds (default); -1 = unlimited
-#       "max_shooters": 4,                      # gunmen shooting at once (tokens); default GunData.max_shooters() (4 / 3)
+#       "max_shooters": 4,                      # gunmen shooting at once (tokens); default GunData.max_shooters() (4 / 3, live)
 #       "auto_checkpoint": true,                # every wave start is a checkpoint
 #       "start_alerted": false,                 # wave 1 starts alerted (seen while sneaking); later waves always do
 #       "bullet_time": true,                    # Wave 3: build fight.bullet_time (BulletTime: Space while aiming dives)
@@ -48,9 +48,10 @@
 #   lies prone the enemies aim at the crouch height)
 # Gun difficulty (Wave 3 T2): the token cap, the gunmen's telegraph and accuracy and the regeneration delay come from
 # GunData.max_shooters() / telegraph_s() / accuracy_k() / regen_delay() (Thường / Dễ). While engaged the fight sets
-# combat.regen_delay to GunData.regen_delay() and restores the previous value with the rest (won, stop, free). Gunman
-# bullets cost GunData.gunman_dmg() HP. Retry mercy (T11): a wave lost n times in a row respawns on retry() with its gunmen's
-# hit chance x GunData.retry_mercy(n) (fail_wave / fail_streak; reset by start()).
+# combat.regen_delay to GunData.regen_delay() (again at every wave start and retry, so a difficulty switch mid-mission
+# applies; the token cap, telegraph, accuracy and damage are read live) and restores the previous value with the rest
+# (won, stop, free). Gunman bullets cost GunData.gunman_dmg() HP. Retry mercy (T11): a wave lost n times in a row
+# respawns on retry() with its gunmen's hit chance x GunData.retry_mercy(n) (fail_wave / fail_streak; reset by start()).
 # Player HP = PlayerCombat's (100, regeneration 10 HP/s after combat.regen_delay, `down`): bullets and boss hits go through
 # PlayerCombat.receive_attack (boss hits are heavy: a comic knock-down). From start() until won / stop() (lost keeps it until
 # retry() or stop()) the fight sets combat.fight_active (no bike, no emotes), hides the CombatHUD HP bar (GunHUD shows HP,
@@ -90,7 +91,14 @@ var loadout: Array = [WeaponData.Slot.PISTOL, WeaponData.Slot.SHOTGUN]
 var force_loadout: bool = true
 var lock_funny: bool = true
 var reserve_init: Dictionary = GunData.DEFAULT_RESERVE
-var max_shooters: int = GunData.max_shooters()
+## Gunmen shooting at once: the setup's "max_shooters" (or a value assigned here), else GunData.max_shooters() read live
+## (a switch to Dễ mid-mission applies at once).
+var max_shooters: int:
+	get:
+		return _shooters_set if _shooters_set > 0 else GunData.max_shooters()
+	set(v):
+		_shooters_set = v
+var _shooters_set: int = -1
 var auto_checkpoint: bool = true
 var start_alerted: bool = false
 ## Tests: >= 0 = every gunman's hit chance.
@@ -163,7 +171,7 @@ func setup(opts: Dictionary) -> void:
 	force_loadout = bool(opts.get("force_loadout", true))
 	lock_funny = bool(opts.get("lock_funny", true))
 	reserve_init = (opts.get("reserve", GunData.DEFAULT_RESERVE) as Dictionary).duplicate()
-	max_shooters = int(opts.get("max_shooters", GunData.max_shooters()))
+	_shooters_set = int(opts.get("max_shooters", -1))
 	auto_checkpoint = bool(opts.get("auto_checkpoint", true))
 	start_alerted = bool(opts.get("start_alerted", false))
 	accuracy_override = float(opts.get("accuracy_override", -1.0))
@@ -457,6 +465,8 @@ func _start_wave(i: int) -> void:
 	_gap_left = -1.0
 	_spotted = false
 	wave = i
+	if engaged and combat:
+		combat.regen_delay = GunData.regen_delay()   # every wave start and retry: a difficulty switched meanwhile applies
 	if auto_checkpoint:
 		checkpoint()
 	for s: Variant in waves[i]:

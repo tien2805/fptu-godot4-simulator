@@ -718,6 +718,10 @@ func _try_step_up(move: Vector3, delta: float) -> void:
 func knock_down(away: Vector3, power: float = 3.0) -> void:
 	if move_state == "SPLAT":
 		return
+	if move_state == "DIVE" or move_state == "PRONE":   # a heavy hit mid-dive: the dive ends, the body upright again
+		_dive_left = 0
+		_prone_left = 0
+		_untilt()
 	aiming = false
 	var a := Vector3(away.x, 0.0, away.z)
 	a = a.normalized() if a.length_squared() > 1e-6 else -facing_dir()

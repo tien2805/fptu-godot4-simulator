@@ -4,15 +4,18 @@
 #      45); perfect stats give S and the worst give C on every beat; linear criteria; a criterion that does not apply
 #      passes its weight on; the optional objective (want / max / min); better() / best_of(); plain-text letters and labels.
 #   B  StoryMission stats on a scripted run (manual clock, a fake host with combat.hp): time on the mission clock, every HP
-#      drop summed into dmg (regeneration ignored), add_stat / set_stat, a fail counts and samples the last drop, a retry
-#      keeps every stat, the stats give a letter.
+#      drop summed into dmg (regeneration ignored), add_stat / set_stat, a fail counts and samples the last drop and drops
+#      the takedowns since the last ko checkpoint (ko counts the winning run), a retry keeps every stat, the stats give a
+#      letter.
 #   C  The results card (StoryRankCard): off by default on a headless run; a manual run shows it without holding `done`
-#      (info gains "rank"); a real run holds `done` until the card closes ([E] or the 2.5 s hold on real time); the card's
+#      (info gains "rank"); a real run holds `done` until the card closes ([E] released after a press it saw: a key held
+#      from before does not skip it; or the 2.5 s hold on real time); the card's
 #      letter, criteria lines and "Kỷ lục" text are plain (no emoji, no star glyphs); skip_all = no card, no hold.
 #   D  Save and rewind (temp files only): StoryDirector.record_rank keeps the better letter, the save carries "ranks", an
 #      old save loads with none, an edited save cannot add junk, the chapter unlock file mirrors the best ranks and only
 #      grows, a rewind merges them back (never loses a rank), StoryRank.best reads the save and the unlock file, a
-#      finished mission records its rank, d4_escape is ranked from its catches when the horror beat completes.
+#      finished mission records its rank, d4_escape is ranked from its catches only (no time across a Continue) when the
+#      horror beat completes.
 # Run:  godot --headless --path . --script tests/test_story_rank.gd
 extends SceneTree
 
@@ -165,17 +168,19 @@ func _part_b() -> void:
 	_check(is_equal_approx(float(m.stats["dmg"]), 40.0), "B: every HP drop adds up, regeneration ignored (%.1f)" % float(m.stats["dmg"]))
 	m.add_stat("ko")
 	m.add_stat("ko")
+	m.mark_ko_checkpoint()                   # a wave checkpoint: these two takedowns survive a later fail
 	m.add_stat("ko", 3)
 	m.set_stat("custom", "x")
 	_check(int(m.stats["ko"]) == 5 and m.stats["custom"] == "x", "B: add_stat / set_stat (%s)" % str(m.stats))
 	host.combat.hp = 0.0                     # down: the fail samples the last drop
 	m.fail("test")
 	_check(m.state == "failed" and int(m.stats["fails"]) == 1 and is_equal_approx(float(m.stats["dmg"]), 130.0), "B: a fail counts and samples the last drop (%s)" % str(m.stats))
+	_check(int(m.stats["ko"]) == 2, "B: the failed attempt's takedowns since the checkpoint are dropped (ko %d)" % int(m.stats["ko"]))
 	m.advance(1.0)
 	_check(is_equal_approx(float(m.stats["time"]), 5.4), "B: no time counted while failed (%.2f)" % float(m.stats["time"]))
 	host.combat.hp = 100.0                   # the checkpoint revives
 	m.retry()
-	_check(m.resets == 1 and int(m.stats["fails"]) == 1 and int(m.stats["ko"]) == 5 and is_equal_approx(float(m.stats["dmg"]), 130.0)
+	_check(m.resets == 1 and int(m.stats["fails"]) == 1 and int(m.stats["ko"]) == 2 and is_equal_approx(float(m.stats["dmg"]), 130.0)
 		and is_equal_approx(float(m.stats["time"]), 5.4), "B: a retry keeps every stat (%s)" % str(m.stats))
 	m.advance(1.0)
 	host.combat.hp = 95.0
@@ -199,6 +204,13 @@ func _probe(manual_run: bool, id: String = "d1_brawl") -> Array:
 	var got: Array = []
 	m.done.connect(func(info: Dictionary) -> void: got.append(info))
 	return [host, m, got]
+
+
+func _key(code: Key, down: bool) -> InputEventKey:
+	var ev := InputEventKey.new()
+	ev.pressed = down
+	ev.physical_keycode = code
+	return ev
 
 
 func _part_c() -> void:
@@ -230,11 +242,12 @@ func _part_c() -> void:
 	m2.finish({})
 	var got2: Array = r2[2]
 	_check(got2.is_empty() and m2.rank_card != null and m2.rank_card.is_open, "C: a real run holds done while the card shows")
-	var ev := InputEventKey.new()
-	ev.pressed = true
-	ev.physical_keycode = KEY_E
-	m2.rank_card._input(ev)
-	_check(got2.size() == 1 and String((got2[0] as Dictionary).get("rank", "")) != "", "C: [E] closes the card and done follows (%s)" % str(got2))
+	m2.rank_card._input(_key(KEY_ENTER, false))   # Enter held from before the card (a dialogue skip) is let go
+	_check(got2.is_empty() and m2.rank_card.is_open, "C: releasing a key pressed before the card does not skip it")
+	m2.rank_card._input(_key(KEY_E, true))
+	_check(got2.is_empty() and m2.rank_card.is_open, "C: [E] down alone does not close the card yet (nothing leaks on the press)")
+	m2.rank_card._input(_key(KEY_E, false))
+	_check(got2.size() == 1 and String((got2[0] as Dictionary).get("rank", "")) != "", "C: [E] released closes the card and done follows (%s)" % str(got2))
 	(r2[0] as Node).queue_free()
 	# the hold on real time
 	var r3: Array = _probe(false)
@@ -343,6 +356,10 @@ func _part_d() -> void:
 	sd.set("step", "d4_escape")
 	sd.call("on_horror_result", 0, false)
 	_check(String((sd.get("ranks") as Dictionary).get("d4_escape", "")) == "S", "D: d4_escape never caught -> S (%s)" % str(sd.get("ranks")))
+	var esc: Array[String] = []
+	for nc: int in 4:
+		esc.append(StoryRank.report("d4_escape", {"fails": nc, "time": 9999.0}))
+	_check(esc == ["S", "A", "B", "C"], "D: d4_escape from the catches only, any time ignored (0-3 catches: %s)" % str(esc))
 	sd.call("reset_state")
 	sd.set("save_path", old_path)
 	sd.set("nav_enabled", old_nav)

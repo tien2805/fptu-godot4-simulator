@@ -61,7 +61,7 @@ const MISSIONS: Dictionary = {
 	# Day 4
 	"d4_canteen": {"time": [35.0, 150.0], "opt": {"key": "wrong", "max": 0}},
 	"d4_brawl": {"time": [45.0, 120.0], "dmg": [15.0, 70.0]},
-	"d4_escape": {"time": [150.0, 330.0]},
+	"d4_escape": {"fails": [0.0, 4.0]},   # the catches only (no time across a Continue): 0 S, 1 A, 2 B, 3+ C
 	# Day 5 (provisional: the day5 plan's par numbers; fixed at integration)
 	"d5_stealth": {"time": [70.0, 160.0], "opt": {"key": "spotted", "want": false}},
 	"d5_gunfight": {"time": [100.0, 220.0], "dmg": [30.0, 100.0], "ko": [6, 10]},

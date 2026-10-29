@@ -5,7 +5,8 @@
 # with its value (StoryRank.evaluate lines), "Kỷ lục: A" when an earlier best exists ("Kỷ lục mới" when this run beats it),
 # the skip hint, and a short synthesized cue per letter (an SFX: a rising triad for S ... a sagging two-note for C).
 # It holds HOLD_S real seconds (Time ticks: a leftover slow motion never stretches it), skippable with [E], [Enter] or a
-# click; it processes while the tree is paused. closed fires once.
+# click on its release (a key held from before never skips it; see _input); it processes while the tree is paused.
+# closed fires once.
 # skip_all (static): no card at all. It defaults to true on a headless run so the existing story tests keep their flow;
 # test_story_rank sets it false to check the card. A mission running `manual` / `manual_replay` (tests) shows the card but
 # does not hold `done` for it.
@@ -21,6 +22,7 @@ const T_BEST: String = "Kỷ lục: %s"
 const T_NEW_BEST: String = "Kỷ lục mới"
 const T_SKIP: String = "[E] / [Enter] bỏ qua"
 const CUE_DB: float = -6.0
+const MOUSE_ID: int = -1000              # the left button's id in _armed (keycodes are positive)
 
 static var skip_all: bool = DisplayServer.get_name() == "headless"
 static var _cue_streams: Dictionary = {}
@@ -34,6 +36,7 @@ var is_open: bool = false
 var manual: bool = false
 var cue_player: AudioStreamPlayer = null
 var _t0_ms: int = 0
+var _armed: Dictionary = {}      # keys / the mouse button pressed while the card shows: their release skips it
 
 
 ## A card for evaluation `ev` (StoryRank.evaluate) of the beat titled `title`; `best_before` = the best letter recorded
@@ -129,18 +132,33 @@ func step(dt: float) -> void:
 		skip()
 
 
+## [E], [Enter] or a left click skip the card on the RELEASE of a press made while it shows: a key still held from before
+## (a dialogue skipped with Enter) never closes it, and no key is left down for the gameplay or the next cinematic's
+## hold-to-skip. Those presses, echoes and releases are consumed while it shows.
 func _input(event: InputEvent) -> void:
 	if not is_open:
 		return
-	var go: bool = false
+	var id: int = -1
+	var down: bool = false
 	if event is InputEventKey:
 		var k: InputEventKey = event
-		go = k.pressed and not k.echo and (k.physical_keycode == KEY_E or k.physical_keycode == KEY_ENTER or k.physical_keycode == KEY_KP_ENTER)
+		if k.physical_keycode == KEY_E or k.physical_keycode == KEY_ENTER or k.physical_keycode == KEY_KP_ENTER:
+			id = k.physical_keycode
+			down = k.pressed
+			if k.echo:
+				get_viewport().set_input_as_handled()
+				return
 	elif event is InputEventMouseButton:
 		var mb: InputEventMouseButton = event
-		go = mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT
-	if go:
-		get_viewport().set_input_as_handled()
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			id = MOUSE_ID
+			down = mb.pressed
+	if id == -1:
+		return
+	get_viewport().set_input_as_handled()
+	if down:
+		_armed[id] = true
+	elif _armed.has(id):
 		skip()
 
 

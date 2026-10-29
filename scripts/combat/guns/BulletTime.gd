@@ -27,7 +27,8 @@
 # (GunFight: a last-enemy knockout during the dive, before Impact.slowmo_orbit takes the scale), on stop() (GunFight won /
 # lost / retry / stop / engage off), on a tree pause (a cinematic: polled, this node processes always), when it leaves the
 # tree (scene change) and when another owner takes the scale mid-dive (only its own effects end; it never writes the
-# scale then). Nothing is allocated per frame.
+# scale then). A running dive also ends when `enabled` goes false or the player loses the controls (a forklift, a
+# cinematic), and when the body leaves the dive by itself (a heavy hit knocks it down). Nothing is allocated per frame.
 class_name BulletTime
 extends Node
 
@@ -272,6 +273,14 @@ func _physics_process(_delta: float) -> void:
 			stop()                           # a cinematic: the scale and the effects back at once
 		return
 	var rdt: float = 1.0 / float(_ticks())
+	if state != "idle":
+		if not enabled or player == null or not is_instance_valid(player) or not player.controls_enabled:
+			stop()                               # a forklift entered, a cinematic took the controls: the dive ends now
+			return
+		if not player.is_diving() and not player.is_prone():
+			_end_slow()                          # the body left the dive (a heavy hit knocked it down): scale, effects, pose
+			_finish()
+			return
 	match state:
 		"dive":
 			if _owns and RadialWheel.scale_owner != self:

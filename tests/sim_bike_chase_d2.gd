@@ -169,6 +169,9 @@ func _run() -> void:
 
 
 func _end_run() -> void:
+	var rev: Dictionary = StoryRank.evaluate("d2_chase", {"time": float(real_f) / 60.0, "fails": fails, "ko": chase.takedowns})
+	print("  RANK d2_chase %s %s seed %d: %s %.0f (time %.0f s, fails %d, takedowns %d)" % [bot, diff, seed0 + run_i, String(rev["letter"]),
+		float(rev["score"]), float(real_f) / 60.0, fails, chase.takedowns])   # Wave 3 T10 calibration
 	var r: Dictionary = {"seed": seed0 + run_i, "fails": fails, "causes": fail_causes.duplicate(), "real_s": float(real_f) / 60.0,
 		"state": chase.state, "escaped": chase.escaped, "downed": chase.downed_total, "takedowns": chase.takedowns,
 		"kicks": chase.combat.kicks, "hits": chase.combat.hits, "dmg": dmg.duplicate(), "waves": wave_t.duplicate(), "cameo": cameo_t,
@@ -186,9 +189,6 @@ func _end_run() -> void:
 	for k: String in dmg.keys():
 		dm.append("%s %.0f" % [k, float(dmg[k])])
 	print("  gap %s, roadblock %s, previews %d" % [str(r["gap"]), str(r["block"]), chase.set_pieces.previews])
-	var rev: Dictionary = StoryRank.evaluate("d2_chase", {"time": float(real_f) / 60.0, "fails": fails, "ko": chase.takedowns})
-	print("  RANK d2_chase %s %s seed %d: %s %.0f (time %.0f s, fails %d, takedowns %d)" % [bot, diff, seed0 + run_i, String(rev["letter"]),
-		float(rev["score"]), float(real_f) / 60.0, fails, chase.takedowns])   # Wave 3 T10 calibration
 	print("  run %d (seed %d): %s in %.0f s real (%d fails %s), downed %d, escaped %d, takedowns %d, kicks %d/%d, dmg {%s}, waves at %s (cleared %s), cameo %.0f, enemy attacks %d (%d hit), melons %d, cones %d, curbs %d, barrier %s, helmets %s, left %s" % [
 		run_i, seed0 + run_i, chase.state, float(real_f) / 60.0, fails, str(fail_causes), chase.downed_total, chase.escaped, chase.takedowns,
 		chase.combat.hits, chase.combat.kicks, ", ".join(dm), str(wave_t.map(func(x: float) -> int: return int(x))), str(clear_t.map(func(x2: float) -> int: return int(x2))), cameo_t, chase.attack_starts, chase.attack_hits,

@@ -20,7 +20,8 @@
 #            show edge markers on the HUD.
 #   hp       no regeneration before GunData.regen_delay(), regeneration after; Tay không + Q held does not block gunfire;
 #            down -> lost (the gunman stands down, the loss counted for that wave), retry revives and the respawned gunman
-#            aims x GunData.retry_mercy(1) (T11 retry mercy).
+#            aims x GunData.retry_mercy(1) (T11 retry mercy); a switch to Dễ between the loss and the retry applies at once
+#            (token cap 3, regeneration delay 3 s).
 #   retry    two waves: the wave-2 checkpoint (spot, ammo) comes back on retry() after a loss; a checkpoint taken with no
 #            ammo left comes back with one magazine of reserve per loadout gun.
 #   ammo     loadout lock (equip refuses, scroll skips, wheel "Khoá"), finite spare rounds, reload from the reserve, out of
@@ -207,6 +208,7 @@ func _on_physics() -> void:
 	frames += 1
 	if not started:
 		started = true
+		Difficulty.set_easy(false)           # Thường: GameFX loaded the owner's saved difficulty before this first frame
 		arena = Node3D.new()
 		arena.name = "Arena"
 		root.add_child(arena)
@@ -539,8 +541,13 @@ func _ph_hp_lost(t: int) -> void:
 		_check(g.state_name() == "idle" and not g.has_token, "the gunman stands down (%s)" % g.state_name())
 		_check(combat.fight_active and not dir.locked_slots.is_empty(), "lost keeps the fight set up for the retry")
 		_check(fight.fail_wave == 0 and fight.fail_streak == 1, "the loss is counted for wave 1 (wave %d, streak %d)" % [fight.fail_wave, fight.fail_streak])
+		_check(fight.max_shooters == 4 and is_equal_approx(combat.regen_delay, 7.0), "Thường before the switch (cap %d, regen %.0f)" % [fight.max_shooters, combat.regen_delay])
+		Difficulty.set_easy(true)            # the owner switches to Dễ on the fail card
 		fight.retry()
 		_check(fight.state == "running" and not combat.is_down() and is_equal_approx(combat.hp, 100.0), "retry: running again with full HP")
+		_check(fight.max_shooters == 3 and is_equal_approx(combat.regen_delay, 3.0),
+			"a switch to Dễ between the loss and the retry applies at once (cap %d, regen %.0f)" % [fight.max_shooters, combat.regen_delay])
+		Difficulty.set_easy(false)
 		var rg: Gunman = fight.gunmen[0]
 		_check(is_equal_approx(rg.accuracy_k, GunData.retry_mercy(1)) and is_equal_approx(GunData.retry_mercy(1), 0.85)
 			and is_equal_approx(GunData.retry_mercy(9), GunData.RETRY_MERCY_MIN),

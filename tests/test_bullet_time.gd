@@ -13,7 +13,9 @@
 #      there), no tint, no heartbeat, the weapons on game time and the player on the feet; a last-enemy knockout during the
 #      dive ends the slow part first so Impact's orbit takes the scale (then 1.0, no owner, the fight won); another owner of
 #      the scale (a director cut / the wheel) refuses the dive with a click and no cost, its scale untouched; Impact's own
-#      slow motion gives way to the dive.
+#      slow motion gives way to the dive; a heavy hit mid-dive (knock-down) ends the dive at once (scale, effects, pose) and
+#      the body stands upright at its height after the getup; `enabled = false` and the player losing the controls (a
+#      forklift, a cinematic) end a running dive.
 # Counts frames at Engine.max_fps = 60.
 # Run:  godot --headless --path . --script tests/test_bullet_time.gd
 extends SceneTree
@@ -52,6 +54,7 @@ func _initialize() -> void:
 	world.name = "BulletTimeTestWorld"
 	root.add_child(world)
 	await process_frame
+	Difficulty.set_easy(false)               # Thường: GameFX loaded the owner's saved difficulty in _ready (after _initialize)
 	await _part_muffle()
 	_build_arena()
 	_next("a_setup")
@@ -302,7 +305,7 @@ func _ph_a_after(t: int) -> void:
 		_next("b")
 
 
-const B_CASES: Array[String] = ["lost", "retry", "stop", "pause", "free", "orbit", "owner", "impact"]
+const B_CASES: Array[String] = ["lost", "retry", "stop", "pause", "free", "orbit", "owner", "impact", "knock", "disabled", "controls"]
 
 
 func _music() -> Object:
@@ -386,6 +389,13 @@ func _ph_b(t: int) -> void:
 				for gm: Variant in fight.gunmen:
 					for i: int in 3:
 						(gm as Gunman).take_hit({"kind": "bullet", "from": player.global_position})
+			"knock":
+				_check(fight.hit_player(fight.gunmen[0], 10.0, true) == "hit" and player.is_knocked_down(),
+					"B knock: a heavy hit mid-dive knocks the player down (%s)" % player.move_state)
+			"disabled":
+				bt.enabled = false
+			"controls":
+				player.controls_enabled = false
 	elif t == 41 and c == "orbit":
 		var o: Object = RadialWheel.scale_owner
 		_check(o is Impact and is_equal_approx(Engine.time_scale, Impact.ORBIT_SCALE), "B orbit: a last knockout in the dive: Impact's orbit takes the scale (%s, %.2f)" % [str(o), Engine.time_scale])
@@ -398,7 +408,14 @@ func _ph_b(t: int) -> void:
 		_restored(c)
 		if c == "pause":
 			paused = false
-	elif t == 130:
+		if c == "controls":
+			player.controls_enabled = true
+	elif t == 210 and c == "knock":
+		_check(player.move_state == "GROUND" and is_equal_approx(player.model.rotation.x, 0.0) and is_equal_approx(player.model.rotation.z, 0.0)
+			and is_equal_approx(player.model.position.y, 0.0) and bt.state == "idle",
+			"B knock: after the getup the body stands upright at its height (%s, rot %s, y %.2f)" % [player.move_state,
+			str(player.model.rotation), player.model.position.y])
+	elif t == (230 if c == "knock" else 130):
 		if c == "orbit":
 			_check(int(aux["won"]) == 1, "B orbit: the fight is won")
 			_restored(c)

@@ -17,7 +17,10 @@
 # Wave 3 ranks (plan 2026-10-30-w3-shared.md T7): `stats` feeds StoryRank. The base fills "time" (seconds on the mission
 # clock while running, failed attempts included, short replays not), "fails" (retries) and "dmg" (every drop of the
 # host's combat.hp, sampled each tick and at a fail: no mission needs code for damage); subclasses call add_stat("ko") per
-# takedown or set_stat(key, v). A retry keeps the stats (only the per-attempt mission state resets).
+# takedown or set_stat(key, v). A retry keeps the stats (only the per-attempt mission state resets), except "ko": a fail
+# (or rollback_ko() from an encounter that retries by itself) rolls it back to the last mark_ko_checkpoint() (begin(), and
+# the subclass marks its encounter's retry checkpoints: wave starts, the drift duel's lap 2), so ko counts the winning run
+# only.
 # T8: finish(info) on a ranked beat (StoryRank.MISSIONS) evaluates the run (rank, rank_eval; info gains "rank") and shows
 # the StoryRankCard (unless StoryRankCard.skip_all); `done` waits for the card to close, except in `manual` /
 # `manual_replay` runs (tests), where the card shows without holding `done`.
@@ -65,6 +68,7 @@ var _radio_script: Array = []
 var _radio_i: int = 0
 ## Wave 3 ranks: the run's stats (StoryRank.report reads them).
 var stats: Dictionary = {"time": 0.0, "fails": 0, "dmg": 0.0}
+var _ko_base: int = 0                    # stats.ko at the encounter's retry checkpoint (a fail rolls back to it)
 var _hp_seen: float = -1.0
 ## The finished run's letter ("" = unranked beat), its StoryRank.evaluate result and the results card while it shows.
 var rank: String = ""
@@ -89,6 +93,7 @@ func begin() -> void:
 	_lock_weapons(true)
 	clock = 0.0
 	stats = {"time": 0.0, "fails": 0, "dmg": 0.0}
+	_ko_base = 0
 	_hp_seen = -1.0
 	_sample_hp()
 	state = "running"
@@ -124,6 +129,7 @@ func fail(reason: String, title: String = T_TOANG) -> void:
 	state = "failed"
 	fails += 1
 	stats["fails"] = fails
+	rollback_ko()
 	failed.emit(title, reason)
 
 
@@ -212,6 +218,17 @@ func add_stat(key: String, n: Variant = 1) -> void:
 
 func set_stat(key: String, v: Variant) -> void:
 	stats[key] = v
+
+
+## The encounter's retry checkpoint (a wave start, lap 2): takedowns so far survive a later fail.
+func mark_ko_checkpoint() -> void:
+	_ko_base = int(stats.get("ko", 0))
+
+
+## A lost attempt (fail(), or an encounter that retries by itself): its takedowns since the checkpoint do not count.
+func rollback_ko() -> void:
+	if stats.has("ko"):
+		stats["ko"] = _ko_base
 
 
 ## Adds every drop of the host's combat.hp since the last sample to stats.dmg.
