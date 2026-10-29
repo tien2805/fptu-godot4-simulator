@@ -19,8 +19,8 @@
 #            reached); glints behind the camera
 #            show edge markers on the HUD.
 #   hp       no regeneration before GunData.regen_delay(), regeneration after; Tay không + Q held does not block gunfire;
-#            down -> lost (the
-#            gunman stands down), retry revives.
+#            down -> lost (the gunman stands down, the loss counted for that wave), retry revives and the respawned gunman
+#            aims x GunData.retry_mercy(1) (T11 retry mercy).
 #   retry    two waves: the wave-2 checkpoint (spot, ammo) comes back on retry() after a loss; a checkpoint taken with no
 #            ammo left comes back with one magazine of reserve per loadout gun.
 #   ammo     loadout lock (equip refuses, scroll skips, wheel "Khoá"), finite spare rounds, reload from the reserve, out of
@@ -40,9 +40,10 @@
 #            damage, "Không xuyên!", reaction none); the 4th knocks the pallet away (it flies off and lands), later rounds
 #            hurt; a flank shot hurts at once; one close shotgun blast knocks the pallet away; Dễ: 3 hits; a knockout drops
 #            it; a live wave of two gunmen and a shield guard is won by a good bot (no loss).
-#   D        (Wave 3 T2) the gun difficulty row on Thường and Dễ: GunData values, telegraph frames between the glint and the
-#            shot (21 / 27 at 60 fps), the token cap (4 / 3), combat.regen_delay set while engaged and the regeneration
-#            start frame (300 / 180 after the hit), the previous regen delay restored on stop() and on won.
+#   D        (Wave 3 T2, values from T11) the gun difficulty row on Thường and Dễ: GunData values (accuracy x2.0 / x0.8,
+#            16 / 8 HP a bullet), telegraph frames between the glint and the shot (21 / 27 at 60 fps), the token cap (4 / 3),
+#            combat.regen_delay set while engaged and the regeneration start frame (420 / 180 after the hit), the previous
+#            regen delay restored on stop() and on won.
 # Counts physics frames (Engine.max_fps = 60).
 # Run:  godot --headless --path . --script tests/test_gunfight.gd
 extends SceneTree
@@ -537,8 +538,13 @@ func _ph_hp_lost(t: int) -> void:
 	elif aux.has("lost_t") and t == int(aux["lost_t"]) + 2:
 		_check(g.state_name() == "idle" and not g.has_token, "the gunman stands down (%s)" % g.state_name())
 		_check(combat.fight_active and not dir.locked_slots.is_empty(), "lost keeps the fight set up for the retry")
+		_check(fight.fail_wave == 0 and fight.fail_streak == 1, "the loss is counted for wave 1 (wave %d, streak %d)" % [fight.fail_wave, fight.fail_streak])
 		fight.retry()
 		_check(fight.state == "running" and not combat.is_down() and is_equal_approx(combat.hp, 100.0), "retry: running again with full HP")
+		var rg: Gunman = fight.gunmen[0]
+		_check(is_equal_approx(rg.accuracy_k, GunData.retry_mercy(1)) and is_equal_approx(GunData.retry_mercy(1), 0.85)
+			and is_equal_approx(GunData.retry_mercy(9), GunData.RETRY_MERCY_MIN),
+			"retry mercy: the respawned gunman aims x%.2f after one loss (floor %.2f)" % [rg.accuracy_k, GunData.retry_mercy(9)])
 		aux.erase("lost_t")
 		_next("retry")
 	elif t > 1500:
@@ -1004,14 +1010,15 @@ func _ph_diff(t: int) -> void:
 	var tag: String = "Dễ" if easy else "Thường"
 	var want_tele: int = 27 if easy else 21
 	var want_cap: int = 3 if easy else 4
-	var want_regen: float = 3.0 if easy else 5.0
+	var want_regen: float = 3.0 if easy else 7.0
 	var rf: int = roundi(want_regen * 60.0)
 	if t == 1:
 		Difficulty.set_easy(easy)
 		_check(is_equal_approx(GunData.telegraph_s(), 0.45 if easy else 0.35) and GunData.max_shooters() == want_cap
-			and is_equal_approx(GunData.regen_delay(), want_regen) and is_equal_approx(GunData.accuracy_k(), 0.8 if easy else 1.0),
-			"D %s: the gun row (telegraph %.2f, cap %d, regen %.0f, accuracy x%.1f)" % [tag, GunData.telegraph_s(), GunData.max_shooters(),
-			GunData.regen_delay(), GunData.accuracy_k()])
+			and is_equal_approx(GunData.regen_delay(), want_regen) and is_equal_approx(GunData.accuracy_k(), 0.8 if easy else 2.0)
+			and is_equal_approx(GunData.gunman_dmg(), 8.0 if easy else 16.0),
+			"D %s: the gun row (telegraph %.2f, cap %d, regen %.0f, accuracy x%.1f, dmg %.0f)" % [tag, GunData.telegraph_s(),
+			GunData.max_shooters(), GunData.regen_delay(), GunData.accuracy_k(), GunData.gunman_dmg()])
 		_fresh(Vector3(1400.0, 0.0, 0.0), true)
 		aux["tele_d"] = []
 		aux["tele_f"] = -1

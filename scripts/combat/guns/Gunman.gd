@@ -698,7 +698,7 @@ func _fire() -> void:
 			float(fight.call("player_speed")), bool(fight.call("player_popped")), first_shot, accuracy_k * GunData.accuracy_k())
 		if _rng.randf() < p:
 			GunData.tracer(fx, muzzle, tp)
-			fight.call("hit_player", self, GunData.GUNMAN_DMG)
+			fight.call("hit_player", self, GunData.gunman_dmg())
 			hits += 1
 			result = "hit"
 		else:

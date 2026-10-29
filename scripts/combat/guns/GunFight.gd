@@ -48,7 +48,9 @@
 #   lies prone the enemies aim at the crouch height)
 # Gun difficulty (Wave 3 T2): the token cap, the gunmen's telegraph and accuracy and the regeneration delay come from
 # GunData.max_shooters() / telegraph_s() / accuracy_k() / regen_delay() (Thường / Dễ). While engaged the fight sets
-# combat.regen_delay to GunData.regen_delay() (5 s / 3 s) and restores the previous value with the rest (won, stop, free).
+# combat.regen_delay to GunData.regen_delay() and restores the previous value with the rest (won, stop, free). Gunman
+# bullets cost GunData.gunman_dmg() HP. Retry mercy (T11): a wave lost n times in a row respawns on retry() with its gunmen's
+# hit chance x GunData.retry_mercy(n) (fail_wave / fail_streak; reset by start()).
 # Player HP = PlayerCombat's (100, regeneration 10 HP/s after combat.regen_delay, `down`): bullets and boss hits go through
 # PlayerCombat.receive_attack (boss hits are heavy: a comic knock-down). From start() until won / stop() (lost keeps it until
 # retry() or stop()) the fight sets combat.fight_active (no bike, no emotes), hides the CombatHUD HP bar (GunHUD shows HP,
@@ -123,6 +125,9 @@ var _sfx: Array[AudioStreamPlayer3D] = []
 var _sfx_i: int = 0
 var _prune_t: float = 0.0
 var _spotted: bool = false
+## Retry mercy (T11): the wave lost last and how many times in a row (its gunmen respawn with GunData.retry_mercy()).
+var fail_wave: int = -1
+var fail_streak: int = 0
 
 
 func _ready() -> void:
@@ -225,6 +230,8 @@ func start() -> void:
 		push_warning("GunFight.start: no wave, player or combat")
 		return
 	state = "running"
+	fail_wave = -1
+	fail_streak = 0
 	combat.revive()
 	_engage(true)
 	_off_bike()
@@ -473,6 +480,8 @@ func _spawn_gunman(d: Dictionary, wave_i: int) -> void:
 		o["seed"] = fight_seed * 1000 + _spawned
 	if accuracy_override >= 0.0 and not o.has("accuracy_override"):
 		o["accuracy_override"] = accuracy_override
+	if wave_i == fail_wave and fail_streak > 0:
+		o["accuracy"] = float(o.get("accuracy", 1.0)) * GunData.retry_mercy(fail_streak)
 	if not o.has("alerted"):
 		o["alerted"] = start_alerted or wave_i > 0
 	o["patrol"] = d.get("patrol", [])
@@ -633,6 +642,8 @@ func _physics_process(delta: float) -> void:
 
 func _on_lost() -> void:
 	state = "lost"
+	fail_streak = fail_streak + 1 if wave == fail_wave else 1
+	fail_wave = wave
 	if bullet_time:
 		bullet_time.stop()
 	for e: Variant in enemies:

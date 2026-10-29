@@ -74,11 +74,16 @@ const MISS_OFFSET: Vector2 = Vector2(0.7, 1.5)
 const SHOT_RANGE: float = 60.0
 const KO_STARS_S: float = 6.0
 const MAX_SHOOTERS: int = 3              # the old cap (GunFight reads max_shooters())
-# ----- the gun row of the difficulty table (Wave 3 plan 2026-10-30-w3-shared.md T2): Thường, Dễ -----
+# ----- the gun row of the difficulty table (Wave 3 plan 2026-10-30-w3-shared.md T2, tuned in T11 with sim_gunfight):
+# Thường, Dễ. The telegraph is never shortened for difficulty: Thường is harder because a shot that resolves on an exposed
+# player lands more often and hurts more, and HP waits longer to regenerate. -----
 const DIFF_TELEGRAPH_S: Vector2 = Vector2(0.35, 0.45)
 const DIFF_SHOOTERS: Vector2i = Vector2i(4, 3)
-const DIFF_REGEN_DELAY: Vector2 = Vector2(5.0, 3.0)
-const DIFF_ACCURACY_K: Vector2 = Vector2(1.0, 0.8)
+const DIFF_REGEN_DELAY: Vector2 = Vector2(7.0, 3.0)
+const DIFF_ACCURACY_K: Vector2 = Vector2(2.0, 0.8)
+const DIFF_GUNMAN_DMG: Vector2 = Vector2(16.0, 8.0)   # HP per gunman bullet (GUNMAN_DMG is the old flat value)
+const RETRY_MERCY: float = 0.15          # each loss in a row on one wave: that wave's gunmen aim this much worse on the retry
+const RETRY_MERCY_MIN: float = 0.55      #   ... down to this factor (the long tail of retries stays short)
 ## Damage a gunman takes per hit kind (WeaponDirector / PlayerCombat info "kind").
 const GUNMAN_DMG_TAKEN: Dictionary = {"bullet": 25.0, "pellet": 70.0, "punch": 15.0, "melee": 60.0, "bonk": 60.0,
 	"blast": 999.0, "heavy": 30.0, "counter": 30.0}
@@ -245,6 +250,16 @@ static func regen_delay() -> float:
 ## Gun difficulty: hits on a shield guard's pallet that knock it away (Thường 4, Dễ 3).
 static func shield_hits() -> int:
 	return int(Difficulty.pick(SHIELD_HITS.x, SHIELD_HITS.y))
+
+
+## Gun difficulty: HP one gunman bullet takes from the player.
+static func gunman_dmg() -> float:
+	return float(Difficulty.pick(DIFF_GUNMAN_DMG.x, DIFF_GUNMAN_DMG.y))
+
+
+## Retry mercy: the hit-chance factor for a wave lost `fails` times in a row (1.0 before the first loss).
+static func retry_mercy(fails: int) -> float:
+	return maxf(RETRY_MERCY_MIN, 1.0 - RETRY_MERCY * float(maxi(0, fails)))
 
 
 ## Gun difficulty: a factor on every gunman's hit chance.
