@@ -97,7 +97,7 @@ const MISSION_SCRIPTS: Dictionary = {"stakeout": "res://scripts/story/missions/M
 	"chase": "res://scripts/story/missions/MissionChase.gd", "corridor": "res://scripts/story/missions/MissionCorridor.gd",
 	"canteen": "res://scripts/story/missions/MissionCanteen.gd", "fight": "res://scripts/story/missions/MissionFight.gd",
 	"bike_chase": "res://scripts/story/missions/MissionBikeChase.gd", "bridge": "res://scripts/story/missions/MissionBridge.gd",
-	"sneak": "res://scripts/story/missions/MissionSneak.gd", "gunfight": "res://scripts/story/missions/MissionGunfight.gd",
+	"sneak": "res://scripts/story/missions/MissionYardSneak.gd", "gunfight": "res://scripts/story/missions/MissionYardGunfight.gd",
 	"crates": "res://scripts/story/missions/MissionCrates.gd", "forklift": "res://scripts/story/missions/MissionForklift.gd",
 	"drift_duel": "res://scripts/story/missions/MissionDriftDuel.gd"}
 ## H-D8: owner music slot per mission (the Day 1 and Day 4 fights share mission_fight; Phase C C-D11: the Day 2 bridge
@@ -916,6 +916,7 @@ func start_mission(b: Dictionary) -> bool:
 		_sync_yard(true)
 		o["level"] = yard
 		o["points"] = yard.mission_points(key)
+		yard.hold_look(true)   # W3: port_night while the yard mission runs (popped in _free_mission)
 	if phone.is_open():
 		phone.close()
 	busy = true
@@ -964,6 +965,8 @@ func _free_mission(roam_track: bool = true) -> void:
 			mission_node.queue_free()
 	mission_node = null
 	mission_beat = {}
+	if yard:
+		yard.hold_look(false)   # W3: the roam look back after a yard mission
 	if had:
 		_music(true)   # back to the roam track (an "after" cinematic then stops it and FreeRoam restores it)
 

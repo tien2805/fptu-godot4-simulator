@@ -166,7 +166,7 @@ const BEATS: Dictionary = {
 		"lair": "yard", "tod": "night", "next": "d3_gunfight", "objective": "Container kia có gì..."},
 	"d3_gunfight": {"day": 3, "title": "Đấu súng ở bến", "kind": "mission", "mission": "gunfight", "anchor": "yard_mid",
 		"auto": true, "lair": "yard", "replay": "seg_d3_gunfight", "tod": "night", "next": "d3_crates",
-		"objective": "Bảo vệ của Alexander xông ra! Giữ [Ctrl] để núp sau thùng, bắn trả"},
+		"objective": "Lẫn vào đám ma-nơ-canh: giữ [X] đứng im khi đèn pin quét tới. Rồi núp [Ctrl] bắn trả, lên cần cẩu thả container"},
 	"d3_crates": {"day": 3, "title": "Đập thùng kính", "kind": "mission", "mission": "crates", "anchor": "yard_mid",
 		"auto": true, "lair": "yard", "replay": "seg_d3_crates", "flag_by_info": {"all": "d3_all_crates"}, "tod": "night",
 		"next": "d3_boss", "objective": "Phá hết các thùng kính thông minh trước khi Alexander quay lại!"},

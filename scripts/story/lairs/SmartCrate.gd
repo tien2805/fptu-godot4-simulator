@@ -16,6 +16,7 @@ const PLANK := Color("#7A5832")
 
 var broken: bool = false
 var carried: bool = false
+var dormant: bool = false
 var shape: CollisionShape3D
 var whole: Node3D
 var debris: Array[MeshInstance3D] = []
@@ -89,8 +90,10 @@ func setup(opts: Dictionary = {}) -> void:
 
 
 # ----- the GunFight external enemy duck type -----
+## dormant (review fix, the crates beat's pallet rack before it rolls out): not a live target (counts as out of the
+## fight, ignores hits), not broken either.
 func is_defeated() -> bool:
-	return broken
+	return broken or dormant
 
 
 func hit_node() -> Node3D:
@@ -102,12 +105,13 @@ func stand_down() -> void:
 
 
 func is_down() -> bool:
-	return broken
+	return broken or dormant
 
 
-## Any bullet or blow breaks it ("knocked_out"); a broken crate ignores hits ("none"). Scare pulses are ignored.
+## Any bullet or blow breaks it ("knocked_out"); a broken or dormant crate ignores hits ("none"). Scare pulses are
+## ignored.
 func take_hit(info: Dictionary) -> String:
-	if broken or String(info.get("kind", "")) == "scare":
+	if broken or dormant or String(info.get("kind", "")) == "scare":
 		return "none"
 	smash(info.get("from", global_position + Vector3(0.0, 0.0, 1.0)))
 	return "knocked_out"
