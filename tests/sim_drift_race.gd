@@ -12,6 +12,9 @@
 # Run (fast, no real-time sync):
 #   godot --headless --path . --fixed-fps 60 --script tests/sim_drift_race.gd -- normal 1 4
 #   (difficulty normal | easy, first seed, missions)
+# Measurements (plan 2026-10-30-d2-playtest-fixes.md), per mission over every attempt: his furthest lead (m), his longest
+# stretch out of sight (out of the frame or behind a wall, DriftDuel.rival_hidden_max) and his longest stretch out of sight
+# while ahead, the next-turn arrow (DriftDuel.guide): turns passed and how many it announced at least 40 m before.
 extends SceneTree
 
 const MAX_FAILS: int = 6
@@ -101,10 +104,19 @@ func _mission(sd: int) -> void:
 	var stab_min: float = 100.0
 	_reset_bot()
 	var game_t: float = 0.0
+	var lead_max: float = -INF
+	var hid_ahead: float = 0.0
+	var hid_ahead_max: float = 0.0
 	while not bool(res["won"]) and int(res["fails"]) < MAX_FAILS and n < 60 * 60 * 12:
 		if duel.state == "racing":
 			_bot(1.0 / 60.0)
 			stab_min = minf(stab_min, duel.combat.stability)
+			lead_max = maxf(lead_max, duel.gap())
+			if duel.guide and duel.guide.boss_hidden_t > 0.0 and duel.gap() > 0.0:
+				hid_ahead += 1.0 / 60.0
+			else:
+				hid_ahead = 0.0
+			hid_ahead_max = maxf(hid_ahead_max, hid_ahead)
 		else:
 			_release()
 			_reset_bot()
@@ -125,7 +137,14 @@ func _mission(sd: int) -> void:
 	res["stab_min"] = int(stab_min)
 	res["lead_s"] = snappedf(duel.lead_t, 0.1)
 	res["gap"] = "%d..%d" % [int(duel.min_gap), int(duel.max_gap)]
+	res["lead_max"] = lead_max
+	res["hidden_max"] = duel.rival_hidden_max()
+	res["hidden_ahead_max"] = hid_ahead_max
+	var g: RouteGuide = duel.guide
+	res["turns"] = "%d/%d (missed at %s)" % [g.turn_announced, g.turn_passes, str(g.turn_missed)] if g else "no guide"
 	results.append(res)
+	print("  MEASURE his max lead %.1f m, longest out of sight %.1f s (while ahead %.1f s), lead clamps %d, eased out of sight %d frames, turn arrows %s" % [
+		lead_max, float(res["hidden_max"]), hid_ahead_max, duel.rival.lead_clamps, duel.hidden_eases, res["turns"]])
 	print("  MISSION %s seed %d: %s after %d fails %s; last race %.1f s (all %.0f s), his kicks %s, my kicks %d, wobbles %d, corner bonuses %d, resets %d, min stability %d, lead %.1f s, gap %s" % [
 		diff, sd, "WON" if bool(res["won"]) else "GAVE UP", int(res["fails"]), str(res["causes"]), float(res["race_s"]), float(res["game_s"]),
 		res["his_kicks"], int(res["my_kicks"]), int(res["wobbles"]), int(res["corners"]), int(res["resets"]), int(res["stab_min"]),
@@ -294,5 +313,11 @@ func _summary() -> void:
 	for f2: int in fails:
 		avg += float(f2)
 	avg /= float(maxi(1, fails.size()))
+	var lm: float = -INF
+	var hm: float = 0.0
+	for r3: Dictionary in results:
+		lm = maxf(lm, float(r3["lead_max"]))
+		hm = maxf(hm, float(r3["hidden_ahead_max"]))
+	print("SUMMARY MEASURE race %s: his max lead %.1f m, longest out of sight while ahead %.1f s" % [diff, lm, hm])
 	print("SUMMARY race %s: %d missions, won %d, fails per mission %s (avg %.2f), on target %d / %d (Thường: 1-3 fails and done within 5 retries; Dễ: at most 1)" % [
 		diff, results.size(), won, str(fails), avg, ok, results.size()])

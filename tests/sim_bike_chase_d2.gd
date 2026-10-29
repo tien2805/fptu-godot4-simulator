@@ -12,6 +12,11 @@
 # Run (fast, no real-time sync):
 #   godot --headless --path . --fixed-fps 60 --script tests/sim_bike_chase_d2.gd -- sloppy 1 3 normal
 #   (bot, first seed, runs, difficulty normal | easy)
+# Measurements (plan 2026-10-30-d2-playtest-fixes.md), over the combat time (the chase running, not the opening or the
+# cameo, at least one biker active): the share of time at least one active biker is on screen (the current camera's frame,
+# within 160 m), the longest stretch with none on screen, the furthest any active biker got ahead of / behind the player
+# (along his route frame) and from him; the next-turn arrow (BikeChase.guide, when there is one): turns passed and how many
+# it announced at least 40 m before.
 extends SceneTree
 
 const BOTS: Dictionary = {
@@ -59,6 +64,17 @@ var wave_t: Array[float] = []
 var clear_t: Array[float] = []
 var attacks_seen: int = 0
 var cameo_t: float = -1.0
+# measurements
+var m_combat: float = 0.0
+var m_on: float = 0.0
+var m_off_run: float = 0.0
+var m_off_max: float = 0.0
+var m_ahead: float = -INF
+var m_behind: float = -INF
+var m_dist: float = 0.0
+var m_over: float = 0.0                   # seconds with a biker past the leash (20 m ahead / 12 m behind)
+var all_m: Array[Dictionary] = []
+var off_why: Dictionary = {}              # SIM_TRACE_OFF: what the active bikers were doing while none was on screen
 
 
 func _initialize() -> void:
@@ -105,6 +121,14 @@ func _start_run() -> void:
 	wave_t.clear()
 	clear_t.clear()
 	cameo_t = -1.0
+	m_combat = 0.0
+	m_on = 0.0
+	m_off_run = 0.0
+	m_off_max = 0.0
+	m_ahead = -INF
+	m_behind = -INF
+	m_dist = 0.0
+	m_over = 0.0
 	var md: MapData = roam.get("md")
 	var route: BikeRoute = MissionBikeChase.day2_route(md)
 	chase = BikeChase.new()
@@ -165,7 +189,55 @@ func _run() -> void:
 	if chase.state != "running":
 		_controls(false, false, false, 0.0)
 		return
+	_measure(dt * Engine.time_scale)
 	_bot(dt)
+
+
+func _measure(dt: float) -> void:
+	if chase.opening_on or chase.cameo_state == "running":
+		return
+	var cam: Camera3D = root.get_viewport().get_camera_3d()
+	var vs: Vector2 = root.get_viewport().get_visible_rect().size
+	var screen := Rect2(Vector2.ZERO, vs).grow(-12.0)
+	var n: int = 0
+	var on: int = 0
+	var over: bool = false
+	for b: Variant in chase.bikers:
+		var e: BikerEnemy = b as BikerEnemy
+		if e == null or not is_instance_valid(e) or not e.is_active():
+			continue
+		n += 1
+		var rel: Vector2 = e.pos2 - chase.p_pos
+		var al: float = rel.dot(chase.p_fwd)
+		m_ahead = maxf(m_ahead, al)
+		m_behind = maxf(m_behind, -al)
+		m_dist = maxf(m_dist, rel.length())
+		if al > 20.5 or al < -12.5:
+			over = true
+		var p3: Vector3 = e.global_position + Vector3(0.0, 1.2, 0.0)
+		if cam and not cam.is_position_behind(p3) and cam.global_position.distance_to(p3) < 160.0 and screen.has_point(cam.unproject_position(p3)):
+			on += 1
+	if n == 0:
+		m_off_run = 0.0
+		return
+	m_combat += dt
+	if over:
+		m_over += dt
+	if on > 0:
+		m_on += dt
+		m_off_run = 0.0
+	else:
+		m_off_run += dt
+		m_off_max = maxf(m_off_max, m_off_run)
+		if OS.has_environment("SIM_TRACE_OFF"):
+			var cut: String = "cut" if (cam and cam != bike.chase_cam) else "bike"
+			for b2: Variant in chase.bikers:
+				var e2: BikerEnemy = b2 as BikerEnemy
+				if e2 == null or not is_instance_valid(e2) or not e2.is_active():
+					continue
+				var rel2: Vector2 = e2.pos2 - chase.p_pos
+				var key: String = "%s %s %s r%d al%d lat%d" % [cut, e2.kind, e2.state_name(), e2.role, int(roundf(rel2.dot(chase.p_fwd) / 3.0)) * 3, int(roundf(rel2.dot(chase.p_right)))]
+				off_why[key] = float(off_why.get(key, 0.0)) + dt
 
 
 func _end_run() -> void:
@@ -186,6 +258,20 @@ func _end_run() -> void:
 	for k: String in dmg.keys():
 		dm.append("%s %.0f" % [k, float(dmg[k])])
 	print("  gap %s, roadblock %s, previews %d" % [str(r["gap"]), str(r["block"]), chase.set_pieces.previews])
+	var g: Object = chase.get("guide")
+	var tr: String = "%d/%d (missed at %s)" % [int(g.get("turn_announced")), int(g.get("turn_passes")), str(g.get("turn_missed"))] if g else "no guide"
+	if not off_why.is_empty():
+		var ks: Array = off_why.keys()
+		ks.sort_custom(func(a: Variant, b: Variant) -> bool: return float(off_why[a]) > float(off_why[b]))
+		var top: Array[String] = []
+		for i: int in mini(12, ks.size()):
+			top.append("%s %.1fs" % [ks[i], float(off_why[ks[i]])])
+		print("  OFF WHY: ", ", ".join(top))
+		off_why.clear()
+	var mm: Dictionary = {"on": m_on / maxf(m_combat, 0.01), "combat": m_combat, "off_max": m_off_max, "ahead": m_ahead, "behind": m_behind, "dist": m_dist, "over": m_over}
+	all_m.append(mm)
+	print("  MEASURE on screen %.0f %% of %.0f s combat (longest off %.1f s), max ahead %.1f m, max behind %.1f m, max dist %.1f m, past the leash %.1f s, turn arrows %s" % [
+		100.0 * float(mm["on"]), m_combat, m_off_max, m_ahead, m_behind, m_dist, m_over, tr])
 	print("  run %d (seed %d): %s in %.0f s real (%d fails %s), downed %d, escaped %d, takedowns %d, kicks %d/%d, dmg {%s}, waves at %s (cleared %s), cameo %.0f, enemy attacks %d (%d hit), melons %d, cones %d, curbs %d, barrier %s, helmets %s, left %s" % [
 		run_i, seed0 + run_i, chase.state, float(real_f) / 60.0, fails, str(fail_causes), chase.downed_total, chase.escaped, chase.takedowns,
 		chase.combat.hits, chase.combat.kicks, ", ".join(dm), str(wave_t.map(func(x: float) -> int: return int(x))), str(clear_t.map(func(x2: float) -> int: return int(x2))), cameo_t, chase.attack_starts, chase.attack_hits,
@@ -231,6 +317,16 @@ func _summary() -> void:
 	var per: Array = []
 	for r2: Dictionary in results:
 		per.append(int(r2["fails"]))
+	var on_min: float = 1.0
+	var ahead_max: float = -INF
+	var behind_max: float = -INF
+	var off_max: float = 0.0
+	for mm: Dictionary in all_m:
+		on_min = minf(on_min, float(mm["on"]))
+		ahead_max = maxf(ahead_max, float(mm["ahead"]))
+		behind_max = maxf(behind_max, float(mm["behind"]))
+		off_max = maxf(off_max, float(mm["off_max"]))
+	print("SUMMARY MEASURE: on screen at least %.0f %% per run, longest off %.1f s, max ahead %.1f m, max behind %.1f m" % [100.0 * on_min, off_max, ahead_max, behind_max])
 	print("SUMMARY bot %s (%s): %d runs, %d finished, fails per run %s = %.2f on average, average %.0f s real per run (with retries)" % [bot, diff, results.size(), won, str(per),
 		float(f) / maxf(results.size(), 1.0), t / maxf(results.size(), 1.0)])
 	Difficulty.set_easy(false)

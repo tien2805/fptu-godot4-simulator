@@ -27,6 +27,11 @@
 # While it runs: traffic parked, FreeRoam's riding hint shows the race keys, [F] refused, the bike on DUEL_PROFILE with
 # nitro on, the kicks on (PlayerBikeCombat with Sói Xám its only target). Never touches the story state, the music
 # (MissionDriftDuel does on the signals) or autoloads by name. Every tuned number goes through Difficulty.pick.
+# Playtest fixes (plan 2026-10-30-d2-playtest-fixes.md): `guide` (RouteGuide: the chevrons on the road, the next-turn
+# panel, the Sói Xám marker and his edge arrow, the course and his dot on the radar), on from the countdown; the rubber band
+# reaches band_far at BAND_FULL_M and his lead is capped at RIVAL_LEASH_M (DriftRival.lead_cap); out of sight (out of the
+# frame or behind a wall) for RIVAL_HIDDEN_S while ahead, he eases off (x HIDDEN_BAND) until seen; the bike camera's combat
+# framing while he rides within BikeCombatData.COMBAT_CAM_M. rival_hidden_max: his longest stretch out of sight.
 # ===========================================
 class_name DriftDuel
 extends Node3D
@@ -65,7 +70,10 @@ const CONTACT_ALONG: float = 1.7
 const CONTACT_CD: float = 0.8
 const TAIL_GAP_M: float = 12.0            # he races harder (fight profile) when the player is this close
 const BAND_START_M: float = 20.0          # he eases off past this lead ...
-const BAND_FULL_M: float = 60.0           # ... down to band_far here
+const BAND_FULL_M: float = 30.0           # ... down to band_far here (playtest fixes: was 60)
+const RIVAL_LEASH_M: float = 30.0         # he never leads by more (DriftRival.lead_cap)
+const RIVAL_HIDDEN_S: float = 1.0         # out of sight this long while ahead: he eases off ...
+const HIDDEN_BAND: float = 0.7            # ... by this factor until seen again
 const MERCY_MAX: int = 3                  # losses that ease him (mercy_step of pace each)
 const CRASH_DMG_MIN: float = 8.0          # a wall at 6 m/s ...
 const CRASH_DMG_MAX: float = 18.0         # ... and at 26 m/s (Dễ x0.6)
@@ -167,6 +175,10 @@ var _ray_q: PhysicsRayQueryParameters3D
 var _ending_line_t: float = -1.0
 var _win_t: float = 0.0
 var _prev_speed: float = 0.0              # the bike's speed at the end of the last physics frame (crash damage)
+var guide: RouteGuide = null
+var cam_combat: bool = false
+var _cam_near_t: float = 0.0
+var hidden_eases: int = 0                 # frames he eased off out of sight (tests, tuning)
 # HUD widgets
 var _panel: Control
 var _lap_label: Label
@@ -239,6 +251,12 @@ func setup(opts: Dictionary) -> void:
 		add_child(props)
 		props.setup(course, func(p: Vector3) -> Variant: return floor_at(p, 8.0, 8.0), excl)
 	_build_hud()
+	if bool(opts.get("guide", true)):
+		guide = RouteGuide.new()
+		guide.name = "Guide"
+		add_child(guide)
+		guide.setup({"path": course, "bike": bike, "roam": roam, "s_fn": func() -> float: return s_p, "end_s": course.length,
+			"floor_fn": floor_at, "targets": [], "boss": rival, "occlude_rids": excl})
 
 
 ## The difficulty's numbers (Thường, Dễ) for the race rules; the rival reads his own.
@@ -285,6 +303,8 @@ func retry() -> void:
 func stop() -> void:
 	_enter("idle")
 	_set_hooks(false)
+	_guide_on(false)
+	_set_cam_combat(false)
 	if bike and is_instance_valid(bike):
 		if bike.staged:
 			bike.set_staged(false)
@@ -309,6 +329,31 @@ func band_for(g: float, grace: bool) -> float:
 	if g < BAND_START_M:
 		return 1.0
 	return lerpf(1.0, band_far, clampf((g - BAND_START_M) / (BAND_FULL_M - BAND_START_M), 0.0, 1.0))
+
+
+## His longest stretch out of sight while racing (the guide's measure).
+func rival_hidden_max() -> float:
+	return guide.boss_hidden_max if guide else 0.0
+
+
+## Out of sight for RIVAL_HIDDEN_S while ahead: the band's extra easing (1 = none).
+func hidden_factor(g: float) -> float:
+	if guide == null or g <= 0.0 or guide.boss_hidden_t < RIVAL_HIDDEN_S:
+		return 1.0
+	return HIDDEN_BAND
+
+
+func _guide_on(on: bool) -> void:
+	if guide and is_instance_valid(guide):
+		guide.set_active(on)
+
+
+func _set_cam_combat(on: bool) -> void:
+	if on == cam_combat:
+		return
+	cam_combat = on
+	if bike != null and is_instance_valid(bike) and bike.cam_rig:
+		bike.cam_rig.set_combat_framing(on)
 
 
 func _enter(s: String) -> void:
@@ -339,6 +384,7 @@ func _reset_race(s0: float) -> void:
 	d_p = GRID_LAT
 	lap = course.lap_at(s0)
 	rival.refresh_tuning()
+	rival.lead_cap = RIVAL_LEASH_M
 	rival.pace *= 1.0 - mercy_step * float(mini(losses, MERCY_MAX))   # each loss eases him a little (at most MERCY_MAX steps)
 	rival.place_at(s0 + RIVAL_GRID_AHEAD, -GRID_LAT)
 	if s0 > 0.0:
@@ -358,6 +404,7 @@ func _begin_countdown(is_retry: bool) -> void:
 	bike.set_staged(true)
 	combat.enabled = false
 	_enter("countdown")
+	_guide_on(true)
 	countdown_started.emit(is_retry)
 
 
@@ -378,6 +425,12 @@ func _physics_process(delta: float) -> void:
 	t += rdt
 	_tick_fade(rdt)
 	_tick_popup(rdt)
+	if guide:
+		guide.metrics_on = state == "racing"
+		guide.set_hud_visible(state == "countdown" or state == "racing")
+	var near: bool = state == "racing" and rival != null and absf(gap()) < BikeCombatData.COMBAT_CAM_M
+	_cam_near_t = BikeCombatData.COMBAT_CAM_HOLD_S if near else _cam_near_t - rdt
+	_set_cam_combat(state == "racing" and _cam_near_t > 0.0)
 	if props:
 		props.tick(rdt, s_p, bike.global_position)
 	match state:
@@ -448,7 +501,10 @@ func _tick_race(delta: float) -> void:
 	_contact_cd -= delta
 	var g: float = gap()
 	_feed_rival()
-	rival.band = lerpf(rival.band, band_for(g, grace_t > 0.0), minf(1.0, delta * 3.0))
+	var hf: float = hidden_factor(g)
+	if hf < 1.0:
+		hidden_eases += 1
+	rival.band = lerpf(rival.band, band_for(g, grace_t > 0.0) * hf, minf(1.0, delta * 3.0))
 	rival.fight = g < TAIL_GAP_M
 	rival.tick(delta, g)
 	min_gap = minf(min_gap, g)
@@ -573,6 +629,7 @@ func _contact() -> void:
 func _win(how: String) -> void:
 	win_how = how
 	_enter("won")
+	_guide_on(false)
 	combat.enabled = false
 	bike.drift_charge_mult = 1.0
 	rival.finished = true
@@ -614,6 +671,7 @@ func _reset_to_gate(msg: String) -> void:
 
 func _begin_ending() -> void:
 	_enter("ending")
+	_guide_on(false)
 	var es: float = course.project_any(ENDING_AT, course.length).x
 	_place_player(es, 0.0)
 	bike.is_controls_locked = true
@@ -778,6 +836,7 @@ func _traffic(run: bool) -> void:
 
 func _exit_tree() -> void:
 	_set_hooks(false)
+	_set_cam_combat(false)
 
 
 # ---------------------------------------------------------------------------

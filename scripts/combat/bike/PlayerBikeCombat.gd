@@ -2,8 +2,8 @@
 # The player's side of the Phase C bike combat (spec C-D1) on one PlayerBike, owned by a BikeChase:
 #   - kicks: Q left, E right (key events, consumed only while `enabled` and riding; kick(side) for scripts / tests).
 #     Wind-up KICK_WINDUP, hit window up to KICK_ACTIVE_END, leg back at KICK_DUR, cooldown KICK_COOLDOWN from the press.
-#     During the window the closest kickable target on that side (0.3-2.4 m to the side, +/-1.7 m along, in the bike's own
-#     frame) takes the kick (one target per kick); no target by the end of the window = a miss.
+#     During the window the nearest kickable target on that side (the kick assist zone below, in the bike's own frame) takes
+#     the kick (one target per kick); no target by the end of the window = a miss.
 #   - stability (the bike's HP, 100): damage(amount, cause, from_side) from an enemy kick (+ a sideways shove), a crash
 #     (PlayerBike.crash_occurred: traffic, curb, pothole, fall), a ram; HURT_IFRAMES after a hit; REGEN_RATE per second
 #     after REGEN_DELAY without damage. At 0 the player is knocked off: the bike locks (PlayerBike.is_controls_locked, the
@@ -28,6 +28,10 @@
 #     then it breaks (`stick_broke`);
 #   - the spin kick leaves a fading motion-trail arc behind the leg; one hit is heavy, two at once the finisher tier;
 #   - a hit on the player: a red screen-edge flash, a camera jolt and a HURT_WOBBLE_S bike wobble.
+# Kick assist (plan 2026-10-30-d2-playtest-fixes.md): the window takes the nearest kickable target on the kick's side within
+# BikeCombatData.ASSIST_LAT to the side and +/-ASSIST_ALONG along the bike (the stick's bonus on top); the one picked at the
+# press (assist_target) is pulled toward the leg for ASSIST_PULL_S (its magnet(side, secs), when it has one) and is the one
+# hit while it stays in the zone. The counter-kick (its window and zone) is unchanged.
 class_name PlayerBikeCombat
 extends Node
 
@@ -110,6 +114,8 @@ var _wob_ph: float = 0.0
 var _kb_t: float = 0.0
 var _kb_sign: float = 0.0
 var counter_slowmos: int = 0
+var assist_target: Node3D = null         # the kick's target picked at the press (kick assist)
+var assists: int = 0                     # kicks that pulled a target in (tests)
 var _counter_slow_rt: float = -99.0      # Impact clock real time of the last counter slow motion
 
 
@@ -177,6 +183,10 @@ func kick(side: int) -> bool:
 	kick_cd = BikeCombatData.KICK_COOLDOWN
 	kick_done = false
 	kicks += 1
+	assist_target = kick_target(kick_side)
+	if assist_target != null and assist_target.has_method("magnet"):
+		assist_target.call("magnet", kick_side, BikeCombatData.ASSIST_PULL_S)
+		assists += 1
 	_cue("swish", bike.global_position + Vector3(0.0, 0.8, 0.0), -4.0 if stick_swings <= 0 else 0.0)
 	kicked.emit(kick_side)
 	return true
@@ -249,30 +259,37 @@ func update_frame() -> void:
 	right2 = Vector2(-fwd2.y, fwd2.x)
 
 
-## The kickable target the window would hit now on `side`, or null.
+## The kickable target the window would hit now on `side` (the kick assist zone, the nearest first), or null.
 func kick_target(side: int) -> Node3D:
 	update_frame()
-	var p := Vector2(bike.global_position.x, bike.global_position.z)
 	var best: Node3D = null
 	var best_score: float = INF
 	for t: Variant in targets:
 		if not is_instance_valid(t) or not bool((t as Object).call("kickable")):
 			continue
+		if not in_kick_zone(t as Node3D, side):
+			continue
 		var g: Vector3 = (t as Object).call("ground_pos")
-		if absf(g.y - bike.global_position.y) > 2.5:
-			continue
-		var rel := Vector2(g.x, g.z) - p
-		var lat: float = rel.dot(right2) * float(side)
-		var along: float = rel.dot(fwd2)
-		var reach: float = BikeCombatData.KICK_REACH + (BikeCombatData.STICK_REACH_BONUS if stick_swings > 0 else 0.0)
-		var reach_a: float = BikeCombatData.KICK_ALONG + (BikeCombatData.STICK_ALONG_BONUS if stick_swings > 0 else 0.0)
-		if lat < BikeCombatData.KICK_MIN or lat > reach or absf(along) > reach_a:
-			continue
-		var score: float = absf(lat - 1.4) + absf(along) * 0.5
+		var rel := Vector2(g.x - bike.global_position.x, g.z - bike.global_position.z)
+		var score: float = absf(rel.dot(right2)) + absf(rel.dot(fwd2)) * 0.7
 		if score < best_score:
 			best_score = score
 			best = t
 	return best
+
+
+## Target t is inside the kick assist zone on `side` (update_frame() first): KICK_MIN..ASSIST_LAT to that side, within
+## ASSIST_ALONG along the bike (the stick's bonus on top), on the same level.
+func in_kick_zone(t: Node3D, side: int) -> bool:
+	var g: Vector3 = (t as Object).call("ground_pos")
+	if absf(g.y - bike.global_position.y) > 2.5:
+		return false
+	var rel := Vector2(g.x - bike.global_position.x, g.z - bike.global_position.z)
+	var lat: float = rel.dot(right2) * float(side)
+	var along: float = rel.dot(fwd2)
+	var reach: float = BikeCombatData.ASSIST_LAT + (BikeCombatData.STICK_REACH_BONUS if stick_swings > 0 else 0.0)
+	var reach_a: float = BikeCombatData.ASSIST_ALONG + (BikeCombatData.STICK_ALONG_BONUS if stick_swings > 0 else 0.0)
+	return lat >= BikeCombatData.KICK_MIN and lat <= reach and absf(along) <= reach_a
 
 
 ## Stability damage (from_side: +1 from the right, -1 from the left, 0 none). false when ignored (god, i-frames, off).
@@ -338,6 +355,7 @@ func knock_off() -> void:
 
 ## Full stability, upright and unlocked bike, no kick in progress (retry / stop).
 func reset() -> void:
+	assist_target = null
 	stability = max_stability
 	knocked = false
 	kick_t = -1.0
@@ -395,7 +413,14 @@ func _physics_process(delta: float) -> void:
 	if kick_t >= 0.0:
 		kick_t += delta
 		if not kick_done and kick_t >= BikeCombatData.KICK_WINDUP:
-			var t: Node3D = kick_target(kick_side) if kick_t <= BikeCombatData.KICK_ACTIVE_END and not knocked else null
+			var t: Node3D = null
+			if kick_t <= BikeCombatData.KICK_ACTIVE_END and not knocked:
+				if assist_target != null and is_instance_valid(assist_target) and bool(assist_target.call("kickable")):
+					update_frame()
+					if in_kick_zone(assist_target, kick_side):
+						t = assist_target         # the target picked at the press (pulled in) stays the one hit
+				if t == null:
+					t = kick_target(kick_side)
 			if t != null:
 				kick_done = true
 				hits += 1

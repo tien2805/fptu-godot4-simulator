@@ -194,6 +194,11 @@ func _process(_d: float) -> bool:
 			_check(md != null and (md.current_stream() == null or is_equal_approx(md.gains[md.cur], 1.0)) and is_equal_approx(md.players[md.cur].pitch_scale, 1.0) and is_equal_approx(AudioServer.playback_speed_scale, 1.0),
 				"the chase track starts without a fade-in, and the slow motion leaves its speed alone (stream %s, gain %.2f, pitch %.2f, speed %.2f, slot %s / %s)" % [str(md.current_stream() != null), md.gains[md.cur], md.players[md.cur].pitch_scale, AudioServer.playback_speed_scale, md.slot, md.player_slots[md.cur]])
 			_check(mc.music_pos() < 0.0 or ch.music_pos_fn.is_valid(), "the opening's drop follows the track's playback position when it plays")
+			# playtest fixes (plan 2026-10-30-d2-playtest-fixes.md): the GPS line, the turn panel, the radar route
+			var vh: Variant = fr.get("vice_hud")
+			var rad_ok: bool = vh == null or ((vh as ViceHUD).radar.guide_route.size() > 50)
+			_check(ch.guide != null and ch.guide.active and not ch.guide.mmi.visible and not ch.guide.hud.visible and ch.guide.turns.size() >= 8 and rad_ok,
+				"the guide: on with %d turns and the route on the radar; no chevrons or arrows over the film opening" % (ch.guide.turns.size() if ch.guide else 0))
 			ch.combat.damage(999.0, "kick", 1)
 			_next(5)
 		5:
@@ -244,6 +249,8 @@ func _process(_d: float) -> bool:
 					phase = 999
 				return false
 			_check(mark.has("replay") and mark.has("card") and mark.has("taunt"), "the cameo card, wave 3, then the last fall's replay")
+			var vh6: Variant = fr.get("vice_hud")
+			_check(vh6 == null or (vh6 as ViceHUD).radar.guide_route.is_empty(), "after the chase the radar shows the normal route again")
 			_check(is_equal_approx(Engine.time_scale, 1.0), "the time scale is back to 1 after the chase")
 			_next(60)
 		# ----- Tokyo Drift (plan 2026-10-29-w2-day2.md): the race with Sói Xám ("đua + đánh"), then the bridge -----
@@ -266,6 +273,8 @@ func _process(_d: float) -> bool:
 					phase = 999
 				return false
 			_check(du61.rival.racing and not fr.get("bike").staged and du61.combat.enabled, "3-2-1-ĐI: racing, the kicks on")
+			_check(du61.guide != null and du61.guide.active and du61.guide.boss == du61.rival and du61.rival.lead_cap > 0.0,
+				"the race: the guide on (chevrons, turns, the Sói Xám marker), his lead leashed")
 			du61.call("_lose", "beaten")
 			_next(62)
 		62:

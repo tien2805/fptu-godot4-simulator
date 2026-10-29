@@ -8,6 +8,9 @@
 # _draw chỉ biến đổi + cắt ~vài trăm đoạn theo vòng tròn rồi vẽ bằng 3 lệnh draw_multiline (< 1 ms). Vẽ lại tối đa
 # REDRAW_HZ lần / giây khi tâm / hướng / blip đổi. last_draw_usec, draws, drawn_segments, cached_segments để test đo.
 # Không dùng GameFX / StageManager (lớp class_name được test --script nạp trước autoload).
+# Chỉ đường (plan 2026-10-30-d2-playtest-fixes.md, RouteGuide): guide_route (tuyến của màn đua / rượt, vẽ màu GUIDE thay cho
+# tuyến BE6 khi được đặt; PackedVector2Array rỗng = tắt) và extra_blips (vẽ sau blips: chấm đỏ của địch, RouteGuide cập
+# nhật 10 Hz bằng một mảng dùng lại).
 class_name ViceRadar
 extends Control
 
@@ -23,6 +26,7 @@ const ROUTE := Color("#FF5FB0")
 const INK := Color("#1B0F33")
 const SEARCH_FILL := Color(0.3, 0.55, 1.0, 0.22)
 const SEARCH_RIM := Color(0.45, 0.7, 1.0, 0.85)
+const GUIDE := Color("#27E8FF")
 
 var md: MapData:
 	set(v):
@@ -50,6 +54,19 @@ var route: PackedVector2Array = PackedVector2Array():
 		route = v
 		_cache_center = Vector2(INF, INF)
 		_dirty = true
+## RouteGuide: the course of the chase / race, drawn in GUIDE instead of the BE6 route while set (empty = off).
+var guide_route: PackedVector2Array = PackedVector2Array():
+	set(v):
+		guide_route = v
+		_cache_center = Vector2(INF, INF)
+		_maybe_rebuild(false)
+		_dirty = true
+## RouteGuide: extra blips drawn after `blips` (the enemies' red dots).
+var extra_blips: Array[Dictionary] = []:
+	set(v):
+		extra_blips = v
+		_dirty = true
+var guide_draws: int = 0
 ## Phase W wanted search area (map x, map z, radius m); radius 0 = none. A translucent disc clipped to the radar.
 var search: Vector3 = Vector3.ZERO:
 	set(v):
@@ -72,6 +89,7 @@ var _ca := PackedVector2Array()
 var _cb := PackedVector2Array()
 var _ck := PackedByteArray()
 var _route_near := PackedVector2Array()   # cặp điểm (đoạn) của tuyến trong CACHE_RADIUS
+var _guide_near := PackedVector2Array()   # ... của guide_route
 var _cache_center := Vector2(INF, INF)
 var _t: float = 0.0
 var _dirty: bool = true
@@ -181,6 +199,12 @@ func _maybe_rebuild(force: bool) -> void:
 		if q2.distance_squared_to(center) <= r2:
 			_route_near.append(route[i])
 			_route_near.append(route[i + 1])
+	_guide_near.clear()
+	for i4: int in range(guide_route.size() - 1):
+		var q4: Vector2 = Geometry2D.get_closest_point_to_segment(center, guide_route[i4], guide_route[i4 + 1])
+		if q4.distance_squared_to(center) <= r2:
+			_guide_near.append(guide_route[i4])
+			_guide_near.append(guide_route[i4 + 1])
 	cached_segments = _ca.size()
 	_cache_center = center
 	rebuilds += 1
@@ -249,20 +273,24 @@ func _draw() -> void:
 		draw_multiline(l1, ROAD_COLORS[1], ROAD_WIDTHS[1], true)
 	if l2.size() >= 2:
 		draw_multiline(l2, ROAD_COLORS[2], ROAD_WIDTHS[2], true)
-	# tuyến BE6 -> FPTU (hồng, viền tối)
+	# tuyến BE6 -> FPTU (hồng, viền tối); khi có guide_route thì vẽ tuyến chỉ đường (xanh neon, dày hơn) thay vào
+	var guiding: bool = guide_route.size() >= 2
+	var near: PackedVector2Array = _guide_near if guiding else _route_near
 	var rl := PackedVector2Array()
 	var j: int = 0
-	while j + 1 < _route_near.size():
-		var dp2: Vector2 = (_route_near[j] - center) * k
-		var dq2: Vector2 = (_route_near[j + 1] - center) * k
+	while j + 1 < near.size():
+		var dp2: Vector2 = (near[j] - center) * k
+		var dq2: Vector2 = (near[j + 1] - center) * k
 		var v2: Vector4 = _clip(Vector2(c.x + dp2.x * cs - dp2.y * sn, c.y + dp2.x * sn + dp2.y * cs), Vector2(c.x + dq2.x * cs - dq2.y * sn, c.y + dq2.x * sn + dq2.y * cs), c, rr)
 		if not is_nan(v2.x):
 			rl.append(Vector2(v2.x, v2.y))
 			rl.append(Vector2(v2.z, v2.w))
 		j += 2
 	if rl.size() >= 2:
-		draw_multiline(rl, INK, 7.0, true)
-		draw_multiline(rl, ROUTE, 4.0, true)
+		draw_multiline(rl, INK, 9.0 if guiding else 7.0, true)
+		draw_multiline(rl, GUIDE if guiding else ROUTE, 5.0 if guiding else 4.0, true)
+		if guiding:
+			guide_draws += 1
 	# Phase W: vòng tìm kiếm của truy nã (cắt theo đĩa radar)
 	if search.z > 0.0:
 		var sc: Vector2 = to_radar(Vector2(search.x, search.y))
@@ -295,6 +323,15 @@ func _draw() -> void:
 			_:
 				draw_circle(bp, 8.0, INK)
 				draw_circle(bp, 6.0, col)
+	# RouteGuide: chấm của địch (đỏ, viền tối; ngoài tầm thì nằm ở mép)
+	for eb: Dictionary in extra_blips:
+		if not bool(eb.get("on", true)):
+			continue
+		var ep: Vector2 = to_radar(eb.get("pos", Vector2.ZERO))
+		ep = c + (ep - c).limit_length(r - 10.0)
+		var er: float = float(eb.get("r", 6.0))
+		draw_circle(ep, er + 2.0, INK)
+		draw_circle(ep, er, eb.get("color", Color(1.0, 0.15, 0.12)))
 	# người chơi: mũi tên trắng hướng lên
 	var tri := PackedVector2Array([c + Vector2(0.0, -11.0), c + Vector2(8.0, 9.0), c + Vector2(0.0, 4.0), c + Vector2(-8.0, 9.0)])
 	draw_colored_polygon(tri, Color.WHITE)

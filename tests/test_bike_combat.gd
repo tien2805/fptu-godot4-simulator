@@ -306,6 +306,7 @@ func _phase_a1(t: int) -> void:
 		_check(bike.global_position.distance_to(Vector3(0.0, -0.13, Z0 - 60.0)) < 0.3, "start() places the bike at start_s on the route (%s)" % str(bike.global_position))
 		_check(chase.combat.enabled and chase.combat.stability == 100.0, "the combat is on, stability 100")
 	if t == 2:
+		chase.route.half_width = 8.0        # room for the out-of-reach holds (the kick assist reaches 3.5 m; A2 puts it back)
 		_hold(chase.bikers[0], 0.0, 1.8)    # right, in reach
 		_hold(chase.bikers[1], 0.0, -4.0)   # left, out of reach
 		_hold(chase.bikers[2], 0.0, 6.0)    # parked far right for the hp 2 test
@@ -348,11 +349,11 @@ func _phase_a1(t: int) -> void:
 		_check(chase.combat.kick(1), "kick to the wrong side starts")
 	if t == 100 + 24:
 		_check(chase.combat.misses == 2, "a target on the other side: a miss (%d)" % chase.combat.misses)
-		_hold(chase.bikers[1], 3.0, -1.8)     # ahead of the window
+		_hold(chase.bikers[1], BikeCombatData.ASSIST_ALONG + 0.8, -1.8)     # ahead of the window (the assist zone too)
 	if t == 140:
 		_check(chase.combat.kick(-1), "kick at a biker ahead starts")
 	if t == 140 + 24:
-		_check(chase.combat.misses == 3, "a target 3 m ahead: a miss (%d)" % chase.combat.misses)
+		_check(chase.combat.misses == 3, "a target 4.3 m ahead: a miss (%d)" % chase.combat.misses)
 		_hold(chase.bikers[1], 0.0, -4.0)
 	if t == 180:
 		_check(chase.combat.kick(-1), "kick before the target arrives starts")
@@ -382,6 +383,7 @@ func _phase_a1(t: int) -> void:
 func _phase_a2(t: int) -> void:
 	var b3: BikerEnemy = chase.bikers[3]
 	if t == 1:
+		chase.route.half_width = chase.half_width
 		_hold(b3, BikeCombatData.SLOT_ALONG, -BikeCombatData.SLOT_LAT)
 	if t == 5:
 		b3.start_attack(-1.0)
@@ -394,15 +396,16 @@ func _phase_a2(t: int) -> void:
 		mark["hit_f"] = frames
 		var lead: float = float(frames - int(mark["f0"])) / 60.0
 		_check(lead >= 0.45, "the kick lands %.2f s after the telegraph started (>= 0.45)" % lead)
-		_check(is_equal_approx(chase.combat.stability, 78.0), "an enemy kick costs 22 stability (%.1f)" % chase.combat.stability)
+		_check(is_equal_approx(chase.combat.stability, 100.0 - BikeCombatData.ENEMY_KICK_DMG), "an enemy kick costs %.0f stability (%.1f)" % [BikeCombatData.ENEMY_KICK_DMG, chase.combat.stability])
 	if t == 70:
 		_check(mark.has("hit_f") and b3.results.back() == "hit", "the AI kick hit (%s)" % str(b3.results))
 	if t == 110:
 		_check(b3.st == BikerEnemy.St.HOLD, "back to its hold after the recovery (%s)" % b3.state_name())
 		bike.crash_occurred.emit()
-		_check(is_equal_approx(chase.combat.stability, 63.0), "a crash at a standstill costs 15 stability (15-25 by speed) (%.1f)" % chase.combat.stability)
+		var after_crash: float = 100.0 - BikeCombatData.ENEMY_KICK_DMG - BikeCombatData.CRASH_DMG_MIN
+		_check(is_equal_approx(chase.combat.stability, after_crash), "a crash at a standstill costs 15 stability (15-25 by speed) (%.1f)" % chase.combat.stability)
 		bike.crash_occurred.emit()
-		_check(is_equal_approx(chase.combat.stability, 63.0), "i-frames swallow a second crash at once (%.1f)" % chase.combat.stability)
+		_check(is_equal_approx(chase.combat.stability, after_crash), "i-frames swallow a second crash at once (%.1f)" % chase.combat.stability)
 		_next("a3")
 
 
@@ -796,7 +799,7 @@ func _phase_a9(t: int) -> void:
 		(chase.bikers[0] as BikerEnemy).start_attack(-1.0)
 	if t == 260 + 50:
 		var b: BikerEnemy = chase.bikers[0]
-		_check(b.results.back() == "hit" and is_equal_approx(chase.combat.stability, 78.0), "riding straight: the AI kick hits (%s, %.1f)" % [str(b.results), chase.combat.stability])
+		_check(b.results.back() == "hit" and is_equal_approx(chase.combat.stability, 100.0 - BikeCombatData.ENEMY_KICK_DMG), "riding straight: the AI kick hits (%s, %.1f)" % [str(b.results), chase.combat.stability])
 	if t == 400:
 		var b: BikerEnemy = chase.bikers[0]
 		_check(b.st == BikerEnemy.St.HOLD, "test setup: the biker back beside the player (%s)" % b.state_name())
@@ -807,7 +810,7 @@ func _phase_a9(t: int) -> void:
 	if t == 400 + 50:
 		var b: BikerEnemy = chase.bikers[0]
 		var rel: Vector2 = b.pos2 - chase.p_pos
-		_check(b.results.back() == "miss" and is_equal_approx(chase.combat.stability, 78.0), "steering away during the wind-up dodges the kick (%s, %.1f, %.2f m apart)" % [str(b.results), chase.combat.stability, rel.length()])
+		_check(b.results.back() == "miss" and is_equal_approx(chase.combat.stability, 100.0 - BikeCombatData.ENEMY_KICK_DMG), "steering away during the wind-up dodges the kick (%s, %.1f, %.2f m apart)" % [str(b.results), chase.combat.stability, rel.length()])
 		_steer(0.0)
 		autopilot = true
 	if t == 470:
@@ -1152,7 +1155,8 @@ func _phase_c2(t: int) -> void:
 		mark["hit"] = true
 		var lead: float = float(frames - int(mark["f0"])) / 60.0
 		_check(lead >= 0.45, "stick: the swing lands %.2f s after the wind-up began (>= 0.45)" % lead)
-		_check(is_equal_approx(chase.combat.stability, float(mark["stab0"]) - 25.0), "stick: a swing costs 25 (%.1f)" % chase.combat.stability)
+		var sdmg: float = float(BikeCombatData.KINDS["stick"]["dmg"])
+		_check(is_equal_approx(chase.combat.stability, float(mark["stab0"]) - sdmg), "stick: a swing costs %.0f (%.1f)" % [sdmg, chase.combat.stability])
 	if t == 340:
 		_check(mark.has("hit"), "stick: riding straight, the swing hits")
 	if t == 420:
@@ -1327,7 +1331,8 @@ func _phase_c5(t: int) -> void:
 		_check(is_equal_approx(chase.combat.stability, float(mark["stab0"]) - float(BikeCombatData.KINDS["pickup"]["dmg"])), "pickup: the side ram costs %.0f (%.1f)" % [float(BikeCombatData.KINDS["pickup"]["dmg"]), chase.combat.stability])
 	if t == 420:
 		_check(mark.has("hit") and mark.has("flash"), "pickup: horn and headlight flash, then the ram hits a rider going straight")
-	for k: int in 2:
+	var dodges: int = mini(BikeCombatData.PICKUP_STRIKES, BikeCombatData.PICKUP_MAX_RAMS - 1)   # after the first ram's hit
+	for k: int in dodges:
 		var t0: int = 520 + 240 * k
 		if t == t0:
 			_hold(b, BikeCombatData.SLOT_ALONG, 3.3)
@@ -1338,10 +1343,10 @@ func _phase_c5(t: int) -> void:
 			_brake(true)                      # after the lock at 0.5 s
 		if t == t0 + 40 + 130:
 			_brake(false)
-			var want: float = float(mark["stab%d" % (k + 1)]) + (BikeCombatData.WAVE_REFILL if k == 1 else 0.0)   # its crash clears the wave
+			var want: float = float(mark["stab%d" % (k + 1)]) + (BikeCombatData.WAVE_REFILL if k == dodges - 1 else 0.0)   # its crash clears the wave
 			_check(b.strikes == k + 1 and is_equal_approx(chase.combat.stability, minf(want, chase.combat.max_stability)), "pickup: braking after the lock dodges ram %d (strikes %d, stability %.0f -> %.0f, %s)" % [k + 1, b.strikes, float(mark["stab%d" % (k + 1)]), chase.combat.stability, str(b.results)])
-	if t == 1000:
-		_check(b.is_down() and b.crash_cause == "pole" and chase.takedowns == 1 and chase.hud.popups > 0, "pickup: two dodged rams and it hits a pole: a takedown (%s, %s)" % [b.state_name(), b.crash_cause])
+	if t == 520 + 240 * dodges:
+		_check(b.is_down() and b.crash_cause == "pole" and chase.takedowns == 1 and chase.hud.popups > 0, "pickup: a hit, %d dodged rams and it hits a pole: a takedown (%s, %s)" % [dodges, b.state_name(), b.crash_cause])
 		_end_chase("c6")
 
 
@@ -1398,7 +1403,7 @@ func _phase_c7(t: int) -> void:
 		var w: Array = []
 		for i: int in 6:
 			w.append({"lane": [-1, 1][i % 2], "opts": {"ai": false, "hp": 99, "label": "T%d" % i}})
-		chase = _kind_chase([w])
+		chase = _kind_chase([w], {"max_alive": 6})
 		chase.start()
 		return
 	var bs: Array = chase.bikers
