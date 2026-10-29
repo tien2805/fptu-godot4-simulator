@@ -18,6 +18,9 @@ class_name KatanaBoss
 extends MeleeEnemy
 
 signal phase_changed(phase: int)
+## W3 T5 / T6: his HP fraction after any damage (the sprinklers at 50 %), and 0 HP reached while a QTE is armed.
+signal hp_changed(frac: float)
+signal qte_reached
 
 const LOG_MAX: int = 32
 
@@ -49,6 +52,8 @@ var _dash_dir: Vector3 = Vector3.ZERO
 var _dash_v: float = 0.0
 var _finale_away: Vector3 = Vector3.ZERO
 var _finale_done: bool = false
+## W3 T5: the sprinklers' wet floor makes his lunges overshoot (1.2); 1.0 dry.
+var lunge_k: float = 1.0
 var _finale_line: bool = false
 
 
@@ -223,7 +228,7 @@ func _start_attack() -> void:
 					push_v = facing_dir() * minf(sqrt(2.0 * PUSH_DECEL * minf(gap, 0.9)), 4.5)
 			"lunge":                             # dash so that his reach meets the player at the hit frame
 				_dash_dir = facing_dir()
-				_dash_v = clampf((d.length() - float(step["reach"]) + 0.15) / hit, 0.0, float(step["dash_max"]))
+				_dash_v = clampf((d.length() - float(step["reach"]) + 0.15) / hit * lunge_k, 0.0, float(step["dash_max"]) * lunge_k)
 				lunge_from = global_position
 	if combat:
 		combat._cue("katana_slash", global_position + Vector3(0.0, 1.3, 0.0), -4.0)
@@ -378,6 +383,7 @@ func _on_damage(r: String) -> void:
 		return
 	katana.wobble(0.2)
 	var frac: float = clampf(hp / maxf(max_hp, 1.0), 0.0, 1.0)
+	hp_changed.emit(frac)
 	var s: int = SwordData.bend_stage_of(frac)
 	if s > katana.stage and hp > 0.0:
 		katana.set_stage(s)

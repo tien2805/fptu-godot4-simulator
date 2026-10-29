@@ -5,7 +5,9 @@
 # runs once (StoryVillainCard.show_for; flag zaman_card so a retry or a Continue does not show it again), then the duel
 # starts. `won` = done (StoryBasement plays the beat's "after" seg_d5_boss, then E6 is granted with the beat); `lost` =
 # "TOANG!" -> retry() = a fresh Za Mẫn, full HP.
-# opts: "points" (start, start_yaw, boss_at, boss_yaw), "manual_card" (tests step `card`), "seed".
+# W3 (plan 2026-10-30-w3-day5.md T5 / T6): the sprinklers at 50 % (SwordDuel: the look on the host, steam at the level's
+# first two fires) and the QTE finisher at 0 HP (SwordQTE through SwordDuel).
+# opts: "points" (start, start_yaw, boss_at, boss_yaw), "level" (steam spots), "manual_card" (tests step `card`), "seed".
 class_name MissionDuel
 extends StoryMission
 
@@ -35,6 +37,12 @@ func _start() -> void:
 		o["at"] = pts["boss_at"]
 	if pts.has("boss_yaw"):
 		o["yaw"] = float(pts["boss_yaw"])
+	var lv: Variant = opts.get("level", null)
+	if lv is LairBasement:
+		var st: Array = []
+		for f: Array in LairBasement.FIRES.slice(0, 2):
+			st.append((lv as LairBasement).world(f[0]))
+		o["steam_at"] = st                     # W3 T5: steam where the sprinklers meet the burning racks
 	duel.setup(o)
 	duel.won.connect(_on_won)
 	duel.lost.connect(_on_lost)
