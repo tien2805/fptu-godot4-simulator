@@ -290,7 +290,9 @@ func _process(_d: float) -> bool:
 			if m == null:
 				return false
 			var mg: MissionGunfight = m
-			_check(mg.fight.waves.size() == 2 and mg.fight.alive().size() == 4 and mg.fight.pickups.size() == 3, "the gunfight: 2 waves of 4, 3 ammo pickups")
+			var my9: MissionYardGunfight = m
+			_check(mg.fight.waves.size() >= 3 and mg.fight.alive().size() == 3 and mg.fight.pickups.size() == 3 and my9.hide_state == "sweep", "the gunfight opens with the mannequin hide (3 sweepers in wave 0), then the waves; 3 ammo pickups")
+			_check(my9.mannequins != null and my9.mannequins.count() >= 38, "the mannequins in front of the open stack")
 			var w9: WeaponDirector = fr.get("weapons")
 			_check(w9.reserve.size() > 0 and w9.reserve[WeaponData.Slot.PISTOL] >= 0, "finite spare rounds in the lair")
 			_check(StoryRoam.mission_slot(sd.call("beat")) == "mission_gunfight", "mission_gunfight")
@@ -303,7 +305,7 @@ func _process(_d: float) -> bool:
 					phase = 999
 				return false
 			sr.fail_ui.press_retry()
-			_check((m as MissionGunfight).fight.state == "running" and (m as MissionGunfight).fight.alive().size() == 4, "retry: the wave again")
+			_check((m as MissionGunfight).fight.state == "running" and (m as MissionGunfight).fight.alive().size() == 3 and (m as MissionYardGunfight).hide_state == "sweep", "retry: the hide again")
 			_next(11)
 		11:
 			var mg11: MissionGunfight = m as MissionGunfight if is_instance_valid(m) else null
