@@ -14,8 +14,15 @@
 # cinematic plays, hide_for_cine(true) hides what the timelines bring themselves (the monitor wall during the monitors
 # beat, the terminal, the fires).
 # Cost: static meshes and colliders; the fires flicker through CineAnimProp.cine_eval only while lit (tick(dt) at 20 Hz).
+# Wave 3 (plan 2026-10-30-w3-day5.md T2, D5W-2): the hall's ceiling lamps (emissive panels in LAMP_ZS rows) and the cold
+# light are the mains; set_power(false) kills them row by row from the stairs toward the room (POWER_ROW_S apart,
+# `power_row(i)` per row for the clunk), the red emergency lights drop to a dim glow and the red floor strips, the rack
+# LEDs and the four hall monitors (MONITORS) stay lit; set_power(true) is instant. flicker_face(secs, k) shows Za Mẩn's
+# code-drawn face on the hall monitors, flickering, at strength k (dimmer with "Giảm hù dọa": the mission passes k).
 class_name LairBasement
 extends Node3D
+
+signal power_row(row: int)
 
 const ROOM_W: float = 13.0
 const ROOM_D: float = 9.3
@@ -55,6 +62,33 @@ const WAVE2: Array[Vector3] = [Vector3(-10.5, 0.0, 24.0), Vector3(10.5, 0.0, 24.
 const AMMO: Array[Vector3] = [Vector3(-10.5, 0.0, 12.0), Vector3(10.5, 0.0, 14.0), Vector3(0.0, 0.0, 8.5)]
 const DUEL_BOSS := Vector3(0.0, 0.0, -1.6)
 const DUEL_PLAYER := Vector3(0.0, 0.0, 3.6)
+## The mains: ceiling lamp rows (z, back of the hall first: the order they die in) and the panels of a row (x).
+const LAMP_ZS: Array[float] = [31.0, 25.0, 19.0, 13.0, 7.0]
+const LAMP_XS: Array[float] = [-9.5, -3.5, 3.5, 9.5]
+const POWER_ROW_S: float = 0.14
+const RED_ON: float = 1.3
+const RED_DARK: float = 0.55
+const COLD_ON: float = 0.55
+## Hall monitors on the low cabinets: [local position (screen centre), yaw].
+const MONITORS: Array = [[Vector3(-4.0, 1.42, 7.0), 0.0], [Vector3(4.0, 1.42, 7.0), 0.0], [Vector3(-10.5, 1.32, 15.0), -PI * 0.5],
+	[Vector3(10.0, 1.32, 22.0), PI * 0.5]]
+const FACE_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled;
+uniform float face = 0.0;
+uniform vec3 idle_col : source_color = vec3(0.08, 0.3, 0.85);
+uniform vec3 face_col : source_color = vec3(0.35, 1.0, 0.55);
+void fragment() {
+	vec2 uv = vec2((UV.x * 2.0 - 1.0) * 1.6, 1.0 - UV.y * 2.0);
+	float scan = 0.82 + 0.18 * sin(UV.y * 160.0);
+	float head = abs(length(uv * vec2(1.0, 0.85)) - 0.8);
+	float eyes = min(length(uv - vec2(-0.3, 0.22)), length(uv - vec2(0.3, 0.22)));
+	float mouth = abs(length(uv - vec2(0.0, 0.1)) - 0.45) + step(-0.12, uv.y);
+	float m = clamp(step(head, 0.05) + step(eyes, 0.11) + step(mouth, 0.045), 0.0, 1.0);
+	ALBEDO = vec3(0.0);
+	EMISSION = mix(idle_col * 0.9, face_col * (0.15 + 3.2 * m), face) * scan;
+}
+"""
 
 var wall: CineAnimProp
 var terminal: Node3D
@@ -67,6 +101,20 @@ var _hidden: Array[Node3D] = []
 var _fire_t: float = 0.0
 var _fire_acc: float = 0.0
 var _fire_opts: Dictionary = {"fire_from": 0.0}   # reused by tick() (no dictionary per update)
+## The mains (T2): on, the lamp rows still lit (a cut in progress runs row by row), the lights.
+var power_on: bool = true
+var lamp_rows: Array = []                            # [MeshInstance3D per panel] per LAMP_ZS row
+var rows_lit: int = 0
+var reds: Array[OmniLight3D] = []
+var cold: OmniLight3D
+var monitors: Array[MeshInstance3D] = []
+var face_mat: ShaderMaterial
+var face_k: float = 0.0                              # the face strength while it flickers (0 = idle screens)
+var _lamp_on: StandardMaterial3D
+var _lamp_off: StandardMaterial3D
+var _row_t: float = -1.0
+var _face_t: float = 0.0
+var _face_acc: float = 0.0
 
 
 func _init() -> void:
@@ -182,8 +230,68 @@ func hide_for_cine(on: bool, wall_too: bool = false) -> void:
 		_hidden.clear()
 
 
-## Fires flicker at 20 Hz while lit (StoryBasement calls it every frame).
+## The mains on (instant) or off (row by row from the stairs, POWER_ROW_S apart; instant = all at once). The cold light
+## dies with the first row, the red emergency lights dim to RED_DARK; the strips, LEDs and monitors stay lit.
+func set_power(on: bool, instant: bool = false) -> void:
+	power_on = on
+	if on or instant:
+		_row_t = -1.0
+		for i: int in lamp_rows.size():
+			_set_row(i, on)
+		rows_lit = lamp_rows.size() if on else 0
+	else:
+		_row_t = 0.0
+		_cut_row()
+	if cold:
+		cold.light_energy = COLD_ON if on else 0.0
+	for r: OmniLight3D in reds:
+		r.light_energy = RED_ON if on else RED_DARK
+
+
+func _set_row(i: int, lit: bool) -> void:
+	for mi: Variant in lamp_rows[i]:
+		(mi as MeshInstance3D).material_override = _lamp_on if lit else _lamp_off
+
+
+## The next lit row goes dark (from the back of the hall toward the room).
+func _cut_row() -> void:
+	var i: int = lamp_rows.size() - rows_lit
+	if rows_lit <= 0 or i < 0:
+		_row_t = -1.0
+		return
+	_set_row(i, false)
+	rows_lit -= 1
+	power_row.emit(i)
+	if rows_lit <= 0:
+		_row_t = -1.0
+
+
+## Za Mẩn's face on the hall monitors for `secs`, flickering, at strength k (0..1).
+func flicker_face(secs: float, k: float = 1.0) -> void:
+	_face_t = secs
+	face_k = clampf(k, 0.0, 1.0)
+	_face_acc = 0.0
+	if face_mat:
+		face_mat.set_shader_parameter("face", face_k if secs > 0.0 else 0.0)
+
+
+## Fires flicker at 20 Hz while lit, the power cut steps its rows, the face flickers (StoryBasement calls it every frame).
 func tick(delta: float) -> void:
+	if _row_t >= 0.0:
+		_row_t += delta
+		if _row_t >= POWER_ROW_S:
+			_row_t = 0.0
+			_cut_row()
+	if _face_t > 0.0:
+		_face_t -= delta
+		_face_acc += delta
+		if _face_t <= 0.0:
+			face_k = 0.0
+			face_mat.set_shader_parameter("face", 0.0)
+		elif _face_acc >= 0.08:
+			_face_acc = 0.0
+			var blip: float = fposmod(sin(_face_t * 91.7) * 4375.85, 1.0)
+			face_mat.set_shader_parameter("face", face_k * (0.3 if blip < 0.3 else 1.0))
 	if not fire_on:
 		return
 	_fire_t += delta
@@ -265,21 +373,57 @@ func _hall() -> void:
 
 
 func _lights() -> void:
+	# the mains: ceiling panels per row (emissive, no lights) and the red floor strips (always lit)
+	_lamp_on = CineFX._glow_mat(Color("#DCE8FF"), 1.8)
+	_lamp_off = CineFX._mat(Color("#1A1C20"), 0.9)
+	for z: float in LAMP_ZS:
+		var row: Array = []
+		for x: float in LAMP_XS:
+			row.append(CineFX._box(self, "Lamp", Vector3(1.4, 0.04, 0.24), Vector3(x, HALL_H - 0.03, z), _lamp_on))
+		lamp_rows.append(row)
+	rows_lit = lamp_rows.size()
+	var strip: StandardMaterial3D = CineFX._glow_mat(Color("#FF2A2A"), 2.2)
+	for sx: float in [-1.0, 1.0]:
+		CineFX._box(self, "EmergencyStrip", Vector3(0.03, 0.05, HALL_Z1 - ROOM_Z1 - 1.0), Vector3(sx * (HALL_HALF_W - 0.03), 0.35, (ROOM_Z1 + HALL_Z1) * 0.5), strip)
+	# the hall monitors (Za Mẩn's face in the blackout)
+	face_mat = ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = FACE_SHADER
+	face_mat.shader = sh
+	var frame_mat: StandardMaterial3D = CineFX._mat(Color("#121316"), 0.5)
+	for mo: Array in MONITORS:
+		var root := Node3D.new()
+		root.name = "HallMonitor"
+		root.position = mo[0]
+		root.rotation.y = float(mo[1])
+		add_child(root)
+		CineFX._box(root, "Bezel", Vector3(0.62, 0.4, 0.05), Vector3(0.0, 0.0, -0.03), frame_mat)
+		CineFX._box(root, "Stand", Vector3(0.06, 0.24, 0.06), Vector3(0.0, -0.3, -0.04), frame_mat)
+		var scr := MeshInstance3D.new()
+		scr.name = "Screen"
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.56, 0.34)
+		scr.mesh = qm
+		scr.material_override = face_mat
+		scr.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(scr)
+		monitors.append(scr)
 	for p: Vector3 in [Vector3(0.0, 3.3, 14.0), Vector3(0.0, 3.3, 28.0), Vector3(-9.0, 3.3, 21.0), Vector3(9.0, 3.3, 8.0)]:
 		var red := OmniLight3D.new()
 		red.name = "Emergency"
 		red.light_color = Color("#FF2A2A")
-		red.light_energy = 1.3
+		red.light_energy = RED_ON
 		red.omni_range = 11.0
 		red.shadow_enabled = false
 		red.position = p
 		add_child(red)
 		lights.append(red)
+		reds.append(red)
 		CineFX._sphere(self, "Beacon", 0.1, p + Vector3(0.0, 0.15, 0.0), CineFX._glow_mat(Color("#FF2A2A"), 3.0))
-	var cold := OmniLight3D.new()
+	cold = OmniLight3D.new()
 	cold.name = "Cold"
 	cold.light_color = Color("#8FB4FF")
-	cold.light_energy = 0.55
+	cold.light_energy = COLD_ON
 	cold.omni_range = 20.0
 	cold.shadow_enabled = false
 	cold.position = Vector3(0.0, 3.4, 20.0)

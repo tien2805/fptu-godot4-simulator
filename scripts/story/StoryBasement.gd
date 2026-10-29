@@ -96,7 +96,7 @@ func _ready() -> void:
 		director.connect("objective_changed", _on_objective)
 		_on_objective(String(director.get("objective")))
 	_apply_state()
-	StoryAudio.warm(["heartbeat", "toang_sting", "success_fanfare"])
+	StoryAudio.warm(["heartbeat", "toang_sting", "success_fanfare", "sub_boom", "locker_slam", "whisper_bed", "alarm_siren"])
 	MusicDirector.warm(LAIR_MUSIC.values())   # every task track decodes on a worker now, not when its task starts
 	_run_t = 0.3
 
