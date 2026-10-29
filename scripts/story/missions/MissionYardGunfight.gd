@@ -54,6 +54,8 @@ var hide_state: String = ""
 var hide_t: float = 0.0
 var hidden: bool = true
 var sweep_s: float = 26.0
+var sweep_range: float = SWEEP_RANGE
+var sweep_half: float = SWEEP_HALF_DEG
 var hold_max: float = 4.0
 var mash_n: int = 9
 var mash_window: float = 3.0
@@ -87,6 +89,8 @@ var _cleared_jokes: int = 0
 
 func _start() -> void:
 	sweep_s = float(Difficulty.pick(26.0, 20.0))
+	sweep_range = float(Difficulty.pick(SWEEP_RANGE, 10.0))
+	sweep_half = float(Difficulty.pick(SWEEP_HALF_DEG, 12.0))
 	hold_max = float(Difficulty.pick(4.0, 6.0))
 	mash_n = int(Difficulty.pick(9, 6))
 	mash_window = float(Difficulty.pick(3.0, 3.0))
@@ -167,8 +171,8 @@ func _build_hide() -> void:
 		m.set_meta("vice_done", true)
 		var cm := CylinderMesh.new()
 		cm.top_radius = 0.06
-		cm.bottom_radius = SWEEP_RANGE * tan(deg_to_rad(SWEEP_HALF_DEG))
-		cm.height = SWEEP_RANGE
+		cm.bottom_radius = sweep_range * tan(deg_to_rad(sweep_half))
+		cm.height = sweep_range
 		cm.radial_segments = 16
 		cm.rings = 1
 		cm.cap_top = false
@@ -270,7 +274,7 @@ func caught_now() -> bool:
 		var b: Dictionary = beam_of(k)
 		if b.is_empty():
 			continue
-		if sees_player(b["eye"], b["dir"], SWEEP_RANGE, SWEEP_HALF_DEG):
+		if sees_player(b["eye"], b["dir"], sweep_range, sweep_half):
 			return true
 	return false
 
@@ -412,13 +416,13 @@ func _place_beams() -> void:
 		cone.visible = true
 		var eye: Vector3 = b["eye"]
 		var d: Vector3 = b["dir"]
-		var tip: Vector3 = eye + d * (SWEEP_RANGE * 0.6) + Vector3(0.0, -1.5, 0.0)   # tilted down: the light on the floor ahead
+		var tip: Vector3 = eye + d * (sweep_range * 0.6) + Vector3(0.0, -1.5, 0.0)   # tilted down: the light on the floor ahead
 		var axis: Vector3 = (eye - tip).normalized()
 		var x: Vector3 = axis.cross(Vector3.UP).normalized()
 		if x.length() < 0.1:
 			x = Vector3.RIGHT
 		var z: Vector3 = x.cross(axis).normalized()
-		cone.global_transform = Transform3D(Basis(x, axis, z), eye - axis * (SWEEP_RANGE * 0.5))
+		cone.global_transform = Transform3D(Basis(x, axis, z), eye - axis * (sweep_range * 0.5))
 
 
 func _sweep_checks() -> void:

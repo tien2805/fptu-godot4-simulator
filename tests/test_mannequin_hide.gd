@@ -189,7 +189,7 @@ func _process(_d: float) -> bool:
 			# Dễ: a shorter mash
 			Difficulty.set_easy(true)
 			_make_mission()
-			_check(m.mash_n < 9 and m.hold_max > 4.0 and m.sweep_s < 26.0, "Dễ: fewer presses, a longer freeze, a shorter sweep")
+			_check(m.mash_n < 9 and m.hold_max > 4.0 and m.sweep_s < 26.0 and m.sweep_range < 12.0 and m.sweep_half < 15.0, "Dễ: fewer presses, a longer freeze, a shorter sweep, smaller flashlight cones")
 			_check(m.fight.waves.size() == 3 and m.n_waves == 2 and (m.fight.waves[1] as Array).size() == 3, "W3 T5 Dễ: the hide + 2 waves of 3")
 			Difficulty.set_easy(false)
 			_make_mission()

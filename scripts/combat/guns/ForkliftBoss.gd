@@ -261,7 +261,7 @@ func take_ram(dir: Vector3, speed: float) -> String:
 	_spin_dir = 1.0 if WeaponMath.flat_dir(dir).cross(forklift.forward()).y > 0.0 else -1.0
 	st_len = GunData.MISS_RECOVER_S
 	_enter(St.RECOVER)
-	apply_damage(max_hp * RAM_FRAC)
+	apply_damage(max_hp * float(Difficulty.pick(RAM_FRAC, RAM_FRAC * 1.2)))
 	return "hit"
 
 
@@ -274,7 +274,7 @@ func take_crate_hit(dir: Vector3) -> String:
 		return "bump"
 	crate_backs += 1
 	Impact.hit(self, "heavy", {"pos": forklift.global_position + Vector3(0.0, 1.4, 0.0), "dir": WeaponMath.flat_dir(dir)})
-	apply_damage(max_hp * CRATE_BACK_FRAC)
+	apply_damage(max_hp * float(Difficulty.pick(CRATE_BACK_FRAC, CRATE_BACK_FRAC * 1.25)))
 	return "hit"
 
 

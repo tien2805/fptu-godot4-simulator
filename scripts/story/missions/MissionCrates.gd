@@ -66,6 +66,8 @@ var dance_s: float = 0.0
 var dance_len: float = 0.0
 var fleeing: float = -1.0
 var time_left: float = TIME_S
+## T8: the countdown through Difficulty (Thường TIME_S, Dễ longer).
+var time_total: float = TIME_S
 var meme_on: bool = false
 ## T6
 var gate_at: float = 15.0
@@ -331,7 +333,8 @@ func _reset_dance() -> void:
 		CharacterBuilder.set_speed(b, DANCE_SPEED)
 	_place_dance(0.0)
 	_set_meme(true)
-	time_left = TIME_S
+	time_total = float(Difficulty.pick(TIME_S, 105.0))
+	time_left = time_total
 	_shown = Vector2i(-1, -1)
 	_show_info()
 
@@ -386,7 +389,7 @@ func _show_info() -> void:
 		return
 	_shown = now
 	set_info("Thùng kính: %d / %d · Còn %d s" % [now.x, total(), now.y])
-	set_meter(clampf(float(now.y) / TIME_S * 100.0, 0.0, 100.0))
+	set_meter(clampf(float(now.y) / time_total * 100.0, 0.0, 100.0))
 
 
 func _set_meme(on: bool) -> void:
