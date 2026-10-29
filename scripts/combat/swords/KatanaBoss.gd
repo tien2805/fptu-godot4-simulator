@@ -190,7 +190,7 @@ func _begin_attack() -> void:
 			pattern_log.pop_front()
 	_glint_at = gap
 	_glinted = false
-	_enter(St.WINDUP, gap + SwordData.TELL_S - float(step["hit"]))
+	_enter(St.WINDUP, gap + SwordData.tell_s() - float(step["hit"]))
 	if gap <= 0.0:
 		_do_glint()
 	else:

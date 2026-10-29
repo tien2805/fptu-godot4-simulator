@@ -173,6 +173,10 @@ func _on_physics() -> void:
 				_make_duel()
 				Difficulty.set_easy(false)
 				_check(is_equal_approx(duel.qte_window, 1.2), "Dễ: a 1.2 s window")
+				Difficulty.set_easy(true)
+				_check(is_equal_approx(SwordData.tell_s(), 0.62) and is_equal_approx(float(Difficulty.pick(1.0, SwordData.HP_SCALE_EASY)), 0.8), "Dễ: longer tells (0.62 s), 80 % boss HP")
+				Difficulty.set_easy(false)
+				_check(is_equal_approx(SwordData.tell_s(), 0.5), "Thường: tells 0.5 s")
 				_zero()
 			if t > 3 and not duel.in_qte and not mark.has("end"):
 				mark["end"] = true
