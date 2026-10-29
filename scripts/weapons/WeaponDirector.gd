@@ -23,6 +23,8 @@
 # the camera director, else GameFX.shake); the muzzle flash lights one frame and impacts leave bullet holes (WeaponFX);
 # every hit on a person shows the HUD hit marker with its tick (red with a second tick on a knockout: WeaponHUD.hit_marker,
 # ImpactAudio hit_tick / ko_tick); a bullet / pellet knockout is a finisher-tier Impact (freeze, sting).
+# Wave 3 bullet time (plan 2026-10-30-w3-shared.md T4): while `real_time` is set (BulletTime, only while its dive owns the
+# time scale) the fire cooldown and the reload count real seconds, so the shots per real second stay the same in the dive.
 class_name WeaponDirector
 extends Node3D
 
@@ -78,6 +80,8 @@ var _sfx: Array[AudioStreamPlayer3D] = []
 var _sfx_i: int = 0
 var _held_att: BoneAttachment3D = null
 var _pending_cues: Array = []            # [game time, cue, position] (the shotgun pump)
+## Wave 3 bullet time: cooldown and reload in real seconds (set by BulletTime while its dive owns the time scale).
+var real_time: bool = false
 var rockets_fired: int = 0
 var explosions: Array[Vector3] = []      # tests: every explosion position
 var dep_in_flight: bool = false
@@ -220,11 +224,12 @@ func start_reload() -> void:
 
 func _physics_process(delta: float) -> void:
 	_t += delta
-	cooldown = maxf(0.0, cooldown - delta)
+	var wd: float = delta / maxf(Engine.time_scale, 0.01) if real_time else delta
+	cooldown = maxf(0.0, cooldown - wd)
 	if player == null:
 		return
 	if reload_left > 0.0:
-		reload_left -= delta
+		reload_left -= wd
 		if reload_left <= 0.0:
 			reload_left = 0.0
 			var need: int = WeaponData.mag_of(current) - ammo[current]

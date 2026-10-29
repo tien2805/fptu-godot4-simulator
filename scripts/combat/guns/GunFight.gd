@@ -17,6 +17,7 @@
 #       "max_shooters": 4,                      # gunmen shooting at once (tokens); default GunData.max_shooters() (4 / 3)
 #       "auto_checkpoint": true,                # every wave start is a checkpoint
 #       "start_alerted": false,                 # wave 1 starts alerted (seen while sneaking); later waves always do
+#       "bullet_time": true,                    # Wave 3: build fight.bullet_time (BulletTime: Space while aiming dives)
 #       "seed": 1})
 #   fight.add_wave([                            # once per wave, in order
 #       {"at": Vector3(...), "yaw": 0.0, "patrol": [Vector3(...), ...],
@@ -41,7 +42,10 @@
 #   its AI loop; boss.force_attack("charge" | "toss") triggers one attack (see ForkliftBoss).
 #   fight.start(); fight.checkpoint(); fight.retry(); fight.stop()
 #   fight.alive() -> Array; fight.shooters() -> int; fight.boss (ForkliftBoss or null); fight.state ("idle" | "running" |
-#   "won" | "lost"); fight.wave; fight.cover_ctl (PlayerCover); fight.hud (GunHUD)
+#   "won" | "lost"); fight.wave; fight.cover_ctl (PlayerCover); fight.hud (GunHUD); fight.bullet_time (BulletTime or null:
+#   .enabled, .active(), .focus, .refill(n); full focus at start / retry, stopped on won / lost / retry / stop / free, a
+#   knockout refills it, a last-enemy knockout during a dive ends the dive's slow part before the orbit; while the player
+#   lies prone the enemies aim at the crouch height)
 # Gun difficulty (Wave 3 T2): the token cap, the gunmen's telegraph and accuracy and the regeneration delay come from
 # GunData.max_shooters() / telegraph_s() / accuracy_k() / regen_delay() (Thường / Dễ). While engaged the fight sets
 # combat.regen_delay to GunData.regen_delay() (5 s / 3 s) and restores the previous value with the rest (won, stop, free).
@@ -113,6 +117,8 @@ var _prev_cfn: Callable = Callable()
 var _heat_cut: Object = null
 var _bar_was: bool = true
 var _regen_was: float = CombatData.REGEN_DELAY
+## Wave 3 bullet time (null when the setup passes "bullet_time": false).
+var bullet_time: BulletTime = null
 var _sfx: Array[AudioStreamPlayer3D] = []
 var _sfx_i: int = 0
 var _prune_t: float = 0.0
@@ -185,6 +191,11 @@ func setup(opts: Dictionary) -> void:
 	add_child(cover_ctl)
 	cover_ctl.setup(player, cover, weapons, combat, taken)
 	cover_ctl.reach_fn = clear_walk
+	if bool(opts.get("bullet_time", true)) and player != null:
+		bullet_time = BulletTime.new()
+		bullet_time.name = "BulletTime"
+		add_child(bullet_time)
+		bullet_time.setup(self)
 	_rq.collision_mask = WORLD_MASK
 	_rq.collide_with_areas = false
 	_rq.hit_from_inside = true
@@ -217,6 +228,8 @@ func start() -> void:
 	combat.revive()
 	_engage(true)
 	_off_bike()
+	if bullet_time:
+		bullet_time.reset()
 	_start_wave(0)
 
 
@@ -255,6 +268,8 @@ func retry() -> void:
 	if _cp.is_empty():
 		checkpoint()
 	_off_bike()
+	if bullet_time:
+		bullet_time.reset()
 	cover_ctl.leave()
 	player.teleport(_cp["pos"], float(_cp["yaw"]))
 	combat.revive()
@@ -335,6 +350,8 @@ func player_feet() -> Vector3:
 
 
 func player_target() -> Vector3:
+	if player and player.is_prone():
+		return player_feet() + Vector3(0.0, GunData.TARGET_CROUCH_Y, 0.0)   # lying after a dive
 	if cover_ctl and cover_ctl.player:
 		return cover_ctl.target_point()
 	return player_feet() + Vector3(0.0, GunData.TARGET_STAND_Y, 0.0)
@@ -570,7 +587,11 @@ func _prune_slots() -> void:
 func _on_ko(e: Node3D) -> void:
 	ko_total += 1
 	holders.erase(e)
+	if bullet_time:
+		bullet_time.on_ko()
 	if state == "running" and wave == waves.size() - 1 and _others_defeated(e):
+		if bullet_time:
+			bullet_time.end_dive()                     # the orbit takes the time scale from a running dive
 		Impact.slowmo_orbit(self, e, Impact.ORBIT_S)   # Q2: the last enemy's knockout in slow motion
 	enemy_ko.emit(e)
 
@@ -612,6 +633,8 @@ func _physics_process(delta: float) -> void:
 
 func _on_lost() -> void:
 	state = "lost"
+	if bullet_time:
+		bullet_time.stop()
 	for e: Variant in enemies:
 		if is_instance_valid(e):
 			(e as Object).call("stand_down")
@@ -678,6 +701,8 @@ func _engage(on: bool) -> void:
 				_heat_cut = wanted
 		hud.visible = true
 		cover_ctl.enabled = true
+		if bullet_time:
+			bullet_time.engage(true)
 	else:
 		if combat and is_instance_valid(combat):
 			combat.fight_active = false
@@ -697,6 +722,8 @@ func _engage(on: bool) -> void:
 			if _heat_cut != null and is_instance_valid(_heat_cut) and not weapons.mayhem.is_connected(Callable(_heat_cut, "add_heat")):
 				weapons.mayhem.connect(Callable(_heat_cut, "add_heat"))
 		_heat_cut = null
+		if bullet_time and is_instance_valid(bullet_time):
+			bullet_time.engage(false)
 		if hud:
 			hud.visible = false
 		if cover_ctl:

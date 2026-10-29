@@ -180,7 +180,7 @@ static func pose(pose_name: String, u: float) -> Dictionary:
 	match pose_name:
 		"stunned":
 			return CineMoves.code_pose("stunned", u)
-		"cover_crouch", "aim", "drive", "name_speech", "crouch_aim":
+		"cover_crouch", "aim", "drive", "name_speech", "crouch_aim", "dive", "prone":
 			if not _pose_cache.has(pose_name):
 				_pose_cache[pose_name] = _static_pose(pose_name)
 			return _pose_cache[pose_name]
@@ -208,6 +208,18 @@ static func _static_pose(pose_name: String) -> Dictionary:
 		"drive":                 # seated, both hands on the steering wheel (legs from the "sit" clip)
 			return {"shoulder_l": Vector3(0.95, 0.0, -0.12), "elbow_l": Vector3(0.7, 0.0, 0.0),
 				"shoulder_r": Vector3(0.95, 0.0, 0.12), "elbow_r": Vector3(0.7, 0.0, 0.0), "torso": Vector3(0.1, 0.0, 0.0)}
+		"dive":                  # bullet time: flying flat, both arms out with the pistol, head up, legs together
+			return {"shoulder_r": Vector3(1.9, 0.0, 0.08), "elbow_r": Vector3(0.1, 0.0, 0.0),
+				"shoulder_l": Vector3(1.75, 0.0, -0.45), "elbow_l": Vector3(0.45, 0.0, 0.0),
+				"thigh_l": Vector3(-0.12, 0.0, 0.08), "knee_l": Vector3(-0.35, 0.0, 0.0),
+				"thigh_r": Vector3(-0.05, 0.0, -0.08), "knee_r": Vector3(-0.2, 0.0, 0.0),
+				"torso": Vector3(-0.1, 0.0, 0.0), "head": Vector3(-0.55, 0.0, 0.0)}
+		"prone":                 # lying on the belly after the dive, the pistol aimed ahead
+			return {"shoulder_r": Vector3(2.6, 0.0, 0.1), "elbow_r": Vector3(0.15, 0.0, 0.0),
+				"shoulder_l": Vector3(2.45, 0.0, -0.35), "elbow_l": Vector3(0.5, 0.0, 0.0),
+				"thigh_l": Vector3(-0.05, 0.0, 0.12), "knee_l": Vector3(-0.15, 0.0, 0.0),
+				"thigh_r": Vector3(-0.05, 0.0, -0.12), "knee_r": Vector3(-0.1, 0.0, 0.0),
+				"torso": Vector3(-0.15, 0.0, 0.0), "head": Vector3(-0.85, 0.0, 0.0)}
 		"name_speech":           # standing up on the seat, arms wide: presenting himself
 			return {"shoulder_l": Vector3(0.45, 0.0, 1.15), "elbow_l": Vector3(0.3, 0.0, 0.0),
 				"shoulder_r": Vector3(0.45, 0.0, -1.15), "elbow_r": Vector3(0.3, 0.0, 0.0),
