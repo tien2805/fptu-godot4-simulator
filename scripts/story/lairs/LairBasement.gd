@@ -73,6 +73,12 @@ const WAVE2: Array[Vector3] = [Vector3(-10.5, 0.0, 24.0), Vector3(10.5, 0.0, 24.
 ## W3 T3: wave 2 through the side door (the last spot is the pallet-shield guard), wave 3 from both ends (Thường).
 const WAVE_DOOR: Array[Vector3] = [Vector3(11.0, 0.0, 18.5), Vector3(10.6, 0.0, 17.7), Vector3(10.6, 0.0, 19.3), Vector3(9.8, 0.0, 18.5)]
 const WAVE_ENDS: Array[Vector3] = [Vector3(-9.5, 0.0, 30.5), Vector3(2.5, 0.0, 33.0), Vector3(11.0, 0.0, 18.5), Vector3(10.6, 0.0, 19.3)]
+## W3 T4 (the burning countdown): where the breach guards come in (the hall in front of the room's mouth), the cut target,
+## two low crates the player can fight from (built by MissionHack for the breaches only), the smoke spots.
+const BREACH: Array[Vector3] = [Vector3(-1.5, 0.0, 7.6), Vector3(1.5, 0.0, 7.6), Vector3(0.0, 0.0, 9.6)]
+const BREACH_DOOR := Vector3(0.0, 1.2, 5.2)
+const HACK_COVER: Array = [[Vector3(2.4, 0.0, 0.9), Vector3(1.6, 1.1, 0.8)], [Vector3(-1.8, 0.0, 1.7), Vector3(1.2, 1.1, 1.2)]]
+const SMOKE_PTS: Array[Vector3] = [Vector3(-3.6, 0.0, -2.4), Vector3(2.8, 0.0, -3.7)]
 const AMMO: Array[Vector3] = [Vector3(-10.5, 0.0, 12.0), Vector3(10.5, 0.0, 14.0), Vector3(0.0, 0.0, 8.5)]
 const DUEL_BOSS := Vector3(0.0, 0.0, -1.6)
 const DUEL_PLAYER := Vector3(0.0, 0.0, 3.6)
@@ -686,6 +692,23 @@ func mission_points(task: String) -> Dictionary:
 		"hack":
 			d["spot"] = world(TERMINAL_SPOT)
 			d["spot_yaw"] = 0.0
+			var br: Array = []
+			for q6: Vector3 in BREACH:
+				br.append(world(q6))
+			d["breach"] = br
+			d["breach_door"] = world(BREACH_DOOR)
+			var hc: Array = []
+			for c2: Array in HACK_COVER:
+				hc.append([world(c2[0]), c2[1]])
+			d["cover"] = hc
+			var fp: Array = []
+			for f2: Array in FIRES:
+				fp.append(world(f2[0]))
+			d["fires"] = fp
+			var sp: Array = []
+			for q7: Vector3 in SMOKE_PTS:
+				sp.append(world(q7))
+			d["smoke"] = sp
 		"duel":
 			d["start"] = world(DUEL_PLAYER)
 			d["start_yaw"] = 0.0

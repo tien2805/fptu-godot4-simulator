@@ -7,6 +7,8 @@
 # ("RÒ RỈ"): the combo resets, MAX_LEAKS leaks = `lost`. A typo resets the combo. Backspace deletes, Esc clears.
 # Plain text only (no emoji). Runs on _process (real time) unless `manual` (tests: step(dt)); type_text(s) types for tests.
 # The player's controls are off while it is open (MissionHack); it reads key events and consumes them.
+# W3 D5W-1 (plan 2026-10-30-w3-day5.md T4): `paused` (a guard breach): the terminal hides, nothing falls or leaks and no
+# key is read; false shows it again exactly as it was (no decay). start() / reset() clear it.
 class_name StoryHack
 extends CanvasLayer
 
@@ -34,6 +36,12 @@ const INK := Color("#D8FFE4")
 
 var manual: bool = false
 var active: bool = false
+## A breach took the player away: hidden, frozen, deaf (no decay); false = back as it was.
+var paused: bool = false:
+	set(v):
+		paused = v
+		visible = active and not v
+		_last_us = Time.get_ticks_usec()
 var hp: float = MAX_HP
 var leaks: int = 0
 var combo: int = 0
@@ -94,6 +102,7 @@ func reset() -> void:
 	spawn_t = 0.8
 	t = 0.0
 	active = true
+	paused = false
 	_log("Đang kết nối tới Lọ Thần 9.0...")
 	_refresh()
 
@@ -116,7 +125,7 @@ func mult() -> int:
 
 # ---------------------------------------------------------------------------
 func _process(_d: float) -> void:
-	if manual or not active:
+	if manual or not active or paused:
 		return
 	var now: int = Time.get_ticks_usec()
 	step(minf(float(now - _last_us) / 1e6, 0.1))
@@ -124,7 +133,7 @@ func _process(_d: float) -> void:
 
 
 func step(dt: float) -> void:
-	if not active:
+	if not active or paused:
 		return
 	t += dt
 	if final_bullet.is_empty():
@@ -170,6 +179,8 @@ func _alive(b: Dictionary) -> bool:
 
 ## Types one character (lower case). Returns "lock" | "kill" | "typo" | "won".
 func type_char(ch: String) -> String:
+	if paused:
+		return "paused"
 	if not active:
 		return "none"
 	var cand: String = typed + ch.to_lower()
@@ -248,7 +259,7 @@ func _leak(b: Dictionary) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not active or not visible or not (event is InputEventKey):
+	if not active or paused or not visible or not (event is InputEventKey):
 		return
 	var k: InputEventKey = event
 	if not k.pressed:
