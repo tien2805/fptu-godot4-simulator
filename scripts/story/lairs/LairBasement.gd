@@ -19,10 +19,21 @@
 # `power_row(i)` per row for the clunk), the red emergency lights drop to a dim glow and the red floor strips, the rack
 # LEDs and the four hall monitors (MONITORS) stay lit; set_power(true) is instant. flicker_face(secs, k) shows Za Mẩn's
 # code-drawn face on the hall monitors, flickering, at strength k (dimmer with "Giảm hù dọa": the mission passes k).
+# T3 (the rack domino): every hall rack row is built of RACK_SEG segments, each on a pivot at its aisle-side base edge
+# (mesh, LEDs and collider ride it). The segment at the room end of each row carries a red "KHÔNG ĐƯỢC ĐỤNG" label and a
+# shootable DominoTarget (a soft target of the weapons through StoryBasement.extra_targets): a bullet / pellet on it tips
+# the row onto its aisle (RACK_TIP), segment after segment DOMINO_STEP_S apart, each falling in DOMINO_FALL_S (game time,
+# so the mission's slow motion slows it); a fallen segment lies 2.2 m into the aisle, 1.0 m high (low cover).
+# reset_racks(keep) stands the rows up again (retry), row_footprint(i, margin) is the fall's floor rectangle (local x, z).
+# The side door (SIDE_DOOR, right wall at the cross aisle) is kicked open by kick_door() (wave 2), shut by reset_door().
 class_name LairBasement
 extends Node3D
 
 signal power_row(row: int)
+## T3 rack domino: a labelled rack was shot (the row starts to tip), a segment landed in the aisle, the whole row is down.
+signal domino_shot(row: int)
+signal rack_landed(row: int, seg: int)
+signal row_fallen(row: int)
 
 const ROOM_W: float = 13.0
 const ROOM_D: float = 9.3
@@ -59,6 +70,9 @@ const PATROLS: Array = [
 const FIGHT_START := Vector3(0.0, 0.0, 2.8)
 const WAVE1: Array[Vector3] = [Vector3(-9.5, 0.0, 30.5), Vector3(9.5, 0.0, 30.5), Vector3(-2.5, 0.0, 33.0), Vector3(2.5, 0.0, 33.0)]
 const WAVE2: Array[Vector3] = [Vector3(-10.5, 0.0, 24.0), Vector3(10.5, 0.0, 24.0), Vector3(0.0, 0.0, 31.5), Vector3(-6.0, 0.0, 32.0)]
+## W3 T3: wave 2 through the side door (the last spot is the pallet-shield guard), wave 3 from both ends (Thường).
+const WAVE_DOOR: Array[Vector3] = [Vector3(11.0, 0.0, 18.5), Vector3(10.6, 0.0, 17.7), Vector3(10.6, 0.0, 19.3), Vector3(9.8, 0.0, 18.5)]
+const WAVE_ENDS: Array[Vector3] = [Vector3(-9.5, 0.0, 30.5), Vector3(2.5, 0.0, 33.0), Vector3(11.0, 0.0, 18.5), Vector3(10.6, 0.0, 19.3)]
 const AMMO: Array[Vector3] = [Vector3(-10.5, 0.0, 12.0), Vector3(10.5, 0.0, 14.0), Vector3(0.0, 0.0, 8.5)]
 const DUEL_BOSS := Vector3(0.0, 0.0, -1.6)
 const DUEL_PLAYER := Vector3(0.0, 0.0, 3.6)
@@ -69,6 +83,17 @@ const POWER_ROW_S: float = 0.14
 const RED_ON: float = 1.3
 const RED_DARK: float = 0.55
 const COLD_ON: float = 0.55
+## T3: rack segments, the side each row tips toward (+x / -x: onto its aisle), the domino timing (game seconds).
+const RACK_SEG: float = 1.25
+const RACK_TIP: Array[float] = [1.0, 1.0, -1.0, 1.0, -1.0, -1.0]
+const RACK_H: float = 2.2
+const RACK_D: float = 1.0
+const DOMINO_STEP_S: float = 0.12
+const DOMINO_FALL_S: float = 0.55
+const T_LABEL: String = "KHÔNG ĐƯỢC ĐỤNG"
+## The side door: the right wall at the cross aisle (local), its opening width.
+const SIDE_DOOR := Vector3(HALL_HALF_W, 0.0, 18.5)
+const SIDE_DOOR_W: float = 1.6
 ## Hall monitors on the low cabinets: [local position (screen centre), yaw].
 const MONITORS: Array = [[Vector3(-4.0, 1.42, 7.0), 0.0], [Vector3(4.0, 1.42, 7.0), 0.0], [Vector3(-10.5, 1.32, 15.0), -PI * 0.5],
 	[Vector3(10.0, 1.32, 22.0), PI * 0.5]]
@@ -115,6 +140,30 @@ var _lamp_off: StandardMaterial3D
 var _row_t: float = -1.0
 var _face_t: float = 0.0
 var _face_acc: float = 0.0
+## T3: per row {"x", "z0", "z1", "dir", "segs" (pivots), "target" (DominoTarget), "t" (-1 = standing, else the fall clock),
+## "landed" (segments down), "fallen"}.
+var racks: Array[Dictionary] = []
+var door: Node3D
+var door_open: bool = false
+var _door_t: float = -1.0
+
+
+## The shootable label of a rack row: a soft target of the weapons (WeaponDirector.first_hit's capsule round its
+## position); a bullet or a pellet tips the row.
+class DominoTarget:
+	extends Node3D
+	var lair: LairBasement
+	var row: int = 0
+
+	func take_hit(info: Dictionary) -> String:
+		var kind: String = String(info.get("kind", ""))
+		if not (kind in ["bullet", "pellet", "blast"]) or is_down():
+			return "none"
+		lair.tip_row(row)
+		return "stumble"
+
+	func is_down() -> bool:
+		return lair == null or float(lair.racks[row]["t"]) >= 0.0
 
 
 func _init() -> void:
@@ -275,8 +324,17 @@ func flicker_face(secs: float, k: float = 1.0) -> void:
 		face_mat.set_shader_parameter("face", face_k if secs > 0.0 else 0.0)
 
 
-## Fires flicker at 20 Hz while lit, the power cut steps its rows, the face flickers (StoryBasement calls it every frame).
+## Fires flicker at 20 Hz while lit, the power cut steps its rows, the face flickers, rows tip, the door swings
+## (StoryBasement calls it every frame).
 func tick(delta: float) -> void:
+	for i: int in racks.size():
+		if float(racks[i]["t"]) >= 0.0 and not bool(racks[i]["fallen"]):
+			_tick_row(i, delta)
+	if _door_t >= 0.0 and door:
+		_door_t = minf(_door_t + delta, 0.25)
+		door.rotation.y = lerpf(0.0, deg_to_rad(-105.0), ease(_door_t / 0.25, 0.4))
+		if _door_t >= 0.25:
+			_door_t = -1.0
 	if _row_t >= 0.0:
 		_row_t += delta
 		if _row_t >= POWER_ROW_S:
@@ -342,17 +400,61 @@ func _hall() -> void:
 	var cab: StandardMaterial3D = CineFX._mat(Color("#16171B"), 0.4)
 	var leds: Array[StandardMaterial3D] = [CineFX._glow_mat(Color("#3BFF7A"), 2.5), CineFX._glow_mat(Color("#3BA7FF"), 2.5),
 		CineFX._glow_mat(Color("#FFB23B"), 2.5)]
+	var red: StandardMaterial3D = CineFX._glow_mat(Color("#FF2A2A"), 2.4)
 	for i: int in RACK_ROWS.size():
 		var row: Array = RACK_ROWS[i]
 		var x: float = float(row[0])
 		var z0: float = float(row[1])
 		var z1: float = float(row[2])
 		var len_z: float = z1 - z0
-		CineFX._box(self, "RackRow", Vector3(1.0, 2.2, len_z), Vector3(x, 1.1, (z0 + z1) * 0.5), cab)
-		for sx3: float in [-1.0, 1.0]:
-			for k2: int in 4:
-				CineFX._box(self, "Leds", Vector3(0.02, 0.05, len_z - 0.6), Vector3(x + sx3 * 0.51, 0.6 + 0.4 * k2, (z0 + z1) * 0.5), leds[(i + k2) % 3])
-		_solid(Vector3(1.0, 2.2, len_z), Vector3(x, 1.1, (z0 + z1) * 0.5))
+		var n: int = maxi(1, roundi(len_z / RACK_SEG))
+		var sl: float = len_z / float(n)
+		var dir: float = RACK_TIP[i]
+		var segs: Array = []
+		for k: int in n:
+			var piv := Node3D.new()
+			piv.name = "RackSeg"
+			piv.position = Vector3(x + dir * RACK_D * 0.5, 0.0, z0 + sl * (k + 0.5))
+			add_child(piv)
+			var c := Vector3(-dir * RACK_D * 0.5, RACK_H * 0.5, 0.0)
+			CineFX._box(piv, "Rack", Vector3(RACK_D, RACK_H, sl - 0.02), c, cab)
+			for sx3: float in [-1.0, 1.0]:
+				for k2: int in 2:
+					CineFX._box(piv, "Leds", Vector3(0.02, 0.05, sl - 0.3), c + Vector3(sx3 * 0.51, -0.3 + 0.6 * k2, 0.0), leds[(i + k + k2) % 3])
+			var body := StaticBody3D.new()
+			body.name = "Solid"
+			piv.add_child(body)
+			var cs := CollisionShape3D.new()
+			var bs := BoxShape3D.new()
+			bs.size = Vector3(RACK_D, RACK_H, sl)
+			cs.shape = bs
+			cs.position = c
+			body.add_child(cs)
+			segs.append(piv)
+		# the label on the room-end segment: a red band on the end face and the aisle face, the text, the target
+		var first: Node3D = segs[0]
+		var c0 := Vector3(-dir * RACK_D * 0.5, 0.0, 0.0)
+		CineFX._box(first, "LabelBand", Vector3(RACK_D + 0.02, 0.22, 0.02), c0 + Vector3(0.0, 1.45, -sl * 0.5 - 0.01), red)
+		CineFX._box(first, "LabelBand", Vector3(0.02, 0.22, sl - 0.1), Vector3(0.01 * dir, 1.45, 0.0), red)
+		var lbl := Label3D.new()
+		lbl.name = "Label"
+		lbl.text = T_LABEL
+		lbl.font_size = 40
+		lbl.pixel_size = 0.0035
+		lbl.modulate = Color("#FFF2F2")
+		lbl.outline_modulate = Color(0.45, 0.0, 0.02)
+		lbl.outline_size = 10
+		lbl.position = c0 + Vector3(0.0, 1.72, -sl * 0.5 - 0.03)
+		lbl.rotation.y = PI
+		first.add_child(lbl)
+		var tg := DominoTarget.new()
+		tg.name = "DominoTarget"
+		tg.lair = self
+		tg.row = i
+		add_child(tg)
+		tg.position = Vector3(x, 0.15, z0 - 0.15)
+		racks.append({"x": x, "z0": z0, "z1": z1, "dir": dir, "segs": segs, "target": tg, "t": -1.0, "landed": 0, "fallen": false})
+	_build_door()
 	# low cover
 	var steel: StandardMaterial3D = CineFX._mat(Color("#5B636D"), 0.45)
 	for c: Array in COVER:
@@ -443,6 +545,105 @@ func _solid(size: Vector3, at: Vector3) -> void:
 	body.add_child(cs)
 
 
+# ---------------------------------------------------------------------------
+# T3: the rack domino and the side door
+# ---------------------------------------------------------------------------
+## Starts the domino of row i (false: already down or tipping).
+func tip_row(i: int) -> bool:
+	if i < 0 or i >= racks.size() or float(racks[i]["t"]) >= 0.0:
+		return false
+	racks[i]["t"] = 0.0
+	racks[i]["landed"] = 0
+	domino_shot.emit(i)
+	return true
+
+
+func _tick_row(i: int, delta: float) -> void:
+	var r: Dictionary = racks[i]
+	var t: float = float(r["t"]) + delta
+	r["t"] = t
+	var segs: Array = r["segs"]
+	var dir: float = float(r["dir"])
+	for k: int in segs.size():
+		var u: float = clampf((t - DOMINO_STEP_S * k) / DOMINO_FALL_S, 0.0, 1.0)
+		(segs[k] as Node3D).rotation.z = -dir * PI * 0.5 * u * u
+		if u >= 1.0 and k >= int(r["landed"]):
+			r["landed"] = k + 1
+			rack_landed.emit(i, k)
+	if int(r["landed"]) >= segs.size():
+		r["fallen"] = true
+		row_fallen.emit(i)
+
+
+## Every row standing again except the rows in keep (left lying), instantly (a retry).
+func reset_racks(keep: Array = []) -> void:
+	for i: int in racks.size():
+		var r: Dictionary = racks[i]
+		var down: bool = i in keep
+		r["t"] = DOMINO_FALL_S + DOMINO_STEP_S * (r["segs"] as Array).size() if down else -1.0
+		r["fallen"] = down
+		r["landed"] = (r["segs"] as Array).size() if down else 0
+		for sg: Variant in r["segs"]:
+			(sg as Node3D).rotation.z = -float(r["dir"]) * PI * 0.5 if down else 0.0
+
+
+## Rows lying in the aisle now.
+func fallen_rows() -> Array:
+	var out: Array = []
+	for i: int in racks.size():
+		if bool(racks[i]["fallen"]):
+			out.append(i)
+	return out
+
+
+## The floor rectangle (local x, z) a fallen row covers, grown by margin.
+func row_footprint(i: int, margin: float = 0.0) -> Rect2:
+	var r: Dictionary = racks[i]
+	var x0: float = float(r["x"]) + float(r["dir"]) * RACK_D * 0.5
+	var x1: float = x0 + float(r["dir"]) * RACK_H
+	return Rect2(minf(x0, x1) - margin, float(r["z0"]) - margin, absf(x1 - x0) + margin * 2.0, float(r["z1"]) - float(r["z0"]) + margin * 2.0)
+
+
+## Transform (world) and size of a fallen segment as a low cover box (CoverMap.add_box).
+func seg_cover(i: int, k: int) -> Array:
+	var r: Dictionary = racks[i]
+	var segs: Array = r["segs"]
+	var sl: float = (float(r["z1"]) - float(r["z0"])) / float(segs.size())
+	var piv: Node3D = segs[k]
+	var c: Vector3 = piv.position + Vector3(float(r["dir"]) * RACK_H * 0.5, RACK_D * 0.5, 0.0)   # the box centre
+	return [global_transform * Transform3D(Basis(), c), Vector3(RACK_H, RACK_D, sl)]
+
+
+func _build_door() -> void:
+	var frame_mat: StandardMaterial3D = CineFX._mat(Color("#2A2E33"), 0.6)
+	var x: float = SIDE_DOOR.x
+	CineFX._box(self, "DoorFrame", Vector3(0.08, 2.3, 0.1), Vector3(x - 0.05, 1.15, SIDE_DOOR.z - SIDE_DOOR_W * 0.5 - 0.05), frame_mat)
+	CineFX._box(self, "DoorFrame", Vector3(0.08, 2.3, 0.1), Vector3(x - 0.05, 1.15, SIDE_DOOR.z + SIDE_DOOR_W * 0.5 + 0.05), frame_mat)
+	CineFX._box(self, "DoorFrame", Vector3(0.08, 0.1, SIDE_DOOR_W + 0.2), Vector3(x - 0.05, 2.33, SIDE_DOOR.z), frame_mat)
+	CineFX._box(self, "DoorDark", Vector3(0.02, 2.25, SIDE_DOOR_W), Vector3(x - 0.01, 1.125, SIDE_DOOR.z), CineFX._mat(Color("#050507"), 1.0))
+	door = Node3D.new()
+	door.name = "SideDoor"
+	door.position = Vector3(x - 0.08, 0.0, SIDE_DOOR.z - SIDE_DOOR_W * 0.5)   # hinge
+	add_child(door)
+	CineFX._box(door, "Panel", Vector3(0.06, 2.2, SIDE_DOOR_W - 0.04), Vector3(0.0, 1.1, SIDE_DOOR_W * 0.5), CineFX._mat(Color("#6B4A33"), 0.7))
+	CineFX._box(door, "Sign", Vector3(0.02, 0.18, 0.5), Vector3(-0.04, 1.7, SIDE_DOOR_W * 0.5), CineFX._glow_mat(Color("#29C46A"), 1.6))
+
+
+## The side door bursts open (wave 2 kicks it).
+func kick_door() -> void:
+	if door_open:
+		return
+	door_open = true
+	_door_t = 0.0
+
+
+func reset_door() -> void:
+	door_open = false
+	_door_t = -1.0
+	if door:
+		door.rotation.y = 0.0
+
+
 ## World-space spots of a basement task (MissionLairFight / MissionHack / MissionDuel opts "points").
 func mission_points(task: String) -> Dictionary:
 	var d: Dictionary = {"centre": world(Vector3(0.0, 0.0, 15.0)), "leash": 60.0}
@@ -469,6 +670,15 @@ func mission_points(task: String) -> Dictionary:
 			for q2: Vector3 in WAVE2:
 				w2.append(world(q2))
 			d["waves"] = [w1, w2]
+			var wd: Array = []
+			for q4: Vector3 in WAVE_DOOR:
+				wd.append(world(q4))
+			var we: Array = []
+			for q5: Vector3 in WAVE_ENDS:
+				we.append(world(q5))
+			d["wave_door"] = wd
+			d["wave_ends"] = we
+			d["door"] = world(SIDE_DOOR + Vector3(-0.6, 0.0, 0.0))
 			var am: Array = []
 			for q3: Vector3 in AMMO:
 				am.append(world(q3))

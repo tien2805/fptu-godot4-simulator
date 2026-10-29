@@ -227,13 +227,54 @@ func _process(_d: float) -> bool:
 				return false
 			_check(bs.level.wall.state == "error" and bs.level.wall.get_parent().visible, "the wall frozen on Lọ Thần đã gặp sự cố")
 			_check(LookPresets.active(bs) == "server_red" and bs.looks.is_empty(), "the stealth's look restored when it ended")
-			var mg: MissionGunfight = m
-			_check(mg.fight.waves.size() == 2 and mg.fight.alive().size() == 4, "the basement gunfight: 2 waves of 4")
+			var mg: MissionBasementGunfight = m
+			_check(mg.fight.waves.size() == 3 and mg.fight.alive().size() == 4, "the basement gunfight on Thường: 3 waves, 4 down the stairs")
+			Difficulty.set_easy(true)
+			var easy_sizes: Array = Difficulty.pick([4, 4, 4], [3, 3])
+			Difficulty.set_easy(false)
+			_check(easy_sizes.size() == 2 and mg.wave_sizes.size() == 3, "Dễ: 2 waves (the mission reads Difficulty.pick)")
+			_check(mg.cuts == 1 and mg.beats.has("stairs"), "wave 1: a preview cut down the stairs")
+			_check(bs.extra_targets.size() == LairBasement.RACK_ROWS.size(), "one labelled rack per row, shootable")
+			# the domino: row 0 (x -7, tips +x into the left aisle); one guard under it, one beside it
+			var tg: Node3D = bs.level.racks[0]["target"]
+			var o: Vector3 = bs.player.global_position + Vector3(0.0, 1.5, 0.0)
+			var h: Dictionary = bs.weapons.first_hit(o, (tg.global_position + Vector3(0.0, 0.9, 0.0) - o).normalized(), 60.0)
+			_check(String(h["kind"]) == "soft" and h.get("node") == tg, "a bullet at the label hits it (soft target)")
+			mark["cover0"] = mg.fight.cover.count()
+			mark["under"] = mg.fight.alive()[0]
+			mark["beside"] = mg.fight.alive()[1]
+			bs.weapons.hit_target(tg, {"kind": "bullet", "from": bs.player.global_position})
+			_check(float(bs.level.racks[0]["t"]) >= 0.0 and mg.dominoes == 1 and mg.beats.has("domino"), "shooting the label tips the row")
+			_next(71)
+		71:
+			var gu: Gunman = mark["under"]
+			var gb: Gunman = mark["beside"]
+			if RadialWheel.scale_owner is Impact and Engine.time_scale < 0.5:
+				mark["slow"] = true
+			if not bool(bs.level.racks[0]["fallen"]):
+				gu.global_position = bs.level.world(Vector3(-5.5, 0.0, 14.0))
+				gb.global_position = bs.level.world(Vector3(-3.0, 0.0, 14.0))
+				if frames > 600:
+					_check(false, "the row did not fall")
+					phase = 999
+				return false
+			var mg71: MissionBasementGunfight = m
+			_check(gu.is_defeated() and not gb.is_defeated() and mg71.domino_kos == 1, "the domino knocks out only the guard under the racks")
+			_check(mark.has("slow"), "the fall in slow motion (Impact clock, after the preview cut)")
+			_check(mg71.cover_rows.has(0) and mg71.fight.cover.count() > int(mark["cover0"]), "the fallen racks are new low cover slots")
+			_next(72)
+		72:
+			if frames < 90:
+				return false
+			_check(RadialWheel.scale_owner == null and is_equal_approx(Engine.time_scale, 1.0), "the slow motion handed the time scale back")
 			_next(8)
 		8:
 			var mg8: MissionGunfight = m as MissionGunfight if is_instance_valid(m) else null
 			if mg8 and mg8.fight and mg8.fight.state == "running":
 				_ko_all(mg8.fight)
+			if mg8 and mg8 is MissionBasementGunfight:
+				mark["gf_cuts"] = (mg8 as MissionBasementGunfight).cuts
+				mark["gf_beats"] = (mg8 as MissionBasementGunfight).beats.duplicate()
 			if mg8 and _step_replay(mg8):
 				mark["gf"] = true
 			if String(sd.get("step")) != "d5_hack":
@@ -242,6 +283,8 @@ func _process(_d: float) -> bool:
 					phase = 999
 				return false
 			_check(mark.has("gf"), "the seg_d5_gunfight replay")
+			_check(mark.has("gf_cuts") and int(mark["gf_cuts"]) == 3, "a preview cut per wave (stairs, door, labelled rack): %s" % str(mark.get("gf_cuts", -1)))
+			_check(mark.has("gf_beats") and (mark["gf_beats"] as Array).has("door") and (mark["gf_beats"] as Array).has("both_ends") and (mark["gf_beats"] as Array).has("taunt") and bs.level.door_open, "the side door kicked open, both ends, Za Mẫn's taunts")
 			DirAccess.copy_absolute(ProjectSettings.globalize_path(TMP), ProjectSettings.globalize_path(SNAP))
 			_next(9)
 		9:

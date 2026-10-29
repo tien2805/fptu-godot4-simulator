@@ -73,6 +73,8 @@ var _hint_t: float = 0.0
 var _cine_saved: Dictionary = {}
 ## Looks a task pushed over the base "server_red" (look / unlook; all popped when the task ends).
 var looks: Array[String] = []
+## Soft targets of the weapons besides the fight's enemies (T3: the labelled racks; the gunfight sets and clears them).
+var extra_targets: Array = []
 
 
 func _ready() -> void:
@@ -160,8 +162,9 @@ func _build_player() -> void:
 	combat.setup({"player": player, "weapons": weapons, "targets_fn": _no_targets, "blocked_fn": weapons_blocked})
 
 
+## The level's own shootables a task registers (T3: the rack labels), else none.
 func _no_targets() -> Array:
-	return []
+	return extra_targets
 
 
 ## Weapons off during a cinematic / replay, with the player hidden, and outside the armed tasks' fights.
@@ -372,6 +375,7 @@ func _free_mission() -> void:
 			mission_node.queue_free()
 	mission_node = null
 	mission_beat = {}
+	extra_targets = []
 	clear_looks()
 	_music("")
 
