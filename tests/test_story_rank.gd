@@ -128,9 +128,10 @@ func _part_a() -> void:
 		"A: d3_sneak spotted costs the optional 20 (S -> A)")
 	_check(StoryRank.report("d4_canteen", {"time": 35.0, "fails": 0}, {"wrong": 0}) == "S"
 		and StoryRank.report("d4_canteen", {"time": 35.0, "fails": 0}, {"wrong": 2}) == "A", "A: d4_canteen wrong <= 0 (max)")
-	# ko and opt share the extra 20: d3_gunfight ko [6, 10]
-	var e6: Dictionary = StoryRank.evaluate("d3_gunfight", {"time": 100.0, "dmg": 30.0, "fails": 0, "ko": 8})
-	_check(absf(float(e6["score"]) - 100.0 * (30.0 + 25.0 + 25.0 + 20.0 * 0.5) / 100.0) < 0.01, "A: ko halfway between 6 and 10 -> 90 (%.1f)" % float(e6["score"]))
+	# ko scores linearly between its ends and takes the extra 20 alone (no optional objective): d2_drift ko [2, 8]
+	# (wave3: d3_gunfight's ko criterion became the crane objective)
+	var e6: Dictionary = StoryRank.evaluate("d2_drift", {"time": 70.0, "fails": 0, "ko": 5})
+	_check(absf(float(e6["score"]) - 100.0 * (30.0 + 25.0 + 20.0 * 0.5) / 75.0) < 0.01, "A: ko halfway between 2 and 8 -> 86.7 (%.1f)" % float(e6["score"]))
 	# better / best_of
 	_check(StoryRank.better("S", "A") and StoryRank.better("B", "C") and StoryRank.better("C", "") and not StoryRank.better("A", "A")
 		and not StoryRank.better("", "C") and not StoryRank.better("B", "A"), "A: better() orders S > A > B > C > none")
