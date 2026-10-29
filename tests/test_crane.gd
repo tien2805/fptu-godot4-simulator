@@ -162,7 +162,7 @@ func _process(_d: float) -> bool:
 			c2.enter(p)
 			for k: int in 80:
 				c2.step(DT)
-			_check(c2.in_cabin() and is_equal_approx(g_out.accuracy_k, acc0 * 0.6), "Dễ: the gunmen aim x0.6 at the cabin")
+			_check(c2.in_cabin() and is_equal_approx(g_out.accuracy_k, acc0 * 0.55), "Dễ: the gunmen aim x0.55 at the cabin (Thường x0.75, T9)")
 			c2.leave()
 			_check(is_equal_approx(g_out.accuracy_k, acc0), "Dễ: their aim back after the cabin")
 			Difficulty.set_easy(false)

@@ -32,6 +32,8 @@ const RED := Color(1.0, 0.18, 0.12, 0.24)
 const T_FLOOD: String = "Đèn pha quét bãi! Tránh vùng sáng, núp sau container"
 const T_WOKE: String = "Ông ngủ gật dậy rồi!"
 const T_FLOOD_SEEN: String = "Đèn pha rọi trúng! Bị lộ!"
+const T_MORE: String = "Thêm bảo vệ chạy tới!"
+const NEAR_ALERT_M: float = 16.0
 ## Events: [id, clock s, proximity point key ("" none), proximity m].
 const EVENTS: Array = [["flood", PREVIEW_AT, "", 0.0], ["pair", 15.0, "", 0.0], ["sleeper", 30.0, "sleeper", 9.0],
 	["phone", 45.0, "phone", 12.0], ["forklift", 60.0, "forklift", 10.0]]
@@ -57,12 +59,23 @@ var _zzz: Label3D = null
 var _haha: Label3D = null
 var _keys: MeshInstance3D = null
 var _beam_root: Node3D = null
+## T9: the far guards still to come after a spot (nearest first), one every reinforce_s.
+var reinforcements: Array = []
+var markers: OffscreenMarkers = null
+var reinforce_s: float = 5.0
+var _reinforce_t: float = 0.0
+
+
+func _init() -> void:
+	armed = true
+	keep_top = true          # T10: the objective line ("Đi lén...", then "Bị lộ! Còn N bảo vệ") stays on screen
 
 
 func _start() -> void:
 	sweep_s = float(Difficulty.pick(7.0, 9.0))
 	beam_r = float(Difficulty.pick(2.4, 2.0))
 	wake_m = float(Difficulty.pick(6.0, 4.5))
+	reinforce_s = float(Difficulty.pick(4.0, 7.0))
 	var pats: Array = (pts.get("patrols", []) as Array).duplicate(true)
 	pts["patrols"] = []
 	super._start()        # MissionSneak: the player placed, the fight made (an empty wave 0 for now), the radio, the goal
@@ -72,6 +85,12 @@ func _start() -> void:
 	_build_beams()
 	_build_props()
 	_bind_roles()
+	# T10: the goal and (once seen) the guards stay findable: edge arrows off screen, a diamond over the goal
+	markers = OffscreenMarkers.make(hud, player)
+	var goal: Node3D = get_node_or_null("Goal") as Node3D
+	if goal:
+		markers.track(goal, "goal", "Container", 1.4)
+	markers.threat_source = fight.alive
 
 
 ## Wave 0: MissionSneak's patrols (gunmen[0..2]), the pair partner (Thường: patrol 0 again, a step behind), the sleeper
@@ -97,6 +116,15 @@ func _fill_wave(pats: Array) -> void:
 	var pd: Dictionary = guard(i + 1, _lair_world(PHONE_AT), [], {"sight_m": HorrorStalker.SIGHT * 0.5, "fov_deg": FOV_DEG, "alerted": false})
 	pd["yaw"] = _lair_yaw(PHONE_YAW)
 	w.append(pd)
+
+
+## T9: the yard's guards aim a little better on Thường and worse on Dễ (a mission-level knob over the gun core's numbers;
+## LairYard.GUARD_ACC).
+func guard(i: int, at: Vector3, patrol: Array = [], extra: Dictionary = {}) -> Dictionary:
+	var e: Dictionary = extra.duplicate()
+	if not e.has("accuracy"):
+		e["accuracy"] = LairYard.guard_accuracy(true)
+	return super.guard(i, at, patrol, e)
 
 
 func _lair_world(local: Vector3) -> Vector3:
@@ -305,6 +333,7 @@ func _lair_tick(dt: float) -> void:
 		_check_t = CHECK_DT
 		_checks()
 	_sounds(dt)
+	_reinforce_tick(dt)
 	super._lair_tick(dt)
 
 
@@ -395,13 +424,55 @@ func _wake() -> void:
 	sleeper.alert(player.global_position if player else sleeper.global_position)
 
 
-func _on_spotted(g: Node3D) -> void:
+## Seen (a guard or a floodlight): the early fight. T9: the guards within NEAR_ALERT_M are alerted at once (GunFight shares
+## an alert within 14 m anyway); the far ones come as reinforcements, nearest first, one every reinforce_s (a popup and the
+## edge markers say where), so a slip in the far corner is a fight, not six guns at once.
+func _on_spotted(_g: Node3D) -> void:
 	if spotted or state != "running":
 		return
-	_wake()
-	super._on_spotted(g)
+	spotted = true
+	popup(T_SPOTTED, 2.0, WARN)
+	radio("Toang r e, combat mode thôi!", "Bị lộ rồi, đánh đi!", 3.5)
 	for b: Dictionary in beams:
 		_set_beam_color(b, RED)
+	reinforcements.clear()
+	var far: Array = []
+	for e: Variant in fight.alive():
+		if not (e is Gunman):
+			continue
+		var gm: Gunman = e
+		var d: float = flat(gm.global_position, player.global_position) if player else 0.0
+		if d <= NEAR_ALERT_M or gm.is_alerted:
+			_alert_guard(gm)
+		else:
+			far.append([d, gm])
+	far.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+	for f: Array in far:
+		reinforcements.append(f[1])
+	_reinforce_t = reinforce_s
+
+
+func _alert_guard(gm: Gunman) -> void:
+	if gm == sleeper and asleep:
+		_wake()
+	elif not gm.is_alerted:
+		gm.alert(player.global_position if player else gm.global_position)
+
+
+## The queued far guards, one every reinforce_s (already alerted by a neighbour: skipped).
+func _reinforce_tick(dt: float) -> void:
+	if not spotted or reinforcements.is_empty():
+		return
+	_reinforce_t -= dt
+	if _reinforce_t > 0.0:
+		return
+	_reinforce_t = reinforce_s
+	while not reinforcements.is_empty():
+		var gm: Variant = reinforcements.pop_front()
+		if is_instance_valid(gm) and not (gm as Gunman).is_defeated() and not (gm as Gunman).is_alerted:
+			_alert_guard(gm)
+			popup(T_MORE, 1.4, WARN)
+			return
 
 
 func _sounds(dt: float) -> void:
@@ -441,6 +512,7 @@ func _sounds(dt: float) -> void:
 func _reset_state() -> void:
 	super._reset_state()
 	flood_spotted = false
+	reinforcements.clear()
 	_check_t = 0.0
 	_step_t.clear()
 	if not beams.is_empty():

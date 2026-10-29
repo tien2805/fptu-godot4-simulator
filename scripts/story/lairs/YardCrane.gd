@@ -8,8 +8,9 @@
 #   - landing: every gunman inside the footprint is knocked out (take_hit "blast" from above -> his knockout and stars),
 #     Impact finisher (dust ring, sparks, debris, the director punch) and a shake; the container stays as cover
 #     (group "cover" collider, GunFight.cover.add_box + reprune()); signal dropped(pos, kos);
-#   - fairness: the player stands in the open cabin (the gunmen see and shoot him there); on Dễ their accuracy is scaled
-#     by CABIN_ACC while he is up; bullet time is off in the cabin (guarded: the shared stream's GunFight.bullet_time);
+#   - fairness: the player stands in the open cabin (the gunmen see and shoot him there); their accuracy is scaled by
+#     cabin_acc while he is up (0.75 Thường, 0.55 Dễ: the cabin's railings); bullet time is off in the cabin (guarded:
+#     the shared stream's GunFight.bullet_time);
 #   - the cabin camera: its own Camera3D (meta CameraDirector.META_FX: it applies the director's punch / shake offsets), a
 #     high three-quarter view of the hook and the footprint.
 # The owner steps it: step(dt) from its mission tick (tests too); input: _input ([E] / [F]) and WASD polled in step()
@@ -90,7 +91,7 @@ func setup(xf: Transform3D, f: GunFight, drops: int = 3, start_z: float = 5.0, s
 	drops_max = drops
 	_start_z = clampf(start_z, Z_RANGE.x, Z_RANGE.y)
 	_start_x = clampf(start_x, X_RANGE.x, X_RANGE.y)
-	cabin_acc = float(Difficulty.pick(1.0, 0.6))
+	cabin_acc = float(Difficulty.pick(0.75, 0.55))   # T9: the open cabin was a death trap at x1.0 for the sloppy bot
 	_build()
 	reset()
 
@@ -309,7 +310,7 @@ func _bullet_time(on: bool) -> void:
 		(bt as Object).set("enabled", on)
 
 
-## Dễ: the gunmen aim worse at the cabin (accuracy x cabin_acc while the player is up there).
+## The gunmen aim worse at the cabin (accuracy x cabin_acc while the player is up there).
 func _apply_acc(on: bool) -> void:
 	if not on:
 		for g: Variant in _acc_saved.keys():

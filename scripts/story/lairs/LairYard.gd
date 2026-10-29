@@ -338,10 +338,12 @@ const PATROLS: Array = [
 const FIGHT_START := Vector3(-3.0, 0.0, -2.6)          # the hero's spot at the end of cine_d3_mannequins
 const WAVE1: Array[Vector3] = [Vector3(-8.6, 0.0, -5.2), Vector3(2.6, 0.0, -5.2), Vector3(-12.0, 0.0, -6.0), Vector3(7.0, 0.0, -7.5)]
 const WAVE2: Array[Vector3] = [Vector3(-22.0, 0.0, 8.0), Vector3(-22.0, 0.0, 10.5), Vector3(-17.5, 0.0, 15.5), Vector3(-19.0, 0.0, 1.0)]
-## W3 T5 (MissionYardGunfight): wave 1 from the gate (index 2 = the pallet-shield guard), wave 2 on the container roofs and
-## the east lane (the crane wave), wave 3 (Thường) flankers from the east (index 4 = the second shield guard); ammo drops.
+## W3 T5 (MissionYardGunfight): wave 1 from the gate (index 2 = the pallet-shield guard), wave 2 the crane wave: two guards
+## pushing down the middle lane (inside the crane's reach: a drop crushes them) and two on container roofs far from the
+## crane's ladder (T9: a roof guard 6 m from the ladder made the crane a death trap), wave 3 (Thường) flankers from the
+## east (index 4 = the second shield guard); ammo drops.
 const GF_GATE: Array[Vector3] = [Vector3(-22.5, 0.0, 7.0), Vector3(-22.5, 0.0, 10.0), Vector3(-20.5, 0.0, 8.5), Vector3(-19.5, 0.0, 11.5)]
-const GF_ROOFS: Array[Vector3] = [Vector3(-15.0, 2.6, 3.0), Vector3(9.0, 2.6, -11.0), Vector3(-9.0, 2.6, 16.5), Vector3(16.0, 0.0, 12.0)]
+const GF_ROOFS: Array[Vector3] = [Vector3(1.0, 0.0, 12.0), Vector3(9.0, 2.6, -11.0), Vector3(6.5, 0.0, 9.5), Vector3(-9.0, 2.6, 16.5)]
 const GF_FLANK: Array[Vector3] = [Vector3(22.5, 0.0, 2.0), Vector3(22.5, 0.0, 5.5), Vector3(18.5, 0.0, -16.5), Vector3(14.0, 0.0, -16.0), Vector3(16.5, 0.0, -15.0)]
 const GF_DROPS: Array[Vector3] = [Vector3(-6.0, 0.0, 6.0), Vector3(2.0, 0.0, 12.5)]
 const CRATES_START := Vector3(-3.0, 0.0, 1.0)
@@ -355,6 +357,17 @@ const BOSS_PLAYER := Vector3(-6.0, 0.0, 7.0)
 ## W3 T7: the player's forklift of the joust (facing east, into the arena).
 const PLAYER_FORK := Vector3(-9.5, 0.0, 9.5)
 const PLAYER_FORK_YAW: float = -90.0
+
+
+## T9: the accuracy factor of the yard's gunmen (Gunman opt "accuracy"): Thường a little sharper, Dễ softer.
+const GUARD_ACC: float = 1.0
+const GUARD_ACC_EASY: float = 0.85
+## The sneak's early fight is short (6 guards, no waves): its guards aim a little sharper on Thường.
+const SNEAK_ACC: float = 1.05
+
+
+static func guard_accuracy(sneak: bool = false) -> float:
+	return float(Difficulty.pick(SNEAK_ACC if sneak else GUARD_ACC, GUARD_ACC_EASY))
 
 
 ## World-space spots of a yard mission (MissionLairFight opts "points"): sneak | gunfight | crates | forklift.

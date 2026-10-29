@@ -17,6 +17,14 @@ extends MissionLairFight
 var pf: PlayerForklift = null
 var crane: YardCrane = null
 var crushed: bool = false
+## T10: Alexander (red) and the player's forklift while on foot (yellow) stay findable; the objective line.
+var markers: OffscreenMarkers = null
+var _info_pct: int = -1
+
+
+func _init() -> void:
+	armed = true
+	keep_top = true
 
 
 func _start() -> void:
@@ -26,7 +34,7 @@ func _start() -> void:
 	make_fight({"start_alerted": true})
 	var at: Vector3 = pts.get("boss_at", player.global_position + Vector3(0.0, 0.0, -12.0) if player else Vector3.ZERO)
 	var o: Dictionary = {"body_fn": func(_look: Dictionary) -> Node3D: return StoryCast.build("alexander"),
-		"hp": float(Difficulty.pick(GunData.BOSS_HP, GunData.BOSS_HP * 0.8))}
+		"hp": float(Difficulty.pick(GunData.BOSS_HP, GunData.BOSS_HP * 0.8)), "joust": true}
 	fight.add_wave([{"boss": "forklift", "at": at, "yaw": float(pts.get("boss_yaw", 0.0)), "opts": o}])
 	fight.start()
 	if pts.has("fork_at"):
@@ -39,7 +47,23 @@ func _start() -> void:
 		add_child(crane)
 		crane.setup((level as Node3D).global_transform, fight, 1, 2.0, 2.0)
 		crane.dropped.connect(_on_crane_dropped)
-	radio("Lấy con xe nâng cắm chìa lúc nãy kìa e, F lên xe. Càng nó giơ lên là húc hông nó!", "Lên xe nâng [F]. Khi càng xe nó giơ lên, húc vào hông.", 6.0)
+	markers = OffscreenMarkers.make(hud, player)
+	if pf:
+		markers.track(pf.forklift, "prompt", "Xe nâng", 2.6)
+	_track_boss()
+	radio("Lấy con xe nâng cắm chìa lúc nãy kìa e, F lên xe. Nó đứng hình hay giơ càng lên là húc hông nó!", "Lên xe nâng [F]. Khi nó SƠ HỞ hoặc giơ càng, húc vào hông.", 6.0)
+
+
+func _track_boss() -> void:
+	var b: ForkliftBoss = fight.boss as ForkliftBoss if fight and fight.boss else null
+	if markers and b:
+		markers.track(b.forklift, "threat", "Alexander", 3.0)
+
+
+## A retry spawns a fresh boss: the marker follows it.
+func _on_wave_started(i: int) -> void:
+	super._on_wave_started(i)
+	_track_boss()
 
 
 func _lair_tick(dt: float) -> void:
@@ -49,9 +73,14 @@ func _lair_tick(dt: float) -> void:
 		crane.step(dt)
 	var h: String = pf.hint() if pf and pf.hint() != "" else (crane.hint() if crane else "")
 	set_prompt(h)
-	if fight and fight.boss and int(clock * 10.0) % 3 == 0:
+	if markers and pf:
+		markers.set_on(pf.forklift, not pf.inside)
+	if fight and fight.boss:
 		var b: ForkliftBoss = fight.boss as ForkliftBoss
-		set_info("Alexander: %d / %d" % [int(b.hp), int(b.max_hp)])
+		var pct: int = ceili(b.hp / maxf(b.max_hp, 1.0) * 100.0)
+		if pct != _info_pct:
+			_info_pct = pct
+			set_info("Húc hông xe Alexander khi nó SƠ HỞ hoặc giơ càng · còn %d%%" % pct)
 
 
 func _on_rammed(_target: Node3D, _power: float) -> void:

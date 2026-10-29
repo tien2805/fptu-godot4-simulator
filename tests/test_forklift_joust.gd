@@ -3,7 +3,8 @@
 # MissionForklift, the mission stepped by hand, the boss on physics frames):
 #   A [F] in / out of the player's forklift (its camera, the player hidden on the seat);
 #   B rams: a side ram while his forks are up = 15 % of the bar and he spins out (RECOVER); the same ram with the forks
-#     down = a bump; a front ram = both bounce, the player takes 10;
+#     down = a bump; T9: a stall (RECOVER) is a ram window too, once per stall; a front ram = both bounce, the player
+#     takes 10;
 #   C his tossed crate on the floor: lifted with the forks low, thrown back while he is stalled = 8 %;
 #   D his charge: dodged (far off) = no hit; taken (the forklifts meet) = the player hurt once;
 #   E the arena crane: a container on him while he is stalled = crush(): the next phase; the done info "crane";
@@ -134,6 +135,20 @@ func _process(_d: float) -> bool:
 			_line_up(right, 3.5, 6.0)
 			m.advance(DT)
 			_check(m.pf.rams == 1 and absf((hp0 - b.hp) - b.max_hp * 0.15) < 1.0 and b.state_name() == "recover", "a side ram while his forks are up: 15 %% of the bar, he spins out (%.0f -> %.0f, %s)" % [hp0, b.hp, b.state_name()])
+			_check(not b.ram_open(), "T9: one ram per stall: the spin-out is not a second window")
+			# T9: a stall (a missed charge / a crash: SƠ HỞ!) is a ram window too, once
+			_hold(b)
+			b.st_len = 9.0
+			b._enter(ForkliftBoss.St.RECOVER)
+			var right2: Vector3 = b.forklift.global_basis.x
+			var hp_s: float = b.hp
+			_check(b.ram_open() and b.recover_s(false) >= GunData.MISS_RECOVER_S, "T9: stalled = the ram window (and the stall lasts longer than GunData's)")
+			m.pf._ram_cd = 0.0
+			_line_up(right2, 3.5, 6.0)
+			m.advance(DT)
+			_check(m.pf.rams == 2 and hp_s - b.hp > b.max_hp * 0.14 and not b.ram_open(), "T9: a side ram on the stalled forklift: 15 %%, then closed (%.0f -> %.0f)" % [hp_s, b.hp])
+			b.hp = hp_s          # back where it was: the later checks keep him above the name-intro threshold
+			hp0 = b.hp
 			# C: a crate on the floor, lifted and thrown back while he is stalled
 			var c: Node3D = GunProps.crate(0.8)
 			b.add_child(c)

@@ -262,7 +262,7 @@ func _check_charge(b: ForkliftBoss) -> void:
 	if WeaponMath.flat(b.forklift.global_position, forklift.global_position) > CHARGE_HIT_R:
 		return
 	b.mark_charge_hit()
-	if fight and String(fight.hit_player(b.forklift, GunData.CHARGE_DMG, true)) == "hit":
+	if fight and String(fight.hit_player(b.forklift, b.charge_dmg(), true)) == "hit":
 		charge_hits += 1
 	forklift.speed = 0.0
 	Impact.hit(self, "heavy", {"pos": forklift.global_position + Vector3(0.0, 1.0, 0.0), "dir": b.forklift.forward()})

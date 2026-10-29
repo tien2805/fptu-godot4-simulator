@@ -50,12 +50,15 @@ class RackStrap extends Node3D:
 		if mesh:
 			mesh.visible = true
 
-const TIME_S: float = 90.0
+## T9 (sloppy bot): at 90 s the bot had 45 s to spare on Thường; 55 s keeps every crate a race (Dễ keeps 90 s).
+const TIME_S: float = 55.0
+const TIME_S_EASY: float = 90.0
 const DANCE_SPEED: float = 1.1
 const SWAY_HZ: float = 0.9
 const T_DROPPED: String = "Rơi hòm rồi! Chạy thôi!"
 const T_TIME_UP: String = "Alexander lái xe nâng quay lại rồi!"
 const MUSIC_MEME: String = "meme_coffin_dance"
+const LAST_MARKED: int = 4
 
 var crates: Array = []
 var carried: SmartCrate
@@ -89,6 +92,7 @@ var _hello: Label3D = null
 var _hello_t: float = -1.0
 var _lights: Node3D = null
 var _dance_speed: float = DANCE_SPEED
+var markers: OffscreenMarkers = null
 var _shown: Vector2i = Vector2i(-1, -1)   # (broken, seconds) on the info line: text rebuilt only when it changes
 
 
@@ -98,10 +102,10 @@ func _init() -> void:
 
 
 func _start() -> void:
-	gate_at = float(Difficulty.pick(15.0, 18.0))
-	rack_at = float(Difficulty.pick(30.0, 32.0))
-	fast_at = float(Difficulty.pick(45.0, 50.0))
-	time_up_warn = 20.0
+	gate_at = float(Difficulty.pick(10.0, 15.0))
+	rack_at = float(Difficulty.pick(20.0, 30.0))
+	fast_at = float(Difficulty.pick(30.0, 45.0))
+	time_up_warn = float(Difficulty.pick(15.0, 20.0))
 	place_player()
 	crates = (pts.get("crates", []) as Array).duplicate()
 	_build_dance()
@@ -125,6 +129,14 @@ func _start() -> void:
 		(c2 as SmartCrate).ko.connect(_on_crate_broken)
 	carried.ko.connect(_on_crate_broken)
 	_track_all()
+	# T10: the coffin crate, the strap, the last crates and the gate guards stay findable (edge arrows off screen)
+	markers = OffscreenMarkers.make(hud, player)
+	markers.threat_source = fight.alive
+	markers.track(carried, "prompt", "Hòm", 0.7)
+	if strap:
+		markers.track(strap, "prompt", "Dây đai", 3.2)
+	for c3: Variant in crates:
+		markers.track(c3, "prompt", "Thùng", 1.3)
 	_reset_dance()
 	_reset_events()
 	radio("Hàng fake đó e, destroy hết đi, cái hòm mấy ông kia khiêng cũng tính nha.", "Phá hết các thùng kính, cả cái hòm đang khiêng.")
@@ -218,6 +230,9 @@ func _events(dt: float) -> void:
 			gm.ai = true
 			gm.bind(fight)
 			gm.alert(player.global_position if player else gm.global_position)
+		var gg: Array = gate_guards()
+		if not gg.is_empty():
+			_preview(gg[0])      # T10: nothing important off screen without a look: the cut shows where they come in
 	if not rack_on and clock >= rack_at and rack:
 		rack_on = true
 		rack.visible = true
@@ -237,7 +252,7 @@ func _events(dt: float) -> void:
 		if fight:
 			fight.play_cue("forklift_horn", _lights.global_position if _lights else player.global_position, 3.0)
 		cues_played.append("forklift_horn")
-		popup("Còn 20 s! Alexander tới cổng rồi!", 2.0, WARN)
+		popup("Còn %d s! Alexander tới cổng rồi!" % int(time_up_warn), 2.0, WARN)
 		_preview(_lights)
 	if chain_t >= 0.0:
 		chain_t += dt
@@ -279,6 +294,21 @@ func _on_crate_broken(c: Node3D) -> void:
 		_hello_t = 0.0
 	if heavy:
 		Impact.slowmo_orbit(self, carried, Impact.ORBIT_S)   # the signature: the coffin crate breaks in slow motion
+
+
+## The markers: the coffin crate while whole, the strap while the rack stands, every crate left once LAST_MARKED or
+## fewer are left (before that the yard is full of them and the counter is enough).
+func _markers_update() -> void:
+	if markers == null:
+		return
+	markers.set_on(carried, not carried.broken and fleeing < 0.0)
+	if strap:
+		markers.set_on(strap, rack_on and not strap.cut)
+	var left: int = total() - broken_count()
+	for c: Variant in crates:
+		var sc: SmartCrate = c
+		var up: bool = not sc.broken and (not rack_crates.has(sc) or rack_on)
+		markers.set_on(sc, up and left <= LAST_MARKED and not rack_crates.has(sc))
 
 
 ## Every crate counts: the yard's crates plus the carried one.
@@ -333,7 +363,7 @@ func _reset_dance() -> void:
 		CharacterBuilder.set_speed(b, DANCE_SPEED)
 	_place_dance(0.0)
 	_set_meme(true)
-	time_total = float(Difficulty.pick(TIME_S, 105.0))
+	time_total = float(Difficulty.pick(TIME_S, TIME_S_EASY))
 	time_left = time_total
 	_shown = Vector2i(-1, -1)
 	_show_info()
@@ -389,6 +419,7 @@ func _show_info() -> void:
 		return
 	_shown = now
 	set_info("Thùng kính: %d / %d · Còn %d s" % [now.x, total(), now.y])
+	_markers_update()
 	set_meter(clampf(float(now.y) / time_total * 100.0, 0.0, 100.0))
 
 

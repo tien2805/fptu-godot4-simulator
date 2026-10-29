@@ -236,10 +236,16 @@ func _process(_d: float) -> bool:
 					_check(false, "standing in front of a guard: not spotted")
 					phase = 999
 				return false
-			var all: bool = true
+			var near_ok: bool = true
+			var queued: int = 0
 			for e2: Variant in ms5.fight.alive():
-				all = all and (e2 as Gunman).is_alerted
-			_check(all and ms5.state == "running", "seen: the gunfight starts early, every guard alerted")
+				var g5: Gunman = e2
+				if g5.is_alerted:
+					continue
+				queued += 1
+				near_ok = near_ok and (ms5 as MissionYardSneak).reinforcements.has(g5) and WeaponMath.flat(g5.global_position, _player().global_position) > MissionYardSneak.NEAR_ALERT_M
+			_check(near_ok and ms5.state == "running", "seen: the gunfight starts early: the guards near alerted, the far ones queued as reinforcements (%d)" % queued)
+			_check((ms5 as MissionYardSneak).hud_info.is_visible_in_tree() and (ms5 as MissionYardSneak).markers != null and (ms5 as MissionYardSneak).markers.threat_source.is_valid(), "T10: the objective line on screen, the guards marked once seen")
 			ms5.fight.combat.receive_attack(ms5.fight.gunmen[0], {"damage": 999.0})
 			_next(6)
 		6:
@@ -293,6 +299,8 @@ func _process(_d: float) -> bool:
 			var my9: MissionYardGunfight = m
 			_check(mg.fight.waves.size() >= 3 and mg.fight.alive().size() == 3 and mg.fight.pickups.size() == 5 and my9.hide_state == "sweep", "the gunfight opens with the mannequin hide (3 sweepers in wave 0), then the waves; 3 ammo pickups + 2 radio drops")
 			_check(my9.mannequins != null and my9.mannequins.count() >= 38, "the mannequins in front of the open stack")
+			_check(my9.markers != null and my9.hud_info.is_visible_in_tree() and my9.markers.is_tracked(my9._ladder_mark) and not my9.markers.is_on(my9._ladder_mark),
+				"T10: the objective line on screen; the crane's ladder marked, off until wave 2")
 			var w9: WeaponDirector = fr.get("weapons")
 			_check(w9.reserve.size() > 0 and w9.reserve[WeaponData.Slot.PISTOL] >= 0, "finite spare rounds in the lair")
 			_check(StoryRoam.mission_slot(sd.call("beat")) == "mission_gunfight", "mission_gunfight")
@@ -319,6 +327,8 @@ func _process(_d: float) -> bool:
 					mark["gf_crane"] = my11.crane_offered or bool(mark.get("gf_crane", false))
 					mark["gf_waves"] = my11.fight.waves.size() if my11.fight else int(mark.get("gf_waves", 0))
 					mark["gf_hidden"] = my11.hidden
+					if my11.fight and my11.fight.wave == MissionYardGunfight.CRANE_WAVE and my11.markers:
+						mark["gf_ladder_on"] = bool(mark.get("gf_ladder_on", false)) or my11.markers.is_on(my11._ladder_mark)
 			if mg11 and _step_replay(mg11):
 				mark["gf_replay"] = true
 			if String(sd.get("step")) != "d3_crates":
@@ -329,6 +339,7 @@ func _process(_d: float) -> bool:
 			_check(mark.has("gf_replay"), "the yard cleared: the seg_d3_gunfight replay")
 			_check(int(mark.get("gf_waves", 0)) == 4 and int(mark.get("gf_cuts", 0)) == 3, "W3 T5: the hide + 3 waves on Thường, a preview cut at each combat wave (%d waves, %d cuts)" % [int(mark.get("gf_waves", 0)), int(mark.get("gf_cuts", 0))])
 			_check(bool(mark.get("gf_crane", false)) and not bool(mark.get("gf_hidden", true)), "W3 T5: the crane offered in wave 2; shooting the sweepers blew the hide")
+			_check(bool(mark.get("gf_ladder_on", false)), "T10: the ladder marker shows in the crane wave")
 			DirAccess.copy_absolute(ProjectSettings.globalize_path(TMP), ProjectSettings.globalize_path(SNAP))
 			_next(12)
 		12:
@@ -340,25 +351,26 @@ func _process(_d: float) -> bool:
 			_check(mc.preview_cuts == 1 and not mc.rack.visible and mc.gate_guards().size() == 2, "W3 T6: a preview cut on the carriers at the start; the rack and the gate guards held back")
 			var top: Control = mc.hud.get_node_or_null("Top") as Control
 			_check(top != null and top.is_visible_in_tree() and mc.hud_info.is_visible_in_tree() and mc.hud_meter.is_visible_in_tree()
-				and mc.hud_info.text == "Thùng kính: 0 / 12 · Còn 90 s" and top.offset_top >= GunHUD.TOP + GunHUD.PANEL.y,
-				"the counter and the 90 s countdown are on screen, under the gunfight panel (%s)" % mc.hud_info.text)
+				and mc.hud_info.text == "Thùng kính: 0 / 12 · Còn %d s" % int(MissionCrates.TIME_S) and top.offset_top >= GunHUD.TOP + GunHUD.PANEL.y,
+				"the counter and the %d s countdown are on screen, under the gunfight panel (%s)" % [int(MissionCrates.TIME_S), mc.hud_info.text])
+			_check(mc.markers != null and mc.markers.is_tracked(mc.carried) and mc.markers.is_tracked(mc.strap), "T10: markers for the coffin crate and the strap")
 			mc.advance(1.5)
-			_check(mc.hud_info.text == "Thùng kính: 0 / 12 · Còn 89 s" and mc.hud_meter.value < 100.0, "the countdown runs (%s)" % mc.hud_info.text)
+			_check(mc.hud_info.text == "Thùng kính: 0 / 12 · Còn %d s" % (int(MissionCrates.TIME_S) - 1) and mc.hud_meter.value < 100.0, "the countdown runs (%s)" % mc.hud_info.text)
 			_check(mc.meme_on and mc.cues_played.has("meme_coffin_dance") and StoryRoam.mission_slot(sd.call("beat")) == "meme_coffin_dance", "the coffin-dance meme slot while they carry it")
 			var p0: Vector3 = mc.dance.global_position
 			for k: int in 60:
 				mc.advance(DT)
 			_check(mc.dance.global_position.distance_to(p0) > 0.5, "the carriers walk their loop")
 			# W3 T6: the events on the clock
-			while mc.clock < 15.1:
+			while mc.clock < mc.gate_at + 0.1:
 				mc.advance(0.1)
 			var gg: Array = mc.gate_guards()
-			_check(mc.gate_on and (gg[0] as Gunman).is_alerted and (gg[1] as Gunman).is_alerted, "15 s: 2 guards from the gate, alerted")
+			_check(mc.gate_on and (gg[0] as Gunman).is_alerted and (gg[1] as Gunman).is_alerted and mc.preview_cuts == 2, "%.0f s: 2 guards from the gate, alerted, a preview cut on them" % mc.gate_at)
 			_ko_all(mc.fight)
 			_check(mc.state == "running", "the gate guards down: the beat goes on (the crates are the goal)")
-			while mc.clock < 30.1:
+			while mc.clock < mc.rack_at + 0.1:
 				mc.advance(0.1)
-			_check(mc.rack_on and mc.rack.visible and mc.preview_cuts == 2, "30 s: the pallet rack rolls out (a preview cut on its strap)")
+			_check(mc.rack_on and mc.rack.visible and mc.preview_cuts == 3, "%.0f s: the pallet rack rolls out (a preview cut on its strap)" % mc.rack_at)
 			_check(mc.strap.take_hit({"kind": "bullet", "from": _player().global_position}) == "knocked_out", "the strap shot")
 			mc.advance(0.05)
 			var rb: int = 0
@@ -370,12 +382,12 @@ func _process(_d: float) -> bool:
 			for rc2: SmartCrate in mc.rack_crates:
 				rb += 1 if rc2.broken else 0
 			_check(rb == 3 and mc.broken_count() == 3 and mc.hello_shown, "then the other two: the whole rack down; the glasses greet the world")
-			while mc.clock < 45.1:
+			while mc.clock < mc.fast_at + 0.1:
 				mc.advance(0.1)
-			_check(mc.fast and mc._dance_speed > MissionCrates.DANCE_SPEED, "45 s: the dancers speed up")
-			while mc.time_left > 19.9:
+			_check(mc.fast and mc._dance_speed > MissionCrates.DANCE_SPEED, "%.0f s: the dancers speed up" % mc.fast_at)
+			while mc.time_left > mc.time_up_warn - 0.1:
 				mc.advance(0.1)
-			_check(mc.time_up_cut and mc.cues_played.has("forklift_horn") and mc._lights.visible and mc.preview_cuts == 3, "20 s left: Alexander's horn and headlights at the gate, a preview cut")
+			_check(mc.time_up_cut and mc.cues_played.has("forklift_horn") and mc._lights.visible and mc.preview_cuts == 4, "%.0f s left: Alexander's horn and headlights at the gate, a preview cut" % mc.time_up_warn)
 			_check(mc.carried.take_hit({"kind": "bullet", "from": _player().global_position}) == "knocked_out" and not mc.meme_on and mc.fleeing >= 0.0, "their crate shot: they drop it and run, the meme stops")
 			for c: Variant in mc.crates:
 				(c as SmartCrate).take_hit({"kind": "melee", "from": _player().global_position})
@@ -408,6 +420,8 @@ func _process(_d: float) -> bool:
 			_check(boss != null and String(boss.driver.get_meta("cast_id", "")) == "alexander", "Alexander drives the forklift")
 			_check(not sr.yard.forklift_park.visible, "the parked forklift is gone (he drives it)")
 			_check(StoryRoam.mission_slot(sd.call("beat")) == "boss_d3", "boss_d3")
+			_check(mf.markers != null and mf.markers.is_tracked(boss.forklift) and mf.markers.is_tracked(mf.pf.forklift) and mf.hud_info.is_visible_in_tree(),
+				"T10: Alexander and the player's forklift marked, the objective line on screen")
 			mf.fight.combat.receive_attack(boss, {"damage": 999.0})
 			_next(16)
 		16:
@@ -419,6 +433,7 @@ func _process(_d: float) -> bool:
 			sr.fail_ui.press_retry()
 			var mf16: MissionForklift = m
 			_check(mf16.fight.state == "running" and mf16.fight.boss != null and is_equal_approx((mf16.fight.boss as ForkliftBoss).hp, (mf16.fight.boss as ForkliftBoss).max_hp), "retry: a fresh boss")
+			_check(mf16.markers.is_tracked((mf16.fight.boss as ForkliftBoss).forklift), "T10: the marker follows the fresh boss")
 			(mf16.fight.boss as ForkliftBoss).apply_damage(99999.0)
 			_next(17)
 		17:

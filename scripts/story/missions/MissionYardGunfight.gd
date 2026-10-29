@@ -50,6 +50,7 @@ const T_SHOVED: String = "Nó xô mày rồi la toáng lên!"
 const T_HIDE_INFO: String = "Lẫn vào đám ma-nơ-canh · còn %d s"
 const MEME_SLOT: String = "meme_mannequin"
 const CRANE_WAVE: int = 2
+const WAVE_WHERE: Array[String] = ["bọn ở cổng phía tây", "bọn trên nóc container và giữa bãi", "bọn vòng sườn phía đông"]
 const JOKES: Array = [["Clear! A đang order trà sữa, e cứ tự nhiên.", "Sạch đợt này rồi."],
 	["KDA đẹp đó e, a chụp màn hình rồi nha.", "Đẹp lắm, còn nữa đó."],
 	["Bọn này farm exp hơi ngu, chuẩn bị đợt cuối.", "Đợt cuối sắp tới."]]
@@ -92,6 +93,16 @@ var crane_offered: bool = false
 var preview_cuts: int = 0
 var drops: Dictionary = {}          # fight wave -> AmmoPickup (hidden until that wave starts)
 var _cleared_jokes: int = 0
+var _info_text: String = ""
+var _info_key := Vector3i(-9, -9, -9)
+## T10: edge arrows / diamonds for the gunmen, the crane's ladder (from wave 2) and the ammo drops.
+var markers: OffscreenMarkers = null
+var _ladder_mark: Node3D = null
+
+
+func _init() -> void:
+	armed = true
+	keep_top = true          # the objective line (and the legs meter in the hide) stays on screen under GunHUD's panel
 
 
 func _start() -> void:
@@ -117,6 +128,8 @@ func _start() -> void:
 			fight.add_wave(wave)
 	fight.wave_cleared.connect(_on_wave_cleared)
 	fight.start()
+	markers = OffscreenMarkers.make(hud, player)
+	markers.threat_source = fight.alive     # alerted gunmen only: the hide's sweepers are not marked while they sweep
 	if level:
 		_build_hide()
 		_build_crane()
@@ -146,6 +159,15 @@ func _add_yard_waves() -> void:
 			wave.append(guard(gi, spots[k], [], extra))
 			gi += 1
 		fight.add_wave(wave)
+
+
+## T9: the yard's guards aim a little better on Thường and worse on Dễ (a mission-level knob over the gun core's numbers;
+## LairYard.GUARD_ACC).
+func guard(i: int, at: Vector3, patrol: Array = [], extra: Dictionary = {}) -> Dictionary:
+	var e: Dictionary = extra.duplicate()
+	if not e.has("accuracy"):
+		e["accuracy"] = LairYard.guard_accuracy()
+	return super.guard(i, at, patrol, e)
 
 
 func _lw(local: Vector3) -> Vector3:
@@ -214,6 +236,7 @@ func _reset_hide() -> void:
 	frozen_t = 0.0
 	_check_t = 0.0
 	_info_s = -1
+	_info_text = ""
 	_fly_t = -1.0
 	_head_tries = [7.0, 15.0]
 	mannequins.reset()
@@ -257,6 +280,14 @@ func is_frozen() -> bool:
 	return mannequins != null and mannequins.frozen
 
 
+## The legs meter of the hide (1 = a full HOLD_MAX freeze left, 0 = tired): shown under the objective line, so the player
+## can let go of [X] at a safe moment instead of being surprised by "Mỏi chân!".
+func legs_left() -> float:
+	if tired_t > 0.0:
+		return 0.0
+	return clampf(1.0 - frozen_t / maxf(hold_max, 0.1), 0.0, 1.0) if is_frozen() else 1.0
+
+
 ## The flashlight of sweeper k: eye and flat direction ({} when he is down or gone).
 func beam_of(k: int) -> Dictionary:
 	if fight == null or fight.wave != 0 or k >= fight.gunmen.size():
@@ -294,6 +325,12 @@ func _build_crane() -> void:
 	crane.setup((level as Node3D).global_transform, fight, int(Difficulty.pick(3, 3)), 5.0, 0.0)
 	crane.usable = false
 	crane.dropped.connect(_on_crane_dropped)
+	_ladder_mark = Node3D.new()
+	_ladder_mark.name = "LadderMark"
+	add_child(_ladder_mark)
+	_ladder_mark.global_position = crane.ladder_foot()
+	markers.track(_ladder_mark, "prompt", "Cần cẩu", 2.4)
+	markers.set_on(_ladder_mark, false)
 
 
 func _build_drops() -> void:
@@ -302,6 +339,8 @@ func _build_drops() -> void:
 		var p: AmmoPickup = fight.add_ammo(spots[k], WeaponData.Slot.SHOTGUN if k % 2 == 0 else WeaponData.Slot.PISTOL)
 		p.take()                 # hidden until its wave calls it in on the radio
 		drops[CRANE_WAVE + k] = p
+		markers.track(p, "prompt", "Đạn", 1.0)
+		markers.set_on(p, false)
 
 
 ## Every combat wave opens with a 0.6 s preview cut on its spawn (wave 1: the shield guard; wave 2: the crane cabin).
@@ -365,11 +404,46 @@ func _lair_tick(dt: float) -> void:
 	if crane:
 		crane.step(dt)
 		set_prompt(crane.hint())
-	if fight and int(clock * 10.0) % 3 == 0:
-		if fight.wave == 0 or level == null:
-			set_info("Còn %d bảo vệ" % fight.enemies_left())
-		else:
-			set_info("Đợt %d/%d · Còn %d bảo vệ" % [fight.wave, fight.waves.size() - 1, fight.enemies_left()])
+	if fight:
+		_show_objective()
+	_markers_tick()
+
+
+## The ladder marker follows the gantry and shows while the crane can be used; an ammo drop shows until it is taken.
+func _markers_tick() -> void:
+	if markers == null:
+		return
+	if crane and _ladder_mark:
+		_ladder_mark.global_position = crane.ladder_foot()
+		markers.set_on(_ladder_mark, crane.usable and crane.drops_left > 0 and crane.state == "idle")
+	for k: Variant in drops.keys():
+		var p: AmmoPickup = drops[k]
+		if is_instance_valid(p):
+			markers.set_on(p, not p.taken)
+
+
+## The objective line: what to do now and where (the wave's side of the yard, the crane in wave 2); rebuilt only when it
+## changes.
+func _show_objective() -> void:
+	var left: int = 0
+	for e: Variant in fight.enemies:
+		if is_instance_valid(e) and not bool((e as Object).call("is_defeated")):
+			left += 1
+	var crane_up: bool = crane != null and crane.usable and crane.drops_left > 0 and not crane.in_cabin()
+	var key := Vector3i(fight.wave, left, 1 if crane_up else 0)
+	if key == _info_key and _info_text != "":
+		return
+	_info_key = key
+	var t: String
+	if fight.wave == 0 or level == null:
+		t = "Bị lộ! Hạ %d bảo vệ đèn pin" % left if level else "Hạ hết bảo vệ · còn %d" % left
+	else:
+		var where: String = WAVE_WHERE[mini(fight.wave - 1, WAVE_WHERE.size() - 1)]
+		t = "Đợt %d/%d: %s · còn %d" % [fight.wave, fight.waves.size() - 1, where, left]
+		if crane_up:
+			t += " · leo cần cẩu thả container"
+	_info_text = t
+	set_info(t)
 
 
 func _hide_tick(dt: float) -> void:
@@ -386,6 +460,7 @@ func _hide_tick(dt: float) -> void:
 					set_frozen(false)
 					tired_t = 1.0
 					popup(T_TIRED, 1.0, WARN)
+			set_meter(legs_left() * 100.0, "Sức chân")
 			_check_t -= dt
 			if _check_t <= 0.0:
 				_check_t = CHECK_DT
@@ -545,6 +620,8 @@ func _fly_tick(dt: float) -> void:
 
 func _after_hide() -> void:
 	set_prompt("")
+	set_meter(-1.0)
+	_info_text = ""
 	for b: Dictionary in _beams:
 		(b["cone"] as Node3D).visible = false
 
