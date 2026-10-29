@@ -25,8 +25,8 @@ const SCRIPTS: Dictionary = {"sneak": "res://scripts/story/missions/MissionYardS
 	"boss": "res://scripts/story/missions/MissionForklift.gd"}
 const TASKS: Dictionary = {"sneak": "sneak", "gunfight": "gunfight", "crates": "crates", "boss": "forklift"}
 ## The sneak route (yard-local): wait points the bot holds until the next leg looks clear.
-const ROUTE: Array[Vector3] = [Vector3(-23.0, 0.0, 8.5), Vector3(-20.0, 0.0, 5.0), Vector3(-19.0, 0.0, -0.5),
-	Vector3(-13.0, 0.0, -0.4), Vector3(-7.5, 0.0, -0.5), Vector3(-3.0, 0.0, -4.4)]
+const ROUTE: Array[Vector3] = [Vector3(-23.0, 0.0, 8.5), Vector3(-19.5, 0.0, 5.2), Vector3(-11.0, 0.0, 5.2),
+	Vector3(-10.3, 0.0, 1.0), Vector3(-7.5, 0.0, -0.6), Vector3(-3.0, 0.0, -4.4)]
 
 var diff: String = "normal"
 var seed0: int = 1
@@ -608,7 +608,7 @@ func _bot_boss() -> void:
 	# rams: the forks go up -> line up on his side and ram (15 % mistimed)
 	if b.forks_up() and not b_lift_seen:
 		b_lift_seen = true
-		var travel: float = maxf(0.0, WeaponMath.flat(me, bp) - 3.5) / PlayerForklift.TOP_SPEED
+		var travel: float = maxf(0.0, WeaponMath.flat(me, bp) - 3.5) / PlayerForklift.TOP_SPEED + 0.25   # + the turn in
 		b_ram_at = game_t + _react() + travel + (0.6 if rng.randf() < 0.15 else 0.0)   # the drive round to his side
 	if not b.forks_up() and st != "lift":
 		b_lift_seen = false

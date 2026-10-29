@@ -23,7 +23,7 @@ extends MissionGunfight
 const CHECK_DT: float = 0.1
 const SWEEP_RANGE: float = 12.0
 const SWEEP_HALF_DEG: float = 15.0
-const SWEEP_SWING_DEG: float = 38.0
+const SWEEP_SWING_DEG: float = 55.0
 const SWEEP_SWING_S: float = 3.4
 const FIELD_C := Vector3(-3.0, 0.0, -3.9)          # yard-local centre of the mannequin field
 const SWEEPERS: Array = [
@@ -91,7 +91,7 @@ func _start() -> void:
 	sweep_s = float(Difficulty.pick(26.0, 20.0))
 	sweep_range = float(Difficulty.pick(SWEEP_RANGE, 10.0))
 	sweep_half = float(Difficulty.pick(SWEEP_HALF_DEG, 12.0))
-	hold_max = float(Difficulty.pick(4.0, 6.0))
+	hold_max = float(Difficulty.pick(5.0, 7.0))
 	mash_n = int(Difficulty.pick(9, 6))
 	mash_window = float(Difficulty.pick(3.0, 3.0))
 	place_player()

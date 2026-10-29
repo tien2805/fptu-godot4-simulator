@@ -207,9 +207,9 @@ func tell_s() -> float:
 	return float(GunData.CHARGE_TELL_S2 if phase2() else GunData.CHARGE_TELL_S) + float(Difficulty.pick(0.0, 0.3))
 
 
-## The forks-up window before a toss (Dễ +0.3 s).
+## The forks-up window before a toss: 0.8 s on Thường (the plan's number), 1.1 s on Dễ.
 func lift_s() -> float:
-	return GunData.LIFT_S + float(Difficulty.pick(0.0, 0.3))
+	return float(Difficulty.pick(0.8, 1.1))
 
 
 func stalled() -> bool:
