@@ -11,7 +11,8 @@
 #     threat when it has `is_alerted` set (a sneak's unalerted patrol and a hide's sweepers are not marked); a boss is
 #     tracked explicitly with track(node, "threat", label).
 # Usage (a mission): markers = OffscreenMarkers.make(hud, player); markers.track(node, "goal", "Container", 1.2);
-# untrack(node); set_on(node, false) hides one for a while; clear(). It lives under the mission HUD (hidden with it).
+# untrack(node); set_on(node, false) hides one for a while; clear(). It lives under the mission HUD (hidden with it) and
+# draws nothing while a CameraDirector cut holds the screen.
 # Per frame: one unproject per entry (at most MAX), no allocation; a label string is rebuilt only when its metres change.
 # Test state: edge_count, onscreen_count, chevron_count (updated in _process), shown_labels().
 class_name OffscreenMarkers
@@ -134,8 +135,9 @@ func _process(delta: float) -> void:
 	chevron_count = 0
 	var vp: Viewport = get_viewport()
 	var cam: Camera3D = vp.get_camera_3d() if vp else null
-	if cam == null or not is_visible_in_tree():
-		_redraw()
+	var dir: CameraDirector = CameraDirector.live()
+	if cam == null or not is_visible_in_tree() or (dir != null and dir.cutting()):
+		_redraw()                # review fix: nothing over a director cut (a preview, the last-KO orbit)
 		return
 	var vs: Vector2 = vp.get_visible_rect().size
 	for it: Dictionary in _items:

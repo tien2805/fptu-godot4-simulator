@@ -48,6 +48,11 @@ var _hint: String = ""
 var _prev_cam: Camera3D = null
 var _cover_was: bool = true
 var _throw_req: bool = false
+## Review fixes: false = no getting in (MissionForklift: while the arena crane is in use); the camera to pass the screen
+## back to when a director cut held it at leave().
+var usable: bool = true
+var _restore_pending: bool = false
+var _restore_to: Camera3D = null
 
 
 ## A forklift at `at` facing `yaw` (world) for the fight's player.
@@ -97,7 +102,9 @@ func boss() -> ForkliftBoss:
 
 # ----- in / out -----
 func can_enter() -> bool:
-	return not inside and player != null and WeaponMath.flat(player.global_position, forklift.global_position) <= ENTER_R and not forklift.topple_done
+	if inside or not usable or player == null or not player.controls_enabled or forklift.topple_done:
+		return false
+	return WeaponMath.flat(player.global_position, forklift.global_position) <= ENTER_R
 
 
 func enter() -> bool:
@@ -113,8 +120,10 @@ func enter() -> bool:
 		_cover_was = fight.cover_ctl.enabled
 		fight.cover_ctl.enabled = false
 	_bullet_time(false)
+	_weapons_held(true)
 	_ride()
-	_prev_cam = get_viewport().get_camera_3d() if is_inside_tree() else null
+	_restore_pending = false
+	_prev_cam = _screen_cam()
 	_update_cam()
 	if cam.is_inside_tree():
 		cam.make_current()
@@ -138,12 +147,64 @@ func leave() -> void:
 	if fight and fight.cover_ctl:
 		fight.cover_ctl.enabled = _cover_was
 	_bullet_time(true)
+	_weapons_held(false)
 	if cam.current:
 		cam.current = false
-		if _prev_cam and is_instance_valid(_prev_cam) and _prev_cam.is_inside_tree():
-			_prev_cam.make_current()
+		var back: Camera3D = _back_cam(_prev_cam)
+		if back:
+			back.make_current()
+	else:
+		var d: CameraDirector = CameraDirector.live()
+		if d != null and d.cutting():
+			_restore_pending = true     # the cut (the topple orbit) gives the screen back to this camera: pass it on then
+			_restore_to = _prev_cam
 	_prev_cam = null
 	left.emit()
+
+
+func _screen_cam() -> Camera3D:
+	var cur: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+	var d: CameraDirector = CameraDirector.live()
+	if cur != null and d != null and cur == d.cam:
+		return player.camera if player and is_instance_valid(player) else null
+	return cur
+
+
+func _back_cam(c: Camera3D) -> Camera3D:
+	if c != null and is_instance_valid(c) and c.is_inside_tree():
+		return c
+	if player and is_instance_valid(player) and player.camera and player.camera.is_inside_tree():
+		return player.camera
+	return null
+
+
+func _process(_delta: float) -> void:
+	if not _restore_pending:
+		return
+	if inside:
+		_restore_pending = false
+		return
+	if cam.current:
+		_restore_pending = false
+		cam.current = false
+		var back: Camera3D = _back_cam(_restore_to)
+		if back:
+			back.make_current()
+		_restore_to = null
+	else:
+		var d: CameraDirector = CameraDirector.live()
+		if d == null or not d.cutting():
+			_restore_pending = false
+			_restore_to = null
+
+
+## Inside, [Chuột trái] throws the crate and nothing else: the guns neither fire nor aim; cleared on leave.
+func _weapons_held(on: bool) -> void:
+	var w: WeaponDirector = fight.weapons if fight else null
+	if w == null or not is_instance_valid(w):
+		return
+	w.fire_override = false if on else null
+	w.aim_override = false if on else null
 
 
 ## Back to its parking spot, empty (a retry).

@@ -67,7 +67,12 @@ func _on_wave_started(i: int) -> void:
 
 
 func _lair_tick(dt: float) -> void:
+	# review fix: one machine at a time: no crane from the forklift seat ([E] = forks up there), no forklift while the
+	# crane is in use
+	if crane:
+		crane.usable = pf == null or not pf.inside
 	if pf:
+		pf.usable = crane == null or crane.state == "idle"
 		pf.step(dt)
 	if crane:
 		crane.step(dt)

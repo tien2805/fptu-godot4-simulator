@@ -95,6 +95,7 @@ var drops: Dictionary = {}          # fight wave -> AmmoPickup (hidden until tha
 var _cleared_jokes: int = 0
 var _info_text: String = ""
 var _info_key := Vector3i(-9, -9, -9)
+var _frozen_by_key: bool = false
 ## T10: edge arrows / diamonds for the gunmen, the crane's ladder (from wave 2) and the ammo drops.
 var markers: OffscreenMarkers = null
 var _ladder_mark: Node3D = null
@@ -274,6 +275,12 @@ func _set_frozen_controls(on: bool) -> void:
 		if on:
 			player.velocity = Vector3.ZERO
 			player.horizontal_speed = 0.0
+	var w: WeaponDirector = fight.weapons if fight else null
+	if w and is_instance_valid(w):      # review fix: a mannequin neither aims nor shoots
+		w.fire_override = false if on else null
+		w.aim_override = false if on else null
+	if not on:
+		_frozen_by_key = false
 
 
 func is_frozen() -> bool:
@@ -550,6 +557,8 @@ func _alert_all() -> void:
 func _begin_scare() -> void:
 	set_frozen(false)
 	_set_meme(false)
+	if _scare:
+		_scare.reduce_scares = StoryUtil.reduce_scares()   # review fix: the setting as it is now, not at the start
 	hide_state = "scare"
 	scuffle_t = 0.0
 	scares += 1
@@ -685,6 +694,7 @@ func _input(event: InputEvent) -> void:
 		return
 	if k.physical_keycode == KEY_X and hide_state == "sweep":
 		set_frozen(k.pressed)
+		_frozen_by_key = k.pressed and is_frozen()
 		get_viewport().set_input_as_handled()
 	elif k.physical_keycode == KEY_E and k.pressed and hide_state == "scuffle":
 		mash()
@@ -706,10 +716,28 @@ func _reset() -> void:
 	if crane:
 		crane.reset()            # out of the cabin first (GunFight.retry teleports the player), the drops back
 	super._reset()
+	_off_the_crane()
 	if fight and fight.wave == 0:
 		_reset_hide()
 	if crane:
 		crane.usable = fight != null and fight.wave >= CRANE_WAVE
+
+
+## Review fix: a wave that started while the player was up in the cabin took its checkpoint there; a retry put him in
+## mid-air. Down at the ladder foot instead, and that is the checkpoint from now on.
+func _off_the_crane() -> void:
+	if crane == null or player == null or level == null:
+		return
+	if player.global_position.y - (level as Node3D).global_position.y > 2.0:
+		player.teleport(crane.ladder_foot(), player.facing_yaw())
+		if fight:
+			fight.checkpoint()
+
+
+## Review fix: [X] let go while the game was paused never reached _input: check the key again on the way back.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_UNPAUSED and _frozen_by_key and is_frozen() and not Input.is_physical_key_pressed(KEY_X):
+		set_frozen(false)
 
 
 func _cleanup() -> void:

@@ -221,7 +221,8 @@ func _process(_d: float) -> bool:
 			_check(cr.footprint_has(b6.forklift.global_position), "the hook right over his stalled forklift")
 			var p6: ThirdPersonController = _player()
 			p6.teleport(cr.ladder_foot(), 0.0)
-			cr.enter(p6)
+			m.advance(DT)        # out of the forklift: the crane usable again on the next tick (one machine at a time)
+			_check(cr.enter(p6), "on foot at the ladder: up the crane")
 			for k2: int in 80:
 				m.advance(DT)
 			_check(cr.in_cabin(), "up in the cabin")

@@ -13,6 +13,9 @@
 #     the shared stream's GunFight.bullet_time);
 #   - the cabin camera: its own Camera3D (meta CameraDirector.META_FX: it applies the director's punch / shake offsets), a
 #     high three-quarter view of the hook and the footprint.
+# Review fixes: no ladder prompt or climb while the player's controls are held (a forklift seat, the hide's freeze); the
+# guns neither fire nor aim from the ladder or the cabin; leave() restores the controls as they were; a leave() while a
+# director cut holds the screen passes the screen on (the previous or the player's camera) when the cut hands it back.
 # The owner steps it: step(dt) from its mission tick (tests too); input: _input ([E] / [F]) and WASD polled in step()
 # (move_override for tests). reset() (a retry): out of the cabin, the drops back, the dropped containers gone (their
 # cover slots stay in the CoverMap but are held as taken by the crane, so nobody is sent to empty floor).
@@ -79,6 +82,10 @@ var _hint: String = ""
 var _start_z: float = 5.0
 var _start_x: float = 0.0
 var _player_ctl: bool = true
+## Review fix: leave() while a director cut (the last-KO orbit) holds the screen: the cut hands the screen back to the
+## cabin camera when it ends, so the camera to come back to is passed on then (or the player's camera).
+var _restore_pending: bool = false
+var _restore_to: Camera3D = null
 var _cover_was: bool = true
 
 
@@ -255,8 +262,8 @@ func hint() -> String:
 func enter(p: ThirdPersonController = null) -> bool:
 	if p != null:
 		player = p
-	if state != "idle" or not usable or player == null:
-		return false
+	if state != "idle" or not usable or player == null or not player.controls_enabled:
+		return false             # review fix: not while the player is in a forklift, frozen or otherwise held
 	state = "climb"
 	climb_t = 0.0
 	_climb_from = player.global_position
@@ -267,13 +274,15 @@ func enter(p: ThirdPersonController = null) -> bool:
 		_cover_was = fight.cover_ctl.enabled
 		fight.cover_ctl.enabled = false
 	_bullet_time(false)
+	_weapons_held(true)
 	return true
 
 
 func _arrive() -> void:
 	state = "cabin"
 	player.teleport(cabin_spot(), PI)
-	_prev_cam = get_viewport().get_camera_3d() if is_inside_tree() else null
+	_restore_pending = false
+	_prev_cam = _screen_cam()
 	_update_cam()
 	if cam.is_inside_tree():
 		cam.make_current()
@@ -288,18 +297,71 @@ func leave() -> void:
 	state = "idle"
 	if player and is_instance_valid(player):
 		player.teleport(ladder_foot(), PI)
-		player.controls_enabled = true
+		player.controls_enabled = _player_ctl
 	if fight and fight.cover_ctl:
 		fight.cover_ctl.enabled = _cover_was
 	_bullet_time(true)
+	_weapons_held(false)
 	_apply_acc(false)
 	if cam.current:
 		cam.current = false
-		if _prev_cam and is_instance_valid(_prev_cam) and _prev_cam.is_inside_tree():
-			_prev_cam.make_current()
+		var back: Camera3D = _back_cam(_prev_cam)
+		if back:
+			back.make_current()
+	else:
+		var d: CameraDirector = CameraDirector.live()
+		if d != null and d.cutting():
+			_restore_pending = true     # the cut gives the screen back to the cabin camera when it ends: pass it on then
+			_restore_to = _prev_cam
 	_prev_cam = null
 	if was_cabin:
 		left.emit()
+
+
+## The camera to come back to: the current one, or the player's when a director cut holds the screen.
+func _screen_cam() -> Camera3D:
+	var cur: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+	var d: CameraDirector = CameraDirector.live()
+	if cur != null and d != null and cur == d.cam:
+		return player.camera if player and is_instance_valid(player) else null
+	return cur
+
+
+func _back_cam(c: Camera3D) -> Camera3D:
+	if c != null and is_instance_valid(c) and c.is_inside_tree():
+		return c
+	if player and is_instance_valid(player) and player.camera and player.camera.is_inside_tree():
+		return player.camera
+	return null
+
+
+func _process(_delta: float) -> void:
+	if not _restore_pending:
+		return
+	if state != "idle":
+		_restore_pending = false
+		return
+	if cam.current:
+		_restore_pending = false
+		cam.current = false
+		var back: Camera3D = _back_cam(_restore_to)
+		if back:
+			back.make_current()
+		_restore_to = null
+	else:
+		var d: CameraDirector = CameraDirector.live()
+		if d == null or not d.cutting():
+			_restore_pending = false   # the cut gave the screen to someone else (a cinematic): nothing to undo
+			_restore_to = null
+
+
+## No shooting and no aiming from the ladder or the cabin (the [E] / mouse belong to the crane); cleared on leave.
+func _weapons_held(on: bool) -> void:
+	var w: WeaponDirector = fight.weapons if fight else null
+	if w == null or not is_instance_valid(w):
+		return
+	w.fire_override = false if on else null
+	w.aim_override = false if on else null
 
 
 func _bullet_time(on: bool) -> void:
@@ -389,7 +451,7 @@ func step(dt: float) -> void:
 	_hint = ""
 	match state:
 		"idle":
-			if usable and player and drops_left > 0 and near_ladder(player.global_position):
+			if usable and player and player.controls_enabled and drops_left > 0 and near_ladder(player.global_position):
 				_hint = T_LADDER
 		"climb":
 			climb_t += dt

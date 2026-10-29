@@ -37,8 +37,8 @@ class RackStrap extends Node3D:
 		pass
 
 	func take_hit(info: Dictionary) -> String:
-		if cut or String(info.get("kind", "")) == "scare":
-			return "none"
+		if cut or not is_visible_in_tree() or String(info.get("kind", "")) == "scare":
+			return "none"         # review fix: the hidden rack cannot be shot before it rolls out
 		cut = true
 		if mesh:
 			mesh.visible = false
@@ -196,6 +196,7 @@ func _reset_events() -> void:
 		strap.reset()
 	for c: SmartCrate in rack_crates:
 		c.reset()
+		c.dormant = true      # review fix: out of the fight (and of GunHUD's count) until the rack rolls out
 	if _lights:
 		_lights.visible = false
 	_preview(dance)
@@ -236,6 +237,8 @@ func _events(dt: float) -> void:
 	if not rack_on and clock >= rack_at and rack:
 		rack_on = true
 		rack.visible = true
+		for rc: SmartCrate in rack_crates:
+			rc.dormant = false
 		popup("Kệ pallet: bắn dây đai cho đổ cả kệ!", 2.0)
 		radio("Cái kệ kia có 3 thùng, bắn đứt dây đai là domino luôn e.", "Bắn dây vàng, cả kệ đổ.", 4.0)
 		_preview(strap)
