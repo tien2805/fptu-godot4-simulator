@@ -336,22 +336,50 @@ func _process(_d: float) -> bool:
 			if m == null:
 				return false
 			var mc: MissionCrates = m
-			_check(mc.total() == 9 and mc.broken_count() == 0 and mc.dancers.size() == 4 and mc.dance.visible, "9 crates counted (8 + the coffin-dance one), 4 carriers")
+			_check(mc.total() == 12 and mc.broken_count() == 0 and mc.dancers.size() == 4 and mc.dance.visible, "12 crates counted (8 + the rack's 3 + the coffin-dance one), 4 carriers")
+			_check(mc.preview_cuts == 1 and not mc.rack.visible and mc.gate_guards().size() == 2, "W3 T6: a preview cut on the carriers at the start; the rack and the gate guards held back")
 			var top: Control = mc.hud.get_node_or_null("Top") as Control
 			_check(top != null and top.is_visible_in_tree() and mc.hud_info.is_visible_in_tree() and mc.hud_meter.is_visible_in_tree()
-				and mc.hud_info.text == "Thùng kính: 0 / 9 · Còn 90 s" and top.offset_top >= GunHUD.TOP + GunHUD.PANEL.y,
+				and mc.hud_info.text == "Thùng kính: 0 / 12 · Còn 90 s" and top.offset_top >= GunHUD.TOP + GunHUD.PANEL.y,
 				"the counter and the 90 s countdown are on screen, under the gunfight panel (%s)" % mc.hud_info.text)
 			mc.advance(1.5)
-			_check(mc.hud_info.text == "Thùng kính: 0 / 9 · Còn 89 s" and mc.hud_meter.value < 100.0, "the countdown runs (%s)" % mc.hud_info.text)
+			_check(mc.hud_info.text == "Thùng kính: 0 / 12 · Còn 89 s" and mc.hud_meter.value < 100.0, "the countdown runs (%s)" % mc.hud_info.text)
 			_check(mc.meme_on and mc.cues_played.has("meme_coffin_dance") and StoryRoam.mission_slot(sd.call("beat")) == "meme_coffin_dance", "the coffin-dance meme slot while they carry it")
 			var p0: Vector3 = mc.dance.global_position
 			for k: int in 60:
 				mc.advance(DT)
 			_check(mc.dance.global_position.distance_to(p0) > 0.5, "the carriers walk their loop")
+			# W3 T6: the events on the clock
+			while mc.clock < 15.1:
+				mc.advance(0.1)
+			var gg: Array = mc.gate_guards()
+			_check(mc.gate_on and (gg[0] as Gunman).is_alerted and (gg[1] as Gunman).is_alerted, "15 s: 2 guards from the gate, alerted")
+			_ko_all(mc.fight)
+			_check(mc.state == "running", "the gate guards down: the beat goes on (the crates are the goal)")
+			while mc.clock < 30.1:
+				mc.advance(0.1)
+			_check(mc.rack_on and mc.rack.visible and mc.preview_cuts == 2, "30 s: the pallet rack rolls out (a preview cut on its strap)")
+			_check(mc.strap.take_hit({"kind": "bullet", "from": _player().global_position}) == "knocked_out", "the strap shot")
+			mc.advance(0.05)
+			var rb: int = 0
+			for rc: SmartCrate in mc.rack_crates:
+				rb += 1 if rc.broken else 0
+			_check(rb == 1, "the chain: the top crate first (%d)" % rb)
+			mc.advance(0.7)
+			rb = 0
+			for rc2: SmartCrate in mc.rack_crates:
+				rb += 1 if rc2.broken else 0
+			_check(rb == 3 and mc.broken_count() == 3 and mc.hello_shown, "then the other two: the whole rack down; the glasses greet the world")
+			while mc.clock < 45.1:
+				mc.advance(0.1)
+			_check(mc.fast and mc._dance_speed > MissionCrates.DANCE_SPEED, "45 s: the dancers speed up")
+			while mc.time_left > 19.9:
+				mc.advance(0.1)
+			_check(mc.time_up_cut and mc.cues_played.has("forklift_horn") and mc._lights.visible and mc.preview_cuts == 3, "20 s left: Alexander's horn and headlights at the gate, a preview cut")
 			_check(mc.carried.take_hit({"kind": "bullet", "from": _player().global_position}) == "knocked_out" and not mc.meme_on and mc.fleeing >= 0.0, "their crate shot: they drop it and run, the meme stops")
 			for c: Variant in mc.crates:
 				(c as SmartCrate).take_hit({"kind": "melee", "from": _player().global_position})
-			_check(mc.broken_count() == 9, "every crate broken (shot or hit)")
+			_check(mc.broken_count() == 12, "every crate broken (shot or hit)")
 			_next(13)
 		13:
 			var mc13: MissionCrates = m as MissionCrates if is_instance_valid(m) else null
@@ -471,7 +499,7 @@ func _process(_d: float) -> bool:
 			_check(mc26.state == "done" and String(sd.get("step")) == "d3_boss", "time up: Alexander comes back, the beat ends")
 			_next(27)
 		27:
-			if frames < 5:
+			if frames < 60:   # the time-up preview cut (fired when the loop above ran the clock past 20 s left) is over
 				return false
 			_check(not bool((sd.get("flags") as Dictionary).get("d3_all_crates", false)) and sr.markers.has("d3_boss") and not sr.markers.has("d3_manifest"), "not every crate broken: no E4 offered")
 			sd.call("set_step", "d3_bed")

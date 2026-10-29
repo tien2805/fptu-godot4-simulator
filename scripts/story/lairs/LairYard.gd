@@ -345,6 +345,8 @@ const GF_ROOFS: Array[Vector3] = [Vector3(-15.0, 2.6, 3.0), Vector3(9.0, 2.6, -1
 const GF_FLANK: Array[Vector3] = [Vector3(22.5, 0.0, 2.0), Vector3(22.5, 0.0, 5.5), Vector3(18.5, 0.0, -16.5), Vector3(14.0, 0.0, -16.0), Vector3(16.5, 0.0, -15.0)]
 const GF_DROPS: Array[Vector3] = [Vector3(-6.0, 0.0, 6.0), Vector3(2.0, 0.0, 12.5)]
 const CRATES_START := Vector3(-3.0, 0.0, 1.0)
+## W3 T6: the pallet rack of the crates beat (3 more crates, a strap).
+const RACK_AT := Vector3(6.0, 0.0, 11.0)
 const DANCE_LOOP: Array[Vector3] = [Vector3(-5.0, 0.0, 5.0), Vector3(9.0, 0.0, 5.0), Vector3(9.0, 0.0, 7.5), Vector3(-5.0, 0.0, 7.5)]
 const BOSS_AT := FORKLIFT_PARK                       # Alexander drives off from the parked spot
 const BOSS_YAW: float = 90.0
@@ -389,6 +391,9 @@ func mission_points(task: String) -> Dictionary:
 			d["start_yaw"] = face_n
 			d["crates"] = crates.duplicate()
 			d["dance"] = _world_list(DANCE_LOOP)
+			d["gate"] = _world_list([GF_GATE[0], GF_GATE[1]])
+			d["rack"] = world(RACK_AT)
+			d["rack_yaw"] = world_yaw(0.0)
 			d["ammo"] = _world_list(AMMO)
 		"forklift":
 			d["start"] = world(BOSS_PLAYER)
