@@ -18,7 +18,8 @@
 #     (extra_blips, a pooled array refreshed at BLIP_HZ).
 #   - Metrics (tests, the tuning sims): combat_t / onscreen_t (seconds with at least one active target / with at least one
 #     of them on screen, while metrics_on), max_off_s (the longest stretch with none on screen), boss_hidden_t /
-#     boss_hidden_max, the turn passes (turn_passes, turn_announced: shown at least TURN_ANNOUNCE_M before the turn).
+#     boss_hidden_max (the boss out of the frame or, with "occlude_rids" given, behind a wall: a ray every OCCLUDE_S),
+#     the turn passes (turn_passes, turn_announced: shown at least TURN_ANNOUNCE_M before the turn).
 # The owner calls setup(), set_active(on) (chevrons, HUD, radar), set_hud_visible(on) (e.g. under a cinematic card) and
 # sets metrics_on. No allocation per frame: the HUD texts are rebuilt only when their number changes.
 class_name RouteGuide
@@ -55,6 +56,7 @@ const EDGE_SMALL: float = 15.0
 const VIEW_M: float = 160.0
 const MAX_EDGES: int = 12
 const BLIP_HZ: float = 10.0
+const OCCLUDE_S: float = 0.1
 const MAX_BLIPS: int = 10
 const PANEL_SIZE := Vector2(236.0, 108.0)
 const PANEL_GAP: float = 14.0
@@ -118,6 +120,10 @@ var boss_hidden_t: float = 0.0
 var boss_hidden_max: float = 0.0
 var on_screen_n: int = 0
 var active_n: int = 0
+var boss_occluded: bool = false
+var _occl: bool = false
+var _occl_t: float = 0.0
+var _occl_q: PhysicsRayQueryParameters3D = null
 # chevrons
 var mm: MultiMesh
 var mmi: MultiMeshInstance3D
@@ -158,6 +164,13 @@ func setup(opts: Dictionary) -> void:
 	targets = opts.get("targets", [])
 	boss = opts.get("boss", null)
 	panel_half_w = float(opts.get("panel_half_w", 220.0))
+	if opts.has("occlude_rids"):
+		_occl = true
+		_occl_q = PhysicsRayQueryParameters3D.new()
+		var ex: Array[RID] = []
+		for r: Variant in opts["occlude_rids"]:
+			ex.append(r)
+		_occl_q.exclude = ex
 	var plen: float = float(path.get("length")) if path else 0.0
 	end_s = minf(float(opts.get("end_s", plen)), plen) if float(opts.get("end_s", -1.0)) >= 0.0 else plen
 	turns = find_turns(path, end_s) if path else []
@@ -214,6 +227,7 @@ static func find_turns(p: Object, length: float) -> Array:
 	var s1: float = 0.0
 	var best: float = 0.0
 	var apex: float = 0.0
+	var apex1: float = 0.0                 # the end of a plateau of the same heading change (its apex is the middle)
 	var s: float = 0.0
 	while s <= length:
 		var h: float = heading_change(p, s - TURN_SPAN, s + TURN_SPAN, length)
@@ -221,12 +235,15 @@ static func find_turns(p: Object, length: float) -> Array:
 		var hs: float = signf(h)
 		if a >= TURN_RUN_DEG and in_run and hs == sgn:
 			s1 = s
-			if a > best:
+			if a > best + 0.5:
 				best = a
 				apex = s
+				apex1 = s
+			elif a >= best - 0.5 and apex1 >= s - TURN_STEP - 0.01:
+				apex1 = s
 		else:
 			if in_run:
-				_close_turn(out, p, length, sgn, s0, s1, apex)
+				_close_turn(out, p, length, sgn, s0, s1, (apex + apex1) * 0.5)
 				in_run = false
 			if a >= TURN_RUN_DEG:
 				in_run = true
@@ -235,9 +252,10 @@ static func find_turns(p: Object, length: float) -> Array:
 				s1 = s
 				best = a
 				apex = s
+				apex1 = s
 		s += TURN_STEP
 	if in_run:
-		_close_turn(out, p, length, sgn, s0, s1, apex)
+		_close_turn(out, p, length, sgn, s0, s1, (apex + apex1) * 0.5)
 	# same-way turns close together are one (a hairpin drawn as two bends)
 	var i: int = 1
 	while i < out.size():
@@ -446,7 +464,16 @@ func _tick_targets(delta: float) -> void:
 		if on:
 			boss_on_screen = true
 			boss_screen = cam.unproject_position(head + Vector3(0.0, 1.1, 0.0))
+			if _occl:
+				_occl_t -= delta
+				if _occl_t <= 0.0:
+					_occl_t = OCCLUDE_S
+					_occl_q.from = cam.global_position
+					_occl_q.to = head
+					boss_occluded = not get_world_3d().direct_space_state.intersect_ray(_occl_q).is_empty()
+				on = not boss_occluded
 		else:
+			boss_occluded = false
 			boss_edge = edge_pos.size() - 1
 		var dn: int = int(roundf(Vector2(boss.global_position.x - bp.x, boss.global_position.z - bp.z).length()))
 		if dn != _boss_dist_n:

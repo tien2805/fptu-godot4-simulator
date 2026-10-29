@@ -26,8 +26,8 @@
 #       "seed": 1,
 #       "waves": []})                           # optional: the waves right away (same as add_wave per entry)
 #   chase.add_wave([                            # once per wave, in order (BikeChase.day2_waves(): the Day 2 layout 3 + 3)
-#       {"from": "behind",                      # "behind" (default, ~16 m back, behind the camera) | "ahead" (60-150 m
-#                                               #   ahead where out of view, else from behind as the front blocker)
+#       {"from": "behind",                      # "behind" (default, BEHIND_M back, behind the camera) | "side" | "ahead"
+#                                               #   (since the playtest fixes: from behind, then the front blocker)
 #        "lane": -1,                            # -1 left, 0 middle, +1 right of the player
 #        "gap": 0.0, "delay": 0.0,              # extra spawn distance (m), seconds after the wave start
 #        "opts": {"label": "Sói Đen", "hp": 1, "aggression": 0.5, "eye_color": Color(...), "paint": Color(...),
@@ -79,6 +79,17 @@
 #       a traffic crash costs CRASH_DMG_MIN..MAX by speed; touching a biker during nitro is a takedown (not the pickup).
 #   spawn_police(n) / release_police() (the police set piece), throw_helmet(thrower) (the red road marker), lat_room(side),
 #       bike_ducking(), bike_nitro(), add_charge(points), slow_motion(scale, real_s, kind), cams: `cam` (opening / cuts).
+# ===== Playtest fixes (plan 2026-10-30-d2-playtest-fixes.md) =====
+#   `guide` (RouteGuide, on with a route; setup opt "guide": false turns it off): the glowing chevrons on the road, the
+#       next-turn panel, red edge arrows for every active biker off screen, the course and red dots on the radar; active
+#       while running (its HUD hidden under the opening's letterbox and the cameo).
+#   Bikers stay with the player: the leash (BikerEnemy, LEASH_AHEAD / LEASH_BEHIND), flank slots inside kick reach held
+#       HOLD_MIN..HOLD_MAX s, roles kept through a short unfit slot (ROLE_UNFIT_S), soft separation; spawns: "behind" at most
+#       BEHIND_M back (an "ahead" spawn now comes from behind and takes the front), each arrival honks (positional) and shows
+#       its edge arrow; at most max_alive() riders at once (BikeCombatData.MAX_ALIVE, Dễ MAX_ALIVE_EASY), the rest wait.
+#   The bike camera's combat framing (BikeCamRig.set_combat_framing) while a biker rides within COMBAT_CAM_M.
+#   Telemetry: max_ahead / max_behind (furthest an active biker got along the player's frame), max_dist. Setup opt
+#   "max_alive" overrides the riders-at-once cap (tests, the perf gate's worst case).
 # ===========================================
 class_name BikeChase
 extends Node3D
@@ -95,10 +106,8 @@ signal cameo_done
 signal opening_drop
 
 const BIKE_FLOOR_OFFSET: float = 0.13    # = FreeRoam.BIKE_FLOOR_OFFSET: the PlayerBike origin sits 0.13 m under the floor
-const BEHIND_M: float = 16.0
-const AHEAD_M: float = 60.0              # "ahead" spawns: the first of these distances that is out of view ...
-const AHEAD_TRY: Array[float] = [60.0, 90.0, 120.0, 150.0]   # ... else from behind as the front blocker
-const SPAWN_STEP_M: float = 4.0
+const BEHIND_M: float = 6.5              # "behind" spawns: this far back (just behind the camera, inside the leash)
+const BEHIND_MAX: float = 11.5           # ... never further
 const SHORT_JUMP_S: float = 0.45         # too slow for the gap: a hop this long (real s) ...
 const SHORT_JUMP_H: float = 0.5          # ... this high
 const LANE_M: float = 2.2
@@ -227,6 +236,18 @@ var attack_hits: int = 0                 # enemy attacks that cost stability
 var _prev_speed: float = 0.0
 var _horn: AudioStream = null
 var previews: int = 0                    # set-piece preview cuts that ran (tests)
+# ----- playtest fixes -----
+var guide: RouteGuide = null
+var max_ahead: float = -INF               # furthest an active biker got ahead of / behind the player (route frame, m)
+var max_behind: float = -INF
+var max_dist: float = 0.0
+var arrivals: int = 0                     # bikers that arrived with a honk (tests)
+var _unfit_l: float = 0.0
+var _unfit_r: float = 0.0
+var _cam_near_t: float = 0.0
+var cam_combat: bool = false
+var _in_drop: bool = false
+var max_alive_opt: int = -1               # setup opt "max_alive" (tests, the perf gate); -1 = BikeCombatData.MAX_ALIVE
 
 
 func setup(opts: Dictionary) -> void:
@@ -266,6 +287,7 @@ func setup(opts: Dictionary) -> void:
 	manual_replay = bool(opts.get("manual_replay", false))
 	chase_seed = int(opts.get("seed", 1))
 	end_at_s = float(opts.get("end_at_s", -1.0))
+	max_alive_opt = int(opts.get("max_alive", -1))
 	if route and route.bridge_s < 0.0 and roam and roam.get("md"):
 		route.bridge_s = BikeRoute.find_bridge_s(roam.get("md"), route)
 	var pc: Node = roam.get("combat") if roam else null
@@ -332,6 +354,13 @@ func setup(opts: Dictionary) -> void:
 			_ray_excl.append((b as CollisionObject3D).get_rid())
 	_ray_q = PhysicsRayQueryParameters3D.new()
 	_ray_q.exclude = _ray_excl
+	if route != null and bool(opts.get("guide", true)):
+		guide = RouteGuide.new()
+		guide.name = "Guide"
+		add_child(guide)
+		guide.setup({"path": route, "bike": bike, "roam": roam, "s_fn": func() -> float: return s_p,
+			"end_s": end_at_s if end_at_s >= 0.0 else route.length - BikeCombatData.END_MARGIN, "floor_fn": floor_at,
+			"targets": bikers, "panel_half_w": BikeHUD.PANEL_SIZE.x * 0.5})
 	var sp_data: Array = opts.get("set_pieces", [])
 	if not sp_data.is_empty():
 		set_pieces = BikeSetPieces.new()
@@ -372,14 +401,14 @@ static func day2_waves() -> Array:
 		{"from": "behind", "lane": 1, "delay": 6.0, "opts": {"label": "Sói Còi", "hp": 2, "aggression": 0.5}}],
 		[{"from": "behind", "lane": 1, "opts": {"label": "Sói Bạc", "hp": 2, "aggression": 0.7}},
 		{"from": "behind", "lane": -1, "delay": 1.0, "opts": {"kind": "heavy", "label": "Sói Bự", "aggression": 0.6}},
-		{"from": "ahead", "lane": 0, "delay": 7.0, "opts": {"kind": "thrower", "label": "Sói Ném", "aggression": 0.7}},
+		{"from": "behind", "lane": 1, "delay": 7.0, "opts": {"kind": "thrower", "label": "Sói Ném", "aggression": 0.7}},
 		{"from": "behind", "lane": 1, "delay": 13.0, "opts": {"kind": "stick", "label": "Sói Gậy 2", "hp": 2, "aggression": 0.7}},
 		{"from": "behind", "lane": -1, "delay": 19.0, "opts": {"label": "Sói Phó", "hp": 2, "aggression": 0.8}}],
 		[{"from": "behind", "lane": 1, "opts": {"kind": "pickup", "label": "Bán Tải Sói", "aggression": 0.6}},
-		{"from": "ahead", "lane": 0, "opts": {"kind": "thrower", "label": "Sói Ném 2", "aggression": 0.75}},
-		{"from": "behind", "lane": -1, "delay": 0.6, "opts": {"label": "Sói Nanh", "aggression": 0.8}},
-		{"from": "behind", "lane": -1, "delay": 5.0, "opts": {"kind": "heavy", "label": "Sói Bự 2", "aggression": 0.7}},
-		{"from": "behind", "lane": 1, "delay": 6.0, "opts": {"label": "Sói Vuốt", "aggression": 0.9}}]]
+		{"from": "behind", "lane": -1, "opts": {"kind": "thrower", "label": "Sói Ném 2", "aggression": 0.75}},
+		{"from": "behind", "lane": -1, "delay": 0.6, "opts": {"label": "Sói Nanh", "hp": 2, "aggression": 0.8}},
+		{"from": "behind", "lane": -1, "delay": 5.0, "opts": {"kind": "heavy", "label": "Sói Bự 2", "hp": 4, "aggression": 0.7}},
+		{"from": "behind", "lane": 1, "delay": 6.0, "opts": {"label": "Sói Vuốt", "hp": 2, "aggression": 0.9}}]]
 
 
 ## The Day 2 wave options matching day2_waves().
@@ -419,6 +448,7 @@ func start() -> void:
 		bike.call("set_nitro_enabled", true)
 	if set_pieces:
 		set_pieces.rearm(-INF)
+	_guide_on(true)
 	if hud:
 		hud.show_hud()
 		if start_line != "":
@@ -475,6 +505,7 @@ func retry() -> void:
 	s_p = -1.0
 	_hint = -1.0
 	_update_frame()
+	_guide_on(true)
 	if hud:
 		hud.show_hud()
 	var cw: int = int(keep["wave"])
@@ -626,6 +657,8 @@ func on_biker_crash(b: BikerEnemy) -> void:
 		return
 	state = "finishing"
 	combat.enabled = false
+	_guide_on(false)
+	_set_cam_combat(false)
 	end_slow_motion()
 	_cam_restore()
 	Impact.slowmo_orbit(self, b, Impact.ORBIT_S)   # Q2: the last biker's fall in slow motion (camera director orbit)
@@ -713,6 +746,8 @@ func _on_lost() -> void:
 	state = "lost"
 	combat.enabled = false
 	_holders.clear()
+	_guide_on(false)
+	_set_cam_combat(false)
 	end_slow_motion()
 	_cam_restore()
 	_end_opening_visuals()
@@ -729,6 +764,8 @@ func _on_lost() -> void:
 
 
 func _finish() -> void:
+	_guide_on(false)
+	_set_cam_combat(false)
 	end_slow_motion()
 	_cam_restore()
 	_end_opening_visuals()
@@ -883,12 +920,25 @@ func _make_recorder() -> void:
 
 
 func _spawn_due(delta: float) -> void:
-	for k: int in range(pending.size() - 1, -1, -1):
-		var e: Array = pending[k]
+	for e: Array in pending:
 		e[1] = float(e[1]) - delta
-		if float(e[1]) <= 0.0:
+	var room: int = max_alive() - alive_count()
+	var k: int = 0
+	while k < pending.size() and room > 0:       # in wave order
+		if float(pending[k][1]) <= 0.0:
+			var sp: Dictionary = pending[k][0]
 			pending.remove_at(k)
-			_spawn(e[0])
+			_spawn(sp)
+			room -= 1
+		else:
+			k += 1
+
+
+## Riders of the gang around the player at once (the rest of a wave waits for a place).
+func max_alive() -> int:
+	if max_alive_opt > 0:
+		return max_alive_opt
+	return int(Difficulty.pick(BikeCombatData.MAX_ALIVE, BikeCombatData.MAX_ALIVE_EASY))
 
 
 func _spawn(sp: Dictionary) -> BikerEnemy:
@@ -904,55 +954,47 @@ func _spawn(sp: Dictionary) -> BikerEnemy:
 	b.setup(o)
 	add_child(b)
 	var from: String = String(sp.get("from", "behind"))
-	var ahead: bool = from == "ahead"
 	var lane: float = float(sp.get("lane", [-1, 1, 0][_wave_spawned % 3]))
-	var gap: float = float(sp.get("gap", 0.0)) + SPAWN_STEP_M * float(_wave_spawned)
 	var base_y: float = bike.global_position.y + BIKE_FLOOR_OFFSET
-	var along: float = -BEHIND_M - gap
 	var p2: Vector2 = Vector2.ZERO
 	var placed: bool = false
+	if from == "ahead":
+		# playtest fixes: nobody pops in far ahead any more (the leash): it comes from behind and takes the front
+		from = "behind"
+		b.prefer_front = true
 	if from == "side":
 		# out of the side road beside the player, just out of view (the camera sits behind the bike)
 		var sd: float = -1.0 if lane < 0.0 else 1.0
 		var a: float = -1.0 - 1.5 * float(_wave_spawned % 2)
-		for k0: int in 6:
+		for k0: int in 4:
 			var q0: Vector2 = side_point(a, sd)
 			if not in_view(Vector3(q0.x, base_y + 1.0, q0.y)) and _clear_of_traffic(q0):
 				p2 = q0
 				placed = true
 				break
 			a -= 2.5
-		if placed:
-			along = a
-	elif ahead:
-		# out of view ahead (pop-in) and still on the route; else it comes from behind and takes the front
-		for a: float in AHEAD_TRY:
-			if not room_ahead(a + gap + 5.0):
-				break
-			var q: Vector2 = target_at(a + gap, lane * LANE_M)
-			if not in_view(Vector3(q.x, base_y + 1.0, q.y)) and _clear_of_traffic(q):
-				along = a + gap
-				p2 = q
-				placed = true
-				break
-		if not placed:
-			ahead = false
-			b.prefer_front = true
 	if not placed:
+		# from behind, behind the camera and inside the leash; lanes tried in turn around a car
+		var along: float = -minf(BEHIND_M + float(sp.get("gap", 0.0)) + 0.75 * float(_wave_spawned % 3), BEHIND_MAX)
+		var lanes: Array[float] = [lane, -lane if lane != 0.0 else 1.0, 0.0 if lane != 0.0 else -1.0]
 		p2 = target_at(along, lane * LANE_M)
-		for k: int in 4:
-			if _clear_of_traffic(p2):
+		for ln: float in lanes:
+			var q1: Vector2 = target_at(along, ln * LANE_M)
+			if _clear_of_traffic(q1):
+				p2 = q1
+				lane = ln if ln != 0.0 else lane
 				break
-			along -= 8.0
-			p2 = target_at(along, lane * LANE_M)
 	var y: Variant = floor_at(Vector3(p2.x, base_y, p2.y))
 	var fy: float = float(y) if y is float else base_y
-	var spd: float = p_vel.length() * (0.6 if ahead else 1.0)
-	b.place(Vector3(p2.x, fy, p2.y), atan2(-p_fwd.x, -p_fwd.y), spd)
+	var arrive: float = BikeCombatData.ARRIVE_REL if (from == "behind" and not _in_drop) else 0.0   # already catching up
+	b.place(Vector3(p2.x, fy, p2.y), atan2(-p_fwd.x, -p_fwd.y), p_vel.length() + arrive)
 	b.side = -1.0 if lane < 0.0 else 1.0
 	bikers.append(b)
 	_spawned += 1
 	_wave_spawned += 1
+	if not _in_drop and state == "running":
+		arrivals += 1                         # the arrival warning: a horn where it comes from (its edge arrow shows it)
+		cue("horn", b.ground_pos() + Vector3(0.0, 1.0, 0.0), 3.0, 0.8 + 0.1 * float(_spawned % 4))
 	if rec:
 		rec.track(b)
 		rec.track(b.body)
@@ -1128,6 +1170,7 @@ func _physics_process(delta: float) -> void:
 	_tick_helmets(delta)
 	_player_contact()
 	_separate()
+	_tick_watch(rdt)
 	max_attackers_seen = maxi(max_attackers_seen, attackers())
 	_prev_speed = absf(bike.current_speed_ms)
 	if state == "finishing" and _finish_left >= 0.0:
@@ -1139,6 +1182,45 @@ func _physics_process(delta: float) -> void:
 		_gap_left -= delta
 		if _gap_left < 0.0:
 			_start_wave(wave + 1)
+
+
+## Playtest fixes: the leash telemetry, the bike camera's combat framing while a biker rides near, the guide's HUD and metrics.
+func _tick_watch(rdt: float) -> void:
+	var near: bool = false
+	if state == "running":
+		for b: Variant in bikers:
+			var e: BikerEnemy = b as BikerEnemy
+			if e == null or not is_instance_valid(e) or not e.is_active():
+				continue
+			var rel: Vector2 = e.pos2 - p_pos
+			var al: float = rel.dot(p_fwd)
+			var dl: float = rel.length()
+			max_ahead = maxf(max_ahead, al)
+			max_behind = maxf(max_behind, -al)
+			max_dist = maxf(max_dist, dl)
+			if dl < BikeCombatData.COMBAT_CAM_M:
+				near = true
+	if near and not opening_on:
+		_cam_near_t = BikeCombatData.COMBAT_CAM_HOLD_S
+	else:
+		_cam_near_t -= rdt
+	_set_cam_combat(state == "running" and _cam_near_t > 0.0)
+	if guide:
+		guide.metrics_on = state == "running" and not opening_on and cameo_state != "running"
+		guide.set_hud_visible(not opening_on and cameo_state != "running")
+
+
+func _set_cam_combat(on: bool) -> void:
+	if on == cam_combat:
+		return
+	cam_combat = on
+	if bike != null and is_instance_valid(bike) and bike.cam_rig:
+		bike.cam_rig.set_combat_framing(on)
+
+
+func _guide_on(on: bool) -> void:
+	if guide and is_instance_valid(guide):
+		guide.set_active(on)
 
 
 ## force_s waves (the player got there with the previous wave still riding: it joins them) and the cameo: after its wave's
@@ -1368,8 +1450,12 @@ func _assign_roles() -> void:
 	if _act.is_empty():
 		boxed = false
 		return
-	var fit_l: bool = slot_fits(-1.0)
-	var fit_r: bool = slot_fits(1.0)
+	var raw_l: bool = slot_fits(-1.0)
+	var raw_r: bool = slot_fits(1.0)
+	_unfit_l = 0.0 if raw_l else _unfit_l + BikeCombatData.ROLE_EVERY
+	_unfit_r = 0.0 if raw_r else _unfit_r + BikeCombatData.ROLE_EVERY
+	var fit_l: bool = raw_l or _unfit_l < BikeCombatData.ROLE_UNFIT_S   # a holder keeps its slot through a short blockage
+	var fit_r: bool = raw_r or _unfit_r < BikeCombatData.ROLE_UNFIT_S
 	var front: BikerEnemy = null
 	var left: BikerEnemy = null
 	var right: BikerEnemy = null
@@ -1411,17 +1497,17 @@ func _assign_roles() -> void:
 		if lat > hi:
 			hi = lat
 			cand_r = e
-	if cand_l != null and cand_l == cand_r:          # one free rider: its own side first
-		if hi >= 0.0 and right == null and fit_r:
+	if cand_l != null and cand_l == cand_r:          # one free rider: its own side first (a new holder needs a free slot now)
+		if hi >= 0.0 and right == null and raw_r:
 			right = cand_l
-		elif left == null and fit_l:
+		elif left == null and raw_l:
 			left = cand_l
-		elif right == null and fit_r:
+		elif right == null and raw_r:
 			right = cand_l
 	else:
-		if left == null and fit_l and cand_l != null:
+		if left == null and raw_l and cand_l != null:
 			left = cand_l
-		if right == null and fit_r and cand_r != null and cand_r != left:
+		if right == null and raw_r and cand_r != null and cand_r != left:
 			right = cand_r
 	var k: int = 0
 	for e: BikerEnemy in _act:
@@ -1504,9 +1590,14 @@ func _separate() -> void:
 			if l >= sep:
 				continue
 			var n2: Vector2 = d / l if l > 0.01 else p_right
-			var push: Vector2 = n2 * (sep - l) * 0.5
-			a.pos2 -= push
-			b.pos2 += push
+			var push: Vector2 = n2 * (sep - l) * BikeCombatData.SEP_SOFT   # soft: a share per frame, no jitter
+			if a.is_attacking() and not b.is_attacking():
+				b.pos2 += push * 2.0                 # an attacker keeps its fixed line; the other gives way
+			elif b.is_attacking() and not a.is_attacking():
+				a.pos2 -= push * 2.0
+			else:
+				a.pos2 -= push
+				b.pos2 += push
 
 
 # ---------------------------------------------------------------------------
@@ -1826,7 +1917,9 @@ func _drop() -> void:
 	if hud:
 		hud.letterbox(false)
 	bike.add_camera_shake(0.9)
+	_in_drop = true
 	_start_wave(0)
+	_in_drop = false
 	var k: int = 0
 	for b: Variant in bikers:
 		var e: BikerEnemy = b as BikerEnemy
@@ -2059,6 +2152,7 @@ func _reset_day2() -> void:
 ## Freed or removed without stop(): the hooks go, and with them the speed cap (the bike gets its own profile back), the
 ## slow motion and the camera.
 func _exit_tree() -> void:
+	_set_cam_combat(false)
 	end_slow_motion()
 	_cam_restore()
 	if jump_left > 0.0 and bike and is_instance_valid(bike) and bike.visual_pivot:

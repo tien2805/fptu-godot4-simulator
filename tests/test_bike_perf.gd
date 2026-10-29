@@ -170,7 +170,7 @@ func _on_physics() -> void:
 				chase.name = "PerfChase"
 				roam.add_child(chase)
 				chase.setup({"roam": roam, "start_s": 60.0, "seed": 21, "profile": BikeCombatData.CHASE_PROFILE, "takedown_cam": false,
-					"set_pieces": PERF_PIECES, "auto_replay": false})
+					"set_pieces": PERF_PIECES, "auto_replay": false, "max_alive": 6})   # the worst case: 6 riding (Day 2 caps 4)
 				var w: Array = []
 				var kinds: Array[String] = ["rider", "stick", "heavy", "rider", "thrower", "pickup"]
 				for i: int in 6:

@@ -42,6 +42,11 @@
 # flare, the bike rocks away from the hit (REACT_ROLL x the tier), a heavy bucks its back wheel and shrugs off a kick that
 # does not down it (sparks off its armour), a thrower's pillion reels; a biker with more than one hit point shows HP pips
 # (red boxes) over its name, one going out per kick.
+# Playtest fixes (plan 2026-10-30-d2-playtest-fixes.md): flank slots inside the kick reach, held HOLD_MIN..HOLD_MAX s
+# (settled_t: only while within SETTLE_M of the slot) before the wind-up; a leash keeps every active AI biker within
+# LEASH_AHEAD ahead / LEASH_BEHIND behind the player (_leash: the speed limited from LEASH_SOFT inside the band, a top
+# speed that can always catch up, a hard clamp at the band); a biker closing in from behind revs once (ARRIVE_ROAR_M);
+# magnet(to, k) pulls it toward the player's kick (PlayerBikeCombat's kick assist).
 class_name BikerEnemy
 extends Node3D
 
@@ -56,6 +61,8 @@ const ROLE_KINDS: Array[String] = ["rider", "stick", "heavy"]
 const REACT_S: float = 0.35
 const REACT_ROLL: Dictionary = {"light": 0.12, "heavy": 0.3, "finisher": 0.45}
 const PIP_SIZE := Vector3(0.16, 0.07, 0.03)
+const MAGNET_LAT: float = 1.5            # kick assist: pulled to this far beside the player's bike ...
+const MAGNET_SPEED: float = 7.0          # ... at up to this speed (m/s, on top of riding along)
 
 var ch: BikeChase
 var kind: String = "rider"
@@ -73,6 +80,14 @@ var side: float = -1.0                   # LEFT -1 / RIGHT +1 (the side it kicks
 var has_token: bool = false
 var hit_done: bool = false
 var pace_t: float = 1.5
+## Seconds settled in the current slot this PACE (the hold window counts only these) and the slot it counted for.
+var settled_t: float = 0.0
+var _slot_key: int = -99
+var roared: bool = false
+var leash_hits: int = 0                  # frames the hard leash clamp had to act (tests, tuning)
+var magnet_t: float = 0.0
+var magnet_side: float = 0.0             # the player's side it is pulled to (-1 left, +1 right of his bike)
+var magnets: int = 0
 var pos2: Vector2 = Vector2.ZERO
 var vel: Vector2 = Vector2.ZERO
 var yaw: float = 0.0
@@ -171,6 +186,8 @@ func setup(opts: Dictionary = {}) -> void:
 	kp = BikeCombatData.kind(kind)
 	label = String(opts.get("label", ""))
 	max_hp = maxi(1, int(opts.get("hp", int(kp["hp"]))))
+	if max_hp >= 2 and ai and kind != "heavy":
+		max_hp -= int(Difficulty.pick(0, 1))   # Dễ: the tougher riders go down a kick sooner
 	hp = max_hp
 	ai = bool(opts.get("ai", true))
 	traffic_proof = bool(opts.get("traffic_proof", false))
@@ -435,7 +452,10 @@ func _enter(s: int) -> void:
 	hit_done = false
 	match s:
 		St.PACE:
-			pace_t = _rng.randf_range(BikeCombatData.PACE_MIN, BikeCombatData.PACE_MAX) * lerpf(1.25, 0.6, aggression)
+			pace_t = _rng.randf_range(BikeCombatData.HOLD_MIN, BikeCombatData.HOLD_MAX) * lerpf(1.1, 0.9, aggression) 				+ float(Difficulty.pick(0.0, BikeCombatData.HOLD_EASY))
+			if hp < max_hp:
+				pace_t = BikeCombatData.HOLD_MIN + float(Difficulty.pick(0.0, BikeCombatData.HOLD_EASY))   # kicked once: it is angry
+			settled_t = 0.0
 		St.WINDUP:
 			attacks += 1
 			_line_locked = false
@@ -654,6 +674,8 @@ func tick(delta: float) -> void:
 	_think(delta)
 	if st == St.CRASH:
 		return
+	if magnet_t > 0.0 and ch:
+		_tick_magnet(delta)
 	_floor_ray(BikeCombatData.RAY_EVERY)
 	_taunts(delta)
 	if stick:
@@ -681,13 +703,26 @@ func _think(delta: float) -> void:
 			target = ch.target_at(hold_along, hold_lat)
 		St.APPROACH:
 			target = slot_target()
+			max_rel = BikeCombatData.CATCH_SPEED * BikeCombatData.APPROACH_K   # it arrives quickly (seen, honked)
+			gain = BikeCombatData.POS_GAIN * BikeCombatData.APPROACH_K
+			if not roared and ch:
+				var rel: Vector2 = pos2 - ch.p_pos
+				if rel.dot(ch.p_fwd) < 0.0 and rel.length() < BikeCombatData.ARRIVE_ROAR_M:
+					roared = true
+					ch.cue("engine_roar", ground_pos(), -3.0, 1.1)
 			if pos2.distance_to(target) < 3.0:
 				_enter(St.PACE)
 		St.PACE:
 			target = slot_target()
+			var key: int = role * 4 + int(side + 1.0)
+			if key != _slot_key:
+				_slot_key = key
+				settled_t = 0.0                   # a new slot: the hold window starts again once settled there
+			if pos2.distance_to(target) < BikeCombatData.SETTLE_M * (3.0 if (kind == "thrower" or kind == "pickup") else 1.0):
+				settled_t += delta
 			if kind == "police":
 				target = _police_pace(delta)
-			elif ai and st_t >= pace_t:
+			elif ai and settled_t >= pace_t:
 				if kind == "thrower" or kind == "pickup":
 					if fall_back_t <= 0.0 and pos2.distance_to(target) < 4.0 and ch.request_token(self):
 						start_attack(side)
@@ -858,12 +893,28 @@ func _drive(delta: float, target: Vector2, max_rel: float, gain: float) -> void:
 		var along: float = v_des.dot(f)
 		if along > avoid_cap:
 			v_des -= f * (along - avoid_cap)
-	var sp: float = v_des.length()
 	var top: float = minf(float(kp.get("top", BikeCombatData.MAX_SPEED)), BikeCombatData.MAX_SPEED + 1.0) if st != St.LEAVE else BikeCombatData.MAX_SPEED
+	var leashed: bool = ai and st != St.LEAVE and st != St.HOLD
+	if leashed:
+		var al: float = (pos2 - ch.p_pos).dot(ch.p_fwd)
+		var hi: float = BikeCombatData.LEASH_AHEAD - BikeCombatData.LEASH_SOFT
+		var lo: float = -(BikeCombatData.LEASH_BEHIND - BikeCombatData.LEASH_SOFT)
+		var ra: float = (v_des - pv).dot(ch.p_fwd)
+		var ra2: float = ra
+		if al > hi:
+			ra2 = minf(ra, -BikeCombatData.LEASH_GAIN * (al - hi))       # past the band ahead: drop back toward it
+		elif al < lo:
+			ra2 = maxf(ra, BikeCombatData.LEASH_GAIN * (lo - al))        # behind it: close in
+			top = maxf(top, pv.length() + BikeCombatData.LEASH_CATCH)
+		if ra2 != ra:
+			v_des += ch.p_fwd * (ra2 - ra)
+	var sp: float = v_des.length()
 	if sp > top:
 		v_des *= top / sp
 	vel = vel.move_toward(v_des, BikeCombatData.ACCEL * delta)
 	pos2 += vel * delta
+	if leashed:
+		_leash_clamp()
 	var spd: float = vel.length()
 	if spd > 1.0:
 		yaw = lerp_angle(yaw, atan2(-vel.x, -vel.y), minf(1.0, delta * 10.0))
@@ -872,6 +923,36 @@ func _drive(delta: float, target: Vector2, max_rel: float, gain: float) -> void:
 	var right := Vector2(cos(yaw), -sin(yaw))
 	var lean_max: float = 0.45 if kind != "pickup" else 0.06
 	lean = lerpf(lean, clampf(-acc.dot(right) * 0.05, -lean_max, lean_max), minf(1.0, delta * 8.0))
+	_place_bike()
+
+
+## The hard leash: never past LEASH_AHEAD ahead or LEASH_BEHIND behind the player along his route frame (it rides with him
+## at the band; the soft limit in _drive keeps this rare).
+func _leash_clamp() -> void:
+	var al: float = (pos2 - ch.p_pos).dot(ch.p_fwd)
+	if al > BikeCombatData.LEASH_AHEAD:
+		pos2 -= ch.p_fwd * (al - BikeCombatData.LEASH_AHEAD)
+		leash_hits += 1
+	elif al < -BikeCombatData.LEASH_BEHIND:
+		pos2 += ch.p_fwd * (-BikeCombatData.LEASH_BEHIND - al)
+		leash_hits += 1
+
+
+## Kick assist (PlayerBikeCombat): pulled for `secs` toward MAGNET_LAT beside the player's bike on `side` (-1 left, +1
+## right), level with it, so the kick connects.
+func magnet(side_: int, secs: float) -> void:
+	if not is_active():
+		return
+	magnet_side = -1.0 if side_ < 0 else 1.0
+	magnet_t = secs
+	magnets += 1
+
+
+func _tick_magnet(delta: float) -> void:
+	magnet_t -= delta
+	var rel: Vector2 = pos2 - ch.p_pos
+	var to: Vector2 = ch.p_pos + ch.b_right * magnet_side * MAGNET_LAT + ch.b_fwd * clampf(rel.dot(ch.b_fwd), -0.8, 0.8)
+	pos2 = pos2.move_toward(to, MAGNET_SPEED * delta)
 	_place_bike()
 
 
@@ -885,7 +966,7 @@ func slot_target() -> Vector2:
 		"pickup":
 			var want: float = side * float(kp["slot_lat"])
 			if ch.lat_room(side) < 2.3:
-				return ch.target_at(-8.0, want)   # no room on its side: hang back in that lane
+				return ch.target_at(BikeCombatData.PICKUP_BACK, want)   # no room on its side: just behind in that lane (in view)
 			return ch.target_at(BikeCombatData.SLOT_ALONG, want)
 		"police":
 			return ch.target_at(-BikeCombatData.POLICE_BEHIND, side * 1.5)
@@ -898,8 +979,9 @@ func slot_target() -> Vector2:
 				var u: float = clampf(st_t / BikeCombatData.BRAKE_S, 0.0, 1.0)
 				along = lerpf(BikeCombatData.FRONT_ALONG, BikeCombatData.BRAKE_ALONG, sin(u * PI))
 			return ch.target_at(along, 0.0)
+	# playtest fixes: the reserves wait their turn in a second row ahead and out to the side (on screen), not behind
 	var lat: float = BikeCombatData.BACK_LAT if back_k % 2 == 0 else -BikeCombatData.BACK_LAT
-	return ch.target_at(-BikeCombatData.BACK_ALONG - 3.0 * float(back_k / 2), lat)
+	return ch.target_at(BikeCombatData.BACK_ALONG + 2.5 * float(back_k / 2), lat)
 
 
 ## Police pacing: behind the pack; every POLICE_RAM_EVERY it picks a biker (or the player) and closes in beside it.

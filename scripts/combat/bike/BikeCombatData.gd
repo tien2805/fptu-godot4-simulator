@@ -17,14 +17,20 @@ const KICK_REACH: float = 2.8            # lateral reach from the bike's centre 
 const KICK_MIN: float = 0.3              # closer than this is not "to the side"
 const KICK_ALONG: float = 1.7            # +/- along the bike (m)
 const KICK_PUSH: float = 4.5             # lateral speed given to the kicked biker (m/s)
+## Kick assist (plan 2026-10-30-d2-playtest-fixes.md): Q / E take the nearest kickable target on that side within ASSIST_LAT
+## to the side and +/-ASSIST_ALONG along the bike (KICK_REACH / KICK_ALONG are the plain leg's reach); the target picked at
+## the press is pulled in toward the leg through the hit window (BikerEnemy / DriftRival.magnet) so the kick connects.
+const ASSIST_LAT: float = 3.5
+const ASSIST_ALONG: float = 3.5
+const ASSIST_PULL_S: float = 0.32        # the pull lasts the wind-up and the hit window
 
 # ----- stability (the player's bike HP) -----
 const STABILITY_MAX: float = 100.0
-const ENEMY_KICK_DMG: float = 22.0       # = KINDS.rider.dmg
+const ENEMY_KICK_DMG: float = 26.0       # = KINDS.rider.dmg
 const CRASH_DMG: float = 25.0            # PlayerBike.crash_occurred: traffic, curb, pothole, fall (PlayerBikeCombat's own)
 const CRASH_DMG_MIN: float = 15.0        # D2X-4: BikeChase scales a crash by the speed before it: 15 at 6 m/s ...
 const CRASH_DMG_MAX: float = 25.0        # ... 25 at the chase top speed
-const WAVE_REFILL: float = 15.0          # D2X-4: a cleared wave gives back this much stability (Wave 2 Thường; Dễ 40)
+const WAVE_REFILL: float = 10.0          # D2X-4: a cleared wave gives back this much stability (Thường, playtest fixes; Dễ 40)
 const RAM_DMG: float = 6.0               # riding into the front biker's back wheel
 const HURT_IFRAMES: float = 0.6
 const REGEN_DELAY: float = 5.0
@@ -40,19 +46,43 @@ const ACCEL: float = 16.0                # m/s² (lateral swerves included)
 const POS_GAIN: float = 1.8              # target pull (1/s)
 const SWERVE_GAIN: float = 4.0           # ... while swerving in to kick (a quick, readable lunge)
 const AVOID_GAIN: float = 3.5            # ... while passing a car
-const SLOT_LAT: float = 1.95             # flank slot: lateral distance from the player (route frame; < KICK_REACH even at 10 deg yaw)
+const SLOT_LAT: float = 2.2              # flank slot: lateral distance from the player (route frame; inside KICK_REACH and the assist)
 const SLOT_ALONG: float = -0.6           # flank slot: slightly behind the player's centre
 const SWERVE_LAT: float = 1.0            # lateral distance at the kick
 const WINDUP_IN: float = 0.6             # share of the wind-up spent swerving in (to SWERVE_LAT + 0.25)
 const KICK_LOCK_S: float = 0.2           # the kick line is fixed in world space this long before the kick starts (steer away = dodge)
 const FRONT_ALONG: float = 7.0           # box-in blocker ahead of the player
 const BRAKE_ALONG: float = 2.4           # ... closing to this during a brake check
-const BACK_ALONG: float = 8.0            # reserves behind ...
-const BACK_LAT: float = 0.65             # ... staggered just off the player's line (clear of the traffic lanes)
+const BACK_ALONG: float = 4.0            # reserves: a second row this far ahead (playtest fixes: on screen, was 8 m behind) ...
+const BACK_LAT: float = 3.0              # ... out to the side, left and right in turn
 const ROAD_HALF: float = 3.6             # default half width the AI keeps to on the route
 const SLOT_SQUEEZE: float = 0.8          # a flank slot clamped by more than this has no room: BACK instead
-const PACE_MIN: float = 0.9            # tuned 2026-10-27 (Day 2 bots): flankers pace, then attack
+const PACE_MIN: float = 0.9            # tuned 2026-10-27 (Day 2 bots): flankers pace, then attack (non-flank roles)
 const PACE_MAX: float = 2.2
+## Playtest fixes (plan 2026-10-30-d2-playtest-fixes.md): the owner could not find the bikers to kick ("lũ xe cứ chạy loạn
+## lên"). A flanker settles in its slot (inside kick reach) and holds it HOLD_MIN..HOLD_MAX s (counted only while within
+## SETTLE_M of the slot; Dễ + HOLD_EASY) before it winds up; every active biker stays within LEASH_AHEAD ahead and
+## LEASH_BEHIND behind the player (the speed limited from LEASH_SOFT inside the band, a hard clamp at it); at most
+## MAX_ALIVE riders at once (Dễ MAX_ALIVE_EASY), the rest of a wave waits; a slot unfit (traffic, the road edge) keeps its
+## holder ROLE_UNFIT_S before it gives the role up.
+const HOLD_MIN: float = 1.5
+const HOLD_MAX: float = 2.5
+const HOLD_EASY: float = 0.5
+const SETTLE_M: float = 1.2
+const LEASH_AHEAD: float = 20.0
+const LEASH_BEHIND: float = 12.0
+const LEASH_SOFT: float = 4.0
+const LEASH_GAIN: float = 1.5            # 1/s: the closing speed per metre past the soft band
+const LEASH_CATCH: float = 6.0           # a biker behind the band may ride this much faster than the player
+const MAX_ALIVE: int = 4
+const MAX_ALIVE_EASY: int = 3
+const ROLE_UNFIT_S: float = 0.6
+const SEP_SOFT: float = 0.25             # separation: share of the overlap corrected per frame (no jitter)
+const COMBAT_CAM_M: float = 25.0         # the bike camera's combat framing while a biker rides this near ...
+const COMBAT_CAM_HOLD_S: float = 1.2     # ... and this long after
+const ARRIVE_ROAR_M: float = 7.0         # a biker closing in from behind revs as it comes within this
+const APPROACH_K: float = 1.4            # ... closing at up to CATCH_SPEED x this
+const ARRIVE_REL: float = 6.0            # a biker from behind arrives this much faster than the player (m/s)
 const WINDUP_S: float = 0.5              # telegraph before the kick
 const ENEMY_KICK_S: float = 0.4
 const ENEMY_HIT_AT: float = 0.15         # into the kick
@@ -104,17 +134,19 @@ const CHASE_PROFILE: Dictionary = {"max_speed_ms": 27.8, "slipstream_max_ms": 30
 ## the player (m; tuned 2026-10-27 so a flanker paces just out of kick reach: the kick is a counter in its wind-up, or
 ## a steer toward it); lock: the attack line (and with lock_speed the speed too: braking dodges) is fixed this long before the
 ## attack starts; swerve: lateral distance of the attack line (negative = past the player's line); slot_lat: pacing
-## distance to the side; top: top speed (m/s); wobble / push: a kick's wobble time and shove; atk: attack duration (s).
+## distance to the side (playtest fixes 2026-10-30: the flank slots are inside the kick reach and the assist zone, held for
+## HOLD_MIN..HOLD_MAX s before the wind-up); top: top speed (m/s); wobble / push: a kick's wobble time and shove; atk: attack
+## duration (s).
 const KINDS: Dictionary = {
-	"rider": {"hp": 1, "dmg": 22.0, "windup": 0.5, "reach": 1.75, "along": 1.5, "lock": 0.2, "lock_speed": false, "swerve": 1.0,
-		"slot_lat": 2.9, "top": 32.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
-	"stick": {"hp": 1, "dmg": 25.0, "windup": 0.5, "reach": 2.5, "along": 1.15, "lock": 0.35, "lock_speed": true, "swerve": 1.6,
-		"slot_lat": 3.0, "top": 32.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
+	"rider": {"hp": 1, "dmg": 26.0, "windup": 0.5, "reach": 1.75, "along": 1.5, "lock": 0.2, "lock_speed": false, "swerve": 1.0,
+		"slot_lat": 2.2, "top": 32.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
+	"stick": {"hp": 1, "dmg": 28.0, "windup": 0.5, "reach": 2.5, "along": 1.15, "lock": 0.35, "lock_speed": true, "swerve": 1.6,
+		"slot_lat": 2.4, "top": 32.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
 	"thrower": {"hp": 1, "dmg": 15.0, "windup": 0.6, "reach": 1.6, "along": 1.6, "lock": 0.0, "lock_speed": false, "swerve": 2.0,
 		"slot_lat": 3.2, "top": 33.0, "kickable": true, "wobble": 0.55, "push": 4.5, "atk": 0.4},
 	"heavy": {"hp": 3, "dmg": 30.0, "windup": 0.6, "reach": 1.8, "along": 1.8, "lock": 0.25, "lock_speed": false, "swerve": 1.05,
-		"slot_lat": 2.9, "top": 29.5, "kickable": true, "wobble": 0.35, "push": 2.0, "atk": 0.45},
-	"pickup": {"hp": 1, "dmg": 35.0, "windup": 1.0, "reach": 1.55, "along": 2.9, "lock": 0.5, "lock_speed": true, "swerve": -0.3,
+		"slot_lat": 2.3, "top": 29.5, "kickable": true, "wobble": 0.35, "push": 2.0, "atk": 0.45},
+	"pickup": {"hp": 1, "dmg": 40.0, "windup": 1.0, "reach": 1.55, "along": 2.9, "lock": 0.5, "lock_speed": true, "swerve": -0.3,
 		"slot_lat": 3.3, "top": 31.0, "kickable": false, "wobble": 0.0, "push": 0.0, "atk": 0.75},
 	"police": {"hp": 1, "dmg": 12.0, "windup": 0.5, "reach": 1.75, "along": 1.6, "lock": 0.2, "lock_speed": false, "swerve": 1.0,
 		"slot_lat": 2.0, "top": 33.0, "kickable": false, "wobble": 0.0, "push": 0.0, "atk": 0.4},
@@ -130,6 +162,7 @@ const PICKUP_STRIKES: int = 2            # dodged rams before the pickup loses i
 const PICKUP_MAX_RAMS: int = 3           # ... and it loses it after its 3rd ram anyway
 const PICKUP_HALF := Vector2(0.95, 2.6)  # pickup half width / half length (m)
 const PICKUP_RECOVER_S: float = 1.4
+const PICKUP_BACK: float = -4.5          # no room beside the player: the pickup waits this far back in its lane (playtest fixes: -8)
 const POLICE_RAM_EVERY := Vector2(2.4, 3.8)
 const POLICE_PLAYER_CHANCE: float = 0.2
 const POLICE_PLAYER_GAP_S: float = 6.0     # the police go for the player at most once in this long (both cops)
