@@ -6,6 +6,7 @@
 #     snapshot as the save, the story continues like TIẾP TỤC). "QUAY VỀ TIẾN ĐỘ TRƯỚC KHI TUA" (only with a backup) asks
 #     too, then StoryChapters.restore_backup.
 #   XEM LẠI PHIM: the story cinematics by day; an unlocked one plays in StoryGalleryPlayer, which comes back to this tab.
+# Wave 3: a ranked beat with a best rank reads "<tên cảnh> · Hạng A" (plain text, the same row style).
 # QUAY LẠI / Esc: the main menu, or the story itself when the screen was opened from the pause menu (from_story).
 # Mouse and keyboard (focus on the buttons, the list scrolls to the focused row). No pause menu here (meta no_pause).
 class_name ChapterSelect
@@ -257,6 +258,8 @@ func _row(r: Dictionary) -> Button:
 		b.name = "Chapter_" + String(r["id"])
 		if state == "need_play":
 			b.text = "%s · %s" % [String(r["title"]), StoryChapters.NEED_PLAY_LINE]
+		if state != "locked" and String(r.get("rank", "")) != "":
+			b.text += " · " + rank_text(String(r["rank"]))
 		b.disabled = state != "open"
 		if state == "open":
 			b.pressed.connect(ask_rewind.bind(String(r["id"])))
@@ -279,6 +282,11 @@ func row_button(id: String) -> Button:
 # ---------------------------------------------------------------------------
 # Actions
 # ---------------------------------------------------------------------------
+## "Hạng A" (Wave 3 ranks, plain text).
+static func rank_text(letter: String) -> String:
+	return "Hạng %s" % letter
+
+
 static func rewind_question(title: String) -> String:
 	return "Tua về '%s'?" % title
 

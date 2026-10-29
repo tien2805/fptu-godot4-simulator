@@ -41,8 +41,44 @@ const STAFF_TILT: float = 0.17           # rad off the forearm, toward the thumb
 const KATANA_TILT: float = 0.45
 
 # ----- the Za Mẫn katana boss -----
-## Every boss hit lands exactly TELL_S after its glint + sound.
+## Every boss hit lands exactly TELL_S after its glint + sound (W3 T7: tell_s() = TELL_S on Thường, TELL_S_EASY on Dễ).
 const TELL_S: float = 0.5
+const TELL_S_EASY: float = 0.62
+## W3 T7 / T8: the Day 5 boss's HP scale (Thường / Dễ), tuned against the sloppy fighter (sim_day5).
+const HP_SCALE: float = 1.9
+const HP_SCALE_EASY: float = 1.1
+## ... and his katana's damage scale (KatanaBoss._strike; the player regenerates between his patterns).
+const DMG_SCALE: float = 2.3
+const DMG_SCALE_EASY: float = 1.2
+
+
+## W3 T8: his poise after a stagger (KatanaBoss._armored), Thường / Dễ.
+const POISE_S: float = 1.2
+const POISE_S_EASY: float = 0.6
+## ... and how much of a light hit's stagger fills his daze meter meanwhile (the thrust always in full).
+const POISE_STAGGER_K: float = 0.35
+const POISE_STAGGER_K_EASY: float = 0.6
+
+
+static func dmg_scale() -> float:
+	return float(Difficulty.pick(DMG_SCALE, DMG_SCALE_EASY))
+
+
+## T8: his tempo (Thường / Dễ): the pause between his patterns (the phase cooldown) and his recovery after one are scaled.
+const TEMPO_K: float = 0.7
+const TEMPO_K_EASY: float = 1.0
+
+
+static func tempo_k() -> float:
+	return float(Difficulty.pick(TEMPO_K, TEMPO_K_EASY))
+
+
+static func poise_s() -> float:
+	return float(Difficulty.pick(POISE_S, POISE_S_EASY))
+
+
+static func poise_stagger_k() -> float:
+	return float(Difficulty.pick(POISE_STAGGER_K, POISE_STAGGER_K_EASY))
 ## MeleeEnemy stats (callers' "stats" opts override them); heavy_chance 0: KatanaBoss picks patterns itself.
 const ZA_MAN: Dictionary = {"hp": 300.0, "stagger_max": 180.0, "speed": 4.0, "circle_speed": 1.5, "circle_r": 3.4, "reach": 1.9,
 	"light_dmg": 10.0, "heavy_dmg": 20.0, "heavy_chance": 0.0, "windup": 0.25, "recover": 0.9, "chain": 1,
@@ -257,3 +293,8 @@ static func bend_stage_of(frac: float) -> int:
 		if frac <= BEND_AT[i] + 1e-6:
 			s = i + 1
 	return s
+
+
+## The tell lead of the current difficulty (Difficulty.pick: 0.5 s Thường, 0.62 s Dễ).
+static func tell_s() -> float:
+	return float(Difficulty.pick(TELL_S, TELL_S_EASY))

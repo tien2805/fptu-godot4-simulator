@@ -59,6 +59,9 @@ var stack_open: bool = false
 var forklift_park: Node3D
 var cover_root: Node3D
 var _hidden: Array[Node3D] = []
+## W3 T1: the env owner (FreeRoam); port_night is held on it while a yard mission runs (hold_look), popped when freed.
+var look_owner: Node = null
+var look_held: bool = false
 
 
 ## Builds the yard under `parent` (FreeRoam) at CENTER, its floor found with a down ray (y = 0 when nothing is hit).
@@ -68,7 +71,24 @@ func build_in(parent: Node3D) -> void:
 	floor_y = _ground(parent)
 	global_transform = Transform3D(Basis(Vector3.UP, deg_to_rad(YAW)), Vector3(CENTER.x, floor_y, CENTER.y))
 	_build()
+	look_owner = parent
 	add_child(LookZone.make(parent, "port_night", global_position, 110.0, 150.0))   # Q3: the yard's look near it
+
+
+## W3 T1: port_night held on the roam while a yard beat's mission runs, wherever the camera is (the crane cabin, a
+## forklift cam, a preview cut); off pops it (the LookZone still holds it near the yard). Idempotent; freed = popped.
+func hold_look(on: bool) -> void:
+	if on == look_held or look_owner == null or not is_instance_valid(look_owner):
+		return
+	look_held = on
+	if on:
+		LookPresets.apply("port_night", look_owner)
+	else:
+		LookPresets.restore(look_owner, "port_night")
+
+
+func _exit_tree() -> void:
+	hold_look(false)
 
 
 func _ground(parent: Node3D) -> float:
@@ -318,12 +338,38 @@ const PATROLS: Array = [
 const FIGHT_START := Vector3(-3.0, 0.0, -2.6)          # the hero's spot at the end of cine_d3_mannequins
 const WAVE1: Array[Vector3] = [Vector3(-8.6, 0.0, -5.2), Vector3(2.6, 0.0, -5.2), Vector3(-12.0, 0.0, -6.0), Vector3(7.0, 0.0, -7.5)]
 const WAVE2: Array[Vector3] = [Vector3(-22.0, 0.0, 8.0), Vector3(-22.0, 0.0, 10.5), Vector3(-17.5, 0.0, 15.5), Vector3(-19.0, 0.0, 1.0)]
+## W3 T5 (MissionYardGunfight): wave 1 from the gate (index 2 = the pallet-shield guard), wave 2 the crane wave: two guards
+## pushing down the middle lane (inside the crane's reach: a drop crushes them) and two on container roofs far from the
+## crane's ladder (T9: a roof guard 6 m from the ladder made the crane a death trap), wave 3 (Thường) flankers from the
+## east (index 4 = the second shield guard); ammo drops.
+const GF_GATE: Array[Vector3] = [Vector3(-22.5, 0.0, 7.0), Vector3(-22.5, 0.0, 10.0), Vector3(-20.5, 0.0, 8.5), Vector3(-19.5, 0.0, 11.5)]
+const GF_ROOFS: Array[Vector3] = [Vector3(1.0, 0.0, 12.0), Vector3(9.0, 2.6, -11.0), Vector3(6.5, 0.0, 9.5), Vector3(-9.0, 2.6, 16.5)]
+const GF_FLANK: Array[Vector3] = [Vector3(22.5, 0.0, 2.0), Vector3(22.5, 0.0, 5.5), Vector3(18.5, 0.0, -16.5), Vector3(14.0, 0.0, -16.0), Vector3(16.5, 0.0, -15.0)]
+const GF_DROPS: Array[Vector3] = [Vector3(-6.0, 0.0, 6.0), Vector3(2.0, 0.0, 12.5)]
 const CRATES_START := Vector3(-3.0, 0.0, 1.0)
+## W3 T6: the pallet rack of the crates beat (3 more crates, a strap).
+const RACK_AT := Vector3(6.0, 0.0, 11.0)
 const DANCE_LOOP: Array[Vector3] = [Vector3(-5.0, 0.0, 5.0), Vector3(9.0, 0.0, 5.0), Vector3(9.0, 0.0, 7.5), Vector3(-5.0, 0.0, 7.5)]
 const BOSS_AT := FORKLIFT_PARK                       # Alexander drives off from the parked spot
 const BOSS_YAW: float = 90.0
 const MID := Vector3(2.0, 0.0, 4.0)                   # the yard_mid marker
 const BOSS_PLAYER := Vector3(-6.0, 0.0, 7.0)
+## W3 T7: the player's forklift of the joust (facing east, into the arena).
+const PLAYER_FORK := Vector3(-9.5, 0.0, 9.5)
+const PLAYER_FORK_YAW: float = -90.0
+
+
+## T9: the accuracy factor of the yard's gunmen (Gunman opt "accuracy"): Thường a little sharper, Dễ softer.
+## Wave 3 integration: on the merged gun row (x2.0 accuracy, 16 HP a bullet on Thường) the Thường factors came down (static
+## vars so sim_day3 can try values: env SIM_GUARD_ACC / SIM_SNEAK_ACC).
+static var GUARD_ACC: float = 0.35
+const GUARD_ACC_EASY: float = 0.85
+## The sneak's early fight is short (6 guards, no waves).
+static var SNEAK_ACC: float = 0.3
+
+
+static func guard_accuracy(sneak: bool = false) -> float:
+	return float(Difficulty.pick(SNEAK_ACC if sneak else GUARD_ACC, GUARD_ACC_EASY))
 
 
 ## World-space spots of a yard mission (MissionLairFight opts "points"): sneak | gunfight | crates | forklift.
@@ -354,17 +400,26 @@ func mission_points(task: String) -> Dictionary:
 				w2.append(world(q2))
 			d["waves"] = [w1, w2]
 			d["ammo"] = _world_list(AMMO)
+			d["gate"] = _world_list(GF_GATE)
+			d["roofs"] = _world_list(GF_ROOFS)
+			d["flank"] = _world_list(GF_FLANK)
+			d["drops"] = _world_list(GF_DROPS)
 		"crates":
 			d["start"] = world(CRATES_START)
 			d["start_yaw"] = face_n
 			d["crates"] = crates.duplicate()
 			d["dance"] = _world_list(DANCE_LOOP)
+			d["gate"] = _world_list([GF_GATE[0], GF_GATE[1]])
+			d["rack"] = world(RACK_AT)
+			d["rack_yaw"] = world_yaw(0.0)
 			d["ammo"] = _world_list(AMMO)
 		"forklift":
 			d["start"] = world(BOSS_PLAYER)
 			d["start_yaw"] = world_yaw(-90.0)
 			d["boss_at"] = world(BOSS_AT)
 			d["boss_yaw"] = world_yaw(BOSS_YAW)
+			d["fork_at"] = world(PLAYER_FORK)
+			d["fork_yaw"] = world_yaw(PLAYER_FORK_YAW)
 			d["ammo"] = _world_list(AMMO)
 	return d
 

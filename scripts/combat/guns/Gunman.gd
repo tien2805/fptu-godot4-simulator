@@ -6,11 +6,13 @@
 #   ALERT     "Có biến!" over the head, turns to the noise for 0.6 s;
 #   TO_COVER  runs to the best free CoverMap slot whose obstacle stands between it and the player (CoverMap.candidates);
 #   COVER     crouched behind it (hit capsule lowered); waits 0.7-1.8 s, then asks the fight for a shooting token (at most
-#             GunData.MAX_SHOOTERS at once); the cover stops protecting (the player moved round) -> new cover;
-#   PEEK      stands up and aims (0.3 s); each bullet = a muzzle GLINT for GunData.TELEGRAPH_S (0.4 s) and only then the shot
+#             GunData.max_shooters() at once); the cover stops protecting (the player moved round) -> new cover;
+#   PEEK      stands up and aims (0.3 s); each bullet = a muzzle GLINT for GunData.telegraph_s() (Thường 0.35 s, Dễ 0.45 s;
+#             read at the glint's start) and only then the shot
 #             (a burst of 1-3); the shot needs a clear ray from the muzzle at the moment it resolves: a wall or the cover the
 #             player ducked behind stops it (sparks, no damage); a readable red tracer; hit chance from GunData.hit_chance
-#             (distance, player speed, popping out of cover, first shot); no clear ray for 1.2 s -> back down;
+#             (distance, player speed, popping out of cover, first shot, x GunData.accuracy_k() by difficulty); no clear ray
+#             for 1.2 s -> back down;
 #   FLANK     after 2-3 peeks from one slot: runs to a slot at least 50° round the player (CoverMap.flank_candidates);
 #   OPEN      no usable cover: walks to about 11 m and shoots standing, looking for cover every 2 s;
 #   STAGGER   a hit that does not knock out: flinch 0.45 s, the telegraph and the token are lost;
@@ -27,9 +29,16 @@
 # line / walk / floor checks while waiting or walking at most 10 Hz; no allocation per frame except on decisions.
 # Usage (GunFight does this): var g := Gunman.new(); g.setup(opts); g.position = at; parent.add_child(g); g.bind(fight).
 # opts: "body" (CharacterBuilder opts over GunData.GUARD_LOOK), "body_fn" (Callable(look) -> rigged Node3D), "mask"
-# ("sheep" | "wolf" | "fox" | "none"; default by seed), "label", "hp", "accuracy" (scale), "patrol" (Array of Vector3),
+# ("sheep" | "wolf" | "fox" | "none"; default by seed), "label", "hp", "accuracy" (scale), "kind" ("shield": the pallet
+# guard below), "patrol" (Array of Vector3),
 # "ai" (false = HOLD), "alerted" (start alerted), "seed", "yaw", "sight_m" / "fov_deg" (sight before the alert; default
 # GunData.SIGHT_M / FOV_DEG).
+# Pallet-shield guard (opts "kind": "shield", Wave 3 plan 2026-10-30-w3-shared.md T3): carries a code-built pallet in
+# front (GunProps.pallet, rimmed). A hit from within SHIELD_FRONT_DEG of his front lands on the pallet: no damage, wood chips
+# (FxPool "debris"), a thunk, "Không xuyên!" over his head once; flank and back hits count as usual. He never takes cover
+# while he holds it: he walks in to SHIELD_KEEP_M, turns slowly (SHIELD_TURN_RATE: flank him) and fires short bursts round
+# the pallet's right edge. A shotgun hit on the pallet from under SHIELD_SHOTGUN_M or GunData.shield_hits() hits (4, Dễ 3)
+# knock it away (Impact heavy, the pallet flies off, he staggers) and he fights on as a normal gunman. A knockout drops it.
 # Q2 feel (plan 2026-10-29-q2-feel.md T4): every hit jolts the body away from the shot (a quick lean that settles in
 # JOLT_S, over the flinch clip); a knockout sends the mask (or a cap when there is none) flying off with a spin and one
 # bounce; it then lies on the floor.
@@ -40,6 +49,7 @@ signal ko(g: Gunman)
 signal alerted(g: Gunman)
 signal telegraph_started(g: Gunman)
 signal shot(g: Gunman, result: String)
+signal shield_dropped(g: Gunman)
 
 enum St { PATROL, ALERT, TO_COVER, COVER, PEEK, OPEN, FLANK, STAGGER, KO, HOLD, IDLE }
 const ST_NAMES: Array[String] = ["patrol", "alert", "to_cover", "cover", "peek", "open", "flank", "stagger", "ko", "hold", "idle"]
@@ -85,8 +95,10 @@ var first_shot: bool = true
 var shots: int = 0
 var hits: int = 0
 var tele_starts: int = 0
-## Telegraph seconds actually shown before each resolved shot (tests: every value >= TELEGRAPH_S).
+## Telegraph seconds actually shown before each resolved shot (tests: every value >= telegraph_s()).
 var tele_before_shot: Array[float] = []
+## The current glint's length (GunData.telegraph_s() when it started).
+var tele_len: float = GunData.TELEGRAPH_S
 var ko_left: float = GunData.KO_STARS_S
 var speed_now: float = 0.0
 var _patrol_i: int = 0
@@ -113,6 +125,17 @@ var _anim: Node = null
 var _sk: Skeleton3D = null
 var _wrist: int = -1
 var _gun_att: BoneAttachment3D = null
+## Wave 3 pallet-shield guard: kind "" | "shield"; the pallet (a child of the body while held), hits on it.
+var kind: String = ""
+var shield: Node3D = null
+var shield_up: bool = false
+var shield_hits: int = 0
+var blocked_hits: int = 0
+var _said_no_pierce: bool = false
+var _pallet_v: Vector3 = Vector3.ZERO
+var _pallet_spin: Vector3 = Vector3.ZERO
+var _pallet_bounced: bool = false
+var _pallet_fly: bool = false
 ## Q2: the hit jolt and the flying mask / cap.
 const JOLT_S: float = 0.28
 const JOLT_LEAN: float = 0.3
@@ -162,6 +185,14 @@ func setup(opts: Dictionary = {}) -> void:
 	_anim = CharacterBuilder.get_animator(body)
 	_attach_gun()
 	Readability.rim(body, "enemy")   # Q3 rim
+	kind = String(opts.get("kind", ""))
+	if kind == "shield":
+		shield = GunProps.pallet()
+		shield.position = Vector3(-0.1, 0.28, -0.5)
+		shield.rotation.x = -0.08
+		body.add_child(shield)
+		Readability.rim(shield, "enemy")   # the pallet's edge reads like the enemy it shields
+		shield_up = true
 	glint = GunProps.glint()
 	add_child(glint)
 	shout = Label3D.new()
@@ -223,7 +254,8 @@ func forward() -> Vector3:
 ## The pistol's muzzle (standing aim), for the glint, the flash and the ray.
 func muzzle_pos() -> Vector3:
 	var f: Vector3 = forward()
-	return feet() + Vector3(0.0, GunData.MUZZLE_Y, 0.0) + f * 0.55 + Vector3(-f.z, 0.0, f.x) * 0.12
+	var side: float = GunData.SHIELD_MUZZLE_SIDE if shield_up else 0.12
+	return feet() + Vector3(0.0, GunData.MUZZLE_Y, 0.0) + f * 0.55 + Vector3(-f.z, 0.0, f.x) * side
 
 
 func is_down() -> bool:
@@ -268,6 +300,8 @@ func _physics_process(delta: float) -> void:
 		_tick_jolt(delta)
 	if flying_hat != null and not _hat_rest:
 		_tick_hat(delta)
+	if _pallet_fly:
+		_tick_pallet(delta)
 	if st == St.KO or st == St.IDLE or st == St.HOLD:
 		_apply_drop()
 		if _anim:
@@ -319,7 +353,8 @@ func _enter(s: int) -> void:
 			_gap = 0.0
 			_ray_t = 0.0
 			_no_line = 0
-			burst_left = _rng.randi_range(GunData.BURST.x, GunData.BURST.y)
+			burst_left = _rng.randi_range(GunData.SHIELD_BURST.x, GunData.SHIELD_BURST.y) if shield_up \
+				else _rng.randi_range(GunData.BURST.x, GunData.BURST.y)
 		St.OPEN:
 			_wait = _rng.randf_range(GunData.COVER_WAIT.x, GunData.COVER_WAIT.y)
 			_open_look = 2.0
@@ -478,9 +513,9 @@ func _do_peek(delta: float) -> void:
 	if telegraphing:
 		tele_t += delta
 		var k: float = 1.0 + 0.35 * sin(tele_t * 40.0)
-		glint.scale = Vector3.ONE * k * lerpf(0.6, 1.3, clampf(tele_t / GunData.TELEGRAPH_S, 0.0, 1.0))
+		glint.scale = Vector3.ONE * k * lerpf(0.6, 1.3, clampf(tele_t / tele_len, 0.0, 1.0))
 		glint.global_position = muzzle_pos()
-		if tele_t >= GunData.TELEGRAPH_S - 1e-4:
+		if tele_t >= tele_len - 1e-4:
 			tele_before_shot.append(tele_t)
 			if tele_before_shot.size() > LOG_MAX:
 				tele_before_shot.pop_front()
@@ -502,6 +537,7 @@ func _do_peek(delta: float) -> void:
 	if bool(fight.call("clear_line", muzzle_pos(), fight.call("player_target"))):
 		telegraphing = true
 		tele_t = 0.0
+		tele_len = GunData.telegraph_s()
 		tele_starts += 1
 		glint.visible = true
 		glint.global_position = muzzle_pos()
@@ -529,16 +565,17 @@ func _do_open(delta: float) -> void:
 	_open_look -= delta
 	if _open_look <= 0.0:
 		_open_look = 2.0
-		if (fight.get("cover") as CoverMap).count() > 0 and _seek_cover(false, true):
+		if not shield_up and (fight.get("cover") as CoverMap).count() > 0 and _seek_cover(false, true):
 			return
 	_ray_t -= delta
-	if d > GunData.OPEN_KEEP_M + 2.0:
+	var keep: float = GunData.SHIELD_KEEP_M if shield_up else GunData.OPEN_KEEP_M
+	if d > keep + 2.0 or (shield_up and d > keep):
 		if _ray_t <= 0.0:
 			_ray_t = GunData.RAY_DT
-			_step_to = feet() + WeaponMath.flat_dir(to) * minf(2.0, d - GunData.OPEN_KEEP_M)
+			_step_to = feet() + WeaponMath.flat_dir(to) * minf(2.0, d - keep)
 			_step_ok = bool(fight.call("clear_walk", feet(), _step_to))
 		if _step_ok:
-			_step_toward(_step_to, delta, GunData.WALK_SPEED * 1.6)
+			_step_toward(_step_to, delta, GunData.SHIELD_WALK if shield_up else GunData.WALK_SPEED * 1.6)
 	else:
 		_separate(delta)
 	_turn_toward(to, delta)
@@ -556,6 +593,11 @@ func _do_open(delta: float) -> void:
 ## Pick a cover slot (flank = round the player) and run there. quiet: called from OPEN, stays OPEN when nothing is found.
 ## Returns true when a slot was taken.
 func _seek_cover(flank: bool, quiet: bool = false) -> bool:
+	if shield_up:                            # the pallet is his cover: he walks in instead
+		if not quiet:
+			_release_slot()
+			_enter(St.OPEN)
+		return false
 	var cover: CoverMap = fight.get("cover")
 	var taken: Dictionary = fight.get("taken")
 	var threat: Vector3 = fight.call("player_feet")
@@ -653,10 +695,10 @@ func _fire() -> void:
 		result = "blocked"
 	else:
 		var p: float = accuracy_override if accuracy_override >= 0.0 else GunData.hit_chance(muzzle.distance_to(tp),
-			float(fight.call("player_speed")), bool(fight.call("player_popped")), first_shot, accuracy_k)
+			float(fight.call("player_speed")), bool(fight.call("player_popped")), first_shot, accuracy_k * GunData.accuracy_k())
 		if _rng.randf() < p:
 			GunData.tracer(fx, muzzle, tp)
-			fight.call("hit_player", self, GunData.GUNMAN_DMG)
+			fight.call("hit_player", self, GunData.gunman_dmg())
 			hits += 1
 			result = "hit"
 		else:
@@ -693,12 +735,14 @@ func _cancel_shot() -> void:
 func take_hit(info: Dictionary) -> String:
 	if st == St.KO:
 		return "none"
-	var kind: String = String(info.get("kind", "melee"))
+	var hit_kind: String = String(info.get("kind", "melee"))
 	var from: Vector3 = info.get("from", feet())
-	if not GunData.GUNMAN_DMG_TAKEN.has(kind):
+	if not GunData.GUNMAN_DMG_TAKEN.has(hit_kind):
 		hear(from)
 		return "none"
-	hp -= float(GunData.GUNMAN_DMG_TAKEN[kind])
+	if shield_up and hit_kind != "blast" and front_hit(from):
+		return _pallet_hit(hit_kind, from)
+	hp -= float(GunData.GUNMAN_DMG_TAKEN[hit_kind])
 	_jolt(from)
 	if not is_alerted and st != St.HOLD:
 		alert(from)
@@ -718,6 +762,8 @@ func take_hit(info: Dictionary) -> String:
 func _knock_out(from: Vector3) -> void:
 	_cancel_shot()
 	_release_slot()
+	if shield_up:
+		_release_pallet(from, 1.5)
 	hp = 0.0
 	_enter(St.KO)
 	pose.reset()
@@ -734,6 +780,94 @@ func _knock_out(from: Vector3) -> void:
 	if fight:
 		fight.call("play_cue", "body_fall", feet(), -2.0)
 	ko.emit(self)
+
+
+# ---------------------------------------------------------------------------
+# WAVE 3: THE PALLET SHIELD
+# ---------------------------------------------------------------------------
+## A hit from `from` lands on the pallet's side: within SHIELD_FRONT_DEG of his front.
+func front_hit(from: Vector3) -> bool:
+	var to: Vector3 = WeaponMath.flat_dir(from - feet())
+	if to.length_squared() < 0.01:
+		return true
+	return forward().angle_to(to) <= deg_to_rad(GunData.SHIELD_FRONT_DEG)
+
+
+## The pallet stops a hit: chips, a thunk, "Không xuyên!" once; a close shotgun hit or the last allowed hit knocks it away.
+func _pallet_hit(hit_kind: String, from: Vector3) -> String:
+	blocked_hits += 1
+	if not is_alerted and st != St.HOLD:
+		alert(from)
+	var at: Vector3 = shield.global_position + shield.global_basis.y * 0.7
+	var d: Vector3 = WeaponMath.flat_dir(at - from)
+	Impact.particles(self, "debris", at, -d, 0.6, fight.get("fx") if fight else null)
+	Impact.sound(self, "thud", at, -2.0)
+	if not _said_no_pierce:
+		_said_no_pierce = true
+		shout.text = GunData.T_NO_PIERCE
+		shout.visible = true
+		_shout_left = SHOUT_S
+	var knock: bool = hit_kind == "pellet" and WeaponMath.flat(from, feet()) < GunData.SHIELD_SHOTGUN_M
+	if not knock:
+		shield_hits += 1
+		knock = shield_hits >= GunData.shield_hits()
+	if not knock:
+		return "none"
+	_release_pallet(from, 3.5)
+	Impact.hit(self, "heavy", {"pos": at, "dir": d, "fx": fight.get("fx") if fight else null})
+	_jolt(from)
+	if st != St.HOLD and st != St.IDLE:
+		_cancel_shot()
+		_enter(St.STAGGER)
+	else:
+		CharacterBuilder.play(body, "flinch", GunData.STAGGER_S)
+	shield_dropped.emit(self)
+	return "stumble"
+
+
+## The pallet leaves his hands: it flies away from `from` (push m/s), bounces once and lies on the floor.
+func _release_pallet(from: Vector3, push: float) -> void:
+	shield_up = false
+	if shield == null or not is_instance_valid(shield):
+		return
+	var g: Transform3D = shield.global_transform
+	shield.get_parent().remove_child(shield)
+	add_child(shield)
+	shield.top_level = true
+	shield.global_transform = g
+	Readability.unrim(shield)
+	var away: Vector3 = WeaponMath.flat_dir(shield.global_position - from)
+	if away.length_squared() < 0.01:
+		away = forward()
+	_pallet_v = away * push + Vector3(0.0, 2.6, 0.0)
+	_pallet_spin = Vector3(_rng.randf_range(-5.0, -3.0), _rng.randf_range(-2.0, 2.0), _rng.randf_range(-3.0, 3.0))
+	_pallet_bounced = false
+	_pallet_fly = true
+
+
+func _tick_pallet(delta: float) -> void:
+	if shield == null or not is_instance_valid(shield):
+		_pallet_fly = false
+		return
+	_pallet_v.y -= 18.0 * delta
+	var p: Vector3 = shield.global_position + _pallet_v * delta
+	if p.y < floor_y + 0.05 and _pallet_v.y < 0.0:
+		p.y = floor_y + 0.05
+		if not _pallet_bounced:
+			_pallet_bounced = true
+			_pallet_v = Vector3(_pallet_v.x * 0.4, -_pallet_v.y * 0.25, _pallet_v.z * 0.4)
+			_pallet_spin *= 0.3
+		else:
+			_pallet_fly = false              # lies flat on the floor from here on
+			shield.global_position = p
+			shield.global_rotation = Vector3(-PI * 0.5, shield.global_rotation.y, 0.0)
+			return
+	shield.global_position = p
+	shield.rotation += _pallet_spin * delta
+
+
+func has_shield() -> bool:
+	return shield_up
 
 
 # ---------------------------------------------------------------------------
@@ -896,7 +1030,8 @@ func _turn_toward(dir: Vector3, delta: float) -> void:
 	if Vector2(dir.x, dir.z).length_squared() < 1e-6:
 		return
 	var want: float = atan2(-dir.x, -dir.z)
-	yaw += clampf(wrapf(want - yaw, -PI, PI), -GunData.TURN_RATE * delta, GunData.TURN_RATE * delta)
+	var rate: float = GunData.SHIELD_TURN_RATE if shield_up else GunData.TURN_RATE
+	yaw += clampf(wrapf(want - yaw, -PI, PI), -rate * delta, rate * delta)
 	body.rotation.y = yaw
 
 

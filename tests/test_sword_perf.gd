@@ -137,7 +137,10 @@ func _on_physics() -> void:
 				combat.light_override = true
 			if t % 120 == 60:
 				combat.heavy_override = true
+			if t == 60:
+				duel._sprinklers(true)                 # W3 T5: the window runs with the sprinklers on (6 emitters, puddles, rain)
 			if t == 150:
+				_check(duel.sprinklers_on and duel.emitters.size() == SwordDuel.SPRINKLER_N, "the sprinklers run through the window")
 				var sp: PedestrianSpawner = roam.get("pedestrians")
 				print("  duel at BE6: boss %s, %d pedestrians, %d impostors, %d tells so far" % [duel.boss.state_name(), sp.pedestrians().size(), sp.impostors.count(), duel.boss.tells.size()])
 				_check(duel.state == "running" and duel.boss.is_hostile(), "the duel runs (%s)" % duel.state)

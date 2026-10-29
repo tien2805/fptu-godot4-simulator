@@ -111,6 +111,8 @@ func _run(mission: String, sd: int) -> int:
 			m = _make(MissionChase, {"id": "sim_chase", "title": "Đuổi", "replay": "seg_d1_chase"}, sd)
 		_:
 			m = _make(MissionCanteen, {"id": "sim_canteen", "title": "Căn tin"}, sd)
+	var done_info: Array = [{}]
+	m.done.connect(func(info: Dictionary) -> void: done_info[0] = info)
 	for k: int in 3:
 		await physics_frame
 	var tries: int = 0
@@ -130,6 +132,11 @@ func _run(mission: String, sd: int) -> int:
 				print("      spot %s (campus %s)" % [str(m.get_meta("sim_spot", Vector3.ZERO)), str((fr.get("campus_xf") as Transform3D).affine_inverse() * (m.get_meta("sim_spot", Vector3.ZERO) as Vector3))])
 		tries += 1
 		m.retry()
+	var rid: String = {"stakeout": "d1_stakeout", "chase": "d1_chase"}.get(mission, "d4_canteen")
+	var rev: Dictionary = StoryRank.evaluate(rid, m.stats, done_info[0])
+	print("  RANK %s %s seed %d: %s %.0f (time %.0f s, fails %d, dmg %.0f, info %s)" % [rid, "De" if Difficulty.easy else "Thuong", sd,
+		String(rev.get("letter", "")), float(rev.get("score", 0.0)), float(m.stats.get("time", 0.0)), int(m.stats.get("fails", 0)),
+		float(m.stats.get("dmg", 0.0)), str(done_info[0])])   # Wave 3 T10 calibration
 	m.abort()
 	return tries
 

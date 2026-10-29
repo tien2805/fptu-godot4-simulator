@@ -9,6 +9,8 @@
 # Phase C: the new beat kinds are replayable (the Day 2 / 3 missions and fight, the Day 5 lair tasks and basement
 # cinematics), snapshotted on entry with the best-effort rebuild keeping the E4 flag, and the gallery lists the Phase C
 # cinematics by day.
+# Wave 3 ranks: a ranked beat with a best rank in the unlock file reads "<tên cảnh> · Hạng A" (plain text); an old save
+# without ranks loads and its rows show none.
 # Every file is a temp file (StoryDirector.save_path, StoryChapters paths): the owner's user:// files are never touched.
 # Run:  godot --headless --path . --script tests/test_chapter_select.gd
 extends SceneTree
@@ -266,6 +268,7 @@ func _process(_d: float) -> bool:
 				_check(String(sd.get("last_nav")) == "roam" and (cur as ChapterSelect).last_nav == "story" and not ChapterSelect.from_story, "QUAY LẠI resumes the story (Continue)")
 			_phase_c()
 			_tokyo_drift()
+			_ranks()
 			return _end()
 	return false
 
@@ -321,6 +324,40 @@ func _tokyo_drift() -> void:
 	sd.call("reset_state")
 	for p3: String in [TMP_U, TMP_C, TMP_B, TMP_SAVE]:
 		_rm(p3)
+
+
+## Wave 3: the rank column (best ranks from the unlock file) and an old save without ranks.
+func _ranks() -> void:
+	sm.set("story_context", {})
+	for p: String in [TMP_U, TMP_C, TMP_B, TMP_SAVE]:
+		_rm(p)
+	sd.call("new_story", P)
+	_walk_to("d1_corridor")
+	_check(bool(sd.call("record_rank", "d1_brawl", "A")) and bool(sd.call("record_rank", "d1_chase", "B")), "ranks: recorded")
+	_open_cs()                               # opens on the chapters tab (ChapterSelect.open_tab)
+	var b1: Button = cs.row_button("d1_brawl")
+	var b2: Button = cs.row_button("d1_chase")
+	var b3: Button = cs.row_button("d1_corridor")
+	_check(b1 != null and b1.text.ends_with(" · " + ChapterSelect.rank_text("A")), "Chọn cảnh: d1_brawl reads '... · Hạng A' (%s)" % (b1.text if b1 else "none"))
+	_check(b2 != null and b2.text.ends_with("Hạng B"), "Chọn cảnh: d1_chase reads '... · Hạng B' (%s)" % (b2.text if b2 else "none"))
+	_check(b3 != null and not b3.text.contains("Hạng"), "Chọn cảnh: an unranked run shows no rank (%s)" % (b3.text if b3 else "none"))
+	_check(_clean(ChapterSelect.rank_text("S")), "the rank text is plain")
+	# the screen stays until the test quits: its deferred focus call runs while it is still in the tree
+	# an old save without ranks, a fresh unlock file
+	var old: Dictionary = sd.call("to_dict")
+	old.erase("ranks")
+	_rm(TMP_U)
+	sd.call("reset_state")
+	sd.call("from_dict", old)
+	_check((sd.get("ranks") as Dictionary).is_empty() and String(sd.get("step")) == "d1_corridor", "an old save without ranks loads with none")
+	var any: bool = false
+	for row: Dictionary in StoryChapters.chapters():
+		if String(row.get("rank", "")) != "":
+			any = true
+	_check(not any, "its chapter rows carry no rank")
+	sd.call("reset_state")
+	for p2: String in [TMP_U, TMP_C, TMP_B, TMP_SAVE]:
+		_rm(p2)
 
 
 func _read_save(path: String) -> Dictionary:

@@ -1,12 +1,12 @@
 # File: res://scripts/combat/guns/GunAudio.gd
 # Synthesized SFX of the Phase C gunfights and the forklift boss (no music): the forklift's two-tone horn, its hydraulic
-# lift whine, the overheating steam hiss and Alexander's party horn. Built with the A1 voice helpers (CineAudio._tone /
+# lift whine, the overheating steam hiss, Alexander's party horn and the bullet-time heartbeat (a looping lub-dub, Wave 3). Built with the A1 voice helpers (CineAudio._tone /
 # _noise / _mix / _to_wav); the owner's user://sfx/<cue>.ogg overrides any of them (local only). Main thread only (static
 # cache); warm() fills it at load so a fight never synthesizes mid-frame.
 class_name GunAudio
 extends RefCounted
 
-const CUES: Array[String] = ["forklift_horn", "forklift_lift", "steam_hiss", "party_horn"]
+const CUES: Array[String] = ["forklift_horn", "forklift_lift", "steam_hiss", "party_horn", "heartbeat"]
 static var _cache: Dictionary = {}
 
 
@@ -44,6 +44,22 @@ static func _synth(cue: String) -> AudioStreamWAV:
 			return CineAudio._to_wav(CineAudio._mix([CineAudio._tone(0.9, 180.0, 420.0, 0.25, 0.5), CineAudio._noise(0.9, 0.08, 0.5, 31, 0.85)]))
 		"steam_hiss":            # long filtered noise burst
 			return CineAudio._to_wav(CineAudio._noise(1.6, 0.4, 1.2, 37, 0.35))
+		"heartbeat":             # lub-dub, 0.8 s, looping (bullet time; an SFX, not music)
+			var hb := PackedFloat32Array()
+			hb.resize(int(0.8 * sr))
+			var lub: PackedFloat32Array = CineAudio._mix([CineAudio._tone(0.12, 72.0, 44.0, 0.85, 22.0), CineAudio._noise(0.05, 0.12, 40.0, 41, 0.9)])
+			var dub: PackedFloat32Array = CineAudio._tone(0.1, 64.0, 40.0, 0.6, 26.0)
+			for i3: int in lub.size():
+				hb[i3] += lub[i3]
+			var off: int = int(0.2 * sr)
+			for i4: int in dub.size():
+				if off + i4 < hb.size():
+					hb[off + i4] += dub[i4]
+			var w: AudioStreamWAV = CineAudio._to_wav(hb)
+			w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			w.loop_begin = 0
+			w.loop_end = hb.size()
+			return w
 		"party_horn":            # a paper party blower: a buzzy rising note
 			var p := PackedFloat32Array()
 			p.resize(int(0.7 * sr))

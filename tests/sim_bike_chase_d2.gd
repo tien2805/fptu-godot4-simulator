@@ -241,6 +241,9 @@ func _measure(dt: float) -> void:
 
 
 func _end_run() -> void:
+	var rev: Dictionary = StoryRank.evaluate("d2_chase", {"time": float(real_f) / 60.0, "fails": fails, "ko": chase.takedowns})
+	print("  RANK d2_chase %s %s seed %d: %s %.0f (time %.0f s, fails %d, takedowns %d)" % [bot, diff, seed0 + run_i, String(rev["letter"]),
+		float(rev["score"]), float(real_f) / 60.0, fails, chase.takedowns])   # Wave 3 T10 calibration
 	var r: Dictionary = {"seed": seed0 + run_i, "fails": fails, "causes": fail_causes.duplicate(), "real_s": float(real_f) / 60.0,
 		"state": chase.state, "escaped": chase.escaped, "downed": chase.downed_total, "takedowns": chase.takedowns,
 		"kicks": chase.combat.kicks, "hits": chase.combat.hits, "dmg": dmg.duplicate(), "waves": wave_t.duplicate(), "cameo": cameo_t,

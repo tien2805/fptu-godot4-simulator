@@ -14,10 +14,16 @@
 # Spawned by SwordDuel through MeleeFight (spawn key "make"). opts as MeleeEnemy ("body", "body_fn", "label", "stats",
 # "seed", "hp_scale", "ai"); stats are SwordData.ZA_MAN with the caller's "stats" over them (those keys then stay fixed
 # through the phases). Tests / scripted beats: force_pattern(name) (a pattern or a single step name), force_attack().
+# W3 T6: with qte_armed (SwordDuel) 0 HP does not start the finale at once: he holds at 0 HP, frozen and invulnerable
+# (staged, St.IDLE), and emits `qte_reached` (qte_ready() is true); qte_pass() then plays the snap finale, qte_recover(frac)
+# gives him frac of his HP back and the duel goes on (the QTE comes again at the next 0).
 class_name KatanaBoss
 extends MeleeEnemy
 
 signal phase_changed(phase: int)
+## W3 T5 / T6: his HP fraction after any damage (the sprinklers at 50 %), and 0 HP reached while a QTE is armed.
+signal hp_changed(frac: float)
+signal qte_reached
 
 const LOG_MAX: int = 32
 
@@ -49,7 +55,15 @@ var _dash_dir: Vector3 = Vector3.ZERO
 var _dash_v: float = 0.0
 var _finale_away: Vector3 = Vector3.ZERO
 var _finale_done: bool = false
+## W3 T5: the sprinklers' wet floor makes his lunges overshoot (1.2); 1.0 dry.
+var lunge_k: float = 1.0
+## W3 T6: the QTE finisher (armed by SwordDuel), passed once the finale may run.
+var qte_armed: bool = false
+var qte_passed: bool = false
+var _qte_wait: bool = false
+var _qte_away: Vector3 = Vector3.ZERO
 var _finale_line: bool = false
+var _poise_until: float = -1.0
 
 
 func setup(_arch: String, opts: Dictionary = {}) -> void:
@@ -83,8 +97,9 @@ func _apply_phase(ph: int) -> void:
 	var d: Dictionary = SwordData.PHASES[phase - 1]
 	_speed_k = float(d["speed_k"])
 	_gap = float(d["gap"])
-	var vals: Dictionary = {"speed": _base_speed * _speed_k, "circle_speed": _base_circle * _speed_k, "recover": float(d["recover"]),
-		"cooldown": d["cooldown"], "block_chance": float(d["block_chance"])}
+	var tk: float = SwordData.tempo_k()   # T8: Thường presses harder between his patterns
+	var vals: Dictionary = {"speed": _base_speed * _speed_k, "circle_speed": _base_circle * _speed_k, "recover": float(d["recover"]) * tk,
+		"cooldown": (d["cooldown"] as Vector2) * tk, "block_chance": float(d["block_chance"])}
 	for k: String in vals.keys():
 		if not _fixed.has(k):
 			stats[k] = vals[k]
@@ -177,7 +192,7 @@ func _begin_attack() -> void:
 			pattern_log.pop_front()
 	_glint_at = gap
 	_glinted = false
-	_enter(St.WINDUP, gap + SwordData.TELL_S - float(step["hit"]))
+	_enter(St.WINDUP, gap + SwordData.tell_s() - float(step["hit"]))
 	if gap <= 0.0:
 		_do_glint()
 	else:
@@ -223,7 +238,7 @@ func _start_attack() -> void:
 					push_v = facing_dir() * minf(sqrt(2.0 * PUSH_DECEL * minf(gap, 0.9)), 4.5)
 			"lunge":                             # dash so that his reach meets the player at the hit frame
 				_dash_dir = facing_dir()
-				_dash_v = clampf((d.length() - float(step["reach"]) + 0.15) / hit, 0.0, float(step["dash_max"]))
+				_dash_v = clampf((d.length() - float(step["reach"]) + 0.15) / hit * lunge_k, 0.0, float(step["dash_max"]) * lunge_k)
 				lunge_from = global_position
 	if combat:
 		combat._cue("katana_slash", global_position + Vector3(0.0, 1.3, 0.0), -4.0)
@@ -272,7 +287,7 @@ func _strike() -> void:
 	var r: String = "miss"
 	var p: Node3D = combat.player if combat else null
 	if p and _in_reach():
-		r = combat.receive_attack(self, {"damage": float(step["dmg"]), "heavy": bool(step["unblockable"]), "kind": String(step["kind"])})
+		r = combat.receive_attack(self, {"damage": float(step["dmg"]) * SwordData.dmg_scale(), "heavy": bool(step["unblockable"]), "kind": String(step["kind"])})
 	results.append(r)
 	if results.size() > 32:
 		results.pop_front()
@@ -311,9 +326,17 @@ func incoming() -> int:
 	return 0
 
 
-## Wind-ups and swings are armoured (the parry and the stagger meter still get through).
+## Wind-ups and swings are armoured (the parry and the stagger meter still get through), and so is his POISE after a
+## stagger (W3 T8): a stagger (a hit, a parry) is followed by SwordData.poise_s() during which hits hurt but do not stagger
+## him again and light hits fill his daze meter at poise_stagger_k() (take_strike), so mashing the light combo no longer
+## stun-locks or dazes him on repeat (sim_day5 before: one attack in a whole duel).
 func _armored() -> bool:
-	return st == St.WINDUP or (st == St.ATTACK and not hit_done)
+	return st == St.WINDUP or (st == St.ATTACK and not hit_done) or _t < _poise_until
+
+
+func _stagger_for(secs: float) -> void:
+	super._stagger_for(secs)
+	_poise_until = _t + secs + SwordData.poise_s()
 
 
 func take_strike(info: Dictionary) -> String:
@@ -322,7 +345,11 @@ func take_strike(info: Dictionary) -> String:
 			and st != St.DODGE:
 		return _parried(info)
 	var hp0: float = hp
-	var r: String = super.take_strike(info)
+	var info2: Dictionary = info
+	if _t < _poise_until and not bool(info.get("breaks_block", false)):
+		info2 = info.duplicate()                 # poised: a light hit builds the daze meter slowly (the thrust in full)
+		info2["stagger"] = float(info.get("stagger", 15.0)) * SwordData.poise_stagger_k()
+	var r: String = super.take_strike(info2)
 	if r == "blocked" and katana:
 		katana.wobble(0.1)
 	if hp < hp0:
@@ -378,6 +405,7 @@ func _on_damage(r: String) -> void:
 		return
 	katana.wobble(0.2)
 	var frac: float = clampf(hp / maxf(max_hp, 1.0), 0.0, 1.0)
+	hp_changed.emit(frac)
 	var s: int = SwordData.bend_stage_of(frac)
 	if s > katana.stage and hp > 0.0:
 		katana.set_stage(s)
@@ -390,7 +418,8 @@ func _on_damage(r: String) -> void:
 		_apply_phase(ph)
 		if combat and combat.hud:
 			combat.hud.popup(SwordData.T_PHASE[ph], CombatHUD.WARN)
-		if st == St.STAGGER and r != "parried":
+		var poised: bool = _t < _poise_until and st != St.WINDUP and st != St.ATTACK   # T8: a poised hit counts as one
+		if (st == St.STAGGER or poised) and r != "parried":
 			_phase_taunt()
 		phase_changed.emit(phase)
 
@@ -408,7 +437,51 @@ func _knock_out(away: Vector3) -> void:
 	if _finale_done:
 		super._knock_out(away)
 		return
+	if qte_armed and not qte_passed:
+		_qte_hold(away)
+		return
 	_start_finale(away)
+
+
+## At 0 HP waiting for the QTE (SwordDuel runs it).
+func qte_ready() -> bool:
+	return _qte_wait
+
+
+## 0 HP with the QTE armed: he freezes, invulnerable, until qte_pass() or qte_recover().
+func _qte_hold(away: Vector3) -> void:
+	_qte_wait = true
+	_qte_away = away
+	hp = 0.0
+	_release_token()
+	if katana:
+		katana.set_glint(false)
+	_set_flash(false)
+	push_v = Vector3.ZERO
+	staged = true
+	_enter(St.IDLE)
+	pose.set_pose("sw_kat_guard", 0.15)
+	qte_reached.emit()
+
+
+## The QTE was passed: the katana snaps (the existing finale), the knockout follows.
+func qte_pass() -> void:
+	if not _qte_wait:
+		return
+	_qte_wait = false
+	qte_passed = true
+	staged = false
+	_start_finale(_qte_away)
+
+
+## The QTE was missed: frac of his HP back, the duel goes on.
+func qte_recover(frac: float) -> void:
+	if not _qte_wait:
+		return
+	_qte_wait = false
+	staged = false
+	hp = max_hp * clampf(frac, 0.01, 1.0)
+	_enter(St.APPROACH if ai else St.HOLD)
 
 
 ## 0 HP: the katana snaps (slow motion, sparks, the snap cue), the stare; the knockout comes FINALE_S later.

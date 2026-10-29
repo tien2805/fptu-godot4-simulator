@@ -49,6 +49,8 @@ var samples: PackedInt32Array = PackedInt32Array()
 var psamples: PackedInt32Array = PackedInt32Array()
 var res: Dictionary = {}          # case -> {"fight": [median, trimmed], "base": [...], "pfight", "pbase"}
 var shots0: int = 0
+## W3 Day 3: the yard's set pieces in case A (40 mannequins, the crane, both forklifts), disabled for the baseline.
+var extras: Array[Node] = []
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -178,6 +180,22 @@ func _on_physics() -> void:
 			var w: Array = pts["waves"]
 			var all1: Array = (w[0] as Array) + (w[1] as Array)
 			_make_fight(yard.cover_root, all1, w[1], yard.world(Vector3(-1.0, 0.0, 9.9)), yard.world_yaw(0.0))   # behind a barrier
+			var mq := YardMannequins.new()
+			host.add_child(mq)
+			mq.setup(yard.global_transform, LairYard.FIGHT_START)
+			var cr := YardCrane.new()
+			host.add_child(cr)
+			cr.setup(yard.global_transform, fight, 3)
+			var pf := PlayerForklift.new()
+			host.add_child(pf)
+			pf.setup(fight, yard.world(LairYard.PLAYER_FORK), yard.world_yaw(LairYard.PLAYER_FORK_YAW))
+			var bf := Forklift.new()
+			bf.top_level = true
+			host.add_child(bf)
+			bf.global_position = yard.world(LairYard.FORKLIFT_PARK)
+			bf.floor_y = bf.global_position.y
+			extras = [mq, cr, pf, bf]
+			_check(mq.count() >= 38, "case A: the mannequins in the yard (%d)" % mq.count())
 			_next("settle")
 		"settle":
 			if t == SETTLE:
@@ -203,13 +221,17 @@ func _on_physics() -> void:
 				for g2: Variant in fight.gunmen:
 					shots2 += (g2 as Gunman).shots
 				_check(shots2 > shots0, "case %s: the guards shot during the window" % case_name)
-				_check(fight.max_shooters_seen <= 3, "case %s: never more than 3 shooting" % case_name)
+				_check(fight.max_shooters_seen <= GunData.max_shooters(), "case %s: never more than %d shooting" % [case_name, GunData.max_shooters()])
 				fight.process_mode = Node.PROCESS_MODE_DISABLED
 				if fight.cover_ctl.pose:
 					fight.cover_ctl.pose.process_mode = Node.PROCESS_MODE_DISABLED
 				for g3: Variant in fight.gunmen:
 					(g3 as Node3D).visible = false
 					(g3 as Node).process_mode = Node.PROCESS_MODE_DISABLED
+				for x: Node in extras:
+					if is_instance_valid(x):
+						(x as Node3D).visible = false
+						x.process_mode = Node.PROCESS_MODE_DISABLED
 				weapons.aim_override = false
 				weapons.fire_override = false
 				_next("base")

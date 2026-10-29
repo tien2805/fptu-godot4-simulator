@@ -9,9 +9,11 @@
 #   - telegraph warning: an amber marker on the screen edge (pointing out, CombatHUD's edge-marker idea) for every gunman
 #     glinting and the forklift revving for a charge while it is behind the camera or off screen;
 #   - bottom centre: "[Ctrl] nấp" near a free cover slot, the in-cover hint while crouched, "Hết đạn, tìm hộp đạn";
-#   - centre popups (wave start, boss windows), a toast line (ammo pickups, refusals) and a subtitle (the name speech).
+#   - centre popups (wave start, boss windows), a toast line (ammo pickups, refusals) and a subtitle (the name speech);
+#   - Wave 3 bullet time: a slim "Tập trung" focus bar above the prompt line while the fight has bullet time (enabled),
+#     and the prompt "[Space] lao người" while aiming with a dive available (when no cover / ammo hint is shown).
 # Test state (updated in _process, not in _draw): hp_text, left_text, wave_text, markers, edge_markers, boss_shown,
-# boss_name, prompt_text, popup_text, toast_text, subtitle_text. Strings are rebuilt only when their value changes; the
+# boss_name, prompt_text, popup_text, toast_text, subtitle_text, focus_k, focus_shown. Strings are rebuilt only when their value changes; the
 # panels redraw only on a change (or while the low-HP bar blinks).
 class_name GunHUD
 extends CanvasLayer
@@ -34,6 +36,10 @@ var panel: Control
 var boss_bar: Control
 var marks_view: Control
 var prompt_label: Label
+var focus_bar: Control
+var focus_k: float = 1.0
+var focus_shown: bool = false
+var _focus_q: int = -1
 var popup_label: Label
 var toast_label: Label
 var subtitle_label: Label
@@ -103,6 +109,18 @@ func _ready() -> void:
 	b.visible = false
 	add_child(b)
 	boss_bar = b
+	var fb := FocusBar.new()
+	fb.name = "FocusBar"
+	fb.hud = self
+	fb.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	fb.offset_left = -150.0
+	fb.offset_right = 150.0
+	fb.offset_top = -108.0
+	fb.offset_bottom = -90.0
+	fb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fb.visible = false
+	add_child(fb)
+	focus_bar = fb
 	prompt_label = _label("CoverPrompt", Control.PRESET_CENTER_BOTTOM, Vector4(-420.0, 420.0, -150.0, -116.0), 20)
 	popup_label = _label("GunPopup", Control.PRESET_CENTER, Vector4(-380.0, 380.0, -200.0, -140.0), 40)
 	toast_label = _label("GunToast", Control.PRESET_CENTER_TOP, Vector4(-320.0, 320.0, TOP + PANEL.y + BOSS.y + 18.0, TOP + PANEL.y + BOSS.y + 48.0), 20)
@@ -307,6 +325,20 @@ func _read_fight() -> void:
 	var w: WeaponDirector = fight.get("weapons")
 	if pt == "" and w and WeaponData.mag_of(w.current) > 0 and w.ammo[w.current] <= 0 and w.reserve_of(w.current) == 0:
 		pt = GunData.T_NO_AMMO
+	var bt: BulletTime = fight.get("bullet_time")
+	var show_focus: bool = bt != null and is_instance_valid(bt) and bt.enabled
+	if show_focus != focus_shown:
+		focus_shown = show_focus
+		focus_bar.visible = show_focus
+		_focus_q = -1
+	if show_focus:
+		focus_k = clampf(bt.focus / BulletTime.FOCUS_MAX, 0.0, 1.0)
+		var q: int = int(focus_k * 100.0) * 2 + (1 if bt.focus + 1e-4 >= BulletTime.cost() else 0)
+		if q != _focus_q:
+			_focus_q = q
+			focus_bar.queue_redraw()
+		if pt == "" and bt.can_prompt():
+			pt = BulletTime.T_PROMPT
 	if pt != prompt_text:
 		prompt_text = pt
 		prompt_label.text = pt
@@ -356,6 +388,25 @@ class BossBar extends Control:
 		draw_rect(r, Color(0.0, 0.0, 0.0, 0.6))
 		var col: Color = CombatHUD.GOLD if hud.boss_refilling else CombatHUD.hp_color()
 		draw_rect(Rect2(r.position, Vector2(r.size.x * hud.boss_k, r.size.y)), col)
+		draw_rect(r, Color(1.0, 1.0, 1.0, 0.5), false, 1.0)
+
+
+class FocusBar extends Control:
+	var hud: GunHUD
+
+	func _draw() -> void:
+		var f: Font = CombatHUD.font()
+		var bt: BulletTime = hud.fight.get("bullet_time") if hud.fight else null
+		var ready: bool = bt != null and is_instance_valid(bt) and bt.focus + 1e-4 >= BulletTime.cost()
+		draw_string_outline(f, Vector2(0.0, 14.0), BulletTime.T_FOCUS, HORIZONTAL_ALIGNMENT_LEFT, 96.0, 14, 4, CombatHUD.INK)
+		draw_string(f, Vector2(0.0, 14.0), BulletTime.T_FOCUS, HORIZONTAL_ALIGNMENT_LEFT, 96.0, 14, Color.WHITE)
+		var r := Rect2(Vector2(96.0, 4.0), Vector2(size.x - 96.0, 10.0))
+		draw_rect(r, Color(0.0, 0.0, 0.0, 0.6))
+		var col := Color(0.55, 0.75, 1.0) if ready else Color(0.45, 0.5, 0.6)
+		draw_rect(Rect2(r.position, Vector2(r.size.x * hud.focus_k, r.size.y)), col)
+		if bt != null and is_instance_valid(bt):
+			var cx: float = r.position.x + r.size.x * BulletTime.cost() / BulletTime.FOCUS_MAX
+			draw_line(Vector2(cx, r.position.y - 2.0), Vector2(cx, r.end.y + 2.0), Color(1.0, 1.0, 1.0, 0.8), 1.5)
 		draw_rect(r, Color(1.0, 1.0, 1.0, 0.5), false, 1.0)
 
 

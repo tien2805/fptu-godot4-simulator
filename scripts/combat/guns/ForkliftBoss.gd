@@ -7,12 +7,13 @@
 #                smoke, "Xe nâng lao tới!";
 #   CHARGE       full throttle along the locked direction (11 m/s, 13 in phase 2) for up to 2.4 s; the player within
 #                CHARGE_HIT_R of the chassis-to-fork-tips line, with a clear line from the chassis front to him (the
-#                forks have no collision: cover or a wall between stops the hit), takes a heavy hit (25, knock-down) once
+#                forks have no collision: cover or a wall between stops the hit), takes a heavy hit (charge_dmg(), knock-down) once
 #                per charge; a crash is handled before any hit test;
-#   RECOVER      after a crash into the level (3.2 s) or a miss (1.8 s): stalled, Alexander dizzy with stars: VULNERABLE;
+#   RECOVER      after a crash into the level or a miss (recover_s(): 3.2 / 1.8 s; the joust 3.4 / 2.4, Dễ 4.0 / 3.0):
+#                stalled, Alexander dizzy with stars: VULNERABLE;
 #   LIFT         stops and raises the forks with a crate (0.9 s);
 #   TOSS         flings the crate (two in phase 2) in an arc onto where the player stands: a dark shadow on the landing spot
-#                grows for CRATE_FLIGHT_S (1.2 s) before it lands; within CRATE_R of the landing = a heavy hit (30);
+#                grows for CRATE_FLIGHT_S (1.2 s) before it lands; within CRATE_R of the landing = a heavy hit (crate_dmg());
 #   OVERHEAT     the heat meter (+34 per charge, +18 per toss) reached 100: steam and smoke 4.5 s: VULNERABLE, damage x1.5;
 #   NAME         after his HP first falls under 66 % and 33 % (at most NAME_MAX = 2 times, when no vulnerable window is
 #                open): he stands on the seat and restates his endless name (subtitles, party horn) for 3.2 s, invulnerable,
@@ -21,6 +22,14 @@
 #                it with stars (no blood); is_defeated() -> GunFight counts the wave beaten;
 #   HOLD         ai off ({"ai": false}: the villain card, a cinematic, tests): sits still until activate() (starts the AI
 #                loop) or force_attack() (one attack, then back to HOLD); STAND: the fight was lost.
+# W3 D3W-3 joust (plan 2026-10-30-w3-day3.md T7): forks_up() = the ram window (LIFT: the forks go up before a toss, a
+# yellow beacon and a creak; lift_s()); ram_open() = forks up, or stalled (RECOVER / OVERHEAT) and not rammed in that
+# stall yet (T9);
+# take_ram(dir, speed) from the player's forklift: from the side or the back at >= RAM_MIN_SPEED while ram_open() =
+# RAM_FRAC of the bar (Impact heavy, sparks, he spins out into RECOVER, no second ram in that stall), a front
+# ram = both bounce ("front": the caller hurts the player); his tossed crates stay crate_dwell s on the floor
+# (floor_crates, take_floor_crate) and one thrown back hurts him (take_crate_hit: CRATE_BACK_FRAC while stalled or from
+# the side); crush() = a crane drop on him while stalled skips to the next phase. Telegraphs through Difficulty (tell_s).
 # Hits on the player come from the forklift body (its position: the damage arc, the knock-down direction).
 # Bullets (and melee) reach him through the driver target (hit_node(), a capsule over the seat; the chassis and the mast
 # rails are world geometry and stop shots): outside the vulnerable windows he only clangs ("Không xi nhê!").
@@ -45,6 +54,11 @@ const ST_NAMES: Array[String] = ["idle", "charge_tell", "charge", "recover", "li
 const PATTERN: Array[String] = ["charge", "toss", "charge", "charge", "toss"]
 const SIT_H: float = 0.47
 const LOG_MAX: int = 48
+const RAM_MIN_SPEED: float = 4.0
+const RAM_FRAC: float = 0.15
+const CRATE_BACK_FRAC: float = 0.08
+const SIDE_DOT: float = 0.5          # |dot(ram dir, his forward)| below this = a side hit; a ram along his forward = the back
+const SPIN_S: float = 0.6
 
 ## The capsule bullets test (WeaponDirector duck type): forwards hits to the boss.
 class DriverTarget extends Node3D:
@@ -89,6 +103,18 @@ var _fx_acc: float = 0.0
 var _immune_cd: float = 0.0
 var _name_line: int = -1
 var _rng := RandomNumberGenerator.new()
+## T7: the joust.
+var crate_dwell: float = 8.0
+var floor_crates: Array[Dictionary] = []   # {"node", "t"}: tossed crates lying on the floor
+var rams: int = 0
+var crate_backs: int = 0
+var crushes: int = 0
+var _spin_t: float = -1.0
+var _stall_rammed: bool = false
+## T9: the joust's numbers (MissionForklift passes opt "joust"): longer stalls and forks-up window, harder hits on
+## Thường; without it the GunData numbers (the plain boss fight, test_gunfight).
+var joust: bool = false
+var _spin_dir: float = 1.0
 
 
 ## opts: "hp", "body" (CharacterBuilder opts over GunData.ALEX_LOOK), "body_fn" (Callable(look) -> rigged Node3D),
@@ -98,6 +124,8 @@ func setup(opts: Dictionary = {}) -> void:
 	max_hp = float(opts.get("hp", GunData.BOSS_HP))
 	hp = max_hp
 	ai = bool(opts.get("ai", true))
+	crate_dwell = float(opts.get("crate_dwell", Difficulty.pick(8.0, 10.0)))
+	joust = bool(opts.get("joust", false))
 	for i: int in GunData.NAME_AT.size():
 		_name_used.append(false)
 	forklift = Forklift.new()
@@ -175,6 +203,143 @@ func phase2() -> bool:
 
 func display_name() -> String:
 	return GunData.ALEX_FULL
+
+
+## The ram window: his forks go up before a toss.
+func forks_up() -> bool:
+	return st == St.LIFT
+
+
+## A side / back ram counts now: his forks are up (LIFT), or he is stalled (RECOVER "SƠ HỞ!" after a missed charge or a
+## crash, OVERHEAT "QUÁ NHIỆT!") and has not been rammed in this stall yet (T9: the stall is the window a player reads
+## first; one ram per stall).
+func ram_open() -> bool:
+	return st == St.LIFT or (vulnerable() and not _stall_rammed)
+
+
+## The charge telegraph (Dễ +0.3 s).
+func tell_s() -> float:
+	return float(GunData.CHARGE_TELL_S2 if phase2() else GunData.CHARGE_TELL_S) + float(Difficulty.pick(0.0, 0.3))
+
+
+## The forks-up window before a toss (0.8 s, Dễ 1.1). T9, the joust (opt "joust"): the sloppy bot could not reach 0.8 s
+## from the 8-13 m he keeps (a turn and 6 m of acceleration take about 1.2 s): 1.2 s on Thường, 1.5 s on Dễ.
+func lift_s() -> float:
+	if joust:
+		return float(Difficulty.pick(1.2, 1.5))
+	return float(Difficulty.pick(0.8, 1.1))
+
+
+## His hits on the player (heavy, a knock-down): GunData's 25 / 30. T9, the joust: those never got through the
+## regeneration of a sloppy player who dodged most attacks; Thường hits harder, Dễ softer.
+func charge_dmg() -> float:
+	if joust:
+		return float(Difficulty.pick(GunData.CHARGE_DMG * 1.5, GunData.CHARGE_DMG * 0.85))
+	return GunData.CHARGE_DMG
+
+
+func crate_dmg() -> float:
+	if joust:
+		return float(Difficulty.pick(GunData.CRATE_DMG * 1.4, GunData.CRATE_DMG * 0.85))
+	return GunData.CRATE_DMG
+
+
+## How long he stays stalled (RECOVER, the "SƠ HỞ!" window for a ram or the guns) after a miss / a spin-out or a crash:
+## GunData's 1.8 / 3.2 s; T9, the joust: those left the sloppy bot no time to drive round to his side.
+func recover_s(crash: bool) -> float:
+	if not joust:
+		return GunData.CRASH_RECOVER_S if crash else GunData.MISS_RECOVER_S
+	return float(Difficulty.pick(3.4, 4.0)) if crash else float(Difficulty.pick(2.4, 3.0))
+
+
+func stalled() -> bool:
+	return vulnerable()
+
+
+## Charging and his charge has already hit the player this time (the player's forklift does not hit twice).
+func charge_hit_now() -> bool:
+	return st == St.CHARGE and _charge_hit
+
+
+func mark_charge_hit() -> void:
+	_charge_hit = true
+
+
+## Where a ram from `dir` lands on his forklift: "front" | "side" | "back".
+func ram_side(dir: Vector3) -> String:
+	var f: Vector3 = forklift.forward()
+	var d: float = WeaponMath.flat_dir(dir).dot(f)
+	if d <= -SIDE_DOT:
+		return "front"
+	if d >= SIDE_DOT:
+		return "back"
+	return "side"
+
+
+## The player's forklift rams him along `dir` at `speed`: "front" (both bounce; the caller hurts the player), "hit" (side
+## or back while his forks are up, fast enough: RAM_FRAC of the bar, he spins out into RECOVER), "bump" (no damage) or
+## "none" (down / standing down).
+func take_ram(dir: Vector3, speed: float) -> String:
+	if st == St.KO or st == St.TOPPLE or st == St.STAND or st == St.NAME:
+		return "none"
+	var side: String = ram_side(dir)
+	if side == "front":
+		forklift.speed = 0.0
+		if fight:
+			fight.call("play_cue", "impact_heavy", forklift.global_position + Vector3(0.0, 1.0, 0.0), 0.0)
+		return "front"
+	if speed < RAM_MIN_SPEED or not ram_open():
+		if fight:
+			fight.call("play_cue", "helmet_clonk", forklift.global_position + Vector3(0.0, 1.0, 0.0), -4.0)
+		return "bump"
+	rams += 1
+	forklift.release_crate()
+	forklift.lift_to(0.15)
+	Impact.hit(self, "heavy", {"pos": forklift.global_position + Vector3(0.0, 1.0, 0.0), "dir": WeaponMath.flat_dir(dir)})
+	Impact.particles(self, "sparks", forklift.global_position + Vector3(0.0, 1.0, 0.0), WeaponMath.flat_dir(dir), 1.2)
+	_spin_t = 0.0
+	_spin_dir = 1.0 if WeaponMath.flat_dir(dir).cross(forklift.forward()).y > 0.0 else -1.0
+	st_len = recover_s(false)
+	_enter(St.RECOVER)
+	_stall_rammed = true     # one ram per stall: no stun-lock
+	apply_damage(max_hp * float(Difficulty.pick(RAM_FRAC, RAM_FRAC * 1.2)))
+	return "hit"
+
+
+## A crate thrown back by the player's forklift lands on him from `dir`: "hit" (stalled or from the side) or "bump".
+func take_crate_hit(dir: Vector3) -> String:
+	if st == St.KO or st == St.TOPPLE or st == St.STAND:
+		return "none"
+	if not (vulnerable() or ram_side(dir) != "front"):
+		_immune_feedback()
+		return "bump"
+	crate_backs += 1
+	Impact.hit(self, "heavy", {"pos": forklift.global_position + Vector3(0.0, 1.4, 0.0), "dir": WeaponMath.flat_dir(dir)})
+	apply_damage(max_hp * float(Difficulty.pick(CRATE_BACK_FRAC, CRATE_BACK_FRAC * 1.25)))
+	return "hit"
+
+
+## A crane drop on him: while stalled it skips to the next phase (phase 1 -> phase 2; phase 2 -> 10 % left). false when
+## he is not stalled (the container just bounces off a moving forklift).
+func crush() -> bool:
+	if not vulnerable():
+		return false
+	crushes += 1
+	var goal: float = max_hp * GunData.PHASE2_AT - 1.0 if not phase2() else max_hp * 0.1
+	Impact.hit(self, "finisher", {"pos": forklift.global_position + Vector3(0.0, 1.5, 0.0), "dir": Vector3.DOWN})
+	if hp > goal:
+		apply_damage(hp - goal)
+	return true
+
+
+## A tossed crate lying within r of p (the player's fork tips): taken off the floor list and returned (null = none).
+func take_floor_crate(p: Vector3, r: float) -> Node3D:
+	for i: int in floor_crates.size():
+		var c: Node3D = floor_crates[i]["node"]
+		if is_instance_valid(c) and WeaponMath.flat(c.global_position, p) <= r:
+			floor_crates.remove_at(i)
+			return c
+	return null
 
 
 func status_text() -> String:
@@ -271,6 +436,11 @@ func _physics_process(delta: float) -> void:
 	st_t += delta
 	_immune_cd = maxf(0.0, _immune_cd - delta)
 	_tick_crates(delta)
+	if _spin_t >= 0.0:
+		_spin_t += delta
+		forklift.rotation.y += _spin_dir * TAU * 1.2 * delta * (1.0 - clampf(_spin_t / SPIN_S, 0.0, 1.0))
+		if _spin_t >= SPIN_S:
+			_spin_t = -1.0
 	match st:
 		St.IDLE:
 			_do_idle(delta)
@@ -290,7 +460,7 @@ func _physics_process(delta: float) -> void:
 		St.LIFT:
 			forklift.drive(0.0, 0.0, 0.0)
 			_face_player(delta, 2.0)
-			if st_t >= GunData.LIFT_S:
+			if st_t >= lift_s():
 				_toss()
 		St.TOSS:
 			forklift.drive(0.0, 0.0, 0.0)
@@ -327,6 +497,8 @@ func _enter(s: int) -> void:
 	st = s
 	st_t = 0.0
 	_fx_acc = 0.0
+	if s != St.RECOVER and s != St.OVERHEAT:
+		_stall_rammed = false
 	state_log.append(ST_NAMES[s])
 	if state_log.size() > LOG_MAX:
 		state_log.pop_front()
@@ -356,7 +528,9 @@ func _enter(s: int) -> void:
 			var c: Node3D = GunProps.crate(0.8)
 			forklift.carry(c)
 			forklift.lift_to(2.3)
+			forklift.beacon_mode = "yellow"   # the ram window
 			fight.call("play_cue", "forklift_lift", forklift.global_position, -2.0)
+			YardSfx.play3d(self, "creak", forklift.global_position + Vector3(0.0, 2.0, -1.0), 0.0)
 		St.NAME:
 			_stand_up()
 			_name_from = hp
@@ -384,7 +558,7 @@ func _back_to_idle() -> void:
 	if heat >= 100.0:
 		_enter(St.OVERHEAT)
 		return
-	_think = _rng.randf_range(GunData.THINK.x, GunData.THINK.y) * (0.75 if phase2() else 1.0)
+	_think = _rng.randf_range(GunData.THINK.x, GunData.THINK.y) * (float(Difficulty.pick(0.6, 0.8)) if phase2() else 1.0)
 	_enter(St.IDLE if ai else St.HOLD)
 
 
@@ -426,7 +600,7 @@ func _do_tell(delta: float) -> void:
 		var fx: WeaponFX = fight.get("fx")
 		if fx:
 			fx.burst("dust", forklift.global_transform * Vector3(0.0, 0.2, 0.9), Vector3.UP, 0.25)
-	if st_t >= (GunData.CHARGE_TELL_S2 if phase2() else GunData.CHARGE_TELL_S):
+	if st_t >= tell_s():
 		_charge_dir = forklift.forward()
 		_charge_hit = false
 		_crashed_now = false
@@ -441,7 +615,7 @@ func _do_tell(delta: float) -> void:
 func _do_charge() -> void:
 	if _crashed_now:
 		_crashed_now = false
-		st_len = GunData.CRASH_RECOVER_S
+		st_len = recover_s(true)
 		fight.call("play_cue", "impact_heavy", forklift.global_position + _charge_dir * 2.0 + Vector3(0.0, 1.0, 0.0), 4.0)
 		var fx: WeaponFX = fight.get("fx")
 		if fx:
@@ -454,7 +628,7 @@ func _do_charge() -> void:
 		_enter(St.RECOVER)
 		return
 	if st_t >= GunData.CHARGE_MAX_S:
-		st_len = GunData.MISS_RECOVER_S
+		st_len = recover_s(false)
 		_enter(St.RECOVER)
 		return
 	forklift.drive(1.0, 0.0, GunData.CHARGE_SPEED2 if phase2() else GunData.CHARGE_SPEED, true)
@@ -462,7 +636,7 @@ func _do_charge() -> void:
 		var pl: Node3D = fight.get("player")
 		if pl and _near_segment(pl.global_position) and _charge_line_clear():
 			_charge_hit = true
-			if String(fight.call("hit_player", forklift, GunData.CHARGE_DMG, true)) == "hit":
+			if String(fight.call("hit_player", forklift, charge_dmg(), true)) == "hit":
 				charge_hits += 1
 
 
@@ -532,6 +706,13 @@ func _toss() -> void:
 
 
 func _tick_crates(delta: float) -> void:
+	for j: int in range(floor_crates.size() - 1, -1, -1):
+		var fc: Dictionary = floor_crates[j]
+		fc["t"] = float(fc["t"]) + delta
+		if float(fc["t"]) >= crate_dwell or not is_instance_valid(fc["node"]):
+			if is_instance_valid(fc["node"]):
+				(fc["node"] as Node).queue_free()
+			floor_crates.remove_at(j)
 	for i: int in range(_flying.size() - 1, -1, -1):
 		var e: Dictionary = _flying[i]
 		var c: Node3D = e["node"]
@@ -571,7 +752,7 @@ func _land(c: Node3D, at: Vector3) -> void:
 	var hit: bool = false
 	var pl: Node3D = fight.get("player") if fight else null
 	if pl and WeaponMath.flat(pl.global_position, at) <= GunData.CRATE_R and absf(pl.global_position.y - at.y) < 2.0:
-		if String(fight.call("hit_player", forklift, GunData.CRATE_DMG, true)) == "hit":
+		if String(fight.call("hit_player", forklift, crate_dmg(), true)) == "hit":
 			hit = true
 			crate_hits += 1
 	if fight:
@@ -581,7 +762,9 @@ func _land(c: Node3D, at: Vector3) -> void:
 			fx.burst("dust", at + Vector3(0.0, 0.3, 0.0), Vector3.UP, 0.8)
 			fx.burst("debris", at + Vector3(0.0, 0.4, 0.0), Vector3.UP, 0.7)
 	if is_instance_valid(c):
-		c.queue_free()
+		c.global_position = Vector3(at.x, forklift.floor_y, at.z)   # T7: it stays on the floor crate_dwell s (lift it, throw it back)
+		c.rotation = Vector3(0.0, c.rotation.y, 0.0)
+		floor_crates.append({"node": c, "t": 0.0})
 	crate_landed.emit(at, hit)
 
 
@@ -592,6 +775,10 @@ func _clear_crates() -> void:
 		if is_instance_valid(e["shadow"]):
 			(e["shadow"] as Node).queue_free()
 	_flying.clear()
+	for fc: Dictionary in floor_crates:
+		if is_instance_valid(fc["node"]):
+			(fc["node"] as Node).queue_free()
+	floor_crates.clear()
 	forklift.release_crate()
 
 

@@ -149,6 +149,9 @@ func _mission(sd: int) -> void:
 		diff, sd, "WON" if bool(res["won"]) else "GAVE UP", int(res["fails"]), str(res["causes"]), float(res["race_s"]), float(res["game_s"]),
 		res["his_kicks"], int(res["my_kicks"]), int(res["wobbles"]), int(res["corners"]), int(res["resets"]), int(res["stab_min"]),
 		float(res["lead_s"]), res["gap"]])
+	var rev: Dictionary = StoryRank.evaluate("d2_drift", {"time": float(res["game_s"]), "fails": int(res["fails"]), "ko": int(res["my_kicks"])})
+	print("  RANK d2_drift %s seed %d: %s %.0f (time %.0f s, fails %d, kicks %d)" % [diff, sd, String(rev["letter"]), float(rev["score"]),
+		float(res["game_s"]), int(res["fails"]), int(res["my_kicks"])])   # Wave 3 T10 calibration
 	duel.stop()
 	duel.queue_free()
 	await _frames(3)

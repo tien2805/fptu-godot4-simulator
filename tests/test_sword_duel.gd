@@ -13,6 +13,9 @@
 #   (snap, slow motion, the line, a falling tip) -> knockout -> won, and at that moment the staff goes away and the boss
 #   bar hides even with the player's HP below full; stop() clears the boss and the hand (no leaked attachment); freeing a
 #   running duel too; prepare() shows Za Mẫn idle and invulnerable before start(), which wakes the same boss.
+# W3 T5 (plan 2026-10-30-w3-day5.md): the sprinklers start once at 50 % (cut, water, puddles, the look on the host, wet
+# lunges), a puddle sets the dodge slide factor (PlayerCombat.dodge_speed_k when the shared knob exists) and leaving it
+# restores 1.0; retry, the win and stop() turn them off and restore the slide and the look.
 # Counts physics frames (Engine.max_fps = 60).
 # Run:  godot --headless --path . --script tests/test_sword_duel.gd
 extends SceneTree
@@ -131,7 +134,7 @@ func _on_physics() -> void:
 		duel = SwordDuel.new()
 		duel.name = "Duel"
 		arena.add_child(duel)
-		duel.setup({"player": player, "combat": combat, "at": Vector3(0.0, 0.0, -1.6), "seed": 3,
+		duel.setup({"player": player, "combat": combat, "at": Vector3(0.0, 0.0, -1.6), "seed": 3, "look_host": arena,
 			"boss": {"ai": false, "stats": {"block_chance": 0.0, "dodge_chance": 0.0, "stagger_max": 9999.0}}})
 		duel.won.connect(func() -> void: won_n += 1)
 		duel.lost.connect(func() -> void: lost_n += 1)
@@ -544,11 +547,26 @@ func _phases_b(t: int) -> void:
 		_hit_to(0.45)
 	if t == 41:
 		_check(boss.katana.stage == 2, "45 %: bend stage 2")
+		var em_on: bool = not duel.emitters.is_empty()
+		for e: CPUParticles3D in duel.emitters:
+			em_on = em_on and e.emitting
+		_check(duel.sprinklers_on and duel.sprinkler_starts == 1 and em_on and duel.emitters.size() == SwordDuel.SPRINKLER_N and duel.puddles[0].visible, "45 %: the sprinklers start (water from 6 emitters, puddles)")
+		_check(LookPresets.active(arena) == "server_sprinkler" and is_equal_approx(boss.lunge_k, 1.2) and duel.cuts == 1, "the sprinkler look, wet lunges overshoot, a preview cut on the heads")
+		_check(combat.hud.popup_text == SwordDuel.T_SPRINKLERS or combat.hud.popup_text == SwordData.T_BEND[2], "the sprinkler line pops")
+		player.teleport(duel.centre, 0.0)
+	if t == 60:
+		_check(is_equal_approx(duel.slide_k, 1.35) and (not ("dodge_speed_k" in combat) or is_equal_approx(float(combat.get("dodge_speed_k")), 1.35)), "on a puddle the dodge slides 35 %% further (%.2f)" % duel.slide_k)
+		player.teleport(duel.centre + Vector3(3.8, 0.0, -3.0), 0.0)
+	if t == 80:
+		_check(is_equal_approx(duel.slide_k, 1.0), "off the puddles: no slide (%.2f)" % duel.slide_k)
+		_reset_player()
+		_place(Vector3(0.0, 0.0, -1.6))
 	if t == 130:
 		dev[2] = boss.katana.tip_deviation()
 		_hit_to(0.32)
 	if t == 131:
 		_check(boss.phase == 3 and phases_seen == [2, 3] and duel.phase == 3, "32 %%: phase 3 (%s)" % str(phases_seen))
+		_check(duel.sprinkler_starts == 1 and duel.sprinklers_on, "the sprinklers start once per run")
 		_check(is_equal_approx(float(boss.stats["speed"]), base_speed * 1.4) and boss.patterns().has("frenzy"), "phase 3: faster again, the frenzy")
 	if t == 190:
 		_next("p3ai")
@@ -604,16 +622,26 @@ func _retry3(t: int) -> void:
 		_check(boss != mark.get("old") and boss.phase == 1 and duel.phase == 1 and boss.katana.stage == 0 and is_equal_approx(boss.hp, boss.max_hp), "retry() in phase 3: a fresh phase-1 Za Mẫn")
 		_check(is_equal_approx(float(boss.stats["speed"]), base_speed) and boss.patterns() == SwordData.PHASES[0]["patterns"] and is_equal_approx(boss.katana.bend, 0.0), "phase-1 speed, patterns and a straight blade again")
 		_check(String(combat.light_moves[0]["id"]) == "slash1" and duel.staff != null, "still the staff after the retry")
+		_check(not duel.sprinklers_on and is_equal_approx(duel.slide_k, 1.0) and LookPresets.active(arena) == "" and not duel.puddles[0].visible and not duel.emitters[0].emitting, "retry: the sprinklers off, the slide and the look restored")
 	if t == 10:
+		duel._on_hp(0.45)                         # the 50 % hook without a phase-change taunt in the way
+		_check(duel.sprinklers_on and duel.sprinkler_starts == 1, "the sprinklers again in the new run")
+	if t == 70:                                   # after the sprinklers' preview cut handed the time scale back
 		_next("break")
 
 
 func _break(t: int) -> void:
-	if t == 2:
+	if t == 1:
 		_reset_player()
 		_place(Vector3(0.0, 0.0, -1.6))
+	if t == 2:
 		var r: String = _hit_to(0.0)
 		_check(r == "ko", "the last hit: ko (%s)" % r)
+		# W3 T6: 0 HP opens the QTE finisher; passing its three prompts plays the snap finale
+		_check(boss.qte_ready() and duel.in_qte and duel.qte.active and not player.controls_enabled, "0 HP: the QTE finisher instead of the finale")
+		for k: String in ["q", "lmb", "e"]:
+			duel.qte.press(k)
+		_check(not duel.in_qte and duel.qte_clean and player.controls_enabled, "the QTE passed first time (qte_clean)")
 		_check(boss.st == MeleeEnemy.St.FINALE and not boss.is_hostile() and not boss.is_defeated(), "the finale, not yet knocked out (%s)" % boss.state_name())
 		_check(boss.katana.broken and boss.katana.piece != null and boss.katana.piece.top_level, "the katana snaps, the tip flies off")
 		_check(combat.slowmo_active() and combat.cues.has("katana_snap"), "slow motion and the snap")
@@ -635,6 +663,7 @@ func _break(t: int) -> void:
 		_check(player.model.find_child("PropGrip", true, false) == null and player.model.find_child("Att_prop_r*", true, false) == null, "no staff or staff attachment left on the hand")
 		_check(combat.fx.cine.find_children("Star*", "", true, false).size() >= 3, "knockout stars")
 		_check(is_equal_approx(Engine.time_scale, 1.0), "the time scale is back to 1")
+		_check(not duel.sprinklers_on and is_equal_approx(duel.slide_k, 1.0) and LookPresets.active(arena) == "", "won: the sprinklers off, the slide and the look restored")
 		_check(boss.katana.piece.global_position.y < float(mark["piece_y0"]) and boss.katana.piece_resting, "the broken tip lies on the floor (y %.2f)" % boss.katana.piece.global_position.y)
 		_next("stop")
 	if t == 400:
@@ -644,7 +673,9 @@ func _break(t: int) -> void:
 
 func _stop(t: int) -> void:
 	if t == 1:
+		duel._sprinklers(true)
 		duel.stop()
+		_check(not duel.sprinklers_on and is_equal_approx(duel.slide_k, 1.0) and LookPresets.active(arena) == "", "stop(): the sprinklers off, the look restored")
 		_check(combat.light_moves == CombatData.LIGHT and combat.controls_text == CombatData.T_CONTROLS and not combat.blade and combat.idle_pose == "", "stop(): the unarmed move set is back")
 		_check(combat.boss == null and combat.enemies.is_empty() and not combat.fight_active and duel.state == "idle", "stop(): no boss, no fight")
 		_check(duel.boss == null and duel.phase == 1, "stop() clears the duel's boss and phase")

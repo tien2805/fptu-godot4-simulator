@@ -66,6 +66,8 @@ func _start() -> void:
 	chase.won.connect(_on_won)
 	chase.lost.connect(_on_lost)
 	chase.wave_started.connect(_on_wave_started)
+	chase.takedown.connect(func(_b: BikerEnemy, _c: String) -> void: add_stat("ko"))   # Wave 3 ranks
+	chase.wave_started.connect(func(_i: int) -> void: mark_ko_checkpoint())   # Wave 3 ranks: the wave checkpoint
 	chase.start()                             # (mounting the bike switches FreeRoam to its roam track ...)
 	_music(SLOT, 0.0)                         # ... so the chase track starts after it, with no fade-in: the drop rides on it
 	radio("Ok e, a ping vị trí Bầy Sói lên map r, cứ bám route ra cầu Rạch Hầm nhé.", "Đuổi theo tụi nó tới cầu Rạch Hầm.")

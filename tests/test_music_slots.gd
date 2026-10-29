@@ -19,7 +19,9 @@ const REQUIRED: Array[String] = ["menu", "roam_day", "roam_night", "stage1_race"
 	"stage4_vovinam", "stage5_canteen", "stage6_capstone", "stage_extra_exam", "mission_stakeout", "mission_chase",
 	"mission_fight", "mission_canteen", "mission_corridor", "night_stealth", "night_tense", "night_chase", "night_escape",
 	"cine_d1_intro", "cine_d1_corridor", "cine_d1_choice", "cine_d4_intro", "cine_d4_stare", "wanted_busted",
-	"seg_d0_race", "seg_d0_exam", "seg_d1_chase", "seg_d4_escape"]
+	"seg_d0_race", "seg_d0_exam", "seg_d1_chase", "seg_d4_escape",
+	# Wave 3 (plan 2026-10-30-w3-shared.md T1)
+	"meme_mannequin", "mission_fire_hack"]
 
 var fails: Array[String] = []
 var world: Node   # every test node lives under this one root child (GameFX themes new root children with a deferred call)
