@@ -338,6 +338,12 @@ const PATROLS: Array = [
 const FIGHT_START := Vector3(-3.0, 0.0, -2.6)          # the hero's spot at the end of cine_d3_mannequins
 const WAVE1: Array[Vector3] = [Vector3(-8.6, 0.0, -5.2), Vector3(2.6, 0.0, -5.2), Vector3(-12.0, 0.0, -6.0), Vector3(7.0, 0.0, -7.5)]
 const WAVE2: Array[Vector3] = [Vector3(-22.0, 0.0, 8.0), Vector3(-22.0, 0.0, 10.5), Vector3(-17.5, 0.0, 15.5), Vector3(-19.0, 0.0, 1.0)]
+## W3 T5 (MissionYardGunfight): wave 1 from the gate (index 2 = the pallet-shield guard), wave 2 on the container roofs and
+## the east lane (the crane wave), wave 3 (Thường) flankers from the east (index 4 = the second shield guard); ammo drops.
+const GF_GATE: Array[Vector3] = [Vector3(-22.5, 0.0, 7.0), Vector3(-22.5, 0.0, 10.0), Vector3(-20.5, 0.0, 8.5), Vector3(-19.5, 0.0, 11.5)]
+const GF_ROOFS: Array[Vector3] = [Vector3(-15.0, 2.6, 3.0), Vector3(9.0, 2.6, -11.0), Vector3(-9.0, 2.6, 16.5), Vector3(16.0, 0.0, 12.0)]
+const GF_FLANK: Array[Vector3] = [Vector3(22.5, 0.0, 2.0), Vector3(22.5, 0.0, 5.5), Vector3(18.5, 0.0, -16.5), Vector3(14.0, 0.0, -16.0), Vector3(16.5, 0.0, -15.0)]
+const GF_DROPS: Array[Vector3] = [Vector3(-6.0, 0.0, 6.0), Vector3(2.0, 0.0, 12.5)]
 const CRATES_START := Vector3(-3.0, 0.0, 1.0)
 const DANCE_LOOP: Array[Vector3] = [Vector3(-5.0, 0.0, 5.0), Vector3(9.0, 0.0, 5.0), Vector3(9.0, 0.0, 7.5), Vector3(-5.0, 0.0, 7.5)]
 const BOSS_AT := FORKLIFT_PARK                       # Alexander drives off from the parked spot
@@ -374,6 +380,10 @@ func mission_points(task: String) -> Dictionary:
 				w2.append(world(q2))
 			d["waves"] = [w1, w2]
 			d["ammo"] = _world_list(AMMO)
+			d["gate"] = _world_list(GF_GATE)
+			d["roofs"] = _world_list(GF_ROOFS)
+			d["flank"] = _world_list(GF_FLANK)
+			d["drops"] = _world_list(GF_DROPS)
 		"crates":
 			d["start"] = world(CRATES_START)
 			d["start_yaw"] = face_n

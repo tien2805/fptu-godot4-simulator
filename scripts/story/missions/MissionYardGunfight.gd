@@ -43,6 +43,10 @@ const T_THROWN: String = "Quật bay!"
 const T_SHOVED: String = "Nó xô mày rồi la toáng lên!"
 const T_HIDE_INFO: String = "Lẫn vào đám ma-nơ-canh · còn %d s"
 const MEME_SLOT: String = "meme_mannequin"
+const CRANE_WAVE: int = 2
+const JOKES: Array = [["Clear! A đang order trà sữa, e cứ tự nhiên.", "Sạch đợt này rồi."],
+	["KDA đẹp đó e, a chụp màn hình rồi nha.", "Đẹp lắm, còn nữa đó."],
+	["Bọn này farm exp hơi ngu, chuẩn bị đợt cuối.", "Đợt cuối sắp tới."]]
 
 var mannequins: YardMannequins = null
 ## "sweep" | "scare" | "scuffle" | "done" | "caught" ("" = no hide: the mission has no level)
@@ -72,6 +76,13 @@ var _meme_player: AudioStreamPlayer3D = null
 var _step_t: Dictionary = {}
 var _info_s: int = -1
 var _head_tries: Array[float] = [7.0, 15.0]
+## T5: the combat waves after the hide (3 Thường / 2 Dễ), the crane (usable from wave CRANE_WAVE), ammo drops per wave.
+var n_waves: int = 0
+var crane: YardCrane = null
+var crane_offered: bool = false
+var preview_cuts: int = 0
+var drops: Dictionary = {}          # fight wave -> AmmoPickup (hidden until that wave starts)
+var _cleared_jokes: int = 0
 
 
 func _start() -> void:
@@ -83,21 +94,46 @@ func _start() -> void:
 	make_fight({"start_alerted": false})
 	if level:
 		fight.add_wave(_hide_wave())
-	var i: int = 0
-	for w: Variant in pts.get("waves", []):
-		var wave: Array = []
-		for at: Variant in w:
-			wave.append(guard(i, at))
-			i += 1
-		fight.add_wave(wave)
+		_add_yard_waves()
+	else:
+		var i: int = 0
+		for w: Variant in pts.get("waves", []):
+			var wave: Array = []
+			for at: Variant in w:
+				wave.append(guard(i, at))
+				i += 1
+			fight.add_wave(wave)
+	fight.wave_cleared.connect(_on_wave_cleared)
 	fight.start()
 	if level:
 		_build_hide()
+		_build_crane()
+		_build_drops()
 		_reset_hide()
 		MusicDirector.warm([MEME_SLOT])
 		radio("Ma-nơ-canh full map, e cosplay ma-nơ-canh đi, giữ X đứng im khi đèn pin quét tới.", "Giữ [X] đứng im như ma-nơ-canh khi bị rọi đèn.", 6.0)
 	else:
 		radio("Wave guard incoming e ơi, hold Ctrl núp sau thùng rồi pop ra bắn.", "Giữ Ctrl để núp, nhắm bắn từng đứa.")
+
+
+## T5: wave 1 from the gate (one pallet-shield guard: the shared stream's Gunman kind, ignored before the merge), wave 2
+## on the container roofs (the crane wave), wave 3 (Thường) flankers from the east with a second shield guard.
+func _add_yard_waves() -> void:
+	n_waves = int(Difficulty.pick(3, 2))
+	var sizes: Array = Difficulty.pick([4, 4, 5], [3, 3])
+	var keys: Array[String] = ["gate", "roofs", "flank"]
+	var shields: Dictionary = {0: 2, 2: 4}      # wave -> index of the shield guard in that wave
+	var gi: int = 3
+	for w: int in n_waves:
+		var spots: Array = pts.get(keys[w], [])
+		var wave: Array = []
+		for k: int in mini(int(sizes[w]), spots.size()):
+			var extra: Dictionary = {}
+			if shields.get(w, -1) == k:
+				extra["kind"] = "shield"
+			wave.append(guard(gi, spots[k], [], extra))
+			gi += 1
+		fight.add_wave(wave)
 
 
 func _lw(local: Vector3) -> Vector3:
@@ -239,13 +275,89 @@ func caught_now() -> bool:
 	return false
 
 
+# ----- T5: the crane, the ammo drops, the wave beats -----
+func _build_crane() -> void:
+	crane = YardCrane.new()
+	add_child(crane)
+	crane.setup((level as Node3D).global_transform, fight, int(Difficulty.pick(3, 3)), 5.0, 0.0)
+	crane.usable = false
+	crane.dropped.connect(_on_crane_dropped)
+
+
+func _build_drops() -> void:
+	var spots: Array = pts.get("drops", [])
+	for k: int in mini(spots.size(), n_waves - 1):
+		var p: AmmoPickup = fight.add_ammo(spots[k], WeaponData.Slot.SHOTGUN if k % 2 == 0 else WeaponData.Slot.PISTOL)
+		p.take()                 # hidden until its wave calls it in on the radio
+		drops[CRANE_WAVE + k] = p
+
+
+## Every combat wave opens with a 0.6 s preview cut on its spawn (wave 1: the shield guard; wave 2: the crane cabin).
+func _on_wave_started(i: int) -> void:
+	super._on_wave_started(i)
+	if crane:
+		crane.usable = i >= CRANE_WAVE
+	if i == 0 or level == null or state != "running":
+		return
+	var target: Node3D = null
+	var w: int = i - 1
+	if fight.gunmen.size() > 0:
+		target = fight.gunmen[mini(2, fight.gunmen.size() - 1)] if w == 0 else fight.gunmen[0]
+	match w:
+		0:
+			radio("Guard spawn ở cổng kìa e, có đứa vác pallet làm khiên, đánh vòng sườn nó!", "Bọn ở cổng. Đứa cầm khiên pallet thì bắn từ bên hông.", 4.5)
+		1:
+			if crane:
+				target = crane.cabin_mark
+				crane_offered = true
+			radio_as("anh_duy", "Lên cần cẩu kìa e! Thả container đè tụi nó.", "Leo cần cẩu giữa bãi, thả container.", 4.5)
+		2:
+			radio("Tụi nó flank phía đông, thêm đứa khiên nữa. Đạn a thả ở bãi giữa đó.", "Bọn vòng sườn phía đông. Có đạn ở giữa bãi.", 4.5)
+	if drops.has(i) and is_instance_valid(drops[i]):
+		(drops[i] as AmmoPickup).reset()
+		if w == 1:
+			popup("Có thùng đạn ở bãi giữa!", 1.6)
+	_preview(target)
+
+
+func _preview(target: Node3D) -> void:
+	preview_cuts += 1
+	var d: CameraDirector = CameraDirector.live()
+	if d != null and target != null and is_instance_valid(target) and target.is_inside_tree() and not d.cutting() and not (crane and crane.in_cabin()):
+		d.preview_cut(target, 0.6)
+
+
+func _on_wave_cleared(i: int) -> void:
+	if i == 0 or i >= fight.waves.size() - 1 or state != "running":
+		return
+	var j: Array = JOKES[_cleared_jokes % JOKES.size()]
+	_cleared_jokes += 1
+	radio(String(j[0]), String(j[1]), 3.5)
+
+
+func _on_crane_dropped(_pos: Vector3, kos: int) -> void:
+	if kos > 0:
+		if has_method("add_stat"):
+			call("add_stat", "crane_kos", kos)
+		popup("Container đè %d đứa!" % kos if kos > 1 else "Container đè trúng!", 1.6)
+		if kos >= 2:
+			radio("Strike! Bowling container luôn e ơi.", "Đè trúng mấy đứa luôn.", 3.0)
+
+
 # ----- per tick -----
 func _lair_tick(dt: float) -> void:
 	if hide_state == "sweep" or hide_state == "scare" or hide_state == "scuffle":
 		_hide_tick(dt)
 		return
 	_fly_tick(dt)
-	super._lair_tick(dt)
+	if crane:
+		crane.step(dt)
+		set_prompt(crane.hint())
+	if fight and int(clock * 10.0) % 3 == 0:
+		if fight.wave == 0 or level == null:
+			set_info("Còn %d bảo vệ" % fight.enemies_left())
+		else:
+			set_info("Đợt %d/%d · Còn %d bảo vệ" % [fight.wave, fight.waves.size() - 1, fight.enemies_left()])
 
 
 func _hide_tick(dt: float) -> void:
@@ -491,7 +603,10 @@ func _input(event: InputEvent) -> void:
 
 
 func _on_fight_won() -> void:
-	won_info = {"ko": fight.ko_total + hide_kos, "hidden": hidden and mannequins != null}
+	if crane and crane.in_cabin():
+		crane.leave()
+	won_info = {"ko": fight.ko_total + hide_kos, "hidden": hidden and mannequins != null,
+		"crane": crane != null and crane.kos_total > 0}
 	if rec and String(beat.get("replay", "")) != "":
 		replay_wait = StoryStage.REPLAY_AFTER
 	else:
@@ -499,12 +614,18 @@ func _on_fight_won() -> void:
 
 
 func _reset() -> void:
+	if crane:
+		crane.reset()            # out of the cabin first (GunFight.retry teleports the player), the drops back
 	super._reset()
 	if fight and fight.wave == 0:
 		_reset_hide()
+	if crane:
+		crane.usable = fight != null and fight.wave >= CRANE_WAVE
 
 
 func _cleanup() -> void:
+	if crane and is_instance_valid(crane):
+		crane.leave()
 	_set_meme(false)
 	_set_frozen_controls(false)
 	super._cleanup()

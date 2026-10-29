@@ -68,6 +68,8 @@ var footprint: MeshInstance3D
 var shadow: MeshInstance3D
 var chain: MeshInstance3D
 var cabin_floor: StaticBody3D
+## The cabin (a preview cut's target: "Lên cần cẩu kìa e!").
+var cabin_mark: Node3D
 var _prev_cam: Camera3D = null
 var _acc_saved: Dictionary = {}     # Gunman -> accuracy_k
 var _slots_of: Dictionary = {}      # landed body -> PackedInt32Array of its cover slots
@@ -113,6 +115,10 @@ func _build() -> void:
 	CineFX._box(gantry, "CabinRoof", Vector3(1.8, 0.12, 1.8), Vector3(cx, CABIN_Y + 2.1, 0.0), dark)
 	CineFX._box(gantry, "CabinFloorMesh", Vector3(1.8, 0.12, 1.8), Vector3(cx, CABIN_Y - 0.06, 0.0), dark)
 	CineFX._box(gantry, "CabinPanel", Vector3(1.8, 0.9, 0.06), Vector3(cx, CABIN_Y + 0.45, 0.88), CineFX._glow_mat(Color("#FFB347"), 0.6))
+	cabin_mark = Node3D.new()
+	cabin_mark.name = "CabinMark"
+	gantry.add_child(cabin_mark)
+	cabin_mark.position = Vector3(cx, CABIN_Y + 1.0, 0.0)
 	cabin_floor = StaticBody3D.new()
 	cabin_floor.name = "CabinFloor"
 	gantry.add_child(cabin_floor)

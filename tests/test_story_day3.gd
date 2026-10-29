@@ -291,7 +291,7 @@ func _process(_d: float) -> bool:
 				return false
 			var mg: MissionGunfight = m
 			var my9: MissionYardGunfight = m
-			_check(mg.fight.waves.size() >= 3 and mg.fight.alive().size() == 3 and mg.fight.pickups.size() == 3 and my9.hide_state == "sweep", "the gunfight opens with the mannequin hide (3 sweepers in wave 0), then the waves; 3 ammo pickups")
+			_check(mg.fight.waves.size() >= 3 and mg.fight.alive().size() == 3 and mg.fight.pickups.size() == 5 and my9.hide_state == "sweep", "the gunfight opens with the mannequin hide (3 sweepers in wave 0), then the waves; 3 ammo pickups + 2 radio drops")
 			_check(my9.mannequins != null and my9.mannequins.count() >= 38, "the mannequins in front of the open stack")
 			var w9: WeaponDirector = fr.get("weapons")
 			_check(w9.reserve.size() > 0 and w9.reserve[WeaponData.Slot.PISTOL] >= 0, "finite spare rounds in the lair")
@@ -313,6 +313,12 @@ func _process(_d: float) -> bool:
 				mg11.advance(DT)
 				if mg11.fight and mg11.fight.state == "running":
 					_ko_all(mg11.fight)
+				var my11: MissionYardGunfight = mg11 as MissionYardGunfight
+				if my11:
+					mark["gf_cuts"] = my11.preview_cuts
+					mark["gf_crane"] = my11.crane_offered or bool(mark.get("gf_crane", false))
+					mark["gf_waves"] = my11.fight.waves.size() if my11.fight else int(mark.get("gf_waves", 0))
+					mark["gf_hidden"] = my11.hidden
 			if mg11 and _step_replay(mg11):
 				mark["gf_replay"] = true
 			if String(sd.get("step")) != "d3_crates":
@@ -321,6 +327,8 @@ func _process(_d: float) -> bool:
 					phase = 999
 				return false
 			_check(mark.has("gf_replay"), "the yard cleared: the seg_d3_gunfight replay")
+			_check(int(mark.get("gf_waves", 0)) == 4 and int(mark.get("gf_cuts", 0)) == 3, "W3 T5: the hide + 3 waves on Thường, a preview cut at each combat wave (%d waves, %d cuts)" % [int(mark.get("gf_waves", 0)), int(mark.get("gf_cuts", 0))])
+			_check(bool(mark.get("gf_crane", false)) and not bool(mark.get("gf_hidden", true)), "W3 T5: the crane offered in wave 2; shooting the sweepers blew the hide")
 			DirAccess.copy_absolute(ProjectSettings.globalize_path(TMP), ProjectSettings.globalize_path(SNAP))
 			_next(12)
 		12:

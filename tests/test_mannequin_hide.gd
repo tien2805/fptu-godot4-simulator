@@ -190,6 +190,13 @@ func _process(_d: float) -> bool:
 			Difficulty.set_easy(true)
 			_make_mission()
 			_check(m.mash_n < 9 and m.hold_max > 4.0 and m.sweep_s < 26.0, "Dễ: fewer presses, a longer freeze, a shorter sweep")
+			_check(m.fight.waves.size() == 3 and m.n_waves == 2 and (m.fight.waves[1] as Array).size() == 3, "W3 T5 Dễ: the hide + 2 waves of 3")
+			Difficulty.set_easy(false)
+			_make_mission()
+			_check(m.fight.waves.size() == 4 and (m.fight.waves[1] as Array).size() == 4 and (m.fight.waves[3] as Array).size() == 5, "W3 T5 Thường: the hide + 3 waves (4, 4, 5)")
+			var shield_opts: Dictionary = ((m.fight.waves[1] as Array)[2] as Dictionary).get("opts", {})
+			_check(String(shield_opts.get("kind", "")) == "shield", "W3 T5: wave 1 carries a pallet-shield guard (shared kind)")
+			_check(m.crane != null and not m.crane.usable and m.drops.size() == 2, "W3 T5: the crane waits for wave 2; 2 ammo drops held back")
 			Difficulty.set_easy(false)
 			return _end()
 	return false
