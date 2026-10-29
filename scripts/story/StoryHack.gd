@@ -9,6 +9,9 @@
 # The player's controls are off while it is open (MissionHack); it reads key events and consumes them.
 # W3 D5W-1 (plan 2026-10-30-w3-day5.md T4): `paused` (a guard breach): the terminal hides, nothing falls or leaks and no
 # key is read; false shows it again exactly as it was (no decay). start() / reset() clear it.
+# W3 T8 (sloppy-bot tuning, set by MissionHack before start()): `hp_max` (the integrity a run starts from; the waves and the
+# bar are fractions of it) and `pace` (spawn gaps and fall times divided by it: below 1 = slower). Defaults = the Stage 6
+# numbers.
 class_name StoryHack
 extends CanvasLayer
 
@@ -43,6 +46,8 @@ var paused: bool = false:
 		visible = active and not v
 		_last_us = Time.get_ticks_usec()
 var hp: float = MAX_HP
+var hp_max: float = MAX_HP
+var pace: float = 1.0
 var leaks: int = 0
 var combo: int = 0
 var max_combo: int = 0
@@ -92,7 +97,7 @@ func reset() -> void:
 	_free_node(final_bullet)
 	bullets.clear()
 	final_bullet = {}
-	hp = MAX_HP
+	hp = hp_max
 	leaks = 0
 	combo = 0
 	typos = 0
@@ -113,7 +118,7 @@ func stop() -> void:
 
 
 func wave() -> int:
-	var f: float = hp / MAX_HP
+	var f: float = hp / maxf(hp_max, 1.0)
 	if f > WAVE_HP[0]:
 		return 1
 	return 2 if f > WAVE_HP[1] else 3
@@ -140,9 +145,9 @@ func step(dt: float) -> void:
 		spawn_t -= dt
 		if spawn_t <= 0.0:
 			var w: int = wave()
-			spawn_t = SPAWN_GAP[w - 1] * rng.randf_range(0.85, 1.15)
+			spawn_t = SPAWN_GAP[w - 1] / pace * rng.randf_range(0.85, 1.15)
 			_spawn(w)
-	var fall: float = 1.0 / FALL_S[wave() - 1]
+	var fall: float = pace / FALL_S[wave() - 1]
 	for b: Dictionary in bullets:
 		if bool(b["dead"]):
 			continue
@@ -407,8 +412,8 @@ func _layout() -> void:
 func _refresh() -> void:
 	if hp_label == null:
 		return
-	hp_label.text = "Lọ Thần 9.0: %d%%" % int(ceil(hp / MAX_HP * 100.0))
-	hp_bar.value = hp / MAX_HP * 100.0
+	hp_label.text = "Lọ Thần 9.0: %d%%" % int(ceil(hp / maxf(hp_max, 1.0) * 100.0))
+	hp_bar.value = hp / maxf(hp_max, 1.0) * 100.0
 	leak_label.text = "Rò rỉ: %d / %d · Combo %d (x%d)" % [leaks, MAX_LEAKS, combo, mult()]
 	var rest: String = String(locked["word"]).substr(typed.length()) if not locked.is_empty() and _alive(locked) else ""
 	typing_label.text = "> %s_%s" % [typed, rest]

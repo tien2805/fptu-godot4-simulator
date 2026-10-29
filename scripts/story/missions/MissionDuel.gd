@@ -17,6 +17,8 @@ const START_LINE: String = "Bảo hành bảy ngày đó nha!"
 var duel: SwordDuel
 var card: StoryVillainCard = null
 var pts: Dictionary = {}
+## T9 readability: an edge arrow toward Za Mẫn while he is off screen (his lunge from behind), hidden in the QTE.
+var guide: BasementGuide = null
 
 
 func setup(r: Node3D, b: Dictionary, o: Dictionary = {}) -> void:
@@ -45,6 +47,10 @@ func _start() -> void:
 			st.append((lv as LairBasement).world(f[0]))
 		o["steam_at"] = st                     # W3 T5: steam where the sprinklers meet the burning racks
 	duel.setup(o)
+	guide = BasementGuide.new()
+	add_child(guide)
+	guide.setup(self)
+	guide.hide_fn = func() -> bool: return duel == null or not is_instance_valid(duel) or duel.in_qte or card != null
 	duel.won.connect(_on_won)
 	duel.lost.connect(_on_lost)
 	var sd: Node = StoryUtil.director()
@@ -62,6 +68,11 @@ func _start() -> void:
 		card = null
 		if state == "running" and duel:
 			duel.start(), CONNECT_ONE_SHOT)
+
+
+func _tick(_dt: float) -> void:
+	if guide and duel and guide.extra != duel.boss:
+		guide.watch_node(duel.boss)
 
 
 func _on_won() -> void:

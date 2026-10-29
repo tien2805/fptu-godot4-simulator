@@ -68,14 +68,21 @@ const PATROLS: Array = [
 	[Vector3(-10.0, 0.0, 18.5), [Vector3(-10.0, 0.0, 18.5), Vector3(10.0, 0.0, 18.5)]],
 ]
 const FIGHT_START := Vector3(0.0, 0.0, 2.8)
-const WAVE1: Array[Vector3] = [Vector3(-9.5, 0.0, 30.5), Vector3(9.5, 0.0, 30.5), Vector3(-2.5, 0.0, 33.0), Vector3(2.5, 0.0, 33.0)]
+const WAVE1: Array[Vector3] = [Vector3(-9.5, 0.0, 30.5), Vector3(9.5, 0.0, 30.5), Vector3(-2.5, 0.0, 33.0), Vector3(2.5, 0.0, 33.0),
+	Vector3(-6.0, 0.0, 32.6), Vector3(6.0, 0.0, 32.6)]
 const WAVE2: Array[Vector3] = [Vector3(-10.5, 0.0, 24.0), Vector3(10.5, 0.0, 24.0), Vector3(0.0, 0.0, 31.5), Vector3(-6.0, 0.0, 32.0)]
-## W3 T3: wave 2 through the side door (the last spot is the pallet-shield guard), wave 3 from both ends (Thường).
-const WAVE_DOOR: Array[Vector3] = [Vector3(11.0, 0.0, 18.5), Vector3(10.6, 0.0, 17.7), Vector3(10.6, 0.0, 19.3), Vector3(9.8, 0.0, 18.5)]
-const WAVE_ENDS: Array[Vector3] = [Vector3(-9.5, 0.0, 30.5), Vector3(2.5, 0.0, 33.0), Vector3(11.0, 0.0, 18.5), Vector3(10.6, 0.0, 19.3)]
+## W3 T3: wave 2 through the side door (the mission makes its last guard the pallet-shield one); T8: six spots (the wave
+## sizes are the mission's).
+const WAVE_DOOR: Array[Vector3] = [Vector3(11.0, 0.0, 18.5), Vector3(10.6, 0.0, 17.7), Vector3(10.6, 0.0, 19.3), Vector3(9.8, 0.0, 18.5),
+	Vector3(11.3, 0.0, 16.9), Vector3(11.3, 0.0, 20.1)]
+## Wave 3 (T8): both ends of the fight, the stairs AND the server room behind the player (a crossfire: one cover never
+## protects from both); the room half starts at WAVE_ENDS_ROOM.
+const WAVE_ENDS: Array[Vector3] = [Vector3(-2.5, 0.0, 33.0), Vector3(2.5, 0.0, 33.0), Vector3(-9.5, 0.0, 30.5),
+	Vector3(-2.0, 0.0, -1.2), Vector3(1.6, 0.0, -0.6), Vector3(-3.6, 0.0, -2.4)]
+const WAVE_ENDS_ROOM: int = 3
 ## W3 T4 (the burning countdown): where the breach guards come in (the hall in front of the room's mouth), the cut target,
 ## two low crates the player can fight from (built by MissionHack for the breaches only), the smoke spots.
-const BREACH: Array[Vector3] = [Vector3(-1.5, 0.0, 7.6), Vector3(1.5, 0.0, 7.6), Vector3(0.0, 0.0, 9.6)]
+const BREACH: Array[Vector3] = [Vector3(-1.5, 0.0, 7.6), Vector3(1.5, 0.0, 7.6), Vector3(0.0, 0.0, 9.6), Vector3(-3.0, 0.0, 9.2)]
 const BREACH_DOOR := Vector3(0.0, 1.2, 5.2)
 const HACK_COVER: Array = [[Vector3(2.4, 0.0, 0.9), Vector3(1.6, 1.1, 0.8)], [Vector3(-1.8, 0.0, 1.7), Vector3(1.2, 1.1, 1.2)]]
 const SMOKE_PTS: Array[Vector3] = [Vector3(-3.6, 0.0, -2.4), Vector3(2.8, 0.0, -3.7)]
@@ -100,6 +107,17 @@ const T_LABEL: String = "KHÔNG ĐƯỢC ĐỤNG"
 ## The side door: the right wall at the cross aisle (local), its opening width.
 const SIDE_DOOR := Vector3(HALL_HALF_W, 0.0, 18.5)
 const SIDE_DOOR_W: float = 1.6
+## T8: the hall's aisle waypoints (local x, z): the front, cross aisle and back rows on each aisle's centre line, the aisle
+## middles and the room's mouth. nav_graph() joins the ones that see each other: the gunmen's detours round the rack rows
+## (GunFight "nav"; Gunman re-checks every leg, so a fallen row only closes the legs it lies across).
+const NAV_PTS: Array[Vector2] = [
+	Vector2(-8.7, 8.5), Vector2(-3.5, 8.5), Vector2(0.0, 8.5), Vector2(3.5, 8.5), Vector2(8.7, 8.5),
+	Vector2(-8.7, 13.5), Vector2(-3.5, 13.5), Vector2(3.5, 13.5), Vector2(8.7, 13.5),
+	Vector2(-8.7, 18.5), Vector2(-3.5, 18.5), Vector2(0.0, 18.5), Vector2(3.5, 18.5), Vector2(8.7, 18.5),
+	Vector2(-8.7, 23.5), Vector2(-3.5, 23.5), Vector2(3.5, 23.5), Vector2(8.7, 23.5),
+	Vector2(-8.7, 28.5), Vector2(-3.5, 28.5), Vector2(0.0, 28.5), Vector2(3.5, 28.5), Vector2(8.7, 28.5),
+	Vector2(0.0, 3.0), Vector2(-3.0, 4.0), Vector2(3.0, 4.0)]
+const NAV_LINK_M: float = 12.5
 ## Hall monitors on the low cabinets: [local position (screen centre), yaw].
 const MONITORS: Array = [[Vector3(-4.0, 1.42, 7.0), 0.0], [Vector3(4.0, 1.42, 7.0), 0.0], [Vector3(-10.5, 1.32, 15.0), -PI * 0.5],
 	[Vector3(10.0, 1.32, 22.0), PI * 0.5]]
@@ -152,6 +170,7 @@ var racks: Array[Dictionary] = []
 var door: Node3D
 var door_open: bool = false
 var _door_t: float = -1.0
+var _nav: HorrorNavGraph = null
 
 
 ## The shootable label of a rack row: a soft target of the weapons (WeaponDirector.first_hit's capsule round its
@@ -648,6 +667,22 @@ func reset_door() -> void:
 	_door_t = -1.0
 	if door:
 		door.rotation.y = 0.0
+
+
+## The aisle waypoint graph (world; built once, in the tree, every rack standing): GunFight "nav" for the basement fights.
+func nav_graph() -> HorrorNavGraph:
+	if _nav != null or not is_inside_tree():
+		return _nav
+	var g := HorrorNavGraph.new()
+	for q: Vector2 in NAV_PTS:
+		g.add_node(world(Vector3(q.x, 0.0, q.y)))
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	for i: int in g.size():
+		for j: int in range(i + 1, g.size()):
+			if g.pos(i).distance_to(g.pos(j)) <= NAV_LINK_M and HorrorNavGraph.clear(space, g.pos(i), g.pos(j)):
+				g.connect_nodes(i, j)
+	_nav = g
+	return g
 
 
 ## World-space spots of a basement task (MissionLairFight / MissionHack / MissionDuel opts "points").

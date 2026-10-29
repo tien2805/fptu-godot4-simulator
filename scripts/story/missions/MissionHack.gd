@@ -23,13 +23,21 @@ const T_LEAKED: String = "Lọ Thần kịp gửi đề ra ngoài!"
 const T_GAS: String = "Khí chữa cháy xả rồi!"
 const T_BREACH: String = "Bảo vệ xông vào!"
 const T_RETURN: String = "[E] quay lại máy"
+const T_DESK: String = "Máy tính"
+const T_SPREAD: String = "Lửa lan rộng!"
 const BREACH_AT: Array[float] = [30.0, 60.0]
 const CUT_S: float = 0.6
 const RETURN_R: float = 1.8
 const FIRE_LEFT: Array[float] = [60.0, 30.0, 10.0]   # seconds left where stages 1, 2, 3 start
-## The share of StoryHack's integrity to wipe (Thường / Dễ; T8 sloppy-bot tuning).
-const TYPING_LOAD: float = 1.0
-const TYPING_LOAD_EASY: float = 0.7
+## T8 sloppy-bot tuning (Thường / Dễ): the integrity to wipe as a share of StoryHack's (more processes to kill: the typing
+## outlasts the first breach), and StoryHack's pace (slower spawns and falls: a sloppy typist keeps up until the last wave).
+const TYPING_LOAD: float = 1.45
+const TYPING_LOAD_EASY: float = 1.15
+const PACE: float = 0.68
+const PACE_EASY: float = 0.55
+## Guards per breach (Thường / Dễ).
+const BREACH_GUARDS: int = 4
+const BREACH_GUARDS_EASY: int = 2
 
 var hack: StoryHack
 var core: Node3D
@@ -53,6 +61,8 @@ var _door_mark: Node3D = null
 var _desk_ring: Node3D = null
 var _alarm: AudioStreamPlayer = null
 var _shown_s: int = -1
+## T9 readability: the breach guards off screen as edge chevrons, the desk as the goal on the way back.
+var guide: BasementGuide = null
 
 
 func _start() -> void:
@@ -87,6 +97,9 @@ func _start() -> void:
 		add_child(_door_mark)
 		_door_mark.global_position = pts["breach_door"]
 	_build_countdown()
+	guide = BasementGuide.new()
+	add_child(guide)
+	guide.setup(self)
 	_alarm = AudioStreamPlayer.new()
 	_alarm.name = "Alarm"
 	_alarm.bus = CinePlayer._bus("SFX")
@@ -119,8 +132,9 @@ func _fresh_run(seed_val: int) -> void:
 		fire.set_stage(0)
 	_alarm_on(true)
 	_to_desk()
+	hack.hp_max = StoryHack.MAX_HP * float(Difficulty.pick(TYPING_LOAD, TYPING_LOAD_EASY))   # the typing load (T8 tuned)
+	hack.pace = float(Difficulty.pick(PACE, PACE_EASY))
 	hack.start(seed_val)
-	hack.hp = StoryHack.MAX_HP * float(Difficulty.pick(TYPING_LOAD, TYPING_LOAD_EASY))   # the typing load (T8 tuned)
 	set_prompt("")
 	_refresh_countdown()
 
@@ -138,6 +152,9 @@ func _to_desk() -> void:
 	_desk_ring = null
 	if hack:
 		hack.paused = false
+	if guide:
+		guide.watch(null)
+		guide.clear_goal()
 	_bullet_time(false)
 
 
@@ -165,7 +182,11 @@ func _tick(dt: float) -> void:
 	if breaches_started < BREACH_AT.size() and elapsed >= BREACH_AT[breaches_started]:
 		_breach()
 	if fire:
-		fire.set_stage(fire_stage_of(time_left))
+		var fs: int = fire_stage_of(time_left)
+		if fs > fire.stage and fire.stage >= 0:
+			popup(T_SPREAD, 1.6, WARN)                 # T9: the fire never grows unannounced
+			play_cue("sub_boom", -8.0)
+		fire.set_stage(fs)
 	_refresh_countdown()
 	if phase == "return" and player and pts.has("spot") and flat(player.global_position, pts["spot"]) <= RETURN_R:
 		set_prompt(T_RETURN)
@@ -203,16 +224,19 @@ func _breach() -> void:
 	armed = true
 	_end_fight()
 	_set_crates(true)
-	make_fight({"start_alerted": true})
+	make_fight({"start_alerted": true, "nav": level.call("nav_graph") if level and level.has_method("nav_graph") else null})
 	for c: Array in pts.get("cover", []):
 		fight.cover.add_box(Transform3D(Basis(), (c[0] as Vector3) + Vector3(0.0, (c[1] as Vector3).y * 0.5, 0.0)), c[1])
 	var wave: Array = []
 	var spots: Array = pts.get("breach", [])
-	var n: int = mini(int(Difficulty.pick(3, 2)), spots.size())
+	var n: int = mini(int(Difficulty.pick(BREACH_GUARDS, BREACH_GUARDS_EASY)), spots.size())
 	for k: int in n:
 		wave.append(guard(breaches_started * 3 + k, spots[(k + breaches_started) % spots.size()]))
 	fight.add_wave(wave)
 	fight.player_hit.connect(_on_player_hit)
+	if guide:
+		guide.watch(fight)
+		guide.clear_goal()
 	fight.start()
 	_bullet_time(true)
 	popup(T_BREACH, 2.0, WARN)
@@ -253,6 +277,8 @@ func _on_fight_won() -> void:
 	set_prompt(T_RETURN)
 	if pts.has("spot"):
 		_desk_ring = goal_marker(pts["spot"], 0.8)
+		if guide:
+			guide.set_goal(pts["spot"], T_DESK)
 
 
 ## [E] at the desk after a cleared breach (tests call it directly).

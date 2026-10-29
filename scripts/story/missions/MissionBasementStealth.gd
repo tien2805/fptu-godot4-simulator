@@ -15,11 +15,15 @@
 # the blackout again; the end of the mission restores them too. Beats about every 15-20 s (beats, a log for the tests):
 # stairs (Anh Duy, t 0) -> first_patrol (17 s) -> blackout (25 s) -> leds (+3 s) -> face (+9 s) -> dud (+18 s) ->
 # power_back (the goal). Numbers through Difficulty.pick.
+# T8 (sim_day5): being seen sounds the ALARM: once the patrol is down, REINFORCE (Thường) / REINFORCE_EASY (Dễ) guards of the
+# next shift kick the side door open (a preview cut on the door, Za Mẫn on the radio) and the beat ends at the goal once
+# they are down too; a retry is the patrol again from the start (the checkpoint stays at the patrol, the alarm wave goes).
 class_name MissionBasementStealth
 extends MissionSneak
 
 const BLACKOUT_AT_S: float = 25.0
-const CROSS_AISLE_Z: float = 20.5        # level-local z: the player at the cross aisle triggers the blackout early
+const CROSS_AISLE_Z: float = 24.5        # level-local z: the player nearing the cross aisle triggers it early (T8: the dark
+                                         # comes before its patrol line, not on it)
 const CUT_S: float = 0.6
 const FIRST_PATROL_S: float = 17.0
 const LEDS_AFTER_S: float = 3.0
@@ -34,6 +38,11 @@ const LED_COL := Color("#3BE8FF")
 const T_BLACKOUT: String = "Cúp điện!"
 const T_DUD: String = "Ơ... đèn hư rồi?"
 const T_POWER: String = "Có điện lại rồi!"
+const T_ALARM: String = "Báo động! Ca sau đang xuống!"
+const REINFORCE: int = 3
+const REINFORCE_EASY: int = 2
+const T_GOAL: String = "Phòng máy chủ"
+const GUIDE_NEAR_M: float = 10.0
 
 var blackout: bool = false
 var blackout_t: float = -1.0
@@ -52,6 +61,10 @@ var _props: Dictionary = {}              # Gunman -> [beam MeshInstance3D, leds 
 var _see_acc: float = 0.0
 var _beam_mat: StandardMaterial3D
 var _led_mat: StandardMaterial3D
+var alarm_wave: bool = false
+var door_mark: Node3D = null
+## T9 readability: the control room as an on-screen / edge marker, off-screen guards nearby as edge chevrons.
+var guide: BasementGuide = null
 
 
 func _start() -> void:
@@ -69,6 +82,16 @@ func _start() -> void:
 	_led_mat = CineFX._glow_mat(LED_COL, 4.0)
 	_led_mat.set_meta("vice_done", true)
 	super._start()
+	if fight:
+		fight.auto_checkpoint = false        # a retry is always the patrol from the start (the alarm wave is dropped)
+		if level and level.has_method("nav_graph"):
+			fight.nav = level.call("nav_graph")   # T8: detours round the rack rows once they are alerted
+	guide = BasementGuide.new()
+	add_child(guide)
+	guide.setup(self)
+	guide.watch(fight, GUIDE_NEAR_M)
+	if pts.has("goal"):
+		guide.set_goal(pts["goal"], T_GOAL)
 	flashlight = HorrorFlashlight.new()
 	flashlight.anchor = player
 	flashlight.aim = player.camera if player else null
@@ -100,10 +123,42 @@ func _arm() -> void:
 	_dress_guards()
 
 
-## Every guard of the wave gets his smart-glasses LEDs and his (hidden until the blackout) flashlight beam.
+## Every guard of the wave gets his smart-glasses LEDs and his (hidden until the blackout) flashlight beam; the alarm wave
+## kicks the side door open under a preview cut.
 func _on_wave_started(i: int) -> void:
 	super._on_wave_started(i)
 	_dress_guards()
+	if i == 1 and alarm_wave:
+		beats.append("alarm_wave")
+		if level and level.has_method("kick_door"):
+			level.call("kick_door")
+		play_cue("locker_slam", -2.0)
+		var cd: CameraDirector = CameraDirector.live()
+		if door_mark and cd and door_mark.is_inside_tree() and cd.preview_cut(door_mark, CUT_S):
+			cuts += 1
+
+
+## Seen: the patrol fights (MissionSneak) and the alarm calls the next shift through the side door once it is down.
+func _on_spotted(g: Node3D) -> void:
+	var was: bool = spotted
+	super._on_spotted(g)
+	if was or not spotted or alarm_wave or fight == null or state != "running":
+		return
+	alarm_wave = true
+	var wave: Array = []
+	var spots: Array = level.call("mission_points", "gunfight").get("wave_door", []) if level else []
+	var n: int = mini(int(Difficulty.pick(REINFORCE, REINFORCE_EASY)), spots.size())
+	for k: int in n:
+		wave.append(guard(k + 3, spots[k], [], {"alerted": true}))
+	if not wave.is_empty():
+		fight.add_wave(wave)
+		if door_mark == null and spots.size() > 0:
+			door_mark = Node3D.new()
+			door_mark.name = "AlarmDoor"
+			add_child(door_mark)
+			door_mark.global_position = level.call("world", LairBasement.SIDE_DOOR + Vector3(-0.6, 1.0, 0.0))
+	popup(T_ALARM, 2.2, WARN)
+	radio_as("za_man", "Bấm chuông rồi đó em. Ca sau xuống liền nha.", "", 4.0)
 
 
 func _dress_guards() -> void:
@@ -152,6 +207,11 @@ func _darken(g: Gunman) -> void:
 
 
 func _lair_tick(dt: float) -> void:
+	if spotted and alarm_wave and fight and fight.wave < fight.waves.size() - 1 and fight.alive().is_empty():
+		set_info("Báo động! Ca sau sắp vào từ cửa hông")   # the gap before the next shift: not "cleared" yet
+		if blackout:
+			blackout_t += dt
+		return
 	if not blackout and state == "running":
 		if not beats.has("first_patrol") and clock >= FIRST_PATROL_S:
 			beats.append("first_patrol")
@@ -313,12 +373,19 @@ func _unhandled_input(event: InputEvent) -> void:
 func _reset() -> void:
 	blackout = false                      # before the respawn: the fresh guards come back with their daylight sight
 	blackout_t = -1.0
+	if fight and fight.waves.size() > 1:
+		fight.waves.resize(1)             # the alarm wave goes: the patrol again, unalerted
+	alarm_wave = false
+	if level and level.has_method("reset_door"):
+		level.call("reset_door")
 	super._reset()
 	_arm()
 
 
 func _cleanup() -> void:
 	_power_on()
+	if alarm_wave and level and level.has_method("reset_door"):
+		level.call("reset_door")
 	if level and level.has_method("flicker_face"):
 		level.call("flicker_face", 0.0, 0.0)
 	if level and level.is_connected("power_row", _on_power_row):

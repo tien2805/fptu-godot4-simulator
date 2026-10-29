@@ -63,6 +63,7 @@ var qte_passed: bool = false
 var _qte_wait: bool = false
 var _qte_away: Vector3 = Vector3.ZERO
 var _finale_line: bool = false
+var _poise_until: float = -1.0
 
 
 func setup(_arch: String, opts: Dictionary = {}) -> void:
@@ -96,8 +97,9 @@ func _apply_phase(ph: int) -> void:
 	var d: Dictionary = SwordData.PHASES[phase - 1]
 	_speed_k = float(d["speed_k"])
 	_gap = float(d["gap"])
-	var vals: Dictionary = {"speed": _base_speed * _speed_k, "circle_speed": _base_circle * _speed_k, "recover": float(d["recover"]),
-		"cooldown": d["cooldown"], "block_chance": float(d["block_chance"])}
+	var tk: float = SwordData.tempo_k()   # T8: Thường presses harder between his patterns
+	var vals: Dictionary = {"speed": _base_speed * _speed_k, "circle_speed": _base_circle * _speed_k, "recover": float(d["recover"]) * tk,
+		"cooldown": (d["cooldown"] as Vector2) * tk, "block_chance": float(d["block_chance"])}
 	for k: String in vals.keys():
 		if not _fixed.has(k):
 			stats[k] = vals[k]
@@ -324,9 +326,17 @@ func incoming() -> int:
 	return 0
 
 
-## Wind-ups and swings are armoured (the parry and the stagger meter still get through).
+## Wind-ups and swings are armoured (the parry and the stagger meter still get through), and so is his POISE after a
+## stagger (W3 T8): a stagger (a hit, a parry) is followed by SwordData.poise_s() during which hits hurt but do not stagger
+## him again and light hits fill his daze meter at poise_stagger_k() (take_strike), so mashing the light combo no longer
+## stun-locks or dazes him on repeat (sim_day5 before: one attack in a whole duel).
 func _armored() -> bool:
-	return st == St.WINDUP or (st == St.ATTACK and not hit_done)
+	return st == St.WINDUP or (st == St.ATTACK and not hit_done) or _t < _poise_until
+
+
+func _stagger_for(secs: float) -> void:
+	super._stagger_for(secs)
+	_poise_until = _t + secs + SwordData.poise_s()
 
 
 func take_strike(info: Dictionary) -> String:
@@ -335,7 +345,11 @@ func take_strike(info: Dictionary) -> String:
 			and st != St.DODGE:
 		return _parried(info)
 	var hp0: float = hp
-	var r: String = super.take_strike(info)
+	var info2: Dictionary = info
+	if _t < _poise_until and not bool(info.get("breaks_block", false)):
+		info2 = info.duplicate()                 # poised: a light hit builds the daze meter slowly (the thrust in full)
+		info2["stagger"] = float(info.get("stagger", 15.0)) * SwordData.poise_stagger_k()
+	var r: String = super.take_strike(info2)
 	if r == "blocked" and katana:
 		katana.wobble(0.1)
 	if hp < hp0:
@@ -404,7 +418,8 @@ func _on_damage(r: String) -> void:
 		_apply_phase(ph)
 		if combat and combat.hud:
 			combat.hud.popup(SwordData.T_PHASE[ph], CombatHUD.WARN)
-		if st == St.STAGGER and r != "parried":
+		var poised: bool = _t < _poise_until and st != St.WINDUP and st != St.ATTACK   # T8: a poised hit counts as one
+		if (st == St.STAGGER or poised) and r != "parried":
 			_phase_taunt()
 		phase_changed.emit(phase)
 

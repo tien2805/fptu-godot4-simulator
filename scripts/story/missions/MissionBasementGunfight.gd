@@ -5,11 +5,12 @@
 # dominoes, in slow motion (Impact.clock().slowmo, the scale owner protocol), and every gunman under a landing segment
 # (LairBasement.row_footprint + reach_m) is knocked out (a finisher-tier Impact with sparks); the fallen segments become low
 # cover (GunFight.cover.add_box + reprune()). A retry stands up again the rows that fell during the failed wave.
-# Waves (Difficulty.pick): Thường 3 (4 / 4 / 4), Dễ 2 (3 / 3):
+# Waves (Difficulty.pick, T8 tuned against the sloppy gun bot): Thường 3 (WAVES), Dễ 2 (WAVES_EASY), SHOOTERS at once:
 #   wave 1 down the stairs (a preview cut on the first guard), Anh Duy's label hint;
 #   wave 2 through the side door kicked open (a preview cut on the door), its last guard with the pallet shield (Gunman
 #   "kind": "shield", the shared stream's: before the merge an ordinary gunman);
-#   wave 3 (Thường) from both ends (a preview cut on the nearest standing labelled rack);
+#   wave 3 (Thường) from both ends: the stairs and, behind the player, the server room (T8: a crossfire; "Sau lưng!", a
+#     preview cut on the first guard out of the room, Anh Duy's warning);
 #   Za Mẫn taunts from the monitor wall between waves (radio_as "za_man", jokes).
 # beats / cuts / dominoes / domino_kos: logs for the tests.
 class_name MissionBasementGunfight
@@ -19,7 +20,14 @@ const CUT_S: float = 0.6
 const DOMINO_SLOW: float = 0.35
 const DOMINO_SLOW_S: float = 1.1
 const HINT_AT_S: float = 5.5
+## T8 (sim_day5): gunmen per wave and shooting tokens, Thường / Dễ.
+const WAVES: Array[int] = [5, 5, 6]
+const WAVES_EASY: Array[int] = [3, 4]
+const SHOOTERS: int = 4
+static var GUARD_OPTS: Dictionary = {}
+const SHOOTERS_EASY: int = 3
 const T_DOMINO: String = "Đổ dây chuyền!"
+const T_BEHIND: String = "Sau lưng!"
 const TAUNTS: Array[String] = ["Bảo vệ của anh đi làm theo ca, ca sau đông hơn đó em.",
 	"Mấy tủ đó anh mua trả góp đó! Bắn nhẹ thôi!"]
 
@@ -34,13 +42,16 @@ var door_marker: Node3D = null
 var _wave_fallen: Dictionary = {}        # wave index -> rows already lying when that wave first started
 var _hinted: bool = false
 var _want_slow: bool = false             # the domino's slow motion waits for a director cut to hand the scale back
+## T9 readability: every off-screen gunman as an edge chevron, a ping over the hidden ones when none is in sight for a while.
+var guide: BasementGuide = null
 
 
 func _start() -> void:
 	reach_m = float(Difficulty.pick(0.3, 0.8))
-	wave_sizes = Difficulty.pick([4, 4, 4], [3, 3])
+	wave_sizes = Difficulty.pick(WAVES, WAVES_EASY)
 	place_player()
-	make_fight({"start_alerted": true})
+	make_fight({"start_alerted": true, "max_shooters": int(Difficulty.pick(SHOOTERS, SHOOTERS_EASY)),
+		"nav": level.call("nav_graph") if level and level.has_method("nav_graph") else null})
 	var spots: Array = [pts.get("waves", [[]])[0], pts.get("wave_door", []), pts.get("wave_ends", [])]
 	var i: int = 0
 	for wi: int in wave_sizes.size():
@@ -49,6 +60,8 @@ func _start() -> void:
 		var n: int = mini(int(wave_sizes[wi]), src.size())
 		for k: int in n:
 			var extra: Dictionary = {"kind": "shield"} if wi == 1 and k == n - 1 else {}
+			for key: Variant in GUARD_OPTS.keys():
+				extra[key] = GUARD_OPTS[key]
 			wave.append(guard(i, src[k], [], extra))
 			i += 1
 		fight.add_wave(wave)
@@ -63,6 +76,10 @@ func _start() -> void:
 				level.connect(String(pair[0]), pair[1])
 	_register_targets(true)
 	fight.wave_cleared.connect(_on_wave_cleared)
+	guide = BasementGuide.new()
+	add_child(guide)
+	guide.setup(self)
+	guide.watch(fight)
 	fight.start()
 	radio("Guard spawn ở cầu thang kìa e, dùng cover đi, đừng face tank.", "Núp sau tủ máy mà bắn.")
 
@@ -95,7 +112,10 @@ func _on_wave_started(i: int) -> void:
 			target = door_marker
 		_:
 			beats.append("both_ends")
-			target = _nearest_label()
+			var ri: int = LairBasement.WAVE_ENDS_ROOM
+			target = fight.gunmen[ri] as Node3D if fight.gunmen.size() > ri else _nearest_label()
+			popup(T_BEHIND, 1.8, WARN)
+			radio("Có đứa từ phòng máy sau lưng e kìa! Đổi cover lẹ!", "Phía sau! Bảo vệ ra từ phòng máy.", 4.0)
 	_cut(target)
 
 

@@ -228,9 +228,10 @@ func _process(_d: float) -> bool:
 			_check(bs.level.wall.state == "error" and bs.level.wall.get_parent().visible, "the wall frozen on Lọ Thần đã gặp sự cố")
 			_check(LookPresets.active(bs) == "server_red" and bs.looks.is_empty(), "the stealth's look restored when it ended")
 			var mg: MissionBasementGunfight = m
-			_check(mg.fight.waves.size() == 3 and mg.fight.alive().size() == 4, "the basement gunfight on Thường: 3 waves, 4 down the stairs")
+			_check(mg.fight.waves.size() == 3 and mg.fight.alive().size() == MissionBasementGunfight.WAVES[0], "the basement gunfight on Thường: 3 waves, the first down the stairs")
+			_check(mg.fight.max_shooters == MissionBasementGunfight.SHOOTERS, "Thường: the mission's shooter cap")
 			Difficulty.set_easy(true)
-			var easy_sizes: Array = Difficulty.pick([4, 4, 4], [3, 3])
+			var easy_sizes: Array = Difficulty.pick(MissionBasementGunfight.WAVES, MissionBasementGunfight.WAVES_EASY)
 			Difficulty.set_easy(false)
 			_check(easy_sizes.size() == 2 and mg.wave_sizes.size() == 3, "Dễ: 2 waves (the mission reads Difficulty.pick)")
 			_check(mg.cuts == 1 and mg.beats.has("stairs"), "wave 1: a preview cut down the stairs")
@@ -313,7 +314,7 @@ func _process(_d: float) -> bool:
 			_check(bs.fail_ui.title_label.text == "TOANG!", "TOANG! in the basement")
 			bs.fail_ui.press_retry()
 			var h10: StoryHack = (m as MissionHack).hack
-			_check(h10.active and h10.leaks == 0 and is_equal_approx(h10.hp, StoryHack.MAX_HP), "retry: a fresh run")
+			_check(h10.active and h10.leaks == 0 and is_equal_approx(h10.hp, h10.hp_max), "retry: a fresh run")
 			# kill every process until the final command
 			var n10: int = 0
 			while h10.final_bullet.is_empty() and n10 < 400:

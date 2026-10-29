@@ -1,6 +1,6 @@
 # File: res://tests/test_basement_fire.gd
 # W3 Day 5 T4 (plan 2026-10-30-w3-day5.md, D5W-1): the burning server countdown (MissionHack in the StoryBasement scene,
-# no story running). Checks: the 90 s clock and the countdown text; breach 1 at 30 s and breach 2 at 60 s (3 guards on
+# no story running). Checks: the 90 s clock and the countdown text; breach 1 at 30 s and breach 2 at 60 s (BREACH_GUARDS on
 # Thường, the preview cut, the guns); typing pauses with no decay and resumes at the desk; the fire stages at 60 / 30 /
 # 10 s left from a fixed emitter pool; the gas at 0 and the retry state (full timer, stage 0, no breach); a win before 0
 # with breach_clean; the emitters stopped after.
@@ -95,7 +95,7 @@ func _process(_d: float) -> bool:
 			for b: Dictionary in h.bullets.duplicate():
 				if not bool(b["dead"]):
 					h.type_text(String(b["word"]))
-			_check(h.kills > 0 and h.hp < StoryHack.MAX_HP, "typing makes progress")
+			_check(h.kills > 0 and h.hp < h.hp_max, "typing makes progress")
 			m.time_left = m.countdown_s - MissionHack.BREACH_AT[0] + 0.01
 			_next(3)
 		3:
@@ -103,7 +103,7 @@ func _process(_d: float) -> bool:
 				return false
 			_check(m.phase == "breach" and m.breaches_started == 1 and m.cuts == 1, "30 s in: breach 1, a preview cut on the door")
 			_check(h.paused and not h.visible and bs.player.controls_enabled, "the terminal hides, typing paused, the player moves")
-			_check(m.fight != null and m.fight.state == "running" and m.fight.alive().size() == 3 and bs.weapons.current == WeaponData.Slot.PISTOL, "3 guards on Thường, the guns out")
+			_check(m.fight != null and m.fight.state == "running" and m.fight.alive().size() == MissionHack.BREACH_GUARDS and bs.weapons.current == WeaponData.Slot.PISTOL, "the breach guards on Thường, the guns out")
 			_check(m.fire.stage == 1, "60 s left: fire stage 1")
 			snap = {"hp": h.hp, "leaks": h.leaks, "ys": _bullet_ys(), "t": h.t}
 			_next(4)
@@ -155,7 +155,7 @@ func _process(_d: float) -> bool:
 			_check(m.state == "failed" and m.gas_fired == 1 and m.fight == null, "at 0 the gas fires: TOANG!")
 			m.retry()
 			_check(m.state == "running" and is_equal_approx(m.time_left, m.countdown_s) and m.fire.stage == 0 and m.breaches_started == 0 \
-				and m.phase == "typing" and is_equal_approx(h.hp, StoryHack.MAX_HP) and h.active and not h.paused, "retry: the typing from the start (full timer, stage 0, no breach)")
+				and m.phase == "typing" and is_equal_approx(h.hp, h.hp_max) and h.active and not h.paused, "retry: the typing from the start (full timer, stage 0, no breach)")
 			_next(11)
 		11:
 			var n: int = 0
