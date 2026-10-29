@@ -22,6 +22,11 @@
 #     owner's sfx bike_rev at pitch 0.85, else a blip of his exhaust loop). Recorded audio only; the kick swish and thuds
 #     are the synthesized combat cues.
 # Every tuned number goes through Difficulty.pick(normal, easy) (read when a race starts: refresh_tuning()).
+# Playtest fixes (plan 2026-10-30-d2-playtest-fixes.md): lead_cap (DriftDuel sets it, 0 = off), while the player races
+# (at LEASH_MIN_V or faster): from LEAD_SOFT_M before it his speed is held toward the player's, and he never rides past it
+# (the clamp stops him at the cap; it never pulls him back, so a player who stops or falls far behind is still beaten);
+# beyond the cap (a reset, a stop) he rides a little slower than the player until back inside it. magnet(side, secs): the
+# player's kick assist pulls him toward the leg.
 class_name DriftRival
 extends Node3D
 
@@ -68,6 +73,10 @@ const REV_DB_UNDER: float = 4.0
 const MAX_RISE: float = 1.0                # a floor hit higher than this above the current floor is ignored
 const TAUNT_EVERY: Vector2 = Vector2(5.0, 9.0)
 const TAUNT_S: float = 1.8
+const LEAD_SOFT_M: float = 8.0            # from this much before lead_cap his speed eases down to the player's
+const LEASH_MIN_V: float = 6.0            # the leash holds only while the player rides at least this fast (m/s)
+const MAGNET_LAT: float = 1.5
+const MAGNET_SPEED: float = 7.0
 
 var course: DriftCourse
 var s: float = 0.0                        # progress along the path (0 .. course.total)
@@ -78,6 +87,13 @@ var d_target: float = 0.0
 var s_start: float = 0.0
 var v: float = 0.0
 var band: float = 1.0
+## The most he may lead the player by (m along the path, DriftDuel's leash; 0 = no cap) and how often the clamp acted.
+var lead_cap: float = 0.0
+var lead_clamps: int = 0
+var _prev_lead: float = 0.0
+var magnet_t: float = 0.0
+var magnet_side: float = 0.0
+var magnets: int = 0
 ## DriftDuel sets it while the player is on his tail or ahead: he takes the corners harder (DriftCourse.speed_fight).
 var fight: bool = false
 ## The player on the path (DriftDuel, every frame): progress, lateral offset, speed.
@@ -362,6 +378,8 @@ func place_at(s0: float, lat0: float) -> void:
 	wobble_t = 0.0
 	flinch_t = 0.0
 	_pose_w = 0.0
+	magnet_t = 0.0
+	_prev_lead = 0.0
 	exit_path = PackedVector2Array()
 	_exit_i = 0
 	if ring:
@@ -471,6 +489,16 @@ func take_kick(away: Vector2, power: int = 1) -> String:
 	return "wobble"
 
 
+## Kick assist (PlayerBikeCombat): pulled for `secs` toward MAGNET_LAT beside the player on `side` (-1 left, +1 right of
+## his bike), level with him, so the kick connects.
+func magnet(side_: int, secs: float) -> void:
+	if not kickable():
+		return
+	magnet_side = -1.0 if side_ < 0 else 1.0
+	magnet_t = secs
+	magnets += 1
+
+
 ## PHẢN ĐÒN: worth 2 kicks.
 func take_counter(away: Vector2) -> String:
 	return take_kick(away, 2)
@@ -536,10 +564,28 @@ func tick(delta: float, gap: float) -> void:
 		if _spark_t <= 0.0:
 			_spark_t = 0.15
 			Impact.particles(self, "sparks", global_position + Vector3(0.0, 0.25, 0.0), Vector3(0.0, 0.6, 0.0) - global_transform.basis.z * 0.5, 0.7)
+	var lead: float = s - p_s
+	var leashed: bool = lead_cap > 0.0 and p_s > -900.0 and not finished and p_v >= LEASH_MIN_V
+	if leashed and lead > lead_cap - LEAD_SOFT_M:
+		# the leash: past lead_cap - LEAD_SOFT_M he rides no faster than the player, a bit slower near and past the cap
+		var u2: float = clampf((lead - (lead_cap - LEAD_SOFT_M)) / LEAD_SOFT_M, 0.0, 1.0)
+		target = minf(target, p_v * lerpf(1.0, 0.9, u2))
 	if finished:
 		target = 0.0
 	v = move_toward(v, target, (ACCEL if target > v else BRAKE) * delta)
 	s += v * delta
+	var lead2: float = s - p_s
+	if leashed and lead2 > lead_cap and _prev_lead <= lead_cap + 0.5 and lead2 - _prev_lead < 2.0:
+		s = p_s + lead_cap                   # he stops at the cap (never pulled back from beyond it)
+		v = minf(v, p_v)
+		lead_clamps += 1
+	_prev_lead = s - p_s
+	if magnet_t > 0.0:
+		magnet_t -= delta
+		var to_d: float = clampf(p_d + magnet_side * MAGNET_LAT, -_edge() - 0.5, _edge() + 0.5)
+		d = move_toward(d, to_d, MAGNET_SPEED * delta)
+		line_d = d
+		s = move_toward(s, p_s + clampf(s - p_s, -0.8, 0.8), MAGNET_SPEED * delta)
 	# lateral line: blended from the grid offset, then his AI's line
 	var u: float = clampf((s - s_start) / LAT_GRID_BLEND_M, 0.0, 1.0)
 	var e: float = _edge()
