@@ -8,6 +8,12 @@
 #      knockout bonus (+20, Dễ 25); shots per real second equal in and out of the dive (WeaponDirector.real_time); the
 #      tint, the heartbeat and the muffle flag on during the slow part only; refused (a dull click, no cost, no jump)
 #      without focus and in cover; Space without aiming is still a jump; while prone the enemies aim low.
+#   B  Safety (T5), one dive per case: every exit path (lost, retry, stop, a tree pause, the fight leaving the tree) leaves
+#      Engine.time_scale 1.0, RadialWheel.scale_owner null, the music muffle released (GameFX.music when the autoload is
+#      there), no tint, no heartbeat, the weapons on game time and the player on the feet; a last-enemy knockout during the
+#      dive ends the slow part first so Impact's orbit takes the scale (then 1.0, no owner, the fight won); another owner of
+#      the scale (a director cut / the wheel) refuses the dive with a click and no cost, its scale untouched; Impact's own
+#      slow motion gives way to the dive.
 # Counts frames at Engine.max_fps = 60.
 # Run:  godot --headless --path . --script tests/test_bullet_time.gd
 extends SceneTree
@@ -151,6 +157,8 @@ func _on_physics() -> void:
 			_ph_a_dive(t)
 		"a_after":
 			_ph_a_after(t)
+		"b":
+			_ph_b(t)
 		"done":
 			_end()
 
@@ -290,7 +298,115 @@ func _ph_a_after(t: int) -> void:
 		dir.aim_override = false
 		fight.stop()
 		_check(not player.dive_filter.is_valid(), "A: stop() gives the Space press back")
+		aux["case"] = 0
+		_next("b")
+
+
+const B_CASES: Array[String] = ["lost", "retry", "stop", "pause", "free", "orbit", "owner", "impact"]
+
+
+func _music() -> Object:
+	var gfx: Node = root.get_node_or_null("GameFX")
+	return gfx.get("music") if gfx != null else null
+
+
+## Everything a dive changes is back.
+func _restored(tag: String) -> void:
+	_check(is_equal_approx(Engine.time_scale, 1.0) and RadialWheel.scale_owner == null, "B %s: time scale 1.0, no owner (%.2f, %s)" % [tag, Engine.time_scale, str(RadialWheel.scale_owner)])
+	var md: Object = _music()
+	if md != null:
+		_check(float(md.get("muffle_target")) == 0.0, "B %s: the music muffle is released" % tag)
+	if bt != null and is_instance_valid(bt):
+		_check(not bt.tint.visible and not bt.heart.playing and not bt.muffled and bt.state == "idle", "B %s: no tint, no heartbeat, no dive (%s)" % [tag, bt.state])
+	_check(not dir.real_time and not player.is_diving() and not player.is_prone(), "B %s: weapons on game time, the player on the feet (%s)" % [tag, player.move_state])
+	_check(is_equal_approx(player.model.rotation.x, 0.0) and is_equal_approx(player.model.rotation.z, 0.0), "B %s: the body upright" % tag)
+
+
+func _ph_b(t: int) -> void:
+	var ci: int = int(aux["case"])
+	if ci >= B_CASES.size():
 		_next("done")
+		return
+	var c: String = B_CASES[ci]
+	if t == 1:
+		player.teleport(Vector3(0.0, 0.0, 10.0), 0.0)
+		combat.revive()
+		combat.god = false
+		_fight([[_held(Vector3(20.0, 0.0, -25.0)), _held(Vector3(-20.0, 0.0, -25.0)), _held(Vector3(24.0, 0.0, -25.0))]])
+		fight.start()
+		dir.aim_override = true
+		aux["won"] = 0
+		fight.won.connect(func() -> void: aux["won"] = int(aux["won"]) + 1)
+	elif t == 30:
+		if c == "owner":
+			var fake := Node.new()
+			fake.name = "FakeDirectorCut"
+			world.add_child(fake)
+			aux["fake"] = fake
+			RadialWheel.scale_owner = fake
+			Engine.time_scale = 0.6
+			aux["clicks"] = bt.clicks
+		elif c == "impact":
+			var clk: Impact = Impact.clock(fight)
+			_check(clk.slowmo(0.5, 3.0, clk), "B impact: Impact's slow motion runs first")
+			aux["clk"] = clk
+		player.jump_override = true
+	elif t == 32:
+		if c == "owner":
+			_check(bt.state == "idle" and bt.last_refusal == "scale" and bt.clicks == int(aux["clicks"]) + 1 and is_equal_approx(bt.focus, 100.0),
+				"B owner: another owner of the scale refuses the dive with a click, no cost (%s)" % bt.last_refusal)
+			_check(RadialWheel.scale_owner == aux["fake"] and is_equal_approx(Engine.time_scale, 0.6), "B owner: its scale is untouched")
+			_check(player.move_state == "GROUND", "B owner: no jump either (%s)" % player.move_state)
+			RadialWheel.scale_owner = null
+			Engine.time_scale = 1.0
+			(aux["fake"] as Node).queue_free()
+			return
+		_check(bt.state == "dive" and RadialWheel.scale_owner == bt and is_equal_approx(Engine.time_scale, BulletTime.SCALE), "B %s: the dive owns the scale" % c)
+		if c == "impact":
+			_check(not (aux["clk"] as Impact).slowmo_active(), "B impact: Impact's slow motion gave way")
+		var md: Object = _music()
+		if md != null:
+			_check(float(md.get("muffle_target")) == 1.0, "B %s: GameFX.music is muffled during the dive" % c)
+		elif ci == 0:
+			print("    (no GameFX music node in this run: the muffle is checked through the BulletTime flag only)")
+	elif t == 40:
+		match c:
+			"lost":
+				combat.hp = 1.0
+				fight.hit_player(fight.gunmen[0], 8.0)
+			"retry":
+				fight.retry()
+			"stop":
+				fight.stop()
+			"pause":
+				paused = true
+			"free":
+				fight.queue_free()
+			"orbit":
+				for gm: Variant in fight.gunmen:
+					for i: int in 3:
+						(gm as Gunman).take_hit({"kind": "bullet", "from": player.global_position})
+	elif t == 41 and c == "orbit":
+		var o: Object = RadialWheel.scale_owner
+		_check(o is Impact and is_equal_approx(Engine.time_scale, Impact.ORBIT_SCALE), "B orbit: a last knockout in the dive: Impact's orbit takes the scale (%s, %.2f)" % [str(o), Engine.time_scale])
+		_check(bt.state != "dive" and not bt.tint.visible and not bt.heart.playing, "B orbit: the dive's slow part and effects ended first (%s)" % bt.state)
+	elif t == 43 and c != "orbit" and c != "owner" and c != "impact":
+		if c == "lost":
+			_check(fight.state == "lost", "B lost: the fight is lost")
+		if c == "free":
+			bt = null
+		_restored(c)
+		if c == "pause":
+			paused = false
+	elif t == 130:
+		if c == "orbit":
+			_check(int(aux["won"]) == 1, "B orbit: the fight is won")
+			_restored(c)
+		elif c == "impact":
+			_restored(c)
+		dir.aim_override = false
+		aux["case"] = ci + 1
+		_next("b")
 
 
 func _end() -> void:
