@@ -19,8 +19,9 @@
 # (equal), {"key", "max"} (at most) or {"key", "min"} (at least). A criterion the beat does not list, or whose value is
 # missing from the stats / info, does not apply: its weight goes to the others (the total is renormalised).
 # Score = 100 * sum(w * k) / sum(w); S >= 85, A >= 65, B >= 45, else C.
-# Thresholds: Days 1, 2 and 4 calibrated by T10 (the sloppy-bot harnesses, table in the plan); Days 3 and 5 provisional
-# from the day plans' par numbers, fixed at integration.
+# Thresholds: the stake-out, the foot chase, the canteen, the bike chase and the drift race calibrated by T10 (the
+# sloppy-bot harnesses, table in the plan); the brawls, the corridor, the bridge and the escape have no harness yet
+# (provisional); Days 3 and 5 provisional from the day plans' par numbers, fixed at integration.
 class_name StoryRank
 extends RefCounted
 
@@ -43,13 +44,13 @@ const T_NO: String = "Chưa"
 ## Per ranked beat: "time" [par S, par C] s, "dmg" [S, C] HP, "fails" [S, C], "ko" [C, S], "opt" {key, want | max | min}.
 const MISSIONS: Dictionary = {
 	# Day 1 (T10 calibration)
-	"d1_stakeout": {"time": [95.0, 200.0], "opt": {"key": "seen", "max": 0}},
+	"d1_stakeout": {"time": [30.0, 90.0], "opt": {"key": "seen", "max": 0}},
 	"d1_chase": {"time": [55.0, 110.0], "opt": {"key": "shortcut", "want": true}},
 	"d1_brawl": {"time": [45.0, 120.0], "dmg": [15.0, 70.0]},
 	"d1_corridor": {"time": [70.0, 160.0]},
 	# Day 2
-	"d2_chase": {"time": [100.0, 200.0], "ko": [2, 6]},
-	"d2_drift": {"time": [75.0, 120.0], "ko": [0, 3]},
+	"d2_chase": {"time": [85.0, 160.0], "ko": [4, 12]},
+	"d2_drift": {"time": [70.0, 160.0], "ko": [2, 8]},
 	"d2_bridge": {"time": [70.0, 170.0]},
 	"d2_duel": {"time": [50.0, 130.0], "dmg": [15.0, 70.0]},
 	# Day 3 (provisional: the day3 plan's par numbers; fixed at integration)
@@ -58,7 +59,7 @@ const MISSIONS: Dictionary = {
 	"d3_crates": {"time": [70.0, 160.0], "dmg": [20.0, 80.0], "opt": {"key": "all", "want": true}},
 	"d3_boss": {"time": [100.0, 220.0], "dmg": [30.0, 100.0]},
 	# Day 4
-	"d4_canteen": {"time": [100.0, 200.0], "opt": {"key": "wrong", "max": 0}},
+	"d4_canteen": {"time": [35.0, 150.0], "opt": {"key": "wrong", "max": 0}},
 	"d4_brawl": {"time": [45.0, 120.0], "dmg": [15.0, 70.0]},
 	"d4_escape": {"time": [150.0, 330.0]},
 	# Day 5 (provisional: the day5 plan's par numbers; fixed at integration)

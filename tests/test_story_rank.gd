@@ -123,8 +123,8 @@ func _part_a() -> void:
 	var s5: Dictionary = {"time": 70.0, "fails": 0}
 	_check(StoryRank.report("d3_sneak", s5, {"spotted": false}) == "S" and StoryRank.report("d3_sneak", s5, {"spotted": true}) == "A",
 		"A: d3_sneak spotted costs the optional 20 (S -> A)")
-	_check(StoryRank.report("d4_canteen", {"time": 100.0, "fails": 0}, {"wrong": 0}) == "S"
-		and StoryRank.report("d4_canteen", {"time": 100.0, "fails": 0}, {"wrong": 2}) == "A", "A: d4_canteen wrong <= 0 (max)")
+	_check(StoryRank.report("d4_canteen", {"time": 35.0, "fails": 0}, {"wrong": 0}) == "S"
+		and StoryRank.report("d4_canteen", {"time": 35.0, "fails": 0}, {"wrong": 2}) == "A", "A: d4_canteen wrong <= 0 (max)")
 	# ko and opt share the extra 20: d3_gunfight ko [6, 10]
 	var e6: Dictionary = StoryRank.evaluate("d3_gunfight", {"time": 100.0, "dmg": 30.0, "fails": 0, "ko": 8})
 	_check(absf(float(e6["score"]) - 100.0 * (30.0 + 25.0 + 25.0 + 20.0 * 0.5) / 100.0) < 0.01, "A: ko halfway between 6 and 10 -> 90 (%.1f)" % float(e6["score"]))
