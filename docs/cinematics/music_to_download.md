@@ -74,11 +74,13 @@ Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột
 | [ ] | Đấu tay đôi với Sói Xám dưới cầu (Ngày 2) | `boss_d2_` | *Hungry Like the Wolf*, Duran Duran |
 | [ ] | Lẻn vào bến container (Ngày 3) | `mission_sneak_` | *Sneaky Snitch*, Kevin MacLeod |
 | [ ] | Đấu súng ở bến container (Ngày 3) | `mission_gunfight_` | *Bang Bang (My Baby Shot Me Down)*, Nancy Sinatra |
+| [ ] | Ma-nơ-canh đứng im kiểu "mannequin challenge" (Ngày 3) | `meme_mannequin_` | *Black Beatles*, Rae Sremmurd |
 | [ ] | Bảo vệ khiêng thùng kính kiểu "coffin dance" (Ngày 3) | `meme_coffin_dance_` | *Astronomia*, Vicetone & Tony Igy |
 | [ ] | Trùm xe nâng Alexander (Ngày 3) | `boss_d3_` | *Copacabana*, Barry Manilow |
 | [ ] | Đi lén dưới hầm server (Ngày 5) | `mission_basement_` | *Oxygène (Part IV)*, Jean-Michel Jarre |
 | [ ] | Đấu súng dưới hầm (Ngày 5) | `mission_gunfight_d5_` | *Blue (Da Ba Dee)*, Eiffel 65 |
 | [ ] | Gõ phím xoá "Lọ Thần 9.0" (Ngày 5) | `mission_typing_` | *Around the World*, Daft Punk |
+| [ ] | Phòng server cháy, gõ phím trong lúc đếm ngược (Ngày 5) | `mission_fire_hack_` | *Disco Inferno*, The Trammps |
 | [ ] | Đấu kiếm với Za Mẫn (Ngày 5) | `boss_d5_` | *Battle Without Honor or Humanity*, Tomoyasu Hotei |
 
 **Đã có trên máy, không cần tải:** `seg_d2_chase`, `seg_d2_boss` (*Heartbreaker*), `seg_d3_gunfight`, `seg_d3_crates`,

@@ -7,6 +7,8 @@
 # (stage 1 speed and near-miss chain, the capstone boss HP), to the low-pass cutoff (tension_cutoff); it never changes the
 # notes. SLOT_DB: fixed per-slot trims (mission_canteen -6 dB so Dolly's hum stays audible). duck(on): a replay with its
 # own track fades the bed out (players keep running) and back in. RESUME_SLOTS (free roam) continue where they stopped.
+# focus_muffle(on) (bullet time, plan 2026-10-30-w3-shared.md): the low-pass slides to MUFFLE_CUTOFF over MUFFLE_TIME real
+# seconds and back to the tension cutoff on release (BulletTime reaches it as GameFX.music, guarded).
 # GameFX creates one node at startup:  GameFX.music_play("stage1_race", 0.3) · GameFX.music_tension(0.7) · GameFX.music_stop()
 # Loading (review I2): both OGG and MP3 are read and parsed whole (an 8-50 MB file is tens of ms or more), so streams live
 # in a small static cache and warm(slots) loads them on WorkerThreadPool tasks ahead of time (FreeRoam warms both roam
@@ -30,7 +32,9 @@ const SLOTS: Array[String] = ["menu", "roam_day", "roam_night",
 	# Day 2 "Tokyo Drift" (spec 2026-10-27 D2X-3): the chase's wave 3 after the Sói Xám cameo (else the chase track goes on)
 	"mission_bike_chase_b",
 	# Day 2 Tokyo Drift (plan 2026-10-27-d2x-drift.md): the drift duel with Sói Xám
-	"race_d2_drift"]
+	"race_d2_drift",
+	# Wave 3 (plan 2026-10-30-w3-shared.md): the Day 3 mannequin-challenge meme, the Day 5 burning-server typing
+	"meme_mannequin", "mission_fire_hack"]
 ## Night Building tracks (NightMusic).
 const NIGHT_SLOTS: Array[String] = ["night_stealth", "night_tense", "night_chase", "night_escape"]
 ## Short replays (CineReplay through StoryStage.play_replay; they have no timeline file).
@@ -47,6 +51,9 @@ const CUTOFF_MIN: float = 5000.0
 const CUTOFF_OPEN: float = 20000.0
 const CUTOFF_OPEN_AT: float = 0.6
 const CACHE_MAX: int = 8
+## Bullet time (W-1): focus_muffle(true) pulls the bed's low-pass down to this cutoff over MUFFLE_TIME real seconds.
+const MUFFLE_CUTOFF: float = 900.0
+const MUFFLE_TIME: float = 0.15
 
 ## Tests only: slot -> AudioStream used instead of the owner's file (no cache; also read by CineAudio.load_music).
 static var test_streams: Dictionary = {}
@@ -73,6 +80,8 @@ var _duck_time: float = DUCK_TIME
 var _tension_cur: float = 0.0
 var _filter: AudioEffectLowPassFilter
 var _cutoff_set: float = -1.0
+var muffle: float = 0.0          # 0 = the tension cutoff, 1 = MUFFLE_CUTOFF (bullet time)
+var muffle_target: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -322,6 +331,18 @@ func duck(on: bool, time: float = DUCK_TIME) -> void:
 
 
 
+## Bullet time (W-1): a low-pass override on the bed. On: the cutoff slides to MUFFLE_CUTOFF over MUFFLE_TIME real
+## seconds; off: back to the slot's tension cutoff. Idempotent (a repeated call changes nothing).
+func focus_muffle(on: bool) -> void:
+	muffle_target = 1.0 if on else 0.0
+
+
+## The cutoff the bed filter is driven to right now (Hz): the tension cutoff, pulled toward MUFFLE_CUTOFF by the muffle.
+func filter_cutoff() -> float:
+	var c: float = tension_cutoff(_tension_cur) if TENSION_SLOTS.has(player_slots[cur]) else CUTOFF_OPEN
+	return c * pow(MUFFLE_CUTOFF / c, muffle) if muffle > 0.0 else c
+
+
 ## The stream of the current slot (null = silence or stopped).
 func current_stream() -> AudioStream:
 	return players[cur].stream if not players.is_empty() else null
@@ -338,6 +359,8 @@ func _process(delta: float) -> void:
 	_tension_cur = lerpf(_tension_cur, tension, minf(1.0, delta * 1.5))
 	var rate: float = delta / fade_time if fade_time > 0.0 else 1.0
 	duck_gain = move_toward(duck_gain, duck_target, delta / _duck_time if _duck_time > 0.0 else 1.0)
+	if muffle != muffle_target:   # real time: the dive runs at 0.35x and the muffle must land in 0.15 real s
+		muffle = move_toward(muffle, muffle_target, delta / maxf(Engine.time_scale, 0.01) / MUFFLE_TIME)
 	for i: int in 2:
 		gains[i] = move_toward(gains[i], goals[i], rate)
 		if gains[i] <= 0.0 and goals[i] <= 0.0 and players[i].playing:
@@ -365,7 +388,7 @@ func _apply_volumes() -> void:
 	for i: int in 2:
 		players[i].volume_db = linear_to_db(maxf(gains[i] * duck_gain, 0.0001)) + _slot_db(i)
 	if _filter:
-		var c: float = tension_cutoff(_tension_cur) if TENSION_SLOTS.has(player_slots[cur]) else CUTOFF_OPEN
+		var c: float = filter_cutoff()
 		if absf(c - _cutoff_set) > 1.0:
 			_filter.cutoff_hz = c
 			_cutoff_set = c

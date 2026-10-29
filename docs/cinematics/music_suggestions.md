@@ -112,6 +112,7 @@ Không có nhạc riêng (chỉ âm thanh hiệu ứng): cuộc gọi 3 giờ s�
 | `mission_sneak` | lẻn vào bến container | *Sneaky Snitch*, Kevin MacLeod |
 | `cine_d3_mannequins` | cửa container mở, ma-nơ-canh quay đầu, "Surprise!" (10 s) | *Toccata and Fugue in D minor*, J. S. Bach |
 | `mission_gunfight` | đấu súng ở bến container | *Bang Bang (My Baby Shot Me Down)*, Nancy Sinatra |
+| `meme_mannequin` | ma-nơ-canh đứng im khi lính quay lại, kiểu "mannequin challenge" (Ngày 3, Wave 3) | *Black Beatles*, Rae Sremmurd |
 | `meme_coffin_dance` | bảo vệ khiêng thùng kính | *Astronomia*, Vicetone & Tony Igy |
 | `boss_d3` | trùm xe nâng Alexander | *Copacabana*, Barry Manilow |
 | `cine_d3` | cái tên vô tận bị cắt ngang, USB rơi (18 s) | đã có |
@@ -121,6 +122,7 @@ Không có nhạc riêng (chỉ âm thanh hiệu ứng): cuộc gọi 3 giờ s�
 | `cine_d5_monitors` | mặt Za Mẫn cười trên 50 màn hình (10 s) | *Mr. Roboto*, Styx |
 | `mission_gunfight_d5` | đấu súng dưới hầm | *Blue (Da Ba Dee)*, Eiffel 65 |
 | `mission_typing` | gõ phím xoá Lọ Thần 9.0 | *Around the World*, Daft Punk |
+| `mission_fire_hack` | phòng server bốc cháy, gõ phím trong lúc đếm ngược (Ngày 5, Wave 3) | *Disco Inferno*, The Trammps |
 | `cine_d5_choice` | phòng server cháy, lựa chọn 2 (14 s); đuôi `cine_d5_choice_accept` / `cine_d5_choice_refuse` dùng chung bài này | *Don't Worry, Be Happy*, Bobby McFerrin |
 | `boss_d5` | đấu kiếm Za Mẫn | *Battle Without Honor or Humanity*, Tomoyasu Hotei |
 | `seg_d5_boss` | cảnh đánh lớn 25 s trong phòng server | *The Good Life*, José James (đã có) |
