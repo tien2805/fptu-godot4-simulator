@@ -30,7 +30,7 @@ const ENEMY_KICK_DMG: float = 26.0       # = KINDS.rider.dmg
 const CRASH_DMG: float = 25.0            # PlayerBike.crash_occurred: traffic, curb, pothole, fall (PlayerBikeCombat's own)
 const CRASH_DMG_MIN: float = 15.0        # D2X-4: BikeChase scales a crash by the speed before it: 15 at 6 m/s ...
 const CRASH_DMG_MAX: float = 25.0        # ... 25 at the chase top speed
-const WAVE_REFILL: float = 10.0          # D2X-4: a cleared wave gives back this much stability (Thường, playtest fixes; Dễ 40)
+const WAVE_REFILL: float = 5.0           # D2X-4: a cleared wave gives back this much stability (Thường, playtest fixes; Dễ 40)
 const RAM_DMG: float = 6.0               # riding into the front biker's back wheel
 const HURT_IFRAMES: float = 0.6
 const REGEN_DELAY: float = 5.0
@@ -158,7 +158,7 @@ const THROW_BACK_S: float = 2.2          # ... and after each throw drops back a
 const THROW_FLIGHT: float = 0.8          # helmet flight = the red road marker's warning (s)
 const THROW_R: float = 1.6               # the marker's radius: inside it when the helmet lands = hit
 const THROW_ARC: float = 3.5             # helmet arc height (m)
-const PICKUP_STRIKES: int = 2            # dodged rams before the pickup loses it and hits a pole (takedown) ...
+const PICKUP_STRIKES: int = 3            # dodged rams before the pickup loses it and hits a pole (takedown; playtest fixes: 2) ...
 const PICKUP_MAX_RAMS: int = 3           # ... and it loses it after its 3rd ram anyway
 const PICKUP_HALF := Vector2(0.95, 2.6)  # pickup half width / half length (m)
 const PICKUP_RECOVER_S: float = 1.4

@@ -186,8 +186,8 @@ func setup(opts: Dictionary = {}) -> void:
 	kp = BikeCombatData.kind(kind)
 	label = String(opts.get("label", ""))
 	max_hp = maxi(1, int(opts.get("hp", int(kp["hp"]))))
-	if max_hp >= 2 and ai and kind != "heavy":
-		max_hp -= int(Difficulty.pick(0, 1))   # Dễ: the tougher riders go down a kick sooner
+	if max_hp >= 2 and ai and (kind != "heavy" or max_hp > int(kp["hp"])):
+		max_hp -= int(Difficulty.pick(0, 1))   # Dễ: the tougher riders (and a tougher-than-usual heavy) go down a kick sooner
 	hp = max_hp
 	ai = bool(opts.get("ai", true))
 	traffic_proof = bool(opts.get("traffic_proof", false))

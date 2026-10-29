@@ -400,7 +400,7 @@ static func day2_waves() -> Array:
 		{"from": "side", "lane": -1, "delay": 0.4, "opts": {"kind": "stick", "label": "Sói Gậy", "aggression": 0.6}},
 		{"from": "behind", "lane": 1, "delay": 6.0, "opts": {"label": "Sói Còi", "hp": 2, "aggression": 0.5}}],
 		[{"from": "behind", "lane": 1, "opts": {"label": "Sói Bạc", "hp": 2, "aggression": 0.7}},
-		{"from": "behind", "lane": -1, "delay": 1.0, "opts": {"kind": "heavy", "label": "Sói Bự", "hp": 4, "aggression": 0.6}},
+		{"from": "behind", "lane": -1, "delay": 1.0, "opts": {"kind": "heavy", "label": "Sói Bự", "aggression": 0.6}},
 		{"from": "behind", "lane": 1, "delay": 7.0, "opts": {"kind": "thrower", "label": "Sói Ném", "aggression": 0.7}},
 		{"from": "behind", "lane": 1, "delay": 13.0, "opts": {"kind": "stick", "label": "Sói Gậy 2", "hp": 2, "aggression": 0.7}},
 		{"from": "behind", "lane": -1, "delay": 19.0, "opts": {"label": "Sói Phó", "hp": 2, "aggression": 0.8}}],

@@ -74,7 +74,8 @@ const MAX_RISE: float = 1.0                # a floor hit higher than this above 
 const TAUNT_EVERY: Vector2 = Vector2(5.0, 9.0)
 const TAUNT_S: float = 1.8
 const LEAD_SOFT_M: float = 8.0            # from this much before lead_cap his speed eases down to the player's
-const LEASH_MIN_V: float = 6.0            # the leash holds only while the player rides at least this fast (m/s)
+const LEASH_MIN_V: float = 2.0            # the leash holds unless the player has stopped (m/s; a crawl through a corner counts)
+const PAST_CAP_K: float = 0.75            # beyond the cap he rides at this share of the player's speed until back inside
 const MAGNET_LAT: float = 1.5
 const MAGNET_SPEED: float = 7.0
 
@@ -569,7 +570,7 @@ func tick(delta: float, gap: float) -> void:
 	if leashed and lead > lead_cap - LEAD_SOFT_M:
 		# the leash: past lead_cap - LEAD_SOFT_M he rides no faster than the player, a bit slower near and past the cap
 		var u2: float = clampf((lead - (lead_cap - LEAD_SOFT_M)) / LEAD_SOFT_M, 0.0, 1.0)
-		target = minf(target, p_v * lerpf(1.0, 0.9, u2))
+		target = minf(target, p_v * (lerpf(1.0, 0.9, u2) if lead <= lead_cap + 0.5 else PAST_CAP_K))
 	if finished:
 		target = 0.0
 	v = move_toward(v, target, (ACCEL if target > v else BRAKE) * delta)

@@ -1331,7 +1331,8 @@ func _phase_c5(t: int) -> void:
 		_check(is_equal_approx(chase.combat.stability, float(mark["stab0"]) - float(BikeCombatData.KINDS["pickup"]["dmg"])), "pickup: the side ram costs %.0f (%.1f)" % [float(BikeCombatData.KINDS["pickup"]["dmg"]), chase.combat.stability])
 	if t == 420:
 		_check(mark.has("hit") and mark.has("flash"), "pickup: horn and headlight flash, then the ram hits a rider going straight")
-	for k: int in 2:
+	var dodges: int = mini(BikeCombatData.PICKUP_STRIKES, BikeCombatData.PICKUP_MAX_RAMS - 1)   # after the first ram's hit
+	for k: int in dodges:
 		var t0: int = 520 + 240 * k
 		if t == t0:
 			_hold(b, BikeCombatData.SLOT_ALONG, 3.3)
@@ -1342,10 +1343,10 @@ func _phase_c5(t: int) -> void:
 			_brake(true)                      # after the lock at 0.5 s
 		if t == t0 + 40 + 130:
 			_brake(false)
-			var want: float = float(mark["stab%d" % (k + 1)]) + (BikeCombatData.WAVE_REFILL if k == 1 else 0.0)   # its crash clears the wave
+			var want: float = float(mark["stab%d" % (k + 1)]) + (BikeCombatData.WAVE_REFILL if k == dodges - 1 else 0.0)   # its crash clears the wave
 			_check(b.strikes == k + 1 and is_equal_approx(chase.combat.stability, minf(want, chase.combat.max_stability)), "pickup: braking after the lock dodges ram %d (strikes %d, stability %.0f -> %.0f, %s)" % [k + 1, b.strikes, float(mark["stab%d" % (k + 1)]), chase.combat.stability, str(b.results)])
-	if t == 1000:
-		_check(b.is_down() and b.crash_cause == "pole" and chase.takedowns == 1 and chase.hud.popups > 0, "pickup: two dodged rams and it hits a pole: a takedown (%s, %s)" % [b.state_name(), b.crash_cause])
+	if t == 520 + 240 * dodges:
+		_check(b.is_down() and b.crash_cause == "pole" and chase.takedowns == 1 and chase.hud.popups > 0, "pickup: a hit, %d dodged rams and it hits a pole: a takedown (%s, %s)" % [dodges, b.state_name(), b.crash_cause])
 		_end_chase("c6")
 
 
