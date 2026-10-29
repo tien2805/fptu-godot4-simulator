@@ -21,7 +21,8 @@
 #   fight.add_wave([                            # once per wave, in order
 #       {"at": Vector3(...), "yaw": 0.0, "patrol": [Vector3(...), ...],
 #        "opts": {"mask": "wolf", "label": "", "body": {...CharacterBuilder opts}, "body_fn": Callable(look) -> Node3D,
-#                 "hp": 60.0, "accuracy": 1.0, "ai": true, "alerted": false}},
+#                 "hp": 60.0, "accuracy": 1.0, "ai": true, "alerted": false,
+#                 "kind": "shield"}},             # Wave 3: the pallet-shield guard (blocks from the front, see Gunman)
 #       {"boss": "forklift", "at": Vector3(...), "yaw": 0.0,
 #        "opts": {"hp": 500.0, "body": {...Alexander's CharacterBuilder opts}, "body_fn": Callable, "seed": 3}}])
 #   A wave entry {"target": node} adds an external enemy of the level (never freed; reset() at every wave start): any

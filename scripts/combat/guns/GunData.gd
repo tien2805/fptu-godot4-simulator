@@ -87,6 +87,17 @@ const TRACER_W: float = 0.05
 const TRACER_COL := Color(1.0, 0.42, 0.22, 0.95)
 const GLINT_COL := Color(1.0, 0.86, 0.32)
 
+# ----- pallet-shield guard (Gunman opt "kind": "shield", Wave 3 T3; D3W-3, usable by Day 5 too) -----
+const SHIELD_FRONT_DEG: float = 70.0     # a hit from within this of his front lands on the pallet (blocked)
+const SHIELD_HITS: Vector2i = Vector2i(4, 3)   # hits on the pallet that knock it away (Thường, Dễ)
+const SHIELD_SHOTGUN_M: float = 4.0      # a shotgun hit on the pallet from closer than this knocks it away at once
+const SHIELD_KEEP_M: float = 5.0         # walks in to about this distance (no cover while he holds the pallet)
+const SHIELD_WALK: float = 1.4           # m/s, the pallet is heavy
+const SHIELD_TURN_RATE: float = 0.8      # rad/s, slow to turn: a sprint round him (or a dive) flanks him
+const SHIELD_BURST: Vector2i = Vector2i(1, 2)
+const SHIELD_MUZZLE_SIDE: float = 0.5    # he fires round the pallet's right edge
+const T_NO_PIERCE: String = "Không xuyên!"
+
 # ----- ammo -----
 const PICKUP_R: float = 1.3
 const DEFAULT_RESERVE: Dictionary = {WeaponData.Slot.PISTOL: 48, WeaponData.Slot.SHOTGUN: 12}
@@ -217,6 +228,11 @@ static func max_shooters() -> int:
 ## Gun difficulty: seconds without damage before the player's HP regenerates during a gunfight.
 static func regen_delay() -> float:
 	return float(Difficulty.pick(DIFF_REGEN_DELAY.x, DIFF_REGEN_DELAY.y))
+
+
+## Gun difficulty: hits on a shield guard's pallet that knock it away (Thường 4, Dễ 3).
+static func shield_hits() -> int:
+	return int(Difficulty.pick(SHIELD_HITS.x, SHIELD_HITS.y))
 
 
 ## Gun difficulty: a factor on every gunman's hit chance.

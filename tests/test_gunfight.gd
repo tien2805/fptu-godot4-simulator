@@ -36,6 +36,10 @@
 #            window); a charge into the box the player crouches behind crashes into it without hitting him.
 #   boss3    the boss AI loop (activate()): idle, charge telegraph, charge, recover, lift, toss.
 #   floor    a gunman walking onto a 0.3 m platform follows its height.
+#   E        (Wave 3 T3) the pallet-shield guard: the rimmed pallet; aimed pistol rounds from the front are blocked (no
+#            damage, "Không xuyên!", reaction none); the 4th knocks the pallet away (it flies off and lands), later rounds
+#            hurt; a flank shot hurts at once; one close shotgun blast knocks the pallet away; Dễ: 3 hits; a knockout drops
+#            it; a live wave of two gunmen and a shield guard is won by a good bot (no loss).
 #   D        (Wave 3 T2) the gun difficulty row on Thường and Dễ: GunData values, telegraph frames between the glint and the
 #            shot (21 / 27 at 60 fps), the token cap (4 / 3), combat.regen_delay set while engaged and the regeneration
 #            start frame (300 / 180 after the hit), the previous regen delay restored on stop() and on won.
@@ -260,6 +264,10 @@ func _on_physics() -> void:
 			_ph_floor(t)
 		"diff":
 			_ph_diff(t)
+		"shield":
+			_ph_shield(t)
+		"shieldwave":
+			_ph_shieldwave(t)
 		"done":
 			_report()
 
@@ -870,6 +878,122 @@ func _ph_floor(t: int) -> void:
 		print("    floor: gunman at z %.2f, floor %.2f" % [g.global_position.z, g.floor_y])
 		_check(g.global_position.z > -21.5, "it walked onto the platform (z %.2f)" % g.global_position.z)
 		_check(absf(g.floor_y - 0.3) < 0.02 and (g.drop > 0.01 or absf(g.global_position.y - 0.3) < 0.02), "it follows the platform's height (floor %.2f, y %.2f)" % [g.floor_y, g.global_position.y])
+		_next("shield")
+
+
+## Part E: the pallet-shield guard (unit checks with real aimed rounds, Dễ, the knockout).
+func _ph_shield(t: int) -> void:
+	var sx: float = -600.0
+	if t == 1:
+		_fresh(Vector3(sx, 0.0, 0.0))
+		aux["drops"] = 0
+		_fight([[{"at": Vector3(sx + ThirdPersonController.AIM_SIDE, 0.0, -8.0), "yaw": PI, "opts": {"ai": false, "kind": "shield"}}]])
+		fight.start()
+		g = fight.gunmen[0]
+		g.shield_dropped.connect(func(_x: Gunman) -> void: aux["drops"] = int(aux["drops"]) + 1)
+		dir.aim_override = true
+	elif t == 3:
+		_check(g.kind == "shield" and g.has_shield() and g.shield != null and g.shield.get_parent() == g.body, "E: the shield guard holds a pallet")
+		_check(Readability.rimmed_count(g.shield) > 0, "E: the pallet carries the enemy rim (%d meshes)" % Readability.rimmed_count(g.shield))
+		_check(g.front_hit(player.global_position), "E: the player stands in his front")
+	elif t == 25 or t == 45 or t == 65 or t == 85 or t == 105:
+		_fire_edge()
+	elif t == 48:
+		_check(is_equal_approx(g.hp, 60.0) and g.blocked_hits == 2 and g.shield_hits == 2, "E: two front rounds hit the pallet, no damage (hp %.0f, blocked %d)" % [g.hp, g.blocked_hits])
+		_check(String(dir.hit_log[-1]["reaction"]) == "none", "E: a blocked round reads as no hit (no hit marker)")
+		_check(g.shout.visible and g.shout.text == GunData.T_NO_PIERCE, "E: \"%s\" over his head" % GunData.T_NO_PIERCE)
+	elif t == 88:
+		_check(not g.has_shield() and int(aux["drops"]) == 1 and g.shield.top_level and g.shield.get_parent() == g, "E: the 4th round knocks the pallet away (drops %d)" % int(aux["drops"]))
+		_check(is_equal_approx(g.hp, 60.0), "E: the knock-away itself does no damage (hp %.0f)" % g.hp)
+		_check(Readability.rimmed_count(g.shield) == 0, "E: the flying pallet is no longer rimmed")
+	elif t == 108:
+		_check(is_equal_approx(g.hp, 35.0), "E: without the pallet a front round hurts (hp %.0f)" % g.hp)
+	elif t == 170:
+		_check(g.shield.global_position.y < 0.3 and not g._pallet_fly, "E: the pallet landed on the floor (y %.2f)" % g.shield.global_position.y)
+		_fight([[{"at": Vector3(sx + ThirdPersonController.AIM_SIDE, 0.0, -8.0), "yaw": PI * 0.5, "opts": {"ai": false, "kind": "shield"}}]])
+		fight.start()
+		g = fight.gunmen[0]
+	elif t == 195:
+		_check(not g.front_hit(player.global_position), "E: from his side the player is outside the pallet's cone")
+		_fire_edge()
+	elif t == 198:
+		_check(is_equal_approx(g.hp, 35.0) and g.blocked_hits == 0 and g.has_shield(), "E: a flank round hurts (hp %.0f), the pallet stays" % g.hp)
+		_fight([[{"at": Vector3(sx + ThirdPersonController.AIM_SIDE, 0.0, -3.0), "yaw": PI, "opts": {"ai": false, "kind": "shield"}}]])
+		fight.start()
+		g = fight.gunmen[0]
+		dir.equip(WeaponData.Slot.SHOTGUN)
+	elif t == 225:
+		_fire_edge()
+	elif t == 228:
+		_check(not g.has_shield() and g.blocked_hits == 1, "E: one shotgun blast from 3 m knocks the pallet away (blocked %d)" % g.blocked_hits)
+		dir.equip(WeaponData.Slot.PISTOL)
+		dir.aim_override = false
+		Difficulty.set_easy(true)
+		_fight([[{"at": Vector3(sx, 0.0, -8.0), "yaw": PI, "opts": {"ai": false, "kind": "shield"}}]])
+		fight.start()
+		g = fight.gunmen[0]
+		var from: Vector3 = player.global_position
+		var r: Array[String] = []
+		for i: int in 3:
+			r.append(g.take_hit({"kind": "bullet", "from": from}))
+		_check(r[0] == "none" and r[1] == "none" and r[2] == "stumble" and not g.has_shield(), "E Dễ: the 3rd hit knocks the pallet away (%s)" % str(r))
+		Difficulty.set_easy(false)
+		_fight([[{"at": Vector3(sx, 0.0, -8.0), "yaw": 0.0, "opts": {"ai": false, "kind": "shield"}}]])
+		fight.start()
+		g = fight.gunmen[0]
+		for i2: int in 3:
+			g.take_hit({"kind": "bullet", "from": from})
+		_check(g.is_down() and not g.has_shield() and g.shield.top_level, "E: back hits knock him out and he drops the pallet")
+	elif t == 320:
+		_next("shieldwave")
+
+
+## Part E: a live wave (two gunmen, one shield guard) against a good bot: steady aim (90 % hits on a clear line, one round
+## per pistol cycle), a sprint round the shield guard while his pallet faces it.
+func _ph_shieldwave(t: int) -> void:
+	var sx: float = -900.0
+	if t == 1:
+		_fresh(Vector3(sx, 0.0, 0.0))
+		lost_n = 0
+		won_n = 0
+		aux["bot_cd"] = 0.0
+		aux["rng"] = RandomNumberGenerator.new()
+		(aux["rng"] as RandomNumberGenerator).seed = 77
+		_fight([[{"at": Vector3(sx - 6.0, 0.0, -14.0), "opts": {"alerted": true}}, {"at": Vector3(sx + 6.0, 0.0, -14.0), "opts": {"alerted": true}},
+			{"at": Vector3(sx, 0.0, -16.0), "opts": {"alerted": true, "kind": "shield"}}]])
+		fight.start()
+	elif fight.state == "running" and t < 3600:
+		var tgt: Gunman = null
+		var best: float = INF
+		for e: Variant in fight.alive():
+			var gm: Gunman = e
+			var dd: float = gm.global_position.distance_to(player.global_position) + (8.0 if gm.has_shield() else 0.0)
+			if dd < best:
+				best = dd
+				tgt = gm
+		player.input_override = null
+		player.sprint_override = false
+		if tgt == null:
+			return
+		var to: Vector3 = tgt.feet() - player.global_position
+		player.yaw = atan2(-to.x, -to.z)
+		if tgt.has_shield() and tgt.front_hit(player.global_position):
+			player.input_override = Vector2(1.0, 0.0)
+			player.sprint_override = true
+		aux["bot_cd"] = float(aux["bot_cd"]) - 1.0 / 60.0
+		if float(aux["bot_cd"]) <= 0.0:
+			aux["bot_cd"] = float(WeaponData.SLOTS[WeaponData.Slot.PISTOL]["cycle"])
+			var eye: Vector3 = player.global_position + Vector3(0.0, 1.3, 0.0)
+			if fight.clear_line(eye, tgt.feet() + Vector3(0.0, 1.2 - tgt.drop, 0.0)) and (aux["rng"] as RandomNumberGenerator).randf() < 0.9:
+				tgt.take_hit({"kind": "bullet", "from": player.global_position})
+	elif not aux.has("sw_end"):
+		aux["sw_end"] = t
+		player.input_override = null
+		player.sprint_override = false
+		print("    shield wave: %s after %.1f s, losses %d, hp %.0f" % [fight.state, float(t) / 60.0, lost_n, combat.hp])
+		_check(fight.state == "won" and lost_n == 0, "E: the good bot wins the wave with a shield guard without a loss (%s, %d)" % [fight.state, lost_n])
+	elif t >= int(aux["sw_end"]) + 90:   # the last knockout's slow-motion orbit is over
+		aux.erase("sw_end")
 		aux["dpass"] = 0
 		_next("diff")
 

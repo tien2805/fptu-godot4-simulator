@@ -116,6 +116,22 @@ static func crate(size: float = 0.9) -> Node3D:
 	return root
 
 
+## A wooden pallet held upright as a shield (Wave 3 pallet-shield guard): 1.0 m wide, 1.2 m tall, base at the origin, the
+## slatted face toward -Z (the holder's front).
+static func pallet() -> Node3D:
+	var root := Node3D.new()
+	root.name = "Pallet"
+	var slat: StandardMaterial3D = mat(Color("#B48C58"), 0.9)
+	var post: StandardMaterial3D = mat(Color("#86633A"), 0.9)
+	for i: int in 5:
+		box(root, Vector3(1.0, 0.16, 0.03), Vector3(0.0, 0.1 + 0.25 * float(i), -0.06), slat, "Slat%d" % i)
+	for x: float in [-0.44, 0.0, 0.44]:
+		box(root, Vector3(0.1, 1.2, 0.09), Vector3(x, 0.6, 0.0), post, "Post")
+	for y: float in [0.1, 0.6, 1.1]:
+		box(root, Vector3(1.0, 0.12, 0.03), Vector3(0.0, y, 0.06), slat, "Back")
+	return root
+
+
 ## An olive ammo box with a yellow band (pickups); a few brass rounds on the lid.
 static func ammo_box() -> Node3D:
 	var root := Node3D.new()
