@@ -12,7 +12,8 @@
 #   wave 3 (Thường) from both ends: the stairs and, behind the player, the server room (T8: a crossfire; "Sau lưng!", a
 #     preview cut on the first guard out of the room, Anh Duy's warning);
 #   Za Mẫn taunts from the monitor wall between waves (radio_as "za_man", jokes).
-# beats / cuts / dominoes / domino_kos: logs for the tests.
+# beats / cuts / dominoes / domino_kos: logs for the tests; the done info adds "domino" (domino_kos, the rank's optional
+# objective).
 class_name MissionBasementGunfight
 extends MissionGunfight
 
@@ -241,6 +242,12 @@ func _reset() -> void:
 	Impact.clock(self).end_slowmo(self)
 	_want_slow = false
 	super._reset()
+
+
+## Wave 3 ranks (integration): the done info carries the rack-domino knockouts, d5_gunfight's optional objective.
+func finish(info: Dictionary = {}) -> void:
+	info["domino"] = domino_kos
+	super.finish(info)
 
 
 func _cleanup() -> void:

@@ -32,12 +32,15 @@ const RETURN_R: float = 1.8
 const FIRE_LEFT: Array[float] = [60.0, 30.0, 10.0]   # seconds left where stages 1, 2, 3 start
 ## T8 sloppy-bot tuning (Thường / Dễ): the integrity to wipe as a share of StoryHack's (more processes to kill: the typing
 ## outlasts the first breach), and StoryHack's pace (slower spawns and falls: a sloppy typist keeps up until the last wave).
-const TYPING_LOAD: float = 1.45
+## Wave 3 integration re-tune on the merged gun core (x2.0 accuracy, 16 HP a bullet): the breaches take longer to clear and
+## hurt more, so Thường's load went 1.45 -> 1.15 (the gas stays the pressure without eating every run) and the breach
+## guards 4 -> 3 (four of them in the small room killed the sloppy bot on 7 tries out of 7).
+const TYPING_LOAD: float = 1.15
 const TYPING_LOAD_EASY: float = 1.15
 const PACE: float = 0.68
 const PACE_EASY: float = 0.55
 ## Guards per breach (Thường / Dễ).
-const BREACH_GUARDS: int = 4
+const BREACH_GUARDS: int = 3
 const BREACH_GUARDS_EASY: int = 2
 
 var hack: StoryHack

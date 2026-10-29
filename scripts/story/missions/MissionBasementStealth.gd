@@ -18,6 +18,7 @@
 # T8 (sim_day5): being seen sounds the ALARM: once the patrol is down, REINFORCE (Thường) / REINFORCE_EASY (Dễ) guards of the
 # next shift kick the side door open (a preview cut on the door, Za Mẫn on the radio) and the beat ends at the goal once
 # they are down too; a retry is the patrol again from the start (the checkpoint stays at the patrol, the alarm wave goes).
+# Wave 3 integration re-tune on the merged gun core: REINFORCE 3 -> 4 (the sloppy bot's Thường mean was 0.6 fails).
 class_name MissionBasementStealth
 extends MissionSneak
 
@@ -39,7 +40,7 @@ const T_BLACKOUT: String = "Cúp điện!"
 const T_DUD: String = "Ơ... đèn hư rồi?"
 const T_POWER: String = "Có điện lại rồi!"
 const T_ALARM: String = "Báo động! Ca sau đang xuống!"
-const REINFORCE: int = 3
+const REINFORCE: int = 4
 const REINFORCE_EASY: int = 2
 const T_GOAL: String = "Phòng máy chủ"
 const GUIDE_NEAR_M: float = 10.0

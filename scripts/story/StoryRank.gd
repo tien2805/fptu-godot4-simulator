@@ -20,8 +20,9 @@
 # missing from the stats / info, does not apply: its weight goes to the others (the total is renormalised).
 # Score = 100 * sum(w * k) / sum(w); S >= 85, A >= 65, B >= 45, else C.
 # Thresholds: the stake-out, the foot chase, the canteen, the bike chase and the drift race calibrated by T10 (the
-# sloppy-bot harnesses, table in the plan); the brawls, the corridor, the bridge and the escape have no harness yet
-# (provisional); Days 3 and 5 provisional from the day plans' par numbers, fixed at integration.
+# sloppy-bot harnesses, table in the plan; the bike chase re-calibrated on wave3 after d2fix); the brawls, the corridor,
+# the bridge and the escape have no harness yet (provisional); Day 5 set on wave3 from sim_day5 (the day5 plan's
+# integration table); Day 3 provisional from the day3 plan's par numbers until its integration re-tune.
 class_name StoryRank
 extends RefCounted
 
@@ -37,7 +38,8 @@ const FAILS_DEFAULT: Array = [0, 2]
 ## Card labels (Vietnamese, plain text).
 const LABELS: Dictionary = {"time": "Thời gian", "dmg": "Máu mất", "fails": "Thử lại", "ko": "Hạ gục", "opt": "Mục tiêu phụ"}
 const OPT_LABELS: Dictionary = {"seen": "Không bị để ý", "shortcut": "Đi đường tắt", "spotted": "Không bị phát hiện",
-	"all": "Đập hết thùng", "wrong": "Không giao nhầm món", "leaks": "Không để lọt dữ liệu"}
+	"all": "Đập hết thùng", "wrong": "Không giao nhầm món", "leaks": "Không để lọt dữ liệu",
+	"breach_clean": "Chặn đột kích không mất máu", "qte_clean": "Kết liễu ngay lần đầu", "domino": "Đổ tủ đè bảo vệ"}
 const T_YES: String = "Đạt"
 const T_NO: String = "Chưa"
 
@@ -49,7 +51,7 @@ const MISSIONS: Dictionary = {
 	"d1_brawl": {"time": [45.0, 120.0], "dmg": [15.0, 70.0]},
 	"d1_corridor": {"time": [70.0, 160.0]},
 	# Day 2
-	"d2_chase": {"time": [85.0, 160.0], "ko": [4, 12]},
+	"d2_chase": {"time": [100.0, 150.0], "fails": [0.0, 1.5], "ko": [0, 10]},   # re-calibrated on wave3 after d2fix (fewer takedowns)
 	"d2_drift": {"time": [70.0, 160.0], "ko": [2, 8]},
 	"d2_bridge": {"time": [70.0, 170.0]},
 	"d2_duel": {"time": [50.0, 130.0], "dmg": [15.0, 70.0]},
@@ -62,11 +64,11 @@ const MISSIONS: Dictionary = {
 	"d4_canteen": {"time": [35.0, 150.0], "opt": {"key": "wrong", "max": 0}},
 	"d4_brawl": {"time": [45.0, 120.0], "dmg": [15.0, 70.0]},
 	"d4_escape": {"fails": [0.0, 4.0]},   # the catches only (no time across a Continue): 0 S, 1 A, 2 B, 3+ C
-	# Day 5 (provisional: the day5 plan's par numbers; fixed at integration)
-	"d5_stealth": {"time": [70.0, 160.0], "opt": {"key": "spotted", "want": false}},
-	"d5_gunfight": {"time": [100.0, 220.0], "dmg": [30.0, 100.0], "ko": [6, 10]},
-	"d5_hack": {"time": [70.0, 160.0], "opt": {"key": "leaks", "max": 0}},
-	"d5_duel": {"time": [60.0, 150.0], "dmg": [20.0, 80.0]},
+	# Day 5 (set on wave3 from the sim_day5 re-tune on the merged gun core; table in the day5 plan)
+	"d5_stealth": {"time": [75.0, 180.0], "dmg": [0.0, 150.0], "opt": {"key": "spotted", "want": false}},
+	"d5_gunfight": {"time": [120.0, 300.0], "dmg": [40.0, 300.0], "opt": {"key": "domino", "min": 1}},
+	"d5_hack": {"time": [110.0, 200.0], "dmg": [0.0, 40.0], "opt": {"key": "breach_clean", "want": true}},
+	"d5_duel": {"time": [35.0, 110.0], "dmg": [20.0, 200.0], "opt": {"key": "qte_clean", "want": true}},
 }
 
 
