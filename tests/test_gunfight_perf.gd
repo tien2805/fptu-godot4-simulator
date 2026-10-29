@@ -7,6 +7,8 @@
 # physics frame by the MEDIAN and by the 5 %-TRIMMED MEAN (the test_combat_perf method: from the physics_frame signal to a
 # tail node that runs after every _physics_process, the phase-change frame dropped). The process-frame cost (HUD, poses)
 # is measured the same way and gated too. Also: no GPUParticles3D, Engine.time_scale 1.0. Prints the numbers.
+# Wave 3 (plan 2026-10-30-w3-shared.md perf gates): the player leaves cover at the window's start and a bullet-time dive
+# (72 frames at 0.35x, then prone) runs inside the measured window, with the Thường cap of 4 shooters.
 # Run:  godot --headless --path . --script tests/test_gunfight_perf.gd
 extends SceneTree
 
@@ -178,6 +180,12 @@ func _on_physics() -> void:
 	dir.fire_override = aim and frames % 20 == 0
 	if dir.fire_override == true:
 		dir.cooldown = 0.0
+	if phase == "settle" and t >= 358 and t <= 364:
+		dir.aim_override = true              # Wave 3: Space while aiming, out of cover: the dive runs in the window
+	if phase == "settle" and t == 362:
+		player.jump_override = true
+	if phase == "settle" and t == 364:
+		_check(fight.bullet_time != null and fight.bullet_time.state == "dive", "a bullet-time dive runs inside the window (%s)" % (fight.bullet_time.state if fight.bullet_time else "none"))
 	match phase:
 		"settle":
 			if t == 360:
@@ -194,6 +202,7 @@ func _on_physics() -> void:
 				_check(in_cover >= 4, "most gunmen took cover (%d of 8)" % in_cover)
 				_check(fight.cover_ctl.in_cover, "the player is in cover")
 				shots0 = shots
+				fight.cover_ctl.hold_override = false   # out of cover for the dive (Wave 3)
 				_start_window()
 			elif t == 360 + WINDOW:
 				_end_window()
