@@ -199,12 +199,18 @@ func _process(_d: float) -> bool:
 			_basement()
 			_next(5)
 		5:
-			m = _wait_bs_mission("MissionSneak")
+			m = _wait_bs_mission("MissionBasementStealth")
 			if m == null:
 				return false
 			_check(bs.level != null and bs.level.wall.state == "off" and not bs.level.fire_on, "the basement: the monitor wall off, no fire yet")
 			_check(StoryBasement.LAIR_MUSIC["stealth"] == "mission_basement" and (m as MissionSneak).fight.gunmen.size() == 3, "the stealth: 3 guards, mission_basement")
 			_check(bs.weapons.current == WeaponData.Slot.PISTOL, "lair rule: armed in the basement")
+			# W3 T1: the task looks go over the base and come off with the task
+			_check(LookPresets.active(bs) == "server_red", "the basement base look: server_red")
+			bs.look("server_blackout")
+			_check(LookPresets.active(bs) == "server_blackout" and bs.looks == ["server_blackout"], "a task look applies over the base")
+			var hk: String = String(StoryBasement.LAIR_MUSIC["hack"])
+			_check(hk == (StoryBasement.FIRE_HACK_SLOT if MusicDirector.SLOTS.has(StoryBasement.FIRE_HACK_SLOT) else "mission_typing"), "the hack plays mission_fire_hack once the slot exists")
 			bs.player.teleport((m as MissionSneak).pts["goal"], 0.0)
 			_next(6)
 		6:
@@ -216,10 +222,11 @@ func _process(_d: float) -> bool:
 			_check(_finish_cine_in(bs) == "cine_d5_monitors", "the face on 50 monitors")
 			_next(7)
 		7:
-			m = _wait_bs_mission("MissionGunfight")
+			m = _wait_bs_mission("MissionBasementGunfight")
 			if m == null:
 				return false
 			_check(bs.level.wall.state == "error" and bs.level.wall.get_parent().visible, "the wall frozen on Lọ Thần đã gặp sự cố")
+			_check(LookPresets.active(bs) == "server_red" and bs.looks.is_empty(), "the stealth's look restored when it ended")
 			var mg: MissionGunfight = m
 			_check(mg.fight.waves.size() == 2 and mg.fight.alive().size() == 4, "the basement gunfight: 2 waves of 4")
 			_next(8)
@@ -300,6 +307,8 @@ func _process(_d: float) -> bool:
 			var md: MissionDuel = m
 			_check(md.card != null and String(md.card.data.get("name", "")) == "Lê Minh Za Mẫn" and String(md.card.data.get("nick", "")) == "CTO · đang pivot", "the villain card: Lê Minh Za Mẫn, CTO · đang pivot")
 			_check(md.duel.boss != null and md.duel.boss.staged and md.duel.state != "running", "Za Mẫn stands staged during the card")
+			_check(LookPresets.active(bs) == "server_red", "the duel starts on the base look")
+			bs.look("server_sprinkler")
 			var n13: int = 0
 			while md.card != null and n13 < 600:
 				md.card.step(DT)
@@ -327,6 +336,7 @@ func _process(_d: float) -> bool:
 					phase = 999
 				return false
 			_check(bs.cine_player.timeline.slot == "seg_d5_boss" and sd.call("has_evidence", "E6"), "the katana snaps: seg_d5_boss, E6 guaranteed")
+			_check(bs.looks.is_empty() and LookPresets.active(bs) == "server_red", "the duel's look restored when it ended")
 			_finish_cine_in(bs)
 			_next(16)
 		16:

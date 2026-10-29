@@ -77,6 +77,20 @@ const PRESETS: Dictionary = {
 	"campus_horror": {"exposure": 1.0, "glow": 0.8, "glow_strength": 1.0, "thr": 1.2, "cap": 3.0, "bloom": 0.0,
 		"fog": Color("#0b1016"), "fog_begin": 4.0, "fog_end": 38.0, "fog_density": 0.75,
 		"brightness": 0.98, "contrast": 1.12, "sat": 0.82, "amb": 0.4, "amb_col": Color("#4b5d70")},
+	# Wave 3 Day 5 (plan 2026-10-30-w3-day5.md T1): the blackout in the server hall. Near-black ambient, close black fog,
+	# the glow threshold at its floor and the glow up so only the emissives read (rack LEDs, monitors, the red strips, the
+	# guards' smart-glasses dots); a faint blue fill keeps silhouettes against the LEDs.
+	"server_blackout": {"exposure": 0.95, "glow": 0.95, "glow_strength": 1.15, "thr": 1.2, "cap": 4.0, "bloom": 0.0,
+		"fog": Color("#05060a"), "fog_begin": 3.0, "fog_end": 28.0, "fog_density": 0.6,
+		"brightness": 0.96, "contrast": 1.15, "sat": 0.95, "amb": 0.07, "amb_col": Color("#2a3048"),
+		"fill": {"col": Color("#4a5cff"), "energy": 0.04, "elev": 10.0, "azim": 0.0}},
+	# ... and the katana duel under the sprinklers: a red key (the emergency light through the water), a little red-grey
+	# fog (the spray), the glow kept for the wet speculars of the puddles and the burning racks.
+	"server_sprinkler": {"exposure": 1.0, "glow": 0.85, "glow_strength": 1.05, "thr": 1.25, "cap": 3.5, "bloom": 0.0,
+		"fog": Color("#4a1a1e"), "fog_begin": 2.0, "fog_end": 24.0, "fog_density": 0.55,
+		"brightness": 1.0, "contrast": 1.12, "sat": 1.0, "amb": 0.42, "amb_col": Color("#6a3a44"),
+		"key": {"col": Color("#ff4a3a"), "energy": 0.5, "shadow": 0.5},
+		"fill": {"col": Color("#ff5a40"), "energy": 0.22, "elev": 55.0, "azim": 180.0}},
 }
 
 ## FreeRoam base preset per time of day (GameFX.TOD_PRESETS keys): night = night_city, morning / noon = campus_day; dawn and
