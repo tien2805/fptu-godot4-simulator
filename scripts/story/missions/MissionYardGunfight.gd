@@ -24,14 +24,20 @@ const CHECK_DT: float = 0.1
 const SWEEP_RANGE: float = 12.0
 const SWEEP_HALF_DEG: float = 15.0
 const SWEEP_SWING_DEG: float = 55.0
-const SWEEP_SWING_S: float = 3.4
+## One full swing of a flashlight: slow enough that its light reaches a spot about 0.8 s before the cone is on it (the
+## readability rule: the 55 deg swing peaks near 25 deg/s).
+const SWEEP_SWING_S: float = 14.0
 const FIELD_C := Vector3(-3.0, 0.0, -3.9)          # yard-local centre of the mannequin field
+## Each sweeper swings round his own part of the field (yard-local aim points), so one spot is rarely lit by all three.
+const AIMS: Array[Vector3] = [Vector3(-6.5, 0.0, -2.5), Vector3(0.5, 0.0, -3.0), Vector3(-3.0, 0.0, -5.8)]
 const SWEEPERS: Array = [
 	[Vector3(-9.0, 0.0, 0.8), Vector3(3.0, 0.0, 0.8)],
 	[Vector3(-9.8, 0.0, -6.2), Vector3(-9.8, 0.0, 0.2)],
 	[Vector3(3.6, 0.0, 0.2), Vector3(3.6, 0.0, -6.2)],
 ]
 const PHONE_SWEEPER: int = 1
+## No catching in the first seconds of the hide: the radio and the [X] prompt first, the flashlights already swinging.
+const GRACE_S: float = 2.5
 const BEAM_COL := Color(1.0, 0.95, 0.7, 0.13)
 const BEAM_RED := Color(1.0, 0.2, 0.15, 0.22)
 const T_FREEZE: String = "[X] giữ: ĐỨNG IM!"
@@ -56,6 +62,7 @@ var hidden: bool = true
 var sweep_s: float = 26.0
 var sweep_range: float = SWEEP_RANGE
 var sweep_half: float = SWEEP_HALF_DEG
+var swing_s: float = SWEEP_SWING_S
 var hold_max: float = 4.0
 var mash_n: int = 9
 var mash_window: float = 3.0
@@ -91,7 +98,8 @@ func _start() -> void:
 	sweep_s = float(Difficulty.pick(26.0, 20.0))
 	sweep_range = float(Difficulty.pick(SWEEP_RANGE, 10.0))
 	sweep_half = float(Difficulty.pick(SWEEP_HALF_DEG, 12.0))
-	hold_max = float(Difficulty.pick(5.0, 7.0))
+	swing_s = float(Difficulty.pick(SWEEP_SWING_S, 16.0))
+	hold_max = float(Difficulty.pick(7.0, 10.0))
 	mash_n = int(Difficulty.pick(9, 6))
 	mash_window = float(Difficulty.pick(3.0, 3.0))
 	place_player()
@@ -256,10 +264,10 @@ func beam_of(k: int) -> Dictionary:
 	var g: Gunman = fight.gunmen[k]
 	if not is_instance_valid(g) or g.is_defeated():
 		return {}
-	var c: Vector3 = _lw(FIELD_C)
+	var c: Vector3 = _lw(AIMS[k] if k < AIMS.size() else FIELD_C)
 	var to := Vector3(c.x - g.global_position.x, 0.0, c.z - g.global_position.z)
 	var base: float = atan2(-to.x, -to.z) if to.length() > 0.5 else g.yaw
-	var a: float = base + deg_to_rad(SWEEP_SWING_DEG) * sin(hide_t * TAU / SWEEP_SWING_S + float(k) * 2.1)
+	var a: float = base + deg_to_rad(SWEEP_SWING_DEG) * sin(hide_t * TAU / swing_s + float(k) * 2.1)
 	return {"eye": g.feet() + Vector3(0.0, 1.5, 0.0), "dir": Vector3(-sin(a), 0.0, -cos(a)), "g": g}
 
 
@@ -432,7 +440,7 @@ func _sweep_checks() -> void:
 		if is_instance_valid(g) and (g.is_alerted or g.is_defeated()):
 			_caught()
 			return
-	if caught_now():
+	if hide_t >= GRACE_S and caught_now():
 		_caught()
 		return
 	for i: int in _head_tries.size():

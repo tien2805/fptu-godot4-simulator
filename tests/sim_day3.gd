@@ -67,6 +67,7 @@ var b_lift_seen: bool = false
 var b_toss_seen: int = 0
 var b_fail_t: float = -1.0
 var b_kos: int = 0
+var b_walk_t: float = 0.0
 
 
 func _initialize() -> void:
@@ -325,15 +326,28 @@ func _cover_fight(f: GunFight) -> void:
 	var w: WeaponDirector = fr.get("weapons")
 	if not f.cover_ctl.in_cover:
 		var ids: PackedInt32Array = f.cover.candidates(g.global_position, _p().global_position, 14.0, f.taken, null, 4.0)
-		if ids.size() > 0 and b_move_to == null:
-			var pick: int = ids[0] if rng.randf() > 0.15 or ids.size() < 2 else ids[1]   # 15 %: a worse slot
-			b_move_to = f.cover.pos[pick]
-		if b_move_to != null:
+		if ids.size() > 0 and b_move_to == null and b_walk_t >= 0.0:
+			var ok: Array[int] = []
+			for i: int in ids:
+				if f.clear_walk(_p().global_position + Vector3(0.0, 0.5, 0.0), f.cover.pos[i] + Vector3(0.0, 0.5, 0.0)):
+					ok.append(i)
+					if ok.size() >= 2:
+						break
+			if not ok.is_empty():
+				var pick: int = ok[0] if rng.randf() > 0.15 or ok.size() < 2 else ok[1]   # 15 %: a worse slot
+				b_move_to = f.cover.pos[pick]
+		if b_move_to != null and WeaponMath.flat(_p().global_position, b_move_to) > 0.6 and b_walk_t < 3.0:
+			b_walk_t += DT
 			_walk(4.5)
 			if b_move_to == null:
 				f.cover_ctl.hold_override = true
 		else:
-			_open_fire(g)
+			if b_walk_t >= 3.0:
+				b_walk_t = -4.0   # stuck on the way: fight from here a while before trying a slot again
+			b_walk_t = minf(b_walk_t + DT, 0.0) if b_walk_t < 0.0 else 0.0
+			b_move_to = null
+			f.cover_ctl.hold_override = true
+			_open_fire(g)   # no slot (or the slot did not take): shoots from where it stands
 		return
 	b_cover_t -= DT
 	if b_popped:
