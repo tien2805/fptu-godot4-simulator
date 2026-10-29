@@ -202,7 +202,7 @@ func _on_physics() -> void:
 					shots2 += (g2 as Gunman).shots
 				print("  %d gunman shots during the %d-frame window" % [shots2 - shots0, WINDOW])
 				_check(shots2 > shots0, "the gunmen shot during the window (%d -> %d)" % [shots0, shots2])
-				_check(fight.max_shooters_seen <= 3, "never more than 3 shooting (max %d)" % fight.max_shooters_seen)
+				_check(fight.max_shooters_seen <= GunData.max_shooters(), "never more than %d shooting (max %d)" % [GunData.max_shooters(), fight.max_shooters_seen])
 				fight.process_mode = Node.PROCESS_MODE_DISABLED
 				if fight.cover_ctl.pose:
 					fight.cover_ctl.pose.process_mode = Node.PROCESS_MODE_DISABLED

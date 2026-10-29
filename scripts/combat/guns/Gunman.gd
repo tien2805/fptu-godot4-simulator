@@ -6,11 +6,13 @@
 #   ALERT     "Có biến!" over the head, turns to the noise for 0.6 s;
 #   TO_COVER  runs to the best free CoverMap slot whose obstacle stands between it and the player (CoverMap.candidates);
 #   COVER     crouched behind it (hit capsule lowered); waits 0.7-1.8 s, then asks the fight for a shooting token (at most
-#             GunData.MAX_SHOOTERS at once); the cover stops protecting (the player moved round) -> new cover;
-#   PEEK      stands up and aims (0.3 s); each bullet = a muzzle GLINT for GunData.TELEGRAPH_S (0.4 s) and only then the shot
+#             GunData.max_shooters() at once); the cover stops protecting (the player moved round) -> new cover;
+#   PEEK      stands up and aims (0.3 s); each bullet = a muzzle GLINT for GunData.telegraph_s() (Thường 0.35 s, Dễ 0.45 s;
+#             read at the glint's start) and only then the shot
 #             (a burst of 1-3); the shot needs a clear ray from the muzzle at the moment it resolves: a wall or the cover the
 #             player ducked behind stops it (sparks, no damage); a readable red tracer; hit chance from GunData.hit_chance
-#             (distance, player speed, popping out of cover, first shot); no clear ray for 1.2 s -> back down;
+#             (distance, player speed, popping out of cover, first shot, x GunData.accuracy_k() by difficulty); no clear ray
+#             for 1.2 s -> back down;
 #   FLANK     after 2-3 peeks from one slot: runs to a slot at least 50° round the player (CoverMap.flank_candidates);
 #   OPEN      no usable cover: walks to about 11 m and shoots standing, looking for cover every 2 s;
 #   STAGGER   a hit that does not knock out: flinch 0.45 s, the telegraph and the token are lost;
@@ -85,8 +87,10 @@ var first_shot: bool = true
 var shots: int = 0
 var hits: int = 0
 var tele_starts: int = 0
-## Telegraph seconds actually shown before each resolved shot (tests: every value >= TELEGRAPH_S).
+## Telegraph seconds actually shown before each resolved shot (tests: every value >= telegraph_s()).
 var tele_before_shot: Array[float] = []
+## The current glint's length (GunData.telegraph_s() when it started).
+var tele_len: float = GunData.TELEGRAPH_S
 var ko_left: float = GunData.KO_STARS_S
 var speed_now: float = 0.0
 var _patrol_i: int = 0
@@ -478,9 +482,9 @@ func _do_peek(delta: float) -> void:
 	if telegraphing:
 		tele_t += delta
 		var k: float = 1.0 + 0.35 * sin(tele_t * 40.0)
-		glint.scale = Vector3.ONE * k * lerpf(0.6, 1.3, clampf(tele_t / GunData.TELEGRAPH_S, 0.0, 1.0))
+		glint.scale = Vector3.ONE * k * lerpf(0.6, 1.3, clampf(tele_t / tele_len, 0.0, 1.0))
 		glint.global_position = muzzle_pos()
-		if tele_t >= GunData.TELEGRAPH_S - 1e-4:
+		if tele_t >= tele_len - 1e-4:
 			tele_before_shot.append(tele_t)
 			if tele_before_shot.size() > LOG_MAX:
 				tele_before_shot.pop_front()
@@ -502,6 +506,7 @@ func _do_peek(delta: float) -> void:
 	if bool(fight.call("clear_line", muzzle_pos(), fight.call("player_target"))):
 		telegraphing = true
 		tele_t = 0.0
+		tele_len = GunData.telegraph_s()
 		tele_starts += 1
 		glint.visible = true
 		glint.global_position = muzzle_pos()
@@ -653,7 +658,7 @@ func _fire() -> void:
 		result = "blocked"
 	else:
 		var p: float = accuracy_override if accuracy_override >= 0.0 else GunData.hit_chance(muzzle.distance_to(tp),
-			float(fight.call("player_speed")), bool(fight.call("player_popped")), first_shot, accuracy_k)
+			float(fight.call("player_speed")), bool(fight.call("player_popped")), first_shot, accuracy_k * GunData.accuracy_k())
 		if _rng.randf() < p:
 			GunData.tracer(fx, muzzle, tp)
 			fight.call("hit_player", self, GunData.GUNMAN_DMG)

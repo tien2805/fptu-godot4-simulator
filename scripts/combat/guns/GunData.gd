@@ -41,7 +41,7 @@ const RUN_SPEED: float = 4.2
 const TURN_RATE: float = 8.0
 const COVER_WAIT: Vector2 = Vector2(0.7, 1.8)
 const AIM_S: float = 0.3                 # stand up and aim before the telegraph
-const TELEGRAPH_S: float = 0.4           # muzzle glint before every bullet resolves
+const TELEGRAPH_S: float = 0.4           # muzzle glint before every bullet resolves (the old value; gunmen read telegraph_s())
 const SHOT_GAP_S: float = 0.22
 const BURST: Vector2i = Vector2i(1, 3)
 const PEEKS_BEFORE_FLANK: Vector2i = Vector2i(2, 3)
@@ -73,7 +73,12 @@ const GUNMAN_DMG: float = 8.0
 const MISS_OFFSET: Vector2 = Vector2(0.7, 1.5)
 const SHOT_RANGE: float = 60.0
 const KO_STARS_S: float = 6.0
-const MAX_SHOOTERS: int = 3
+const MAX_SHOOTERS: int = 3              # the old cap (GunFight reads max_shooters())
+# ----- the gun row of the difficulty table (Wave 3 plan 2026-10-30-w3-shared.md T2): Thường, Dễ -----
+const DIFF_TELEGRAPH_S: Vector2 = Vector2(0.35, 0.45)
+const DIFF_SHOOTERS: Vector2i = Vector2i(4, 3)
+const DIFF_REGEN_DELAY: Vector2 = Vector2(5.0, 3.0)
+const DIFF_ACCURACY_K: Vector2 = Vector2(1.0, 0.8)
 ## Damage a gunman takes per hit kind (WeaponDirector / PlayerCombat info "kind").
 const GUNMAN_DMG_TAKEN: Dictionary = {"bullet": 25.0, "pellet": 70.0, "punch": 15.0, "melee": 60.0, "bonk": 60.0,
 	"blast": 999.0, "heavy": 30.0, "counter": 30.0}
@@ -197,6 +202,26 @@ static func _static_pose(pose_name: String) -> Dictionary:
 				"shoulder_r": Vector3(0.45, 0.0, -1.15), "elbow_r": Vector3(0.3, 0.0, 0.0),
 				"torso": Vector3(-0.15, 0.0, 0.0), "head": Vector3(-0.2, 0.0, 0.0)}
 	return {}
+
+
+## Gun difficulty (Difficulty.pick): the muzzle glint before each enemy bullet resolves (s).
+static func telegraph_s() -> float:
+	return float(Difficulty.pick(DIFF_TELEGRAPH_S.x, DIFF_TELEGRAPH_S.y))
+
+
+## Gun difficulty: gunmen shooting at once (GunFight's token cap unless the setup passes "max_shooters").
+static func max_shooters() -> int:
+	return int(Difficulty.pick(DIFF_SHOOTERS.x, DIFF_SHOOTERS.y))
+
+
+## Gun difficulty: seconds without damage before the player's HP regenerates during a gunfight.
+static func regen_delay() -> float:
+	return float(Difficulty.pick(DIFF_REGEN_DELAY.x, DIFF_REGEN_DELAY.y))
+
+
+## Gun difficulty: a factor on every gunman's hit chance.
+static func accuracy_k() -> float:
+	return float(Difficulty.pick(DIFF_ACCURACY_K.x, DIFF_ACCURACY_K.y))
 
 
 ## Enemy hit chance (0..1) of one bullet at distance d (m) against a player moving at `speed` m/s; popped = the player is

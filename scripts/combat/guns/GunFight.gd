@@ -14,7 +14,7 @@
 #       "force_loadout": true,                  # default: only the loadout + Tay không can be equipped
 #       "lock_funny": true,                     # default: rocket, dép, sầu riêng, loa locked (when force_loadout is false)
 #       "reserve": {WeaponData.Slot.PISTOL: 48, WeaponData.Slot.SHOTGUN: 12},   # spare rounds (default); -1 = unlimited
-#       "max_shooters": 3,                      # gunmen shooting at once (tokens)
+#       "max_shooters": 4,                      # gunmen shooting at once (tokens); default GunData.max_shooters() (4 / 3)
 #       "auto_checkpoint": true,                # every wave start is a checkpoint
 #       "start_alerted": false,                 # wave 1 starts alerted (seen while sneaking); later waves always do
 #       "seed": 1})
@@ -41,7 +41,10 @@
 #   fight.start(); fight.checkpoint(); fight.retry(); fight.stop()
 #   fight.alive() -> Array; fight.shooters() -> int; fight.boss (ForkliftBoss or null); fight.state ("idle" | "running" |
 #   "won" | "lost"); fight.wave; fight.cover_ctl (PlayerCover); fight.hud (GunHUD)
-# Player HP = PlayerCombat's (100, regeneration 10 HP/s after 4 s, `down`): bullets and boss hits go through
+# Gun difficulty (Wave 3 T2): the token cap, the gunmen's telegraph and accuracy and the regeneration delay come from
+# GunData.max_shooters() / telegraph_s() / accuracy_k() / regen_delay() (Thường / Dễ). While engaged the fight sets
+# combat.regen_delay to GunData.regen_delay() (5 s / 3 s) and restores the previous value with the rest (won, stop, free).
+# Player HP = PlayerCombat's (100, regeneration 10 HP/s after combat.regen_delay, `down`): bullets and boss hits go through
 # PlayerCombat.receive_attack (boss hits are heavy: a comic knock-down). From start() until won / stop() (lost keeps it until
 # retry() or stop()) the fight sets combat.fight_active (no bike, no emotes), hides the CombatHUD HP bar (GunHUD shows HP,
 # enemies left, damage direction, cover hints, the boss bar), forces the loadout and locks the other slots (the wheel shows
@@ -80,7 +83,7 @@ var loadout: Array = [WeaponData.Slot.PISTOL, WeaponData.Slot.SHOTGUN]
 var force_loadout: bool = true
 var lock_funny: bool = true
 var reserve_init: Dictionary = GunData.DEFAULT_RESERVE
-var max_shooters: int = GunData.MAX_SHOOTERS
+var max_shooters: int = GunData.max_shooters()
 var auto_checkpoint: bool = true
 var start_alerted: bool = false
 ## Tests: >= 0 = every gunman's hit chance.
@@ -108,6 +111,7 @@ var _prev_wfn: Callable = Callable()
 var _prev_cfn: Callable = Callable()
 var _heat_cut: Object = null
 var _bar_was: bool = true
+var _regen_was: float = CombatData.REGEN_DELAY
 var _sfx: Array[AudioStreamPlayer3D] = []
 var _sfx_i: int = 0
 var _prune_t: float = 0.0
@@ -147,7 +151,7 @@ func setup(opts: Dictionary) -> void:
 	force_loadout = bool(opts.get("force_loadout", true))
 	lock_funny = bool(opts.get("lock_funny", true))
 	reserve_init = (opts.get("reserve", GunData.DEFAULT_RESERVE) as Dictionary).duplicate()
-	max_shooters = int(opts.get("max_shooters", GunData.MAX_SHOOTERS))
+	max_shooters = int(opts.get("max_shooters", GunData.max_shooters()))
 	auto_checkpoint = bool(opts.get("auto_checkpoint", true))
 	start_alerted = bool(opts.get("start_alerted", false))
 	accuracy_override = float(opts.get("accuracy_override", -1.0))
@@ -632,6 +636,8 @@ func _engage(on: bool) -> void:
 	engaged = on
 	if on:
 		combat.fight_active = true
+		_regen_was = combat.regen_delay
+		combat.regen_delay = GunData.regen_delay()
 		if combat.hud and combat.hud.bar:
 			_bar_was = combat.hud.bar.visible
 			combat.hud.bar.visible = false
@@ -674,6 +680,7 @@ func _engage(on: bool) -> void:
 	else:
 		if combat and is_instance_valid(combat):
 			combat.fight_active = false
+			combat.regen_delay = _regen_was
 			if combat.hud and combat.hud.bar:
 				combat.hud.bar.visible = _bar_was
 			if combat.targets_fn == Callable(self, "_combat_targets"):
