@@ -193,7 +193,7 @@ func _process(_d: float) -> bool:
 			_check(sr.start_marker("d3_sneak") and _finish_cine() == "cine_d3_intro", "[E]: cine_d3_intro (night drive, Anh Duy on the radio)")
 			_next(4)
 		4:
-			m = _wait_mission("MissionSneak")
+			m = _wait_mission("MissionYardSneak")
 			if m == null:
 				return false
 			var ms: MissionSneak = m
@@ -203,6 +203,7 @@ func _process(_d: float) -> bool:
 			var w: WeaponDirector = fr.get("weapons")
 			_check(w.current == WeaponData.Slot.PISTOL and not w.locked, "lair rule: the Phase W pistol in hand")
 			_check(StoryRoam.mission_slot(sd.call("beat")) == "mission_sneak" and ms.cues_played.has("radio"), "mission_sneak, Anh Duy on the radio")
+			_check(sr.yard.look_held and LookPresets.active(fr) == "port_night", "W3 T1: port_night held while the yard mission runs (%s)" % LookPresets.active(fr))
 			# walk right in front of a guard: seen
 			var g: Gunman = ms.fight.gunmen[1]
 			_player().teleport(g.global_position + g.forward() * 5.0, 0.0)
@@ -262,7 +263,7 @@ func _process(_d: float) -> bool:
 			if frames < 3:
 				return false
 			_check(sr.yard.stack.visible and sr.yard.stack_open and sr.yard.stack_doors[1].state == "open" and sr.yard.stack_crowds[0].visible, "after the discovery: the stack open, the mannequins staring out")
-			m = _wait_mission("MissionGunfight")
+			m = _wait_mission("MissionYardGunfight")
 			if m == null:
 				return false
 			var mg: MissionGunfight = m
@@ -382,6 +383,7 @@ func _process(_d: float) -> bool:
 				return false
 			_check(String(sd.get("step")) == "d3_bed" and sr.markers.has("d3_bed") and sr.yard != null, "bed marker, the yard still there for the night")
 			_check(not sr.yard.forklift_park.visible, "the parked forklift stays gone after the boss")
+			_check(not sr.yard.look_held and sr.mission_node == null, "W3 T1: no yard mission, the held look is popped")
 			for id: String in ["d3_sneak", "d3_mannequins", "d3_gunfight", "d3_crates", "d3_boss", "d3_end"]:
 				_check(StoryChapters.is_beat_unlocked(id) and not StoryChapters.snapshot(id).is_empty(), "Chọn cảnh: %s snapshotted" % id)
 			_check(sr.start_marker("d3_bed"), "bed")
@@ -395,6 +397,7 @@ func _process(_d: float) -> bool:
 				return false
 			_check(n20 == 4, "the call after Day 3 says 4")
 			_check(sr.yard == null, "the yard is freed after Day 3")
+			_check(not ((fr.get_meta("look_stack", []) as Array).has("port_night")), "W3 T1: the roam look restored (no port_night left on the stack)")
 			_next(22)
 		22:
 			if not _cine_started("Day 4 morning"):

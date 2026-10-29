@@ -59,6 +59,9 @@ var stack_open: bool = false
 var forklift_park: Node3D
 var cover_root: Node3D
 var _hidden: Array[Node3D] = []
+## W3 T1: the env owner (FreeRoam); port_night is held on it while a yard mission runs (hold_look), popped when freed.
+var look_owner: Node = null
+var look_held: bool = false
 
 
 ## Builds the yard under `parent` (FreeRoam) at CENTER, its floor found with a down ray (y = 0 when nothing is hit).
@@ -68,7 +71,24 @@ func build_in(parent: Node3D) -> void:
 	floor_y = _ground(parent)
 	global_transform = Transform3D(Basis(Vector3.UP, deg_to_rad(YAW)), Vector3(CENTER.x, floor_y, CENTER.y))
 	_build()
+	look_owner = parent
 	add_child(LookZone.make(parent, "port_night", global_position, 110.0, 150.0))   # Q3: the yard's look near it
+
+
+## W3 T1: port_night held on the roam while a yard beat's mission runs, wherever the camera is (the crane cabin, a
+## forklift cam, a preview cut); off pops it (the LookZone still holds it near the yard). Idempotent; freed = popped.
+func hold_look(on: bool) -> void:
+	if on == look_held or look_owner == null or not is_instance_valid(look_owner):
+		return
+	look_held = on
+	if on:
+		LookPresets.apply("port_night", look_owner)
+	else:
+		LookPresets.restore(look_owner, "port_night")
+
+
+func _exit_tree() -> void:
+	hold_look(false)
 
 
 func _ground(parent: Node3D) -> float:
