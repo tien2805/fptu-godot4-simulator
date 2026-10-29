@@ -14,6 +14,16 @@
 # may be FreeRoam or a lair scene (StoryBasement) with the same fields (player, weapons, combat, mounted).
 # Q5 (plan 2026-10-29-w2-story T4): radio lines type out with the speaker's blip voice (StoryRadio); radio_as(speaker, ...)
 # for other speakers (Mr.T on the phone, Linh, Chú Bảy); the beat's StoryRadio.SCRIPTS lines play on the mission clock.
+# Wave 3 ranks (plan 2026-10-30-w3-shared.md T7): `stats` feeds StoryRank. The base fills "time" (seconds on the mission
+# clock while running, failed attempts included, short replays not), "fails" (retries) and "dmg" (every drop of the
+# host's combat.hp, sampled each tick and at a fail: no mission needs code for damage); subclasses call add_stat("ko") per
+# takedown or set_stat(key, v). A retry keeps the stats (only the per-attempt mission state resets), except "ko": a fail
+# (or rollback_ko() from an encounter that retries by itself) rolls it back to the last mark_ko_checkpoint() (begin(), and
+# the subclass marks its encounter's retry checkpoints: wave starts, the drift duel's lap 2), so ko counts the winning run
+# only.
+# T8: finish(info) on a ranked beat (StoryRank.MISSIONS) evaluates the run (rank, rank_eval; info gains "rank") and shows
+# the StoryRankCard (unless StoryRankCard.skip_all); `done` waits for the card to close, except in `manual` /
+# `manual_replay` runs (tests), where the card shows without holding `done`.
 class_name StoryMission
 extends Node3D
 
@@ -56,6 +66,14 @@ var _radio_t: float = 0.0
 var radio_typer: StoryRadio = null
 var _radio_script: Array = []
 var _radio_i: int = 0
+## Wave 3 ranks: the run's stats (StoryRank.report reads them).
+var stats: Dictionary = {"time": 0.0, "fails": 0, "dmg": 0.0}
+var _ko_base: int = 0                    # stats.ko at the encounter's retry checkpoint (a fail rolls back to it)
+var _hp_seen: float = -1.0
+## The finished run's letter ("" = unranked beat), its StoryRank.evaluate result and the results card while it shows.
+var rank: String = ""
+var rank_eval: Dictionary = {}
+var rank_card: StoryRankCard = null
 
 
 func setup(r: Node3D, b: Dictionary, o: Dictionary = {}) -> void:
@@ -74,6 +92,10 @@ func begin() -> void:
 	_off_bike()
 	_lock_weapons(true)
 	clock = 0.0
+	stats = {"time": 0.0, "fails": 0, "dmg": 0.0}
+	_ko_base = 0
+	_hp_seen = -1.0
+	_sample_hp()
 	state = "running"
 	_radio_script = StoryRadio.lines(String(beat.get("id", "")))
 	_radio_i = 0
@@ -89,6 +111,8 @@ func retry() -> void:
 	_off_bike()
 	state = "running"
 	_reset()
+	_hp_seen = -1.0                          # the checkpoint revives the player: sample afresh
+	_sample_hp()
 
 
 ## VỀ THẾ GIỚI MỞ (or the scene leaving): ends without a result and frees the node.
@@ -101,8 +125,11 @@ func abort() -> void:
 func fail(reason: String, title: String = T_TOANG) -> void:
 	if state != "running":
 		return
+	_sample_hp()
 	state = "failed"
 	fails += 1
+	stats["fails"] = fails
+	rollback_ko()
 	failed.emit(title, reason)
 
 
@@ -111,7 +138,28 @@ func finish(info: Dictionary = {}) -> void:
 		return
 	state = "done"
 	_end()
-	done.emit(info)
+	var id: String = String(beat.get("id", ""))
+	rank_eval = StoryRank.evaluate(id, stats, info)
+	if rank_eval.is_empty():
+		done.emit(info)
+		return
+	rank = String(rank_eval["letter"])
+	var out: Dictionary = info.duplicate()
+	out["rank"] = rank
+	var best_before: String = StoryRank.best(id)
+	var sd: Node = get_node_or_null("/root/StoryDirector") if is_inside_tree() else null
+	if sd != null and sd.has_method("record_rank"):
+		sd.call("record_rank", id, rank)       # T9: the best rank goes into the save (and the chapter unlock file)
+	if StoryRankCard.skip_all:
+		done.emit(out)
+		return
+	rank_card = StoryRankCard.make(rank_eval, String(beat.get("title", "")), best_before)
+	add_child(rank_card)
+	if manual or bool(opts.get("manual_replay", false)):
+		rank_card.manual = true
+		done.emit(out)
+		return
+	rank_card.closed.connect(func() -> void: done.emit(out), CONNECT_ONE_SHOT)
 
 
 func _end() -> void:
@@ -143,6 +191,9 @@ func advance(dt: float) -> void:
 	if state != "running":
 		return
 	clock += dt
+	if replay == null:
+		stats["time"] = float(stats.get("time", 0.0)) + dt
+	_sample_hp()
 	if _radio_i < _radio_script.size() and _radio_t <= 0.0 and clock >= float(_radio_script[_radio_i][0]):
 		var rl: Array = _radio_script[_radio_i]
 		_radio_i += 1
@@ -158,6 +209,37 @@ func _physics_process(delta: float) -> void:
 func _exit_tree() -> void:
 	if state == "running" or state == "failed":
 		_end()
+
+
+# ----- Wave 3 ranks: stats -----
+func add_stat(key: String, n: Variant = 1) -> void:
+	stats[key] = stats.get(key, 0) + n
+
+
+func set_stat(key: String, v: Variant) -> void:
+	stats[key] = v
+
+
+## The encounter's retry checkpoint (a wave start, lap 2): takedowns so far survive a later fail.
+func mark_ko_checkpoint() -> void:
+	_ko_base = int(stats.get("ko", 0))
+
+
+## A lost attempt (fail(), or an encounter that retries by itself): its takedowns since the checkpoint do not count.
+func rollback_ko() -> void:
+	if stats.has("ko"):
+		stats["ko"] = _ko_base
+
+
+## Adds every drop of the host's combat.hp since the last sample to stats.dmg.
+func _sample_hp() -> void:
+	var c: Object = roam.get("combat") if roam != null and is_instance_valid(roam) else null
+	if c == null or not is_instance_valid(c) or not ("hp" in c):
+		return
+	var hp: float = float(c.get("hp"))
+	if _hp_seen >= 0.0 and hp < _hp_seen:
+		stats["dmg"] = float(stats.get("dmg", 0.0)) + (_hp_seen - hp)
+	_hp_seen = hp
 
 
 # ----- virtuals -----

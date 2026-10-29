@@ -116,6 +116,10 @@ var counter_text: String = CombatData.T_COUNTER
 var block_pose: String = "block"
 var idle_pose: String = ""
 var dodge_m: float = CombatData.DODGE_HOSTILE_M
+## Wave 3 knobs (plan 2026-10-30-w3-shared.md): seconds without damage before HP regenerates (GunFight sets the gun
+## difficulty value while it runs and restores this default) and a factor on the dodge-roll speed (Day 5's puddles).
+var regen_delay: float = CombatData.REGEN_DELAY
+var dodge_speed_k: float = 1.0
 ## Landed hits spark as well as raising dust (blades).
 var blade: bool = false
 ## Sound remap {cue: cue} applied by _cue (the staff's clash instead of the punch...).
@@ -355,7 +359,7 @@ func _physics_process(delta: float) -> void:
 	invuln_left = maxf(0.0, invuln_left - delta)
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)
 	since_damage += delta
-	if state != St.DOWN and since_damage >= CombatData.REGEN_DELAY and hp < max_hp:
+	if state != St.DOWN and since_damage >= regen_delay and hp < max_hp:
 		hp = minf(max_hp, hp + CombatData.REGEN_RATE * delta)
 		hp_changed.emit(hp)
 	var blocked: bool = blocked_fn.is_valid() and bool(blocked_fn.call())   # once per frame
@@ -797,7 +801,7 @@ func try_dodge() -> bool:
 	var dir: Vector3 = _input_dir()
 	if dir.length_squared() < 0.01:
 		dir = WeaponMath.flat_dir(player.global_position - near.global_position)
-	player.dodge_roll(dir, CombatData.DODGE_S, CombatData.DODGE_SPEED)
+	player.dodge_roll(dir, CombatData.DODGE_S, CombatData.DODGE_SPEED * dodge_speed_k)
 	CombatData.play_clip(player.model, "roll", CombatData.DODGE_S)
 	state = St.DODGE
 	state_t = 0.0

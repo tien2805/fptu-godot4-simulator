@@ -69,6 +69,7 @@ func make_fight(o: Dictionary = {}) -> GunFight:
 	fight.lost.connect(_on_fight_lost)
 	fight.enemy_ko.connect(_on_enemy_ko)
 	fight.wave_started.connect(_on_wave_started)
+	fight.wave_started.connect(func(_i: int) -> void: mark_ko_checkpoint())   # Wave 3 ranks: the wave checkpoint
 	for a: Variant in pts.get("ammo", []):
 		fight.add_ammo(a, WeaponData.Slot.PISTOL if fight.pickups.size() % 2 == 0 else WeaponData.Slot.SHOTGUN)
 	return fight
@@ -124,6 +125,7 @@ func _on_wave_started(i: int) -> void:
 
 func _on_enemy_ko(e: Node3D) -> void:
 	last_ko = e
+	add_stat("ko")                           # Wave 3 ranks
 	if fight and fight.wave == fight.waves.size() - 1 and fight.alive().is_empty() and rec:
 		rec.mark("blow")
 

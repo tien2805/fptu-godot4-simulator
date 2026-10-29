@@ -29,6 +29,12 @@
 # cam_ray (keep adding camera exceptions to it), sprint FOV, a landing dip, the combat framing of a PlayerCombat fight and
 # the CameraDirector's punch / shake. yaw / pitch stay the camera's orientation (auto-yaw in combat writes yaw);
 # _update_camera(true) snaps it; the camera carries the CameraDirector.META_FX meta.
+# Wave 3 bullet time (plan 2026-10-30-w3-shared.md T4, BulletTime): dive(dir, real_secs, speed, prone_secs) is the DIVE
+# state: the body flies along dir at `speed` m/s of real time (velocity divided by Engine.time_scale, so the slow motion does
+# not slow it; move_and_slide keeps the collisions), tilted along the dive with a small arc, for round(real_secs * ticks)
+# physics frames, then PRONE (lying, sliding to a stop) for round(prone_secs * ticks) frames, then GROUND. The camera springs
+# and the aim ease run on real time while diving. dive_filter is asked first on each jump press (true = consumed by the dive
+# or a refused dive: no jump, no dodge). is_diving(), is_prone(), cancel_dive() (back on the feet at once; teleport too).
 class_name ThirdPersonController
 extends CharacterBody3D
 
@@ -121,6 +127,19 @@ var combat_speed_cap: float = INF
 var jump_filter: Callable
 ## Phase C: true while PlayerCover holds the player crouched behind cover (movement input reads as zero).
 var move_lock: bool = false
+## Wave 3 bullet time: asked first on each jump press (-> bool, true = consumed by a dive); the dive's frame counters.
+var dive_filter: Callable
+var dive_frames: int = 0
+var prone_frames: int = 0
+const DIVE_TILT: float = 1.25
+const PRONE_TILT: float = 1.45
+const DIVE_ARC: float = 0.45
+var _dive_dir: Vector3 = Vector3.ZERO
+var _dive_speed: float = 0.0
+var _dive_total: int = 1
+var _dive_left: int = 0
+var _prone_total: int = 0
+var _prone_left: int = 0
 var _roll_time: float = ROLL_TIME
 var _exhausted: bool = false
 var _stamina_wait: float = 0.0
@@ -268,6 +287,9 @@ func teleport(pos: Vector3, yaw_rad: float) -> void:
 	_shake_t = 0.0
 	if cam_rig:
 		cam_rig.trauma = 0.0
+	_dive_left = 0
+	_prone_left = 0
+	_untilt()
 	set_facing(yaw_rad)
 	if model:
 		CharacterBuilder.stop_clip(model)
@@ -298,7 +320,11 @@ func _physics_process(delta: float) -> void:
 	var want_sprint: bool = sprint_override or (controls_enabled and _pressed("sprint"))
 	var want_walk: bool = walk_override or (controls_enabled and _pressed("walk"))
 	if jump_override or (controls_enabled and InputMap.has_action("jump") and Input.is_action_just_pressed("jump")):
-		if not (jump_filter.is_valid() and bool(jump_filter.call())):
+		if move_state == "DIVE" or move_state == "PRONE":
+			pass                             # no jump out of a dive
+		elif dive_filter.is_valid() and bool(dive_filter.call()):
+			pass                             # the press started (or was refused as) a bullet-time dive
+		elif not (jump_filter.is_valid() and bool(jump_filter.call())):
 			_jump_buffer_t = JUMP_BUFFER
 	jump_override = false
 	if controls_enabled:
@@ -330,6 +356,10 @@ func _physics_process(delta: float) -> void:
 			_roll(delta, move)
 		"SPLAT":
 			_splat(delta)
+		"DIVE":
+			_dive(delta)
+		"PRONE":
+			_prone(delta)
 	horizontal_speed = Vector2(velocity.x, velocity.z).length()
 	if model:
 		var moving_state: bool = move_state == "GROUND" or move_state == "LAND_SOFT"
@@ -339,7 +369,7 @@ func _physics_process(delta: float) -> void:
 		CharacterBuilder.set_param(model, "sprint", 1.0 if sprint_anim else 0.0)
 		CharacterBuilder.set_param(model, "lean", _lean)
 	if cam_rig:
-		cam_rig.physics_step(delta)          # the camera's position springs move on the same tick as the player
+		cam_rig.physics_step(_real_delta(delta) if move_state == "DIVE" else delta)   # same tick as the player (a dive: real time)
 
 
 func _look_input() -> void:
@@ -511,6 +541,113 @@ func dodge_roll(dir: Vector3, secs: float, speed: float) -> void:
 	_play("roll", secs)
 
 
+## Wave 3 bullet time: dive along dir (flat; zero = to the right of the camera) at `speed` m/s of real time for real_secs,
+## then lie prone for prone_secs (real), then stand. Returns false (nothing changes) while airborne, rolling, down or
+## already diving.
+func dive(dir: Vector3, real_secs: float, speed: float, prone_secs: float = 0.4) -> bool:
+	if move_state != "GROUND" and move_state != "LAND_SOFT":
+		return false
+	var d := Vector3(dir.x, 0.0, dir.z)
+	d = d.normalized() if d.length_squared() > 1e-6 else Vector3(cos(yaw), 0.0, -sin(yaw))
+	var ticks: float = float(maxi(1, Engine.physics_ticks_per_second))
+	move_state = "DIVE"
+	_state_t = 0.0
+	_dive_dir = d
+	_dive_speed = speed
+	_dive_total = maxi(1, roundi(real_secs * ticks))
+	_dive_left = _dive_total
+	_prone_total = maxi(0, roundi(prone_secs * ticks))
+	_prone_left = 0
+	dive_frames = 0
+	prone_frames = 0
+	_jump_buffer_t = 0.0
+	_air_clip = ""
+	is_sprinting = false
+	_skid_t = 0.0
+	return true
+
+
+func is_diving() -> bool:
+	return move_state == "DIVE"
+
+
+func is_prone() -> bool:
+	return move_state == "PRONE"
+
+
+## Ends a dive or the prone time at once: standing on the ground, the body upright.
+func cancel_dive() -> void:
+	if move_state == "DIVE" or move_state == "PRONE":
+		move_state = "GROUND"
+		_state_t = 0.0
+		velocity.x = 0.0
+		velocity.z = 0.0
+	_dive_left = 0
+	_prone_left = 0
+	_untilt()
+
+
+func _real_delta(delta: float) -> float:
+	return delta / maxf(Engine.time_scale, 0.01)
+
+
+func _dive(delta: float) -> void:
+	_dive_left -= 1
+	dive_frames += 1
+	var k: float = 1.0 - float(_dive_left) / float(_dive_total)
+	var sp: float = _dive_speed * (1.0 if k < 0.75 else lerpf(1.0, 0.45, (k - 0.75) / 0.25))
+	var inv: float = 1.0 / maxf(Engine.time_scale, 0.01)
+	velocity.x = _dive_dir.x * sp * inv      # real-time displacement: velocity * scaled delta = sp * real delta
+	velocity.z = _dive_dir.z * sp * inv
+	velocity.y = minf(velocity.y, 0.0) if is_on_floor() else velocity.y - GRAVITY * delta
+	move_and_slide()
+	_turn(delta, Vector3.ZERO, TURN_RATE_JOG)
+	_tilt(DIVE_TILT * minf(1.0, k / 0.15), DIVE_ARC * sin(PI * k))
+	if _dive_left <= 0:
+		velocity.x = _dive_dir.x * sp * 0.4
+		velocity.z = _dive_dir.z * sp * 0.4
+		if _prone_total > 0:
+			move_state = "PRONE"
+			_prone_left = _prone_total
+		else:
+			move_state = "GROUND"
+			_untilt()
+		_state_t = 0.0
+
+
+func _prone(delta: float) -> void:
+	_prone_left -= 1
+	prone_frames += 1
+	velocity.x = move_toward(velocity.x, 0.0, DECEL * delta)
+	velocity.z = move_toward(velocity.z, 0.0, DECEL * delta)
+	velocity.y = minf(velocity.y, 0.0) if is_on_floor() else velocity.y - GRAVITY * delta
+	move_and_slide()
+	_turn(delta, Vector3.ZERO, TURN_RATE_JOG)
+	_tilt(PRONE_TILT, 0.0)
+	if _prone_left <= 0:
+		move_state = "GROUND"
+		_state_t = 0.0
+		_untilt()
+
+
+## The body tipped `amount` rad toward the dive direction (in the model's frame), lifted `lift` m.
+func _tilt(amount: float, lift: float) -> void:
+	if model == null:
+		return
+	var loc: Vector3 = Basis(Vector3.UP, model.rotation.y).inverse() * _dive_dir
+	model.rotation.x = loc.z * amount
+	model.rotation.z = -loc.x * amount
+	model.position.y = lift
+
+
+func _untilt() -> void:
+	if model == null:
+		return
+	model.rotation.x = 0.0
+	model.rotation.z = 0.0
+	model.position.y = 0.0
+
+
 ## Ngã sóng soài: khoá điều khiển SPLAT_TIME, rồi đứng dậy (getup) GETUP_TIME.
 func _splat(delta: float) -> void:
 	velocity.x = move_toward(velocity.x, 0.0, DECEL * delta)
@@ -581,6 +718,10 @@ func _try_step_up(move: Vector3, delta: float) -> void:
 func knock_down(away: Vector3, power: float = 3.0) -> void:
 	if move_state == "SPLAT":
 		return
+	if move_state == "DIVE" or move_state == "PRONE":   # a heavy hit mid-dive: the dive ends, the body upright again
+		_dive_left = 0
+		_prone_left = 0
+		_untilt()
 	aiming = false
 	var a := Vector3(away.x, 0.0, away.z)
 	a = a.normalized() if a.length_squared() > 1e-6 else -facing_dir()
@@ -612,9 +753,10 @@ func shake(amp: float) -> void:
 # ---------------------------------------------------------------------------
 func _process(delta: float) -> void:
 	if _built:
-		aim_blend = move_toward(aim_blend, 1.0 if aiming else 0.0, delta / AIM_EASE_S)
+		var cd: float = _real_delta(delta) if move_state == "DIVE" else delta   # a dive: aim and camera on real time
+		aim_blend = move_toward(aim_blend, 1.0 if aiming else 0.0, cd / AIM_EASE_S)
 		_shake_t = maxf(0.0, _shake_t - delta)
-		_cam_dt = delta
+		_cam_dt = cd
 		_update_camera(false)
 		_cam_dt = 0.0
 

@@ -11,14 +11,17 @@
 #            hit, HP down, a damage-direction marker on the HUD.
 #   states   one gunman: patrol -> (the player's gunshot) alert -> to_cover -> cover -> peek -> flank; a bullet staggers,
 #            three knock out; the single wave is won and the weapons are unlocked.
-#   tele     every bullet that hits the player resolves at least 0.4 s after that gunman's glint telegraph started.
+#   tele     every bullet that hits the player resolves at least GunData.telegraph_s() after that gunman's glint started.
 #   wall     a gunman 24 m away behind a wide wall, with a nav graph that only covers its side: the cover slot past the wall
 #            is refused (no walkable route), it tries to walk to the player and stays behind the wall, never telegraphs,
 #            shoots or hurts the player.
-#   cap      six gunmen around the player: never more than 3 shooting at once (and 3 is reached); glints behind the camera
+#   cap      six gunmen around the player: never more than GunData.max_shooters() shooting at once (and the cap is
+#            reached); glints behind the camera
 #            show edge markers on the HUD.
-#   hp       no regeneration before 4 s, regeneration after; Tay không + Q held does not block gunfire; down -> lost (the
-#            gunman stands down), retry revives.
+#   hp       no regeneration before GunData.regen_delay(), regeneration after; Tay không + Q held does not block gunfire;
+#            down -> lost (the gunman stands down, the loss counted for that wave), retry revives and the respawned gunman
+#            aims x GunData.retry_mercy(1) (T11 retry mercy); a switch to Dễ between the loss and the retry applies at once
+#            (token cap 3, regeneration delay 3 s).
 #   retry    two waves: the wave-2 checkpoint (spot, ammo) comes back on retry() after a loss; a checkpoint taken with no
 #            ammo left comes back with one magazine of reserve per loadout gun.
 #   ammo     loadout lock (equip refuses, scroll skips, wheel "Khoá"), finite spare rounds, reload from the reserve, out of
@@ -34,6 +37,14 @@
 #            window); a charge into the box the player crouches behind crashes into it without hitting him.
 #   boss3    the boss AI loop (activate()): idle, charge telegraph, charge, recover, lift, toss.
 #   floor    a gunman walking onto a 0.3 m platform follows its height.
+#   E        (Wave 3 T3) the pallet-shield guard: the rimmed pallet; aimed pistol rounds from the front are blocked (no
+#            damage, "Không xuyên!", reaction none); the 4th knocks the pallet away (it flies off and lands), later rounds
+#            hurt; a flank shot hurts at once; one close shotgun blast knocks the pallet away; Dễ: 3 hits; a knockout drops
+#            it; a live wave of two gunmen and a shield guard is won by a good bot (no loss).
+#   D        (Wave 3 T2, values from T11) the gun difficulty row on Thường and Dễ: GunData values (accuracy x2.0 / x0.8,
+#            16 / 8 HP a bullet), telegraph frames between the glint and the shot (21 / 27 at 60 fps), the token cap (4 / 3),
+#            combat.regen_delay set while engaged and the regeneration start frame (420 / 180 after the hit), the previous
+#            regen delay restored on stop() and on won.
 # Counts physics frames (Engine.max_fps = 60).
 # Run:  godot --headless --path . --script tests/test_gunfight.gd
 extends SceneTree
@@ -137,7 +148,7 @@ func _fire_edge() -> void:
 
 func _on_player_hit(src: Node3D, _dmg: float) -> void:
 	hits_seen += 1
-	if not tele_frame.has(src.get_instance_id()) or frames - int(tele_frame[src.get_instance_id()]) < 24:
+	if not tele_frame.has(src.get_instance_id()) or frames - int(tele_frame[src.get_instance_id()]) < roundi(GunData.telegraph_s() * 60.0):
 		if src is Gunman:
 			bad_tele += 1
 
@@ -197,6 +208,7 @@ func _on_physics() -> void:
 	frames += 1
 	if not started:
 		started = true
+		Difficulty.set_easy(false)           # Thường: GameFX loaded the owner's saved difficulty before this first frame
 		arena = Node3D.new()
 		arena.name = "Arena"
 		root.add_child(arena)
@@ -253,6 +265,12 @@ func _on_physics() -> void:
 			_ph_boss3(t)
 		"floor":
 			_ph_floor(t)
+		"diff":
+			_ph_diff(t)
+		"shield":
+			_ph_shield(t)
+		"shieldwave":
+			_ph_shieldwave(t)
 		"done":
 			_report()
 
@@ -411,14 +429,14 @@ func _ph_tele(t: int) -> void:
 	elif t == 600:
 		print("    %d hits in 10 s from 2 accurate gunmen, %d telegraphs" % [hits_seen, (fight.gunmen[0] as Gunman).tele_starts + (fight.gunmen[1] as Gunman).tele_starts])
 		_check(hits_seen >= 3, "accurate gunmen hit the player (%d hits)" % hits_seen)
-		_check(bad_tele == 0, "every hit came >= 0.4 s after its gunman's telegraph started (%d early)" % bad_tele)
+		_check(bad_tele == 0, "every hit came >= %.2f s after its gunman's telegraph started (%d early)" % [GunData.telegraph_s(), bad_tele])
 		_check(not aux.has("glint_off"), "the glint shows from the telegraph's start")
 		var ok: bool = true
 		for gm2: Variant in fight.gunmen:
 			for v: float in (gm2 as Gunman).tele_before_shot:
-				if v < GunData.TELEGRAPH_S - 0.001:
+				if v < GunData.telegraph_s() - 0.001:
 					ok = false
-		_check(ok, "every resolved shot had a full 0.4 s telegraph")
+		_check(ok, "every resolved shot had a full %.2f s telegraph" % GunData.telegraph_s())
 		_next("wall")
 
 
@@ -475,9 +493,10 @@ func _ph_cap(t: int) -> void:
 		for gm3: Variant in fight.gunmen:
 			shots_total += (gm3 as Gunman).shots
 		print("    6 gunmen: max %d shooting at once, %d telegraphing at once, %d shots in 10 s" % [max_sh, max_tele, shots_total])
-		_check(max_sh <= 3 and fight.max_shooters_seen <= 3, "never more than 3 shooting at once (max %d)" % max_sh)
-		_check(max_sh == 3, "the cap is reached with 6 gunmen (max %d)" % max_sh)
-		_check(max_tele <= 3, "at most 3 telegraphs at once (%d)" % max_tele)
+		var cap: int = GunData.max_shooters()
+		_check(max_sh <= cap and fight.max_shooters_seen <= cap, "never more than %d shooting at once (max %d)" % [cap, max_sh])
+		_check(max_sh == cap, "the cap is reached with 6 gunmen (max %d of %d)" % [max_sh, cap])
+		_check(max_tele <= cap, "at most %d telegraphs at once (%d)" % [cap, max_tele])
 		_check(max_edge >= 1, "glints behind the camera show edge markers on the HUD (max %d)" % max_edge)
 		_next("hp")
 
@@ -491,13 +510,13 @@ func _ph_hp(t: int) -> void:
 	elif t == 3:
 		var r: String = fight.hit_player(g, 8.0)
 		_check(r == "hit" and is_equal_approx(combat.hp, 92.0), "a gunman hit costs 8 HP (%s, %.0f)" % [r, combat.hp])
-	elif t == 3 + 210:
-		_check(is_equal_approx(combat.hp, 92.0), "no regeneration before 4 s (%.1f)" % combat.hp)
-	elif t == 3 + 300:
-		_check(combat.hp > 92.0, "regeneration after 4 s without damage (%.1f)" % combat.hp)
+	elif t == 3 + roundi(GunData.regen_delay() * 60.0) - 30:
+		_check(is_equal_approx(combat.hp, 92.0), "no regeneration before %.0f s (%.1f)" % [GunData.regen_delay(), combat.hp])
+	elif t == 3 + roundi(GunData.regen_delay() * 60.0) + 30:
+		_check(combat.hp > 92.0, "regeneration after %.0f s without damage (%.1f)" % [GunData.regen_delay(), combat.hp])
 		dir.equip(WeaponData.Slot.UNARMED)
 		combat.block_override = true
-	elif t == 3 + 310:
+	elif t == 3 + roundi(GunData.regen_delay() * 60.0) + 40:
 		_check(combat.blocking, "Tay không + Q: blocking")
 		var before: float = combat.hp
 		var r2: String = fight.hit_player(g, 8.0)
@@ -521,8 +540,18 @@ func _ph_hp_lost(t: int) -> void:
 	elif aux.has("lost_t") and t == int(aux["lost_t"]) + 2:
 		_check(g.state_name() == "idle" and not g.has_token, "the gunman stands down (%s)" % g.state_name())
 		_check(combat.fight_active and not dir.locked_slots.is_empty(), "lost keeps the fight set up for the retry")
+		_check(fight.fail_wave == 0 and fight.fail_streak == 1, "the loss is counted for wave 1 (wave %d, streak %d)" % [fight.fail_wave, fight.fail_streak])
+		_check(fight.max_shooters == 4 and is_equal_approx(combat.regen_delay, 7.0), "Thường before the switch (cap %d, regen %.0f)" % [fight.max_shooters, combat.regen_delay])
+		Difficulty.set_easy(true)            # the owner switches to Dễ on the fail card
 		fight.retry()
 		_check(fight.state == "running" and not combat.is_down() and is_equal_approx(combat.hp, 100.0), "retry: running again with full HP")
+		_check(fight.max_shooters == 3 and is_equal_approx(combat.regen_delay, 3.0),
+			"a switch to Dễ between the loss and the retry applies at once (cap %d, regen %.0f)" % [fight.max_shooters, combat.regen_delay])
+		Difficulty.set_easy(false)
+		var rg: Gunman = fight.gunmen[0]
+		_check(is_equal_approx(rg.accuracy_k, GunData.retry_mercy(1)) and is_equal_approx(GunData.retry_mercy(1), 0.85)
+			and is_equal_approx(GunData.retry_mercy(9), GunData.RETRY_MERCY_MIN),
+			"retry mercy: the respawned gunman aims x%.2f after one loss (floor %.2f)" % [rg.accuracy_k, GunData.retry_mercy(9)])
 		aux.erase("lost_t")
 		_next("retry")
 	elif t > 1500:
@@ -862,6 +891,199 @@ func _ph_floor(t: int) -> void:
 		print("    floor: gunman at z %.2f, floor %.2f" % [g.global_position.z, g.floor_y])
 		_check(g.global_position.z > -21.5, "it walked onto the platform (z %.2f)" % g.global_position.z)
 		_check(absf(g.floor_y - 0.3) < 0.02 and (g.drop > 0.01 or absf(g.global_position.y - 0.3) < 0.02), "it follows the platform's height (floor %.2f, y %.2f)" % [g.floor_y, g.global_position.y])
+		_next("shield")
+
+
+## Part E: the pallet-shield guard (unit checks with real aimed rounds, Dễ, the knockout).
+func _ph_shield(t: int) -> void:
+	var sx: float = -600.0
+	if t == 1:
+		_fresh(Vector3(sx, 0.0, 0.0))
+		aux["drops"] = 0
+		_fight([[{"at": Vector3(sx + ThirdPersonController.AIM_SIDE, 0.0, -8.0), "yaw": PI, "opts": {"ai": false, "kind": "shield"}}]])
+		fight.start()
+		g = fight.gunmen[0]
+		g.shield_dropped.connect(func(_x: Gunman) -> void: aux["drops"] = int(aux["drops"]) + 1)
+		dir.aim_override = true
+	elif t == 3:
+		_check(g.kind == "shield" and g.has_shield() and g.shield != null and g.shield.get_parent() == g.body, "E: the shield guard holds a pallet")
+		_check(Readability.rimmed_count(g.shield) > 0, "E: the pallet carries the enemy rim (%d meshes)" % Readability.rimmed_count(g.shield))
+		_check(g.front_hit(player.global_position), "E: the player stands in his front")
+	elif t == 25 or t == 45 or t == 65 or t == 85 or t == 105:
+		_fire_edge()
+	elif t == 48:
+		_check(is_equal_approx(g.hp, 60.0) and g.blocked_hits == 2 and g.shield_hits == 2, "E: two front rounds hit the pallet, no damage (hp %.0f, blocked %d)" % [g.hp, g.blocked_hits])
+		_check(String(dir.hit_log[-1]["reaction"]) == "none", "E: a blocked round reads as no hit (no hit marker)")
+		_check(g.shout.visible and g.shout.text == GunData.T_NO_PIERCE, "E: \"%s\" over his head" % GunData.T_NO_PIERCE)
+	elif t == 88:
+		_check(not g.has_shield() and int(aux["drops"]) == 1 and g.shield.top_level and g.shield.get_parent() == g, "E: the 4th round knocks the pallet away (drops %d)" % int(aux["drops"]))
+		_check(is_equal_approx(g.hp, 60.0), "E: the knock-away itself does no damage (hp %.0f)" % g.hp)
+		_check(Readability.rimmed_count(g.shield) == 0, "E: the flying pallet is no longer rimmed")
+	elif t == 108:
+		_check(is_equal_approx(g.hp, 35.0), "E: without the pallet a front round hurts (hp %.0f)" % g.hp)
+	elif t == 170:
+		_check(g.shield.global_position.y < 0.3 and not g._pallet_fly, "E: the pallet landed on the floor (y %.2f)" % g.shield.global_position.y)
+		_fight([[{"at": Vector3(sx + ThirdPersonController.AIM_SIDE, 0.0, -8.0), "yaw": PI * 0.5, "opts": {"ai": false, "kind": "shield"}}]])
+		fight.start()
+		g = fight.gunmen[0]
+	elif t == 195:
+		_check(not g.front_hit(player.global_position), "E: from his side the player is outside the pallet's cone")
+		_fire_edge()
+	elif t == 198:
+		_check(is_equal_approx(g.hp, 35.0) and g.blocked_hits == 0 and g.has_shield(), "E: a flank round hurts (hp %.0f), the pallet stays" % g.hp)
+		_fight([[{"at": Vector3(sx + ThirdPersonController.AIM_SIDE, 0.0, -3.0), "yaw": PI, "opts": {"ai": false, "kind": "shield"}}]])
+		fight.start()
+		g = fight.gunmen[0]
+		dir.equip(WeaponData.Slot.SHOTGUN)
+	elif t == 225:
+		_fire_edge()
+	elif t == 228:
+		_check(not g.has_shield() and g.blocked_hits == 1, "E: one shotgun blast from 3 m knocks the pallet away (blocked %d)" % g.blocked_hits)
+		dir.equip(WeaponData.Slot.PISTOL)
+		dir.aim_override = false
+		Difficulty.set_easy(true)
+		_fight([[{"at": Vector3(sx, 0.0, -8.0), "yaw": PI, "opts": {"ai": false, "kind": "shield"}}]])
+		fight.start()
+		g = fight.gunmen[0]
+		var from: Vector3 = player.global_position
+		var r: Array[String] = []
+		for i: int in 3:
+			r.append(g.take_hit({"kind": "bullet", "from": from}))
+		_check(r[0] == "none" and r[1] == "none" and r[2] == "stumble" and not g.has_shield(), "E Dễ: the 3rd hit knocks the pallet away (%s)" % str(r))
+		Difficulty.set_easy(false)
+		_fight([[{"at": Vector3(sx, 0.0, -8.0), "yaw": 0.0, "opts": {"ai": false, "kind": "shield"}}]])
+		fight.start()
+		g = fight.gunmen[0]
+		for i2: int in 3:
+			g.take_hit({"kind": "bullet", "from": from})
+		_check(g.is_down() and not g.has_shield() and g.shield.top_level, "E: back hits knock him out and he drops the pallet")
+	elif t == 320:
+		_next("shieldwave")
+
+
+## Part E: a live wave (two gunmen, one shield guard) against a good bot: steady aim (90 % hits on a clear line, one round
+## per pistol cycle), a sprint round the shield guard while his pallet faces it.
+func _ph_shieldwave(t: int) -> void:
+	var sx: float = -900.0
+	if t == 1:
+		_fresh(Vector3(sx, 0.0, 0.0))
+		lost_n = 0
+		won_n = 0
+		aux["bot_cd"] = 0.0
+		aux["rng"] = RandomNumberGenerator.new()
+		(aux["rng"] as RandomNumberGenerator).seed = 77
+		_fight([[{"at": Vector3(sx - 6.0, 0.0, -14.0), "opts": {"alerted": true}}, {"at": Vector3(sx + 6.0, 0.0, -14.0), "opts": {"alerted": true}},
+			{"at": Vector3(sx, 0.0, -16.0), "opts": {"alerted": true, "kind": "shield"}}]])
+		fight.start()
+	elif fight.state == "running" and t < 3600:
+		var tgt: Gunman = null
+		var best: float = INF
+		for e: Variant in fight.alive():
+			var gm: Gunman = e
+			var dd: float = gm.global_position.distance_to(player.global_position) + (8.0 if gm.has_shield() else 0.0)
+			if dd < best:
+				best = dd
+				tgt = gm
+		player.input_override = null
+		player.sprint_override = false
+		if tgt == null:
+			return
+		var to: Vector3 = tgt.feet() - player.global_position
+		player.yaw = atan2(-to.x, -to.z)
+		if tgt.has_shield() and tgt.front_hit(player.global_position):
+			player.input_override = Vector2(1.0, 0.0)
+			player.sprint_override = true
+		aux["bot_cd"] = float(aux["bot_cd"]) - 1.0 / 60.0
+		if float(aux["bot_cd"]) <= 0.0:
+			aux["bot_cd"] = float(WeaponData.SLOTS[WeaponData.Slot.PISTOL]["cycle"])
+			var eye: Vector3 = player.global_position + Vector3(0.0, 1.3, 0.0)
+			if fight.clear_line(eye, tgt.feet() + Vector3(0.0, 1.2 - tgt.drop, 0.0)) and (aux["rng"] as RandomNumberGenerator).randf() < 0.9:
+				tgt.take_hit({"kind": "bullet", "from": player.global_position})
+	elif not aux.has("sw_end"):
+		aux["sw_end"] = t
+		player.input_override = null
+		player.sprint_override = false
+		print("    shield wave: %s after %.1f s, losses %d, hp %.0f" % [fight.state, float(t) / 60.0, lost_n, combat.hp])
+		_check(fight.state == "won" and lost_n == 0, "E: the good bot wins the wave with a shield guard without a loss (%s, %d)" % [fight.state, lost_n])
+	elif t >= int(aux["sw_end"]) + 90:   # the last knockout's slow-motion orbit is over
+		aux.erase("sw_end")
+		aux["dpass"] = 0
+		_next("diff")
+
+
+## Part D: the gun difficulty row, pass 0 on Thường, pass 1 on Dễ.
+func _ph_diff(t: int) -> void:
+	var easy: bool = int(aux.get("dpass", 0)) == 1
+	var tag: String = "Dễ" if easy else "Thường"
+	var want_tele: int = 27 if easy else 21
+	var want_cap: int = 3 if easy else 4
+	var want_regen: float = 3.0 if easy else 7.0
+	var rf: int = roundi(want_regen * 60.0)
+	if t == 1:
+		Difficulty.set_easy(easy)
+		_check(is_equal_approx(GunData.telegraph_s(), 0.45 if easy else 0.35) and GunData.max_shooters() == want_cap
+			and is_equal_approx(GunData.regen_delay(), want_regen) and is_equal_approx(GunData.accuracy_k(), 0.8 if easy else 2.0)
+			and is_equal_approx(GunData.gunman_dmg(), 8.0 if easy else 16.0),
+			"D %s: the gun row (telegraph %.2f, cap %d, regen %.0f, accuracy x%.1f, dmg %.0f)" % [tag, GunData.telegraph_s(),
+			GunData.max_shooters(), GunData.regen_delay(), GunData.accuracy_k(), GunData.gunman_dmg()])
+		_fresh(Vector3(1400.0, 0.0, 0.0), true)
+		aux["tele_d"] = []
+		aux["tele_f"] = -1
+		_fight([[{"at": Vector3(1400.0, 0.0, -10.0), "opts": {"alerted": true}}]], {"accuracy_override": 0.0})
+		fight.start()
+		g = fight.gunmen[0]
+		g.telegraph_started.connect(func(_x: Gunman) -> void: aux["tele_f"] = frames)
+		g.shot.connect(func(_x: Gunman, _r: String) -> void:
+			if int(aux["tele_f"]) >= 0:
+				(aux["tele_d"] as Array).append(frames - int(aux["tele_f"])))
+	elif t == 3:
+		_check(fight.max_shooters == want_cap, "D %s: the fight's token cap is %d (%d)" % [tag, want_cap, fight.max_shooters])
+		_check(is_equal_approx(combat.regen_delay, want_regen), "D %s: combat.regen_delay is %.0f s while engaged (%.1f)" % [tag, want_regen, combat.regen_delay])
+		var dummies: Array[Node] = []
+		var granted: int = 0
+		for i: int in 6:
+			var d := Node.new()
+			dummies.append(d)
+			if fight.request_token(d):
+				granted += 1
+		_check(granted == want_cap and fight.shooters() == want_cap, "D %s: %d tokens granted to 6 askers (%d)" % [tag, want_cap, granted])
+		for d2: Node in dummies:
+			fight.release_token(d2)
+			d2.free()
+	elif t == 360:
+		var ds: Array = aux["tele_d"]
+		var ok: bool = not ds.is_empty()
+		for v: Variant in ds:
+			if absi(int(v) - want_tele) > 1:
+				ok = false
+		print("    D %s: telegraph frames before each shot %s" % [tag, str(ds)])
+		_check(ok, "D %s: every shot resolves %d frames after its glint (%s)" % [tag, want_tele, str(ds)])
+		fight.stop()
+		_check(is_equal_approx(combat.regen_delay, CombatData.REGEN_DELAY), "D %s: stop() restores the regen delay (%.1f)" % [tag, combat.regen_delay])
+	elif t == 362:
+		_fresh(Vector3(1400.0, 0.0, 0.0))
+		_fight([[{"at": Vector3(1400.0, 0.0, -30.0), "opts": {"ai": false}}]])
+		fight.start()
+		g = fight.gunmen[0]
+		aux["regen_f"] = -1
+	elif t == 364:
+		fight.hit_player(g, 8.0)
+		aux["hit_f"] = frames
+	elif t > 364 and t < 364 + rf + 40:
+		if int(aux["regen_f"]) < 0 and combat.hp > 92.0:
+			aux["regen_f"] = frames
+	elif t == 364 + rf + 40:
+		var df: int = int(aux["regen_f"]) - int(aux["hit_f"])
+		_check(int(aux["regen_f"]) > 0 and absi(df - rf) <= 2, "D %s: regeneration starts %d frames after the hit (%d)" % [tag, rf, df])
+		for i2: int in 3:
+			g.take_hit({"kind": "bullet", "from": player.global_position})
+	elif t == 364 + rf + 44:
+		_check(fight.state == "won" and is_equal_approx(combat.regen_delay, CombatData.REGEN_DELAY), "D %s: won restores the regen delay (%s, %.1f)" % [tag, fight.state, combat.regen_delay])
+		if not easy:
+			aux["dpass"] = 1
+			_next("diff")
+	elif t == 364 + rf + 44 + 90:   # Dễ: the last knockout's slow-motion orbit is over
+		Difficulty.set_easy(false)
 		_next("done")
 
 
@@ -870,8 +1092,9 @@ func _report() -> void:
 		fight.stop()
 	_check(arena.find_children("*", "GPUParticles3D", true, false).is_empty(), "no GPUParticles3D")
 	_check(is_equal_approx(Engine.time_scale, 1.0), "Engine.time_scale is 1.0")
+	Difficulty.set_easy(false)
 	if fails.is_empty():
-		print("✅ SUCCESS: GUNFIGHT (cover, gunmen, telegraph, walls, 3-shooter cap, HP, retry, ammo, KO, forklift boss)")
+		print("✅ SUCCESS: GUNFIGHT (cover, gunmen, telegraph, walls, shooter cap, HP, retry, ammo, KO, forklift boss, difficulty row)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())

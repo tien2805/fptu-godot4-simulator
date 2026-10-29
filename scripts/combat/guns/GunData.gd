@@ -41,7 +41,7 @@ const RUN_SPEED: float = 4.2
 const TURN_RATE: float = 8.0
 const COVER_WAIT: Vector2 = Vector2(0.7, 1.8)
 const AIM_S: float = 0.3                 # stand up and aim before the telegraph
-const TELEGRAPH_S: float = 0.4           # muzzle glint before every bullet resolves
+const TELEGRAPH_S: float = 0.4           # muzzle glint before every bullet resolves (the old value; gunmen read telegraph_s())
 const SHOT_GAP_S: float = 0.22
 const BURST: Vector2i = Vector2i(1, 3)
 const PEEKS_BEFORE_FLANK: Vector2i = Vector2i(2, 3)
@@ -73,7 +73,17 @@ const GUNMAN_DMG: float = 8.0
 const MISS_OFFSET: Vector2 = Vector2(0.7, 1.5)
 const SHOT_RANGE: float = 60.0
 const KO_STARS_S: float = 6.0
-const MAX_SHOOTERS: int = 3
+const MAX_SHOOTERS: int = 3              # the old cap (GunFight reads max_shooters())
+# ----- the gun row of the difficulty table (Wave 3 plan 2026-10-30-w3-shared.md T2, tuned in T11 with sim_gunfight):
+# Thường, Dễ. The telegraph is never shortened for difficulty: Thường is harder because a shot that resolves on an exposed
+# player lands more often and hurts more, and HP waits longer to regenerate. -----
+const DIFF_TELEGRAPH_S: Vector2 = Vector2(0.35, 0.45)
+const DIFF_SHOOTERS: Vector2i = Vector2i(4, 3)
+const DIFF_REGEN_DELAY: Vector2 = Vector2(7.0, 3.0)
+const DIFF_ACCURACY_K: Vector2 = Vector2(2.0, 0.8)
+const DIFF_GUNMAN_DMG: Vector2 = Vector2(16.0, 8.0)   # HP per gunman bullet (GUNMAN_DMG is the old flat value)
+const RETRY_MERCY: float = 0.15          # each loss in a row on one wave: that wave's gunmen aim this much worse on the retry
+const RETRY_MERCY_MIN: float = 0.55      #   ... down to this factor (the long tail of retries stays short)
 ## Damage a gunman takes per hit kind (WeaponDirector / PlayerCombat info "kind").
 const GUNMAN_DMG_TAKEN: Dictionary = {"bullet": 25.0, "pellet": 70.0, "punch": 15.0, "melee": 60.0, "bonk": 60.0,
 	"blast": 999.0, "heavy": 30.0, "counter": 30.0}
@@ -81,6 +91,17 @@ const TRACER_S: float = 0.16
 const TRACER_W: float = 0.05
 const TRACER_COL := Color(1.0, 0.42, 0.22, 0.95)
 const GLINT_COL := Color(1.0, 0.86, 0.32)
+
+# ----- pallet-shield guard (Gunman opt "kind": "shield", Wave 3 T3; D3W-3, usable by Day 5 too) -----
+const SHIELD_FRONT_DEG: float = 70.0     # a hit from within this of his front lands on the pallet (blocked)
+const SHIELD_HITS: Vector2i = Vector2i(4, 3)   # hits on the pallet that knock it away (Thường, Dễ)
+const SHIELD_SHOTGUN_M: float = 4.0      # a shotgun hit on the pallet from closer than this knocks it away at once
+const SHIELD_KEEP_M: float = 5.0         # walks in to about this distance (no cover while he holds the pallet)
+const SHIELD_WALK: float = 1.4           # m/s, the pallet is heavy
+const SHIELD_TURN_RATE: float = 0.8      # rad/s, slow to turn: a sprint round him (or a dive) flanks him
+const SHIELD_BURST: Vector2i = Vector2i(1, 2)
+const SHIELD_MUZZLE_SIDE: float = 0.5    # he fires round the pallet's right edge
+const T_NO_PIERCE: String = "Không xuyên!"
 
 # ----- ammo -----
 const PICKUP_R: float = 1.3
@@ -164,7 +185,7 @@ static func pose(pose_name: String, u: float) -> Dictionary:
 	match pose_name:
 		"stunned":
 			return CineMoves.code_pose("stunned", u)
-		"cover_crouch", "aim", "drive", "name_speech", "crouch_aim":
+		"cover_crouch", "aim", "drive", "name_speech", "crouch_aim", "dive", "prone":
 			if not _pose_cache.has(pose_name):
 				_pose_cache[pose_name] = _static_pose(pose_name)
 			return _pose_cache[pose_name]
@@ -192,11 +213,58 @@ static func _static_pose(pose_name: String) -> Dictionary:
 		"drive":                 # seated, both hands on the steering wheel (legs from the "sit" clip)
 			return {"shoulder_l": Vector3(0.95, 0.0, -0.12), "elbow_l": Vector3(0.7, 0.0, 0.0),
 				"shoulder_r": Vector3(0.95, 0.0, 0.12), "elbow_r": Vector3(0.7, 0.0, 0.0), "torso": Vector3(0.1, 0.0, 0.0)}
+		"dive":                  # bullet time: flying flat, both arms out with the pistol, head up, legs together
+			return {"shoulder_r": Vector3(1.9, 0.0, 0.08), "elbow_r": Vector3(0.1, 0.0, 0.0),
+				"shoulder_l": Vector3(1.75, 0.0, -0.45), "elbow_l": Vector3(0.45, 0.0, 0.0),
+				"thigh_l": Vector3(-0.12, 0.0, 0.08), "knee_l": Vector3(-0.35, 0.0, 0.0),
+				"thigh_r": Vector3(-0.05, 0.0, -0.08), "knee_r": Vector3(-0.2, 0.0, 0.0),
+				"torso": Vector3(-0.1, 0.0, 0.0), "head": Vector3(-0.55, 0.0, 0.0)}
+		"prone":                 # lying on the belly after the dive, the pistol aimed ahead
+			return {"shoulder_r": Vector3(2.6, 0.0, 0.1), "elbow_r": Vector3(0.15, 0.0, 0.0),
+				"shoulder_l": Vector3(2.45, 0.0, -0.35), "elbow_l": Vector3(0.5, 0.0, 0.0),
+				"thigh_l": Vector3(-0.05, 0.0, 0.12), "knee_l": Vector3(-0.15, 0.0, 0.0),
+				"thigh_r": Vector3(-0.05, 0.0, -0.12), "knee_r": Vector3(-0.1, 0.0, 0.0),
+				"torso": Vector3(-0.15, 0.0, 0.0), "head": Vector3(-0.85, 0.0, 0.0)}
 		"name_speech":           # standing up on the seat, arms wide: presenting himself
 			return {"shoulder_l": Vector3(0.45, 0.0, 1.15), "elbow_l": Vector3(0.3, 0.0, 0.0),
 				"shoulder_r": Vector3(0.45, 0.0, -1.15), "elbow_r": Vector3(0.3, 0.0, 0.0),
 				"torso": Vector3(-0.15, 0.0, 0.0), "head": Vector3(-0.2, 0.0, 0.0)}
 	return {}
+
+
+## Gun difficulty (Difficulty.pick): the muzzle glint before each enemy bullet resolves (s).
+static func telegraph_s() -> float:
+	return float(Difficulty.pick(DIFF_TELEGRAPH_S.x, DIFF_TELEGRAPH_S.y))
+
+
+## Gun difficulty: gunmen shooting at once (GunFight's token cap unless the setup passes "max_shooters").
+static func max_shooters() -> int:
+	return int(Difficulty.pick(DIFF_SHOOTERS.x, DIFF_SHOOTERS.y))
+
+
+## Gun difficulty: seconds without damage before the player's HP regenerates during a gunfight.
+static func regen_delay() -> float:
+	return float(Difficulty.pick(DIFF_REGEN_DELAY.x, DIFF_REGEN_DELAY.y))
+
+
+## Gun difficulty: hits on a shield guard's pallet that knock it away (Thường 4, Dễ 3).
+static func shield_hits() -> int:
+	return int(Difficulty.pick(SHIELD_HITS.x, SHIELD_HITS.y))
+
+
+## Gun difficulty: HP one gunman bullet takes from the player.
+static func gunman_dmg() -> float:
+	return float(Difficulty.pick(DIFF_GUNMAN_DMG.x, DIFF_GUNMAN_DMG.y))
+
+
+## Retry mercy: the hit-chance factor for a wave lost `fails` times in a row (1.0 before the first loss).
+static func retry_mercy(fails: int) -> float:
+	return maxf(RETRY_MERCY_MIN, 1.0 - RETRY_MERCY * float(maxi(0, fails)))
+
+
+## Gun difficulty: a factor on every gunman's hit chance.
+static func accuracy_k() -> float:
+	return float(Difficulty.pick(DIFF_ACCURACY_K.x, DIFF_ACCURACY_K.y))
 
 
 ## Enemy hit chance (0..1) of one bullet at distance d (m) against a player moving at `speed` m/s; popped = the player is
