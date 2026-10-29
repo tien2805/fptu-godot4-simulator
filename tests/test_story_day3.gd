@@ -10,8 +10,13 @@
 # TOANG! -> retry, topple) -> seg_d3_boss -> cine_d3 -> bed -> the call N = 4 -> Day 4 (the yard is gone). Then Continue
 # at d3_crates: Alexander comes back before every crate is broken (no E4 offered), and Chọn cảnh snapshots of the yard
 # beats.
+# Wave 3 integration: a time-scale audit (tests/support/time_scale_audit.gd) watches the whole run (the crane, the
+# forklifts, the coffin crate's orbit, the director cuts, Impact): no frame with the scale off 1 and no owner, no owner
+# holding it over 6 s, clean at the end.
 # Run:  godot --headless --path . --script tests/test_story_day3.gd
 extends SceneTree
+
+const TimeAudit: Script = preload("res://tests/support/time_scale_audit.gd")
 
 var TMP: String = "user://test_story_day3_%d.cfg" % OS.get_process_id()
 var SNAP: String = "user://test_story_day3_snap_%d.cfg" % OS.get_process_id()
@@ -28,6 +33,7 @@ var fr: Node
 var sr: StoryRoam
 var m: StoryMission
 var mark: Dictionary = {}
+var audit: Node = null
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -50,6 +56,9 @@ func _initialize() -> void:
 	var fx: Node = root.get_node_or_null("GameFX")
 	if fx:
 		fx.set("reduce_scares", false)
+	audit = TimeAudit.new()
+	audit.name = "TimeScaleAudit"
+	root.add_child(audit)
 
 
 func _roam() -> void:
@@ -538,6 +547,9 @@ func _process(_d: float) -> bool:
 
 
 func _end() -> bool:
+	if audit:
+		print("  ", audit.call("report"))
+		_check(bool(audit.call("clean", 6.0)), "the time scale stayed in the owner protocol (%s)" % String(audit.call("report")))
 	for p: String in [TMP, SNAP, TMP_U, TMP_C]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 	StoryChapters.unlocks_path = StoryChapters.UNLOCKS_PATH

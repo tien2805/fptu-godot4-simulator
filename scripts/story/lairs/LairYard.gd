@@ -360,10 +360,12 @@ const PLAYER_FORK_YAW: float = -90.0
 
 
 ## T9: the accuracy factor of the yard's gunmen (Gunman opt "accuracy"): Thường a little sharper, Dễ softer.
-const GUARD_ACC: float = 1.0
+## Wave 3 integration: on the merged gun row (x2.0 accuracy, 16 HP a bullet on Thường) the Thường factors came down (static
+## vars so sim_day3 can try values: env SIM_GUARD_ACC / SIM_SNEAK_ACC).
+static var GUARD_ACC: float = 0.35
 const GUARD_ACC_EASY: float = 0.85
-## The sneak's early fight is short (6 guards, no waves): its guards aim a little sharper on Thường.
-const SNEAK_ACC: float = 1.05
+## The sneak's early fight is short (6 guards, no waves).
+static var SNEAK_ACC: float = 0.3
 
 
 static func guard_accuracy(sneak: bool = false) -> float:

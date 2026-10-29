@@ -93,6 +93,7 @@ func _process(_d: float) -> bool:
 			_step(0.65)
 			_check(crane.in_cabin() and p.global_position.y > yard.global_position.y + 5.5, "after 1.2 s: in the cabin, up high (%.1f m)" % (p.global_position.y - yard.global_position.y))
 			_check(crane.cam.current and crane.cam.has_meta(CameraDirector.META_FX), "the cabin camera is current and takes the director's fx")
+			_check(fight.bullet_time != null and not fight.bullet_time.enabled, "no bullet time in the cabin (the shared gun core live)")
 			_check(CameraFraming.in_safe(crane.cam, crane.hook_pos(), 0.05) and CameraFraming.in_safe(crane.cam, crane.footprint_centre(), 0.05), "the cabin camera frames the hook and the footprint")
 			_check(crane.hint() == YardCrane.T_CABIN, "the cabin prompt")
 			var x0: float = crane.trolley_x
@@ -148,6 +149,7 @@ func _process(_d: float) -> bool:
 			# C
 			crane.leave()
 			_check(crane.state == "idle" and p.controls_enabled and not crane.cam.current and fr.get_viewport().get_camera_3d() == game_cam, "[F]: down, the gameplay camera and control back")
+			_check(fight.bullet_time.enabled, "bullet time back on the ground")
 			# D
 			crane.reset()
 			_check(crane.drops_left == 3 and crane.hook_box != null, "retry: the drops back on the hook")
@@ -162,7 +164,7 @@ func _process(_d: float) -> bool:
 			c2.enter(p)
 			for k: int in 80:
 				c2.step(DT)
-			_check(c2.in_cabin() and is_equal_approx(g_out.accuracy_k, acc0 * 0.55), "Dễ: the gunmen aim x0.55 at the cabin (Thường x0.75, T9)")
+			_check(c2.in_cabin() and is_equal_approx(g_out.accuracy_k, acc0 * 0.55), "Dễ: the gunmen aim x0.55 at the cabin (Thường x0.4 since the wave3 re-tune)")
 			c2.leave()
 			_check(is_equal_approx(g_out.accuracy_k, acc0), "Dễ: their aim back after the cabin")
 			Difficulty.set_easy(false)

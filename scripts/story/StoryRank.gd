@@ -21,8 +21,8 @@
 # Score = 100 * sum(w * k) / sum(w); S >= 85, A >= 65, B >= 45, else C.
 # Thresholds: the stake-out, the foot chase, the canteen, the bike chase and the drift race calibrated by T10 (the
 # sloppy-bot harnesses, table in the plan; the bike chase re-calibrated on wave3 after d2fix); the brawls, the corridor,
-# the bridge and the escape have no harness yet (provisional); Day 5 set on wave3 from sim_day5 (the day5 plan's
-# integration table); Day 3 provisional from the day3 plan's par numbers until its integration re-tune.
+# the bridge and the escape have no harness yet (provisional); Days 3 and 5 set on wave3 from sim_day3 / sim_day5 (the
+# day plans' integration tables).
 class_name StoryRank
 extends RefCounted
 
@@ -39,7 +39,8 @@ const FAILS_DEFAULT: Array = [0, 2]
 const LABELS: Dictionary = {"time": "Thời gian", "dmg": "Máu mất", "fails": "Thử lại", "ko": "Hạ gục", "opt": "Mục tiêu phụ"}
 const OPT_LABELS: Dictionary = {"seen": "Không bị để ý", "shortcut": "Đi đường tắt", "spotted": "Không bị phát hiện",
 	"all": "Đập hết thùng", "wrong": "Không giao nhầm món", "leaks": "Không để lọt dữ liệu",
-	"breach_clean": "Chặn đột kích không mất máu", "qte_clean": "Kết liễu ngay lần đầu", "domino": "Đổ tủ đè bảo vệ"}
+	"breach_clean": "Chặn đột kích không mất máu", "qte_clean": "Kết liễu ngay lần đầu", "domino": "Đổ tủ đè bảo vệ",
+	"crane": "Dùng cần cẩu hạ địch"}
 const T_YES: String = "Đạt"
 const T_NO: String = "Chưa"
 
@@ -55,11 +56,11 @@ const MISSIONS: Dictionary = {
 	"d2_drift": {"time": [70.0, 160.0], "ko": [2, 8]},
 	"d2_bridge": {"time": [70.0, 170.0]},
 	"d2_duel": {"time": [50.0, 130.0], "dmg": [15.0, 70.0]},
-	# Day 3 (provisional: the day3 plan's par numbers; fixed at integration)
-	"d3_sneak": {"time": [70.0, 160.0], "opt": {"key": "spotted", "want": false}},
-	"d3_gunfight": {"time": [100.0, 220.0], "dmg": [30.0, 100.0], "ko": [6, 10]},
-	"d3_crates": {"time": [70.0, 160.0], "dmg": [20.0, 80.0], "opt": {"key": "all", "want": true}},
-	"d3_boss": {"time": [100.0, 220.0], "dmg": [30.0, 100.0]},
+	# Day 3 (set on wave3 from the sim_day3 re-tune on the merged gun core; table in the day3 plan)
+	"d3_sneak": {"time": [60.0, 180.0], "dmg": [0.0, 200.0], "opt": {"key": "spotted", "want": false}},
+	"d3_gunfight": {"time": [150.0, 350.0], "dmg": [50.0, 400.0], "opt": {"key": "crane", "want": true}},
+	"d3_crates": {"time": [30.0, 70.0], "dmg": [0.0, 120.0], "opt": {"key": "all", "want": true}},
+	"d3_boss": {"time": [80.0, 200.0], "dmg": [80.0, 400.0], "opt": {"key": "crane", "want": true}},
 	# Day 4
 	"d4_canteen": {"time": [35.0, 150.0], "opt": {"key": "wrong", "max": 0}},
 	"d4_brawl": {"time": [45.0, 120.0], "dmg": [15.0, 70.0]},

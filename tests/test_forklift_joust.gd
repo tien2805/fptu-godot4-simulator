@@ -98,6 +98,7 @@ func _process(_d: float) -> bool:
 			m.advance(DT)
 			_check(m.pf.hint() == PlayerForklift.T_ENTER and m.hud_prompt.text == PlayerForklift.T_ENTER, "[F] lái xe nâng near it")
 			_check(m.pf.enter() and m.pf.inside and p.visible and not p.controls_enabled and m.pf.cam.current and p.model.position.y > 0.4, "[F]: in, the player on the seat, its chase camera")
+			_check(m.fight.bullet_time != null and not m.fight.bullet_time.enabled, "no bullet time in the forklift (the shared gun core live)")
 			_check(m.pf.cam.has_meta(CameraDirector.META_FX), "the forklift camera takes the director's fx")
 			m.pf.input_override = {"throttle": 1.0, "steer": 0.0, "fork": 1}
 			var f0: Vector3 = m.pf.forklift.global_position
@@ -121,6 +122,7 @@ func _process(_d: float) -> bool:
 			_check(m.pf.forks_h() < 0.3, "[Q] lowers them")
 			m.pf.leave()
 			_check(not m.pf.inside and _player().visible and _player().controls_enabled and not m.pf.cam.current, "[F] again: out on foot")
+			_check(m.fight.bullet_time.enabled, "bullet time back on foot")
 			m.pf.enter()
 			# B: forks down: a side ram is a bump
 			var b: ForkliftBoss = _boss()

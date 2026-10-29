@@ -98,7 +98,7 @@ func setup(xf: Transform3D, f: GunFight, drops: int = 3, start_z: float = 5.0, s
 	drops_max = drops
 	_start_z = clampf(start_z, Z_RANGE.x, Z_RANGE.y)
 	_start_x = clampf(start_x, X_RANGE.x, X_RANGE.y)
-	cabin_acc = float(Difficulty.pick(0.75, 0.55))   # T9: the open cabin was a death trap at x1.0 for the sloppy bot
+	cabin_acc = float(Difficulty.pick(0.4, 0.55))   # T9: the open cabin was a death trap at x1.0 for the sloppy bot (wave3: 0.75 -> 0.4 on the x2.0 gun row)
 	_build()
 	reset()
 

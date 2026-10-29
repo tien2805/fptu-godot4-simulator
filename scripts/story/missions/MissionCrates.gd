@@ -53,6 +53,9 @@ class RackStrap extends Node3D:
 ## T9 (sloppy bot): at 90 s the bot had 45 s to spare on Thường; 55 s keeps every crate a race (Dễ keeps 90 s).
 const TIME_S: float = 55.0
 const TIME_S_EASY: float = 90.0
+## Wave 3 integration: the gate guards' aim (Gunman "accuracy"), Thường / Dễ. The merged gun core (x2.0 accuracy, 16 HP a
+## bullet on Thường) made the two of them kill the sloppy bot 3-11 times a run in what is a no-fail beat by design.
+const GATE_ACC: Vector2 = Vector2(0.4, 1.0)
 const DANCE_SPEED: float = 1.1
 const SWAY_HZ: float = 0.9
 const T_DROPPED: String = "Rơi hòm rồi! Chạy thôi!"
@@ -119,7 +122,7 @@ func _start() -> void:
 		wave.append({"target": strap})
 	var g_spots: Array = pts.get("gate", [])
 	for k: int in mini(2, g_spots.size()):
-		var gd: Dictionary = guard(k, g_spots[k], [], {"ai": false, "alerted": false})
+		var gd: Dictionary = guard(k, g_spots[k], [], {"ai": false, "alerted": false, "accuracy": float(Difficulty.pick(GATE_ACC.x, GATE_ACC.y))})
 		gd["yaw"] = deg_to_rad(-90.0)
 		wave.append(gd)
 	fight.add_wave(wave)
