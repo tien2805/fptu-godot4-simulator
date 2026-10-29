@@ -8,8 +8,8 @@
 #     DARK_FOV_DEG at the cut; his beam is an additive cone mesh, never a light);
 #   - the player's [F] torch (HorrorFlashlight, the horror toolkit's) makes him visible from LIGHT_SEEN_M to any unalerted
 #     guard facing him within LIGHT_HALF_DEG (own 10 Hz check with a clear line -> MissionSneak._on_spotted);
-#   - Za Mẫn's face flickers on the hall monitors with a synthesized whisper ("whisper_bed"); "Giảm hù dọa" = no whisper
-#     and a dimmer face;
+#   - Za Mẫn's face flickers on the hall monitors with a synthesized whisper ("whisper_bed"); "Giảm hù dọa" = no whisper,
+#     a dimmer face with slow shallow blips, and a far, soft blackout thump and row clunks;
 #   - a guard's flashlight dies and he shakes it (the joke): blind DUD_S seconds.
 # Power returns at the control room (the goal: set_power(true) right before done). A retry restores the lights and arms
 # the blackout again; the end of the mission restores them too. Beats about every 15-20 s (beats, a log for the tests):
@@ -62,6 +62,7 @@ var _see_acc: float = 0.0
 var _beam_mat: StandardMaterial3D
 var _led_mat: StandardMaterial3D
 var alarm_wave: bool = false
+var blackout_db: float = 0.0              # the blackout thump's volume (tests: softer with "Giảm hù dọa")
 var door_mark: Node3D = null
 ## T9 readability: the control room as an on-screen / edge marker, off-screen guards nearby as edge chevrons.
 var guide: BasementGuide = null
@@ -239,7 +240,8 @@ func _blackout() -> void:
 	if roam and roam.has_method("look"):
 		roam.call("look", "server_blackout")
 	popup(T_BLACKOUT, 2.0, WARN)
-	play_cue("sub_boom", -3.0)
+	blackout_db = -16.0 if _reduce_scares() else -3.0   # "Giảm hù dọa": a far, soft thump
+	play_cue("sub_boom", blackout_db)
 	var near: Gunman = null
 	var best: float = INF
 	for e: Variant in fight.alive():
@@ -262,7 +264,7 @@ func _blackout() -> void:
 
 func _on_power_row(_row: int) -> void:
 	if state == "running":
-		play_cue("locker_slam", -10.0)
+		play_cue("locker_slam", -20.0 if _reduce_scares() else -10.0)
 
 
 func _blackout_beats(dt: float) -> void:
@@ -273,7 +275,7 @@ func _blackout_beats(dt: float) -> void:
 		beats.append("face")
 		var soft: bool = _reduce_scares()
 		if level and level.has_method("flicker_face"):
-			level.call("flicker_face", FACE_S, 0.45 if soft else 1.0)
+			level.call("flicker_face", FACE_S, 0.3 if soft else 1.0, soft)
 		if not soft:
 			whispers += 1
 			play_cue("whisper_bed", -9.0)

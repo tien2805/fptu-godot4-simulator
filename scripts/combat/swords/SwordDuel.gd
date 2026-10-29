@@ -44,6 +44,10 @@
 # fighters; the boss and the player's moves are frozen meanwhile. A miss: he recovers QTE_RECOVER of his HP, the duel goes
 # on and the QTE comes again at 0; a pass: the existing snap finale, then `won`. qte_clean = the first QTE passed. Every
 # exit (pass, miss, retry, stop, freeing) gives the time scale and the camera back. opts "qte": false = the old finale.
+# Fix round: the killing blow that opens the QTE is not a "last enemy" knockout (PlayerCombat.last_fn wraps MeleeFight's:
+# false while the boss holds at 0 HP or the QTE runs, so no 0.5 s orbit takes the camera and the time scale from it), and
+# while the QTE runs (tree not paused) its slow motion and its camera are asked for again if anything ended them (a pause
+# of the tree ends Impact's slow motion).
 # ===========================================
 class_name SwordDuel
 extends Node3D
@@ -106,6 +110,9 @@ var qte_cam: Camera3D = null
 var qte_shots: int = 0
 var _prev_cam: Camera3D = null
 var _qte_ctrl: bool = true
+var _fight_last: Callable = Callable()
+## Times the QTE had to ask again for its slow motion or its camera (tests).
+var qte_rearms: int = 0
 
 
 func setup(opts: Dictionary) -> void:
@@ -163,6 +170,7 @@ func start() -> void:
 	_arm(true)
 	state = "running"
 	fight.start()
+	_wrap_last()
 
 
 ## After `lost` (or any time): a fresh boss, the player back at the start spot with full HP.
@@ -177,12 +185,14 @@ func retry() -> void:
 	_arm(true)
 	state = "running"
 	fight.retry()
+	_wrap_last()
 
 
 ## End without a result: the boss freed, the unarmed move set, the wheel and the HUD back to normal.
 func stop() -> void:
 	_sprinklers(false)
 	_qte_exit()
+	_unwrap_last()
 	if fight:
 		fight.stop()
 	state = "idle"
@@ -209,6 +219,7 @@ func _on_phase(ph: int) -> void:
 func _on_won() -> void:
 	_sprinklers(false)
 	_qte_exit()
+	_unwrap_last()
 	state = "won"
 	_arm(false)                                  # the staff goes away with the win: nothing left glued to the hand
 	won.emit()
@@ -241,7 +252,30 @@ func _arm(on: bool) -> void:
 func _exit_tree() -> void:
 	_sprinklers(false)
 	_qte_exit()
+	_unwrap_last()
 	_arm(false)
+
+
+## PlayerCombat.last_fn through the duel: MeleeFight's answer (taken at start / retry), but never while the boss holds at
+## 0 HP for the QTE or the QTE runs.
+func _wrap_last() -> void:
+	if combat == null or not is_instance_valid(combat):
+		return
+	if combat.last_fn != Callable(self, "_duel_last"):
+		_fight_last = combat.last_fn
+	combat.last_fn = _duel_last
+
+
+func _unwrap_last() -> void:
+	if combat and is_instance_valid(combat) and combat.last_fn == Callable(self, "_duel_last"):
+		combat.last_fn = Callable()
+	_fight_last = Callable()
+
+
+func _duel_last(e: Object) -> bool:
+	if in_qte or (boss and is_instance_valid(boss) and boss.qte_ready()):
+		return false
+	return _fight_last.is_valid() and bool(_fight_last.call(e))
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +295,20 @@ func _on_qte_reached() -> void:
 	qte_shots = 0
 	qte.start(SwordQTE.PROMPTS, qte_window)
 	qte_started.emit()
+
+
+## While the QTE runs (and the tree is not paused): its slow motion for the prompts left, its camera current.
+func _keep_qte() -> void:
+	if not is_inside_tree() or get_tree().paused or qte == null or not qte.active:
+		return
+	var clk: Impact = Impact.clock(self)
+	if not clk.slowmo_active(self):
+		var left: float = maxf(0.2, qte.window - qte.t + qte.window * float(qte.prompts.size() - 1 - qte.index)) + 0.2
+		if clk.slowmo(QTE_SCALE, left, self):
+			qte_rearms += 1
+	if qte_cam and qte_cam.is_inside_tree() and not qte_cam.current and qte_shots > 0:
+		qte_cam.make_current()
+		qte_rearms += 1
 
 
 ## A prompt shows: the camera cuts to its shot.
@@ -398,8 +446,10 @@ func _set_slide(k: float) -> void:
 		combat.set("dodge_speed_k", k)
 
 
-## On a puddle while the sprinklers run (10 Hz).
+## On a puddle while the sprinklers run (10 Hz); the QTE's slow motion and camera kept while it runs.
 func _physics_process(delta: float) -> void:
+	if in_qte:
+		_keep_qte()
 	if not sprinklers_on or player == null:
 		return
 	_wet_acc += delta

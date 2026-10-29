@@ -2,9 +2,12 @@
 # W3 Day 5 T6 (plan 2026-10-30-w3-day5.md, D5W-3): the katana duel's QTE finisher (SwordDuel + KatanaBoss + SwordQTE) in a
 # bare arena. Checks: 0 HP opens the QTE instead of the finale (the boss frozen and invulnerable, the player's moves off,
 # slow motion through Impact, the QTE camera framing both fighters); the prompts [Q] -> [Chuột trái] -> [E] in order, each
-# window 0.9 s = 54 physics frames (Dễ 1.2 s = 72); a late or wrong press = a miss: 10 % HP back, the duel goes on, the
+# window 0.9 s = 54 physics frames (Dễ 1.2 s = 72); a window running out = a miss: 10 % HP back, the duel goes on, the
 # QTE comes again at 0; a pass plays the snap finale then `won`; qte_clean only for a first-time pass; the time scale, the
 # scale owner, the camera and the controls are given back on every exit, a retry in the middle of the QTE included.
+# Fix round: a mashed [Chuột trái] right after the QTE opens is ignored (grace), a wrong key after it costs WRONG_COST_S;
+# the pause menu freezes the window and the keys, and the slow motion comes back after it; through the real
+# PlayerCombat._strike the killing slash gets no last-KO orbit (the QTE keeps its slow motion and camera).
 # Counts physics frames (Engine.max_fps = 60).
 # Run:  godot --headless --path . --script tests/test_katana_qte.gd
 extends SceneTree
@@ -147,24 +150,71 @@ func _on_physics() -> void:
 			if t == 5:
 				_check(duel.qte_attempts == 0 and not duel.qte_clean, "retry: QTE count reset")
 				_zero()
-				_check(duel.qte.press("e") == "wrong" and not duel.in_qte and is_equal_approx(boss.hp, boss.max_hp * SwordDuel.QTE_RECOVER), "a wrong key: a miss, 10 % back")
+				var ev := InputEventMouseButton.new()
+				ev.button_index = MOUSE_BUTTON_LEFT
+				ev.pressed = true
+				duel.qte._unhandled_input(ev)        # the killing blow's attack button, still mashed
+				_check(duel.in_qte and duel.qte.active and duel.qte.index == 0 and duel.qte.graced == 1, "a mashed [Chuột trái] right after the QTE opens is ignored (grace)")
+				_check(duel.qte.press("e") == "grace" and duel.qte.active, "any wrong key inside the grace is ignored")
+			if t == 25:
+				_check(duel.qte.press("e") == "wrong" and duel.qte.active and duel.qte.wrongs == 1, "a wrong key after the grace costs time, not the QTE")
+				_check(duel.qte.t >= 20.0 / 60.0 + SwordQTE.WRONG_COST_S - 0.01, "the window lost WRONG_COST_S (%.2f)" % duel.qte.t)
+			if t > 25 and t < 80 and not duel.in_qte and not mark.has("wend"):
+				mark["wend"] = t
+				_check(duel.qte.results == ["late"] and t <= 5 + 54 - 15, "the shortened window runs out: a miss (%s at %d)" % [str(duel.qte.results), t])
+				_check(is_equal_approx(boss.hp, boss.max_hp * SwordDuel.QTE_RECOVER), "the miss: 10 % back")
 				_restored("wrong key")
-			if t == 20:
+			if t == 80:
+				_zero()
+				_check(duel.in_qte and duel.qte.active, "the QTE runs (pause test)")
+				paused = true                         # the pause menu
+			if t == 170:
+				_check(duel.qte.active and duel.qte.index == 0 and duel.qte.frames_up.is_empty() and duel.qte._frames == 0, "paused 1.5 s: no window time passed")
+				var kq := InputEventKey.new()
+				kq.physical_keycode = KEY_Q
+				kq.pressed = true
+				duel.qte._unhandled_input(kq)
+				_check(duel.qte.index == 0 and duel.qte.results.is_empty(), "paused: [Q] is not read")
+				paused = false
+			if t == 176:
+				_check(duel.qte.active and Impact.clock(duel).slowmo_active(duel) and is_equal_approx(Engine.time_scale, SwordDuel.QTE_SCALE) 					and duel.qte_rearms >= 1, "unpaused: the QTE goes on and its slow motion is asked for again (%.2f)" % Engine.time_scale)
+			if t > 176 and t < 300 and not duel.in_qte and not mark.has("pend"):
+				mark["pend"] = t
+				_restored("miss after the pause")
+			if t == 300:
 				_zero()
 				_check(duel.in_qte and duel.qte.active, "the QTE runs (retry test)")
-			if t == 30:
+			if t == 310:
 				duel.retry()
 				boss = duel.boss
 				_restored("retry mid-QTE")
 				_check(is_equal_approx(boss.hp, boss.max_hp) and not boss.qte_ready() and boss.qte_armed, "retry mid-QTE: a fresh, armed boss")
-			if t == 40:
+			if t == 320:
 				_zero()
 				for k: String in ["q", "lmb", "e"]:
 					duel.qte.press(k)
 				_check(duel.qte_clean and boss.st == MeleeEnemy.St.FINALE, "a first-time pass is qte_clean")
-			if t == 300:
+			if t == 600:
 				duel.stop()
 				_restored("stop")
+				_check(combat.last_fn != Callable(duel, "_duel_last"), "stop: the duel's last_fn wrapper is gone")
+				duel.queue_free()
+				_next("strike")
+		"strike":
+			if t == 3:
+				_make_duel()
+				_check(combat.last_fn == Callable(duel, "_duel_last"), "the duel wraps PlayerCombat.last_fn")
+			if t == 6:
+				var clk: Impact = Impact.clock(duel)
+				var orbits0: int = clk.orbit_count
+				boss.hp = 5.0
+				var r: String = combat._strike(boss, {"kind": "slash1", "dmg": 40.0, "stagger": 0.0, "push": 0.2, "from": player.global_position})
+				_check(r == "ko" and duel.in_qte, "the real strike path: the killing slash opens the QTE")
+				_check(clk.orbit_count == orbits0 and clk.slowmo_active(duel) and not combat.is_last(boss), "no last-KO orbit: the QTE keeps its slow motion (orbits %d -> %d)" % [orbits0, clk.orbit_count])
+				_check(_cam() == duel.qte_cam, "the QTE camera, not an orbit")
+			if t == 40:
+				_check(duel.in_qte and is_equal_approx(Engine.time_scale, SwordDuel.QTE_SCALE) and duel.qte_rearms == 0, "0.5 s later the QTE still owns the slow motion, nothing had to take it back (%.2f, %d)" % [Engine.time_scale, duel.qte_rearms])
+				duel.stop()
 				duel.queue_free()
 				_next("easy")
 		"easy":

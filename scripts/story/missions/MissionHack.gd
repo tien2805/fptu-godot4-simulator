@@ -22,6 +22,7 @@ extends MissionLairFight
 const T_LEAKED: String = "Lọ Thần kịp gửi đề ra ngoài!"
 const T_GAS: String = "Khí chữa cháy xả rồi!"
 const T_BREACH: String = "Bảo vệ xông vào!"
+const T_BREACH_MORE: String = "Thêm bảo vệ đang tới!"
 const T_RETURN: String = "[E] quay lại máy"
 const T_DESK: String = "Máy tính"
 const T_SPREAD: String = "Lửa lan rộng!"
@@ -208,13 +209,24 @@ func _gas() -> void:
 	gas_fired += 1
 	_alarm_on(false)
 	_end_fight()                          # the gas floors everyone: no shots at the fail card
+	if hack:
+		hack.stop()                       # the terminal dies with the room: nothing typed behind the fail card counts
 	play_cue("static_burst", -2.0)
 	fail(T_GAS)
 
 
 ## A breach: the terminal hides (typing paused, no decay), the guns and a one-wave GunFight, the preview cut on the door.
+## A breach that starts while the last one still fights joins it: its guards come in as the fight's next wave (the earlier
+## guards stay; the cut and the line when they spawn).
 func _breach() -> void:
 	breaches_started += 1
+	if _desk_ring and is_instance_valid(_desk_ring):
+		_desk_ring.queue_free()           # no stale "back to the desk" ring while guards come in
+	_desk_ring = null
+	if phase == "breach" and fight and is_instance_valid(fight) and fight.state == "running":
+		fight.add_wave(_breach_wave())
+		popup(T_BREACH_MORE, 2.0, WARN)
+		return
 	phase = "breach"
 	if hack:
 		hack.paused = true
@@ -227,12 +239,7 @@ func _breach() -> void:
 	make_fight({"start_alerted": true, "nav": level.call("nav_graph") if level and level.has_method("nav_graph") else null})
 	for c: Array in pts.get("cover", []):
 		fight.cover.add_box(Transform3D(Basis(), (c[0] as Vector3) + Vector3(0.0, (c[1] as Vector3).y * 0.5, 0.0)), c[1])
-	var wave: Array = []
-	var spots: Array = pts.get("breach", [])
-	var n: int = mini(int(Difficulty.pick(BREACH_GUARDS, BREACH_GUARDS_EASY)), spots.size())
-	for k: int in n:
-		wave.append(guard(breaches_started * 3 + k, spots[(k + breaches_started) % spots.size()]))
-	fight.add_wave(wave)
+	fight.add_wave(_breach_wave())
 	fight.player_hit.connect(_on_player_hit)
 	if guide:
 		guide.watch(fight)
@@ -242,15 +249,33 @@ func _breach() -> void:
 	popup(T_BREACH, 2.0, WARN)
 	set_prompt("Bắn hạ bảo vệ rồi quay lại máy")
 	play_cue("locker_slam", -2.0)
+	_door_cut()
+	if breaches_started == 1:
+		radio("Guard breach r e! Bỏ máy, xử tụi nó trước, progress a giữ cho.", "Bảo vệ vào! Đánh trước, máy vẫn giữ tiến độ.", 4.0)
+	else:
+		_shift_line()
+
+
+## The guards of breach number breaches_started (Difficulty.pick), at the breach spots.
+func _breach_wave() -> Array:
+	var wave: Array = []
+	var spots: Array = pts.get("breach", [])
+	var n: int = mini(int(Difficulty.pick(BREACH_GUARDS, BREACH_GUARDS_EASY)), spots.size())
+	for k: int in n:
+		wave.append(guard(breaches_started * 3 + k, spots[(k + breaches_started) % spots.size()]))
+	return wave
+
+
+func _door_cut() -> void:
 	if _door_mark:
 		cuts += 1
 		var cd: CameraDirector = CameraDirector.live()
 		if cd:
 			cd.preview_cut(_door_mark, CUT_S)
-	if breaches_started == 1:
-		radio("Guard breach r e! Bỏ máy, xử tụi nó trước, progress a giữ cho.", "Bảo vệ vào! Đánh trước, máy vẫn giữ tiến độ.", 4.0)
-	else:
-		radio_as("za_man", "Ca hai tới rồi đó em. Anh trả lương theo giờ mà.", "", 4.0)
+
+
+func _shift_line() -> void:
+	radio_as("za_man", "Ca hai tới rồi đó em. Anh trả lương theo giờ mà.", "", 4.0)
 
 
 func _on_player_hit(_source: Node3D, damage: float) -> void:
@@ -258,20 +283,23 @@ func _on_player_hit(_source: Node3D, damage: float) -> void:
 		breach_dmg += damage
 
 
-## No recorder per breach wave: the hack's own recorder (the player and the core) stays.
-func _on_wave_started(_i: int) -> void:
-	pass
+## No recorder per breach wave: the hack's own recorder (the player and the core) stays. A joined breach's wave (index > 0)
+## gets the door cut and Za Mẫn's line as it comes in.
+func _on_wave_started(i: int) -> void:
+	if i > 0 and phase == "breach":
+		_door_cut()
+		_shift_line()
 
 
 func _on_enemy_ko(e: Node3D) -> void:
-	last_ko = e
+	super._on_enemy_ko(e)                 # the base bookkeeping (and the shared stream's ko stat after the merge)
 
 
 ## The breach is cleared: back to the desk with [E].
 func _on_fight_won() -> void:
 	if state != "running" or phase != "breach":
 		return
-	breaches_cleared += 1
+	breaches_cleared = breaches_started     # a joined breach is cleared with the one it joined
 	phase = "return"
 	popup("Dọn xong! Quay lại máy!", 1.8)
 	set_prompt(T_RETURN)
@@ -388,6 +416,8 @@ func _refresh_countdown() -> void:
 # Win / lose / retry
 # ---------------------------------------------------------------------------
 func _on_won() -> void:
+	if state != "running":
+		return                            # behind the fail card (the gas, a leak): no win, no fire
 	phase = "won"
 	hack.stop()
 	_alarm_on(false)
@@ -407,6 +437,8 @@ func _on_won() -> void:
 
 
 func _on_lost() -> void:
+	if state != "running":
+		return
 	_alarm_on(false)
 	fail(T_LEAKED)
 

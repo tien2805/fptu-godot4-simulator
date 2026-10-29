@@ -210,6 +210,7 @@ func _process(_d: float) -> bool:
 			if frames < 6:
 				return false
 			_check(m.beats.has("face") and m.whispers == 0 and bs.level.face_k < 0.6 and bs.level.face_k > 0.0, "Giảm hù dọa: a dimmer face, no whisper")
+			_check(bs.level.face_gentle and m.blackout_db <= -12.0, "Giảm hù dọa: gentle face blips, a soft blackout thump (%.0f dB)" % m.blackout_db)
 			_check(m.flashlight.gentle, "Giảm hù dọa: the torch flickers gently")
 			bs._free_mission()
 			_check(bs.level.power_on and LookPresets.active(bs) == "server_red", "aborting restores the lights and the look")

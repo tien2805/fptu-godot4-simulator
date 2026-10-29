@@ -2,8 +2,10 @@
 # W3 Day 5 T4 (plan 2026-10-30-w3-day5.md, D5W-1): the burning server countdown (MissionHack in the StoryBasement scene,
 # no story running). Checks: the 90 s clock and the countdown text; breach 1 at 30 s and breach 2 at 60 s (BREACH_GUARDS on
 # Thường, the preview cut, the guns); typing pauses with no decay and resumes at the desk; the fire stages at 60 / 30 /
-# 10 s left from a fixed emitter pool; the gas at 0 and the retry state (full timer, stage 0, no breach); a win before 0
-# with breach_clean; the emitters stopped after.
+# 10 s left from a fixed emitter pool; a breach before [E] frees the desk ring; the gas at 0 stops the terminal (a completion
+# behind the fail card neither wins nor lights the room) and the retry state (full timer, stage 0, no breach); breach 2
+# starting while breach 1 still fights joins it (the guards kept, a second wave under the door cut); a win before 0 with
+# breach_clean; the emitters stopped after.
 # Run:  godot --headless --path . --script tests/test_basement_fire.gd
 extends SceneTree
 
@@ -20,6 +22,8 @@ var h: StoryHack
 var snap: Dictionary = {}
 var done_info: Dictionary = {}
 var got_done: bool = false
+var mark_fight: GunFight = null
+var mark_cuts: int = 0
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -118,6 +122,7 @@ func _process(_d: float) -> bool:
 			if m.phase != "return" and frames < 60:
 				return false
 			_check(m.phase == "return" and m.breaches_cleared == 1 and is_zero_approx(m.breach_dmg), "breach cleared: back to the desk, no damage")
+			_check(m._desk_ring != null and is_instance_valid(m._desk_ring), "the ring at the desk")
 			_check(m.return_to_desk() and m.phase == "typing" and not h.paused and h.visible and not bs.player.controls_enabled, "[E]: typing resumes")
 			_check(is_equal_approx(h.hp, float(snap["hp"])) and bs.weapons.current == WeaponData.Slot.UNARMED, "progress kept, guns away again")
 			m.time_left = m.countdown_s - MissionHack.BREACH_AT[1] + 0.01
@@ -132,6 +137,14 @@ func _process(_d: float) -> bool:
 			_ko_all()
 			_next(7)
 		7:
+			if m.phase != "return" and frames < 60:
+				return false
+			_check(m._desk_ring != null, "breach 2 cleared: the ring at the desk")
+			m._breach()                              # another breach before [E]: the ring must go
+			_check(m.phase == "breach" and m._desk_ring == null and m.fight != null and m.fight.waves.size() == 1, "a breach while the desk waits: no stale ring, a fresh fight")
+			_ko_all()
+			_next(71)
+		71:
 			if m.phase != "return" and frames < 60:
 				return false
 			m.return_to_desk()
@@ -153,9 +166,44 @@ func _process(_d: float) -> bool:
 			if frames < 3:
 				return false
 			_check(m.state == "failed" and m.gas_fired == 1 and m.fight == null, "at 0 the gas fires: TOANG!")
+			_check(not h.active and not h.visible and h.type_text(StoryHack.FINAL_COMMAND) == "none", "the gas stops the terminal: typing does nothing")
+			h.won.emit()                             # a completion behind the fail card
+			_check(m.phase != "won" and not bs.level.fire_on and m.state == "failed", "no win and no room fire behind the fail card")
 			m.retry()
 			_check(m.state == "running" and is_equal_approx(m.time_left, m.countdown_s) and m.fire.stage == 0 and m.breaches_started == 0 \
 				and m.phase == "typing" and is_equal_approx(h.hp, h.hp_max) and h.active and not h.paused, "retry: the typing from the start (full timer, stage 0, no breach)")
+			m.time_left = m.countdown_s - MissionHack.BREACH_AT[0] + 0.01
+			_next(101)
+		101:
+			if frames < 3:
+				return false
+			_check(m.phase == "breach" and m.breaches_started == 1, "breach 1 again")
+			mark_fight = m.fight
+			mark_cuts = m.cuts
+			m.time_left = m.countdown_s - MissionHack.BREACH_AT[1] + 0.01   # breach 2 while breach 1 still fights
+			_next(102)
+		102:
+			if frames < 3:
+				return false
+			_check(m.breaches_started == 2 and m.phase == "breach" and m.fight == mark_fight and m.fight.waves.size() == 2 				and m.fight.alive().size() == MissionHack.BREACH_GUARDS, "breach 2 joins breach 1: its guards kept, a second wave queued")
+			_ko_all()
+			_next(103)
+		103:
+			if m.fight == null or m.fight.wave < 1:
+				if frames > 300:
+					_check(false, "the joined wave never came")
+					phase = 99
+				return false
+			_check(m.cuts == mark_cuts + 1 and m.fight.alive().size() == MissionHack.BREACH_GUARDS, "the joined wave comes in under the door cut")
+			for e: Variant in m.fight.alive():
+				(e as Gunman).accuracy_override = 0.0
+			_ko_all()
+			_next(104)
+		104:
+			if m.phase != "return" and frames < 60:
+				return false
+			_check(m.phase == "return" and m.breaches_cleared == 2, "both breaches cleared together")
+			m.return_to_desk()
 			_next(11)
 		11:
 			var n: int = 0
@@ -178,7 +226,7 @@ func _process(_d: float) -> bool:
 					_check(false, "the hack never finished")
 					phase = 99
 				return false
-			_check(bool(done_info.get("breach_clean", false)) and int(done_info.get("kills", 0)) > 0, "done: breach_clean (no breach this run)")
+			_check(bool(done_info.get("breach_clean", false)) == is_zero_approx(m.breach_dmg) and int(done_info.get("kills", 0)) > 0, "done: breach_clean matches the breach damage")
 			_check(m.fire.emitting_count() == 0 and not m.fire.light.visible, "the emitters stopped after")
 			bs._free_mission()
 			phase = 99

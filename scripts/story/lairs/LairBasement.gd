@@ -159,6 +159,7 @@ var cold: OmniLight3D
 var monitors: Array[MeshInstance3D] = []
 var face_mat: ShaderMaterial
 var face_k: float = 0.0                              # the face strength while it flickers (0 = idle screens)
+var face_gentle: bool = false
 var _lamp_on: StandardMaterial3D
 var _lamp_off: StandardMaterial3D
 var _row_t: float = -1.0
@@ -341,8 +342,10 @@ func _cut_row() -> void:
 
 
 ## Za Mẩn's face on the hall monitors for `secs`, flickering, at strength k (0..1).
-func flicker_face(secs: float, k: float = 1.0) -> void:
+## gentle ("Giảm hù dọa"): slower, shallow blips instead of hard flashes.
+func flicker_face(secs: float, k: float = 1.0, gentle: bool = false) -> void:
 	_face_t = secs
+	face_gentle = gentle
 	face_k = clampf(k, 0.0, 1.0)
 	_face_acc = 0.0
 	if face_mat:
@@ -371,10 +374,10 @@ func tick(delta: float) -> void:
 		if _face_t <= 0.0:
 			face_k = 0.0
 			face_mat.set_shader_parameter("face", 0.0)
-		elif _face_acc >= 0.08:
+		elif _face_acc >= (0.22 if face_gentle else 0.08):
 			_face_acc = 0.0
 			var blip: float = fposmod(sin(_face_t * 91.7) * 4375.85, 1.0)
-			face_mat.set_shader_parameter("face", face_k * (0.3 if blip < 0.3 else 1.0))
+			face_mat.set_shader_parameter("face", face_k * ((0.8 if face_gentle else 0.3) if blip < 0.3 else 1.0))
 	if not fire_on:
 		return
 	_fire_t += delta

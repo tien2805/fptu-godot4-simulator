@@ -1,9 +1,12 @@
 # File: res://scripts/combat/swords/SwordQTE.gd
 # W3 D5W-3 (plan 2026-10-30-w3-day5.md T6): the katana duel's finisher QTE. start(prompts, window) shows the prompts one
 # after another, each for `window` REAL seconds (counted in physics frames, so the duel's slow motion never stretches it):
-# the right key in time moves to the next prompt (`prompt_shown(i)`), the last one emits `passed`; a wrong key or a window
-# running out emits `missed` (the result of each prompt in `results`). Keys: "q" ([Q]), "lmb" (left mouse), "e" ([E]);
-# press(key) is the input path (tests call it). Plain text only. Its own CanvasLayer (a big prompt and a shrinking bar).
+# the right key in time moves to the next prompt (`prompt_shown(i)`), the last one emits `passed`; a window running out
+# emits `missed` (the result of each prompt in `results`). Keys: "q" ([Q]), "lmb" (left mouse), "e" ([E]); press(key) is
+# the input path (tests call it). Plain text only. Its own CanvasLayer (a big prompt and a shrinking bar).
+# Fix round: a wrong key in the first GRACE_S of a prompt is ignored (the mashed attack that dealt the killing blow, or the
+# last prompt's key held on), after it a wrong key costs WRONG_COST_S of the window instead of ending the QTE (mashing every
+# key still runs the window out). It pauses with the tree (the pause menu): no window time passes and no key is read.
 # manual: the owner steps it with step(dt) (tests that drive frames themselves).
 class_name SwordQTE
 extends CanvasLayer
@@ -14,6 +17,8 @@ signal prompt_shown(index: int)
 
 ## The duel's three prompts: [Q] gạt (parry), [Chuột trái] chém (slash), [E] hạ gục (take down).
 const PROMPTS: Array = [{"key": "q", "label": "[Q] GẠT"}, {"key": "lmb", "label": "[Chuột trái] CHÉM"}, {"key": "e", "label": "[E] HẠ GỤC"}]
+const GRACE_S: float = 0.25
+const WRONG_COST_S: float = 0.3
 
 var prompts: Array = []
 var window: float = 0.9
@@ -24,6 +29,9 @@ var manual: bool = false
 var results: Array[String] = []
 ## Physics frames each prompt stayed up (tests: the windows in frames).
 var frames_up: Array[int] = []
+## Wrong keys pressed after the grace (each cost WRONG_COST_S), and the ones ignored inside it.
+var wrongs: int = 0
+var graced: int = 0
 var label: Label
 var bar: ProgressBar
 var _frames: int = 0
@@ -35,8 +43,9 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	process_mode = Node.PROCESS_MODE_ALWAYS
+	process_mode = Node.PROCESS_MODE_INHERIT  # the pause menu freezes it with the duel
 	var box := VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE   # a click on the prompt still reaches the [Chuột trái] key
 	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	box.offset_left = -260.0
 	box.offset_right = 260.0
@@ -55,6 +64,7 @@ func _ready() -> void:
 	bar.custom_minimum_size = Vector2(320.0, 12.0)
 	bar.show_percentage = false
 	bar.max_value = 1.0
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(bar)
 	visible = false
 
@@ -65,6 +75,8 @@ func start(p: Array = PROMPTS, w: float = 0.9) -> void:
 	window = maxf(0.1, w)
 	results.clear()
 	frames_up.clear()
+	wrongs = 0
+	graced = 0
 	active = true
 	visible = true
 	_show(0)
@@ -92,12 +104,21 @@ func wanted() -> String:
 	return String((prompts[index] as Dictionary)["key"]) if active and index >= 0 and index < prompts.size() else ""
 
 
-## A key press: "hit" (next prompt / passed), "wrong" (missed), "none" (no QTE running).
+## A key press: "hit" (next prompt / passed), "grace" (a wrong key inside the grace: ignored), "wrong" (a wrong key after
+## it: WRONG_COST_S of the window gone; the miss when that empties it), "none" (no QTE running).
 func press(key: String) -> String:
 	if not active:
 		return "none"
 	if key != wanted():
-		_end(false, "wrong")
+		if t < GRACE_S:
+			graced += 1
+			return "grace"
+		wrongs += 1
+		t += WRONG_COST_S
+		if bar:
+			bar.value = clampf(1.0 - t / window, 0.0, 1.0)
+		if t >= window - 1e-5:
+			_end(false, "wrong")
 		return "wrong"
 	results.append("hit")
 	frames_up.append(_frames)
@@ -124,7 +145,7 @@ func _end(ok: bool, why: String) -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if not manual and active:
+	if not manual and active and not get_tree().paused:
 		step(1.0 / float(Engine.physics_ticks_per_second))   # real time: the slow motion never stretches a window
 
 
@@ -140,7 +161,7 @@ func step(dt: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not active:
+	if not active or (is_inside_tree() and get_tree().paused):
 		return
 	var key: String = ""
 	if event is InputEventKey:
