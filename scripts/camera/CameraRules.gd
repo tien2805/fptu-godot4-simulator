@@ -83,6 +83,12 @@ const BIKE_ROAD_SHAKE: float = 0.008       # m of road shake at top speed (kept 
 const BIKE_TRAUMA_DECAY: float = 2.4       # PlayerBike.camera_shake_trauma per second
 const BIKE_TRAUMA_M: float = 0.16          # m of shake at trauma 1 (trauma squared)
 const BIKE_PROBE_R: float = 0.2            # SpringArm3D sphere
+## Bike combat framing (BikeCamRig.set_combat_framing, plan 2026-10-30-d2-playtest-fixes.md): while enemies ride near, a bit
+## higher and wider so both flanks show, eased in and out.
+const BIKE_COMBAT_UP: float = 0.4          # m higher
+const BIKE_COMBAT_DIST: float = 0.8        # m further back
+const BIKE_COMBAT_FOV: float = 6.0         # deg wider
+const BIKE_COMBAT_EASE_S: float = 0.6      # seconds from off to on (smoothstep)
 
 # --- bike chase takedown cams (BikeChase "td" cut): (side m, up m, along m) from the falling rider, in the player's
 # frame, side = toward the rider; the first with a clear view wins ---

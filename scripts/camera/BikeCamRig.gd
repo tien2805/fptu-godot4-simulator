@@ -9,7 +9,10 @@
 #   - roll = 30 % of the bike's lean; FOV 70 -> 86 with speed, +8 while the nitro burns (the ignition punch on top),
 #     +4 in a slipstream / drift-release boost;
 #   - shake through the camera's h / v offsets: PlayerBike.camera_shake_trauma squared plus a small road shake growing
-#     with speed (smooth noise), plus the CameraDirector's punch / shake (fx_*).
+#     with speed (smooth noise), plus the CameraDirector's punch / shake (fx_*);
+#   - combat framing (set_combat_framing(on), BikeChase / DriftDuel while enemies ride near): eased in and out over
+#     BIKE_COMBAT_EASE_S, the camera BIKE_COMBAT_UP higher, BIKE_COMBAT_DIST further back and BIKE_COMBAT_FOV wider, so both
+#     flanks show (combat_k: 0 off .. 1 on, real time).
 class_name BikeCamRig
 extends RefCounted
 
@@ -32,6 +35,10 @@ var _shape: SphereShape3D = null
 var _last_fx_fov: float = 0.0
 var _was_current: bool = false
 var _d: Director = Director.new()
+## Combat framing: wanted on / off and the eased weight (0..1, smoothstep of combat_u).
+var combat_on: bool = false
+var combat_u: float = 0.0
+var combat_k: float = 0.0
 
 
 func _init(b: PlayerBike) -> void:
@@ -68,6 +75,11 @@ func whip(dir: Vector3) -> void:
 	whips += 1
 
 
+## Combat framing on / off (eased; see the header).
+func set_combat_framing(on: bool) -> void:
+	combat_on = on
+
+
 func update(delta: float, _speed_factor: float) -> void:
 	var b: PlayerBike = bike
 	var arm: SpringArm3D = b.spring_arm
@@ -83,7 +95,9 @@ func update(delta: float, _speed_factor: float) -> void:
 	var u: float = clampf(absf(b.current_speed_ms) / maxf(b.max_speed_ms, 0.1), 0.0, 1.0)
 	# yaw offset: into a normal turn, to the outside of a drift
 	var want_swing: float = deg_to_rad(CameraRules.drift_swing_deg(b.steer_input)) if b.is_drifting else -b.steer_input * CameraRules.BIKE_TURN_LOOK
-	var want_dist: float = CameraRules.bike_distance(u)
+	combat_u = move_toward(combat_u, 1.0 if combat_on else 0.0, rdt / CameraRules.BIKE_COMBAT_EASE_S)
+	combat_k = smoothstep(0.0, 1.0, combat_u)
+	var want_dist: float = CameraRules.bike_distance(u) + CameraRules.BIKE_COMBAT_DIST * combat_k
 	if _snap:
 		swing = want_swing
 		_swing_v = 0.0
@@ -106,7 +120,7 @@ func update(delta: float, _speed_factor: float) -> void:
 	var pivot_y: float = CameraRules.BIKE_GROUND + CameraRules.BIKE_LOOK_H
 	if rig:
 		rig.position = Vector3(0.0, pivot_y, 0.0)
-	var rise: float = CameraRules.BIKE_HEIGHT - CameraRules.BIKE_LOOK_H
+	var rise: float = CameraRules.BIKE_HEIGHT + CameraRules.BIKE_COMBAT_UP * combat_k - CameraRules.BIKE_LOOK_H
 	arm.rotation = Vector3(-asin(clampf(rise / maxf(dist, 0.5), -1.0, 1.0)), swing, 0.0)
 	arm.spring_length = dist
 	# camera: look ahead of the bike from the ideal (not pulled-in) spot, roll with the lean, whip, director rotation
@@ -126,7 +140,7 @@ func update(delta: float, _speed_factor: float) -> void:
 	cam.global_basis = bas.orthonormalized()
 	# FOV
 	var boost: bool = b.is_slipstream_boosting or b.drift_boost_timer > 0.0
-	var target_fov: float = CameraRules.bike_fov(u, b.nitro_left > 0.0, boost)
+	var target_fov: float = CameraRules.bike_fov(u, b.nitro_left > 0.0, boost) + CameraRules.BIKE_COMBAT_FOV * combat_k
 	if b.nitro_left > 0.0:
 		target_fov += PlayerBike.NITRO_FOV_PUNCH * (b._nitro_punch / PlayerBike.NITRO_PUNCH_S)
 	if _snap:
