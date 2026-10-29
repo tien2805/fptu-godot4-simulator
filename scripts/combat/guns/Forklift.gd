@@ -58,6 +58,7 @@ var _t: float = 0.0
 var _beacon_red: StandardMaterial3D
 var _beacon_amber: StandardMaterial3D
 var _beacon_off: StandardMaterial3D
+var _beacon_yellow: StandardMaterial3D   # W3 T7: the boss's ram window (forks going up)
 
 
 func _ready() -> void:
@@ -132,6 +133,7 @@ func _build_model() -> void:
 	_beacon_amber = GunProps.mat(Color("#FF9A1F"), 0.3, 3.0)
 	_beacon_red = GunProps.mat(Color("#FF2A1A"), 0.3, 4.0)
 	_beacon_off = GunProps.mat(Color("#4A3A20"), 0.6)
+	_beacon_yellow = GunProps.mat(Color("#FFE21F"), 0.3, 4.0)
 	beacon = GunProps.cyl(visual, 0.08, 0.1, 0.14, Vector3(0.0, 2.27, 0.1), _beacon_amber, "Beacon", 10)
 
 
@@ -249,6 +251,8 @@ func _process(_d: float) -> void:
 			m = _beacon_red if fmod(_t, 0.24) < 0.12 else _beacon_off
 		"amber":
 			m = _beacon_amber if fmod(_t, 0.8) < 0.4 else _beacon_off
+		"yellow":
+			m = _beacon_yellow if fmod(_t, 0.16) < 0.1 else _beacon_off
 		_:
 			m = _beacon_off
 	if beacon.material_override != m:

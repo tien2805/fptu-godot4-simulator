@@ -352,6 +352,9 @@ const BOSS_AT := FORKLIFT_PARK                       # Alexander drives off from
 const BOSS_YAW: float = 90.0
 const MID := Vector3(2.0, 0.0, 4.0)                   # the yard_mid marker
 const BOSS_PLAYER := Vector3(-6.0, 0.0, 7.0)
+## W3 T7: the player's forklift of the joust (facing east, into the arena).
+const PLAYER_FORK := Vector3(-9.5, 0.0, 9.5)
+const PLAYER_FORK_YAW: float = -90.0
 
 
 ## World-space spots of a yard mission (MissionLairFight opts "points"): sneak | gunfight | crates | forklift.
@@ -400,6 +403,8 @@ func mission_points(task: String) -> Dictionary:
 			d["start_yaw"] = world_yaw(-90.0)
 			d["boss_at"] = world(BOSS_AT)
 			d["boss_yaw"] = world_yaw(BOSS_YAW)
+			d["fork_at"] = world(PLAYER_FORK)
+			d["fork_yaw"] = world_yaw(PLAYER_FORK_YAW)
 			d["ammo"] = _world_list(AMMO)
 	return d
 
