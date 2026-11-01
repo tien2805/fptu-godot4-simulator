@@ -28,7 +28,8 @@
 #     the gun bot on the showroom's grid, then the lift;
 #   - forklift (sim_day3's joust, ported as _forklift): out of his charges after the reaction, rams a stalled / forks-up
 #     boss when it fits;
-#   - rider (sim_bike_chase_d2's sloppy bot on the deck ring): kicks in reach, dodges the wind-ups it reads.
+#   - rider (sim_bike_chase_d2's sloppy bot on the deck ring, ported as _parking): kicks in reach, dodges the wind-ups it
+#     reads, brakes for helmets it sees, a slow wander off the line.
 extends SceneTree
 
 const TimeAudit: Script = preload("res://tests/support/time_scale_audit.gd")
@@ -153,6 +154,9 @@ func _run(mission: String, s: int) -> Dictionary:
 	var hp0: float = tw.combat.hp
 	var causes: Array[String] = []
 	mt = 0.0
+	pk_lost = 0.0
+	pk_min = 999.0
+	pk_tele = 0
 	_reset_bot()
 	while not done_flag and fails < MAX_TRIES:
 		await physics_frame
@@ -191,6 +195,8 @@ func _run(mission: String, s: int) -> Dictionary:
 	var info: String = " fails at %s" % str(causes) if not causes.is_empty() else ""
 	for k2: Variant in info_d.keys():
 		info += " %s=%s" % [str(k2), str(info_d[k2])]
+	if mission == "parking":
+		info += " stab_lost=%.0f stab_min=%.0f tele=%d" % [pk_lost, pk_min, pk_tele]
 	if not st.is_empty():
 		info += " stats{time %.0f dmg %.0f fails %d}" % [float(st.get("time", 0.0)), float(st.get("dmg", 0.0)), int(st.get("fails", 0))]
 	return {"fails": fails, "time": time, "dmg": dmg, "info": info, "rank": String(rk.get("letter", "")), "score": float(rk.get("score", 0.0))}
@@ -525,6 +531,7 @@ func _extra_reset() -> void:
 	_gun_reset()
 	_laser_reset()
 	_fk_reset()
+	_pk_reset()
 	n_i = 0
 	n_moving = false
 	n_judged = false
@@ -546,6 +553,8 @@ func _extra_bot(mission: String) -> void:
 			_showroom()
 		"warehouse":
 			_forklift()
+		"parking":
+			_parking()
 
 
 # ---------------------------------------------------------------------------
@@ -1568,3 +1577,136 @@ func _drive(fl: Forklift, target: Vector3, max_th: float = 1.0) -> Dictionary:
 	if absf(ang) > 1.2:
 		th = minf(th, 0.55)
 	return {"throttle": th, "steer": steer, "fork": 0}
+
+
+# ---------------------------------------------------------------------------
+# Deck rider (T5b): sim_bike_chase_d2's sloppy bot (the Q6 numbers of its "sloppy" entry) on the ring: real steering and
+# gas / brake / drift through the Input actions, kicks through PlayerBikeCombat.kick; the deck has no set pieces (the
+# barrier, drift zones and roadblocks are skipped when chase.set_pieces is null).
+# ---------------------------------------------------------------------------
+const PK: Dictionary = {"react": 0.65, "kick_p": 0.8, "drift": 0.7, "corner_brake": 0.85, "wrong": 0.15, "wander": 1.1}
+var pk_seen: Dictionary = {}
+var pk_reach_t: Dictionary = {}
+var pk_helmets: Dictionary = {}
+var pk_brake_left: float = 0.0
+var pk_shift_left: float = 0.0
+var pk_shift: float = 0.0
+var pk_wander_ph: float = 0.0
+var pk_prev_stab: float = -1.0
+var pk_tele: int = 0
+var pk_lost: float = 0.0
+var pk_min: float = 999.0
+
+
+func _pk_reset() -> void:
+	pk_seen.clear()
+	pk_reach_t.clear()
+	pk_helmets.clear()
+	pk_brake_left = 0.0
+	pk_shift_left = 0.0
+	pk_wander_ph = rng.randf_range(0.0, TAU)
+	pk_prev_stab = -1.0
+	_pk_controls(false, false, false, 0.0)
+
+
+func _parking() -> void:
+	var mp: MissionTowerParking = m as MissionTowerParking
+	var chase: BikeChase = mp.chase if mp else null
+	var bike: PlayerBike = tw.bike
+	if chase == null or bike == null or chase.route == null or chase.state != "running":
+		_pk_controls(false, false, false, 0.0)
+		return
+	var route: BikeRoute = chase.route
+	var stb: float = chase.combat.stability
+	if pk_prev_stab >= 0.0 and stb < pk_prev_stab:
+		pk_lost += pk_prev_stab - stb
+	pk_prev_stab = stb
+	pk_min = minf(pk_min, stb)
+	var s: float = chase.s_p
+	var spd: float = absf(bike.current_speed_ms)
+	pk_brake_left -= DT
+	pk_shift_left -= DT
+	# telegraphs near the player: read 65 %, after the reaction a sidestep (15 % the wrong way) or a brake for a stick
+	for b: Variant in chase.bikers + chase.cops:
+		var e: BikerEnemy = b as BikerEnemy
+		if e == null or not is_instance_valid(e):
+			continue
+		if e.telegraphing() and e.kind != "thrower" and e.pos2.distance_to(chase.p_pos) < 8.0:
+			if not pk_seen.has(e):
+				pk_tele += 1
+				if verbose:
+					print("    pk tele %s at %.1f s: dy %.2f lat %.2f hits %d stab %.0f" % [e.kind, mt, e.floor_y - (bike.global_position.y + BikeChase.BIKE_FLOOR_OFFSET), (e.pos2 - chase.p_pos).dot(chase.p_right), chase.attack_hits, stb])
+				pk_seen[e] = [mt, false, rng.randf() < float(PK["react"]), _react()]
+			var sv: Array = pk_seen[e]
+			if bool(sv[2]) and not bool(sv[1]) and mt - float(sv[0]) >= float(sv[3]):
+				sv[1] = true
+				var lat: float = (e.pos2 - chase.p_pos).dot(chase.p_right)
+				var wrong: bool = _wrong()
+				if e.kind == "stick" or e.kind == "pickup":
+					pk_brake_left = 0.55 if not wrong else 0.0
+				else:
+					pk_shift = -signf(lat) * 2.2 * (-1.0 if wrong else 1.0)
+					pk_shift_left = 0.55
+		elif pk_seen.has(e) and not e.is_attacking():
+			pk_seen.erase(e)
+	if verbose and fmod(mt, 2.0) < DT:   # every 2 s: each biker's state, distance, side offset, role, hold and slot error
+		var ln: String = ""
+		for b2: Variant in chase.bikers:
+			var e2: BikerEnemy = b2 as BikerEnemy
+			if e2 and is_instance_valid(e2):
+				ln += " %s:%s d%.1f lat%.1f r%d set%.1f/%.1f sl%.1f" % [e2.kind, e2.state_name(), e2.pos2.distance_to(chase.p_pos), (e2.pos2 - chase.p_pos).dot(chase.p_right), e2.role, e2.settled_t, e2.pace_t, e2.pos2.distance_to(e2.slot_target())]
+		print("    pk %.0f s spd %.1f s_p %.0f wave %d hits %d starts %d:%s" % [mt, spd, s, chase.wave, chase.attack_hits, chase.attack_starts, ln])
+	# thrown helmets: a brake when it reads one
+	for h: Dictionary in chase.helmets:
+		if not bool(h["active"]):
+			continue
+		var key: int = int((h["node"] as Node).get_instance_id())
+		if pk_helmets.has(key):
+			continue
+		pk_helmets[key] = true
+		if rng.randf() < float(PK["react"]):
+			pk_brake_left = maxf(pk_brake_left, 0.6)
+	# kicks: a rider in reach for the reaction, 80 %, 15 % to the wrong side
+	if chase.combat.kick_cd <= 0.0 and not chase.combat.kicking():
+		for sd2: int in [-1, 1]:
+			var tg: Node3D = chase.combat.kick_target(sd2)
+			if tg == null:
+				continue
+			pk_reach_t[tg] = float(pk_reach_t.get(tg, 0.0)) + DT
+			if float(pk_reach_t[tg]) >= _react():
+				pk_reach_t.erase(tg)
+				if rng.randf() < float(PK["kick_p"]):
+					chase.combat.kick(-sd2 if _wrong() else sd2)
+				break
+	# steering toward the ring ahead with the sloppy wander (+ a dodge shift)
+	var look: float = 9.0 + spd * 0.35
+	var want_d: float = (sin(mt * 0.45 + pk_wander_ph) * 0.75 + sin(mt * 1.2 + pk_wander_ph * 1.7) * 0.25) * float(PK["wander"])
+	if pk_shift_left > 0.0:
+		want_d = pk_shift
+	var tgt: Vector2 = route.world(clampf(s + look, 0.0, route.length), want_d)
+	var to: Vector2 = tgt - chase.p_pos
+	var want: float = atan2(-to.x, -to.y)
+	var err: float = wrapf(want - bike.rotation.y, -PI, PI)
+	var steer: float = clampf(err * 3.0, -1.0, 1.0)
+	var sharp: float = route.max_turn(s + 5.0, s + 35.0)
+	var brake: bool = pk_brake_left > 0.0
+	if sharp > 55.0 and spd > 15.0 and rng.randf() < float(PK["corner_brake"]):
+		brake = true
+	_pk_controls(not brake, brake, false, steer)
+
+
+func _pk_controls(gas: bool, brake: bool, drift: bool, steer: float) -> void:
+	for pair: Array in [["gas", gas], ["brake", brake], ["drift", drift]]:
+		if bool(pair[1]):
+			Input.action_press(String(pair[0]))
+		else:
+			Input.action_release(String(pair[0]))
+	if steer > 0.02:
+		Input.action_press("steer_left", steer)
+		Input.action_release("steer_right")
+	elif steer < -0.02:
+		Input.action_press("steer_right", -steer)
+		Input.action_release("steer_left")
+	else:
+		Input.action_release("steer_left")
+		Input.action_release("steer_right")
