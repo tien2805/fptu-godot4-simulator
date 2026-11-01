@@ -80,7 +80,7 @@ const MISSIONS: Dictionary = {
 	"d7_parking": {"time": [90.0, 170.0], "fails": [0.0, 1.5], "ko": [0, 8]},
 	"d7_warehouse": {"time": [80.0, 200.0], "dmg": [80.0, 400.0]},
 	"d7_servers": {"time": [30.0, 100.0], "dmg": [20.0, 200.0], "opt": {"key": "qte_clean", "want": true}},   # sim: clean 35-49 s
-	"d7_mannequins": {"time": [60.0, 160.0], "dmg": [0.0, 150.0], "opt": {"key": "spotted", "want": false}},
+	"d7_mannequins": {"time": [30.0, 75.0], "dmg": [0.0, 150.0], "opt": {"key": "spotted", "want": false}},   # sim: 32-50 s (seen, then the fight)
 	"d7_lasers": {"time": [18.0, 45.0], "fails": [0.0, 3.0]},   # sim: clean 16-20 s, a retry ~10-15 s
 	"d7_boss1": {"time": [60.0, 200.0], "dmg": [40.0, 300.0]},   # sim: clean 55-88 s, ~130 HP lost; mean 110 s with retries
 	"d7_boss2": {"time": [35.0, 100.0], "dmg": [0.0, 150.0], "opt": {"key": "staggers", "min": 2}},   # sim: clean 35-43 s; a lunge is 50 HP

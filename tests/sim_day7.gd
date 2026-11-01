@@ -23,8 +23,9 @@
 #   - laser runner: the lanes past the static beams at 4 m/s; a leg near a blink wall or a sweep is judged: read 65 % =
 #     the whole crossing checked ahead (now and 0.4 s later), unread = the beams as they are now (a warn looks dark, a
 #     sweep's way is not followed), 15 % wrong = judged 0.7 s early; it goes after the reaction;
-#   - sneaker (sim_day5's): the showroom's zigzag lane behind the display walls, stops when a guard faces it (read 65 %);
-#     seen: the gun bot in the open;
+#   - showroom sneaker: the zigzag through the display walls' gaps at 2.3 m/s (no footstep noise), every leg judged against
+#     the guards' real sight: read 65 % = his patrol followed ahead with a margin, unread = as now, 15 % goes anyway; seen:
+#     the gun bot on the showroom's grid, then the lift;
 #   - forklift (sim_day3's joust): out of his charges after the reaction, rams a stalled / forks-up boss when it fits;
 #   - rider (sim_bike_chase_d2's sloppy bot on the deck ring): kicks in reach, dodges the wind-ups it reads.
 extends SceneTree
@@ -204,6 +205,10 @@ func _diag(mission: String) -> String:
 			return "slots %d slot %d pick %d pos %s wave %d left %d volleys %d shots %d hits %d dodges %d stays %d shattered %d bot %s cover %s e_shots %d e_hits %d" % [mg.fight.cover.count() if mg.fight.cover else -1, b_slot, _pick_slot(mg.fight, false, 14.0) if mg.fight.cover else -9, str(tw.level.floor_xf("gallery").affine_inverse() * tw.player.global_position), mg.fight.wave,
 				mg.fight.enemies_left(), mg.volleys, mg.volley_shots, mg.volley_hits, v_dodges, v_stays, mg.shattered, b_state,
 				str(mg.fight.cover_ctl.in_cover if mg.fight.cover_ctl else false), e_shots, e_hits]
+		"mannequins":
+			var mn: MissionTowerStealth = m as MissionTowerStealth
+			return "wp %d moving %s spotted %s left %d hp %.0f at %s" % [n_i, str(n_moving), str(mn.spotted), mn.fight.alive().size(),
+				tw.combat.hp, str(tw.level.floor_xf("mannequins").affine_inverse() * tw.player.global_position)]
 		"lasers":
 			var ml: MissionTowerLasers = m as MissionTowerLasers
 			return "wp %d moving %s read %s wrong %s at %s t %.2f" % [l_i, str(l_moving), str(l_read), str(l_wrong),
@@ -518,6 +523,11 @@ func _dark_route(p: Vector3, goal: Vector3) -> Vector3:
 func _extra_reset() -> void:
 	_gun_reset()
 	_laser_reset()
+	n_i = 0
+	n_moving = false
+	n_judged = false
+	n_go_t = -1.0
+	n_seen_said = false
 	v_plan.clear()
 	v_t = 0.0
 	if m and m is MissionBossGuns:
@@ -530,6 +540,8 @@ func _extra_bot(mission: String) -> void:
 			_guns()
 		"lasers":
 			_lasers()
+		"mannequins":
+			_showroom()
 
 
 # ---------------------------------------------------------------------------
@@ -1259,3 +1271,141 @@ func _lasers() -> void:
 	var tj: float = ml.t + (L_WRONG_S if l_wrong else 0.0)
 	if _l_clear(ml, from, tgt, tj, l_read) and (not l_read or _l_clear(ml, from, tgt, tj + L_ANTICIPATE_S, true)):
 		l_go_t = _react()
+
+
+# ---------------------------------------------------------------------------
+# Showroom sneaker (T5b): the zigzag through the display walls' gaps (N_PATH, showroom-local). Every leg is judged against
+# the unalerted guards with their real sight (range, cone, the walls in the line): read 65 % = his patrol followed ahead
+# over the walk with a margin, unread = clear now with the bare cone; 15 % wrong = it goes anyway. It goes after the
+# reaction and crosses at N_SPEED without stopping. Seen: the gun bot (sim_day5's) on the showroom's grid, then
+# the rest of the way to the lift.
+# ---------------------------------------------------------------------------
+const N_SPEED: float = 2.3
+## The reaction a read leg allows for before it starts.
+const N_REACT_S: float = 0.35
+const N_PATH: Array = [Vector2(1.8, 17.0), Vector2(-1.8, 7.4), Vector2(-1.8, 4.4), Vector2(1.9, -5.2), Vector2(-1.8, -10.4),
+	Vector2(-1.8, -13.6), Vector2(1.9, -20.4), Vector2(0.5, -24.2)]
+var n_i: int = 0
+var n_moving: bool = false
+var n_judged: bool = false
+var n_go_t: float = -1.0
+var n_read: bool = true
+var n_wrong: bool = false
+var n_seen_said: bool = false
+
+
+func _n_pt(i: int) -> Vector3:
+	var q: Vector2 = N_PATH[i]
+	var w: Vector3 = tw.level.world("mannequins", Vector3(q.x, 0.0, q.y))
+	return Vector3(w.x, tw.player.global_position.y, w.z)
+
+
+## Where guard g will stand and face tau s from now along its patrol (walk to its point, the 1.2 s pause, the next point):
+## [feet, forward]. Straight legs (the real walk follows the nav path).
+func _n_guard_at(g: Gunman, tau: float) -> Array:
+	var pos: Vector3 = g.feet()
+	var fwd: Vector3 = g.forward()
+	if g.patrol.is_empty() or tau <= 0.0:
+		return [pos, fwd]
+	var i: int = int(g.get("_patrol_i"))
+	var wait: float = float(g.get("_wait"))
+	var left: float = tau
+	var n: int = 0
+	while left > 0.0 and n < 8:
+		n += 1
+		if wait > 0.0:
+			var w: float = minf(wait, left)
+			left -= w
+			wait -= w
+			if left <= 0.0:
+				break
+			i = (i + 1) % g.patrol.size()
+		var to: Vector3 = g.patrol[i] - pos
+		to.y = 0.0
+		var d: float = to.length()
+		if d < 0.05:
+			wait = 1.2
+			continue
+		fwd = to / d
+		var step: float = minf(d, GunData.WALK_SPEED * left)
+		pos += fwd * step
+		left -= step / GunData.WALK_SPEED
+		if step >= d - 0.001:
+			wait = 1.2
+	return [pos, fwd]
+
+
+## No unalerted guard sees any point of the leg a -> b. read: over the walk (+ N_REACT_S), his patrol followed ahead, with a
+## margin (+10 degrees, +1 m); unread: now only, his bare cone.
+func _n_clear(f: GunFight, a: Vector3, b: Vector3, read: bool) -> bool:
+	var dur: float = Vector2(b.x - a.x, b.z - a.z).length() / N_SPEED
+	var n: int = maxi(1, ceili(dur / 0.25))
+	for e: Variant in f.alive():
+		var g: Gunman = e as Gunman
+		if g == null or g.is_alerted:
+			continue
+		var half: float = deg_to_rad(g.patrol_fov_deg * 0.5 + (10.0 if read else 0.0))
+		var rng_m: float = g.patrol_sight_m + (1.0 if read else 0.0)
+		for i: int in n + 1:
+			var u: float = float(i) / float(n)
+			var q: Vector3 = a.lerp(b, u) + Vector3(0.0, 1.2, 0.0)
+			var gs: Array = _n_guard_at(g, N_REACT_S + dur * u) if read else [g.feet(), g.forward()]
+			var eye: Vector3 = (gs[0] as Vector3) + Vector3(0.0, GunData.EYE_Y, 0.0)
+			var to := Vector3(q.x - eye.x, 0.0, q.z - eye.z)
+			var d: float = to.length()
+			if d < (2.0 if read else 1.0):
+				return false                      # walks into him (he sees anyone at arm's length)
+			if d > rng_m:
+				continue
+			if (gs[1] as Vector3).angle_to(to / d) > half:
+				continue
+			if f.clear_line(eye, q):
+				return false
+	return true
+
+
+func _showroom() -> void:
+	var mn: MissionTowerStealth = m as MissionTowerStealth
+	if mn == null:
+		return
+	var f: GunFight = mn.fight
+	if mn.spotted and not n_seen_said and verbose:
+		n_seen_said = true
+		print("      spotted at wp %d moving %s read %s wrong %s at %s" % [n_i, str(n_moving), str(n_read), str(n_wrong),
+			str(tw.level.floor_xf("mannequins").affine_inverse() * tw.player.global_position)])
+		for e: Variant in f.alive():
+			var g: Gunman = e as Gunman
+			var to: Vector3 = tw.player.global_position - g.feet()
+			to.y = 0.0
+			print("        guard at %s fwd %s d %.1f ang %.0f patrol %d i %d wait %.1f" % [str(tw.level.floor_xf("mannequins").affine_inverse() * g.feet()),
+				str(g.forward()), to.length(), rad_to_deg(g.forward().angle_to(to.normalized())), g.patrol.size(), int(g.get("_patrol_i")), float(g.get("_wait"))])
+	if mn.spotted and not f.alive().is_empty():
+		_gun(f)
+		return
+	if f.cover_ctl:
+		f.cover_ctl.hold_override = false
+	tw.weapons.aim_override = false
+	if mn.spotted:
+		if _walk(f, mn.pts["goal"]):
+			_stop_walk()
+		return
+	if n_i >= N_PATH.size():
+		return
+	var tgt: Vector3 = _n_pt(n_i)
+	if n_moving:
+		if _step_to(tgt, N_SPEED):
+			n_moving = false
+			n_judged = false
+			n_i += 1
+		return
+	if n_go_t >= 0.0:
+		n_go_t -= DT
+		if n_go_t < 0.0:
+			n_moving = true
+		return
+	if not n_judged:
+		n_judged = true
+		n_read = _reads()
+		n_wrong = _wrong()
+	if n_wrong or _n_clear(f, tw.player.global_position, tgt, n_read):
+		n_go_t = _react()
