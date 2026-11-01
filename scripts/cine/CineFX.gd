@@ -58,7 +58,7 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	# pieces, built by CinePropsD6 (this list = CinePropsD6.KINDS, kept literal so it stays a constant)
 	"pink_bob", "lo_shades", "leopard_print", "cash_bag", "ledger", "milk_tea", "powder_puff", "uniform_pack", "speedboat",
 	"jet_ski", "backroom", "doll_shelf", "music_box", "sheep_doll", "vanity", "safe", "tea_shop", "canal_bank", "low_bridge",
-	"fish_net", "sampan", "pier_wall", "billboard", "fireworks"]
+	"fish_net", "sampan", "pier_wall", "billboard", "fireworks", "bulb", "house_row", "cash_wad"]
 
 var _serial: int = 0
 var _parts: Array[Dictionary] = []     # {node: CPUParticles3D, s0, life}

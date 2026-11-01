@@ -1,7 +1,7 @@
 # File: res://tests/test_story_framing.gd
 # Headless test of the Q5 story cinematic pass (plan 2026-10-29-w2-story T6 / T7), the substitute for screenshots:
-#   1. pacing: every story dialogue cinematic of Days 0-5 validates, lasts at most 30 s and has a joke beat; each day ends
-#      (ai_intro, cine_d1 .. cine_d5) on a cliffhanger line (its last subtitle) followed by a sting;
+#   1. pacing: every story dialogue cinematic of Days 0-6 validates, lasts at most 30 s and has a joke beat; each day ends
+#      (ai_intro, cine_d1 .. cine_d5, ai_reveal) on a cliffhanger line (its last subtitle) followed by a sting;
 #   2. camera language: every scene uses the Q1 shot helpers (two_shot / ots / low_hero / dutch / push_in); the shot over
 #      each villain card is a push-in or a dutch angle;
 #   3. framing: every helper shot, sampled at its start, middle and end inside a CinePlayer (manual, empty world), frames
@@ -14,8 +14,9 @@ extends SceneTree
 const SLOTS: Array[String] = ["cine_d0_wake", "cine_d0_brief", "cine_d0_exam", "cine_d0_midnight", "ai_intro", "cine_day_start",
 	"cine_d1_intro", "cine_d1_corridor", "cine_d1_choice", "cine_d1_choice_cover", "cine_d1_choice_report", "cine_d1",
 	"cine_d2_intro", "cine_d2", "cine_d3_intro", "cine_d3_mannequins", "cine_d3", "cine_d4_intro", "cine_d4_stare", "cine_d4",
-	"cine_d5_intro", "cine_d5_monitors", "cine_d5_choice", "cine_d5_choice_accept", "cine_d5_choice_refuse", "cine_d5", "end_c"]
-const DAY_END: Array[String] = ["ai_intro", "cine_d1", "cine_d2", "cine_d3", "cine_d4", "cine_d5"]
+	"cine_d5_intro", "cine_d5_monitors", "cine_d5_choice", "cine_d5_choice_accept", "cine_d5_choice_refuse", "cine_d5", "end_c",
+	"cine_d6_intro", "cine_d6_caught", "cine_d6_choice", "cine_d6_choice_take", "cine_d6_choice_refuse", "ai_reveal"]
+const DAY_END: Array[String] = ["ai_intro", "cine_d1", "cine_d2", "cine_d3", "cine_d4", "cine_d5", "ai_reveal"]
 const HELPERS: Array[String] = ["two_shot", "ots", "low_hero", "dutch", "push_in"]
 const GESTURES: Array[String] = ["talk", "talk_ual", "point", "arms_crossed", "fold_arms", "facepalm", "shrug", "laugh", "head_no",
 	"nod", "present", "confess", "cornered", "taunt", "head_shake", "startled", "victory", "bow_ceo"]

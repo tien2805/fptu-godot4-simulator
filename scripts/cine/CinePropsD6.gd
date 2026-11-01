@@ -5,17 +5,21 @@
 #
 # Wearables (Thị Lọ; StoryCast.gear("thi_lo")): pink_bob (head gear over the PS2 hair), lo_shades (oversized pink
 #   sunglasses), leopard_print (spots on the jacket front, opts "depth").
-# Hand props: cash_bag (opts "open"), ledger, milk_tea (opts "tea" Color, "topping" pearl | jelly | pudding | cheese),
-#   powder_puff (Thị Lọ's compact), uniform_pack (the folded pink shipper shirt with the pink helmet on top).
+# Hand props: cash_bag (opts "open"), cash_wad (the tip money in a rubber band; opts "band_only", "no_band"), ledger,
+#   milk_tea (opts "tea" Color, "topping" pearl | jelly | pudding | cheese), powder_puff (Thị Lọ's compact), uniform_pack
+#   (the folded pink shipper shirt with the pink helmet on top).
 # Vehicles: speedboat (opts "color", "trim", "name": the side lettering; meta "seat", "bow"), jet_ski (opts "color";
 #   meta "seat").
 # Back room (the same layout in the lair and the cinematics: backroom_layout()): backroom (set: walls, floor, ceiling,
 #   the two doors), doll_shelf (two rows of sheep dolls; "anim": true + "turn_at", "turn_dur", "look_at" (prop-local
 #   Vector3) turns every head; meta "anim_node" with aim_heads() for gameplay), music_box ("anim": "play_at" spins the
 #   sheep), sheep_doll, vanity (a mirror with bulbs; meta "glass"), safe ("anim": "open_at" swings the door).
+#   bulb (a bare hanging bulb with its light: CineFX.set_lamp / prop opts "dark" / "flicker" work on it; opts "bare": the
+#   light only, "color", "energy", "range").
 # Shop: tea_shop (set: the front room, the counter with 4 cup spots, the menu board, the pink neon sign; shop_layout()).
 # Canal: canal_bank (set: a piece of bank, the water with the code water shader, lanterns), low_bridge (opts "span",
 #   "clear"), fish_net (opts "w", "h"; meta "net"), sampan (opts "ramp": a moored sampan tipped into a ramp), pier_wall,
+#   house_row (a row of canal houses with lit windows along X, front toward -Z: opts "n", "seed"),
 #   billboard ("anim": "on_at" lights the LỌ ACADEMY board and Lùm Văn Lọ's face), fireworks ("anim": "bursts"
 #   [[s, Vector3, Color], ...] story-time sky bursts, seekable).
 # water_material(): the shared canal water (a small spatial shader: waves in the vertex, a moving normal, fresnel).
@@ -24,7 +28,7 @@ extends RefCounted
 
 const KINDS: Array[String] = ["pink_bob", "lo_shades", "leopard_print", "cash_bag", "ledger", "milk_tea", "powder_puff",
 	"uniform_pack", "speedboat", "jet_ski", "backroom", "doll_shelf", "music_box", "sheep_doll", "vanity", "safe", "tea_shop",
-	"canal_bank", "low_bridge", "fish_net", "sampan", "pier_wall", "billboard", "fireworks"]
+	"canal_bank", "low_bridge", "fish_net", "sampan", "pier_wall", "billboard", "fireworks", "bulb", "house_row", "cash_wad"]
 const PINK := Color("#FF4FA3")
 const NEON := Color("#FF5FC8")
 const WOOL := Color("#F1ECE2")
@@ -91,6 +95,8 @@ static func build(kind: String, root: Node3D, opts: Dictionary) -> void:
 			_cash_bag(root, opts)
 		"ledger":
 			_ledger(root)
+		"cash_wad":
+			_cash_wad(root, opts)
 		"milk_tea":
 			_milk_tea(root, opts)
 		"powder_puff":
@@ -113,6 +119,10 @@ static func build(kind: String, root: Node3D, opts: Dictionary) -> void:
 			root.set_meta("anim_node", mb)
 		"sheep_doll":
 			sheep_doll(root, "Doll")
+		"bulb":
+			_bulb(root, opts)
+		"house_row":
+			_house_row(root, opts)
 		"vanity":
 			_vanity(root)
 		"safe":
@@ -253,6 +263,19 @@ static func _cash_bag(root: Node3D, opts: Dictionary) -> void:
 		CineFX._box(root, "Lid", Vector3(0.48, 0.34, 0.02), Vector3(0.0, -0.22, 0.12), leather)
 
 
+## The day's tip money: a wad of notes in a pink rubber band (origin at its centre); opts "band_only": just the band (what
+## Thị Lọ hands back: "Còn cái nịt."), "no_band": just the notes.
+static func _cash_wad(root: Node3D, opts: Dictionary) -> void:
+	if not bool(opts.get("band_only", false)):
+		for i: int in 4:
+			CineFX._box(root, "Note", Vector3(0.14, 0.006, 0.065), Vector3(0.004 * float(i % 2), 0.007 * float(i), 0.003 * float(i)),
+				CineFX._mat(Color("#5FAF6A").lightened(0.06 * float(i % 2)), 0.85))
+	if not bool(opts.get("no_band", false)):
+		var band: MeshInstance3D = CineFX._cyl(root, "Band", 0.036, 0.036, 0.012, Vector3(0.0, 0.012, 0.0), CineFX._glow_mat(PINK, 0.4))
+		band.rotation.z = PI * 0.5
+		band.scale = Vector3(1.0, 1.0, 0.55)
+
+
 ## The ledger E7: a thick dark-red book with a gold "SỔ CÁI" label and a sheep stamp (origin at its centre).
 static func _ledger(root: Node3D) -> void:
 	CineFX._box(root, "Cover", Vector3(0.24, 0.06, 0.32), Vector3.ZERO, CineFX._mat(Color("#6E1424"), 0.6))
@@ -361,10 +384,11 @@ static func _jet_ski(root: Node3D, opts: Dictionary) -> void:
 # ---------------------------------------------------------------------------
 ## [kind, pos, yaw_deg, opts] of the back room's furniture in the room frame (the lair and the cinematics both use it).
 static func backroom_layout() -> Array:
-	return [["doll_shelf", Vector3(-4.2, 0.0, -1.6), 90.0, {"tint": 0}], ["doll_shelf", Vector3(-4.2, 0.0, 1.0), 90.0, {"tint": 1}],
-		["doll_shelf", Vector3(4.2, 0.0, -1.6), -90.0, {"tint": 2}], ["doll_shelf", Vector3(4.2, 0.0, 1.0), -90.0, {"tint": 3}],
+	return [["doll_shelf", Vector3(-4.2, 0.0, -1.6), -90.0, {"tint": 0}], ["doll_shelf", Vector3(-4.2, 0.0, 1.0), -90.0, {"tint": 1}],
+		["doll_shelf", Vector3(4.2, 0.0, -1.6), 90.0, {"tint": 2}], ["doll_shelf", Vector3(4.2, 0.0, 1.0), 90.0, {"tint": 3}],
 		["music_box", Vector3(0.0, 0.0, 0.4), 180.0, {}], ["vanity", Vector3(-2.4, 0.0, -3.05), 180.0, {}],
-		["safe", Vector3(2.9, 0.0, -3.0), 180.0, {}]]
+		["safe", Vector3(2.9, 0.0, -3.0), 180.0, {}], ["bulb", Vector3(0.0, ROOM_H - 0.45, 0.0), 0.0, {}],
+		["bulb", Vector3(-2.4, 1.7, -2.3), 0.0, {"bare": true, "color": Color("#FF3060"), "energy": 0.7, "range": 5.0}]]
 
 
 ## Back-room shell (set): floor, walls with the two door gaps, ceiling, a bare bulb and a small table under the music box.
@@ -380,22 +404,7 @@ static func _backroom(root: Node3D) -> void:
 	_wall_with_door(root, "Front", hd, ROOM_DOOR_X, wall)
 	_wall_with_door(root, "Back", -hd, PIER_DOOR_X, wall)
 	CineFX._box(root, "Table", Vector3(0.8, 0.75, 0.6), Vector3(0.0, 0.375, 0.4), CineFX._mat(Color("#5A3A28"), 0.7))
-	CineFX._sphere(root, "Bulb", 0.07, Vector3(0.0, ROOM_H - 0.45, 0.0), CineFX._glow_mat(Color("#FFD9A0"), 3.0))
-	CineFX._cyl(root, "Cord", 0.006, 0.006, 0.4, Vector3(0.0, ROOM_H - 0.2, 0.0), CineFX._mat(Color("#111111"), 0.8))
-	var ol := OmniLight3D.new()
-	ol.name = "BulbLight"
-	ol.light_color = Color("#FFC88A")
-	ol.light_energy = 0.9
-	ol.omni_range = 7.0
-	ol.position = Vector3(0.0, ROOM_H - 0.55, 0.0)
-	root.add_child(ol)
-	var red := OmniLight3D.new()
-	red.name = "RedLight"
-	red.light_color = Color("#FF3060")
-	red.light_energy = 0.6
-	red.omni_range = 5.0
-	red.position = Vector3(-2.4, 1.6, -2.2)
-	root.add_child(red)
+
 
 
 static func _wall_with_door(root: Node3D, nm: String, z: float, door_x: float, mat: Material) -> void:
@@ -428,6 +437,25 @@ static func sheep_doll(parent: Node3D, nm: String) -> Node3D:
 		CineFX._box(head, "Ear", Vector3(0.05, 0.016, 0.025), Vector3(sx * 3.2, 0.03, -0.01), CineFX._mat(FACE, 0.7))
 	d.set_meta("head", head)
 	return head
+
+
+## A hanging bulb (origin at the bulb) with its OmniLight (CineFX lamp metas, so "dark" / "flicker" windows switch it).
+static func _bulb(root: Node3D, opts: Dictionary) -> void:
+	var col: Color = opts.get("color", Color("#FFC88A"))
+	var ol := OmniLight3D.new()
+	ol.name = "BulbLight"
+	ol.light_color = col
+	ol.light_energy = float(opts.get("energy", 1.0))
+	ol.omni_range = float(opts.get("range", 7.5))
+	ol.position = Vector3(0.0, -0.1, 0.0)
+	root.add_child(ol)
+	root.set_meta("lamp_light", ol)
+	if bool(opts.get("bare", false)):
+		return
+	var bulb: StandardMaterial3D = CineFX._glow_mat(col.lightened(0.3), 3.0)
+	CineFX._sphere(root, "Bulb", 0.07, Vector3.ZERO, bulb)
+	CineFX._cyl(root, "Cord", 0.006, 0.006, 0.4, Vector3(0.0, 0.25, 0.0), CineFX._mat(Color("#111111"), 0.8))
+	root.set_meta("lamp_bulb", bulb)
 
 
 ## Vanity: a table, a tall mirror framed by bulbs and a stool (front toward -Z; the glass faces -Z). Meta "glass".
@@ -514,6 +542,29 @@ static func _tea_shop(root: Node3D) -> void:
 # ---------------------------------------------------------------------------
 # Canal
 # ---------------------------------------------------------------------------
+## A row of n canal houses along X (front toward -Z; origin at the row's centre on the ground), lit windows (emissive).
+static func _house_row(root: Node3D, opts: Dictionary) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(opts.get("seed", 6))
+	var n: int = int(opts.get("n", 8))
+	var x: float = 0.0
+	var ws: Array[float] = []
+	for i: int in n:
+		ws.append(rng.randf_range(5.5, 8.0))
+		x += ws[i]
+	x = -x * 0.5
+	for i2: int in n:
+		var h: float = rng.randf_range(4.0, 10.0)
+		var dep: float = rng.randf_range(6.0, 8.0)
+		var c := Vector3(x + ws[i2] * 0.5, h * 0.5, dep * 0.5)
+		CineFX._box(root, "House", Vector3(ws[i2] - 0.3, h, dep), c, CineFX._mat(Color.from_hsv(rng.randf_range(0.02, 0.12), 0.3, rng.randf_range(0.35, 0.55)), 0.9))
+		for f: int in int(h / 3.0):
+			for k: int in 2:
+				if rng.randf() < 0.6:
+					CineFX._box(root, "Window", Vector3(0.9, 1.1, 0.03), Vector3(c.x - ws[i2] * 0.25 + ws[i2] * 0.5 * float(k), 1.6 + 3.0 * float(f), -0.02), CineFX._glow_mat(Color.from_hsv(rng.randf_range(0.08, 0.14), 0.5, 1.0), 1.6))
+		x += ws[i2]
+
+
 ## A piece of canal bank (set) for the cinematics outside the lair: the land on +Z (top at y = 0), the stone edge at z = 0,
 ## the water on -Z (y = -1, the code water shader), a lantern string, two bollards. opts "w" (along X), "d" (water depth).
 static func _canal_bank(root: Node3D, opts: Dictionary) -> void:
