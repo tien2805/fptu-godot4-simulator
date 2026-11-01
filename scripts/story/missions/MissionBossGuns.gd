@@ -20,6 +20,8 @@
 #     plinth) takes GunData.gunman_dmg() x VOLLEY_DMG_K each; a plinth in the line takes VOLLEY_CHIP each (a full volley
 #     breaks one: stay in cover and lose it, or step out of the beam). Never damage before the telegraph ends.
 #   - A preview cut to Lọ when he shows up (wave 2).
+# T3, findable: OffscreenMarkers on the mission HUD: every alerted guard (red, "Bảo vệ"), Lọ by name from wave 2, the ammo
+# drops while they lie there.
 # Test hooks: start_volley() (the telegraph now), damage_vase(i, dmg, dir), cover_vases, volley_state, the counters.
 # points: start (+ start_yaw), boss_at, waves [[at...], [at...]], ammo, centre, leash.
 class_name MissionBossGuns
@@ -54,11 +56,14 @@ const BEAM_W: float = 0.025
 const BEAM_W_LOCK: float = 0.055
 const CUT_S: float = 0.6
 const T_VOLLEY: String = "Lọ đang ngắm! Né khỏi tia đỏ!"
+const T_GUARD: String = "Bảo vệ"
+const T_AMMO: String = "Đạn"
 const VOLLEY_LINES: Array[String] = ["Đứng yên cho thầy chấm điểm.", "Nấp sau bình cổ? Bình đó của thầy đấy.",
 	"Bài kiểm tra cuối: né đạn.", "Thầy bắn ít thôi, mà trúng."]
 
 var card: StoryVillainCard = null
 var lo: Gunman = null
+var markers: OffscreenMarkers = null
 ## Per vase (LairTower.vases order): {"body", "vase", "cs", "size", "cs_y", "prop", "slots" (PackedInt32Array), "hp",
 ## "cracked", "broken"}.
 var cover_vases: Array[Dictionary] = []
@@ -106,7 +111,20 @@ func _start() -> void:
 	_init_vases()
 	_build_beam()
 	fight.start()
+	markers = OffscreenMarkers.make(hud, player)
+	markers.threat_source = _guards
+	markers.threat_label = T_GUARD
+	for p: AmmoPickup in fight.pickups:
+		markers.track(p, "prompt", T_AMMO, 1.0)
 	_show_card()
+
+
+## The alerted guards for the markers (Lọ has his own, named marker).
+func _guards() -> Array:
+	var out: Array = fight.alive() if fight else []
+	if lo:
+		out.erase(lo)
+	return out
 
 
 ## Lọ's Gunman opts: his body, his name over his head, his HP.
@@ -133,6 +151,8 @@ func _on_wave_started(i: int) -> void:
 		for g: Variant in fight.gunmen:
 			if g is Gunman and is_instance_valid(g) and not (g as Gunman).shot.is_connected(_on_guard_shot):
 				(g as Gunman).shot.connect(_on_guard_shot)
+	if markers and lo:
+		markers.untrack(lo)
 	lo = null
 	_volley_off()
 	if fight and i == fight.waves.size() - 1:
@@ -141,6 +161,8 @@ func _on_wave_started(i: int) -> void:
 				lo = e
 		popup(T_LO_UP, 1.8, WARN)
 		if lo:
+			if markers:
+				markers.track(lo, "threat", LO_LABEL, 2.3)
 			volley_state = "wait"
 			volley_t = 0.0
 			_next_volley = VOLLEY_FIRST_S
@@ -153,10 +175,15 @@ func _on_enemy_ko(e: Node3D) -> void:
 	if e == lo:
 		last_ko = e
 		_volley_off()
+		if markers:
+			markers.untrack(lo)
 
 
 func _lair_tick(dt: float) -> void:
 	_tick_volley(dt)
+	if markers and fight:
+		for p: AmmoPickup in fight.pickups:
+			markers.set_on(p, not p.taken)
 
 
 func _cut(target: Node3D) -> void:

@@ -6,7 +6,12 @@
 # always lit. Touching a lit beam (BEAM_HZ checks: the player's xz distance to the beam under PLAYER_R and the beam's
 # height inside the player's body) = "BỊ LỘ" with the alarm; THỬ LẠI = back at the lift, the beams' clock from zero.
 # The goal: the beat's replay (seg_d7_floors: a short replay of the run, StoryStage) then done {"time"}.
-# Static helpers (tests): beam_state(def, t) -> "on" | "warn" | "off", beam_point(def, t), beam_hits(def, t, p).
+# T3, the sweeps' telegraph: every sweeping beam has a dim GHOST beam (harmless, the warn colour) running TELE_S ahead of
+# it (ghost_point(def, t) = beam_point(def, t + TELE_S)): any spot the lit beam reaches was marked TELE_S before; and a dim
+# floor rail along its whole path. So every lethal beam is telegraphed >= TELE_S (0.6 s): a blink by its dim warn phase,
+# a sweep by its ghost, a static one by simply being there.
+# Static helpers (tests): beam_state(def, t) -> "on" | "warn" | "off", beam_point(def, t), ghost_point(def, t),
+# beam_hits(def, t, p).
 # points: start (+ start_yaw), goal, goal_r, lasers, centre, leash.
 class_name MissionTowerLasers
 extends StoryMission
@@ -27,6 +32,9 @@ const RED := Color("#FF2A3A")
 var pts: Dictionary = {}
 var defs: Array = []
 var beams: Array[Node3D] = []
+## Per beam: its ghost pivot (sweeps; null for the others) and its floor rail (sweeps).
+var ghosts: Array[Node3D] = []
+var rails: Array[MeshInstance3D] = []
 var t: float = 0.0
 var trips: int = 0
 var buzzes: int = 0
@@ -68,6 +76,11 @@ static func beam_point(d: Dictionary, at_t: float) -> Vector3:
 		return a
 	var period: float = maxf(0.2, float(d.get("period", 3.0)))
 	return a + (d.get("sweep", Vector3.ZERO) as Vector3) * sin(TAU * (at_t + float(d.get("phase", 0.0))) / period)
+
+
+## Where a sweep's ghost is now: where the lit beam will be TELE_S later (the others: their beam).
+static func ghost_point(d: Dictionary, at_t: float) -> Vector3:
+	return beam_point(d, at_t + TELE_S)
 
 
 ## A lit beam through the player standing at p (feet).
@@ -133,32 +146,54 @@ func _build_beams() -> void:
 	root.top_level = true
 	add_child(root)
 	for d: Dictionary in defs:
-		var pivot := Node3D.new()
-		pivot.name = "Beam"
-		root.add_child(pivot)
-		var mi := MeshInstance3D.new()
-		mi.name = "Bar"
-		var bm := BoxMesh.new()
-		var a: Vector3 = d["a"]
-		var b: Vector3 = d["b"]
-		var y0: float = float(d.get("y0", 0.5))
-		var y1: float = float(d.get("y1", y0))
-		var vertical: bool = Vector2(b.x - a.x, b.z - a.z).length() < 0.01
-		if vertical:
-			bm.size = Vector3(BEAM_W, absf(y1 - y0), BEAM_W)
-			mi.position = Vector3(0.0, (y0 + y1) * 0.5, 0.0)
-		else:
-			var from := a + Vector3(0.0, y0, 0.0)
-			var to := b + Vector3(0.0, y1, 0.0)
-			bm.size = Vector3(BEAM_W, BEAM_W, from.distance_to(to))
-			mi.basis = Basis.looking_at(to - from, Vector3.UP) if absf((to - from).normalized().y) < 0.99 else Basis.IDENTITY
-			mi.position = (from + to) * 0.5 - a
-		mi.mesh = bm
-		mi.material_override = _mat_on
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		pivot.add_child(mi)
-		pivot.global_position = a
+		var pivot: Node3D = _beam_pivot(root, d, _mat_on, "Beam")
 		beams.append(pivot)
+		if String(d.get("mode", "")) == "sweep":
+			ghosts.append(_beam_pivot(root, d, _mat_warn, "Ghost"))
+			var sw: Vector3 = d.get("sweep", Vector3.ZERO)
+			var a: Vector3 = d["a"]
+			var rail := MeshInstance3D.new()
+			rail.name = "Rail"
+			var rm := BoxMesh.new()
+			rm.size = Vector3(maxf(0.04, absf(sw.x) * 2.0), 0.012, maxf(0.04, absf(sw.z) * 2.0))
+			rail.mesh = rm
+			rail.material_override = _mat_warn
+			rail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			root.add_child(rail)
+			rail.global_position = a + Vector3(0.0, 0.02, 0.0)
+			rails.append(rail)
+		else:
+			ghosts.append(null)
+
+
+## One beam's pivot (at its anchor "a") with its glowing bar.
+func _beam_pivot(root: Node3D, d: Dictionary, mat: Material, nm: String) -> Node3D:
+	var pivot := Node3D.new()
+	pivot.name = nm
+	root.add_child(pivot)
+	var mi := MeshInstance3D.new()
+	mi.name = "Bar"
+	var bm := BoxMesh.new()
+	var a: Vector3 = d["a"]
+	var b: Vector3 = d["b"]
+	var y0: float = float(d.get("y0", 0.5))
+	var y1: float = float(d.get("y1", y0))
+	var vertical: bool = Vector2(b.x - a.x, b.z - a.z).length() < 0.01
+	if vertical:
+		bm.size = Vector3(BEAM_W, absf(y1 - y0), BEAM_W)
+		mi.position = Vector3(0.0, (y0 + y1) * 0.5, 0.0)
+	else:
+		var from := a + Vector3(0.0, y0, 0.0)
+		var to := b + Vector3(0.0, y1, 0.0)
+		bm.size = Vector3(BEAM_W, BEAM_W, from.distance_to(to))
+		mi.basis = Basis.looking_at(to - from, Vector3.UP) if absf((to - from).normalized().y) < 0.99 else Basis.IDENTITY
+		mi.position = (from + to) * 0.5 - a
+	mi.mesh = bm
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	pivot.add_child(mi)
+	pivot.global_position = a
+	return pivot
 
 
 ## Positions (sweeps), visibility and colour (blinks) of the beams at the mission's t.
@@ -170,6 +205,8 @@ func _update_beams() -> void:
 		pv.visible = st != "off"
 		if String(d.get("mode", "")) == "sweep":
 			pv.global_position = beam_point(d, t)
+			if i < ghosts.size() and ghosts[i] != null:
+				ghosts[i].global_position = ghost_point(d, t)
 		if String(d.get("mode", "")) == "blink":
 			var mi: MeshInstance3D = pv.get_child(0) as MeshInstance3D
 			var want: Material = _mat_on if st == "on" else _mat_warn

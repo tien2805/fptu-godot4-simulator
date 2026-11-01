@@ -59,7 +59,7 @@ const MN_GROUPS: Array[Vector3] = [Vector3(-4.5, 0.0, 19.0), Vector3(4.5, 0.0, 1
 	Vector3(4.5, 0.0, -8.0), Vector3(-4.5, 0.0, -15.0)]
 const MN_PATROLS: Array = [[Vector3(4.0, 0.0, 12.0), [Vector3(4.0, 0.0, 12.0), Vector3(-5.0, 0.0, 12.0)]],
 	[Vector3(-4.5, 0.0, -0.5), [Vector3(-4.5, 0.0, -0.5), Vector3(5.0, 0.0, -0.5)]],
-	[Vector3(4.5, 0.0, -16.0), [Vector3(4.5, 0.0, -16.0), Vector3(-5.0, 0.0, -16.0), Vector3(-5.0, 0.0, -22.0)]]]
+	[Vector3(4.5, 0.0, -16.0), [Vector3(4.5, 0.0, -16.0), Vector3(-5.0, 0.0, -16.0), Vector3(4.5, 0.0, -16.0), Vector3(4.5, 0.0, -22.0)]]]
 # gallery
 const GA_W: float = 28.0
 const GA_D: float = 24.0
@@ -242,7 +242,7 @@ func mission_points(task: String) -> Dictionary:
 			d["start"] = world(f, Vector3(0.0, 0.0, 10.0))
 			d["start_yaw"] = 0.0
 			d["boss_at"] = world(f, Vector3(0.0, 0.0, -9.0))
-			d["waves"] = [[world(f, Vector3(-10.0, 0.0, -8.0)), world(f, Vector3(10.0, 0.0, -8.0)), world(f, Vector3(0.0, 0.0, -10.5))],
+			d["waves"] = [[world(f, Vector3(-10.0, 0.0, -8.0)), world(f, Vector3(10.0, 0.0, -8.0)), world(f, Vector3(2.6, 0.0, -10.5))],
 				[world(f, Vector3(-12.0, 0.0, -10.0)), world(f, Vector3(12.0, 0.0, -10.0))]]
 			d["ammo"] = [world(f, Vector3(-12.5, 0.0, 9.0)), world(f, Vector3(12.5, 0.0, 9.0)), world(f, Vector3(0.0, 0.0, 3.0))]
 			d["leash"] = 30.0
