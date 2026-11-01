@@ -199,6 +199,11 @@ func _diag(mission: String) -> String:
 		"dark":
 			var md: MissionBossDark = m as MissionBossDark
 			return "lo %s hits %d staggers %d restored %s hp %.0f" % [md.lo_state, md.hits, md.staggers, str(md.restored), tw.combat.hp]
+		"guns":
+			var mg: MissionBossGuns = m as MissionBossGuns
+			return "slots %d slot %d pick %d pos %s wave %d left %d volleys %d shots %d hits %d dodges %d stays %d shattered %d bot %s cover %s e_shots %d e_hits %d" % [mg.fight.cover.count() if mg.fight.cover else -1, b_slot, _pick_slot(mg.fight, false, 14.0) if mg.fight.cover else -9, str(tw.level.floor_xf("gallery").affine_inverse() * tw.player.global_position), mg.fight.wave,
+				mg.fight.enemies_left(), mg.volleys, mg.volley_shots, mg.volley_hits, v_dodges, v_stays, mg.shattered, b_state,
+				str(mg.fight.cover_ctl.in_cover if mg.fight.cover_ctl else false), e_shots, e_hits]
 		"typing":
 			var mh: MissionTowerTyping = m as MissionTowerTyping
 			return "hp %.0f/%.0f kills %d leaks %d" % [mh.hack.hp, mh.hack.hp_max, mh.hack.kills, mh.hack.leaks]
@@ -507,8 +512,646 @@ func _dark_route(p: Vector3, goal: Vector3) -> Vector3:
 # The other missions (filled step by step)
 # ---------------------------------------------------------------------------
 func _extra_reset() -> void:
-	pass
+	_gun_reset()
+	v_plan.clear()
+	v_t = 0.0
+	if m and m is MissionBossGuns:
+		v_seen = (m as MissionBossGuns).volleys
 
 
-func _extra_bot(_mission: String) -> void:
-	pass
+func _extra_bot(mission: String) -> void:
+	match mission:
+		"guns":
+			_guns()
+
+
+# ---------------------------------------------------------------------------
+# Gun bot: sim_day5's (the w3-shared sloppy gun bot) with the basement's map swapped for the floor's grid.
+# ---------------------------------------------------------------------------
+const NO_LOS_S: float = 3.0
+const MOVE_S: float = 7.0
+const HUNT_S: float = 10.0
+
+var b_fight: GunFight = null
+var e_shots: int = 0
+var st_hist: Dictionary = {}
+var e_hits: int = 0
+var b_state: String = "cover"
+var b_until: float = 0.0
+var b_pending: Array = []
+var b_slot: int = -1
+var b_reload_until: float = -1.0
+var b_shot_cd: float = 0.0
+var b_nolos: float = 0.0
+var bt: float = 0.0
+# Wave 3 integration (the w3-shared T11 model): the target-finding reaction, the flank reaction, the dive
+var use_dive: bool = false
+var b_aim_g: Object = null               # the target being acquired / held (untyped: it may be freed)
+var b_aim_at: float = 0.0                # first shot at it from this time (a reaction after a pop or a target switch)
+var b_hit_from := Vector3.ZERO           # where the last shot that hit it while crouched came from
+var b_hit_t: float = -99.0
+var b_hit_fight: GunFight = null         # the fight whose player_hit is connected
+var b_last_dive: float = -99.0           # on the bot clock bt (reset with it: a stale value stopped the dives)
+var b_dive_seen: bool = false            # the queued dive really started (BulletTime picks the press up a frame later)
+var b_dives_run: int = 0
+var b_dive_from: int = -1                # the slot it dived out of (it takes it again after the dive)
+var b_label: Dictionary = {}             # rack row -> [read it?, reaction left] while that domino chance lasts
+var gr_nodes: Array[Vector3] = []
+var gr_edges: Array = []
+var gr_key: int = -1
+var r_path: Array[Vector3] = []
+var r_goal: Vector3 = Vector3.INF
+var r_replan: float = 0.0
+var r_last_p: Vector3 = Vector3.ZERO
+var r_stuck_t: float = 0.0
+
+
+func _gun_reset() -> void:
+	b_fight = null
+	b_pending.clear()
+	b_reload_until = -1.0
+	b_shot_cd = 0.0
+	b_nolos = 0.0
+	b_slot = -1
+	bt = 0.0                                 # the clock first: every timer below is set from it
+	b_aim_g = null
+	b_hit_t = -99.0
+	b_last_dive = -99.0
+	b_dive_seen = false
+	b_label.clear()
+	if tw and tw.player:
+		tw.player.jump_override = false
+	r_path.clear()
+	r_goal = Vector3.INF
+	_stop_walk()
+	_set_state("cover", rng.randf_range(0.8, 1.6))
+
+
+func _gun(f: GunFight) -> void:
+	if f == null or f.state != "running" or f.cover_ctl == null:
+		_stop_walk()
+		return
+	if f != b_fight:
+		b_fight = f
+		gr_key = -1
+		b_slot = -1
+		b_pending.clear()
+		b_aim_g = null
+		_set_state("cover", _react())
+	if b_hit_fight != f:
+		b_hit_fight = f
+		if not f.player_hit.is_connected(_on_player_hit):
+			f.player_hit.connect(_on_player_hit)
+	bt += DT
+	_watch_glints(f)
+	b_shot_cd -= DT
+	for i: int in range(b_pending.size() - 1, -1, -1):
+		var pd: Array = b_pending[i]
+		if bt >= float(pd[0]):
+			b_pending.remove_at(i)
+			_do(f, String(pd[1]))
+	if b_reload_until > 0.0 and bt >= b_reload_until:
+		b_reload_until = -1.0
+		_reload_now()
+	if f.alive().is_empty():
+		_stop_walk()
+		tw.weapons.aim_override = false
+		return
+	for e5: Variant in f.alive():
+		if e5 is Gunman:
+			var sn: String = Gunman.ST_NAMES[(e5 as Gunman).st]
+			st_hist[sn] = float(st_hist.get(sn, 0.0)) + DT
+	if f.cover_ctl.in_cover:
+		b_slot = f.cover_ctl.slot
+	match b_state:
+		"cover":
+			_stop_walk()
+			tw.weapons.aim_override = false
+			f.cover_ctl.hold_override = true
+			if not _has("move") and ((b_slot >= 0 and (not f.cover.protects(b_slot, _threat(f)) or _flanked(f, b_slot))) or not f.cover_ctl.in_cover):
+				_later("move")
+			if bt >= b_until and not _has("pop"):
+				_later("pop", 0.3 if _wrong() else 0.0)
+				b_until = INF
+		"pop":
+			_stop_walk()
+			tw.weapons.aim_override = true
+			if _shoot(f):
+				b_nolos = 0.0
+			else:
+				b_nolos += DT
+			if b_nolos >= NO_LOS_S:
+				b_nolos = 0.0
+				b_pending.clear()
+				f.cover_ctl.hold_override = false
+				_set_state("hunt", HUNT_S)
+				return
+			if bt >= b_until and not _has("duck"):
+				_later("duck")
+				b_until = INF
+			if use_dive and bt - b_last_dive >= 20.0 and f.bullet_time and f.bullet_time.enabled 					and f.bullet_time.focus >= BulletTime.FOCUS_MAX - 0.01 and f.alive().size() >= 3 and not _has("dive"):
+				_later("dive", 0.3 if _wrong() else 0.0)
+		"dive":
+			_stop_walk()
+			tw.weapons.aim_override = true
+			_shoot(f, true)
+			var btm: BulletTime = f.bullet_time
+			if btm != null and btm.state != "idle":
+				b_dive_seen = true
+			if btm == null or (btm.state == "idle" and (b_dive_seen or bt >= b_until - 1.7)):   # over, or refused
+				b_slot = _back_slot(f)
+				if b_slot >= 0:
+					_set_state("move", MOVE_S)     # back to a slot it walks to (never snaps in from afar)
+				else:
+					_set_state("pop", rng.randf_range(1.2, 2.0))
+		"move":
+			tw.weapons.aim_override = false
+			f.cover_ctl.hold_override = false
+			if b_slot < 0:
+				_set_state("pop", rng.randf_range(1.2, 2.0))
+				return
+			var goal: Vector3 = f.cover.pos[b_slot]
+			var arrived: bool = _walk(f, goal)
+			if arrived or bt >= b_until:
+				_stop_walk()
+				if StoryMission.flat(goal, tw.player.global_position) <= GunData.COVER_ENTER_R and not (f.taken.has(b_slot) and f.taken[b_slot] != tw.player):
+					f.cover_ctl.hold_override = true
+					f.cover_ctl.enter(b_slot)
+					_set_state("cover", rng.randf_range(0.6, 1.2))
+				else:
+					b_slot = -1
+					_set_state("pop", rng.randf_range(1.2, 2.0))
+		"ammo":
+			tw.weapons.aim_override = false
+			f.cover_ctl.hold_override = false
+			var box: AmmoPickup = null
+			var bd2: float = INF
+			for pk: AmmoPickup in f.pickups:
+				var d4: float = StoryMission.flat(pk.global_position, tw.player.global_position)
+				if not pk.taken and d4 < bd2:
+					bd2 = d4
+					box = pk
+			if box == null or bt >= b_until or _any_ammo():
+				_stop_walk()
+				_set_state("cover", _react())
+				return
+			_walk(f, box.global_position)
+		"hunt":
+			tw.weapons.aim_override = false
+			f.cover_ctl.hold_override = false
+			var tg: Gunman = _target(f)
+			if tg != null and StoryMission.flat(tg.global_position, tw.player.global_position) < 20.0 or bt >= b_until:
+				_stop_walk()
+				b_slot = _pick_slot(f, _wrong(), 7.0)
+				if b_slot >= 0 and not _slot_sees(f, b_slot):
+					b_slot = -1                      # no cover with a view here: it fights from where it stands
+				if b_slot >= 0 and not f.cover_ctl.in_cover:
+					_set_state("move", MOVE_S)
+				else:
+					_set_state("pop", rng.randf_range(1.2, 2.0))
+				return
+			var near: Node3D = null
+			var nd: float = INF
+			for e: Variant in f.alive():
+				var d: float = StoryMission.flat((e as Node3D).global_position, tw.player.global_position)
+				if d < nd:
+					nd = d
+					near = e as Node3D
+			if near:
+				_walk(f, near.global_position)
+
+
+func _set_state(s: String, secs: float) -> void:
+	b_state = s
+	b_until = bt + secs
+
+
+func _later(action: String, extra: float = 0.0) -> void:
+	b_pending.append([bt + _react() + extra, action])
+
+
+func _has(action: String) -> bool:
+	for pd: Array in b_pending:
+		if String(pd[1]) == action:
+			return true
+	return false
+
+
+func _do(f: GunFight, action: String) -> void:
+	match action:
+		"pop":
+			if b_state == "cover":
+				_set_state("pop", 3.5 if _wrong() else rng.randf_range(1.2, 2.0))
+				b_aim_g = null
+				b_label.clear()                  # every pop is a new look at the labels
+		"dive":
+			if b_state == "pop" and f.bullet_time:
+				f.cover_ctl.hold_override = false
+				f.cover_ctl.leave()
+				tw.weapons.aim_override = true
+				tw.player.input_override = null
+				tw.player.jump_override = true
+				b_last_dive = bt
+				b_dive_from = b_slot
+				b_dives_run += 1
+				b_aim_g = null
+				b_dive_seen = false
+				_set_state("dive", 2.0)
+		"duck":
+			if b_state == "pop":
+				_set_state("cover", rng.randf_range(0.8, 1.6))
+		"move":
+			if b_state == "cover":
+				var s: int = _pick_slot(f, _wrong(), 14.0)
+				if s >= 0 and s != f.cover_ctl.slot:
+					b_slot = s
+					f.cover_ctl.hold_override = false
+					f.cover_ctl.leave()
+					_set_state("move", MOVE_S)
+
+
+func _watch_glints(f: GunFight) -> void:
+	for g: Variant in f.gunmen:
+		if is_instance_valid(g) and not (g as Gunman).telegraph_started.is_connected(_on_glint):
+			(g as Gunman).telegraph_started.connect(_on_glint)
+			(g as Gunman).shot.connect(_on_enemy_shot)
+
+
+func _on_enemy_shot(_g: Gunman, result: String) -> void:
+	e_shots += 1
+	if result == "hit":
+		e_hits += 1
+
+
+func _on_glint(_g: Gunman) -> void:
+	if b_state == "pop" and rng.randf() < 0.65:
+		_later("duck", 0.3 if _wrong() else 0.0)
+
+
+## Shot while crouched: that cover does not protect against him (the flank reaction).
+func _on_player_hit(src: Node3D, _d: float) -> void:
+	if b_state == "cover" and is_instance_valid(src):
+		b_hit_from = src.global_position
+		b_hit_t = bt
+
+
+## Hit while crouched in slot i within the last 1.5 s by a shooter that slot does not protect against.
+func _flanked(f: GunFight, i: int) -> bool:
+	return bt - b_hit_t < 1.5 and not f.cover.protects(i, b_hit_from)
+
+
+func _threat(f: GunFight) -> Vector3:
+	var acc := Vector3.ZERO
+	var n: int = 0
+	for e: Variant in f.alive():
+		acc += (e as Node3D).global_position
+		n += 1
+	return acc / float(n) if n > 0 else tw.player.global_position
+
+
+## The nearest gunman with a clear line to his chest (crouched: lowered by his drop); a pallet facing the bot pushes him back.
+func _target(f: GunFight) -> Gunman:
+	var best: Gunman = null
+	var bd: float = INF
+	var eye: Vector3 = tw.player.global_position + Vector3(0.0, 1.35, 0.0)
+	for e: Variant in f.alive():
+		if not (e is Gunman):
+			continue
+		var gm: Gunman = e
+		var d: float = eye.distance_to(gm.feet())
+		if gm.has_method("has_shield") and bool(gm.call("has_shield")) and bool(gm.call("front_hit", tw.player.global_position)):
+			d += 6.0
+		if d < bd and f.clear_line(eye, gm.feet() + Vector3(0.0, 1.2 - gm.drop, 0.0)):
+			bd = d
+			best = gm
+	return best
+
+
+## The held target is still up and in sight (a human keeps aiming at him; the nearest one is picked only when he is lost).
+func _holds(f: GunFight, o: Variant, eye: Vector3) -> bool:
+	if o == null or not is_instance_valid(o) or not f.alive().has(o):
+		return false                         # (untyped: a knocked-out target may be freed already)
+	var g: Gunman = o
+	return f.clear_line(eye, g.feet() + Vector3(0.0, 1.2 - g.drop, 0.0))
+
+
+## The best free slot within max_d that protects against the threat (wrong: one that does not) and, in the basement's
+## aisles, from which a gunman can be seen when it pops out (else the nearest protecting one).
+func _pick_slot(f: GunFight, wrong: bool, max_d: float) -> int:
+	var th: Vector3 = _threat(f)
+	var p: Vector3 = tw.player.global_position
+	var best: int = -1
+	var bd: float = INF
+	var any: int = -1
+	var ad: float = INF
+	for i: int in f.cover.count():
+		if f.taken.has(i) and f.taken[i] != tw.player:
+			continue
+		var prot: bool = f.cover.protects(i, th) and not (bt - b_hit_t < 3.0 and not f.cover.protects(i, b_hit_from))
+		if prot == wrong:
+			continue
+		var d: float = StoryMission.flat(f.cover.pos[i], p)
+		if d >= max_d or StoryMission.flat(f.cover.pos[i], th) <= 4.0:
+			continue
+		if d < ad:
+			ad = d
+			any = i
+		if d < bd and _slot_sees(f, i):
+			bd = d
+			best = i
+	return best if best >= 0 else any
+
+
+## After a dive: the slot it dived out of when it is free and still protects, else the nearest protecting one (any view).
+func _back_slot(f: GunFight) -> int:
+	var th: Vector3 = _threat(f)
+	if b_dive_from >= 0 and b_dive_from < f.cover.count() and f.cover.protects(b_dive_from, th) 			and not (f.taken.has(b_dive_from) and f.taken[b_dive_from] != tw.player):
+		return b_dive_from
+	var p: Vector3 = tw.player.global_position
+	var best: int = -1
+	var bd: float = 14.0
+	for i: int in f.cover.count():
+		if (f.taken.has(i) and f.taken[i] != tw.player) or not f.cover.protects(i, th):
+			continue
+		var d: float = StoryMission.flat(f.cover.pos[i], p)
+		if d < bd:
+			bd = d
+			best = i
+	return best
+
+
+## A gunman's standing chest is in sight from the slot's standing eye.
+func _slot_sees(f: GunFight, i: int) -> bool:
+	var eye: Vector3 = f.cover.pos[i] + Vector3(0.0, 1.5, 0.0)
+	for e: Variant in f.alive():
+		if e is Gunman and f.clear_line(eye, (e as Gunman).feet() + Vector3(0.0, 1.2, 0.0)):
+			return true
+	return false
+
+
+## One round per pistol cycle while popped: a label (the domino), else the target. True when it had something in sight.
+
+
+## One round per pistol cycle while popped (sim_day5's without the basement's rack domino). True when it had something in sight.
+func _shoot(f: GunFight, diving: bool = false) -> bool:
+	if b_reload_until > 0.0:
+		return true
+	if _ammo() <= 0:
+		var w: WeaponDirector = tw.weapons
+		if w.reserve_of(w.current) != 0:
+			if b_state == "pop" and not _wrong():
+				_set_state("cover", 1.7)          # ducks to reload (15 %: reloads in the open)
+			b_reload_until = bt + float(WeaponData.SLOTS[w.current]["reload"])
+		else:
+			_swap_or_scavenge(f)
+		return true
+	var eye: Vector3 = tw.player.global_position + Vector3(0.0, 1.35, 0.0)
+	if b_shot_cd > 0.0:
+		return true
+	var g: Gunman = (b_aim_g as Gunman) if _holds(f, b_aim_g, eye) else _target(f)
+	if g == null:
+		return false
+	if g != b_aim_g:
+		b_aim_g = g
+		b_aim_at = bt + _react()
+	if bt < b_aim_at:
+		return true
+	_fire()
+	var d: float = tw.player.global_position.distance_to(g.feet())
+	var shotgun: bool = tw.weapons.current == WeaponData.Slot.SHOTGUN
+	var p: float = clampf(1.25 - d / 14.0, 0.05, 0.95) if shotgun else _hit_p(d)
+	if tw.player.horizontal_speed > 1.0 and not diving:
+		p *= 0.6
+	if diving:
+		p = minf(0.95, p * 1.3)
+	if rng.randf() < p:
+		tw.weapons.hit_target(g, {"kind": "pellet" if shotgun else "bullet", "from": tw.player.global_position})
+	return true
+
+
+func _fire() -> void:
+	var w: WeaponDirector = tw.weapons
+	b_shot_cd = float(WeaponData.SLOTS[w.current]["cycle"])
+	if w.current < w.ammo.size() and w.ammo[w.current] > 0:
+		w.ammo[w.current] -= 1
+
+
+func _any_ammo() -> bool:
+	var w: WeaponDirector = tw.weapons
+	for sl: int in [WeaponData.Slot.PISTOL, WeaponData.Slot.SHOTGUN]:
+		if sl < w.ammo.size() and (w.ammo[sl] > 0 or w.reserve_of(sl) != 0):
+			return true
+	return false
+
+
+func _ammo() -> int:
+	var w: WeaponDirector = tw.weapons
+	return w.ammo[w.current] if w.current < w.ammo.size() else 0
+
+
+## The magazine refilled from the spare rounds (the real numbers; -1 = unlimited).
+func _reload_now() -> void:
+	var w: WeaponDirector = tw.weapons
+	var c: int = w.current
+	if c >= w.ammo.size():
+		return
+	var need: int = int(WeaponData.SLOTS[c]["mag"]) - w.ammo[c]
+	var res: int = w.reserve_of(c)
+	var n: int = need if res < 0 else mini(need, res)
+	w.ammo[c] += n
+	if res >= 0 and c < w.reserve.size():
+		w.reserve[c] -= n
+
+
+## Dry: the other gun of the loadout if it has rounds, else to the nearest ammo box.
+func _swap_or_scavenge(f: GunFight) -> void:
+	var w: WeaponDirector = tw.weapons
+	for sl: int in [WeaponData.Slot.PISTOL, WeaponData.Slot.SHOTGUN]:
+		if sl != w.current and sl < w.ammo.size() and (w.ammo[sl] > 0 or w.reserve_of(sl) != 0):
+			w.equip(sl)
+			b_shot_cd = 0.6
+			return
+	if b_state != "ammo":
+		f.cover_ctl.hold_override = false
+		f.cover_ctl.leave()
+		_set_state("ammo", 20.0)
+
+
+func _hit_p(d: float) -> float:
+	return clampf(0.55 * pow(15.0 / maxf(d, 1.0), 0.7), 0.15, 0.85)
+
+
+# ----- walking -----
+func _stop_walk() -> void:
+	if tw and tw.player:
+		tw.player.input_override = null
+		tw.player.sprint_override = false
+	r_path.clear()
+	r_stuck_t = 0.0
+
+
+## One frame of walking toward `to` (sprint, the real controller); true once within 0.7 m.
+func _walk(f: GunFight, to: Vector3) -> bool:
+	var p: Vector3 = tw.player.global_position
+	if StoryMission.flat(p, to) < 0.7:
+		_stop_walk()
+		return true
+	r_replan -= DT
+	if r_path.is_empty() or r_replan <= 0.0 or StoryMission.flat(r_goal, to) > 1.0:
+		r_path = _plan(f, p, to)
+		r_goal = to
+		r_replan = 1.0
+	while r_path.size() > 1 and StoryMission.flat(p, r_path[0]) < 0.7:
+		r_path.pop_front()
+	var d: Vector3 = r_path[0] - p
+	d.y = 0.0
+	tw.player.yaw = atan2(-d.x, -d.z)
+	tw.player.input_override = Vector2(0.0, -1.0)
+	tw.player.sprint_override = true
+	r_stuck_t += DT
+	if r_stuck_t >= 1.0:
+		if StoryMission.flat(p, r_last_p) < 0.4:
+			r_replan = 0.0
+			tw.player.yaw += rng.randf_range(-1.2, 1.2)
+		r_last_p = p
+		r_stuck_t = 0.0
+	return false
+
+
+## World points from `from` to `to`: straight when walkable, else the shortest waypoint route (Dijkstra over the graph).
+func _plan(f: GunFight, from: Vector3, to: Vector3) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	if f.clear_walk(from, to):
+		out.append(to)
+		return out
+	_graph(f)
+	var n: int = gr_nodes.size()
+	var dist := PackedFloat32Array()
+	dist.resize(n)
+	dist.fill(INF)
+	var prev := PackedInt32Array()
+	prev.resize(n)
+	prev.fill(-1)
+	var seen := PackedByteArray()
+	seen.resize(n)
+	var ends: Dictionary = {}
+	for i: int in n:
+		var ds: float = StoryMission.flat(gr_nodes[i], from)
+		if ds < 16.0 and f.clear_walk(from, gr_nodes[i]):
+			dist[i] = ds
+		var de: float = StoryMission.flat(gr_nodes[i], to)
+		if de < 16.0 and f.clear_walk(gr_nodes[i], to):
+			ends[i] = de
+	var best_end: int = -1
+	var best_cost: float = INF
+	while true:
+		var u: int = -1
+		var ud: float = INF
+		for i: int in n:
+			if seen[i] == 0 and dist[i] < ud:
+				ud = dist[i]
+				u = i
+		if u < 0 or ud >= best_cost:
+			break
+		seen[u] = 1
+		if ends.has(u) and ud + float(ends[u]) < best_cost:
+			best_cost = ud + float(ends[u])
+			best_end = u
+		for v: int in gr_edges[u]:
+			var nd: float = ud + StoryMission.flat(gr_nodes[u], gr_nodes[v])
+			if nd < dist[v]:
+				dist[v] = nd
+				prev[v] = u
+	if best_end >= 0:
+		var k: int = best_end
+		while k >= 0:
+			out.push_front(gr_nodes[k])
+			k = prev[k]
+	out.append(to)
+	return out
+
+
+## The waypoint graph (world), its walkable edges rebuilt when the fallen rows change.
+
+
+## The waypoint graph of the floor (a grid between the plinths / display walls), its walkable edges (GunFight.clear_walk),
+## rebuilt when a plinth breaks.
+func _graph(f: GunFight) -> void:
+	var fl: String = String((m.get("pts") as Dictionary).get("floor", "gallery")) if m.get("pts") is Dictionary else "gallery"
+	var key: int = int(m.get("shattered")) if m.get("shattered") != null else 0
+	if key == gr_key and not gr_nodes.is_empty():
+		return
+	gr_key = key
+	gr_nodes.clear()
+	var xs: Array = [-12.0, -6.0, 0.0, 6.0, 12.0]
+	var zs: Array = [9.0, 3.0, -3.0, -9.0]
+	if fl == "mannequins":
+		xs = [-5.5, 0.0, 5.5]
+		zs = [23.0, 18.0, 12.0, 8.5, 3.5, -0.5, -5.5, -9.5, -14.0, -17.0, -22.0]
+	for z: Variant in zs:
+		for x: Variant in xs:
+			gr_nodes.append(tw.level.world(fl, Vector3(float(x), 0.0, float(z))))
+	gr_edges.clear()
+	for i: int in gr_nodes.size():
+		gr_edges.append([])
+	for i: int in gr_nodes.size():
+		for j: int in range(i + 1, gr_nodes.size()):
+			if StoryMission.flat(gr_nodes[i], gr_nodes[j]) < 12.5 and f.clear_walk(gr_nodes[i], gr_nodes[j]):
+				(gr_edges[i] as Array).append(j)
+				(gr_edges[j] as Array).append(i)
+
+
+# ---------------------------------------------------------------------------
+# Boss guns: the gun bot plus Lọ's volley (the red beam read 65 %, a sprint across it)
+# ---------------------------------------------------------------------------
+var v_seen: int = 0
+var v_plan: Array = []
+var v_t: float = 0.0
+var v_dir := Vector3.ZERO
+var v_stays: int = 0
+var v_dodges: int = 0
+
+
+func _guns() -> void:
+	var mg: MissionBossGuns = m as MissionBossGuns
+	_gun(mg.fight)
+	var f: GunFight = mg.fight
+	if mg.volley_state == "tele" and mg.volleys != v_seen:
+		v_seen = mg.volleys
+		if _reads():
+			var lo_p: Vector3 = mg.lo.global_position if mg.lo and is_instance_valid(mg.lo) else mg.aim_from
+			var covered: bool = f.cover_ctl != null and f.cover_ctl.in_cover and f.cover.protects(f.cover_ctl.slot, lo_p)
+			if covered and rng.randf() < 0.5:
+				v_stays += 1                     # stays down: the plinth takes the volley
+			else:
+				v_plan = [_react(), 0.3 if _wrong() else 0.9]
+	if not v_plan.is_empty():
+		v_plan[0] = float(v_plan[0]) - DT
+		if float(v_plan[0]) <= 0.0:
+			v_t = float(v_plan[1])
+			var d: Vector3 = mg.aim_to - mg.aim_from
+			d.y = 0.0
+			v_dir = Vector3(-d.z, 0.0, d.x).normalized()
+			if rng.randf() < 0.5:
+				v_dir = -v_dir
+			if not _floor_has(tw.player.global_position + v_dir * 3.5) and _floor_has(tw.player.global_position - v_dir * 3.5):
+				v_dir = -v_dir
+			v_plan.clear()
+			v_dodges += 1
+			if f.cover_ctl and f.cover_ctl.in_cover:
+				f.cover_ctl.hold_override = false
+				f.cover_ctl.leave()
+	if v_t > 0.0:
+		v_t -= DT
+		tw.weapons.aim_override = false
+		tw.player.yaw = atan2(-v_dir.x, -v_dir.z)
+		tw.player.input_override = Vector2(0.0, -1.0)
+		tw.player.sprint_override = true
+		if v_t <= 0.0:
+			_stop_walk()
+			b_slot = -1
+			_set_state("cover", _react())        # not in cover: it picks a slot and walks to it
+
+
+func _floor_has(q: Vector3) -> bool:
+	return _in_hall(q)

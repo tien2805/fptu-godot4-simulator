@@ -30,9 +30,12 @@ extends MissionLairFight
 const CARD_FLAG: String = "van_lo_card"
 const LO_LABEL: String = "Lùm Văn Lọ"
 ## His HP in Gunman units (GunData.GUNMAN_HP): Thường / Dễ.
-const LO_HP_K: float = 6.0
-const LO_HP_K_EASY: float = 4.5
-const LO_ACCURACY: float = 1.15
+const LO_HP_K: float = 3.5
+const LO_HP_K_EASY: float = 3.0
+const LO_ACCURACY: float = 1.0
+## T5 (sim_day7): his two bodyguards shoot worse than the first wave (Lọ's volley is the threat of wave 2).
+const W2_GUARD_ACC: float = 0.7
+const W2_GUARD_ACC_EASY: float = 0.55
 const T_LO_UP: String = "Lùm Văn Lọ ra mặt!"
 ## T2: the vases.
 const VASE_HP: float = 8.0
@@ -103,7 +106,7 @@ func _start() -> void:
 	fight.add_wave(w1)
 	var w2: Array = [{"at": pts.get("boss_at", Vector3.ZERO), "opts": lo_opts()}]
 	for at2: Variant in (w[1] if w.size() > 1 else []):
-		w2.append(guard(i, at2))
+		w2.append(guard(i, at2, [], {"accuracy": float(Difficulty.pick(W2_GUARD_ACC, W2_GUARD_ACC_EASY))}))
 		i += 1
 	fight.add_wave(w2)
 	for c: String in ["glass_crack", "crate_smash", "freeze_tick"]:
@@ -223,10 +226,13 @@ func _init_vases() -> void:
 				if b >= 0 and flat(cv.box_c[b], body.global_position) < 0.2:
 					slots.append(s)
 		var bs: BoxShape3D = cs.shape as BoxShape3D if cs else null
+		if not body.has_meta("whole"):            # the plinth as built (a later run may find it broken: the damage stays)
+			body.set_meta("whole", [bs.size if bs else Vector3.ONE, cs.position.y if cs else 0.5])
+		var whole: Array = body.get_meta("whole")
 		_body_i[body.get_instance_id()] = cover_vases.size()
-		cover_vases.append({"body": body, "vase": vase, "cs": cs, "size": bs.size if bs else Vector3.ONE,
-			"cs_y": cs.position.y if cs else 0.5, "prop": prop, "slots": slots, "hp": vase_max, "cracked": false,
-			"broken": false})
+		cover_vases.append({"body": body, "vase": vase, "cs": cs, "size": whole[0], "cs_y": float(whole[1]), "prop": prop,
+			"slots": slots, "hp": vase_max, "cracked": false, "broken": false})
+	_restore_vases()                             # a fresh mission starts in a whole hall
 
 
 ## The vase index of a ray hit on a plinth (-1 = something else).
@@ -469,6 +475,8 @@ func _reset() -> void:
 
 func _cleanup() -> void:
 	_volley_off()
+	if state != "done":
+		_restore_vases()                         # left mid-fight: the hall whole again (the damage stays only after the win)
 	if card and is_instance_valid(card):
 		card.queue_free()
 	card = null
