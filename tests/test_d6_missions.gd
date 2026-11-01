@@ -131,7 +131,7 @@ func _process(_d: float) -> bool:
 			for c: Dictionary in shop.customers:
 				vis += 1 if (c["body"] as Node3D).visible else 0
 			_check(vis == MissionShop.QUEUE_N and not (shop.biker["body"] as Node3D).visible, "three sheep-masked customers queue, the biker waits outside")
-			_check(is_equal_approx(shop.trust, MissionShop.TRUST_START) and is_equal_approx(shop.order_s, 6.0), "trust 30, a 6 s ticket on Thường")
+			_check(is_equal_approx(shop.trust, MissionShop.TRUST_START) and is_equal_approx(shop.order_s, 5.5), "trust TRUST_START, a 5.5 s ticket on Thường")
 			_check(not sc.level.is_back_door_open(), "the back door shut")
 			_next(2)
 		2:
@@ -160,13 +160,14 @@ func _process(_d: float) -> bool:
 			var front: Node3D = shop._front()["body"]
 			_check(shop.cam.is_position_in_frustum(front.global_position + Vector3(0.0, 1.6, 0.0)), "the front customer's head in frame")
 			shop.serve(_cup())
-			_check(is_equal_approx(shop.trust, 35.0) and shop.served_ok == 1 and shop.combo == 1, "right cup: +5 trust (%.1f)" % shop.trust)
+			_check(is_equal_approx(shop.trust, MissionShop.TRUST_START + shop.gain) and shop.served_ok == 1 and shop.combo == 1, "right cup: + gain (%.1f)" % shop.trust)
 			_next(3)
 		3:
 			if not _wait_order():
 				return false
 			shop.serve(_cup(true))
-			_check(is_equal_approx(shop.trust, 20.0) and shop.combo == 0 and shop.served_wrong == 1, "wrong cup: -15 (%.1f)" % shop.trust)
+			_check(is_equal_approx(shop.trust, maxf(0.0, MissionShop.TRUST_START + shop.gain - shop.wrong_cost)) and shop.combo == 0 and shop.served_wrong == 1, "wrong cup: - wrong_cost (%.1f)" % shop.trust)
+			shop.trust = 20.0                 # room for the late ticket
 			_next(4)
 		4:
 			if shop.timeouts == 0:
@@ -174,7 +175,7 @@ func _process(_d: float) -> bool:
 					_check(false, "the ticket runs out")
 					phase = 99
 				return false   # let the ticket run out
-			_check(frames >= int(shop.order_s * 60.0) and is_equal_approx(shop.trust, 10.0), "too slow: -10 after 6 s (%.1f)" % shop.trust)
+			_check(frames >= int(shop.order_s * 60.0) and is_equal_approx(shop.trust, 20.0 - shop.late_cost), "too slow: - late_cost after order_s (%.1f)" % shop.trust)
 			_next(6)
 		6:
 			if not _wait_order():
@@ -182,7 +183,7 @@ func _process(_d: float) -> bool:
 			shop.serve(_cup(true))
 			_check(shop.state == "failed" and fail_title == StoryMission.T_LO and shop.trust <= 0.0, "trust 0: BỊ LỘ")
 			shop.retry()
-			_check(shop.state == "running" and is_equal_approx(shop.trust, 30.0) and shop.beats == ["open"] and shop.order.is_empty(), "THỬ LẠI: a new shift at 30")
+			_check(shop.state == "running" and is_equal_approx(shop.trust, MissionShop.TRUST_START) and shop.beats == ["open"] and shop.order.is_empty(), "THỬ LẠI: a new shift at TRUST_START")
 			shop.clock = MissionShop.FIRST_EVENT_S - 0.01
 			_next(7)
 		7:

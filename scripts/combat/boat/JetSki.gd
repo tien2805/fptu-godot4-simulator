@@ -3,8 +3,10 @@
 # spawns it behind the boat (out of the chase camera's view) and calls think(dt, boat) on the chase clock.
 #   mode  approach  gun it to its flank slot beside the boat (side -1 left / +1 right, `slot` staggers two on one side);
 #                   further than BoatData.SKI_LEASH behind it races to catch up (the leash)
-#         flank     hold the slot; after a random wait it asks BoatChase for the attack token (one telegraph at a time)
-#         tell      the telegraph: a red ring on the water around it and a red "!" over the rider for BoatData.ski_tell()
+#         flank     hold the slot (BoatData.SKI_FLANK_D: out of kick reach); after a random wait it asks BoatChase for the
+#                   attack token (one telegraph at a time)
+#         tell      the telegraph: a red ring on the water around it and a red "!" over the rider for BoatData.ski_tell(),
+#                   closing in to SKI_TELL_D beside the boat (in kick reach: the kick's window)
 #         ram       the dash across into the boat; returns 1 from think() when it connects (BoatChase: damage + shove)
 #         recover   bounced off / missed: drifts back out, then approaches again
 #         ko        kicked (or crashed into a net, the pier wall, the barge): the ski flips and slides, the rider flies off
@@ -162,7 +164,7 @@ func think(dt: float, boat: PlayerBoat, may_attack: bool) -> int:
 			elif wait_t <= 0.0 and may_attack:
 				_set_mode("tell")
 		"tell":
-			_steer_to(td, 6.0, dt)
+			_steer_to(clampf(boat.d + float(side) * BoatData.SKI_TELL_D, -lim, lim), 6.0, dt)
 			ring.visible = true
 			mark.visible = fmod(mode_t, 0.24) < 0.16
 			var k: float = clampf(mode_t / BoatData.ski_tell(), 0.0, 1.0)

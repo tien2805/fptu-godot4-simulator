@@ -151,7 +151,7 @@ func mission_points(task: String) -> Dictionary:
 					world(CinePropsD6.shop_cup_pos(3))], "back_door": world(Vector3(CinePropsD6.SHOP_BACK_DOOR_X, 0.0, 3.6))}
 		"backroom":
 			var rx: Transform3D = room_xf()
-			return {"start": rx * Vector3(CinePropsD6.ROOM_DOOR_X, 0.0, 2.6), "yaw": PI, "safe": rx * Vector3(2.9, 0.0, -2.2),
+			return {"start": rx * Vector3(CinePropsD6.ROOM_DOOR_X, 0.0, 3.9), "yaw": PI, "safe": rx * Vector3(2.9, 0.0, -2.2),
 				"ledger": rx * Vector3(2.9, 0.55, -3.0), "music_box": rx * Vector3(0.0, 0.85, 0.4), "vanity": rx * Vector3(-2.4, 0.0, -2.3),
 				"exit": rx * Vector3(CinePropsD6.PIER_DOOR_X, 0.0, -3.2),
 				"patrol": [rx * Vector3(-2.6, 0.0, -1.8), rx * Vector3(1.6, 0.0, -1.8), rx * Vector3(1.6, 0.0, 1.9), rx * Vector3(-1.4, 0.0, 1.9)],

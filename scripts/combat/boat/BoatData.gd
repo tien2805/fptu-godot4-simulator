@@ -43,7 +43,8 @@ const BARGE_HALF_D: float = 2.1
 const STUN_S: float = 1.1                # a net / wall / bridge hit: no throttle for this long
 
 # ----- the jet skis (Bầy Sói) -----
-const SKI_FLANK_D: float = 2.7           # their slot beside the boat (each side)
+const SKI_FLANK_D: float = 4.4           # their slot beside the boat (each side), out of kick reach (KICK_MAX) ...
+const SKI_TELL_D: float = 2.4            # ... the telegraph closes in to this: the kick's window (T8 sim_day6)
 const SKI_LEASH: float = 32.0            # further than this behind: they gun it to catch up
 const SKI_V_EXTRA: float = 9.0
 const SKI_RAM_DASH: float = 9.0          # lateral speed of the ram dash (m/s)
@@ -119,7 +120,7 @@ static func dmg_barge() -> float:
 
 
 static func dmg_ram() -> float:
-	return float(Difficulty.pick(14.0, 9.0))
+	return float(Difficulty.pick(16.0, 9.0))
 
 
 ## Seconds the jet ski telegraphs its ram (the red ring, "!") before it dashes in.

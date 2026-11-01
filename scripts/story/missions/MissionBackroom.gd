@@ -6,10 +6,16 @@
 #   - A guard in a sheep mask (StoryCast "guard_sheep") walks the patrol loop (points.patrol) and pauses at the corners. He
 #     sees in a cone (sight_m / sight_deg, a clear line: shelves and furniture block it); his cone lies on the floor (pale,
 #     reddening as he grows suspicious). Seen for longer than see_grace() = "BỊ LỘ"; bumping into him is seen at once.
+#     The player comes in from the shop's back door (pts.start: on the shop side of the doorway, out of his sight).
 #   - THE MUSIC BOX (the signature): MUSIC_AT_S into the beat, or as soon as the player passes within MUSIC_NEAR_M of it,
 #     it starts on its own: the stealth track stops, the box plays its tune (positional) and its dancer spins, and every
-#     sheep doll on the shelves turns round to face the player and keeps following them. The guard goes to shut it up (a
-#     window: he stands at the box for lure_s(), "Ai bật cái hộp nhạc này vậy?").
+#     sheep doll on the shelves turns round to face the player and keeps following them. The guard goes to shut it up (the
+#     way in: he stands at the box for lure_s() on its far side from the safe (LURE_SPOT), his back to the safe, "Ai bật
+#     cái hộp nhạc này vậy?"; Anh Duy's radio tells the plan: along the left wall and the back wall to the safe meanwhile).
+#     Suspicious, he glances back over his shoulder every glance_every() s, by turns at the left wall and at the back wall
+#     (GLANCE_PTS; on Thường his cone then reaches the safe): "Hửm?" and glance_tell() s first (the telegraph), then he
+#     turns and looks for GLANCE_S. Freeze out of his cone or step away from the safe (the dial keeps its progress).
+#     Tuned with tests/sim_day6.gd (T8).
 #   - BLEAT_AFTER_S later the dolls bleat (distorted) and Anh Duy talks the player down; BULB_AFTER_S after the music the
 #     ceiling bulb dies for BULB_S (the joke: the guard taps it, "Ủa, cúp điện hả?", his sight shrinks in the dark).
 #   - The safe: hold [E] within SAFE_R for crack_s(); the dial clicks; the door swings open, the ledger is taken (E7).
@@ -21,7 +27,9 @@
 class_name MissionBackroom
 extends StoryMission
 
-const MUSIC_AT_S: float = 14.0
+const MUSIC_AT_S: float = 10.0
+const LURE_SPOT := Vector3(-0.5, 0.0, -0.3)  # room frame: south-west of the box: staring at it he faces north-east, the doorway,
+                                              # the left wall and the back wall behind him, the safe off his right shoulder
 const MUSIC_NEAR_M: float = 1.8
 const BLEAT_AFTER_S: float = 16.0
 const BULB_AFTER_S: float = 32.0
@@ -42,6 +50,10 @@ const SPIN_RAD_S: float = 2.4
 const T_SEEN: String = "Bảo vệ đeo mặt nạ cừu thấy mày rồi."
 const T_LURE: String = "Ai bật cái hộp nhạc này vậy?"
 const T_BULB: String = "Ủa, cúp điện hả?"
+const T_GLANCE: String = "Hửm?"
+const GLANCE_PTS: Array[Vector3] = [Vector3(-3.0, 0.0, -1.0), Vector3(0.5, 0.0, -2.4)]   # room frame: the left wall, the back wall
+const GLANCE_S: float = 1.2
+const GLANCE_TURN: float = 3.0
 const T_LEDGER: String = "Lấy được sổ cái!"
 const CONE_COL := Color(1.0, 0.9, 0.75, 0.10)
 const CONE_HOT := Color(1.0, 0.25, 0.3, 0.32)
@@ -58,7 +70,11 @@ var patrol_i: int = 0
 var guard_mode: String = "patrol"         # patrol | pause | lure | bulb | caught
 var guard_t: float = 0.0
 var sus: float = 0.0
-var sus_peak: float = 0.0                 # this attempt's highest suspicion (the rank's "noticed": NOTICED_AT or more)
+var sus_peak: float = 0.0
+var glance_phase: String = ""             # "" (staring at the box) | tell | look (at the lure spot)
+var glance_t: float = 0.0
+var glance_i: int = 0
+var glance_at: Vector3 = Vector3.ZERO                 # this attempt's highest suspicion (the rank's "noticed": NOTICED_AT or more)
 var seen: bool = false
 var sight_m: float = 6.0
 var sight_deg: float = 38.0
@@ -90,6 +106,8 @@ func _start() -> void:
 	level = opts.get("level") as LairCanal
 	pts = opts.get("points", {})
 	patrol = pts.get("patrol", [])
+	if level:
+		level.back_door_open(true)               # the way in (the story has it open from d6_backroom on)
 	sight_m = float(Difficulty.pick(6.0, 4.8))
 	sight_deg = float(Difficulty.pick(38.0, 30.0))
 	walk_ms = float(Difficulty.pick(1.25, 1.05))
@@ -122,6 +140,9 @@ func _arm() -> void:
 	guard_t = 0.0
 	sus = 0.0
 	sus_peak = 0.0
+	glance_phase = ""
+	glance_t = 0.0
+	glance_i = 0
 	seen = false
 	crack = 0.0
 	hold_e = false
@@ -207,9 +228,13 @@ func _guard_tick(dt: float) -> void:
 		"lure":
 			var box: Vector3 = pts.get("music_box", guard.global_position)
 			var spot: Vector3 = Vector3(box.x, guard.global_position.y, box.z) + _away(box, 1.0)
+			if pts.has("room_xf"):
+				var ls: Vector3 = (pts["room_xf"] as Transform3D) * LURE_SPOT
+				spot = Vector3(ls.x, guard.global_position.y, ls.z)
 			if _walk_to(spot, dt):
 				CharacterBuilder.set_speed(guard, 0.0)
-				guard.rotation.y = lerp_angle(guard.rotation.y, yaw_of(box - guard.global_position), minf(1.0, dt * 4.0))
+				var look: Vector3 = _glance_tick(dt, box)
+				guard.rotation.y = lerp_angle(guard.rotation.y, yaw_of(look - guard.global_position), minf(1.0, dt * GLANCE_TURN))
 			if guard_t >= lure_s():
 				guard_mode = "patrol"
 				guard_t = 0.0
@@ -222,6 +247,32 @@ func _guard_tick(dt: float) -> void:
 			CharacterBuilder.set_speed(guard, 0.0)
 			if player:
 				guard.rotation.y = lerp_angle(guard.rotation.y, yaw_of(player.global_position - guard.global_position), minf(1.0, dt * 6.0))
+
+
+## At the box: the glances over his shoulder ("Hửm?", then the look), by turns at GLANCE_PTS. Returns where he looks.
+func _glance_tick(dt: float, box: Vector3) -> Vector3:
+	glance_t += dt
+	match glance_phase:
+		"":
+			if glance_t >= glance_every():
+				glance_phase = "tell"
+				glance_t = 0.0
+				var rx: Transform3D = pts.get("room_xf", Transform3D.IDENTITY)
+				glance_at = rx * GLANCE_PTS[glance_i % GLANCE_PTS.size()]
+				glance_i += 1
+				_line(T_GLANCE, glance_tell() + GLANCE_S)
+				if not beats.has("glance"):
+					beats.append("glance")
+		"tell":
+			if glance_t >= glance_tell():
+				glance_phase = "look"
+				glance_t = 0.0
+		"look":
+			if glance_t >= GLANCE_S:
+				glance_phase = ""
+				glance_t = 0.0
+			return glance_at
+	return box
 
 
 ## Walks the guard toward `to`; true once he is there.
@@ -326,6 +377,8 @@ func start_music() -> void:
 	if guard and guard_mode != "caught":
 		guard_mode = "lure"
 		guard_t = 0.0
+		glance_phase = ""
+		glance_t = 0.0
 		_line(T_LURE, 2.6)
 		beats.append("lure")
 
@@ -516,7 +569,16 @@ func crack_s() -> float:
 
 
 func lure_s() -> float:
-	return float(Difficulty.pick(5.0, 7.0))
+	return float(Difficulty.pick(10.0, 14.0))
+
+
+## Seconds at the box between his glances back, and the "Hửm?" before each.
+func glance_every() -> float:
+	return float(Difficulty.pick(2.45, 3.6))
+
+
+func glance_tell() -> float:
+	return float(Difficulty.pick(0.62, 0.9))
 
 
 ## The dolls finish turning in turn_s() (slower with "Giảm hù dọa") and only half way when it is on.

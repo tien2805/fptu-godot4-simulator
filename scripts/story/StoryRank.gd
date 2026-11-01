@@ -70,10 +70,10 @@ const MISSIONS: Dictionary = {
 	"d5_gunfight": {"time": [120.0, 300.0], "dmg": [40.0, 300.0], "opt": {"key": "domino", "min": 1}},
 	"d5_hack": {"time": [110.0, 200.0], "dmg": [0.0, 40.0], "opt": {"key": "breach_clean", "want": true}},
 	"d5_duel": {"time": [35.0, 110.0], "dmg": [20.0, 200.0], "opt": {"key": "qte_clean", "want": true}},
-	# Day 6 (provisional until T8's sim_day6)
-	"d6_shop": {"time": [70.0, 150.0], "opt": {"key": "wrong", "max": 0}},
-	"d6_backroom": {"time": [50.0, 120.0], "opt": {"key": "noticed", "want": false}},
-	"d6_boat": {"time": [75.0, 140.0], "dmg": [20.0, 150.0], "ko": [2, 6]},
+	# Day 6 (set from sim_day6, T8 table in the day6 plan; "dmg" of the boat = the hull lost, failed attempts included)
+	"d6_shop": {"time": [50.0, 150.0], "opt": {"key": "wrong", "max": 0}},
+	"d6_backroom": {"time": [25.0, 90.0], "fails": [0.0, 4.0], "opt": {"key": "noticed", "want": false}},   # ~20 s a try
+	"d6_boat": {"time": [66.0, 95.0], "dmg": [30.0, 160.0], "ko": [3, 8]},
 }
 
 

@@ -5,7 +5,7 @@
 # takes over; the beat's "after" cinematic seg_d6_chase follows the win.
 #   - HUD (the mission's top panel): the gap to Thị Lọ, the rams in the finale ("Húc: 1 / 3"), the hull as the meter;
 #     prompts by priority: "CÚI! [CTRL]" before a low bridge, the ram line in the finale, the kick keys while a jet ski
-#     rides alongside; short popups on every hit ("Cốp! Quên cúi đầu...", "Dính lưới!", ...).
+#     telegraphs its ram beside the boat (its red ring: it has closed in to kick reach); short popups on every hit ("Cốp! Quên cúi đầu...", "Dính lưới!", ...).
 #   - Guidance (OffscreenMarkers): Thị Lọ always (an edge arrow with her distance when off screen), every jet ski that is
 #     still a threat, and the next set piece within HAZARD_AHEAD m (Cầu thấp / Lưới / Dốc ghe / Sà lan pháo).
 #   - Fails: the hull at 0 ("Cano nát bét rồi.") or Thị Lọ getting away ("Thị Lọ chạy mất tiêu rồi."): "TOANG!", THỬ LẠI =
@@ -115,7 +115,7 @@ func _prompt() -> String:
 	if chase.finale and not chase.rival.crashed:
 		return BoatData.T_RAM
 	for sk: JetSki in chase.skis:
-		if sk.is_threat() and absf(sk.s - b.s) < 6.0 and absf(sk.d - b.d) < 4.5:
+		if sk.is_threat() and sk.mode in ["tell", "ram"] and absf(sk.s - b.s) < 6.0:
 			return BoatData.T_KICK
 	return ""
 

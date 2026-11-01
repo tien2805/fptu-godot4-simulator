@@ -5,8 +5,9 @@
 #   - Each order is a ticket (the order panel, top): size (M / L), tea (4 kinds), topping (4 kinds). Four ready cups stand
 #     on the counter mats [1]-[4] (code-built milk_tea props, L cups bigger, a tag over each); one matches the ticket, the
 #     other three differ in exactly one thing. [1]-[4] hands that cup over.
-#   - The ticket timer (order_s: Thường 6 s / Dễ 9 s). Right: trust + gain + combo; wrong: - wrong_cost; too slow:
-#     - late_cost (the customer stomps out).
+#   - The ticket timer (order_s: Thường 5.5 s / Dễ 9 s). Right: trust + gain + COMBO_STEP per combo level (up to
+#     COMBO_CAP); wrong: - wrong_cost; too slow: - late_cost (the customer stomps out). Tuned with tests/sim_day6.gd (T8:
+#     the sloppy counter bot fails the Thường shift 1-3 times, a winning shift runs long enough for all five events).
 #   - "Trust" (Thị Lọ's, the meter) starts at TRUST_START; TRUST_WIN opens the back door (LairCanal.back_door_open) and
 #     ends the shift; 0 = "BỊ LỘ" (the manager sees through the fake shipper; THỬ LẠI = a new shift).
 #   - Something new every 15-20 s (EVENT_ORDER, one per gap, applied to the next ticket):
@@ -20,9 +21,10 @@
 class_name MissionShop
 extends StoryMission
 
-const TRUST_START: float = 30.0
+const TRUST_START: float = 45.0
 const TRUST_WIN: float = 100.0
 const COMBO_CAP: int = 3
+const COMBO_STEP: float = 1.0
 const SIZES: Array[String] = ["M", "L"]
 const TEAS: Array[String] = ["tra", "matcha", "khoai_mon", "dau"]
 const TOPPINGS: Array[String] = ["pearl", "jelly", "pudding", "cheese"]
@@ -95,10 +97,10 @@ func _start() -> void:
 	level = opts.get("level") as LairCanal
 	pts = opts.get("points", {})
 	rng.seed = int(opts.get("seed", Time.get_ticks_usec()))
-	order_s = float(Difficulty.pick(6.0, 9.0))
-	gain = float(Difficulty.pick(5.0, 6.0))
-	wrong_cost = float(Difficulty.pick(15.0, 12.0))
-	late_cost = float(Difficulty.pick(10.0, 7.0))
+	order_s = float(Difficulty.pick(5.5, 9.0))
+	gain = float(Difficulty.pick(2.0, 3.5))
+	wrong_cost = float(Difficulty.pick(22.0, 14.0))
+	late_cost = float(Difficulty.pick(12.0, 8.0))
 	_bot = opts.get("bot", {})
 	if player:
 		player.controls_enabled = false
@@ -336,7 +338,7 @@ func _right() -> void:
 			bonus = 4.0
 		"tam_tu":
 			bonus = -1.0
-	_add_trust(gain + bonus + float(mini(combo - 1, COMBO_CAP)) * 1.5)
+	_add_trust(gain + bonus + float(mini(combo - 1, COMBO_CAP)) * COMBO_STEP)
 	play_cue("tray_clang", -8.0)
 	if kind == "tam_tu":
 		_say(c, "Cảm ơn em đã lắng nghe.", 1.6)

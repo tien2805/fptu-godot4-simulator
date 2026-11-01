@@ -168,10 +168,11 @@ func think(dt: float, boat: PlayerBoat, finale: bool) -> void:
 ## Where she steers before the finale: the weave, the free half at a net, the ramp line, the left of the barge.
 func _plan_d() -> float:
 	var td: float = BoatData.RIVAL_WEAVE_D * sin(_weave_t * 0.6)
-	for n: Array in LairCanal.NETS:
+	for n: Array in LairCanal.NETS:          # the nearest net ahead decides (NETS in course order)
 		var ns: float = float(n[0])
 		if s > ns - 60.0 and s < ns + 3.0:
 			td = -float(n[1]) * 5.5
+			break
 	if s > LairCanal.RAMP_S - 70.0 and s < LairCanal.RAMP_S:
 		td = LairCanal.RAMP_D
 	if s > LairCanal.BARGE_S - 45.0 and s < LairCanal.BARGE_S + 8.0:

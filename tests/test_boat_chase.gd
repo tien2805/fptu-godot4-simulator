@@ -410,10 +410,9 @@ func _process(_d: float) -> bool:
 				_next(18)
 				return false
 			kicked.side = 1
-			kicked.place(chase.boat.s + 0.5, chase.boat.d + 2.0, chase.boat.v)
-			kicked._set_mode("flank")
-			kicked.wait_t = 99.0
-			chase._attacker = null
+			kicked.place(chase.boat.s + 0.5, chase.boat.d + BoatData.SKI_TELL_D, chase.boat.v)
+			kicked._set_mode("tell")                # telegraphing beside the boat: in kick reach
+			chase._attacker = kicked
 			for o: JetSki in chase.skis:
 				if o != kicked and o.is_threat():
 					o.retire()
@@ -423,7 +422,7 @@ func _process(_d: float) -> bool:
 		17:
 			if frames == 1:
 				_check(chase.log.has("kick"), "[E] kicks")
-				_check(mn.hud_prompt.text == BoatData.T_KICK, "the kick prompt with a jet ski alongside (%s)" % mn.hud_prompt.text)
+				_check(mn.hud_prompt.text == BoatData.T_KICK, "the kick prompt with a jet ski telegraphing alongside (%s)" % mn.hud_prompt.text)
 			if not chase.log.has("ski_ko_kick"):
 				if frames > 40:
 					_check(false, "the kick knocks the jet ski on the right out (%s, lat %.2f)" % [kicked.mode, kicked.d - chase.boat.d])
