@@ -310,7 +310,8 @@ func setup(opts: Dictionary) -> void:
 	add_child(combat)
 	if bike and not bike.crash_occurred.is_connected(_on_bike_crash):
 		bike.crash_occurred.connect(_on_bike_crash)   # before PlayerBikeCombat's own handler: the speed-scaled damage first
-	combat.setup(bike, {"roam": roam, "targets": bikers, "fx": fx})
+	combat.setup(bike, {"roam": roam, "targets": bikers, "fx": fx,
+		"max_stability": float(opts.get("max_stability", BikeCombatData.STABILITY_MAX))})   # opt (the Day 7 deck on Thường)
 	Impact.prepare(self)                     # Q2: the clock and the sound layers ready before the first hit
 	combat.kick_hit.connect(_on_kick_hit)
 	combat.countered.connect(_on_countered)      # Q2: PHẢN ĐÒN, the grabbed stick
