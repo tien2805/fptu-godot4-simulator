@@ -2,7 +2,7 @@
 # Day 7's 08:00 countdown (Phase D, plan 2026-11-01-w4-day7.md): Lọ Academy pushes its tool onto the exam system at 08:00.
 # The time left lives in StoryDirector.flags["d7_clock"] (seconds, saved with the story). It runs only while a tower mission
 # runs (StoryTower ticks it by the mission's own clock: never during cinematics, replays, cards or the fail card) and is
-# shown on the HUD for the whole of Day 7 (free roam too), generous but always visible:
+# shown on the HUD for the whole of Day 7 until the typing is won (free roam too; hidden while d7_ending plays), generous but always visible:
 #   - START_S real seconds of missions from 05:30 to 08:00 (SECS_PER_MIN real seconds per game minute);
 #   - under WARN_S the label turns red and pulses;
 #   - at 0 the running mission fails with T_LATE under the title T_TITLE; THỬ LẠI gives the clock back GRACE_S (Anh Duy "lags" Lọ's server: a fair
@@ -12,6 +12,8 @@ class_name Day7Clock
 extends CanvasLayer
 
 const FLAG: String = "d7_clock"
+## The beat after the typing (the endings' auto beat): the clock is over.
+const DONE_STEP: String = "d7_ending"
 const START_S: float = 1500.0
 const SECS_PER_MIN: float = 10.0
 const START_MIN: int = 5 * 60 + 30            # 05:30
@@ -73,9 +75,10 @@ static func grace(dir: Node) -> bool:
 	return true
 
 
-## Day 7 of a running story (the HUD shows).
+## Day 7 of a running story until the typing is won (the HUD shows; d7_ending runs in free roam without the clock).
 static func is_day7(dir: Node) -> bool:
-	return dir != null and bool(dir.get("active")) and int(dir.get("day")) == 7 and String(dir.get("ending")) == ""
+	return dir != null and bool(dir.get("active")) and int(dir.get("day")) == 7 and String(dir.get("ending")) == "" \
+			and String(dir.get("step")) != DONE_STEP
 
 
 ## The game time for `secs` left: "05:30" .. "08:00".

@@ -527,6 +527,7 @@ func _process(_d: float) -> bool:
 			tw.fail_ui.press_retry()
 			var md: MissionBossDark = m
 			_check(md.gentle and md.flashlight.gentle, "THỬ LẠI reads Giảm hù dọa again: gentle")
+			_check(LookPresets.active(tw) == MissionBossDark.LOOK_GENTLE and md.look_on == MissionBossDark.LOOK_GENTLE and not tw.looks.has(MissionBossDark.LOOK), "gentle: the lighter blackout look, the dark one taken off")
 			_check(md._cracked.is_empty(), "the failed try's cracks forgotten")
 			var mended: bool = true
 			for v: Dictionary in tw.level.vases:
@@ -574,7 +575,7 @@ func _process(_d: float) -> bool:
 					var hf: int = total - int(mark["br_f"])
 					_check(hf >= roundi(MissionBossDark.HOLD_S * 60.0) - 1, "a breaker takes HOLD_S of [E] (%d frames)" % hf)
 					tw.player.teleport(md.pts["breakers"][1], 0.0)
-			if not _at_step("d7_boss3", "the power did not come back", 900):
+			if not _at_step("d7_boss3", "the power did not come back", 1500):   # two HOLD_S holds
 				return false
 			_check(mark.has("br0") and tw.level.power_on, "both breakers: the power back")
 			_check(_finish_cine_in(tw) == "seg_d7_phase2", "the power back: seg_d7_phase2 (d7_boss2's after) plays before the roof")

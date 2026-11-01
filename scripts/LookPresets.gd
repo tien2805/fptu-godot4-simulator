@@ -97,6 +97,11 @@ const PRESETS: Dictionary = {
 		"fog": Color("#060504"), "fog_begin": 3.0, "fog_end": 30.0, "fog_density": 0.6,
 		"brightness": 0.96, "contrast": 1.15, "sat": 0.9, "amb": 0.06, "amb_col": Color("#3a3020"),
 		"fill": {"col": Color("#d4af37"), "energy": 0.03, "elev": 12.0, "azim": 0.0}},
+	# ... and the same under "Giảm hù dọa" (GameFX.reduce_scares): a brighter ambient and fill, the hall readable without the beam
+	"penthouse_blackout_gentle": {"exposure": 1.0, "glow": 0.95, "glow_strength": 1.1, "thr": 1.2, "cap": 4.0, "bloom": 0.0,
+		"fog": Color("#0c0a07"), "fog_begin": 6.0, "fog_end": 40.0, "fog_density": 0.45,
+		"brightness": 1.0, "contrast": 1.1, "sat": 0.9, "amb": 0.2, "amb_col": Color("#4a4030"),
+		"fill": {"col": Color("#d4af37"), "energy": 0.1, "elev": 12.0, "azim": 0.0}},
 	# ... and the rooftop duel in the rain: a cold blue key (the city under the storm), the helicopter's searchlight is the
 	# warm hard light, rain haze close in, the glow kept for the wet speculars and the saber.
 	"rooftop_rain": {"exposure": 1.0, "glow": 0.85, "glow_strength": 1.05, "thr": 1.25, "cap": 3.5, "bloom": 0.0,

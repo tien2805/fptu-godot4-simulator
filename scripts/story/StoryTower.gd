@@ -15,8 +15,6 @@
 #     (LairTower.cine_xf) with drop_set, LairTower.hide_for_cine hiding the real pieces a timeline brings itself (the two
 #     plinths under seg_d7_phase2's, the helicopter and the rain under seg_d7_finisher's) until it ends; any other beat
 #     hands back (StoryDirector.leave_lair).
-# Pre-merge hand-off: the last beat's next (d7_ending) belongs to the endings stream; when that beat does not exist yet the
-# scene records `handoff_beat`, does not complete the step (no "unknown beat" error) and hands back.
 # test_opts (static, tests): "missions" (mission opts), "cine" (CinePlayer opts), "capture_mouse" (false), "go_roam" (false).
 class_name StoryTower
 extends Node3D
@@ -76,8 +74,6 @@ var clock_hud: Day7Clock
 var busy: bool = false
 var left: bool = false
 var runs: int = 0
-## The beat the last completion wanted to enter when it did not exist yet (d7_ending before the endings merge).
-var handoff_beat: String = ""
 ## The mission failed because the clock ran out (it is frozen until THỬ LẠI).
 var clock_failed: bool = false
 var clock_fails: int = 0
@@ -445,12 +441,6 @@ func _on_mission_done(_info: Dictionary, b: Dictionary) -> void:
 	_free_mission()
 	if fail_ui:
 		fail_ui.visible = false
-	var nxt: String = String(director.call("next_of", b))
-	if nxt != "" and StoryMissions.beat(nxt).is_empty():
-		handoff_beat = nxt                       # pre-merge: the endings stream's beat is not here yet
-		busy = false
-		_leave()
-		return
 	var after: String = String(b.get("after", ""))
 	if after != "":
 		var tl: CineTimeline = CineTimeline.load_slot(after)

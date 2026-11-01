@@ -18,6 +18,7 @@ class FakeDir extends Node:
 	var active: bool = true
 	var day: int = 7
 	var ending: String = ""
+	var step: String = "d7_parking"
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -73,6 +74,9 @@ func _part_a() -> void:
 	d.ending = "A"
 	_check(not Day7Clock.is_day7(d) and not Day7Clock.is_day7(null), "not after the ending, not without a story")
 	d.ending = ""
+	d.step = Day7Clock.DONE_STEP
+	_check(not Day7Clock.is_day7(d), "not once the typing is won (d7_ending in free roam)")
+	d.step = "d7_typing"
 	# the HUD
 	var host := Node.new()
 	root.add_child(host)

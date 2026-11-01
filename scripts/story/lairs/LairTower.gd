@@ -308,7 +308,7 @@ func mission_points(task: String) -> Dictionary:
 			d["start_yaw"] = 0.0
 			d["boss_at"] = world(f, Vector3(0.0, 0.0, -9.0))
 			d["waves"] = [[world(f, Vector3(-10.0, 0.0, -8.0)), world(f, Vector3(10.0, 0.0, -8.0)), world(f, Vector3(2.6, 0.0, -10.5))],
-				[world(f, Vector3(-12.0, 0.0, -10.0)), world(f, Vector3(12.0, 0.0, -10.0))]]
+				[world(f, Vector3(-6.0, 0.0, -10.5)), world(f, Vector3(6.0, 0.0, -10.5))]]   # T5: beside his desk (no crossfire from the side walls)
 			d["ammo"] = [world(f, Vector3(-12.5, 0.0, 9.0)), world(f, Vector3(12.5, 0.0, 9.0)), world(f, Vector3(0.0, 0.0, 3.0))]
 			d["leash"] = 30.0
 		"boss_dark":

@@ -59,7 +59,7 @@ var clock_label: Label
 var money_label: Label
 var stars: ViceStars
 var stars_label: Label
-## Story day chip under the money (spec A2-D12): "NGÀY 0 · THI EOS", "NGÀY 1 · CÒN 7 NGÀY" (+ " ✉N" unread texts).
+## Story day chip under the money (spec A2-D12): "NGÀY 0 · THI EOS", "NGÀY 1 · CÒN 7 NGÀY" (+ " · Tin nhắn (N)" unread texts, plain text).
 var day_label: Label
 ## Story objective line under the day chip (owner playtest: always visible in story free roam).
 var objective_label: Label
@@ -241,7 +241,7 @@ func set_objective(text: String) -> void:
 
 
 func set_day(text: String, unread: int = 0) -> void:
-	day_label.text = text + (" ✉%d" % unread if unread > 0 and text != "" else "")
+	day_label.text = text + (" · Tin nhắn (%d)" % unread if unread > 0 and text != "" else "")
 	day_label.visible = text != ""
 
 
