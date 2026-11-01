@@ -6,6 +6,8 @@
 # kiếm, [Chuột trái] bật nhảy, [E] the scissor takedown "Đòn chân kẹp cổ số 21"). Lùm Văn Lọ is the KatanaBoss (CastD7's
 # body, label "Lùm Văn Lọ", more HP than Za Mẫn). The QTE at 0 HP; a pass = the snap finale and `won`: done
 # {"phase", "qte_clean"} (StoryTower then plays the beat's "after" finisher). Down = "TOANG!" -> retry() = a fresh Lọ.
+# T2: a preview cut to him on the helipad when the duel opens (cuts), the QTE prompts as above (test_tower_boss: a miss
+# and a pass through the real duel).
 # opts: "points" (start, start_yaw, boss_at, boss_yaw), "seed".
 class_name MissionBossSaber
 extends StoryMission
@@ -17,10 +19,12 @@ const LO_HP_K: float = 1.2
 const QTE_PROMPTS: Array = [{"key": "q", "label": "[Q] GẠT KIẾM"}, {"key": "lmb", "label": "[Chuột trái] BẬT NHẢY"},
 	{"key": "e", "label": "[E] KẸP CỔ SỐ 21"}]
 const T_FINISH: String = "Đòn chân kẹp cổ số 21!"
+const CUT_S: float = 0.6
 
 var duel: SwordDuel
 var pts: Dictionary = {}
 var guide: BasementGuide = null
+var cuts: int = 0
 
 
 func setup(r: Node3D, b: Dictionary, o: Dictionary = {}) -> void:
@@ -51,6 +55,16 @@ func _start() -> void:
 	duel.won.connect(_on_won)
 	duel.lost.connect(_on_lost)
 	duel.start()
+	_cut(duel.boss)
+
+
+func _cut(target: Node3D) -> void:
+	if target == null or not target.is_inside_tree():
+		return
+	cuts += 1
+	var cd: CameraDirector = CameraDirector.live()
+	if cd:
+		cd.preview_cut(target, CUT_S)
 
 
 func _tick(_dt: float) -> void:

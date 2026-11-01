@@ -11,7 +11,11 @@
 # The way out: the two breakers on the side walls (points.breakers): hold [E] next to one for HOLD_S (the progress stays
 # when let go); both on = the power back, the lights on, Lọ runs to the roof: done {"staggers", "hits"}.
 # Down (the player's HP 0) = "TOANG!"; THỬ LẠI = power off again, both breakers off, Lọ back at his desk, HP full.
-# "Giảm hù dọa" (GameFX.reduce_scares): slower stalking, a longer telegraph, softer hits, no laugh, the gentle flashlight.
+# "Giảm hù dọa" (GameFX.reduce_scares): slower stalking, a longer telegraph, softer hits, no laugh, the gentle flashlight,
+# a softer crack and a smaller speaker pulse.
+# T2 polish: the telegraph cracks the nearest vase still whole (one by one; the ones phase 1 broke are gone); every line he
+# says comes from the speaker nearest to him (the subtitle + that speaker's ring pulsing for PULSE_S, the others dark); a
+# preview cut to the first breaker when the lights go out (the way out); THỬ LẠI mends the cracks of the failed try.
 # Test hooks: hold_override (bool: [E] held), lit_override (-1 off, 0 / 1 forces the beam test).
 # points: start (+ start_yaw), boss_at, breakers [Vector3, Vector3], centre, leash.
 class_name MissionBossDark
@@ -37,6 +41,11 @@ const HOLD_S: float = 1.6
 const BREAKER_R: float = 1.6
 const RAY_HZ: float = 10.0
 const LO_EYE: float = 1.45
+const PULSE_S: float = 2.4
+const PULSE_HZ: float = 3.0
+const PULSE_AMP: float = 0.45
+const PULSE_AMP_GENTLE: float = 0.2
+const CUT_S: float = 0.6
 const T_DOWN: String = "Bị Lọ hạ trong bóng tối!"
 const T_RAN: String = "Bỏ chạy khỏi phòng rồi!"
 const T_INFO: String = "Cầu dao: %d / 2 · [F] đèn pin"
@@ -62,6 +71,9 @@ var hits: int = 0
 var lunges: int = 0
 var cracks: int = 0
 var voices: int = 0
+var cuts: int = 0
+var pulses: int = 0
+var ring: Node3D = null                       # the speaker ring that pulses now (his voice)
 var hold_override: bool = false
 var lit_override: int = -1
 var gentle: bool = false
@@ -71,6 +83,8 @@ var _ray_ok: bool = false
 var _spawn_i: int = 0
 var _laugh_i: int = 0
 var _info_n: int = -1
+var _pulse_t: float = 0.0
+var _cracked: Array[Node3D] = []             # the vases this try cracked (mended on THỬ LẠI)
 
 
 func setup(r: Node3D, b: Dictionary, o: Dictionary = {}) -> void:
@@ -80,11 +94,8 @@ func setup(r: Node3D, b: Dictionary, o: Dictionary = {}) -> void:
 
 
 func _start() -> void:
-	var fx: Node = get_node_or_null("/root/GameFX")
-	gentle = fx != null and bool(fx.get("reduce_scares"))
 	flashlight = HorrorFlashlight.new()
 	flashlight.auto_tick = false            # no battery drain in the boss fight
-	flashlight.gentle = gentle
 	add_child(flashlight)
 	flashlight.anchor = player
 	flashlight.aim = player.camera if player else null
@@ -97,15 +108,25 @@ func _start() -> void:
 	guide.setup(self)
 	guide.hide_fn = func() -> bool: return state != "running"
 	_fresh()
+	var bk: Array = level.get("breakers") if level else []
+	if not bk.is_empty():
+		_cut(bk[0])
 
 
-## The start of the blackout (first run and every retry).
+## The start of the blackout (first run and every retry: "Giảm hù dọa" switched on after a fail applies to the next try).
 func _fresh() -> void:
+	var fx: Node = get_node_or_null("/root/GameFX")
+	gentle = fx != null and bool(fx.get("reduce_scares"))
+	flashlight.gentle = gentle
 	hold = [0.0, 0.0]
 	restored = [false, false]
 	lit_t = 0.0
 	lo_t = 0.0
 	_info_n = -1
+	for v: Node3D in _cracked:
+		_crack_vase(v, false)
+	_cracked.clear()
+	_end_pulse()
 	if pts.has("start"):
 		teleport_player(pts["start"], float(pts.get("start_yaw", 0.0)))
 	_power(false)
@@ -163,6 +184,7 @@ func _holding() -> bool:
 func _tick(dt: float) -> void:
 	if player == null:
 		return
+	_tick_pulse(dt)
 	var c: Object = roam.get("combat") if roam else null
 	if c and float(c.get("hp")) <= 0.0:
 		fail(T_DOWN)
@@ -342,25 +364,43 @@ func _vanish() -> void:
 	_voice()
 
 
-## The telegraph: the vase nearest to him cracks, the speaker nearest to him glows and speaks (his laugh unless gentle).
+## The telegraph: the vase nearest to him that is still whole cracks (else the nearest standing one), the speaker nearest
+## to him pulses and speaks (his laugh unless gentle).
 func _telegraph() -> void:
-	var best: Dictionary = {}
+	var best: Node3D = null
 	var bd: float = INF
-	for v: Dictionary in (level.get("vases") if level else []):
-		var n: Node3D = v.get("node")
-		if n and is_instance_valid(n) and n.visible:
+	for pass_i: int in 2:
+		for v: Dictionary in (level.get("vases") if level else []):
+			var n: Node3D = v.get("node")
+			if n == null or not is_instance_valid(n) or not n.visible or (pass_i == 0 and _is_cracked(n)):
+				continue
 			var dd: float = flat(n.global_position, lo.global_position)
 			if dd < bd:
 				bd = dd
-				best = v
-	if not best.is_empty():
-		var cr: Node3D = (best["node"] as Node3D).get_node_or_null("Cracks") as Node3D
-		if cr:
-			for ch: Node in cr.get_children():
-				(ch as Node3D).visible = true
+				best = n
+		if best:
+			break
+	if best:
+		if not _is_cracked(best):
+			_crack_vase(best, true)
+			_cracked.append(best)
 		cracks += 1
 		play_cue("glass_crack", -4.0 if not gentle else -12.0)
 	_voice()
+
+
+func _is_cracked(vase: Node3D) -> bool:
+	var cr: Node3D = vase.get_node_or_null("Cracks") as Node3D
+	return cr != null and cr.get_child_count() > 0 and (cr.get_child(0) as Node3D).visible
+
+
+func _crack_vase(vase: Node3D, on: bool) -> void:
+	if vase == null or not is_instance_valid(vase):
+		return
+	var cr: Node3D = vase.get_node_or_null("Cracks") as Node3D
+	if cr:
+		for ch: Node in cr.get_children():
+			(ch as Node3D).visible = on
 
 
 func _voice() -> void:
@@ -374,14 +414,53 @@ func _voice() -> void:
 		if dd < bd:
 			bd = dd
 			best = n
+	_end_pulse()
 	for s2: Variant in sp:
-		var ring: Node3D = (s2 as Node3D).get_node_or_null("Ring") as Node3D
-		if ring:
-			ring.visible = s2 == best
+		var r: Node3D = (s2 as Node3D).get_node_or_null("Ring") as Node3D
+		if r:
+			r.visible = s2 == best
+			if s2 == best:
+				ring = r
+	if ring:
+		_pulse_t = PULSE_S
+		pulses += 1
 	if not gentle and voices % 2 == 1:
 		play_cue("evil_laugh", -10.0)
 	radio_as("van_lo", LAUGHS[_laugh_i % LAUGHS.size()], "", 3.0)
 	_laugh_i += 1
+
+
+## The speaking speaker's ring beats with his voice (PULSE_HZ), fading out over PULSE_S; then dark.
+func _tick_pulse(dt: float) -> void:
+	if ring == null:
+		return
+	if not is_instance_valid(ring):
+		ring = null
+		return
+	_pulse_t -= dt
+	if _pulse_t <= 0.0:
+		_end_pulse()
+		return
+	var k: float = _pulse_t / PULSE_S
+	var s: float = 1.0 + (PULSE_AMP_GENTLE if gentle else PULSE_AMP) * absf(sin(_pulse_t * PULSE_HZ * PI)) * k
+	ring.scale = Vector3(s, 1.0, s)              # the disc's radius (its height is the cylinder's local Y)
+
+
+func _end_pulse() -> void:
+	if ring and is_instance_valid(ring):
+		ring.scale = Vector3.ONE
+		ring.visible = false
+	ring = null
+	_pulse_t = 0.0
+
+
+func _cut(target: Node3D) -> void:
+	if target == null or not target.is_inside_tree():
+		return
+	cuts += 1
+	var cd: CameraDirector = CameraDirector.live()
+	if cd:
+		cd.preview_cut(target, CUT_S)
 
 
 ## A dark corner away from the player (the four hall corners in turn, the farthest first).
@@ -406,9 +485,10 @@ func _reset() -> void:
 
 func _cleanup() -> void:
 	_power(true)
+	_end_pulse()
 	for s: Variant in (level.get("speakers") if level else []):
-		var ring: Node3D = (s as Node3D).get_node_or_null("Ring") as Node3D
-		if ring:
-			ring.visible = false
+		var r: Node3D = (s as Node3D).get_node_or_null("Ring") as Node3D
+		if r:
+			r.visible = false
 	if flashlight and is_instance_valid(flashlight):
 		flashlight.set_on(false)
