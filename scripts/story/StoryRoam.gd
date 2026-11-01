@@ -144,7 +144,7 @@ func setup(r: Node3D) -> void:
 		director.connect("day_changed", _on_day)
 		director.connect("evidence_added", _on_evidence)
 		director.connect("step_changed", _on_step)
-	StoryAudio.warm(beat_cues(director.call("beat") if director else {}) + WARM)   # the current beat's cues first
+	StoryAudio.warm(beat_cues(director.call("beat") if director else {}, director) + WARM)   # the current beat's cues first
 	refresh()
 	_run_t = RUN_DELAY
 
@@ -194,6 +194,14 @@ func _compute_anchors() -> void:
 	# Phase C: Anh Duy's corner of the BE6 lobby (the Day 2 / Day 5 markers; the basement stairs), the Rạch Hầm bridge
 	# (measured map points beside the deck: the cine stage "bridge" at (2145, 150) is clear 14 x 10), the container yard
 	_campus_anchor("duy_corner", sp.origin + fwd * 3.5 - right * 6.0, sp.origin + fwd * 3.5)
+	# w4-endings: the night lift to floor 13 (StoryNightSecrets), on the far side of the BE6 front from Duy's corner, the
+	# plaza and the bed spot (8 m+ from each), so its 6 m trigger never covers a mission marker
+	var lift: Vector3 = sp.origin - fwd * 1.0 + right * 10.0
+	if roam.has_method("find_free_spot"):
+		var ls: Variant = roam.call("find_free_spot", lift, lift.y, 2)
+		if ls is Vector3:
+			lift = ls
+	_campus_anchor("be6_lift", lift, sp.origin)
 	_campus_anchor("bridge_road", Vector3(2133.0, 0.0, 184.0), Vector3(2145.0, 0.0, 150.0))
 	_campus_anchor("bridge_bank", Vector3(2145.0, 0.0, 150.0), Vector3(2133.0, 0.0, 184.0))
 	_campus_anchor("bridge_pillar", Vector3(2140.0, 0.0, 156.0), Vector3(2145.0, 0.0, 150.0))
@@ -510,7 +518,7 @@ func _on_step(_id: String) -> void:
 	entered_live = true
 	_run_t = 0.05 if not busy else -1.0
 	if director:
-		StoryAudio.warm(beat_cues(director.call("beat")))
+		StoryAudio.warm(beat_cues(director.call("beat"), director))
 		warm_mission_music(director.call("beat"))
 
 
@@ -609,7 +617,7 @@ func run_step() -> void:
 	if kind in ["cine", "call", "video"]:
 		# the beat's cues come from their warm tasks; wait (re-armed) up to AUDIO_WAIT_MAX s rather than synthesize on
 		# the main thread (review A2-R1)
-		if not StoryAudio.ready_for(beat_cues(b)) and _audio_wait < AUDIO_WAIT_MAX:
+		if not StoryAudio.ready_for(beat_cues(b, director)) and _audio_wait < AUDIO_WAIT_MAX:
 			_audio_wait += 0.1
 			_run_t = 0.1
 			return
@@ -630,15 +638,23 @@ func run_step() -> void:
 
 
 ## The SFX cues a beat needs (timeline sfx for cinematics, the call's cues), warmed first and waited on in run_step.
-static func beat_cues(b: Dictionary) -> Array:
+## w4-endings: an "ending": "auto" beat (d7_ending) collects the cues of every slot of the ending `dir` resolves it to
+## (StoryEndings.slots), so B, D, E, F and ai_true_end are warm too, not only the beat's own "slot".
+static func beat_cues(b: Dictionary, dir: Node = null) -> Array:
 	var out: Array = []
 	match String(b.get("kind", "")):
 		"cine", "video":
-			var tl: CineTimeline = CineTimeline.load_slot(String(b.get("slot", "")))
-			if tl:
-				for e: Dictionary in tl.sfx:
-					if StoryAudio.is_cue(String(e["cue"])) and not out.has(String(e["cue"])):
-						out.append(String(e["cue"]))
+			var slots: Array[String] = [String(b.get("slot", ""))]
+			if String(b.get("ending", "")) == "auto" and dir != null:
+				for s: String in StoryEndings.slots(String(dir.call("resolve_ending", b))):
+					if not slots.has(s):
+						slots.append(s)
+			for slot: String in slots:
+				var tl: CineTimeline = CineTimeline.load_slot(slot)
+				if tl:
+					for e: Dictionary in tl.sfx:
+						if StoryAudio.is_cue(String(e["cue"])) and not out.has(String(e["cue"])):
+							out.append(String(e["cue"]))
 		"call":
 			out = ["phone_ring_3am", "whisper_bed", "static_burst", "call_hangup"]
 	return out

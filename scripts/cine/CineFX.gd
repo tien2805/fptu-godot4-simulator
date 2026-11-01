@@ -55,7 +55,7 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	"motorbike", "container", "mannequins", "forklift", "server_rack", "server_room", "monitor_wall", "stonks_screen", "fire",
 	"keynote", "desk",
 	# w4-endings: the ending cinematics' props, built by CinePropsE (this list = CinePropsE.KINDS)
-	"billboard", "helicopter", "police_car", "box", "belt", "scholarship", "certificate", "hearing_set", "canal", "sign",
+	"end_billboard", "end_helicopter", "police_car", "box", "belt", "scholarship", "certificate", "hearing_set", "canal", "sign",
 	"boat", "lift_frame", "lift_door", "dossier"]
 
 var _serial: int = 0

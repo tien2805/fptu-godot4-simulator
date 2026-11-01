@@ -35,6 +35,8 @@ const LIMIT_K: float = 2.6
 const CRASH_PENALTY_S: float = 5.0
 const DIRS: Array[String] = ["Bắc", "Đông Bắc", "Đông", "Đông Nam", "Nam", "Tây Nam", "Tây", "Tây Bắc"]
 
+const HUD_S: float = 0.1
+var _hud_t: float = 0.0   # HUD refresh countdown (_hud_tick)
 var id: String = ""
 var roam: Node = null
 var auto_tick: bool = true
@@ -134,7 +136,7 @@ func advance(dt: float) -> void:
 		var p := Vector2(f.global_position.x, f.global_position.z)
 		if p.distance_to(target()) <= DROP_M:
 			_deliver()
-	_hud_text()
+	_hud_tick(dt)
 
 
 func _deliver() -> void:
@@ -223,6 +225,16 @@ func _build_hud() -> void:
 	top_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	top_label.position.y = 18.0
 	hud.add_child(top_label)
+	_hud_text()
+
+
+
+## The HUD line at HUD_S (about 10 Hz), not every frame (the first call shows it at once).
+func _hud_tick(dt: float) -> void:
+	_hud_t -= dt
+	if _hud_t > 0.0:
+		return
+	_hud_t = HUD_S
 	_hud_text()
 
 

@@ -309,8 +309,9 @@ func _show_endings() -> void:
 	focus.call_deferred("grab_focus")
 
 
+## The title already reads "Kết X: ..." (StoryEndings.ENDINGS), so the row shows it alone.
 static func ending_row_text(r: Dictionary) -> String:
-	return "Kết %s: %s" % [String(r["id"]), String(r["title"])]
+	return String(r["title"])
 
 
 # ---------------------------------------------------------------------------

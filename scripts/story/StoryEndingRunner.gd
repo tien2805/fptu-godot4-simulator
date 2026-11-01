@@ -22,6 +22,7 @@ var played: Array[String] = []
 var summary: StoryEndSummary = null
 var video: StoryVideo = null
 var finished: bool = false
+var _no_pause_scene: Node = null   # the scene this runner set meta "no_pause" on while the summary is open (else null)
 
 
 func setup(s: Node, b: Dictionary) -> void:
@@ -110,6 +111,7 @@ func _on_video_done(_skipped: bool, slot: String) -> void:
 
 func _show_summary() -> void:
 	story.call("_pause", true)
+	_block_pause(true)   # Esc closes the summary; StageManager's pause menu must not unpause the world behind it
 	summary = StoryEndSummary.new()
 	add_child(summary)
 	summary.show_for(letter, director.call("ending_state") if director else {}, director.get("ranks") if director else {})
@@ -117,6 +119,25 @@ func _show_summary() -> void:
 
 
 func _on_summary_closed() -> void:
+	_block_pause(false)
 	finished = true
 	story.call("_pause", false)
 	done.emit(letter)
+
+
+## Meta "no_pause" on the current scene (StageManager._can_pause) while the summary is open; only a meta this runner set
+## is removed again.
+func _block_pause(on: bool) -> void:
+	if on:
+		var cs: Node = get_tree().current_scene if is_inside_tree() else null
+		if cs and not cs.has_meta("no_pause"):
+			cs.set_meta("no_pause", true)
+			_no_pause_scene = cs
+	elif _no_pause_scene:
+		if is_instance_valid(_no_pause_scene):
+			_no_pause_scene.remove_meta("no_pause")
+		_no_pause_scene = null
+
+
+func _exit_tree() -> void:
+	_block_pause(false)

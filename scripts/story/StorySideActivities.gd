@@ -8,9 +8,11 @@
 #   takedowns (T5b)  SideTakedown td_soi, td_bay: any time, the bike (Day 2 bike combat in free mode).
 #   deliveries (T5c) SideDelivery giao_com (by day or night), giao_dem (at night): timed drops on the Day 2 roads.
 #   Vovinam (T5d)    SideVovinam vo_hem, vo_cau: any time, on foot (Phase B melee, bare hands, the traffic parked).
-# API: setup(roam, story, director); spots() rows {id, kind, title, at, night}; can_start(id); start(id) -> bool; advance(dt)
-#   (auto_tick false in tests); current (the running activity node), current_id; signals activity_started(id),
-#   activity_done(id, result, new_best), activity_failed(id, reason).
+# While one runs: busted by the police (WantedDirector state not "free", like story missions) fails it with reason "police";
+# holding [Backspace] QUIT_HOLD_S quits it (reason "quit"). The start toast says so.
+# API: setup(roam, story, director); spots() rows {id, kind, title, at, night} (static data, built once); can_start(id);
+#   start(id) -> bool; advance(dt) (auto_tick false in tests; quit_held forces the quit key); current (the running activity
+#   node), current_id; signals activity_started(id), activity_done(id, result, new_best), activity_failed(id, reason).
 class_name StorySideActivities
 extends Node
 
@@ -28,9 +30,14 @@ const KIND_MUSIC: Dictionary = {"race": "side_drift", "takedown": "mission_bike_
 	"vovinam": "mission_fight"}
 const FAIL_LINE: Dictionary = {"off_bike": "Bỏ cuộc: rời xe giữa chừng.", "no_course": "Không mở được thử thách.",
 	"knocked": "Toang! Bị đạp văng khỏi xe.", "time": "Hết giờ rồi. Lần sau nhanh hơn nhé.",
-	"ko": "Toang! Nằm sàn rồi. Tập thêm rồi quay lại."}
+	"ko": "Toang! Nằm sàn rồi. Tập thêm rồi quay lại.",
+	"police": "Bị truy nã giữa thử thách! Cắt đuôi rồi quay lại vòng sáng.", "quit": "Bỏ cuộc."}
+const QUIT_HOLD_S: float = 1.0
+const QUIT_HINT: String = "Giữ [Backspace] để bỏ cuộc."
 
 static var _courses: Dictionary = {}
+static var _spots: Array[Dictionary] = []   # spots(), built once
+static var _spot_by_id: Dictionary = {}
 
 var roam: Node = null
 var story: Node = null
@@ -43,7 +50,10 @@ var current_id: String = ""
 var near_id: String = ""
 var markers: Dictionary = {}
 var last_result: Dictionary = {}
+## Tests: hold the quit key without a keyboard.
+var quit_held: bool = false
 var _check_t: float = 0.0
+var _quit_t: float = 0.0
 
 
 func _init() -> void:
@@ -62,8 +72,11 @@ static func race_course(rid: String) -> DriftCourse:
 	return _courses[rid]
 
 
-## Every activity with its start spot: {id, kind, title, at (Vector3), yaw, night}.
+## Every activity with its start spot: {id, kind, title, at (Vector3), yaw, night}. Static data: built on the first call,
+## the same array after (read only).
 static func spots() -> Array[Dictionary]:
+	if not _spots.is_empty():
+		return _spots
 	var out: Array[Dictionary] = []
 	for rid: String in SideRace.ORDER:
 		var c: DriftCourse = race_course(rid)
@@ -82,14 +95,16 @@ static func spots() -> Array[Dictionary]:
 		var v: Vector2 = SideVovinam.start_at(fid)
 		out.append({"id": fid, "kind": "vovinam", "title": SideVovinam.title(fid), "at": Vector3(v.x, 0.0, v.y), "yaw": 0.0,
 			"night": false})
-	return out
+	_spots = out
+	for s: Dictionary in out:
+		_spot_by_id[String(s["id"])] = s
+	return _spots
 
 
 static func spot(id: String) -> Dictionary:
-	for s: Dictionary in spots():
-		if String(s["id"]) == id:
-			return s
-	return {}
+	if _spots.is_empty():
+		spots()
+	return _spot_by_id.get(id, {})
 
 
 ## Story free roam with nothing else going on (and night for the night ones).
@@ -131,6 +146,9 @@ func _focus() -> Node3D:
 
 
 func advance(dt: float) -> void:
+	if current != null:
+		_tick_running(dt)
+		return
 	_check_t -= dt
 	if _check_t > 0.0:
 		return
@@ -148,6 +166,30 @@ func advance(dt: float) -> void:
 				near_id = id
 	if near_id != "" and near_id != was and roam.has_method("flash_hint"):
 		roam.call("flash_hint", hint_text(near_id))
+
+
+## While an activity runs: hold [Backspace] QUIT_HOLD_S to quit; busted (wanted state not free) fails it ("police").
+func _tick_running(dt: float) -> void:
+	if quit_held or Input.is_physical_key_pressed(KEY_BACKSPACE):
+		_quit_t += dt
+		if _quit_t >= QUIT_HOLD_S:
+			_quit_t = 0.0
+			_on_failed(current_id, "quit")
+			return
+	else:
+		_quit_t = 0.0
+	_check_t -= dt
+	if _check_t > 0.0:
+		return
+	_check_t = CHECK_S
+	if _busted():
+		_on_failed(current_id, "police")
+
+
+## The story missions' rule (StoryRoam._wanted_not_free): caught, in the stamp / cutscene / service chain.
+func _busted() -> bool:
+	var w: Variant = roam.get("wanted") if roam else null
+	return w != null and is_instance_valid(w) and String((w as Object).get("state")) != "free"
 
 
 func start(id: String) -> bool:
@@ -198,6 +240,9 @@ func start(id: String) -> bool:
 		var fx: Node = get_node_or_null("/root/GameFX")
 		if ms != "" and fx and fx.has_method("music_play"):
 			fx.call("music_play", ms, 0.5)
+		_quit_t = 0.0
+		_check_t = CHECK_S
+		_toast(QUIT_HINT, "")
 		activity_started.emit(id)
 	return true
 

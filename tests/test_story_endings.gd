@@ -58,6 +58,9 @@ func _initialize() -> void:
 	Engine.max_fps = 60
 	sd = root.get_node("StoryDirector")
 	sm = root.get_node("StageManager")
+	# the study ranks also come from StageManager.best_stats (StoryDirector.study_ranks): start from none, in memory only
+	# (headless never writes the real progress.cfg), so the owner's own records cannot turn A into F here
+	sm.set("best_stats", {})
 	sd.set("save_path", TMP)
 	sd.set("nav_enabled", false)
 	for p: String in [TMP, TMP_U, TMP_C, TMP_B]:
@@ -156,12 +159,23 @@ func _start_case() -> void:
 	sd.set("step", "")
 	sd.call("_enter", "d7_ending")
 	sd.call("save_game")
+	# the auto ending beat warms the cues of every slot of the resolved ending, not only its own "slot" (end_a)
+	var cues: Array = StoryRoam.beat_cues(sd.call("beat"), sd)
+	var missing: Array[String] = []
+	for slot: String in StoryEndings.slots(letter):
+		var tl: CineTimeline = CineTimeline.load_slot(slot)
+		if tl:
+			for e: Dictionary in tl.sfx:
+				if StoryAudio.is_cue(String(e["cue"])) and not cues.has(String(e["cue"])):
+					missing.append("%s:%s" % [slot, String(e["cue"])])
+	_check(missing.is_empty(), "%s: beat_cues warms every slot's cues (missing %s)" % [letter, str(missing)])
 
 
 func _roam() -> void:
 	fr = (load("res://scenes/FreeRoam.tscn") as PackedScene).instantiate()
 	fr.set("crowd_enabled", false)
 	root.add_child(fr)
+	current_scene = fr   # as in play (StageManager._can_pause reads the current scene's meta no_pause)
 	sr = fr.get("story_roam")
 	if sr:
 		sr.cine_opts = {"manual": true, "music": false}
@@ -226,7 +240,9 @@ func _process(_d: float) -> bool:
 			_check(String(r.summary.data.get("ending", "")) == letter and int(r.summary.data.get("found", -1)) == (CASES[letter][0] as Array).size(),
 				"%s: summary shows the ending and the evidence count" % letter)
 			_check(String(sd.get("ending")) == "", "%s: not finished before the summary closes" % letter)
+			_check(fr.has_meta("no_pause") and not bool(sm.call("_can_pause")), "%s: no pause menu over the summary (Esc closes it)" % letter)
 			r.summary.confirm()
+			_check(not fr.has_meta("no_pause"), "%s: no_pause lifted when the summary closes" % letter)
 			_next(3)
 		3:
 			if frames < 2:
@@ -373,7 +389,7 @@ func _gallery_tab() -> void:
 	cs.show_tab("endings")
 	_check(cs.tab == "endings" and cs.list_box.get_child_count() == StoryEndings.IDS.size(), "E: one row per ending (%d)" % cs.list_box.get_child_count())
 	var a: Button = cs.row_button("A")
-	_check(a != null and not a.disabled and a.text == "Kết A: " + StoryEndings.title("A") and _clean(a.text), "E: ending A reached (%s)" % (a.text if a else "none"))
+	_check(a != null and not a.disabled and a.text == StoryEndings.title("A") and a.text.count("Kết A") == 1 and _clean(a.text), "E: ending A reached (%s)" % (a.text if a else "none"))
 	for x: String in ["B", "C", "D", "E", "F"]:
 		var b: Button = cs.row_button(x)
 		_check(b != null and b.disabled and b.text == "???", "E: ending %s not reached reads ???" % x)

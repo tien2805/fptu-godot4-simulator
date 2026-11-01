@@ -540,3 +540,44 @@ func _endings() -> void:
 	for c: Array in cases:
 		var got: String = sd.call("evaluate_ending", c[0])
 		_check(got == String(c[1]), "ending %s expected for %s, got %s" % [String(c[1]), str(c[0]), got])
+	_ending_from_progress(all7, ok)
+
+
+## Ending F in real play: the study ranks come from StageManager's saved best_stats (a temp progress file here),
+## not only from flags.study_ranks. The owner's real progress (best_stats, wallet) is restored afterwards.
+func _ending_from_progress(all7: Array, ok: Dictionary) -> void:
+	var sm: Node = root.get_node_or_null("StageManager")
+	_check(sm != null, "endings: StageManager autoload present")
+	if sm == null:
+		return
+	var keep_best: Dictionary = (sm.get("best_stats") as Dictionary).duplicate(true)
+	var keep_wallet: int = int(sm.get("wallet"))
+	var tmp: String = "user://test_story_director_progress_%d.cfg" % OS.get_process_id()
+	var ev: Array[String] = []
+	for e: Variant in all7:
+		ev.append(String(e))
+	sd.set("evidence", ev)
+	sd.set("choices", ok.duplicate())
+	(sd.get("flags") as Dictionary).erase("study_ranks")
+	var auto: Dictionary = {"ending": "auto"}
+	for rank6: String in ["S", "A"]:
+		var cfg := ConfigFile.new()
+		for sid: int in [3, 6, 7]:
+			cfg.set_value("stage_%d" % sid, "score", 900)
+			cfg.set_value("stage_%d" % sid, "rank", rank6 if sid == 6 else "S")
+			cfg.set_value("stage_%d" % sid, "wins", 1)
+			cfg.set_value("stage_%d" % sid, "plays", 1)
+		cfg.save(tmp)
+		sm.call("load_progress", tmp)
+		var want: String = "F" if rank6 == "S" else "A"
+		var got: String = String(sd.call("resolve_ending", auto))
+		_check(got == want, "endings: best_stats S/%s/S on 3/6/7 -> %s, got %s (study_ranks %s)" % [rank6, want, got, str(sd.call("study_ranks"))])
+	# a stage played but never won does not count, and flags.study_ranks still merges on top
+	(sm.get("best_stats") as Dictionary)[6] = {"score": 0, "rank": "S", "wins": 0, "plays": 3}
+	_check(String(sd.call("resolve_ending", auto)) == "A", "endings: an unwon stage's rank does not count")
+	(sd.get("flags") as Dictionary)["study_ranks"] = {"6": "S"}
+	_check(String(sd.call("resolve_ending", auto)) == "F", "endings: flags.study_ranks merges over best_stats")
+	(sd.get("flags") as Dictionary).erase("study_ranks")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp))
+	sm.set("best_stats", keep_best)
+	sm.set("wallet", keep_wallet)

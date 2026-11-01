@@ -33,7 +33,7 @@ func build() -> void:
 	StoryCast.dress(self, "anh_duy", "anh_duy")
 	prop("canal", "canal", Vector3(0.0, 0.0, -2.2), 0.0, {"set": true, "width": 16.0, "length": 5.4})
 	# the billboard faces the bank (yaw 180) and topples backward, away from the viewers (+x about its foot line)
-	prop("board", "billboard", BOARD, 180.0, {"set": true, "path": [[0.0, BOARD, Vector3(0.0, 180.0, 0.0)],
+	prop("board", "end_billboard", BOARD, 180.0, {"set": true, "path": [[0.0, BOARD, Vector3(0.0, 180.0, 0.0)],
 		[5.4, BOARD, Vector3(0.0, 180.0, 0.0)], [5.8, BOARD, Vector3(-4.0, 180.0, 0.0)], [6.3, BOARD, Vector3(3.0, 180.0, 0.0)],
 		[FALL_FROM, BOARD, Vector3(6.0, 180.0, 0.0)], [FALL_TO, BOARD, Vector3(88.0, 180.0, 0.0)],
 		[FALL_TO + 0.25, BOARD, Vector3(82.0, 180.0, 0.0)], [FALL_TO + 0.5, BOARD, Vector3(90.0, 180.0, 0.0)]]})

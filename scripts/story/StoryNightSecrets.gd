@@ -6,8 +6,10 @@
 # for that day (flag night_<kind>_d<day>) and the story saves:
 #   canal  the ghost boat at the Rạch Hầm bank (anchor bridge_bank), cine night_ghost_boat: the first missing of E3 (from
 #          Day 3, the day after the bridge) or E4 (from Day 4, the day after the container yard);
-#   lift   the BE6 lift that stops at floor 13 (anchor duy_corner), cine night_lift13: the first missing of E2 (from Day 2,
-#          the day after the locker) or E5 (from Day 5, the day after Dolly).
+#   lift   the BE6 lift that stops at floor 13 (anchor be6_lift, the far side of the BE6 front, away from every mission
+#          marker), cine night_lift13: the first missing of E2 (from Day 2, the day after the locker) or E5 (from Day 5).
+# A spot stays dark while the player stands at a story marker (StoryRoam.active_marker) or a story marker sits within
+# NEAR_M + StoryRoam.MARKER_RADIUS of it, so a mission's [E] always comes first.
 # Horror softened by "Giảm hù dọa" (the cinematics read it at build time: no scare hit, no whisper bed).
 # Cost: one distance check every CHECK_S. Tests: advance(dt) with auto_tick false; play(kind) runs the hand-off directly.
 class_name StoryNightSecrets
@@ -21,7 +23,7 @@ const HINT_FROM: String = "Số lạ"
 const SPOTS: Dictionary = {
 	"canal": {"anchor": "bridge_bank", "slot": "night_ghost_boat", "offers": [["E3", 3], ["E4", 4]],
 		"hint": "Nửa đêm ra bờ kênh Rạch Hầm đi. Có con đò chở thứ mày đánh rơi."},
-	"lift": {"anchor": "duy_corner", "slot": "night_lift13", "offers": [["E2", 2], ["E5", 5]],
+	"lift": {"anchor": "be6_lift", "slot": "night_lift13", "offers": [["E2", 2], ["E5", 5]],
 		"hint": "Thang máy BE6 nửa đêm có dừng ở tầng 13. Ghé thử đi."},
 }
 const ORDER: Array[String] = ["canal", "lift"]
@@ -90,10 +92,12 @@ func advance(dt: float) -> void:
 	if _check_t > 0.0:
 		return
 	_check_t = CHECK_S
-	var ok: bool = eligible()
+	var ok: bool = eligible() and not _at_story_marker()
 	for kind: String in ORDER:
 		var ev: String = offer(kind) if ok else ""
 		var at: Variant = spot_pos(kind) if ev != "" else null
+		if at != null and near_story_marker(at as Vector3):
+			at = null
 		if at == null:
 			_marker(kind, null)
 			continue
@@ -109,6 +113,24 @@ func advance(dt: float) -> void:
 			if d.length() <= NEAR_M:
 				play(kind)
 				return
+
+
+## The player stands at a story marker (its [E] prompt is up).
+func _at_story_marker() -> bool:
+	var am: Variant = story.get("active_marker") if story else null
+	return am is String and am != ""
+
+
+## A story marker (StoryRoam.marker_pos, map plane) close enough that the spot would fire before its [E].
+func near_story_marker(at: Vector3) -> bool:
+	var mp: Variant = story.get("marker_pos") if story else null
+	if not (mp is Dictionary):
+		return false
+	var r: float = NEAR_M + StoryRoam.MARKER_RADIUS
+	for p: Variant in (mp as Dictionary).values():
+		if p is Vector2 and (p as Vector2).distance_to(Vector2(at.x, at.z)) <= r:
+			return true
+	return false
 
 
 ## Plays the spot's cinematic, then gives its evidence. false when nothing is offered or the cinematic cannot start.

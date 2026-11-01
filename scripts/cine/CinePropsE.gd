@@ -2,10 +2,10 @@
 # Props of the ending cinematics (plan 2026-11-01-w4-endings.md T1), plain meshes and code colours only, built through
 # CineFX.build_prop(kind, opts) (CineFX dispatches every kind in KINDS here). Origin on the ground, front toward -Z unless
 # said otherwise. Move them with the prop "path" opts (CinePlayer) where they fly or fall.
-#   billboard     the "LỌ ACADEMY – Học thật, đậu thật" billboard on two posts (panel 7 x 3.2 m, face toward -Z) with a
+#   end_billboard the "LỌ ACADEMY – Học thật, đậu thật" billboard on two posts (panel 7 x 3.2 m, face toward -Z) with a
 #                 code-drawn face of Lùm Văn Lọ (gold-rimmed glasses, smug smile); its origin is the foot line, so a path
 #                 rotating x tips it over backward (+Z) or forward (-Z).
-#   helicopter    a small helicopter (body, tail boom, skids, a blurred rotor disc); nose toward -Z, origin at the skids.
+#   end_helicopter a small helicopter (body, tail boom, skids, a blurred rotor disc); nose toward -Z, origin at the skids.
 #   police_car    a white-and-blue patrol car with a red / blue light bar (glows), rear door open (opts "door": true).
 #   box           a cardboard box of belongings (two-handed, origin at its centre), a plant and a mug poking out.
 #   belt          "cái nịt": a brown belt hanging from the hand (origin at the buckle).
@@ -25,7 +25,7 @@
 class_name CinePropsE
 extends RefCounted
 
-const KINDS: Array[String] = ["billboard", "helicopter", "police_car", "box", "belt", "scholarship", "certificate",
+const KINDS: Array[String] = ["end_billboard", "end_helicopter", "police_car", "box", "belt", "scholarship", "certificate",
 	"hearing_set", "canal", "sign", "boat", "lift_frame", "lift_door", "dossier"]
 const LO_PINK := Color("#FF8FC8")
 const GOLD := Color("#E2B23C")
@@ -37,9 +37,9 @@ static func has(kind: String) -> bool:
 
 static func build(kind: String, root: Node3D, opts: Dictionary) -> void:
 	match kind:
-		"billboard":
+		"end_billboard":
 			_billboard(root, opts)
-		"helicopter":
+		"end_helicopter":
 			_helicopter(root)
 		"police_car":
 			_police_car(root, opts)

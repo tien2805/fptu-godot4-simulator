@@ -44,6 +44,8 @@ class FakeStory extends Node:
 	var running: String = ""
 	var phone: Node = null
 	var anchors: Dictionary = {}
+	var active_marker: String = ""
+	var marker_pos: Dictionary = {}
 	var started: Array[String] = []
 	var freed: int = 0
 
@@ -100,7 +102,7 @@ func _part_a() -> void:
 	r.add_child(pl)
 	root.add_child(r)
 	root.add_child(st)
-	st.anchors = {"bridge_bank": {"pos": Vector3(100.0, 0.0, 50.0), "yaw": 0.0}, "duy_corner": {"pos": Vector3(-80.0, 0.0, 20.0), "yaw": 0.0}}
+	st.anchors = {"bridge_bank": {"pos": Vector3(100.0, 0.0, 50.0), "yaw": 0.0}, "be6_lift": {"pos": Vector3(-80.0, 0.0, 20.0), "yaw": 0.0}}
 	var ev := StoryNightEvents.new()
 	ev.auto_tick = false
 	ev.dry_run = true
@@ -147,6 +149,15 @@ func _part_a() -> void:
 	_check(st.started.is_empty() and ns.markers.is_empty(), "never during a mission (no cinematic, lanterns gone)")
 	st.mission_node.free()
 	st.mission_node = null
+	# a story marker comes first: standing at one, or one within NEAR_M + MARKER_RADIUS of the spot, keeps it dark
+	st.active_marker = "d5_x"
+	ns.advance(1.0)
+	_check(st.started.is_empty() and ns.markers.is_empty(), "never while the player stands at a story marker")
+	st.active_marker = ""
+	st.marker_pos = {"d5_x": Vector2(104.0, 55.0)}
+	ns.advance(1.0)
+	_check(st.started.is_empty() and not ns.markers.has("canal") and ns.markers.has("lift"), "a story marker beside the bank keeps the canal dark, not the lift")
+	st.marker_pos = {}
 	# far from both: nothing plays; within NEAR_M of the bank: the ghost boat
 	pl.position = Vector3(0.0, 0.0, 0.0)
 	ns.advance(1.0)
@@ -252,6 +263,14 @@ func _process(_d: float) -> bool:
 			if frames < 5:
 				return false
 			_check(sr.night_secrets.offer("lift") == "E2", "C: the lift offers E2 on Day 5")
+			# the real lift spot is clear of every mission marker spot near BE6 (its trigger never covers their [E])
+			var lp: Variant = sr.night_secrets.spot_pos("lift")
+			var clear: bool = lp is Vector3
+			for id: String in ["duy_corner", "be6_door", "be6_plaza", "be6_bed"]:
+				var ap: Vector3 = (sr.anchors[id] as Dictionary)["pos"]
+				if lp is Vector3 and Vector2(ap.x - (lp as Vector3).x, ap.z - (lp as Vector3).z).length() <= StoryNightSecrets.NEAR_M + StoryRoam.MARKER_RADIUS:
+					clear = false
+			_check(clear, "C: the lift anchor be6_lift is away from Duy's corner and the BE6 markers (%s)" % str(lp))
 			_check(sr.night_secrets.play("lift"), "C: the lift cinematic starts")
 			_next(2)
 		2:

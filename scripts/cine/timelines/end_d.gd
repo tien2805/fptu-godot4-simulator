@@ -36,7 +36,7 @@ func build() -> void:
 	actor("lo", StoryEndings.van_lo_opts(), StoryEndings.VAN_LO_NAME, StoryEndings.VAN_LO_COLOR)
 	var heli: Array = [[0.0, H0, Vector3(0.0, -35.0, 0.0)], [5.0, H0, Vector3(0.0, -35.0, 0.0)],
 		[7.0, H1, Vector3(-6.0, -35.0, 4.0)], [13.6, H2, Vector3(-4.0, -40.0, -3.0)], [18.0, H3, Vector3(-12.0, -70.0, 10.0)]]
-	prop("heli", "helicopter", H0, -35.0, {"path": heli})
+	prop("heli", "end_helicopter", H0, -35.0, {"path": heli})
 	# Lùm Văn Lọ dangles under it (keyed along the same path)
 	for k: Array in heli:
 		key("lo", float(k[0]), (k[1] as Vector3) + HANG, float((k[2] as Vector3).y))

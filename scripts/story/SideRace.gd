@@ -36,6 +36,8 @@ const BONUS_CAP: float = 0.15
 const RANK_K: Dictionary = {"S": 1.3, "A": 1.5, "B": 1.8}
 const BIKE_FLOOR_OFFSET: float = 0.05
 
+const HUD_S: float = 0.1
+var _hud_t: float = 0.0   # HUD refresh countdown (_hud_tick)
 var id: String = ""
 var course: DriftCourse = null
 var roam: Node = null
@@ -161,8 +163,9 @@ func advance(dt: float) -> void:
 	match state:
 		"countdown":
 			count_t -= dt
-			if big_label:
-				big_label.text = str(ceili(count_t)) if count_t > 0.0 else "ĐI!"
+			var cd: String = str(ceili(count_t)) if count_t > 0.0 else "ĐI!"
+			if big_label and big_label.text != cd:
+				big_label.text = cd
 			if count_t <= 0.0:
 				state = "racing"
 				bike.set("speed_cap", _cap)
@@ -170,10 +173,10 @@ func advance(dt: float) -> void:
 					guide.set_active(true)
 		"racing":
 			t += dt
-			if big_label and t > 1.0:
+			if big_label and t > 1.0 and big_label.text != "":
 				big_label.text = ""
 			_track(dt)
-	_hud_text()
+	_hud_tick(dt)
 
 
 func _track(dt: float) -> void:
@@ -292,6 +295,16 @@ func _build_hud() -> void:
 	big_label.name = "Big"
 	big_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	hud.add_child(big_label)
+
+
+
+## The HUD line at HUD_S (about 10 Hz), not every frame (the first call shows it at once).
+func _hud_tick(dt: float) -> void:
+	_hud_t -= dt
+	if _hud_t > 0.0:
+		return
+	_hud_t = HUD_S
+	_hud_text()
 
 
 func _hud_text() -> void:

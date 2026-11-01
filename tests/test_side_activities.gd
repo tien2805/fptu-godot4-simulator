@@ -330,6 +330,29 @@ func _process(_d: float) -> bool:
 			dv2.auto_tick = false
 			dv2.advance(SideDelivery.par("giao_com") * SideDelivery.LIMIT_K + 1.0)
 			_check(String(fail_ev[-1][0]) == "giao_com" and String(fail_ev[-1][1]) == "time" and sa.current == null, "out of time: the run is given up")
+			# hold [Backspace] QUIT_HOLD_S: quit (a short press does nothing)
+			_check(sa.start("giao_com"), "giao_com starts for the quit")
+			(sa.current as SideDelivery).auto_tick = false
+			sa.quit_held = true
+			sa.advance(StorySideActivities.QUIT_HOLD_S * 0.5)
+			_check(sa.current != null, "half the quit hold: still running")
+			sa.advance(StorySideActivities.QUIT_HOLD_S * 0.6)
+			sa.quit_held = false
+			_check(fail_ev[-1] == ["giao_com", "quit"] and sa.current == null and not bool(sr.busy), "holding [Backspace] quits the run (%s)" % str(fail_ev[-1]))
+			# busted by the police mid-run: the run fails with "police" (the story missions' rule)
+			_check(sa.start("td_soi"), "td_soi starts for the police check")
+			(sa.current as SideTakedown).auto_tick = false
+			var wd: Node = fr.get("wanted")
+			_check(wd != null, "FreeRoam has the wanted director")
+			if wd:
+				var keep_state: String = String(wd.get("state"))
+				sa.advance(StorySideActivities.CHECK_S + 0.01)
+				_check(sa.current != null, "free: the takedown runs on")
+				wd.set("state", "stamp")
+				sa.advance(StorySideActivities.CHECK_S + 0.01)
+				wd.set("state", keep_state)
+				_check(fail_ev[-1] == ["td_soi", "police"] and sa.current == null and not bool(sr.busy), "busted: the takedown fails with police (%s)" % str(fail_ev[-1]))
+			_check(StorySideActivities.spots() == StorySideActivities.spots() and is_same(StorySideActivities.spots(), StorySideActivities.spots()), "spots() is built once")
 			_check(SideVovinam.rank_for(27.0, 3, 80.0) == "S" and SideVovinam.rank_for(27.0, 3, 50.0) == "A" and SideVovinam.rank_for(50.0, 3, 90.0) == "B"
 				and SideVovinam.rank_for(90.0, 3, 90.0) == "C", "Vovinam ranks (time per opponent and HP)")
 			# T5d: a Vovinam street fight, on foot (from the bike), the traffic parked
