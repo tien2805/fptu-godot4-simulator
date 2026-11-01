@@ -8,7 +8,7 @@
 #       "label", "value" (text), "k" (0..1), "weight"}]} ({} for an unranked beat): the results card reads it
 #   StoryRank.best(beat_id) -> String     the best letter recorded (StoryDirector.ranks or the chapter unlock file)
 #   StoryRank.better(a, b) -> bool        letter a beats b ("" loses to every letter)
-#   StoryRank.MISSIONS                    thresholds per ranked beat id (19 beats of Days 1-5; Day 0 stages keep their own)
+#   StoryRank.MISSIONS                    thresholds per ranked beat id (22 beats of Days 1-6; Day 0 stages keep their own)
 # ===============
 # Stats (StoryMission.stats; T7 fills them): "time" (s on the mission clock, failed attempts included), "dmg" (HP lost),
 # "fails" (retries), "ko" (takedowns where the mission counts them). info = the mission's done info (the optional
@@ -22,7 +22,7 @@
 # Thresholds: the stake-out, the foot chase, the canteen, the bike chase and the drift race calibrated by T10 (the
 # sloppy-bot harnesses, table in the plan; the bike chase re-calibrated on wave3 after d2fix); the brawls, the corridor,
 # the bridge and the escape have no harness yet (provisional); Days 3 and 5 set on wave3 from sim_day3 / sim_day5 (the
-# day plans' integration tables).
+# day plans' integration tables); Day 6 from sim_day6 (plan 2026-11-01-w4-day6.md T8; the boat's "dmg" is the hull lost).
 class_name StoryRank
 extends RefCounted
 
@@ -40,7 +40,7 @@ const LABELS: Dictionary = {"time": "Thời gian", "dmg": "Máu mất", "fails":
 const OPT_LABELS: Dictionary = {"seen": "Không bị để ý", "shortcut": "Đi đường tắt", "spotted": "Không bị phát hiện",
 	"all": "Đập hết thùng", "wrong": "Không giao nhầm món", "leaks": "Không để lọt dữ liệu",
 	"breach_clean": "Chặn đột kích không mất máu", "qte_clean": "Kết liễu ngay lần đầu", "domino": "Đổ tủ đè bảo vệ",
-	"crane": "Dùng cần cẩu hạ địch"}
+	"crane": "Dùng cần cẩu hạ địch", "noticed": "Không để bảo vệ nghi ngờ"}
 const T_YES: String = "Đạt"
 const T_NO: String = "Chưa"
 
@@ -70,6 +70,10 @@ const MISSIONS: Dictionary = {
 	"d5_gunfight": {"time": [120.0, 300.0], "dmg": [40.0, 300.0], "opt": {"key": "domino", "min": 1}},
 	"d5_hack": {"time": [110.0, 200.0], "dmg": [0.0, 40.0], "opt": {"key": "breach_clean", "want": true}},
 	"d5_duel": {"time": [35.0, 110.0], "dmg": [20.0, 200.0], "opt": {"key": "qte_clean", "want": true}},
+	# Day 6 (set from sim_day6, T8 table in the day6 plan; "dmg" of the boat = the hull lost, failed attempts included)
+	"d6_shop": {"time": [50.0, 150.0], "opt": {"key": "wrong", "max": 0}},
+	"d6_backroom": {"time": [25.0, 90.0], "fails": [0.0, 4.0], "opt": {"key": "noticed", "want": false}},   # ~20 s a try
+	"d6_boat": {"time": [66.0, 95.0], "dmg": [30.0, 160.0], "ko": [3, 8]},
 }
 
 

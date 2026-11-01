@@ -13,7 +13,8 @@ class_name StoryRadio
 extends Node
 
 const PREFIX: Dictionary = {"anh_duy": "ANH DUY (bộ đàm)", "mr_t": "MR.T (điện thoại)", "linh": "LINH (tai nghe)",
-	"phuc": "PHÚC (điện thoại)", "chu_bay": "CHÚ BẢY (bộ đàm)"}
+	"phuc": "PHÚC (điện thoại)", "chu_bay": "CHÚ BẢY (bộ đàm)",
+	"thi_lo": "THỊ LỌ (loa)"}
 const READ_PAD: float = 1.6     # seconds a line stays after it finished typing (min_secs)
 const VOICE_DB: float = -10.0
 ## beat id -> [[t, speaker, line, dich], ...] (mission clock seconds, in order)
@@ -36,6 +37,15 @@ const SCRIPTS: Dictionary = {
 		[10.0, "anh_duy", "Server nằm sau phòng UPS, ping 10.13.0.7 là đúng chỗ.", "Đi tới phòng máy cuối hầm."]],
 	"d5_gunfight": [
 		[12.0, "anh_duy", "Za Mẫn deploy guard theo sprint đó e, hết wave là hết.", "Bắn hết đợt này là xong."]],
+	"d6_shop": [
+		[24.0, "anh_duy", "Cam quán push lên cloud của bả 5s một lần, a loop feed cũ rồi, e cứ diễn tự nhiên.", "Anh che camera rồi, cứ làm như nhân viên thật."],
+		[58.0, "phuc", "Tao ngồi quán cà phê đối diện nè. Bả cứ ngó ra cửa hoài, chắc đang chờ hàng.", ""]],
+	"d6_backroom": [
+		[4.0, "anh_duy", "Hộp nhạc trong đó hay tự kêu, con guard sẽ chạy lại tắt. Lúc nó quay lưng thì men tường trái ra két.", "Hộp nhạc kêu thì bảo vệ ra tắt: lúc đó đi sát tường trái ra két."],
+		[14.0, "anh_duy", "Két đời cũ, a brute force mã giùm. E đứng sát rồi giữ E là xong.", "Đứng sát két, giữ E, anh lo phần mã."]],
+	"d6_boat": [
+		[16.0, "anh_duy", "Cano bả độ máy, top speed hơn e một xíu. Đừng nhả ga là bám được.", "Cano bà ta nhanh hơn chút, cứ giữ ga."],
+		[44.0, "phuc", "Tao đứng trên cầu thấy tụi mày nè! Phía trước có sà lan bắn pháo bông, coi chừng pháo lạc!", ""]],
 }
 
 var label: Label

@@ -17,6 +17,7 @@ const SCENES: Array[String] = [
 	"res://scenes/FreeRoam.tscn",
 	"res://scenes/story/NightBuilding.tscn",
 	"res://scenes/story/StoryBasement.tscn",
+	"res://scenes/story/StoryCanal.tscn",
 ]
 const FRAMES_PER_SCENE: int = 75
 

@@ -23,6 +23,7 @@
 # a dedicated lair scene (the Day 5 basement) are markers here: [E] (intro once) -> StoryDirector.launch_lair_beat. New
 # anchors: duy_corner (BE6 lobby), bridge_road, bridge_bank, bridge_pillar, bridge_ledger (the Rạch Hầm bridge), yard_gate,
 # yard_pad, yard_mid, yard_manifest. Mission results set flag_by_info flags; "after_at" stages an after cinematic.
+# Day 6 (plan 2026-11-01-w4-day6.md): anchor lo_shop (the Trà Sữa Lọ shop by the Rạch Hầm bridge; the canal lair's marker).
 # Day 2 "Tokyo Drift" (plan 2026-10-27-d2x-drift.md): mission drift_duel (MissionDriftDuel, beat d2_drift); its slot
 # race_d2_drift is in MISSION_MUSIC for the catalogue, but SELF_MUSIC missions start their own track (the duel: silence
 # under the countdown, the track on GO); the chase track is never replaced by the roam track between the two beats.
@@ -186,6 +187,9 @@ func _compute_anchors() -> void:
 	_campus_anchor("bridge_bank", Vector3(2145.0, 0.0, 150.0), Vector3(2133.0, 0.0, 184.0))
 	_campus_anchor("bridge_pillar", Vector3(2140.0, 0.0, 156.0), Vector3(2145.0, 0.0, 150.0))
 	_campus_anchor("bridge_ledger", Vector3(2151.0, 0.0, 160.0), Vector3(2145.0, 0.0, 150.0))
+	# Day 6 (w4-day6): the Trà Sữa Lọ shop is the cafe by the Rạch Hầm bridge (map POI at 2122.3, 118.5); its marker launches
+	# the canal scene (StoryCanal)
+	_campus_anchor("lo_shop", Vector3(2122.3, 0.0, 118.5), Vector3(2113.2, 0.0, 110.87))
 	var yx := Transform3D(Basis(Vector3.UP, deg_to_rad(LairYard.YAW)), Vector3(LairYard.CENTER.x, 0.0, LairYard.CENTER.y))
 	_campus_anchor("yard_gate", yx * Vector3(-29.0, 0.0, 8.5), yx * LairYard.SNEAK_START)
 	_campus_anchor("yard_mid", yx * LairYard.MID, yx * (LairYard.MID + Vector3(0.0, 0.0, 4.0)))

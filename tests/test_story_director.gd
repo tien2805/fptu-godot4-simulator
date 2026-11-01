@@ -95,7 +95,8 @@ func _registry() -> void:
 		var b: Dictionary = StoryMissions.beat(id)
 		_check(not b.is_empty() and String(b["kind"]) in StoryMissions.KINDS, "beat %s has a known kind" % id)
 		var nx: String = String(b.get("next", ""))
-		_check(nx == "" or not StoryMissions.beat(nx).is_empty(), "beat %s: next %s exists" % [id, nx])
+		# d7_start: the hand-off to the w4-day7 stream (defined there; empty until the streams merge)
+		_check(nx == "" or not StoryMissions.beat(nx).is_empty() or nx == "d7_start", "beat %s: next %s exists" % [id, nx])
 		if String(b["kind"]) == "stage":
 			_check(b.has("stage") and b.has("anchor") and b.has("return") and b.has("replay"), "stage beat %s has stage, anchor, return, replay" % id)
 		if String(b["kind"]) in ["cine", "video"]:
@@ -129,13 +130,14 @@ func _registry() -> void:
 		"d3_start", "d3_morning", "d3_sneak", "d3_mannequins", "d3_gunfight", "d3_crates", "d3_boss", "d3_end", "d3_bed", "d3_call",
 		"d4_start", "d4_morning", "d4_canteen", "d4_stare", "d4_brawl", "d4_escape", "d4_end", "d4_bed", "d4_call",
 		"d5_start", "d5_morning", "d5_stealth", "d5_monitors", "d5_gunfight", "d5_hack", "d5_choice", "d5_choice_tail", "d5_duel",
-		"d5_end", "d5_bed", "d5_call", "d6_start", "d6_morning", "d6_locked"]
-	_check(chain == want, "story chain is %s (got %s)" % [str(want), str(chain)])
-	var calls: Dictionary = {"d1_call": 6, "d2_call": 5, "d3_call": 4, "d4_call": 3, "d5_call": 2}
+		"d5_end", "d5_bed", "d5_call", "d6_start", "d6_morning", "d6_shop", "d6_backroom", "d6_caught", "d6_boat", "d6_choice",
+		"d6_choice_tail", "d6_reveal", "d6_bed", "d6_call", "d7_start"]
+	_check(chain.slice(0, want.size()) == want, "story chain starts %s (got %s)" % [str(want), str(chain)])   # Day 7 continues it
+	var calls: Dictionary = {"d1_call": 6, "d2_call": 5, "d3_call": 4, "d4_call": 3, "d5_call": 2, "d6_call": 1}
 	for cid: String in calls.keys():
 		_check(int(StoryMissions.beat(cid)["days"]) == int(calls[cid]), "%s says %d days" % [cid, int(calls[cid])])
 	_check(StoryMissions.beat("d2_wait").is_empty() and StoryMissions.beat("d3_wait").is_empty(), "Phase C: the Day 2 / Day 3 placeholders are gone")
-	for pair: Array in [["d2_wait", "d2_chase"], ["d3_wait", "d3_sneak"], ["d2_locked", "d2_chase"], ["d3_locked", "d3_sneak"], ["d5_locked", "d5_stealth"]]:
+	for pair: Array in [["d2_wait", "d2_chase"], ["d3_wait", "d3_sneak"], ["d2_locked", "d2_chase"], ["d3_locked", "d3_sneak"], ["d5_locked", "d5_stealth"], ["d6_locked", "d6_shop"]]:
 		_check(StoryMissions.migrate(String(pair[0])) == String(pair[1]), "an old save at %s resumes at %s" % [String(pair[0]), String(pair[1])])
 	_check(String(StoryMissions.beat("d1_stakeout")["intro"]) == "cine_d1_intro" and String(StoryMissions.beat("d4_canteen")["intro"]) == "cine_d4_intro", "mission intros")
 	_check(String(StoryMissions.beat("d1_brawl")["after"]) == "seg_d1_brawl" and String(StoryMissions.beat("d4_brawl")["after"]) == "seg_d4_brawl" and String(StoryMissions.beat("d1_corridor")["after"]) == "cine_d1_corridor", "after cinematics")

@@ -61,6 +61,14 @@ const GALLERY: Array = [
 	["seg_d5_boss", 5, "Katana mua trên mạng"],
 	["cine_d5", 5, "Dòng tiền"],
 	["end_c", 5, "Kết C: Kẻ phản diện mới"],
+	# Day 6 (w4-day6)
+	["cine_d6_intro", 6, "Shipper màu hồng"],
+	["cine_d6_caught", 6, "Còn cái nịt"],
+	["seg_d6_chase", 6, "Rượt ca nô"],
+	["cine_d6_choice", 6, "Vali tiền ướt"],
+	["cine_d6_choice_take", 6, "Nhận vali"],
+	["cine_d6_choice_refuse", 6, "Từ chối"],
+	["ai_reveal", 6, "Lọ Academy"],
 ]
 
 static var unlocks_path: String = UNLOCKS_PATH
