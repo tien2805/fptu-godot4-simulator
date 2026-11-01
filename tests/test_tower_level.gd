@@ -6,7 +6,8 @@
 #   B. the laser rules: every lethal beam is telegraphed >= 0.5 s (a blink wall's dim warn phase right before every "on",
 #      a sweep's ghost beam running TELE_S ahead of it), and every row of beams leaves a way through at some time;
 #   C. the floors in the real tower (StoryTower from d7_parking, each mission finished in turn): the findability helper of
-#      every floor tracks its threats and goal (the parking's edge arrows for the wolves off screen, the warehouse's
+#      every floor tracks its threats and goal (the parking's edge arrows for the wolves off screen; the deck's heavy from
+#      behind settles in his slot on the ring, stays within 3 m of it and on the road while he paces, then winds up; the warehouse's
 #      Alexander and forklift markers, the server floor's Za Mẫn, the showroom's alerted guard arrow and the lift, the
 #      laser corridor's door, the gallery's guards, Lọ by name and the ammo);
 #   D. the laser corridor played: a static beam trips "BỊ LỘ"; standing in a blink wall through its off and warn phases is
@@ -95,6 +96,25 @@ func _fail_shown(what: String, cap: int = 90) -> bool:
 		_check(false, "%s but no fail card" % what)
 		phase = 999
 	return false
+
+
+## Rides the bike round the deck's ring (gas, steering at the lane's centre ahead), for the parking checks.
+func _ride(ch: BikeChase) -> void:
+	if ch.route == null or ch.bike == null or ch.s_p < 0.0:
+		return
+	var tgt: Vector2 = ch.route.world(clampf(ch.s_p + 9.0 + absf(ch.bike.current_speed_ms) * 0.35, 0.0, ch.route.length), 0.0)
+	var to: Vector2 = tgt - ch.p_pos
+	var steer: float = clampf(wrapf(atan2(-to.x, -to.y) - ch.bike.rotation.y, -PI, PI) * 3.0, -1.0, 1.0)
+	Input.action_press("gas")
+	if steer > 0.02:
+		Input.action_press("steer_left", steer)
+		Input.action_release("steer_right")
+	elif steer < -0.02:
+		Input.action_press("steer_right", -steer)
+		Input.action_release("steer_left")
+	else:
+		Input.action_release("steer_left")
+		Input.action_release("steer_right")
 
 
 ## Floor under p: the hit y of a ray from 2 m above to 1 m below (INF = none).
@@ -284,7 +304,36 @@ func _process(_d: float) -> bool:
 				mark["park_edge"] = true
 			if mark.has("park_edge") or frames > 900:
 				_check(mark.has("park_edge"), "parking: a wolf behind gets a red edge arrow")
-				mp.finish({})
+				_next(40)
+		40:
+			# the deck's heavy from behind (Sói Xám as deck_waves() spawns him: route_ff) settles in his slot on the ring and
+			# stays there, on the deck's road, while he paces; then he winds up (god mode, the bike ridden round the ring)
+			var mp2: MissionTowerParking = m
+			var ch: BikeChase = mp2.chase
+			if frames == 1:
+				ch.combat.god = true
+				mark["hv"] = ch._spawn((MissionTowerParking.deck_waves()[2] as Array)[0])
+				mark["pace_n"] = 0
+				mark["near_n"] = 0
+				mark["road_n"] = 0
+			_ride(ch)
+			var hv: BikerEnemy = mark["hv"]
+			if hv.settled_t > 0.0 and not mark.has("hv_settled"):
+				mark["hv_settled"] = frames
+			if mark.has("hv_settled") and hv.state_name() == "pace":
+				mark["pace_n"] = int(mark["pace_n"]) + 1
+				mark["near_n"] = int(mark["near_n"]) + (1 if hv.pos2.distance_to(hv.slot_target()) < 3.0 else 0)
+				mark["road_n"] = int(mark["road_n"]) + (1 if ch.on_road(hv.pos2) else 0)
+			if frames > 900 or (mark.has("hv_settled") and frames - int(mark["hv_settled"]) > 480):
+				var pn: int = int(mark["pace_n"])
+				_check(mark.has("hv_settled"), "parking: the heavy from behind settles in his slot on the ring")
+				_check(pn >= 30 and float(mark["near_n"]) >= 0.85 * pn, "parking: the heavy stays within 3 m of his slot while he paces (%d / %d frames)" % [int(mark["near_n"]), pn])
+				_check(pn >= 30 and float(mark["road_n"]) >= 0.95 * pn, "parking: the heavy stays on the deck's road while he paces (%d / %d frames)" % [int(mark["road_n"]), pn])
+				_check(hv.attacks >= 1, "parking: the heavy winds up from his slot (%d attacks)" % hv.attacks)
+				for a: String in ["gas", "brake", "steer_left", "steer_right"]:
+					Input.action_release(a)
+				ch.combat.god = false
+				mp2.finish({})
 				_next(5)
 		5:
 			m = _wait_mission("MissionTowerForklift")

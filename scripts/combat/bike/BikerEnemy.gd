@@ -72,6 +72,10 @@ var hp: int = 1
 var max_hp: int = 1
 var ai: bool = true
 var aggression: float = 0.5
+var route_ff: bool = false               # opt "route_ff" (the Day 7 deck ring): steer by the route's own direction at its spot
+var hold_k: float = 1.0                  # opt "hold_k": its hold in the slot before the wind-up x this (default 1 = as tuned)
+var _ff_tan: Vector2 = Vector2.ZERO      # route_ff: the route's direction at its spot last frame
+const RING_EDGE_M: float = 0.7             # route_ff: its slot stays this far inside the road's edge
 var st: int = St.APPROACH
 var st_t: float = 0.0
 var role: int = Role.BACK
@@ -192,6 +196,8 @@ func setup(opts: Dictionary = {}) -> void:
 	hp = max_hp
 	traffic_proof = bool(opts.get("traffic_proof", false))
 	aggression = clampf(float(opts.get("aggression", 0.5)), 0.0, 1.0)
+	route_ff = bool(opts.get("route_ff", false))
+	hold_k = float(opts.get("hold_k", 1.0))
 	_rng.seed = int(opts.get("seed", 1))
 	_eye_col = opts.get("eye_color", BikeCombatData.EYE_COL)
 	_taunt_t = _rng.randf_range(BikeCombatData.TAUNT_EVERY.x, BikeCombatData.TAUNT_EVERY.y)
@@ -455,6 +461,7 @@ func _enter(s: int) -> void:
 			pace_t = _rng.randf_range(BikeCombatData.HOLD_MIN, BikeCombatData.HOLD_MAX) * lerpf(1.1, 0.9, aggression) 				+ float(Difficulty.pick(0.0, BikeCombatData.HOLD_EASY))
 			if hp < max_hp:
 				pace_t = BikeCombatData.HOLD_MIN + float(Difficulty.pick(0.0, BikeCombatData.HOLD_EASY))   # kicked once: it is angry
+			pace_t *= hold_k
 			settled_t = 0.0
 		St.WINDUP:
 			attacks += 1
@@ -883,7 +890,7 @@ func _think(delta: float) -> void:
 ## Kinematic follower: the player's velocity fed forward plus a pull to the target (gain 1/s), capped relative to the
 ## player and in absolute speed (the kind's top), reached with an acceleration limit.
 func _drive(delta: float, target: Vector2, max_rel: float, gain: float) -> void:
-	var pv: Vector2 = ch.p_vel
+	var pv: Vector2 = ch.p_vel if not route_ff else _route_ff(ch.p_vel)
 	var v_des: Vector2 = pv + (target - pos2) * gain
 	var rel: Vector2 = v_des - pv
 	if rel.length() > max_rel:
@@ -926,6 +933,20 @@ func _drive(delta: float, target: Vector2, max_rel: float, gain: float) -> void:
 	_place_bike()
 
 
+## route_ff: the player's velocity turned to the route's direction at this biker's own spot, and its own velocity turned
+## with the route as it goes. On the 22 m ring the player's heading is off by (distance / radius) at a biker's spot, and
+## turning a 20 m/s velocity round the ring took all of ACCEL: the heavies from behind drifted wide, 3-12 m off their slot.
+func _route_ff(pv: Vector2) -> Vector2:
+	if ch.route == null or ch.s_p < 0.0:
+		_ff_tan = Vector2.ZERO
+		return pv
+	var tn: Vector2 = ch.route.tangent(ch.route.project(pos2, ch.s_p, 30.0).x)
+	if _ff_tan != Vector2.ZERO:
+		vel = vel.rotated(_ff_tan.angle_to(tn))
+	_ff_tan = tn
+	return pv.rotated(ch.route.tangent(ch.s_p).angle_to(tn))
+
+
 ## The hard leash: never past LEASH_AHEAD ahead or LEASH_BEHIND behind the player along his route frame (it rides with him
 ## at the band; the soft limit in _drive keeps this rare).
 func _leash_clamp() -> void:
@@ -963,6 +984,20 @@ func _tick_magnet(delta: float) -> void:
 
 ## Slot of its role around the player (BikeChase.target_at clamps it to the road on the route).
 func slot_target() -> Vector2:
+	return _slot_point() if not route_ff else _in_lane(_slot_point())
+
+
+## route_ff: a slot pulled RING_EDGE_M inside the road's edge (BikeChase.target_at clamps to the edge itself; on the ring a
+## heavy settled there sat a few tenths of a metre over it).
+func _in_lane(t: Vector2) -> Vector2:
+	if ch.route == null or ch.s_p < 0.0:
+		return t
+	var pr: Vector2 = ch.route.project(t, ch.s_p, 30.0)
+	var lim: float = ch.route.half_width - RING_EDGE_M
+	return t if absf(pr.y) <= lim else ch.route.world(pr.x, signf(pr.y) * lim)
+
+
+func _slot_point() -> Vector2:
 	match kind:
 		"thrower":
 			if fall_back_t > 0.0:

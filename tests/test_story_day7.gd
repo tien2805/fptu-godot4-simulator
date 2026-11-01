@@ -250,7 +250,8 @@ func _process(_d: float) -> bool:
 			var mp5: MissionTowerParking = m
 			_check(tw.fail_ui.title_label.text == "TOANG!" and tw.fail_ui.reason_label.text == MissionTowerParking.T_KNOCKED, "knocked off: TOANG!")
 			tw.fail_ui.press_retry()
-			_check(mp5.chase.state == "running" and is_equal_approx(mp5.chase.combat.stability, BikeCombatData.STABILITY_MAX) and tw.mounted, "THỬ LẠI: the chase again, stability full, on the bike")
+			_check(mp5.chase.state == "running" and is_equal_approx(mp5.chase.combat.stability, mp5.chase.combat.max_stability) and tw.mounted, "THỬ LẠI: the chase again, stability full, on the bike")
+			_check(is_equal_approx(mp5.chase.combat.max_stability, BikeCombatData.STABILITY_MAX if Difficulty.easy else MissionTowerParking.STABILITY), "the deck's stability bar (Thường: MissionTowerParking.STABILITY)")
 			mp5.chase.end_at_s = maxf(mp5.chase.s_p, 0.0)           # ride to the deck's end with the wolves still up
 			_next(51)
 		51:
