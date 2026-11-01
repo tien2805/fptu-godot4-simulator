@@ -6,6 +6,7 @@
 # its end records the result in the unlock file (SideRecords, best per activity) and toasts it.
 #   races (T5a)      SideRace dua_cau, dua_vong, dua_gp: at night, the bike.
 #   takedowns (T5b)  SideTakedown td_soi, td_bay: any time, the bike (Day 2 bike combat in free mode).
+#   deliveries (T5c) SideDelivery giao_com (by day or night), giao_dem (at night): timed drops on the Day 2 roads.
 # API: setup(roam, story, director); spots() rows {id, kind, title, at, night}; can_start(id); start(id) -> bool; advance(dt)
 #   (auto_tick false in tests); current (the running activity node), current_id; signals activity_started(id),
 #   activity_done(id, result, new_best), activity_failed(id, reason).
@@ -18,12 +19,12 @@ signal activity_failed(id: String, reason: String)
 
 const CHECK_S: float = 0.25
 const START_M: float = 8.0
-const KIND_NAME: Dictionary = {"race": "Đua đêm", "takedown": "Hạ gục"}
-const KIND_COLOR: Dictionary = {"race": Color("#3FF2FF"), "takedown": Color("#FF6B6B")}
+const KIND_NAME: Dictionary = {"race": "Đua đêm", "takedown": "Hạ gục", "delivery": "Giao hàng"}
+const KIND_COLOR: Dictionary = {"race": Color("#3FF2FF"), "takedown": Color("#FF6B6B"), "delivery": Color("#F1C40F")}
 ## The owner's track while it runs (MusicDirector slot; no file = silence), free-roam music again after.
-const KIND_MUSIC: Dictionary = {"race": "side_drift", "takedown": "mission_bike_chase"}
+const KIND_MUSIC: Dictionary = {"race": "side_drift", "takedown": "mission_bike_chase", "delivery": "side_delivery"}
 const FAIL_LINE: Dictionary = {"off_bike": "Bỏ cuộc: rời xe giữa chừng.", "no_course": "Không mở được thử thách.",
-	"knocked": "Toang! Bị đạp văng khỏi xe.", "time": "Hết giờ. Cả bầy chạy mất."}
+	"knocked": "Toang! Bị đạp văng khỏi xe.", "time": "Hết giờ rồi. Lần sau nhanh hơn nhé."}
 
 static var _courses: Dictionary = {}
 
@@ -69,6 +70,10 @@ static func spots() -> Array[Dictionary]:
 		var a: Vector2 = SideTakedown.start_at(cid)
 		out.append({"id": cid, "kind": "takedown", "title": SideTakedown.title(cid), "at": Vector3(a.x, 0.0, a.y), "yaw": 0.0,
 			"night": false})
+	for did: String in SideDelivery.ORDER:
+		var d: Vector2 = SideDelivery.start_at(did)
+		out.append({"id": did, "kind": "delivery", "title": SideDelivery.title(did), "at": Vector3(d.x, 0.0, d.y), "yaw": 0.0,
+			"night": bool(SideDelivery.RUNS[did]["night"])})
 	return out
 
 
@@ -158,6 +163,13 @@ func start(id: String) -> bool:
 			td.finished.connect(_on_done)
 			td.failed.connect(_on_failed)
 			current = td
+		"delivery":
+			var dv := SideDelivery.new()
+			roam.add_child(dv)
+			dv.setup({"roam": roam, "id": id})
+			dv.finished.connect(_on_done)
+			dv.failed.connect(_on_failed)
+			current = dv
 		_:
 			return false
 	current_id = id

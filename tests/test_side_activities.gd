@@ -65,10 +65,11 @@ func _part_a() -> void:
 		_check(pt > 10.0 and pt < 200.0, "%s par %.1f s" % [rid, pt])
 		print("  %s: %.0f m, par %.1f s, S under %.1f s" % [rid, c.length, pt, pt * float(SideRace.RANK_K["S"])])
 		_check(_clean(SideRace.title(rid)) and _clean(String(SideRace.ROUTES[rid]["line"])), "%s plain title" % rid)
-		var sp: Dictionary = StorySideActivities.spot(rid)
+	for sp: Dictionary in StorySideActivities.spots():
 		for o: Vector3 in starts:
-			_check(o.distance_to(sp["at"]) > 30.0, "%s starts away from the other races" % rid)
+			_check(o.distance_to(sp["at"]) > 30.0, "%s starts away from the other activities" % String(sp["id"]))
 		starts.append(sp["at"])
+		_check(_clean(String(sp["title"])), "%s plain title" % String(sp["id"]))
 	_check(SideRace.rank_for(10.0, 10.0) == "S" and SideRace.rank_for(14.0, 10.0) == "A" and SideRace.rank_for(17.0, 10.0) == "B"
 		and SideRace.rank_for(30.0, 10.0) == "C", "ranks by par x RANK_K")
 	_check(is_equal_approx(SideRace.drift_bonus(4.0, 100.0), 2.0) and is_equal_approx(SideRace.drift_bonus(100.0, 100.0), 15.0), "drift bonus 0.5 s per s, capped at 15 % of par")
@@ -148,12 +149,13 @@ func _process(_d: float) -> bool:
 				return false
 			fr.set("tod_preset", "morning")
 			sa.advance(1.0)
-			_check(not sa.can_start("dua_cau") and sa.markers.size() == SideTakedown.ORDER.size() and sa.can_start("td_soi"), "by day: no race start, the takedown rings only")
+			_check(not sa.can_start("dua_cau") and not sa.can_start("giao_dem") and sa.markers.size() == SideTakedown.ORDER.size() + 1
+				and sa.can_start("td_soi") and sa.can_start("giao_com"), "by day: no race / night run, the takedown and day delivery rings (%d)" % sa.markers.size())
 			fr.set("tod_preset", "night")
 			var t0: int = Time.get_ticks_usec()
 			sa.advance(1.0)
 			perf_check.append(float(Time.get_ticks_usec() - t0) / 1000.0)
-			_check(sa.can_start("dua_cau") and sa.markers.size() == 3 + SideTakedown.ORDER.size(), "at night: three race rings + the takedowns (%d)" % sa.markers.size())
+			_check(sa.can_start("dua_cau") and sa.markers.size() == StorySideActivities.spots().size(), "at night: every ring (%d)" % sa.markers.size())
 			var sp: Dictionary = StorySideActivities.spot("dua_cau")
 			var pl: Node = fr.get("player")
 			pl.call("teleport", (sp["at"] as Vector3) + Vector3(3.0, 0.5, 0.0), 0.0)
@@ -292,10 +294,55 @@ func _process(_d: float) -> bool:
 					return _end()
 				return false
 			_check(String(fail_ev[-1][0]) == "td_bay" and String(fail_ev[-1][1]) == "knocked" and not bool(sr.busy), "knocked off: td_bay given up (%s)" % str(fail_ev))
+			_part_c_data()
+			_next(11)
+		11:
+			if frames < 3:
+				return false
+			# T5c: a delivery run by day, driven drop to drop, one crash
+			_check(sa.start("giao_com"), "giao_com starts")
+			var dv: SideDelivery = sa.current as SideDelivery
+			if dv == null:
+				return _end()
+			dv.auto_tick = false
+			_check(dv.beacon != null and dv.beacon.global_position.distance_to(Vector3(1932.0, 0.0, -159.0)) < 0.1, "the beam over the first drop")
+			_check(_clean(" ".join(PackedStringArray(dv.texts()))) and dv.texts()[0].contains("Điểm giao 1/2"), "delivery HUD (%s)" % str(dv.texts()))
+			var b: Node3D = fr.get("bike") if bool(fr.get("mounted")) else fr.get("player")
+			dv.advance(5.0)
+			(fr.get("bike") as Node).emit_signal("crash_occurred")
+			for q: Vector2 in SideDelivery.drops("giao_com"):
+				b.global_position = Vector3(q.x + 2.0, b.global_position.y, q.y)
+				dv.advance(DT)
+			_next(12)
+		12:
+			if frames < 3:
+				return false
+			var last: Array = done_ev[-1] if not done_ev.is_empty() else []
+			_check(not last.is_empty() and String(last[0]) == "giao_com" and int((last[1] as Dictionary).get("crashes", 0)) == 1
+				and is_equal_approx(float((last[1] as Dictionary)["time"]), float((last[1] as Dictionary)["raw"]) + SideDelivery.CRASH_PENALTY_S),
+				"giao_com delivered, the crash costs %.0f s (%s)" % [SideDelivery.CRASH_PENALTY_S, str(last)])
+			_check(not SideRecords.best("giao_com").is_empty() and not bool(sr.busy), "giao_com recorded, the story free")
+			# out of time
+			_check(sa.start("giao_com"), "giao_com starts again")
+			var dv2: SideDelivery = sa.current as SideDelivery
+			dv2.auto_tick = false
+			dv2.advance(SideDelivery.par("giao_com") * SideDelivery.LIMIT_K + 1.0)
+			_check(String(fail_ev[-1][0]) == "giao_com" and String(fail_ev[-1][1]) == "time" and sa.current == null, "out of time: the run is given up")
 			fr.queue_free()
 			fr = null
 			return _end()
 	return false
+
+
+func _part_c_data() -> void:
+	for did: String in SideDelivery.ORDER:
+		var pt: float = SideDelivery.par(did)
+		_check(pt > 20.0 and pt < 200.0 and SideDelivery.drops(did).size() >= 2, "%s: par %.1f s, %d drops" % [did, pt, SideDelivery.drops(did).size()])
+		for l: String in (SideDelivery.RUNS[did]["lines"] as Array):
+			_check(_clean(l), "%s customer line plain" % did)
+	_check(SideDelivery.dir_word(Vector2.ZERO, Vector2(0.0, -10.0)) == "Bắc" and SideDelivery.dir_word(Vector2.ZERO, Vector2(10.0, 0.0)) == "Đông"
+		and SideDelivery.dir_word(Vector2.ZERO, Vector2(-10.0, 10.0)) == "Tây Nam", "direction words")
+	_check(SideDelivery.rank_for(10.0, 10.0) == "S" and SideDelivery.rank_for(12.0, 10.0) == "A" and SideDelivery.rank_for(30.0, 10.0) == "C", "delivery ranks")
 
 
 func r_nitro_back() -> bool:
@@ -313,7 +360,7 @@ func _end() -> bool:
 	sd.call("reset_state")
 	sd.set("save_path", "user://story_save.cfg")
 	if fails.is_empty():
-		print("✅ SUCCESS: SIDE ACTIVITIES (night races, takedowns, records)")
+		print("✅ SUCCESS: SIDE ACTIVITIES (night races, takedowns, deliveries, records)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())
