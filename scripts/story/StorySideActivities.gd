@@ -4,7 +4,8 @@
 # mission / cinematic / beat run / police, at night for the night ones. Within START_M of a spot FreeRoam's hint reads
 # "[E] <kind>: <title>" (+ the best rank); [E] starts it (the story is busy meanwhile, so no night scare comes on top),
 # its end records the result in the unlock file (SideRecords, best per activity) and toasts it.
-#   races (T5a)  SideRace dua_cau, dua_vong, dua_gp: at night, the bike.
+#   races (T5a)      SideRace dua_cau, dua_vong, dua_gp: at night, the bike.
+#   takedowns (T5b)  SideTakedown td_soi, td_bay: any time, the bike (Day 2 bike combat in free mode).
 # API: setup(roam, story, director); spots() rows {id, kind, title, at, night}; can_start(id); start(id) -> bool; advance(dt)
 #   (auto_tick false in tests); current (the running activity node), current_id; signals activity_started(id),
 #   activity_done(id, result, new_best), activity_failed(id, reason).
@@ -17,11 +18,12 @@ signal activity_failed(id: String, reason: String)
 
 const CHECK_S: float = 0.25
 const START_M: float = 8.0
-const KIND_NAME: Dictionary = {"race": "Đua đêm"}
-const KIND_COLOR: Dictionary = {"race": Color("#3FF2FF")}
+const KIND_NAME: Dictionary = {"race": "Đua đêm", "takedown": "Hạ gục"}
+const KIND_COLOR: Dictionary = {"race": Color("#3FF2FF"), "takedown": Color("#FF6B6B")}
 ## The owner's track while it runs (MusicDirector slot; no file = silence), free-roam music again after.
-const KIND_MUSIC: Dictionary = {"race": "side_drift"}
-const FAIL_LINE: Dictionary = {"off_bike": "Bỏ cuộc: rời xe giữa chừng.", "no_course": "Không mở được đường đua."}
+const KIND_MUSIC: Dictionary = {"race": "side_drift", "takedown": "mission_bike_chase"}
+const FAIL_LINE: Dictionary = {"off_bike": "Bỏ cuộc: rời xe giữa chừng.", "no_course": "Không mở được thử thách.",
+	"knocked": "Toang! Bị đạp văng khỏi xe.", "time": "Hết giờ. Cả bầy chạy mất."}
 
 static var _courses: Dictionary = {}
 
@@ -63,6 +65,10 @@ static func spots() -> Array[Dictionary]:
 		var p: Vector2 = c.world(0.0, 0.0)
 		out.append({"id": rid, "kind": "race", "title": SideRace.title(rid), "at": Vector3(p.x, 0.0, p.y), "yaw": c.yaw_at(0.0),
 			"night": true})
+	for cid: String in SideTakedown.ORDER:
+		var a: Vector2 = SideTakedown.start_at(cid)
+		out.append({"id": cid, "kind": "takedown", "title": SideTakedown.title(cid), "at": Vector3(a.x, 0.0, a.y), "yaw": 0.0,
+			"night": false})
 	return out
 
 
@@ -145,6 +151,13 @@ func start(id: String) -> bool:
 			r.finished.connect(_on_done)
 			r.failed.connect(_on_failed)
 			current = r
+		"takedown":
+			var td := SideTakedown.new()
+			roam.add_child(td)
+			td.setup({"roam": roam, "id": id})
+			td.finished.connect(_on_done)
+			td.failed.connect(_on_failed)
+			current = td
 		_:
 			return false
 	current_id = id
@@ -152,12 +165,12 @@ func start(id: String) -> bool:
 	_clear_markers()
 	if story:
 		story.set("busy", true)
-	var ms: String = String(KIND_MUSIC.get(String(sp["kind"]), ""))
-	var fx: Node = get_node_or_null("/root/GameFX")
-	if ms != "" and fx and fx.has_method("music_play"):
-		fx.call("music_play", ms, 0.5)
-	current.call("start")
+	current.call("start")   # (mounting plays the roam music: the activity's track goes on after)
 	if current != null:
+		var ms: String = String(KIND_MUSIC.get(String(sp["kind"]), ""))
+		var fx: Node = get_node_or_null("/root/GameFX")
+		if ms != "" and fx and fx.has_method("music_play"):
+			fx.call("music_play", ms, 0.5)
 		activity_started.emit(id)
 	return true
 

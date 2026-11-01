@@ -148,12 +148,12 @@ func _process(_d: float) -> bool:
 				return false
 			fr.set("tod_preset", "morning")
 			sa.advance(1.0)
-			_check(not sa.can_start("dua_cau") and sa.markers.is_empty(), "by day: no race start")
+			_check(not sa.can_start("dua_cau") and sa.markers.size() == SideTakedown.ORDER.size() and sa.can_start("td_soi"), "by day: no race start, the takedown rings only")
 			fr.set("tod_preset", "night")
 			var t0: int = Time.get_ticks_usec()
 			sa.advance(1.0)
 			perf_check.append(float(Time.get_ticks_usec() - t0) / 1000.0)
-			_check(sa.can_start("dua_cau") and sa.markers.size() == 3, "at night: three race rings (%d)" % sa.markers.size())
+			_check(sa.can_start("dua_cau") and sa.markers.size() == 3 + SideTakedown.ORDER.size(), "at night: three race rings + the takedowns (%d)" % sa.markers.size())
 			var sp: Dictionary = StorySideActivities.spot("dua_cau")
 			var pl: Node = fr.get("player")
 			pl.call("teleport", (sp["at"] as Vector3) + Vector3(3.0, 0.5, 0.0), 0.0)
@@ -245,6 +245,53 @@ func _process(_d: float) -> bool:
 				mx_c = maxf(mx_c, v2)
 			print("  perf: race tick avg %.3f ms, max %.3f ms (%d ticks); activity check max %.3f ms" % [sum_r / maxf(perf_race.size(), 1.0), mx_r, perf_race.size(), mx_c])
 			_check(sum_r / maxf(perf_race.size(), 1.0) < 0.5 and mx_c < 3.0, "perf under budget")
+			# T5b: a takedown challenge, by day
+			fr.set("tod_preset", "morning")
+			var sp: Dictionary = StorySideActivities.spot("td_soi")
+			(fr.get("player") as Node).call("teleport", (sp["at"] as Vector3) + Vector3(2.0, 0.5, 0.0), 0.0)
+			_next(7)
+		7:
+			if frames < 3:
+				return false
+			sa.advance(1.0)
+			_check(sa.near_id == "td_soi" and sa.hint_text("td_soi").begins_with("[E] Hạ gục: "), "near the takedown start: offered by day (%s)" % sa.near_id)
+			_check(sa.start("td_soi"), "td_soi starts")
+			var td: SideTakedown = sa.current as SideTakedown
+			_check(td != null and td.chase != null and bool(sr.busy) and bool(fr.get("mounted")), "a free-mode chase runs, the player on the bike, the story busy")
+			if td:
+				td.auto_tick = false
+			_next(8)
+		8:
+			var td2: SideTakedown = sa.current as SideTakedown
+			if td2 == null:
+				_next(9)
+				return false
+			td2.advance(DT)
+			for b: Variant in td2.chase.alive():
+				(b as BikerEnemy).crash("kick")
+			if frames > 1500:
+				_check(false, "td_soi did not finish (%s, %d/%d down)" % [td2.state, td2.downed, td2.total])
+				return _end()
+			return false
+		9:
+			if frames < 3:
+				return false
+			var last: Array = done_ev[-1] if not done_ev.is_empty() else []
+			_check(not last.is_empty() and String(last[0]) == "td_soi" and int((last[1] as Dictionary).get("downed", 0)) == 3, "td_soi done, 3 down (%s)" % str(last))
+			_check(SideRecords.best("td_soi").get("rank", "") in StoryRank.LETTERS and not bool(sr.busy), "td_soi recorded, the story free")
+			# knocked off: given up
+			_check(sa.start("td_bay"), "td_bay starts")
+			var td3: SideTakedown = sa.current as SideTakedown
+			td3.auto_tick = false
+			td3.chase.combat.damage(1000.0, "test")
+			_next(10)
+		10:
+			if sa.current != null:
+				if frames > 600:
+					_check(false, "td_bay was not given up (%s)" % (sa.current as SideTakedown).state)
+					return _end()
+				return false
+			_check(String(fail_ev[-1][0]) == "td_bay" and String(fail_ev[-1][1]) == "knocked" and not bool(sr.busy), "knocked off: td_bay given up (%s)" % str(fail_ev))
 			fr.queue_free()
 			fr = null
 			return _end()
@@ -266,7 +313,7 @@ func _end() -> bool:
 	sd.call("reset_state")
 	sd.set("save_path", "user://story_save.cfg")
 	if fails.is_empty():
-		print("✅ SUCCESS: SIDE ACTIVITIES (night races, records)")
+		print("✅ SUCCESS: SIDE ACTIVITIES (night races, takedowns, records)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())
