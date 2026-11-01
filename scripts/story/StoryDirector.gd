@@ -146,7 +146,7 @@ func complete_step(id: String) -> bool:
 	if nxt != "":
 		_enter(nxt)
 	elif b.has("ending"):
-		finish_story(String(b["ending"]))
+		finish_story(resolve_ending(b))
 		return true
 	save_game()
 	return true
@@ -168,6 +168,7 @@ func finish_story(which: String) -> void:
 	ending = which
 	flags["ending"] = which
 	spawn = null
+	StoryChapters.record_ending(which)   # w4-endings: the ending gallery (Chọn cảnh, KẾT THÚC)
 	save_game()
 	active = false
 	hide_result()
@@ -394,6 +395,21 @@ static func evaluate_ending(state: Dictionary) -> String:
 		if String(ranks.get(sid, ranks.get(str(sid), ""))) != "S":
 			all_s = false
 	return "F" if all_s else "A"
+
+
+## w4-endings: the state evaluate_ending reads from this story: the evidence, the three choices (bribe from Day 6) and
+## the original study stages' ranks, kept data-driven in flags.study_ranks {stage id: letter} (those stages are not ranked
+## yet, so F is reachable only once something records them there).
+func ending_state() -> Dictionary:
+	var sr: Variant = flags.get("study_ranks", {})
+	return {"evidence": evidence.duplicate(), "choices": choices.duplicate(true),
+		"study_ranks": (sr as Dictionary).duplicate() if sr is Dictionary else {}}
+
+
+## w4-endings: the ending beat b finishes on: its "ending" letter, or for "auto" (d7_ending) the evaluated one.
+func resolve_ending(b: Dictionary) -> String:
+	var e: String = String(b.get("ending", ""))
+	return evaluate_ending(ending_state()) if e == "auto" else e
 
 
 # ---------------------------------------------------------------------------

@@ -93,6 +93,8 @@ var entered_live: bool = false
 var night_events: StoryNightEvents = null
 ## Phase C: the Day 3 container yard while a yard beat is current (else null).
 var yard: LairYard = null
+## w4-endings: the running ending sequence of d7_ending (else null).
+var ending_runner: StoryEndingRunner = null
 const MISSION_SCRIPTS: Dictionary = {"stakeout": "res://scripts/story/missions/MissionStakeout.gd",
 	"chase": "res://scripts/story/missions/MissionChase.gd", "corridor": "res://scripts/story/missions/MissionCorridor.gd",
 	"canteen": "res://scripts/story/missions/MissionCanteen.gd", "fight": "res://scripts/story/missions/MissionFight.gd",
@@ -704,6 +706,8 @@ static func cine_requests() -> Array:
 
 
 func _play_cine(b: Dictionary) -> bool:
+	if String(b.get("ending", "")) == "auto":
+		return _play_ending(b)   # w4-endings: d7_ending plays the evaluated ending's sequence and the end summary
 	var choice_id: String = String(b.get("choice", ""))
 	if choice_id != "" and String(director.call("choice_of", choice_id)) != "":
 		director.call("complete_step", String(b["id"]))   # recorded once: the choice scene is not asked again
@@ -718,8 +722,13 @@ func _play_cine(b: Dictionary) -> bool:
 	return true
 
 
-## The beat's cinematic slot: a branch tail follows the recorded choice (slot_by_choice), else "slot".
+## The beat's cinematic slot: a branch tail follows the recorded choice (slot_by_choice), else "slot"; w4-endings: an
+## "ending": "auto" beat starts with the evaluated ending's first slot.
 func cine_slot(b: Dictionary) -> String:
+	if String(b.get("ending", "")) == "auto" and director:
+		var seq: Array[String] = StoryEndings.slots(String(director.call("resolve_ending", b)))
+		if not seq.is_empty():
+			return seq[0]
 	var by: Dictionary = b.get("slot_by_choice", {})
 	if not by.is_empty() and director:
 		var key: String = String(director.call("choice_of", String(by.get("id", ""))))
@@ -732,6 +741,30 @@ func _free_cards() -> void:
 	if cards:
 		cards.queue_free()
 		cards = null
+
+
+## w4-endings: the ending sequence of an "ending": "auto" beat (StoryEndingRunner), then the beat completes (the save is
+## finished with the evaluated letter, the main menu).
+func _play_ending(b: Dictionary) -> bool:
+	if ending_runner != null:
+		return false
+	busy = true
+	running = String(b["id"])
+	ending_runner = StoryEndingRunner.new()
+	ending_runner.setup(self, b)
+	add_child(ending_runner)
+	ending_runner.done.connect(_on_ending_done.bind(String(b["id"])), CONNECT_ONE_SHOT)
+	ending_runner.start()
+	return true
+
+
+func _on_ending_done(_letter: String, id: String) -> void:
+	busy = false
+	running = ""
+	if ending_runner:
+		ending_runner.queue_free()
+		ending_runner = null
+	director.call("complete_step", id)
 
 
 func _on_cine_done(_slot: String, _skipped: bool, id: String) -> void:

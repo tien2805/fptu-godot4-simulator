@@ -175,6 +175,7 @@ Nhạc chuông của Sói Xám là âm thanh tự tạo (`ringtone_synth`), khô
 | `end_d` (trùm bay trực thăng thoát) | *Fly Me to the Moon*, Frank Sinatra | |
 | `end_e` (Còn cái nịt) | *Never Gonna Give You Up*, Rick Astley | Rickroll lúc chạy credits |
 | `end_f` (học bổng) | *Celebration*, Kool & the Gang | |
+| `ai_true_end` (clip kết A, sau credits: tấm biển sập) | dùng chung bài của `end_a` | không có file riêng thì phát nhạc `end_a` |
 
 ## Gợi ý: replay ngắn 4-6 s
 

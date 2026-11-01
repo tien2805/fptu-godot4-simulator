@@ -61,6 +61,13 @@ const GALLERY: Array = [
 	["seg_d5_boss", 5, "Katana mua trên mạng"],
 	["cine_d5", 5, "Dòng tiền"],
 	["end_c", 5, "Kết C: Kẻ phản diện mới"],
+	# --- Endings (w4-endings): the Day 7 ending cinematics (the ending gallery plays each ending's whole sequence) ---
+	["end_a", 7, "Kết A: Minh oan trọn vẹn"],
+	["ai_true_end", 7, "Kết A: Tấm biển sập"],
+	["end_b", 7, "Kết B: Thắng nhưng mất bạn"],
+	["end_d", 7, "Kết D: Minh oan nửa vời"],
+	["end_e", 7, "Kết E: Còn cái nịt"],
+	["end_f", 7, "Kết F: Học thật, đậu thật"],
 ]
 
 static var unlocks_path: String = UNLOCKS_PATH
@@ -202,6 +209,42 @@ static func merge_ranks(sd: Node) -> void:
 	for k: Variant in best.keys():
 		cur[k] = StoryRank.best_of(String(cur.get(k, "")), String(best[k]))
 	sd.set("ranks", cur)
+
+
+# ---------------------------------------------------------------------------
+# w4-endings: the ending gallery
+# ---------------------------------------------------------------------------
+## Endings ever reached, in A-F order (the unlock file's [endings] reached; it only grows).
+static func reached_endings() -> Array[String]:
+	var have: Array = _load(unlocks_path).get_value("endings", "reached", [])
+	var out: Array[String] = []
+	for x: String in StoryEndings.IDS:
+		if x in have:
+			out.append(x)
+	return out
+
+
+## StoryDirector.finish_story: ending x is reached (and its cinematics count as seen for XEM LẠI PHIM).
+static func record_ending(x: String) -> void:
+	if _guarded(unlocks_path) or not StoryEndings.has(x):
+		return
+	var cfg: ConfigFile = _load(unlocks_path)
+	var have: Array = cfg.get_value("endings", "reached", [])
+	if x in have:
+		return
+	have.append(x)
+	cfg.set_value("endings", "reached", have)
+	cfg.save(unlocks_path)
+	_add_unlocks([], StoryEndings.slots(x))
+
+
+## The KẾT THÚC tab: {id, title, line, unlocked} for A-F.
+static func endings() -> Array[Dictionary]:
+	var have: Array[String] = reached_endings()
+	var out: Array[Dictionary] = []
+	for x: String in StoryEndings.IDS:
+		out.append({"id": x, "title": StoryEndings.title(x), "line": StoryEndings.line(x), "unlocked": x in have})
+	return out
 
 
 # ---------------------------------------------------------------------------
