@@ -82,7 +82,7 @@ func _initialize() -> void:
 	_night_events()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))
 	if fails.is_empty():
-		print("✅ SUCCESS: STORY DIRECTOR (state, signals, story chain to Day 6, Phase B / C beats, save/load, migration, version guard, endings)")
+		print("✅ SUCCESS: STORY DIRECTOR (state, signals, story chain Day 0 to the ending, Phase B / C beats, save/load, migration, version guard, endings)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())
@@ -95,8 +95,8 @@ func _registry() -> void:
 		var b: Dictionary = StoryMissions.beat(id)
 		_check(not b.is_empty() and String(b["kind"]) in StoryMissions.KINDS, "beat %s has a known kind" % id)
 		var nx: String = String(b.get("next", ""))
-		# d7_start: the hand-off to the w4-day7 stream (defined there; empty until the streams merge)
-		_check(nx == "" or not StoryMissions.beat(nx).is_empty() or nx == "d7_start", "beat %s: next %s exists" % [id, nx])
+		# wave4: Days 6, 7 and the endings are merged, so every next beat exists (d6_call -> d7_start, d7_typing -> d7_ending)
+		_check(nx == "" or not StoryMissions.beat(nx).is_empty(), "beat %s: next %s exists" % [id, nx])
 		if String(b["kind"]) == "stage":
 			_check(b.has("stage") and b.has("anchor") and b.has("return") and b.has("replay"), "stage beat %s has stage, anchor, return, replay" % id)
 		if String(b["kind"]) in ["cine", "video"]:
@@ -121,7 +121,7 @@ func _registry() -> void:
 				_check(CineTimeline.load_slot(String(b[k2])) != null, "beat %s: %s %s exists" % [id, k2, String(b[k2])])
 	var chain: Array[String] = []
 	var cur: String = StoryMissions.first_beat()
-	while cur != "" and chain.size() < 80:
+	while cur != "" and chain.size() < 200:   # wave4: the whole story is 83 beats
 		chain.append(cur)
 		cur = String(StoryMissions.beat(cur).get("next", ""))
 	var want: Array[String] = ["d0_wake", "d0_race", "d0_exam", "d0_exam_end", "d0_bed", "d0_midnight", "d0_call", "d0_intro", "d1_start", "d1_morning",
@@ -131,8 +131,14 @@ func _registry() -> void:
 		"d4_start", "d4_morning", "d4_canteen", "d4_stare", "d4_brawl", "d4_escape", "d4_end", "d4_bed", "d4_call",
 		"d5_start", "d5_morning", "d5_stealth", "d5_monitors", "d5_gunfight", "d5_hack", "d5_choice", "d5_choice_tail", "d5_duel",
 		"d5_end", "d5_bed", "d5_call", "d6_start", "d6_morning", "d6_shop", "d6_backroom", "d6_caught", "d6_boat", "d6_choice",
-		"d6_choice_tail", "d6_reveal", "d6_bed", "d6_call", "d7_start"]
-	_check(chain.slice(0, want.size()) == want, "story chain starts %s (got %s)" % [str(want), str(chain)])   # Day 7 continues it
+		"d6_choice_tail", "d6_reveal", "d6_bed", "d6_call", "d7_start", "d7_morning", "d7_parking", "d7_warehouse", "d7_servers",
+		"d7_mannequins", "d7_lasers", "d7_boss1", "d7_monologue", "d7_boss2", "d7_boss3", "d7_typing", "d7_ending"]
+	_check(chain == want, "story chain is %s (got %s)" % [str(want), str(chain)])   # wave4: the whole story, Day 0 to the ending
+	var fin: Dictionary = StoryMissions.beat("d7_ending")
+	_check(String(fin.get("ending", "")) == "auto" and String(fin.get("next", "x")) == "" and StoryMissions.lair_scene(fin) == "",
+		"the chain ends on the endings' auto beat in free roam (d7_ending)")
+	_check(String(StoryMissions.beat("d6_call").get("next", "")) == "d7_start" and String(StoryMissions.beat("d7_start").get("kind", "")) == "day",
+		"Day 6 hands over to Day 7 (d6_call -> d7_start)")
 	var calls: Dictionary = {"d1_call": 6, "d2_call": 5, "d3_call": 4, "d4_call": 3, "d5_call": 2, "d6_call": 1}
 	for cid: String in calls.keys():
 		_check(int(StoryMissions.beat(cid)["days"]) == int(calls[cid]), "%s says %d days" % [cid, int(calls[cid])])
