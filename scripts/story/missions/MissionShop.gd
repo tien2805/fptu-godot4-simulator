@@ -6,9 +6,10 @@
 #     on the counter mats [1]-[4] (code-built milk_tea props, L cups bigger, a tag over each); one matches the ticket, the
 #     other three differ in exactly one thing. [1]-[4] hands that cup over.
 #   - The ticket timer (order_s: Thường 5.5 s / Dễ 9 s). Right: trust + gain + COMBO_STEP per combo level (up to
-#     COMBO_CAP); wrong: - wrong_cost; too slow: - late_cost (the customer stomps out). Tuned with tests/sim_day6.gd (T8:
+#     COMBO_CAP); wrong: - wrong_cost (Thường: less WRONG_RELIEF for each earlier THỬ LẠI, up to RELIEF_CAP, then Dễ's
+#     cost: a failed shift makes the next one fairer, no long streaks); too slow: - late_cost (the customer stomps out). Tuned with tests/sim_day6.gd (T8:
 #     the sloppy counter bot fails the Thường shift 1-3 times, a winning shift runs long enough for all five events).
-#   - "Trust" (Thị Lọ's, the meter) starts at TRUST_START; TRUST_WIN opens the back door (LairCanal.back_door_open) and
+#   - "Trust" (Thị Lọ's, the meter) starts at trust_start() (Thường 38 / Dễ TRUST_START); TRUST_WIN opens the back door (LairCanal.back_door_open) and
 #     ends the shift; 0 = "BỊ LỘ" (the manager sees through the fake shipper; THỬ LẠI = a new shift).
 #   - Something new every 15-20 s (EVENT_ORDER, one per gap, applied to the next ticket):
 #       tam_tu    the meme customer: "Ít đường, ít đá, nhiều tâm tư." (any cup; he talks, a breather, the joke)
@@ -21,7 +22,9 @@
 class_name MissionShop
 extends StoryMission
 
-const TRUST_START: float = 45.0
+const TRUST_START: float = 45.0               # Dễ's start (trust_start(): Thường lower)
+const WRONG_RELIEF: float = 6.0
+const RELIEF_CAP: int = 3
 const TRUST_WIN: float = 100.0
 const COMBO_CAP: int = 3
 const COMBO_STEP: float = 1.0
@@ -99,7 +102,6 @@ func _start() -> void:
 	rng.seed = int(opts.get("seed", Time.get_ticks_usec()))
 	order_s = float(Difficulty.pick(5.5, 9.0))
 	gain = float(Difficulty.pick(2.0, 3.5))
-	wrong_cost = float(Difficulty.pick(22.0, 14.0))
 	late_cost = float(Difficulty.pick(12.0, 8.0))
 	_bot = opts.get("bot", {})
 	if player:
@@ -125,7 +127,8 @@ func _start() -> void:
 
 ## A new shift (start and THỬ LẠI): trust, the queue, the events, the cups.
 func _fresh_shift() -> void:
-	trust = TRUST_START
+	trust = trust_start()
+	wrong_cost = wrong_cost_now()
 	combo = 0
 	best_combo = 0
 	served_ok = 0
@@ -795,6 +798,15 @@ func _bot_tick(dt: float) -> void:
 
 func _reset() -> void:
 	_fresh_shift()
+
+
+func trust_start() -> float:
+	return float(Difficulty.pick(38.0, TRUST_START))
+
+
+## This shift's wrong-cup cost: Thường 32 less WRONG_RELIEF per earlier fail (up to RELIEF_CAP: 14 like Dễ), Dễ 14.
+func wrong_cost_now() -> float:
+	return float(Difficulty.pick(32.0 - WRONG_RELIEF * float(mini(fails, RELIEF_CAP)), 14.0))
 
 
 func _cleanup() -> void:

@@ -131,7 +131,7 @@ func _process(_d: float) -> bool:
 			for c: Dictionary in shop.customers:
 				vis += 1 if (c["body"] as Node3D).visible else 0
 			_check(vis == MissionShop.QUEUE_N and not (shop.biker["body"] as Node3D).visible, "three sheep-masked customers queue, the biker waits outside")
-			_check(is_equal_approx(shop.trust, MissionShop.TRUST_START) and is_equal_approx(shop.order_s, 5.5), "trust TRUST_START, a 5.5 s ticket on Thường")
+			_check(is_equal_approx(shop.trust, shop.trust_start()) and is_equal_approx(shop.trust_start(), 38.0) and is_equal_approx(shop.order_s, 5.5) and is_equal_approx(shop.wrong_cost, 32.0), "trust 38, a 5.5 s ticket, a wrong cup -32 on Thường")
 			_check(not sc.level.is_back_door_open(), "the back door shut")
 			_next(2)
 		2:
@@ -160,13 +160,13 @@ func _process(_d: float) -> bool:
 			var front: Node3D = shop._front()["body"]
 			_check(shop.cam.is_position_in_frustum(front.global_position + Vector3(0.0, 1.6, 0.0)), "the front customer's head in frame")
 			shop.serve(_cup())
-			_check(is_equal_approx(shop.trust, MissionShop.TRUST_START + shop.gain) and shop.served_ok == 1 and shop.combo == 1, "right cup: + gain (%.1f)" % shop.trust)
+			_check(is_equal_approx(shop.trust, shop.trust_start() + shop.gain) and shop.served_ok == 1 and shop.combo == 1, "right cup: + gain (%.1f)" % shop.trust)
 			_next(3)
 		3:
 			if not _wait_order():
 				return false
 			shop.serve(_cup(true))
-			_check(is_equal_approx(shop.trust, maxf(0.0, MissionShop.TRUST_START + shop.gain - shop.wrong_cost)) and shop.combo == 0 and shop.served_wrong == 1, "wrong cup: - wrong_cost (%.1f)" % shop.trust)
+			_check(is_equal_approx(shop.trust, maxf(0.0, shop.trust_start() + shop.gain - shop.wrong_cost)) and shop.combo == 0 and shop.served_wrong == 1, "wrong cup: - wrong_cost (%.1f)" % shop.trust)
 			shop.trust = 20.0                 # room for the late ticket
 			_next(4)
 		4:
@@ -183,7 +183,8 @@ func _process(_d: float) -> bool:
 			shop.serve(_cup(true))
 			_check(shop.state == "failed" and fail_title == StoryMission.T_LO and shop.trust <= 0.0, "trust 0: BỊ LỘ")
 			shop.retry()
-			_check(shop.state == "running" and is_equal_approx(shop.trust, MissionShop.TRUST_START) and shop.beats == ["open"] and shop.order.is_empty(), "THỬ LẠI: a new shift at TRUST_START")
+			_check(shop.state == "running" and is_equal_approx(shop.trust, shop.trust_start()) and shop.beats == ["open"] and shop.order.is_empty(), "THỬ LẠI: a new shift at trust_start()")
+			_check(is_equal_approx(shop.wrong_cost, 32.0 - MissionShop.WRONG_RELIEF * float(mini(shop.fails, MissionShop.RELIEF_CAP))) and shop.fails >= 1, "THỬ LẠI: the wrong cup costs less (%.0f after %d fails)" % [shop.wrong_cost, shop.fails])
 			shop.clock = MissionShop.FIRST_EVENT_S - 0.01
 			_next(7)
 		7:

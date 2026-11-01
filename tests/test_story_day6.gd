@@ -237,7 +237,7 @@ func _process(_d: float) -> bool:
 				return false
 			cn.fail_ui.press_retry()
 			var shop6: MissionShop = m
-			_check(shop6.state == "running" and is_equal_approx(shop6.trust, MissionShop.TRUST_START), "THỬ LẠI: a new shift at trust 30")
+			_check(shop6.state == "running" and is_equal_approx(shop6.trust, shop6.trust_start()), "THỬ LẠI: a new shift at trust_start()")
 			shop6.trust = MissionShop.TRUST_WIN - 1.0
 			shop6._add_trust(5.0)
 			_check(cn.level.is_back_door_open(), "full trust opens the back door")
