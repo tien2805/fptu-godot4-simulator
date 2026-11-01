@@ -26,7 +26,8 @@
 #   - showroom sneaker: the zigzag through the display walls' gaps at 2.3 m/s (no footstep noise), every leg judged against
 #     the guards' real sight: read 65 % = his patrol followed ahead with a margin, unread = as now, 15 % goes anyway; seen:
 #     the gun bot on the showroom's grid, then the lift;
-#   - forklift (sim_day3's joust): out of his charges after the reaction, rams a stalled / forks-up boss when it fits;
+#   - forklift (sim_day3's joust, ported as _forklift): out of his charges after the reaction, rams a stalled / forks-up
+#     boss when it fits;
 #   - rider (sim_bike_chase_d2's sloppy bot on the deck ring): kicks in reach, dodges the wind-ups it reads.
 extends SceneTree
 
@@ -523,6 +524,7 @@ func _dark_route(p: Vector3, goal: Vector3) -> Vector3:
 func _extra_reset() -> void:
 	_gun_reset()
 	_laser_reset()
+	_fk_reset()
 	n_i = 0
 	n_moving = false
 	n_judged = false
@@ -542,6 +544,8 @@ func _extra_bot(mission: String) -> void:
 			_lasers()
 		"mannequins":
 			_showroom()
+		"warehouse":
+			_forklift()
 
 
 # ---------------------------------------------------------------------------
@@ -1409,3 +1413,158 @@ func _showroom() -> void:
 		n_wrong = _wrong()
 	if n_wrong or _n_clear(f, tw.player.global_position, tgt, n_read):
 		n_go_t = _react()
+
+
+# ---------------------------------------------------------------------------
+# Warehouse joust (T5b): sim_day3's forklift bot (_bot_boss / _drive, game_t -> the mission clock, b_* -> fk_*): on foot to
+# the parked forklift and [F]; his charges steered out after the reaction (15 % later), his crates driven past, rams on his
+# flank in his open windows (forks up / stalled, 15 % a late start, 15 % a bad angle into his front), else circling him.
+# ---------------------------------------------------------------------------
+var fk_tell_seen: bool = false
+var fk_dodge_at: float = -1.0
+var fk_dodge_to: Variant = null
+var fk_unstick_t: float = 0.0
+var fk_unstick_steer: float = 1.0
+var fk_slow_t: float = 0.0
+var fk_toss_seen: int = 0
+var fk_toss_at: float = -1.0
+var fk_lift_seen: bool = false
+var fk_windows: int = 0
+var fk_ram_at: float = -1.0
+var fk_ram_eta: float = -1.0
+
+
+func _fk_reset() -> void:
+	fk_tell_seen = false
+	fk_dodge_at = -1.0
+	fk_dodge_to = null
+	fk_unstick_t = 0.0
+	fk_slow_t = 0.0
+	fk_toss_seen = 0
+	fk_toss_at = -1.0
+	fk_lift_seen = false
+	fk_ram_at = -1.0
+	fk_ram_eta = -1.0
+
+
+func _forklift() -> void:
+	var mf: MissionForklift = m as MissionForklift
+	var pf: PlayerForklift = mf.pf
+	var b: ForkliftBoss = mf.fight.boss as ForkliftBoss if mf.fight.boss else null
+	if pf == null or b == null or b.is_down():
+		return
+	if not pf.inside:
+		if verbose and int(mt * 60.0) % 60 == 0:
+			print("      t %.0f on foot: d to forklift %.1f can_enter %s" % [mt, WeaponMath.flat(tw.player.global_position, pf.forklift.global_position), str(pf.can_enter())])
+		if pf.can_enter():
+			pf.enter()
+		else:
+			_step_to(pf.forklift.global_position + WeaponMath.flat_dir(tw.player.global_position - pf.forklift.global_position) * 1.5, 4.5)
+		return
+	# it drives the real forklift (PlayerForklift input: throttle / steer, the Forklift's own acceleration and turning)
+	var fl: Forklift = pf.forklift
+	var me: Vector3 = fl.global_position
+	var bp: Vector3 = b.forklift.global_position
+	var st: String = b.state_name()
+	if verbose and int(mt * 60.0) % 60 == 0:
+		var lp: Vector3 = tw.level.floor_xf("warehouse").affine_inverse() * me
+		var lb: Vector3 = tw.level.floor_xf("warehouse").affine_inverse() * bp
+		print("      t %.0f hp %.0f me (%.1f, %.1f) v %.1f boss (%.1f, %.1f) %s d %.1f in %s bhp %.0f" % [mt, tw.combat.hp, lp.x, lp.z, fl.speed, lb.x, lb.z, st, WeaponMath.flat(me, bp), str(pf.input_override), b.hp])
+	# charges: steer out late (the reaction, 15 % later still)
+	if st == "charge_tell" and not fk_tell_seen:
+		fk_tell_seen = true
+		fk_dodge_at = mt + _react() + (0.25 if rng.randf() < 0.15 else 0.0)
+	if st != "charge_tell" and st != "charge":
+		fk_tell_seen = false
+		fk_dodge_to = null
+	if fk_dodge_at >= 0.0 and mt >= fk_dodge_at:
+		fk_dodge_at = -1.0
+		var away: Vector3 = WeaponMath.flat_dir(me - bp)
+		var perp := Vector3(-away.z, 0.0, away.x)
+		if perp.dot(fl.forward()) < 0.0:
+			perp = -perp      # the side it is already facing: no big turn
+		fk_dodge_to = me + perp * 8.0
+	# stuck against a box or a fence (throttle on, barely moving): back out with the wheel the other way
+	if fk_unstick_t > 0.0:
+		fk_unstick_t -= DT
+		pf.input_override = {"throttle": -0.8, "steer": fk_unstick_steer, "fork": 0}
+		return
+	if absf(fl.speed) < 1.0 and pf.input_override is Dictionary and absf(float((pf.input_override as Dictionary).get("throttle", 0.0))) > 0.4:
+		fk_slow_t += DT
+		if fk_slow_t > 1.2:
+			fk_slow_t = 0.0
+			fk_unstick_t = 0.9
+			fk_unstick_steer = -signf(float((pf.input_override as Dictionary).get("steer", 1.0)) + 0.01)
+			return
+	else:
+		fk_slow_t = 0.0
+	if fk_dodge_to is Vector3:
+		pf.input_override = _drive(fl, fk_dodge_to)
+		return
+	# his crate in the air (aimed where it stood): keep driving, it lands behind (after the reaction)
+	if b.crates_in_flight() > 0 and fk_toss_seen != b.tosses:
+		fk_toss_seen = b.tosses
+		fk_toss_at = mt + _react()
+	if fk_toss_at >= 0.0 and mt >= fk_toss_at and b.crates_in_flight() > 0:
+		pf.input_override = _drive(fl, me + fl.forward() * 8.0)
+		return
+	if b.crates_in_flight() == 0:
+		fk_toss_at = -1.0
+	# rams: his forks up or he is stalled -> line up on his side (4 m out), then straight into his flank (15 % mistimed:
+	# a late start)
+	var open: bool = b.ram_open()
+	if open and not fk_lift_seen:
+		fk_lift_seen = true
+		fk_windows += 1
+		fk_ram_at = mt + _react() + (0.6 if rng.randf() < 0.15 else 0.0)
+	if not open:
+		fk_lift_seen = false
+		fk_ram_at = -1.0
+		fk_ram_eta = -1.0
+	if fk_ram_at >= 0.0 and mt >= fk_ram_at and open:
+		var bx: Vector3 = b.forklift.global_basis.x
+		var side: Vector3 = bx * (1.0 if (me - bp).dot(bx) >= 0.0 else -1.0)
+		var entry: Vector3 = bp + side * 3.5
+		if fk_ram_eta < 0.0:
+			# the time a forklift needs from here: the turn (1.8 rad/s) and the drive to his side (from its speed now)
+			var to_e: Vector3 = WeaponMath.flat_dir(entry - me)
+			var ang: float = absf(fl.forward().signed_angle_to(to_e, Vector3.UP))
+			var need: float = ang / Forklift.TURN_RATE + WeaponMath.flat(me, entry) / maxf(absf(fl.speed) + 2.0, 4.0)
+			var left: float = (b.lift_s() if st == "lift" else (GunData.OVERHEAT_S if st == "overheat" else b.st_len)) - b.st_t
+			fk_ram_eta = mt + need if need <= left else INF
+		if mt < fk_ram_eta:
+			pf.input_override = _drive(fl, entry)
+			return
+		# there: the ram (15 %: a bad angle, his front: both bounce and it hurts)
+		var at: Vector3 = entry if rng.randf() > 0.15 else bp + b.forklift.forward() * 3.5
+		fl.global_position = Vector3(at.x, fl.floor_y, at.z)
+		var to: Vector3 = bp - at
+		fl.rotation.y = atan2(-to.x, -to.z)
+		fl.speed = 6.0
+		pf._ram_cd = 0.0
+		pf.input_override = {"throttle": 1.0, "steer": 0.0, "fork": 0}
+		fk_ram_at = -1.0
+		fk_ram_eta = -1.0
+		return
+	# otherwise circle him at 8-10 m on his flank, always moving (a forklift that stands still is a target)
+	var flank: Vector3 = b.forklift.global_basis.x * (1.0 if (me - bp).dot(b.forklift.global_basis.x) >= 0.0 else -1.0)
+	var around: Vector3 = bp + (flank * 0.8 + WeaponMath.flat_dir(me - bp) * 0.6).normalized() * 9.0
+	pf.input_override = _drive(fl, around, 0.7)
+
+
+## Throttle / steer toward a floor point (left positive steer, as PlayerForklift reads WASD); backs up when it is right
+## behind and close.
+func _drive(fl: Forklift, target: Vector3, max_th: float = 1.0) -> Dictionary:
+	var to: Vector3 = target - fl.global_position
+	to.y = 0.0
+	var dist: float = to.length()
+	if dist < 0.8:
+		return {"throttle": 0.0, "steer": 0.0, "fork": 0}
+	var ang: float = fl.forward().signed_angle_to(to / dist, Vector3.UP)
+	var steer: float = clampf(ang * 2.0, -1.0, 1.0)
+	var th: float = max_th
+	if absf(ang) > 2.4 and dist < 5.0:
+		return {"throttle": -0.7, "steer": -steer, "fork": 0}
+	if absf(ang) > 1.2:
+		th = minf(th, 0.55)
+	return {"throttle": th, "steer": steer, "fork": 0}
