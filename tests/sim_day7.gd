@@ -20,9 +20,9 @@
 #   - gun bot (sim_day5's, the gallery's grid for its walks) plus Lọ's volley: the red beam read 65 %, after the reaction a
 #     sprint across it for 0.9 s (15 %: 0.3 s); crouched behind a plinth that covers it from him it stays half the time
 #     (the plinth takes the volley);
-#   - laser runner: the lanes past the static beams; before a blink wall it waits 0.6 m short and goes when the beam goes
-#     dark (+ the reaction; 15 % late +0.3-0.9 s), a warn flicker read 65 % stops it short of the beam; a sweep: it goes
-#     when the beam moves away from its lane and is 1.2 m off it (15 % it misjudges the direction); 2.4-4 m/s;
+#   - laser runner: the lanes past the static beams at 4 m/s; a leg near a blink wall or a sweep is judged: read 65 % =
+#     the whole crossing checked ahead (now and 0.4 s later), unread = the beams as they are now (a warn looks dark, a
+#     sweep's way is not followed), 15 % wrong = judged 0.7 s early; it goes after the reaction;
 #   - sneaker (sim_day5's): the showroom's zigzag lane behind the display walls, stops when a guard faces it (read 65 %);
 #     seen: the gun bot in the open;
 #   - forklift (sim_day3's joust): out of his charges after the reaction, rams a stalled / forks-up boss when it fits;
@@ -204,6 +204,10 @@ func _diag(mission: String) -> String:
 			return "slots %d slot %d pick %d pos %s wave %d left %d volleys %d shots %d hits %d dodges %d stays %d shattered %d bot %s cover %s e_shots %d e_hits %d" % [mg.fight.cover.count() if mg.fight.cover else -1, b_slot, _pick_slot(mg.fight, false, 14.0) if mg.fight.cover else -9, str(tw.level.floor_xf("gallery").affine_inverse() * tw.player.global_position), mg.fight.wave,
 				mg.fight.enemies_left(), mg.volleys, mg.volley_shots, mg.volley_hits, v_dodges, v_stays, mg.shattered, b_state,
 				str(mg.fight.cover_ctl.in_cover if mg.fight.cover_ctl else false), e_shots, e_hits]
+		"lasers":
+			var ml: MissionTowerLasers = m as MissionTowerLasers
+			return "wp %d moving %s read %s wrong %s at %s t %.2f" % [l_i, str(l_moving), str(l_read), str(l_wrong),
+				str(tw.level.floor_xf("gallery").affine_inverse() * tw.player.global_position), ml.t]
 		"typing":
 			var mh: MissionTowerTyping = m as MissionTowerTyping
 			return "hp %.0f/%.0f kills %d leaks %d" % [mh.hack.hp, mh.hack.hp_max, mh.hack.kills, mh.hack.leaks]
@@ -513,6 +517,7 @@ func _dark_route(p: Vector3, goal: Vector3) -> Vector3:
 # ---------------------------------------------------------------------------
 func _extra_reset() -> void:
 	_gun_reset()
+	_laser_reset()
 	v_plan.clear()
 	v_t = 0.0
 	if m and m is MissionBossGuns:
@@ -523,6 +528,8 @@ func _extra_bot(mission: String) -> void:
 	match mission:
 		"guns":
 			_guns()
+		"lasers":
+			_lasers()
 
 
 # ---------------------------------------------------------------------------
@@ -1155,3 +1162,100 @@ func _guns() -> void:
 
 func _floor_has(q: Vector3) -> bool:
 	return _in_hall(q)
+
+
+# ---------------------------------------------------------------------------
+# Laser runner (T5b): the corridor's lanes (L_PATH, corridor-local x / z on the gallery floor). Before each leg it judges
+# the crossing: a leg near a blink wall or a sweep is judged (else it just walks on): it waits and goes after its reaction
+# once the leg looks clear. Read (65 %): the leg checked over its whole duration (the blinks' next "on", the sweeps' next spots) with a margin,
+# for a start now and L_ANTICIPATE_S later; unread: only the beams as they are now (a warn looks dark, a sweep's way is not followed). Wrong (15 %): it judges the
+# beams L_WRONG_S ahead of the real clock (goes early). 4 m/s, no footstep noise.
+# ---------------------------------------------------------------------------
+const L_SPEED: float = 4.0
+const L_WRONG_S: float = 0.7
+const L_MARGIN_R: float = 0.15
+const L_MARGIN_S: float = 0.2
+## A read leg is also judged for a start this much later (the bot knows it reacts late).
+const L_ANTICIPATE_S: float = 0.4
+const L_PATH: Array = [Vector2(2.0, 45.5), Vector2(2.0, 41.0), Vector2(-2.0, 41.0), Vector2(-2.0, 37.9), Vector2(-2.0, 36.1),
+	Vector2(-2.0, 34.75), Vector2(-2.0, 33.0), Vector2(0.0, 29.6), Vector2(0.0, 27.4), Vector2(2.2, 26.0), Vector2(2.2, 20.9),
+	Vector2(2.2, 18.75), Vector2(2.2, 17.2), Vector2(0.0, 16.1), Vector2(0.0, 13.6)]
+var l_i: int = 0
+var l_moving: bool = false
+var l_judged: bool = false
+var l_go_t: float = -1.0
+var l_read: bool = true
+var l_wrong: bool = false
+
+
+func _laser_reset() -> void:
+	l_i = 0
+	l_moving = false
+	l_judged = false
+	l_go_t = -1.0
+
+
+func _l_pt(i: int) -> Vector3:
+	var q: Vector2 = L_PATH[i]
+	var w: Vector3 = tw.level.world("gallery", Vector3(q.x, 0.0, q.y))
+	return Vector3(w.x, tw.player.global_position.y, w.z)
+
+
+## The leg a -> b started at mission time t0 clear of every lit beam (ahead: over the walk; else the beams frozen at t0).
+func _l_clear(ml: MissionTowerLasers, a: Vector3, b: Vector3, t0: float, ahead: bool) -> bool:
+	var dur: float = Vector2(b.x - a.x, b.z - a.z).length() / L_SPEED
+	var n: int = maxi(1, ceili(dur / 0.04))
+	for i: int in n + 1:
+		var u: float = float(i) / float(n)
+		var p: Vector3 = a.lerp(b, u)
+		for d: Dictionary in ml.defs:
+			if ahead:
+				var tt: float = t0 + dur * u
+				if MissionTowerLasers.beam_hits(d, tt, p, MissionTowerLasers.PLAYER_R + L_MARGIN_R) 						or MissionTowerLasers.beam_hits(d, tt + L_MARGIN_S, p, MissionTowerLasers.PLAYER_R + L_MARGIN_R):
+					return false
+			elif MissionTowerLasers.beam_hits(d, t0, p, MissionTowerLasers.PLAYER_R + L_MARGIN_R):
+				return false
+	return true
+
+
+## A blink wall or a sweep within 1.2 m of the leg's z span (a crossing the bot has to judge).
+func _l_timed(ml: MissionTowerLasers, a: Vector3, b: Vector3) -> bool:
+	var z0: float = minf(a.z, b.z) - 1.2
+	var z1: float = maxf(a.z, b.z) + 1.2
+	for d: Dictionary in ml.defs:
+		if String(d.get("mode", "static")) != "static":
+			var z: float = (d["a"] as Vector3).z
+			if z >= z0 and z <= z1:
+				return true
+	return false
+
+
+func _lasers() -> void:
+	var ml: MissionTowerLasers = m as MissionTowerLasers
+	if ml == null or ml.replay_wait >= 0.0 or l_i >= L_PATH.size():
+		return
+	var tgt: Vector3 = _l_pt(l_i)
+	if l_moving:
+		if _step_to(tgt, L_SPEED):
+			l_moving = false
+			l_judged = false
+			l_i += 1
+		return
+	if l_go_t >= 0.0:
+		l_go_t -= DT
+		if l_go_t < 0.0:
+			l_moving = true
+		return
+	var from: Vector3 = tw.player.global_position
+	if not l_judged:
+		l_judged = true
+		if not _l_timed(ml, from, tgt):
+			l_moving = true                       # only static beams near this leg: walk on
+			return
+		l_read = _reads()
+		l_wrong = _wrong()
+		if verbose:
+			print("      laser wait at wp %d (read %s wrong %s) t %.2f" % [l_i, str(l_read), str(l_wrong), ml.t])
+	var tj: float = ml.t + (L_WRONG_S if l_wrong else 0.0)
+	if _l_clear(ml, from, tgt, tj, l_read) and (not l_read or _l_clear(ml, from, tgt, tj + L_ANTICIPATE_S, true)):
+		l_go_t = _react()

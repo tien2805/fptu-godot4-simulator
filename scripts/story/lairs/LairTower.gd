@@ -73,6 +73,11 @@ const CORR_W: float = 6.0
 const CORR_Z0: float = 12.0
 const CORR_Z1: float = 48.0
 const CORR_H: float = 3.2
+## The laser corridor per difficulty (T5b, sim_day7): the second blink wall's lit share ...
+const LASER_BLINK2_ON: float = 0.6
+const LASER_BLINK2_ON_EASY: float = 0.5
+## ... and Thường's two extra sweeps (z 37, z 20) with their periods.
+const LASER_EXTRA_SWEEP_S: Array = [3.4, 3.0]
 const PLINTH_XS: Array[float] = [-9.0, -3.0, 3.0, 9.0]
 const PLINTH_ZS: Array[float] = [6.0, 0.0, -6.0]
 const SPEAKERS: Array = [[Vector3(-13.75, 3.2, 8.0), PI * 0.5], [Vector3(-13.75, 3.2, -8.0), PI * 0.5],
@@ -352,12 +357,18 @@ func route(laps: int) -> PackedVector2Array:
 ## blink | sweep), "period", "on" (lit share of a blink period), "phase", "sweep" (offset of a sweep at its extremes)}].
 func laser_defs(f: String = "gallery") -> Array:
 	var hw: float = CORR_W * 0.5
+	# T5b (sim_day7): Thường adds two sweeps (z 37, z 20) and holds the second blink wall longer; Dễ keeps the T1 corridor
+	var on2: float = float(Difficulty.pick(LASER_BLINK2_ON, LASER_BLINK2_ON_EASY))
 	var out: Array = []
 	# 1-2: static half-width beams, a zigzag
 	out.append({"a": world(f, Vector3(-hw, 0.0, 43.0)), "b": world(f, Vector3(0.7, 0.0, 43.0)), "y0": 0.45, "y1": 0.45, "mode": "static"})
 	out.append({"a": world(f, Vector3(-hw, 0.0, 43.0)), "b": world(f, Vector3(0.7, 0.0, 43.0)), "y0": 1.3, "y1": 1.3, "mode": "static"})
 	out.append({"a": world(f, Vector3(-0.7, 0.0, 39.0)), "b": world(f, Vector3(hw, 0.0, 39.0)), "y0": 0.45, "y1": 0.45, "mode": "static"})
 	out.append({"a": world(f, Vector3(-0.7, 0.0, 39.0)), "b": world(f, Vector3(hw, 0.0, 39.0)), "y0": 1.3, "y1": 1.3, "mode": "static"})
+	# 2b (Thường only, T5b): a sweep between the zigzag and the first blinking wall
+	if not Difficulty.easy:
+		out.append({"a": world(f, Vector3(0.0, 0.0, 37.0)), "b": world(f, Vector3(0.0, 0.0, 37.0)), "y0": 0.0, "y1": CORR_H,
+			"mode": "sweep", "period": LASER_EXTRA_SWEEP_S[0], "phase": 0.5, "sweep": Vector3(hw - 0.35, 0.0, 0.0)})
 	# 3: a blinking wall (full width, four beams)
 	for k: int in 4:
 		out.append({"a": world(f, Vector3(-hw, 0.0, 34.0)), "b": world(f, Vector3(hw, 0.0, 34.0)), "y0": 0.3 + 0.5 * k,
@@ -369,7 +380,11 @@ func laser_defs(f: String = "gallery") -> Array:
 	out.append({"a": world(f, Vector3(-hw, 0.0, 25.0)), "b": world(f, Vector3(hw - 1.6, 0.0, 22.0)), "y0": 0.9, "y1": 0.9, "mode": "static"})
 	for k2: int in 4:
 		out.append({"a": world(f, Vector3(-hw, 0.0, 18.0)), "b": world(f, Vector3(hw, 0.0, 18.0)), "y0": 0.3 + 0.5 * k2,
-			"y1": 0.3 + 0.5 * k2, "mode": "blink", "period": 2.6, "on": 0.5, "phase": 1.3})
+			"y1": 0.3 + 0.5 * k2, "mode": "blink", "period": 2.6, "on": on2, "phase": 1.3})
+	# 5b (Thường only, T5b): a sweep between the diagonal and the second blinking wall
+	if not Difficulty.easy:
+		out.append({"a": world(f, Vector3(0.0, 0.0, 20.0)), "b": world(f, Vector3(0.0, 0.0, 20.0)), "y0": 0.0, "y1": CORR_H,
+			"mode": "sweep", "period": LASER_EXTRA_SWEEP_S[1], "phase": 1.0, "sweep": Vector3(hw - 0.35, 0.0, 0.0)})
 	# 6: two sweeping beams crossing before the hall
 	out.append({"a": world(f, Vector3(0.0, 0.0, 15.0)), "b": world(f, Vector3(0.0, 0.0, 15.0)), "y0": 0.0, "y1": CORR_H,
 		"mode": "sweep", "period": 4.2, "phase": 0.0, "sweep": Vector3(hw - 0.35, 0.0, 0.0)})

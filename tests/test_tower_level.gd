@@ -354,7 +354,8 @@ func _process(_d: float) -> bool:
 				if String(ml.defs[i].get("mode", "")) == "sweep":
 					sweeps += 1
 					_check(ml.ghosts[i] != null and ml.ghosts[i].visible, "sweep %d has its ghost beam" % i)
-			_check(sweeps == 3 and ml.rails.size() == 3, "three sweeps, three floor rails")
+			var want_sw: int = 3 if Difficulty.easy else 5   # T5b: Thường adds the z 37 and z 20 sweeps
+			_check(sweeps == want_sw and ml.rails.size() == want_sw, "%d sweeps, %d floor rails (%d / %d)" % [want_sw, want_sw, sweeps, ml.rails.size()])
 			# a static beam: BỊ LỘ
 			var st_i: int = -1
 			for i2: int in ml.defs.size():
