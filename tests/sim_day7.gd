@@ -2,7 +2,7 @@
 # W4 Day 7 T5 (plan 2026-11-01-w4-day7.md): sloppy-bot tuning harness of the tower missions in the StoryTower scene (no
 # story running), on the missions' manual clocks, one advance per physics frame. Not a regression test. Run with
 # --fixed-fps 60:
-#   godot --headless --fixed-fps 60 --path . --script tests/sim_day7.gd -- <normal|easy> <seed> <runs> [mission|all] [--verbose]
+#   godot --headless --fixed-fps 60 --path . --script tests/sim_day7.gd -- <normal|easy> <seed> <runs> [mission|all] [--verbose] [--careful]
 #   missions: typing dark saber katana guns lasers mannequins warehouse parking
 # Each run plays a mission until it is won (THỬ LẠI after every fail, at most MAX_TRIES) and prints
 #   SIM d7 <mission> <difficulty> seed <s>: fails F time T dmg D rank R
@@ -54,11 +54,13 @@ var frames: int = 0
 var verbose: bool = false
 var cur: String = ""
 var mt: float = 0.0                       # the bot's clock (mission time of this attempt)
+var careful: bool = false                 # --careful: reads every telegraph, never wrong (the reactions stay sloppy)
 
 
 func _initialize() -> void:
 	var a: PackedStringArray = OS.get_cmdline_user_args()
 	verbose = a.has("--verbose")
+	careful = a.has("--careful")
 	sd = root.get_node_or_null("StoryDirector")
 	if sd:
 		sd.set("save_path", TMP)
@@ -252,11 +254,11 @@ func _react() -> float:
 
 
 func _wrong() -> bool:
-	return rng.randf() < 0.15
+	return rng.randf() < (0.0 if careful else 0.15)
 
 
 func _reads() -> bool:
-	return rng.randf() < 0.65
+	return careful or rng.randf() < 0.65
 
 
 func _bot(mission: String) -> void:
