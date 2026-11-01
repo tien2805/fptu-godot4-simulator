@@ -34,12 +34,15 @@ const SLOTS: Array[String] = ["menu", "roam_day", "roam_night",
 	# Day 2 Tokyo Drift (plan 2026-10-27-d2x-drift.md): the drift duel with Sói Xám
 	"race_d2_drift",
 	# Wave 3 (plan 2026-10-30-w3-shared.md): the Day 3 mannequin-challenge meme, the Day 5 burning-server typing
-	"meme_mannequin", "mission_fire_hack"]
+	"meme_mannequin", "mission_fire_hack",
+	# Phase D Day 7 (w4-day7): the Lọ Academy tower floors and the final boss
+	"mission_tower", "boss_d7"]
 ## Night Building tracks (NightMusic).
 const NIGHT_SLOTS: Array[String] = ["night_stealth", "night_tense", "night_chase", "night_escape"]
 ## Short replays (CineReplay through StoryStage.play_replay; they have no timeline file).
 const REPLAY_SLOTS: Array[String] = ["seg_d0_race", "seg_d0_exam", "seg_d1_chase", "seg_d4_escape",
-	"seg_d2_chase", "seg_d3_gunfight", "seg_d3_crates", "seg_d5_gunfight", "seg_d5_hack"]
+	"seg_d2_chase", "seg_d3_gunfight", "seg_d3_crates", "seg_d5_gunfight", "seg_d5_hack",
+	"seg_d7_floors", "seg_d7_phase1"]   # Day 7 (w4-day7)
 ## Slots whose tension also drives the low-pass (the others play with the filter open).
 const TENSION_SLOTS: Array[String] = ["stage1_race", "stage6_capstone"]
 ## Fixed per-slot trims in dB.

@@ -39,8 +39,11 @@ const MISSIONS: Array[String] = ["stakeout", "chase", "corridor", "canteen", "bi
 	"crates", "forklift", "drift_duel"]
 const FIGHTS: Array[String] = ["d1", "d4", "d2"]
 ## Phase C: tasks of a "lair" beat (run by the lair scene) and the scene of each dedicated lair.
-const LAIR_TASKS: Array[String] = ["stealth", "gunfight", "hack", "duel"]
-const LAIR_SCENES: Dictionary = {"basement": "res://scenes/story/StoryBasement.tscn"}
+const LAIR_TASKS: Array[String] = ["stealth", "gunfight", "hack", "duel",
+	# Day 7 (w4-day7): the floors and the boss phases of the Lọ Academy tower (StoryTower)
+	"parking", "warehouse", "servers", "mannequins", "lasers", "boss_guns", "boss_dark", "boss_saber", "typing"]
+const LAIR_SCENES: Dictionary = {"basement": "res://scenes/story/StoryBasement.tscn",
+	"tower": "res://scenes/story/StoryTower.tscn"}   # Day 7 (w4-day7)
 ## Saves stopped at a placeholder of a day that is now playable resume at the day's first playable beat (B-D6, Phase C:
 ## old saves keep working).
 const MIGRATE: Dictionary = {"d1_locked": "d1_stakeout", "d2_locked": "d2_chase", "d3_locked": "d3_sneak", "d4_locked": "d4_canteen",
@@ -246,6 +249,45 @@ const BEATS: Dictionary = {
 	"d6_morning": {"day": 6, "title": "Sáng Ngày 6", "kind": "cine", "slot": "cine_day_start", "at": "be6_door",
 		"tod": "morning", "next": "d6_locked", "objective": "Ngày mới... còn 2 ngày",
 		"texts": [["Phúc", "Tao kiếm được bộ đồ shipper Trà Sữa Lọ rồi, chờ tao nha."]]},
+	# --- Day 7 (w4-day7) ---
+	# Day 7 "Học thật, đậu thật" (Phase D, plan 2026-11-01-w4-day7.md): dawn; the Lọ Academy tower is its own scene
+	# (StoryTower, "lair": "tower"): every tower beat is a marker at duy_corner in free roam that launches the scene, which
+	# runs the floors, the boss phases and the typing one after another. The 08:00 countdown (Day7Clock) runs while a tower
+	# mission runs. The last beat hands over to the endings (d7_ending, the w4-endings stream).
+	"d7_start": {"day": 7, "title": "Ngày 7", "kind": "day", "tod": "dawn", "next": "d7_morning"},
+	"d7_morning": {"day": 7, "title": "Sáng Ngày 7", "kind": "cine", "slot": "cine_day_start", "at": "be6_door",
+		"tod": "dawn", "next": "d7_parking", "objective": "Ngày cuối... còn 1 ngày. 08:00 kỳ thi mở",
+		"texts": [["Anh Duy", "Lọ Academy push tool lên hệ thống thi lúc 08:00. A đợi ở góc sảnh BE6. (Dịch: Tới 8 giờ là toang, qua gặp anh liền.)"]]},
+	"d7_parking": {"day": 7, "title": "Hầm xe Lọ Academy", "kind": "lair", "lair": "tower", "task": "parking",
+		"anchor": "duy_corner", "intro": "cine_d7_intro", "tod": "dawn", "next": "d7_warehouse",
+		"objective": "Anh Duy đợi ở góc sảnh BE6, tới Lọ Academy trước 08:00: cột hồng, bấm [E]"},
+	"d7_warehouse": {"day": 7, "title": "Tầng kho", "kind": "lair", "lair": "tower", "task": "warehouse",
+		"anchor": "duy_corner", "tod": "dawn", "next": "d7_servers",
+		"objective": "Alexander chặn tầng kho bằng xe nâng! Lên xe nâng [F], húc hông hắn"},
+	"d7_servers": {"day": 7, "title": "Tầng server", "kind": "lair", "lair": "tower", "task": "servers",
+		"anchor": "duy_corner", "tod": "dawn", "next": "d7_mannequins",
+		"objective": "Za Mẫn quay lại với katana mới. Đấu gậy với hắn"},
+	"d7_mannequins": {"day": 7, "title": "Tầng ma-nơ-canh", "kind": "lair", "lair": "tower", "task": "mannequins",
+		"anchor": "duy_corner", "tod": "dawn", "next": "d7_lasers",
+		"objective": "Lẻn qua phòng trưng bày tới thang máy cuối phòng, đừng để bảo vệ thấy"},
+	"d7_lasers": {"day": 7, "title": "Hành lang laser", "kind": "lair", "lair": "tower", "task": "lasers",
+		"anchor": "duy_corner", "replay": "seg_d7_floors", "tod": "dawn", "next": "d7_boss1",
+		"objective": "Qua hành lang laser vào phòng bình cổ. Chạm tia là báo động"},
+	"d7_boss1": {"day": 7, "title": "Phòng bình cổ", "kind": "lair", "lair": "tower", "task": "boss_guns",
+		"anchor": "duy_corner", "replay": "seg_d7_phase1", "tod": "dawn", "next": "d7_monologue",
+		"objective": "Lùm Văn Lọ! Núp sau bệ bình cổ mà bắn, bình vỡ thì đổi chỗ núp"},
+	"d7_monologue": {"day": 7, "title": "Mọi thứ đều nằm trong kế hoạch", "kind": "cine", "slot": "cine_d7_monologue",
+		"at": "", "lair": "tower", "anchor": "duy_corner", "tod": "dawn", "next": "d7_boss2",
+		"objective": "Lùm Văn Lọ còn chiêu cuối..."},
+	"d7_boss2": {"day": 7, "title": "Mất điện", "kind": "lair", "lair": "tower", "task": "boss_dark",
+		"anchor": "duy_corner", "tod": "dawn", "next": "d7_boss3",
+		"objective": "Mất điện! Bật đèn pin [F] soi thẳng vào hắn, bật 2 cầu dao [E] cho có điện lại"},
+	"d7_boss3": {"day": 7, "title": "Sân thượng", "kind": "lair", "lair": "tower", "task": "boss_saber",
+		"anchor": "duy_corner", "tod": "dawn", "next": "d7_typing",
+		"objective": "Sân thượng, mưa, trực thăng rọi đèn: đấu kiếm với Lùm Văn Lọ"},
+	"d7_typing": {"day": 7, "title": "Học thật, đậu thật", "kind": "lair", "lair": "tower", "task": "typing",
+		"anchor": "duy_corner", "tod": "dawn", "next": "d7_ending",
+		"objective": "Gõ lệnh chặn tool trước 08:00 trong lúc Anh Duy deploy bản vá"},
 }
 
 

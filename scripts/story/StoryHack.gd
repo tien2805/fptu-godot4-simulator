@@ -12,6 +12,8 @@
 # W3 T8 (sloppy-bot tuning, set by MissionHack before start()): `hp_max` (the integrity a run starts from; the waves and the
 # bar are fractions of it) and `pace` (spawn gaps and fall times divided by it: below 1 = slower). Defaults = the Stage 6
 # numbers.
+# Day 7 (w4-day7, additive, set before start()): `words` (three word pools, default WORDS), `final_command` (default
+# FINAL_COMMAND) and `tool_name` (default TOOL_NAME): the showdown with Lọ Thần 10.0 reuses the terminal.
 class_name StoryHack
 extends CanvasLayer
 
@@ -23,6 +25,7 @@ const LANES: int = 4
 const MAX_HP: float = 720.0
 const MAX_LEAKS: int = 4
 const FINAL_COMMAND: String = "sudo rm -rf lothan"
+const TOOL_NAME: String = "Lọ Thần 9.0"
 const WORDS: Array = [
 	["cheatd", "proxy", "keylog", "hook", "spy", "leak", "bot", "tool"],
 	["autofill", "backdoor", "ghostcam", "earbud", "inject", "sniffer", "lothan9", "relay"],
@@ -39,6 +42,9 @@ const INK := Color("#D8FFE4")
 
 var manual: bool = false
 var active: bool = false
+var words: Array = WORDS
+var final_command: String = FINAL_COMMAND
+var tool_name: String = TOOL_NAME
 ## A breach took the player away: hidden, frozen, deaf (no decay); false = back as it was.
 var paused: bool = false:
 	set(v):
@@ -108,7 +114,7 @@ func reset() -> void:
 	t = 0.0
 	active = true
 	paused = false
-	_log("Đang kết nối tới Lọ Thần 9.0...")
+	_log("Đang kết nối tới %s..." % tool_name)
 	_refresh()
 
 
@@ -163,7 +169,7 @@ func step(dt: float) -> void:
 
 
 func _spawn(w: int) -> void:
-	var pool: Array = WORDS[w - 1]
+	var pool: Array = words[w - 1]
 	var word: String = String(pool[rng.randi() % pool.size()])
 	for attempt: int in 4:   # no two live processes with the same first letter (Stage 6 rule)
 		var clash: bool = false
@@ -228,7 +234,7 @@ func _kill(b: Dictionary) -> String:
 	if b == final_bullet:
 		final_bullet = {}
 		active = false
-		_log("rm -rf: Lọ Thần 9.0 đã bị xóa sạch!")
+		_log("rm -rf: %s đã bị xóa sạch!" % tool_name)
 		won.emit()
 		return "won"
 	combo += 1
@@ -242,8 +248,8 @@ func _kill(b: Dictionary) -> String:
 		for o: Dictionary in bullets:
 			o["dead"] = true
 			_free_node(o)
-		final_bullet = {"word": FINAL_COMMAND, "lane": -1, "y": 0.4, "dead": false}
-		final_bullet["node"] = _make_node(FINAL_COMMAND, true)
+		final_bullet = {"word": final_command, "lane": -1, "y": 0.4, "dead": false}
+		final_bullet["node"] = _make_node(final_command, true)
 		_log("Hết tiến trình! Gõ lệnh cuối để xóa tool")
 	return "kill"
 
@@ -321,7 +327,7 @@ func _build() -> void:
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 6)
 	panel.add_child(vb)
-	vb.add_child(_label("LỌ THẦN 9.0 · TIẾN TRÌNH ĐANG CHẠY · gõ tên tiến trình để kill", 18, GREEN))
+	vb.add_child(_label("%s · TIẾN TRÌNH ĐANG CHẠY · gõ tên tiến trình để kill" % tool_name.to_upper(), 18, GREEN))
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 14)
 	vb.add_child(top)
@@ -406,13 +412,13 @@ func _layout() -> void:
 			var k2: int = typed.length() if final_bullet == locked else 0
 			if int(final_bullet.get("k", 0)) != k2:
 				final_bullet["k"] = k2
-				nf.text = FINAL_COMMAND.to_upper().substr(0, k2) + FINAL_COMMAND.substr(k2)
+				nf.text = final_command.to_upper().substr(0, k2) + final_command.substr(k2)
 
 
 func _refresh() -> void:
 	if hp_label == null:
 		return
-	hp_label.text = "Lọ Thần 9.0: %d%%" % int(ceil(hp / maxf(hp_max, 1.0) * 100.0))
+	hp_label.text = "%s: %d%%" % [tool_name, int(ceil(hp / maxf(hp_max, 1.0) * 100.0))]
 	hp_bar.value = hp / maxf(hp_max, 1.0) * 100.0
 	leak_label.text = "Rò rỉ: %d / %d · Combo %d (x%d)" % [leaks, MAX_LEAKS, combo, mult()]
 	var rest: String = String(locked["word"]).substr(typed.length()) if not locked.is_empty() and _alive(locked) else ""

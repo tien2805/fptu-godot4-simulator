@@ -49,6 +49,7 @@ const WANTED_ABORT_HINT: String = "Bị truy nã giữa nhiệm vụ! Cắt đu�
 
 var roam: Node3D
 var director: Node
+var day7_clock: Day7Clock = null
 var anchors: Dictionary = {}       # id -> {"pos": Vector3, "yaw": float, "return": Transform3D}
 var markers: Dictionary = {}       # beat id -> Node3D
 var marker_pos: Dictionary = {}    # beat id -> Vector2 (map plane)
@@ -126,6 +127,7 @@ func setup(r: Node3D) -> void:
 	night_events = StoryNightEvents.new()
 	add_child(night_events)
 	night_events.setup(roam, self, director)
+	day7_clock = Day7Clock.attach(self, director, hud_should_show)   # Day 7 (w4-day7): the 08:00 countdown, shown on Day 7 only
 	if director:
 		director.connect("objective_changed", _on_objective)
 		director.connect("text_received", _on_text)

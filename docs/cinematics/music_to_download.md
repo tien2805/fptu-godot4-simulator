@@ -65,6 +65,8 @@ Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột
 | [ ] | Anh Duy giải mã USB, tìm ra server dưới hầm The Beverly (Ngày 5) | `cine_d5_intro_` | *Technologic*, Daft Punk |
 | [ ] | Mặt Za Mẫn cười trên 50 màn hình (Ngày 5) | `cine_d5_monitors_` | *Mr. Roboto*, Styx |
 | [ ] | Phòng server cháy, "Ổn mà", lựa chọn 2 (Ngày 5; hai đoạn đuôi Nhận lời / Từ chối dùng chung bài này) | `cine_d5_choice_` | *Don't Worry, Be Happy*, Bobby McFerrin |
+| [ ] | Bình minh, Anh Duy báo 08:00 tool lên hệ thống thi (Ngày 7) | `cine_d7_intro_` | *Lux Aeterna* (nhạc phim *Requiem for a Dream*), Clint Mansell |
+| [ ] | Lùm Văn Lọ "Mọi thứ đều nằm trong kế hoạch", tắt đèn (Ngày 7) | `cine_d7_monologue_` | *Sweet Dreams (Are Made of This)*, Eurythmics |
 
 **Nhiệm vụ và trùm**
 
@@ -82,6 +84,8 @@ Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột
 | [ ] | Gõ phím xoá "Lọ Thần 9.0" (Ngày 5) | `mission_typing_` | *Around the World*, Daft Punk |
 | [ ] | Phòng server cháy, gõ phím trong lúc đếm ngược (Ngày 5) | `mission_fire_hack_` | *Disco Inferno*, The Trammps |
 | [ ] | Đấu kiếm với Za Mẫn (Ngày 5) | `boss_d5_` | *Battle Without Honor or Humanity*, Tomoyasu Hotei |
+| [ ] | Leo tòa Lọ Academy: hầm xe, kho, tầng server, ma-nơ-canh, laser, gõ phím cuối (Ngày 7) | `mission_tower_` | *Thunderstruck*, AC/DC |
+| [ ] | Trùm cuối Lùm Văn Lọ: phòng bình cổ và sân thượng (Ngày 7) | `boss_d7_` | *The Final Countdown*, Europe |
 
 **Đã có trên máy, không cần tải:** `seg_d2_chase`, `seg_d2_boss` (*Heartbreaker*), `seg_d3_gunfight`, `seg_d3_crates`,
 `seg_d3_boss` (*Straighten Up and Fly Right*), `seg_d5_gunfight`, `seg_d5_hack`, `seg_d5_boss` (*The Good Life*), `cine_d2`,

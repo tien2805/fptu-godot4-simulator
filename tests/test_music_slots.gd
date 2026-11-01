@@ -96,6 +96,10 @@ func _catalogue() -> void:
 	for fk: String in StoryRoam.FIGHT_MUSIC.keys():
 		_check(MusicDirector.SLOTS.has(String(StoryRoam.FIGHT_MUSIC[fk])), "fight %s plays a known slot" % fk)
 	for tk: String in StoryMissions.LAIR_TASKS:
+		if StoryTower.LAIR_MUSIC.has(tk):   # Day 7 (w4-day7): the tower's tasks; the blackout is silent by design
+			var tm: String = String(StoryTower.LAIR_MUSIC[tk])
+			_check(MusicDirector.SLOTS.has(tm) or (tm == "" and tk == "boss_dark"), "tower task %s plays a known slot" % tk)
+			continue
 		_check(MusicDirector.SLOTS.has(String(StoryBasement.LAIR_MUSIC.get(tk, ""))), "basement task %s plays a known slot" % tk)
 	for rs: String in ["seg_d2_chase", "seg_d3_gunfight", "seg_d3_crates", "seg_d5_gunfight", "seg_d5_hack"]:
 		_check(MusicDirector.REPLAY_SLOTS.has(rs), "the Phase C replay %s is a slot" % rs)
