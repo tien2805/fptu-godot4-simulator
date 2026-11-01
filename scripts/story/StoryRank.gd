@@ -77,11 +77,11 @@ const MISSIONS: Dictionary = {
 	"d6_boat": {"time": [66.0, 95.0], "dmg": [30.0, 160.0], "ko": [3, 8]},
 	# Day 7 (w4-day7): the bosses, the server room and the typing set from sim_day7 (plan 2026-11-01-w4-day7.md T5 table:
 	# par S near the sloppy bot's clean runs, par C past its mean with retries); the four floors stay provisional (no bot yet)
-	"d7_parking": {"time": [90.0, 170.0], "fails": [0.0, 1.5], "ko": [0, 8]},
-	"d7_warehouse": {"time": [80.0, 200.0], "dmg": [80.0, 400.0]},
+	"d7_parking": {"time": [50.0, 130.0], "fails": [0.0, 1.5], "ko": [0, 1]},   # sim: clean 38-72 s; ko only adds (a takedown = full)
+	"d7_warehouse": {"time": [100.0, 260.0], "dmg": [150.0, 600.0]},   # sim: clean 100-150 s, ~200 HP lost; Thường mean 244 s
 	"d7_servers": {"time": [30.0, 100.0], "dmg": [20.0, 200.0], "opt": {"key": "qte_clean", "want": true}},   # sim: clean 35-49 s
-	"d7_mannequins": {"time": [60.0, 160.0], "dmg": [0.0, 150.0], "opt": {"key": "spotted", "want": false}},
-	"d7_lasers": {"time": [35.0, 90.0], "fails": [0.0, 3.0]},
+	"d7_mannequins": {"time": [30.0, 75.0], "dmg": [0.0, 150.0], "opt": {"key": "spotted", "want": false}},   # sim: 32-50 s (seen, then the fight)
+	"d7_lasers": {"time": [18.0, 45.0], "fails": [0.0, 3.0]},   # sim: clean 16-20 s, a retry ~10-15 s
 	"d7_boss1": {"time": [60.0, 200.0], "dmg": [40.0, 300.0]},   # sim: clean 55-88 s, ~130 HP lost; mean 110 s with retries
 	"d7_boss2": {"time": [35.0, 100.0], "dmg": [0.0, 150.0], "opt": {"key": "staggers", "min": 2}},   # sim: clean 35-43 s; a lunge is 50 HP
 	"d7_boss3": {"time": [45.0, 130.0], "dmg": [20.0, 200.0], "opt": {"key": "qte_clean", "want": true}},   # sim: clean 41-53 s

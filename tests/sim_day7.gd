@@ -20,13 +20,16 @@
 #   - gun bot (sim_day5's, the gallery's grid for its walks) plus Lọ's volley: the red beam read 65 %, after the reaction a
 #     sprint across it for 0.9 s (15 %: 0.3 s); crouched behind a plinth that covers it from him it stays half the time
 #     (the plinth takes the volley);
-#   - laser runner: the lanes past the static beams; before a blink wall it waits 0.6 m short and goes when the beam goes
-#     dark (+ the reaction; 15 % late +0.3-0.9 s), a warn flicker read 65 % stops it short of the beam; a sweep: it goes
-#     when the beam moves away from its lane and is 1.2 m off it (15 % it misjudges the direction); 2.4-4 m/s;
-#   - sneaker (sim_day5's): the showroom's zigzag lane behind the display walls, stops when a guard faces it (read 65 %);
-#     seen: the gun bot in the open;
-#   - forklift (sim_day3's joust): out of his charges after the reaction, rams a stalled / forks-up boss when it fits;
-#   - rider (sim_bike_chase_d2's sloppy bot on the deck ring): kicks in reach, dodges the wind-ups it reads.
+#   - laser runner: the lanes past the static beams at 4 m/s; a leg near a blink wall or a sweep is judged: read 65 % =
+#     the whole crossing checked ahead (now and 0.4 s later), unread = the beams as they are now (a warn looks dark, a
+#     sweep's way is not followed), 15 % wrong = judged 0.7 s early; it goes after the reaction;
+#   - showroom sneaker: the zigzag through the display walls' gaps at 2.3 m/s (no footstep noise), every leg judged against
+#     the guards' real sight: read 65 % = his patrol followed ahead with a margin, unread = as now, 15 % goes anyway; seen:
+#     the gun bot on the showroom's grid, then the lift;
+#   - forklift (sim_day3's joust, ported as _forklift): out of his charges after the reaction, rams a stalled / forks-up
+#     boss when it fits;
+#   - rider (sim_bike_chase_d2's sloppy bot on the deck ring, ported as _parking): kicks in reach, dodges the wind-ups it
+#     reads, brakes for helmets it sees, a slow wander off the line.
 extends SceneTree
 
 const TimeAudit: Script = preload("res://tests/support/time_scale_audit.gd")
@@ -151,6 +154,9 @@ func _run(mission: String, s: int) -> Dictionary:
 	var hp0: float = tw.combat.hp
 	var causes: Array[String] = []
 	mt = 0.0
+	pk_lost = 0.0
+	pk_min = 999.0
+	pk_tele = 0
 	_reset_bot()
 	while not done_flag and fails < MAX_TRIES:
 		await physics_frame
@@ -189,6 +195,8 @@ func _run(mission: String, s: int) -> Dictionary:
 	var info: String = " fails at %s" % str(causes) if not causes.is_empty() else ""
 	for k2: Variant in info_d.keys():
 		info += " %s=%s" % [str(k2), str(info_d[k2])]
+	if mission == "parking":
+		info += " stab_lost=%.0f stab_min=%.0f tele=%d" % [pk_lost, pk_min, pk_tele]
 	if not st.is_empty():
 		info += " stats{time %.0f dmg %.0f fails %d}" % [float(st.get("time", 0.0)), float(st.get("dmg", 0.0)), int(st.get("fails", 0))]
 	return {"fails": fails, "time": time, "dmg": dmg, "info": info, "rank": String(rk.get("letter", "")), "score": float(rk.get("score", 0.0))}
@@ -204,6 +212,14 @@ func _diag(mission: String) -> String:
 			return "slots %d slot %d pick %d pos %s wave %d left %d volleys %d shots %d hits %d dodges %d stays %d shattered %d bot %s cover %s e_shots %d e_hits %d" % [mg.fight.cover.count() if mg.fight.cover else -1, b_slot, _pick_slot(mg.fight, false, 14.0) if mg.fight.cover else -9, str(tw.level.floor_xf("gallery").affine_inverse() * tw.player.global_position), mg.fight.wave,
 				mg.fight.enemies_left(), mg.volleys, mg.volley_shots, mg.volley_hits, v_dodges, v_stays, mg.shattered, b_state,
 				str(mg.fight.cover_ctl.in_cover if mg.fight.cover_ctl else false), e_shots, e_hits]
+		"mannequins":
+			var mn: MissionTowerStealth = m as MissionTowerStealth
+			return "wp %d moving %s spotted %s left %d hp %.0f at %s" % [n_i, str(n_moving), str(mn.spotted), mn.fight.alive().size(),
+				tw.combat.hp, str(tw.level.floor_xf("mannequins").affine_inverse() * tw.player.global_position)]
+		"lasers":
+			var ml: MissionTowerLasers = m as MissionTowerLasers
+			return "wp %d moving %s read %s wrong %s at %s t %.2f" % [l_i, str(l_moving), str(l_read), str(l_wrong),
+				str(tw.level.floor_xf("gallery").affine_inverse() * tw.player.global_position), ml.t]
 		"typing":
 			var mh: MissionTowerTyping = m as MissionTowerTyping
 			return "hp %.0f/%.0f kills %d leaks %d" % [mh.hack.hp, mh.hack.hp_max, mh.hack.kills, mh.hack.leaks]
@@ -513,6 +529,14 @@ func _dark_route(p: Vector3, goal: Vector3) -> Vector3:
 # ---------------------------------------------------------------------------
 func _extra_reset() -> void:
 	_gun_reset()
+	_laser_reset()
+	_fk_reset()
+	_pk_reset()
+	n_i = 0
+	n_moving = false
+	n_judged = false
+	n_go_t = -1.0
+	n_seen_said = false
 	v_plan.clear()
 	v_t = 0.0
 	if m and m is MissionBossGuns:
@@ -523,6 +547,14 @@ func _extra_bot(mission: String) -> void:
 	match mission:
 		"guns":
 			_guns()
+		"lasers":
+			_lasers()
+		"mannequins":
+			_showroom()
+		"warehouse":
+			_forklift()
+		"parking":
+			_parking()
 
 
 # ---------------------------------------------------------------------------
@@ -1155,3 +1187,526 @@ func _guns() -> void:
 
 func _floor_has(q: Vector3) -> bool:
 	return _in_hall(q)
+
+
+# ---------------------------------------------------------------------------
+# Laser runner (T5b): the corridor's lanes (L_PATH, corridor-local x / z on the gallery floor). Before each leg it judges
+# the crossing: a leg near a blink wall or a sweep is judged (else it just walks on): it waits and goes after its reaction
+# once the leg looks clear. Read (65 %): the leg checked over its whole duration (the blinks' next "on", the sweeps' next spots) with a margin,
+# for a start now and L_ANTICIPATE_S later; unread: only the beams as they are now (a warn looks dark, a sweep's way is not followed). Wrong (15 %): it judges the
+# beams L_WRONG_S ahead of the real clock (goes early). 4 m/s, no footstep noise.
+# ---------------------------------------------------------------------------
+const L_SPEED: float = 4.0
+const L_WRONG_S: float = 0.7
+const L_MARGIN_R: float = 0.15
+const L_MARGIN_S: float = 0.2
+## A read leg is also judged for a start this much later (the bot knows it reacts late).
+const L_ANTICIPATE_S: float = 0.4
+const L_PATH: Array = [Vector2(2.0, 45.5), Vector2(2.0, 41.0), Vector2(-2.0, 41.0), Vector2(-2.0, 37.9), Vector2(-2.0, 36.1),
+	Vector2(-2.0, 34.75), Vector2(-2.0, 33.0), Vector2(0.0, 29.6), Vector2(0.0, 27.4), Vector2(2.2, 26.0), Vector2(2.2, 20.9),
+	Vector2(2.2, 18.75), Vector2(2.2, 17.2), Vector2(0.0, 16.1), Vector2(0.0, 13.6)]
+var l_i: int = 0
+var l_moving: bool = false
+var l_judged: bool = false
+var l_go_t: float = -1.0
+var l_read: bool = true
+var l_wrong: bool = false
+
+
+func _laser_reset() -> void:
+	l_i = 0
+	l_moving = false
+	l_judged = false
+	l_go_t = -1.0
+
+
+func _l_pt(i: int) -> Vector3:
+	var q: Vector2 = L_PATH[i]
+	var w: Vector3 = tw.level.world("gallery", Vector3(q.x, 0.0, q.y))
+	return Vector3(w.x, tw.player.global_position.y, w.z)
+
+
+## The leg a -> b started at mission time t0 clear of every lit beam (ahead: over the walk; else the beams frozen at t0).
+func _l_clear(ml: MissionTowerLasers, a: Vector3, b: Vector3, t0: float, ahead: bool) -> bool:
+	var dur: float = Vector2(b.x - a.x, b.z - a.z).length() / L_SPEED
+	var n: int = maxi(1, ceili(dur / 0.04))
+	for i: int in n + 1:
+		var u: float = float(i) / float(n)
+		var p: Vector3 = a.lerp(b, u)
+		for d: Dictionary in ml.defs:
+			if ahead:
+				var tt: float = t0 + dur * u
+				if MissionTowerLasers.beam_hits(d, tt, p, MissionTowerLasers.PLAYER_R + L_MARGIN_R) 						or MissionTowerLasers.beam_hits(d, tt + L_MARGIN_S, p, MissionTowerLasers.PLAYER_R + L_MARGIN_R):
+					return false
+			elif MissionTowerLasers.beam_hits(d, t0, p, MissionTowerLasers.PLAYER_R + L_MARGIN_R):
+				return false
+	return true
+
+
+## A blink wall or a sweep within 1.2 m of the leg's z span (a crossing the bot has to judge).
+func _l_timed(ml: MissionTowerLasers, a: Vector3, b: Vector3) -> bool:
+	var z0: float = minf(a.z, b.z) - 1.2
+	var z1: float = maxf(a.z, b.z) + 1.2
+	for d: Dictionary in ml.defs:
+		if String(d.get("mode", "static")) != "static":
+			var z: float = (d["a"] as Vector3).z
+			if z >= z0 and z <= z1:
+				return true
+	return false
+
+
+func _lasers() -> void:
+	var ml: MissionTowerLasers = m as MissionTowerLasers
+	if ml == null or ml.replay_wait >= 0.0 or l_i >= L_PATH.size():
+		return
+	var tgt: Vector3 = _l_pt(l_i)
+	if l_moving:
+		if _step_to(tgt, L_SPEED):
+			l_moving = false
+			l_judged = false
+			l_i += 1
+		return
+	if l_go_t >= 0.0:
+		l_go_t -= DT
+		if l_go_t < 0.0:
+			l_moving = true
+		return
+	var from: Vector3 = tw.player.global_position
+	if not l_judged:
+		l_judged = true
+		if not _l_timed(ml, from, tgt):
+			l_moving = true                       # only static beams near this leg: walk on
+			return
+		l_read = _reads()
+		l_wrong = _wrong()
+		if verbose:
+			print("      laser wait at wp %d (read %s wrong %s) t %.2f" % [l_i, str(l_read), str(l_wrong), ml.t])
+	var tj: float = ml.t + (L_WRONG_S if l_wrong else 0.0)
+	if _l_clear(ml, from, tgt, tj, l_read) and (not l_read or _l_clear(ml, from, tgt, tj + L_ANTICIPATE_S, true)):
+		l_go_t = _react()
+
+
+# ---------------------------------------------------------------------------
+# Showroom sneaker (T5b): the zigzag through the display walls' gaps (N_PATH, showroom-local). Every leg is judged against
+# the unalerted guards with their real sight (range, cone, the walls in the line): read 65 % = his patrol followed ahead
+# over the walk with a margin, unread = clear now with the bare cone; 15 % wrong = it goes anyway. It goes after the
+# reaction and crosses at N_SPEED without stopping. Seen: the gun bot (sim_day5's) on the showroom's grid, then
+# the rest of the way to the lift.
+# ---------------------------------------------------------------------------
+const N_SPEED: float = 2.3
+## The reaction a read leg allows for before it starts.
+const N_REACT_S: float = 0.35
+const N_PATH: Array = [Vector2(1.8, 17.0), Vector2(-1.8, 7.4), Vector2(-1.8, 4.4), Vector2(1.9, -5.2), Vector2(-1.8, -10.4),
+	Vector2(-1.8, -13.6), Vector2(1.9, -20.4), Vector2(0.5, -24.2)]
+var n_i: int = 0
+var n_moving: bool = false
+var n_judged: bool = false
+var n_go_t: float = -1.0
+var n_read: bool = true
+var n_wrong: bool = false
+var n_seen_said: bool = false
+
+
+func _n_pt(i: int) -> Vector3:
+	var q: Vector2 = N_PATH[i]
+	var w: Vector3 = tw.level.world("mannequins", Vector3(q.x, 0.0, q.y))
+	return Vector3(w.x, tw.player.global_position.y, w.z)
+
+
+## Where guard g will stand and face tau s from now along its patrol (walk to its point, the 1.2 s pause, the next point):
+## [feet, forward]. Straight legs (the real walk follows the nav path).
+func _n_guard_at(g: Gunman, tau: float) -> Array:
+	var pos: Vector3 = g.feet()
+	var fwd: Vector3 = g.forward()
+	if g.patrol.is_empty() or tau <= 0.0:
+		return [pos, fwd]
+	var i: int = int(g.get("_patrol_i"))
+	var wait: float = float(g.get("_wait"))
+	var left: float = tau
+	var n: int = 0
+	while left > 0.0 and n < 8:
+		n += 1
+		if wait > 0.0:
+			var w: float = minf(wait, left)
+			left -= w
+			wait -= w
+			if left <= 0.0:
+				break
+			i = (i + 1) % g.patrol.size()
+		var to: Vector3 = g.patrol[i] - pos
+		to.y = 0.0
+		var d: float = to.length()
+		if d < 0.05:
+			wait = 1.2
+			continue
+		fwd = to / d
+		var step: float = minf(d, GunData.WALK_SPEED * left)
+		pos += fwd * step
+		left -= step / GunData.WALK_SPEED
+		if step >= d - 0.001:
+			wait = 1.2
+	return [pos, fwd]
+
+
+## No unalerted guard sees any point of the leg a -> b. read: over the walk (+ N_REACT_S), his patrol followed ahead, with a
+## margin (+10 degrees, +1 m); unread: now only, his bare cone.
+func _n_clear(f: GunFight, a: Vector3, b: Vector3, read: bool) -> bool:
+	var dur: float = Vector2(b.x - a.x, b.z - a.z).length() / N_SPEED
+	var n: int = maxi(1, ceili(dur / 0.25))
+	for e: Variant in f.alive():
+		var g: Gunman = e as Gunman
+		if g == null or g.is_alerted:
+			continue
+		var half: float = deg_to_rad(g.patrol_fov_deg * 0.5 + (10.0 if read else 0.0))
+		var rng_m: float = g.patrol_sight_m + (1.0 if read else 0.0)
+		for i: int in n + 1:
+			var u: float = float(i) / float(n)
+			var q: Vector3 = a.lerp(b, u) + Vector3(0.0, 1.2, 0.0)
+			var gs: Array = _n_guard_at(g, N_REACT_S + dur * u) if read else [g.feet(), g.forward()]
+			var eye: Vector3 = (gs[0] as Vector3) + Vector3(0.0, GunData.EYE_Y, 0.0)
+			var to := Vector3(q.x - eye.x, 0.0, q.z - eye.z)
+			var d: float = to.length()
+			if d < (2.0 if read else 1.0):
+				return false                      # walks into him (he sees anyone at arm's length)
+			if d > rng_m:
+				continue
+			if (gs[1] as Vector3).angle_to(to / d) > half:
+				continue
+			if f.clear_line(eye, q):
+				return false
+	return true
+
+
+func _showroom() -> void:
+	var mn: MissionTowerStealth = m as MissionTowerStealth
+	if mn == null:
+		return
+	var f: GunFight = mn.fight
+	if mn.spotted and not n_seen_said and verbose:
+		n_seen_said = true
+		print("      spotted at wp %d moving %s read %s wrong %s at %s" % [n_i, str(n_moving), str(n_read), str(n_wrong),
+			str(tw.level.floor_xf("mannequins").affine_inverse() * tw.player.global_position)])
+		for e: Variant in f.alive():
+			var g: Gunman = e as Gunman
+			var to: Vector3 = tw.player.global_position - g.feet()
+			to.y = 0.0
+			print("        guard at %s fwd %s d %.1f ang %.0f patrol %d i %d wait %.1f" % [str(tw.level.floor_xf("mannequins").affine_inverse() * g.feet()),
+				str(g.forward()), to.length(), rad_to_deg(g.forward().angle_to(to.normalized())), g.patrol.size(), int(g.get("_patrol_i")), float(g.get("_wait"))])
+	if mn.spotted and not f.alive().is_empty():
+		_gun(f)
+		return
+	if f.cover_ctl:
+		f.cover_ctl.hold_override = false
+	tw.weapons.aim_override = false
+	if mn.spotted:
+		if _walk(f, mn.pts["goal"]):
+			_stop_walk()
+		return
+	if n_i >= N_PATH.size():
+		return
+	var tgt: Vector3 = _n_pt(n_i)
+	if n_moving:
+		if _step_to(tgt, N_SPEED):
+			n_moving = false
+			n_judged = false
+			n_i += 1
+		return
+	if n_go_t >= 0.0:
+		n_go_t -= DT
+		if n_go_t < 0.0:
+			n_moving = true
+		return
+	if not n_judged:
+		n_judged = true
+		n_read = _reads()
+		n_wrong = _wrong()
+	if n_wrong or _n_clear(f, tw.player.global_position, tgt, n_read):
+		n_go_t = _react()
+
+
+# ---------------------------------------------------------------------------
+# Warehouse joust (T5b): sim_day3's forklift bot (_bot_boss / _drive, game_t -> the mission clock, b_* -> fk_*): on foot to
+# the parked forklift and [F]; his charges steered out after the reaction (15 % later), his crates driven past, rams on his
+# flank in his open windows (forks up / stalled, 15 % a late start, 15 % a bad angle into his front), else circling him.
+# ---------------------------------------------------------------------------
+var fk_tell_seen: bool = false
+var fk_dodge_at: float = -1.0
+var fk_dodge_to: Variant = null
+var fk_unstick_t: float = 0.0
+var fk_unstick_steer: float = 1.0
+var fk_slow_t: float = 0.0
+var fk_toss_seen: int = 0
+var fk_toss_at: float = -1.0
+var fk_lift_seen: bool = false
+var fk_windows: int = 0
+var fk_ram_at: float = -1.0
+var fk_ram_eta: float = -1.0
+
+
+func _fk_reset() -> void:
+	fk_tell_seen = false
+	fk_dodge_at = -1.0
+	fk_dodge_to = null
+	fk_unstick_t = 0.0
+	fk_slow_t = 0.0
+	fk_toss_seen = 0
+	fk_toss_at = -1.0
+	fk_lift_seen = false
+	fk_ram_at = -1.0
+	fk_ram_eta = -1.0
+
+
+func _forklift() -> void:
+	var mf: MissionForklift = m as MissionForklift
+	var pf: PlayerForklift = mf.pf
+	var b: ForkliftBoss = mf.fight.boss as ForkliftBoss if mf.fight.boss else null
+	if pf == null or b == null or b.is_down():
+		return
+	if not pf.inside:
+		if verbose and int(mt * 60.0) % 60 == 0:
+			print("      t %.0f on foot: d to forklift %.1f can_enter %s" % [mt, WeaponMath.flat(tw.player.global_position, pf.forklift.global_position), str(pf.can_enter())])
+		if pf.can_enter():
+			pf.enter()
+		else:
+			_step_to(pf.forklift.global_position + WeaponMath.flat_dir(tw.player.global_position - pf.forklift.global_position) * 1.5, 4.5)
+		return
+	# it drives the real forklift (PlayerForklift input: throttle / steer, the Forklift's own acceleration and turning)
+	var fl: Forklift = pf.forklift
+	var me: Vector3 = fl.global_position
+	var bp: Vector3 = b.forklift.global_position
+	var st: String = b.state_name()
+	if verbose and int(mt * 60.0) % 60 == 0:
+		var lp: Vector3 = tw.level.floor_xf("warehouse").affine_inverse() * me
+		var lb: Vector3 = tw.level.floor_xf("warehouse").affine_inverse() * bp
+		print("      t %.0f hp %.0f me (%.1f, %.1f) v %.1f boss (%.1f, %.1f) %s d %.1f in %s bhp %.0f" % [mt, tw.combat.hp, lp.x, lp.z, fl.speed, lb.x, lb.z, st, WeaponMath.flat(me, bp), str(pf.input_override), b.hp])
+	# charges: steer out late (the reaction, 15 % later still)
+	if st == "charge_tell" and not fk_tell_seen:
+		fk_tell_seen = true
+		fk_dodge_at = mt + _react() + (0.25 if rng.randf() < 0.15 else 0.0)
+	if st != "charge_tell" and st != "charge":
+		fk_tell_seen = false
+		fk_dodge_to = null
+	if fk_dodge_at >= 0.0 and mt >= fk_dodge_at:
+		fk_dodge_at = -1.0
+		var away: Vector3 = WeaponMath.flat_dir(me - bp)
+		var perp := Vector3(-away.z, 0.0, away.x)
+		if perp.dot(fl.forward()) < 0.0:
+			perp = -perp      # the side it is already facing: no big turn
+		fk_dodge_to = me + perp * 8.0
+	# stuck against a box or a fence (throttle on, barely moving): back out with the wheel the other way
+	if fk_unstick_t > 0.0:
+		fk_unstick_t -= DT
+		pf.input_override = {"throttle": -0.8, "steer": fk_unstick_steer, "fork": 0}
+		return
+	if absf(fl.speed) < 1.0 and pf.input_override is Dictionary and absf(float((pf.input_override as Dictionary).get("throttle", 0.0))) > 0.4:
+		fk_slow_t += DT
+		if fk_slow_t > 1.2:
+			fk_slow_t = 0.0
+			fk_unstick_t = 0.9
+			fk_unstick_steer = -signf(float((pf.input_override as Dictionary).get("steer", 1.0)) + 0.01)
+			return
+	else:
+		fk_slow_t = 0.0
+	if fk_dodge_to is Vector3:
+		pf.input_override = _drive(fl, fk_dodge_to)
+		return
+	# his crate in the air (aimed where it stood): keep driving, it lands behind (after the reaction)
+	if b.crates_in_flight() > 0 and fk_toss_seen != b.tosses:
+		fk_toss_seen = b.tosses
+		fk_toss_at = mt + _react()
+	if fk_toss_at >= 0.0 and mt >= fk_toss_at and b.crates_in_flight() > 0:
+		pf.input_override = _drive(fl, me + fl.forward() * 8.0)
+		return
+	if b.crates_in_flight() == 0:
+		fk_toss_at = -1.0
+	# rams: his forks up or he is stalled -> line up on his side (4 m out), then straight into his flank (15 % mistimed:
+	# a late start)
+	var open: bool = b.ram_open()
+	if open and not fk_lift_seen:
+		fk_lift_seen = true
+		fk_windows += 1
+		fk_ram_at = mt + _react() + (0.6 if rng.randf() < 0.15 else 0.0)
+	if not open:
+		fk_lift_seen = false
+		fk_ram_at = -1.0
+		fk_ram_eta = -1.0
+	if fk_ram_at >= 0.0 and mt >= fk_ram_at and open:
+		var bx: Vector3 = b.forklift.global_basis.x
+		var side: Vector3 = bx * (1.0 if (me - bp).dot(bx) >= 0.0 else -1.0)
+		var entry: Vector3 = bp + side * 3.5
+		if fk_ram_eta < 0.0:
+			# the time a forklift needs from here: the turn (1.8 rad/s) and the drive to his side (from its speed now)
+			var to_e: Vector3 = WeaponMath.flat_dir(entry - me)
+			var ang: float = absf(fl.forward().signed_angle_to(to_e, Vector3.UP))
+			var need: float = ang / Forklift.TURN_RATE + WeaponMath.flat(me, entry) / maxf(absf(fl.speed) + 2.0, 4.0)
+			var left: float = (b.lift_s() if st == "lift" else (GunData.OVERHEAT_S if st == "overheat" else b.st_len)) - b.st_t
+			fk_ram_eta = mt + need if need <= left else INF
+		if mt < fk_ram_eta:
+			pf.input_override = _drive(fl, entry)
+			return
+		# there: the ram (15 %: a bad angle, his front: both bounce and it hurts)
+		var at: Vector3 = entry if rng.randf() > 0.15 else bp + b.forklift.forward() * 3.5
+		fl.global_position = Vector3(at.x, fl.floor_y, at.z)
+		var to: Vector3 = bp - at
+		fl.rotation.y = atan2(-to.x, -to.z)
+		fl.speed = 6.0
+		pf._ram_cd = 0.0
+		pf.input_override = {"throttle": 1.0, "steer": 0.0, "fork": 0}
+		fk_ram_at = -1.0
+		fk_ram_eta = -1.0
+		return
+	# otherwise circle him at 8-10 m on his flank, always moving (a forklift that stands still is a target)
+	var flank: Vector3 = b.forklift.global_basis.x * (1.0 if (me - bp).dot(b.forklift.global_basis.x) >= 0.0 else -1.0)
+	var around: Vector3 = bp + (flank * 0.8 + WeaponMath.flat_dir(me - bp) * 0.6).normalized() * 9.0
+	pf.input_override = _drive(fl, around, 0.7)
+
+
+## Throttle / steer toward a floor point (left positive steer, as PlayerForklift reads WASD); backs up when it is right
+## behind and close.
+func _drive(fl: Forklift, target: Vector3, max_th: float = 1.0) -> Dictionary:
+	var to: Vector3 = target - fl.global_position
+	to.y = 0.0
+	var dist: float = to.length()
+	if dist < 0.8:
+		return {"throttle": 0.0, "steer": 0.0, "fork": 0}
+	var ang: float = fl.forward().signed_angle_to(to / dist, Vector3.UP)
+	var steer: float = clampf(ang * 2.0, -1.0, 1.0)
+	var th: float = max_th
+	if absf(ang) > 2.4 and dist < 5.0:
+		return {"throttle": -0.7, "steer": -steer, "fork": 0}
+	if absf(ang) > 1.2:
+		th = minf(th, 0.55)
+	return {"throttle": th, "steer": steer, "fork": 0}
+
+
+# ---------------------------------------------------------------------------
+# Deck rider (T5b): sim_bike_chase_d2's sloppy bot (the Q6 numbers of its "sloppy" entry) on the ring: real steering and
+# gas / brake / drift through the Input actions, kicks through PlayerBikeCombat.kick; the deck has no set pieces (the
+# barrier, drift zones and roadblocks are skipped when chase.set_pieces is null).
+# ---------------------------------------------------------------------------
+const PK: Dictionary = {"react": 0.65, "kick_p": 0.8, "drift": 0.7, "corner_brake": 0.85, "wrong": 0.15, "wander": 1.1}
+var pk_seen: Dictionary = {}
+var pk_reach_t: Dictionary = {}
+var pk_helmets: Dictionary = {}
+var pk_brake_left: float = 0.0
+var pk_shift_left: float = 0.0
+var pk_shift: float = 0.0
+var pk_wander_ph: float = 0.0
+var pk_prev_stab: float = -1.0
+var pk_tele: int = 0
+var pk_lost: float = 0.0
+var pk_min: float = 999.0
+
+
+func _pk_reset() -> void:
+	pk_seen.clear()
+	pk_reach_t.clear()
+	pk_helmets.clear()
+	pk_brake_left = 0.0
+	pk_shift_left = 0.0
+	pk_wander_ph = rng.randf_range(0.0, TAU)
+	pk_prev_stab = -1.0
+	_pk_controls(false, false, false, 0.0)
+
+
+func _parking() -> void:
+	var mp: MissionTowerParking = m as MissionTowerParking
+	var chase: BikeChase = mp.chase if mp else null
+	var bike: PlayerBike = tw.bike
+	if chase == null or bike == null or chase.route == null or chase.state != "running":
+		_pk_controls(false, false, false, 0.0)
+		return
+	var route: BikeRoute = chase.route
+	var stb: float = chase.combat.stability
+	if pk_prev_stab >= 0.0 and stb < pk_prev_stab:
+		pk_lost += pk_prev_stab - stb
+	pk_prev_stab = stb
+	pk_min = minf(pk_min, stb)
+	var s: float = chase.s_p
+	var spd: float = absf(bike.current_speed_ms)
+	pk_brake_left -= DT
+	pk_shift_left -= DT
+	# telegraphs near the player: read 65 %, after the reaction a sidestep (15 % the wrong way) or a brake for a stick
+	for b: Variant in chase.bikers + chase.cops:
+		var e: BikerEnemy = b as BikerEnemy
+		if e == null or not is_instance_valid(e):
+			continue
+		if e.telegraphing() and e.kind != "thrower" and e.pos2.distance_to(chase.p_pos) < 8.0:
+			if not pk_seen.has(e):
+				pk_tele += 1
+				if verbose:
+					print("    pk tele %s at %.1f s: dy %.2f lat %.2f hits %d stab %.0f" % [e.kind, mt, e.floor_y - (bike.global_position.y + BikeChase.BIKE_FLOOR_OFFSET), (e.pos2 - chase.p_pos).dot(chase.p_right), chase.attack_hits, stb])
+				pk_seen[e] = [mt, false, rng.randf() < float(PK["react"]), _react()]
+			var sv: Array = pk_seen[e]
+			if bool(sv[2]) and not bool(sv[1]) and mt - float(sv[0]) >= float(sv[3]):
+				sv[1] = true
+				var lat: float = (e.pos2 - chase.p_pos).dot(chase.p_right)
+				var wrong: bool = _wrong()
+				if e.kind == "stick" or e.kind == "pickup":
+					pk_brake_left = 0.55 if not wrong else 0.0
+				else:
+					pk_shift = -signf(lat) * 2.2 * (-1.0 if wrong else 1.0)
+					pk_shift_left = 0.55
+		elif pk_seen.has(e) and not e.is_attacking():
+			pk_seen.erase(e)
+	if verbose and fmod(mt, 2.0) < DT:   # every 2 s: each biker's state, distance, side offset, role, hold and slot error
+		var ln: String = ""
+		for b2: Variant in chase.bikers:
+			var e2: BikerEnemy = b2 as BikerEnemy
+			if e2 and is_instance_valid(e2):
+				ln += " %s:%s d%.1f lat%.1f r%d set%.1f/%.1f sl%.1f" % [e2.kind, e2.state_name(), e2.pos2.distance_to(chase.p_pos), (e2.pos2 - chase.p_pos).dot(chase.p_right), e2.role, e2.settled_t, e2.pace_t, e2.pos2.distance_to(e2.slot_target())]
+		print("    pk %.0f s spd %.1f s_p %.0f wave %d hits %d starts %d:%s" % [mt, spd, s, chase.wave, chase.attack_hits, chase.attack_starts, ln])
+	# thrown helmets: a brake when it reads one
+	for h: Dictionary in chase.helmets:
+		if not bool(h["active"]):
+			continue
+		var key: int = int((h["node"] as Node).get_instance_id())
+		if pk_helmets.has(key):
+			continue
+		pk_helmets[key] = true
+		if rng.randf() < float(PK["react"]):
+			pk_brake_left = maxf(pk_brake_left, 0.6)
+	# kicks: a rider in reach for the reaction, 80 %, 15 % to the wrong side
+	if chase.combat.kick_cd <= 0.0 and not chase.combat.kicking():
+		for sd2: int in [-1, 1]:
+			var tg: Node3D = chase.combat.kick_target(sd2)
+			if tg == null:
+				continue
+			pk_reach_t[tg] = float(pk_reach_t.get(tg, 0.0)) + DT
+			if float(pk_reach_t[tg]) >= _react():
+				pk_reach_t.erase(tg)
+				if rng.randf() < float(PK["kick_p"]):
+					chase.combat.kick(-sd2 if _wrong() else sd2)
+				break
+	# steering toward the ring ahead with the sloppy wander (+ a dodge shift)
+	var look: float = 9.0 + spd * 0.35
+	var want_d: float = (sin(mt * 0.45 + pk_wander_ph) * 0.75 + sin(mt * 1.2 + pk_wander_ph * 1.7) * 0.25) * float(PK["wander"])
+	if pk_shift_left > 0.0:
+		want_d = pk_shift
+	var tgt: Vector2 = route.world(clampf(s + look, 0.0, route.length), want_d)
+	var to: Vector2 = tgt - chase.p_pos
+	var want: float = atan2(-to.x, -to.y)
+	var err: float = wrapf(want - bike.rotation.y, -PI, PI)
+	var steer: float = clampf(err * 3.0, -1.0, 1.0)
+	var sharp: float = route.max_turn(s + 5.0, s + 35.0)
+	var brake: bool = pk_brake_left > 0.0
+	if sharp > 55.0 and spd > 15.0 and rng.randf() < float(PK["corner_brake"]):
+		brake = true
+	_pk_controls(not brake, brake, false, steer)
+
+
+func _pk_controls(gas: bool, brake: bool, drift: bool, steer: float) -> void:
+	for pair: Array in [["gas", gas], ["brake", brake], ["drift", drift]]:
+		if bool(pair[1]):
+			Input.action_press(String(pair[0]))
+		else:
+			Input.action_release(String(pair[0]))
+	if steer > 0.02:
+		Input.action_press("steer_left", steer)
+		Input.action_release("steer_right")
+	elif steer < -0.02:
+		Input.action_press("steer_right", -steer)
+		Input.action_release("steer_left")
+	else:
+		Input.action_release("steer_left")
+		Input.action_release("steer_right")
