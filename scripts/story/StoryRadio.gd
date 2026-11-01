@@ -62,10 +62,12 @@ var player: AudioStreamPlayer
 
 ## The radio lines of a beat (copy; [] when it has none).
 static func lines(beat_id: String) -> Array:
-	return (SCRIPTS.get(beat_id, []) as Array).duplicate(true)
+	return (SCRIPTS.get(beat_id, CastD7.RADIO.get(beat_id, [])) as Array).duplicate(true)   # Day 7 lines: CastD7 (w4-day7)
 
 
 static func prefix(speaker_id: String) -> String:
+	if CastD7.RADIO_PREFIX.has(speaker_id) and not PREFIX.has(speaker_id):   # Day 7 (w4-day7): Lọ on the speakers
+		return String(CastD7.RADIO_PREFIX[speaker_id])
 	return String(PREFIX.get(speaker_id, StoryCast.speaker(speaker_id).to_upper() if StoryCast.has(speaker_id) else speaker_id.to_upper()))
 
 

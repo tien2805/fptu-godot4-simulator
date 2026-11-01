@@ -83,12 +83,13 @@ static func perfect(id: String) -> Array:
 
 func _part_a() -> void:
 	print("  [part] A scoring")
-	_check(StoryRank.MISSIONS.size() == RANKED.size(), "A: %d ranked beats (%d)" % [RANKED.size(), StoryRank.MISSIONS.size()])
+	var days15: int = StoryRank.MISSIONS.keys().filter(func(k: Variant) -> bool: return not (String(k).begins_with("d6_") or String(k).begins_with("d7_"))).size()
+	_check(days15 == 19, "A: 19 ranked beats of Days 1-5 (%d)" % days15)   # Phase D days add their own (w4-day7)
 	for id: String in RANKED:
 		_check(StoryRank.MISSIONS.has(id), "A: %s is ranked" % id)
 		_check(StoryMissions.BEATS.has(id), "A: %s exists in StoryMissions" % id)
 	for id2: String in StoryRank.MISSIONS.keys():
-		_check(RANKED.has(id2), "A: %s is one of the plan's ranked beats" % id2)
+		_check(RANKED.has(id2) or String(id2).begins_with("d6_") or String(id2).begins_with("d7_"), "A: %s is one of the plan's ranked beats" % id2)
 	_check(StoryRank.report("d1_morning", {"time": 10.0}) == "" and StoryRank.evaluate("d0_wake", {}).is_empty(), "A: an unranked beat gives no letter")
 	# letter edges
 	_check(StoryRank.letter_of(85.0) == "S" and StoryRank.letter_of(84.9) == "A" and StoryRank.letter_of(65.0) == "A"

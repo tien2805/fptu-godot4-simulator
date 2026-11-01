@@ -127,6 +127,8 @@ Không có nhạc riêng (chỉ âm thanh hiệu ứng): cuộc gọi 3 giờ s�
 | `boss_d5` | đấu kiếm Za Mẫn | *Battle Without Honor or Humanity*, Tomoyasu Hotei |
 | `seg_d5_boss` | cảnh đánh lớn 25 s trong phòng server | *The Good Life*, José James (đã có) |
 | `cine_d5` | dòng tiền chỉ về Trà Sữa Lọ (18 s) | đã có |
+| `cine_d7_intro` | bình minh, Anh Duy báo 08:00 tool lên hệ thống thi, Mr.T "giữ cửa thang máy" (13 s) | *Lux Aeterna* (nhạc phim *Requiem for a Dream*), Clint Mansell |
+| `cine_d7_monologue` | Lùm Văn Lọ "Mọi thứ đều nằm trong kế hoạch", búng tay tắt đèn (13 s) | *Sweet Dreams (Are Made of This)*, Eurythmics |
 | `end_c` | kết C "Kẻ phản diện mới" (26 s, có credits) | *Money, Money, Money*, ABBA (đã có) |
 
 Nhạc chuông của Sói Xám là âm thanh tự tạo (`ringtone_synth`), không phải nhạc nền.
@@ -168,7 +170,8 @@ Nhạc chuông của Sói Xám là âm thanh tự tạo (`ringtone_synth`), khô
 | `cine_d4` | *Every Breath You Take*, The Police | "bài hát kẻ bám đuôi", hợp Cừu Dolly |
 | `cine_d5` | *Money*, Pink Floyd | tiếng máy tính tiền, dòng tiền |
 | `ai_reveal` | *O Fortuna* (Carmina Burana) | hoành tráng kiểu meme |
-| `boss_d7` | *Thunderstruck*, AC/DC | dồn dập |
+| `mission_tower` | *Thunderstruck*, AC/DC | dồn dập, leo từng tầng tòa Lọ Academy |
+| `boss_d7` | *The Final Countdown*, Europe | trùm cuối, đếm ngược tới 08:00 |
 | `end_a` (kết thật) | *September*, Earth, Wind & Fire | |
 | `end_b` (thắng nhưng mất bạn) | *Lean on Me*, Bill Withers | |
 | `end_c` (thành CEO phản diện) | *Money, Money, Money*, ABBA | |

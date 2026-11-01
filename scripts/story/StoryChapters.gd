@@ -69,6 +69,11 @@ const GALLERY: Array = [
 	["cine_d6_choice_take", 6, "Nhận vali"],
 	["cine_d6_choice_refuse", 6, "Từ chối"],
 	["ai_reveal", 6, "Lọ Academy"],
+	# Day 7 (w4-day7)
+	["cine_d7_intro", 7, "Còn 1 ngày"],
+	["cine_d7_monologue", 7, "Mọi thứ đều nằm trong kế hoạch"],
+	["seg_d7_phase2", 7, "Có điện rồi"],
+	["seg_d7_finisher", 7, "Đòn chân kẹp cổ số 21"],
 	# --- Endings (w4-endings): the Day 7 ending cinematics (the ending gallery plays each ending's whole sequence) ---
 	["end_a", 7, "Kết A: Minh oan trọn vẹn"],
 	["ai_true_end", 7, "Kết A: Tấm biển sập"],

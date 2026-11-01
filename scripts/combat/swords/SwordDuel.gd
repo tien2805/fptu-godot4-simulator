@@ -48,6 +48,9 @@
 # false while the boss holds at 0 HP or the QTE runs, so no 0.5 s orbit takes the camera and the time scale from it), and
 # while the QTE runs (tree not paused) its slow motion and its camera are asked for again if anything ended them (a pause
 # of the tree ends Impact's slow motion).
+# Day 7 (w4-day7, additive): opts "rain" (true: wet from start() / retry() for the whole run: the puddles, the slide, the
+# lunges, the look and the rain loop, without the ceiling heads, their water, the cut or the popup; the host brings its
+# own rain), "look" (the look preset instead of LOOK), "qte_prompts" (SwordQTE prompts instead of SwordQTE.PROMPTS).
 # ===========================================
 class_name SwordDuel
 extends Node3D
@@ -113,6 +116,10 @@ var _qte_ctrl: bool = true
 var _fight_last: Callable = Callable()
 ## Times the QTE had to ask again for its slow motion or its camera (tests).
 var qte_rearms: int = 0
+## Day 7 (w4-day7): wet for the whole run (the rooftop rain), the look pushed when wet, the QTE's prompts.
+var rain_mode: bool = false
+var look_preset: String = LOOK
+var qte_prompts: Array = SwordQTE.PROMPTS
 
 
 func setup(opts: Dictionary) -> void:
@@ -141,6 +148,9 @@ func setup(opts: Dictionary) -> void:
 	var p0: Vector3 = player.global_position if player else at
 	centre = Vector3((at.x + p0.x) * 0.5, p0.y, (at.z + p0.z) * 0.5)
 	look_host = opts.get("look_host", opts.get("roam", null))
+	rain_mode = bool(opts.get("rain", false))
+	look_preset = String(opts.get("look", LOOK))
+	qte_prompts = opts.get("qte_prompts", SwordQTE.PROMPTS)
 	_build_sprinklers(opts.get("steam_at", []))
 	qte_on = bool(opts.get("qte", true))
 	qte_window = float(Difficulty.pick(0.9, 1.2))
@@ -171,6 +181,8 @@ func start() -> void:
 	state = "running"
 	fight.start()
 	_wrap_last()
+	if rain_mode:
+		_sprinklers(true)
 
 
 ## After `lost` (or any time): a fresh boss, the player back at the start spot with full HP.
@@ -186,6 +198,8 @@ func retry() -> void:
 	state = "running"
 	fight.retry()
 	_wrap_last()
+	if rain_mode:
+		_sprinklers(true)
 
 
 ## End without a result: the boss freed, the unarmed move set, the wheel and the HUD back to normal.
@@ -290,10 +304,10 @@ func _on_qte_reached() -> void:
 	if player:
 		player.controls_enabled = false              # the player's moves frozen (the boss is staged by KatanaBoss)
 	if is_inside_tree():
-		Impact.clock(self).slowmo(QTE_SCALE, qte_window * float(SwordQTE.PROMPTS.size()) + 0.4, self)
+		Impact.clock(self).slowmo(QTE_SCALE, qte_window * float(qte_prompts.size()) + 0.4, self)
 		_prev_cam = get_viewport().get_camera_3d()
 	qte_shots = 0
-	qte.start(SwordQTE.PROMPTS, qte_window)
+	qte.start(qte_prompts, qte_window)
 	qte_started.emit()
 
 
@@ -400,7 +414,7 @@ func _sprinklers(on: bool) -> void:
 		return
 	sprinklers_on = on
 	for e: CPUParticles3D in emitters:
-		e.emitting = on
+		e.emitting = on and not rain_mode
 	for st: CPUParticles3D in steam:
 		st.emitting = on
 	for pd: MeshInstance3D in puddles:
@@ -413,9 +427,9 @@ func _sprinklers(on: bool) -> void:
 		if _rain and is_inside_tree():
 			_rain.stream = SwordAudio.stream("rain")
 			_rain.play()
-		if combat and combat.hud:
+		if combat and combat.hud and not rain_mode:
 			combat.hud.popup(T_SPRINKLERS, CombatHUD.WARN)
-		if heads and heads.is_inside_tree():
+		if heads and heads.is_inside_tree() and not rain_mode:
 			cuts += 1
 			var cd: CameraDirector = CameraDirector.live()
 			if cd:
@@ -432,11 +446,11 @@ func _look(on: bool) -> void:
 		return
 	_looked = on
 	if look_host.has_method("look"):
-		look_host.call("look" if on else "unlook", LOOK)
+		look_host.call("look" if on else "unlook", look_preset)
 	elif on:
-		LookPresets.apply(LOOK, look_host)
+		LookPresets.apply(look_preset, look_host)
 	else:
-		LookPresets.restore(look_host, LOOK)
+		LookPresets.restore(look_host, look_preset)
 
 
 ## The dodge's slide factor (PlayerCombat.dodge_speed_k when the shared knob exists).
@@ -482,7 +496,8 @@ func _build_sprinklers(steam_at: Array) -> void:
 	var head_mat: StandardMaterial3D = CineFX._mat(Color("#B8BEC6"), 0.3)
 	for i: int in mini(SPRINKLER_N, PUDDLES.size()):
 		var at: Vector3 = centre + (PUDDLES[i][0] as Vector3) + Vector3(0.0, CEIL_Y, 0.0)
-		CineFX._cyl(root, "SprinklerHead", 0.05, 0.08, 0.08, at + Vector3(0.0, 0.05, 0.0), head_mat)
+		if not rain_mode:                     # the roof has no ceiling heads
+			CineFX._cyl(root, "SprinklerHead", 0.05, 0.08, 0.08, at + Vector3(0.0, 0.05, 0.0), head_mat)
 		var e := CPUParticles3D.new()
 		e.name = "Water"
 		e.emitting = false

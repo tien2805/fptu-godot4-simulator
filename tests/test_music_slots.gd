@@ -96,12 +96,17 @@ func _catalogue() -> void:
 	for fk: String in StoryRoam.FIGHT_MUSIC.keys():
 		_check(MusicDirector.SLOTS.has(String(StoryRoam.FIGHT_MUSIC[fk])), "fight %s plays a known slot" % fk)
 	for tk: String in StoryMissions.LAIR_TASKS:
+		if StoryTower.LAIR_MUSIC.has(tk):   # Day 7 (w4-day7): the tower's tasks; the blackout is silent by design
+			var tm: String = String(StoryTower.LAIR_MUSIC[tk])
+			_check(MusicDirector.SLOTS.has(tm) or (tm == "" and tk == "boss_dark"), "tower task %s plays a known slot" % tk)
+			continue
 		# each lair scene owns its tasks' music (the Day 5 basement, the Day 6 canal: its back room on a night track)
 		var lm: Dictionary = StoryCanal.LAIR_MUSIC if StoryCanal.TASKS.has(tk) else StoryBasement.LAIR_MUSIC
 		var ls: String = String(lm.get(tk, ""))
 		_check(MusicDirector.SLOTS.has(ls) or MusicDirector.NIGHT_SLOTS.has(ls), "lair task %s plays a known slot (%s)" % [tk, ls])
 	_check(String(StoryCanal.LAIR_MUSIC["shop"]) == "mission_shop" and String(StoryCanal.LAIR_MUSIC["boat"]) == "mission_boat", "Day 6: the shop and the boat chase on their own slots")
-	for rs: String in ["seg_d2_chase", "seg_d3_gunfight", "seg_d3_crates", "seg_d5_gunfight", "seg_d5_hack", "seg_d6_infiltrate"]:
+	for rs: String in ["seg_d2_chase", "seg_d3_gunfight", "seg_d3_crates", "seg_d5_gunfight", "seg_d5_hack", "seg_d6_infiltrate",
+			"seg_d7_floors", "seg_d7_phase1"]:
 		_check(MusicDirector.REPLAY_SLOTS.has(rs), "the Phase C replay %s is a slot" % rs)
 	var doc: String = FileAccess.get_file_as_string("res://docs/cinematics/music_suggestions.md")
 	var loads: int = 0

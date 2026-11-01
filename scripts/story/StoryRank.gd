@@ -40,7 +40,8 @@ const LABELS: Dictionary = {"time": "Thời gian", "dmg": "Máu mất", "fails":
 const OPT_LABELS: Dictionary = {"seen": "Không bị để ý", "shortcut": "Đi đường tắt", "spotted": "Không bị phát hiện",
 	"all": "Đập hết thùng", "wrong": "Không giao nhầm món", "leaks": "Không để lọt dữ liệu",
 	"breach_clean": "Chặn đột kích không mất máu", "qte_clean": "Kết liễu ngay lần đầu", "domino": "Đổ tủ đè bảo vệ",
-	"crane": "Dùng cần cẩu hạ địch", "noticed": "Không để bảo vệ nghi ngờ"}
+	"crane": "Dùng cần cẩu hạ địch", "noticed": "Không để bảo vệ nghi ngờ",
+	"staggers": "Rọi đèn chói mắt Lọ"}   # Day 7 (w4-day7)
 const T_YES: String = "Đạt"
 const T_NO: String = "Chưa"
 
@@ -74,6 +75,16 @@ const MISSIONS: Dictionary = {
 	"d6_shop": {"time": [50.0, 150.0], "opt": {"key": "wrong", "max": 0}},
 	"d6_backroom": {"time": [25.0, 90.0], "fails": [0.0, 4.0], "opt": {"key": "noticed", "want": false}},   # ~20 s a try
 	"d6_boat": {"time": [66.0, 95.0], "dmg": [30.0, 160.0], "ko": [3, 8]},
+	# Day 7 (w4-day7): provisional pars until sim_day7 (plan 2026-11-01-w4-day7.md T5)
+	"d7_parking": {"time": [90.0, 170.0], "fails": [0.0, 1.5], "ko": [0, 8]},
+	"d7_warehouse": {"time": [80.0, 200.0], "dmg": [80.0, 400.0]},
+	"d7_servers": {"time": [30.0, 100.0], "dmg": [20.0, 200.0], "opt": {"key": "qte_clean", "want": true}},
+	"d7_mannequins": {"time": [60.0, 160.0], "dmg": [0.0, 150.0], "opt": {"key": "spotted", "want": false}},
+	"d7_lasers": {"time": [35.0, 90.0], "fails": [0.0, 3.0]},
+	"d7_boss1": {"time": [90.0, 240.0], "dmg": [40.0, 300.0]},
+	"d7_boss2": {"time": [50.0, 150.0], "dmg": [0.0, 100.0], "opt": {"key": "staggers", "min": 2}},
+	"d7_boss3": {"time": [45.0, 130.0], "dmg": [20.0, 200.0], "opt": {"key": "qte_clean", "want": true}},
+	"d7_typing": {"time": [70.0, 160.0], "opt": {"key": "leaks", "max": 0}},
 }
 
 
