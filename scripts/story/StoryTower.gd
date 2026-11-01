@@ -12,7 +12,9 @@
 #   - the runner: kind "lair" = a task (MISSION_SCRIPTS) on its floor with its music (LAIR_MUSIC; no file = silence), the
 #     fail card StoryFail (THỬ LẠI = retry, VỀ THẾ GIỚI MỞ = back to free roam beside the marker, the beat stays), the beat's
 #     "after" cinematic on the win (the beat completes first: autosave); kind "cine" (the monologue) = played on its floor
-#     (LairTower.cine_xf) with drop_set; any other beat hands back (StoryDirector.leave_lair).
+#     (LairTower.cine_xf) with drop_set, LairTower.hide_for_cine hiding the real pieces a timeline brings itself (the two
+#     plinths under seg_d7_phase2's, the helicopter and the rain under seg_d7_finisher's) until it ends; any other beat
+#     hands back (StoryDirector.leave_lair).
 # Pre-merge hand-off: the last beat's next (d7_ending) belongs to the endings stream; when that beat does not exist yet the
 # scene records `handoff_beat`, does not complete the step (no "unknown beat" error) and hands back.
 # test_opts (static, tests): "missions" (mission opts), "cine" (CinePlayer opts), "capture_mouse" (false), "go_roam" (false).
@@ -576,6 +578,7 @@ func _cine_black(p: CinePlayer, tl: CineTimeline) -> void:
 			n.visible = false
 	env.environment.tonemap_exposure *= float(tl.stage.get("exposure", 1.0))
 	env.environment.ambient_light_energy *= float(tl.stage.get("ambient", 1.0))
+	level.hide_for_cine(true, tl.slot)          # the real pieces the timeline brings itself (under the black frame)
 
 
 func _cine_go(p: CinePlayer, tl: CineTimeline, xf: Transform3D, opts: Dictionary) -> void:
@@ -588,6 +591,7 @@ func _cine_go(p: CinePlayer, tl: CineTimeline, xf: Transform3D, opts: Dictionary
 
 
 func _on_cine_finished(skipped: bool, slot: String) -> void:
+	level.hide_for_cine(false)
 	for n: Variant in (_cine_saved.get("vis", {}) as Dictionary).keys():
 		if is_instance_valid(n):
 			n.visible = _cine_saved["vis"][n]

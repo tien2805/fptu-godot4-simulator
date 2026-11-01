@@ -56,7 +56,7 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	"keynote", "desk",
 	# Phase D Day 7 (w4-day7): CinePropsD7.KINDS (Lọ's gear, the saber, the gallery and roof props)
 	"gold_glasses", "pink_collar", "gold_chain", "saber", "vase", "plinth", "speaker", "laser_emitter", "breaker",
-	"exam_server", "helicopter", "academy_sign"]
+	"exam_server", "helicopter", "academy_sign", "flashlight", "heli_rotor", "searchlight", "rain", "gallery_hall", "roof_deck"]
 
 var _serial: int = 0
 var _parts: Array[Dictionary] = []     # {node: CPUParticles3D, s0, life}

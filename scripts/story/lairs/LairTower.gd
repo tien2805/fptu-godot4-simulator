@@ -29,6 +29,11 @@ const TASK_FLOOR: Dictionary = {"parking": "parking", "warehouse": "warehouse", 
 	"typing": "penthouse"}
 ## Cinematic slots and the floor they are staged on (cine_xf).
 const SLOT_FLOOR: Dictionary = {"cine_d7_monologue": "gallery", "seg_d7_phase2": "gallery", "seg_d7_finisher": "roof"}
+## A slot's stage origin in its floor's frame (T4): seg_d7_phase2's 14 x 10 fight box puts its surface prop (a plinth) on the
+## hall's plinth at (3, 0, 0) and its spare plinth on (-3, 0, 0): those two real plinths hide while it plays (hide_for_cine).
+const SLOT_OFFSET: Dictionary = {"seg_d7_phase2": Vector3(0.4, 0.0, -0.75)}
+## The real plinths a slot replaces with its own (floor-local x, z).
+const CINE_PLINTHS: Dictionary = {"seg_d7_phase2": [Vector2(3.0, 0.0), Vector2(-3.0, 0.0)]}
 const WALL_T: float = 0.4
 # parking
 const RING_R: float = 22.0
@@ -102,6 +107,7 @@ var rain: Array[CPUParticles3D] = []
 var exam_server: Node3D = null
 var _t: float = 0.0
 var _mats: Dictionary = {}
+var _cine_hidden: Array = []
 
 
 func _init() -> void:
@@ -160,14 +166,73 @@ func floor_xf(floor_id: String) -> Transform3D:
 	return Transform3D(Basis.IDENTITY, Vector3(CELL_X * maxi(0, FLOORS.find(floor_id)), 0.0, 0.0))
 
 
-## The frame a cinematic slot is staged in (its floor), else the shown floor.
+## The frame a cinematic slot is staged in (its floor, moved by SLOT_OFFSET), else the shown floor.
 func cine_xf(slot: String) -> Transform3D:
-	return floor_xf(String(SLOT_FLOOR[slot])) if SLOT_FLOOR.has(slot) else room_xf()
+	var xf: Transform3D = floor_xf(String(SLOT_FLOOR[slot])) if SLOT_FLOOR.has(slot) else room_xf()
+	return xf.translated_local(SLOT_OFFSET.get(slot, Vector3.ZERO))
 
 
-## Nothing of the tower is carried by the Day 7 timelines (their sets are dropped): kept for the StoryBasement duck type.
-func hide_for_cine(_on: bool, _x: bool = false) -> void:
-	pass
+## The Day 7 timelines drop their carried sets here (drop_set) but bring what they animate themselves: while `slot` plays
+## (on), the real pieces it replaces hide; off shows them again. seg_d7_phase2: the two plinths (and their vases) under its
+## own; seg_d7_finisher: the hovering helicopter, its searchlight and the rain (the timeline flies its own on the cinematic
+## clock: the paused tree would freeze these mid-air).
+func hide_for_cine(on: bool, slot: String = "") -> void:
+	if not on:
+		for e: Array in _cine_hidden:
+			if is_instance_valid(e[0]):
+				(e[0] as Node3D).visible = bool(e[1])
+				if e[0] is CPUParticles3D:
+					(e[0] as CPUParticles3D).emitting = bool(e[2])
+		_cine_hidden.clear()
+		return
+	var hide: Array[Node3D] = []
+	for q: Vector2 in CINE_PLINTHS.get(slot, []):
+		for v: Dictionary in vases:
+			var at: Vector3 = v["at"]
+			if Vector2(at.x, at.z).distance_to(q) < 0.1:
+				hide.append(v["plinth"])
+	if slot == "seg_d7_finisher":
+		for n: Node3D in [heli, heli_light]:
+			if n:
+				hide.append(n)
+		for r: CPUParticles3D in rain:
+			hide.append(r)
+	for n2: Node3D in hide:
+		_cine_hidden.append([n2, n2.visible, (n2 as CPUParticles3D).emitting if n2 is CPUParticles3D else false])
+		n2.visible = false
+		if n2 is CPUParticles3D:
+			(n2 as CPUParticles3D).emitting = false
+
+
+## Hidden by hide_for_cine (tests): [node, was visible, was emitting].
+func cine_hidden() -> Array:
+	return _cine_hidden
+
+
+## The vase gallery as a cinematic's carried set (XEM LẠI PHIM; the tower drops it and shows the real hall): the shell, the
+## twelve plinths with their vases (plinth_<i>, vase seed i as _gallery builds them), the wall speakers, the breakers and
+## the sign, for a stage whose origin sits at `origin` in the hall's frame. Plinths at the hall positions in `skip`
+## (Vector2 x, z: the timeline brings its own there) and pieces off the 28 x 24 stage spot are left out.
+## [[id, kind, stage pos, yaw deg, opts], ...]; the caller marks them "set".
+static func cine_gallery_set(origin: Vector3 = Vector3.ZERO, skip: Array = []) -> Array:
+	var out: Array = [["hall", "gallery_hall", origin, 0.0, {"width": GA_W, "depth": GA_D, "height": GA_H}]]
+	var i: int = 0
+	for z: float in PLINTH_ZS:
+		for x: float in PLINTH_XS:
+			if not skip.has(Vector2(x, z)):
+				out.append(["plinth_%d" % i, "plinth", origin + Vector3(x, 0.0, z), 0.0, {"vase": i}])
+			i += 1
+	var walls: Array = []
+	for s: Array in SPEAKERS:
+		walls.append(["speaker", s, {}])
+	for b: Array in BREAKERS:
+		walls.append(["breaker", b, {"on": false}])
+	for w: Array in walls:
+		var at: Vector3 = origin + ((w[1] as Array)[0] as Vector3)
+		if absf(at.x) < GA_W * 0.5 - 0.05 and absf(at.z) < GA_D * 0.5 - 0.05:
+			out.append(["%s_%d" % [String(w[0]), out.size()], String(w[0]), at, rad_to_deg(float((w[1] as Array)[1])), w[2]])
+	out.append(["sign", "academy_sign", origin + Vector3(0.0, 3.4, -GA_D * 0.5 + 0.15), 0.0, {"width": 7.0}])
+	return out
 
 
 ## The gallery's gold lights on / off (the blackout of phase 2).
@@ -543,7 +608,7 @@ func _gallery(c: Node3D) -> void:
 			body.add_child(v)
 			vases.append({"node": v, "plinth": body, "at": at, "i": i})
 			i += 1
-	# speakers, breakers, the sign, Lọ's desk
+	# speakers, breakers, the sign
 	for s: Array in SPEAKERS:
 		var sp: Node3D = CineFX.build_prop("speaker")
 		sp.position = s[0]

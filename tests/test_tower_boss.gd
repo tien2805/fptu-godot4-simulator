@@ -577,6 +577,7 @@ func _process(_d: float) -> bool:
 			if not _at_step("d7_boss3", "the power did not come back", 900):
 				return false
 			_check(mark.has("br0") and tw.level.power_on, "both breakers: the power back")
+			_check(_finish_cine_in(tw) == "seg_d7_phase2", "the power back: seg_d7_phase2 (d7_boss2's after) plays before the roof")
 			_next(18)
 		# ===== phase 3: the roof =====
 		18:

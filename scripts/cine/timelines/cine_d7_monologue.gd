@@ -1,11 +1,12 @@
 # File: res://scripts/cine/timelines/cine_d7_monologue.gd
 # cine_d7_monologue (13.000 s, plan 2026-11-01-w4-day7.md T1, between boss phases 1 and 2): the vase gallery of Lọ
-# Academy after the gunfight. Lùm Văn Lọ gets up behind his desk, dusts off the white suit, adjusts the gold glasses and
+# Academy after the gunfight. Lùm Văn Lọ gets up at the back of the hall, dusts off the white suit, adjusts the gold glasses and
 # smiles: "Mọi thứ đều nằm trong kế hoạch." He snaps his fingers; the breakers thunk, the gold lights die one by one and the
 # last thing in the dark is his laugh from the speakers. The scene ends on black (the blackout phase starts in the dark).
 # No ramps (story = real). Music slot cine_d7_monologue (owner file, else silence).
-# Stage: the gallery hall of LairTower (28 x 24); played in StoryTower at LairTower.cine_xf (the real hall, drop_set: the
-# timeline carries no set of its own). The stage dict is inline (Phase D stages are not in CineTimeline.PHASE_C_STAGES).
+# Stage: the gallery hall of LairTower (28 x 24); played in StoryTower at LairTower.cine_xf (the real hall, drop_set). For
+# XEM LẠI PHIM it carries the hall as a set (LairTower.cine_gallery_set, opts "set"). The stage dict is inline (Phase D
+# stages are not in CineTimeline.PHASE_C_STAGES).
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline
 
@@ -31,7 +32,11 @@ func build() -> void:
 	actor("hero", StoryCast.opts("hero"), StoryCast.speaker("hero"), StoryCast.color("hero"))
 	actor("lo", CastD7.opts("van_lo"), CastD7.SPEAKER, CastD7.COLOR)
 	CastD7.dress(self, "lo")
-	# Lọ gets up behind the desk, steps round it, the snap
+	for d: Array in LairTower.cine_gallery_set():   # the hall for XEM LẠI PHIM (the tower shows the real one)
+		var o: Dictionary = (d[4] as Dictionary).duplicate()
+		o["set"] = true
+		prop(String(d[0]), String(d[1]), d[2], float(d[3]), o)
+	# Lọ gets up at the back of the hall, steps forward, the snap
 	key("lo", 0.0, LO_FROM, 0.0)
 	move("lo", 0.0, "winded")
 	move("lo", 1.6, "idle", {"fade": 0.4})
@@ -56,13 +61,13 @@ func build() -> void:
 	sfx_at(DARK, "whoosh_down", -8.0)
 	if not calm:
 		sfx_at(DARK + 0.6, "evil_laugh", -8.0)
-	shot("S1", 0.0, "static", "wide over the plinths: Lọ gets up behind his desk",
+	shot("S1", 0.0, "static", "wide over the plinths: Lọ gets up at the back of the hall",
 		{"pos": Vector3(3.2, 1.7, 0.8), "look": Vector3(0.0, 1.1, -9.2), "fov": 46.0})
-	push_in("S2", 4.0, "lo", {"from": 3.0, "to": 2.2, "side_deg": 15.0, "look_y": 1.55, "hand": 0.1})
-	two_shot("S3", 7.2, "hero", "lo", {"look_y": 1.25, "dist": 4.0})
+	push_in("S2", 4.0, "lo", {"from": 3.2, "to": 2.6, "side_deg": 15.0, "look_y": 1.3, "hand": 0.1})
+	ots_shot("S3", 7.2, "hero", "lo", {"look_y": 1.35})
 	shot("S4", DARK, "static", "the hall goes dark: only the red floor glow and the speaker rings",
 		{"pos": Vector3(-4.0, 2.4, 2.0), "look": Vector3(0.0, 1.0, -6.0), "fov": 52.0})
 	sub(4.3, 3.0, "lo", "Mọi thứ đều nằm trong kế hoạch.")
-	sub(7.5, 1.6, "hero", "Kế hoạch gì nữa?")
+	sub(7.5, 1.4, "hero", "Kế hoạch gì nữa?")
 	sub(9.0, 1.6, "lo", "Tắt đèn đi em.")
 	joke(4.3, "Everything is going according to plan")

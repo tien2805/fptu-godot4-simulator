@@ -9,13 +9,22 @@
 #   the crack lines), plinth (the gallery pedestal, 1.0 m), speaker (a wall speaker, origin at its back, front -Z; opts
 #   "glow" a lit ring), laser_emitter (a wall emitter, front -Z), breaker (a wall breaker box with a lever; opts "on"),
 #   exam_server (the exam-system rack with its screen "HỆ THỐNG THI"), helicopter (a code-built helicopter: its "Rotor"
-#   child is turned by the owner, its "Searchlight" child marks where the spotlight hangs), academy_sign ("LỌ ACADEMY ·
-#   HỌC THẬT, ĐẬU THẬT", a lit sign; opts "width", "text").
+#   child is turned by the owner, its "Searchlight" child marks where the spotlight hangs; opts "rotor": false leaves the
+#   rotor out for a timeline that spins its own heli_rotor), academy_sign ("LỌ ACADEMY · HỌC THẬT, ĐẬU THẬT", a lit sign;
+#   opts "width", "text").
+# T4 (the 25 s fights and their carried sets for XEM LẠI PHIM; LairTower's real floors stand in for the sets in the tower):
+#   flashlight (the blackout torch, the grip at the origin, the lens toward -Z; opts "on"), heli_rotor (the helicopter's
+#   mast and blades: a timeline spins it with a path), searchlight (a SpotLight3D shining down -Z with a faint beam cone;
+#   opts "energy", "range", "angle"), rain (a CPUParticles3D box of rain, meta "cine_ambient": it falls on the cinematic
+#   clock; opts "extents"), gallery_hall (the vase gallery: floor, walls with the corridor gap in the +Z wall, gold trim,
+#   ceiling, chandeliers and warm lights; opts "width", "depth", "height"), roof_deck (the rooftop: the wet slab, the
+#   helipad ring and H, the parapet, AC units, red beacons; opts "half").
 class_name CinePropsD7
 extends RefCounted
 
 const KINDS: Array[String] = ["gold_glasses", "pink_collar", "gold_chain", "saber", "vase", "plinth", "speaker",
-	"laser_emitter", "breaker", "exam_server", "helicopter", "academy_sign"]
+	"laser_emitter", "breaker", "exam_server", "helicopter", "academy_sign",
+	"flashlight", "heli_rotor", "searchlight", "rain", "gallery_hall", "roof_deck"]
 const GOLD := Color("#D4AF37")
 const PINK := Color("#F6B8CF")
 const SABER_LEN: float = 0.86
@@ -23,6 +32,10 @@ const PLINTH_H: float = 1.0
 const VASE_GLAZES: Array[Color] = [Color("#2B5DAF"), Color("#C9452E"), Color("#2E8A6B"), Color("#E7DCC4"), Color("#B8892E")]
 const T_SIGN: String = "LỌ ACADEMY · HỌC THẬT, ĐẬU THẬT"
 const T_EXAM: String = "HỆ THỐNG THI"
+## The rotor hub and the searchlight in the helicopter's frame (a timeline places heli_rotor / searchlight there).
+const ROTOR_AT := Vector3(0.0, 1.3, -0.3)
+const LIGHT_AT := Vector3(0.0, -1.0, -1.6)
+const FLASH_LEN: float = 0.3
 
 
 static func has(kind: String) -> bool:
@@ -42,7 +55,7 @@ static func build(kind: String, root: Node3D, opts: Dictionary) -> void:
 		"vase":
 			vase(root, opts)
 		"plinth":
-			_plinth(root)
+			_plinth(root, opts)
 		"speaker":
 			_speaker(root, opts)
 		"laser_emitter":
@@ -52,9 +65,21 @@ static func build(kind: String, root: Node3D, opts: Dictionary) -> void:
 		"exam_server":
 			_exam_server(root)
 		"helicopter":
-			_helicopter(root)
+			_helicopter(root, opts)
 		"academy_sign":
 			_sign(root, opts)
+		"flashlight":
+			_flashlight(root, opts)
+		"heli_rotor":
+			_rotor(root, CineFX._mat(Color("#101114"), 0.35))
+		"searchlight":
+			_searchlight(root, opts)
+		"rain":
+			_rain(root, opts)
+		"gallery_hall":
+			_gallery_hall(root, opts)
+		"roof_deck":
+			_roof_deck(root, opts)
 
 
 static func _gold() -> StandardMaterial3D:
@@ -151,12 +176,24 @@ static func vase(root: Node3D, opts: Dictionary) -> MeshInstance3D:
 	return body
 
 
-static func _plinth(root: Node3D) -> void:
+## The gallery pedestal; opts "vase" (a seed) stands LairTower's vase of that seed on it (h 0.5 + 0.08 * (seed % 3)), which
+## a cinematic crash bursts (CineFX.crate_break hides it: meta "crates", no planks).
+static func _plinth(root: Node3D, opts: Dictionary = {}) -> void:
 	var stone: StandardMaterial3D = CineFX._mat(Color("#1B1714"), 0.35)
 	var gold: StandardMaterial3D = _gold()
 	CineFX._box(root, "Column", Vector3(0.62, PLINTH_H - 0.08, 0.62), Vector3(0.0, (PLINTH_H - 0.08) * 0.5, 0.0), stone)
 	CineFX._box(root, "Cap", Vector3(0.74, 0.08, 0.74), Vector3(0.0, PLINTH_H - 0.04, 0.0), gold)
 	CineFX._box(root, "Base", Vector3(0.74, 0.06, 0.74), Vector3(0.0, 0.03, 0.0), gold)
+	if opts.has("vase"):
+		var sd: int = int(opts["vase"])
+		var v := Node3D.new()
+		v.name = "Vase"
+		v.position = Vector3(0.0, PLINTH_H, 0.0)
+		root.add_child(v)
+		vase(v, {"seed": sd, "h": 0.5 + 0.08 * float(sd % 3)})
+		root.set_meta("crates", [v])
+		root.set_meta("planks", 0)
+		root.set_meta("crate_color", VASE_GLAZES[absi(sd) % VASE_GLAZES.size()])
 
 
 static func _speaker(root: Node3D, opts: Dictionary) -> void:
@@ -209,7 +246,7 @@ static func _exam_server(root: Node3D) -> void:
 
 
 ## A code-built helicopter (body toward -Z): origin at the body centre; "Rotor" (spin it about Y), "Tail", "Searchlight".
-static func _helicopter(root: Node3D) -> void:
+static func _helicopter(root: Node3D, opts: Dictionary = {}) -> void:
 	var paint: StandardMaterial3D = CineFX._mat(Color("#101114"), 0.35)
 	paint.metallic = 0.4
 	var gold: StandardMaterial3D = _gold()
@@ -224,14 +261,12 @@ static func _helicopter(root: Node3D) -> void:
 		CineFX._box(root, "Skid", Vector3(0.1, 0.08, 3.2), Vector3(sx * 0.9, -1.25, -0.3), paint)
 		CineFX._box(root, "Strut", Vector3(0.06, 0.5, 0.06), Vector3(sx * 0.85, -1.0, -1.0), paint)
 		CineFX._box(root, "Strut", Vector3(0.06, 0.5, 0.06), Vector3(sx * 0.85, -1.0, 0.4), paint)
-	var rotor := Node3D.new()
-	rotor.name = "Rotor"
-	rotor.position = Vector3(0.0, 1.3, -0.3)
-	root.add_child(rotor)
-	CineFX._cyl(rotor, "Mast", 0.08, 0.1, 0.3, Vector3.ZERO, paint)
-	for k: int in 2:
-		var b: MeshInstance3D = CineFX._box(rotor, "Blade", Vector3(0.22, 0.03, 5.2), Vector3(0.0, 0.12, 0.0), paint)
-		b.rotation.y = PI * 0.5 * float(k)
+	if bool(opts.get("rotor", true)):
+		var rotor := Node3D.new()
+		rotor.name = "Rotor"
+		rotor.position = ROTOR_AT
+		root.add_child(rotor)
+		_rotor(rotor, paint)
 	var sl := Node3D.new()
 	sl.name = "Searchlight"
 	sl.position = Vector3(0.0, -1.0, -1.6)
@@ -264,3 +299,157 @@ static func _sign(root: Node3D, opts: Dictionary) -> void:
 	l.position = Vector3(0.0, 0.0, -0.07)
 	l.rotation.y = PI
 	root.add_child(l)
+
+
+## The mast and the two blades (about Y at the origin).
+static func _rotor(root: Node3D, paint: StandardMaterial3D) -> void:
+	CineFX._cyl(root, "Mast", 0.08, 0.1, 0.3, Vector3.ZERO, paint)
+	for k: int in 2:
+		var b: MeshInstance3D = CineFX._box(root, "Blade", Vector3(0.22, 0.03, 5.2), Vector3(0.0, 0.12, 0.0), paint)
+		b.rotation.y = PI * 0.5 * float(k)
+
+
+# ---------------------------------------------------------------------------
+# T4: the 25 s fights' props and carried sets
+# ---------------------------------------------------------------------------
+## The blackout torch: a black metal body from the grip (origin) to the head at -FLASH_LEN, the lens facing -Z.
+static func _flashlight(root: Node3D, opts: Dictionary) -> void:
+	var metal: StandardMaterial3D = CineFX._mat(Color("#1A1B1E"), 0.35)
+	metal.metallic = 0.6
+	var body: MeshInstance3D = CineFX._cyl(root, "Body", 0.02, 0.02, 0.22, Vector3(0.0, 0.0, -0.05), metal)
+	body.rotation.x = PI * 0.5
+	var head: MeshInstance3D = CineFX._cyl(root, "Head", 0.034, 0.024, 0.08, Vector3(0.0, 0.0, -FLASH_LEN + 0.04), metal)
+	head.rotation.x = PI * 0.5
+	var lit: bool = bool(opts.get("on", true))
+	var lens: MeshInstance3D = CineFX._cyl(root, "Lens", 0.03, 0.03, 0.008, Vector3(0.0, 0.0, -FLASH_LEN),
+		CineFX._glow_mat(Color("#FFF4D2"), 2.4) if lit else CineFX._mat(Color("#C8CCD2"), 0.1))
+	lens.rotation.x = PI * 0.5
+	CineFX._box(root, "Switch", Vector3(0.012, 0.008, 0.03), Vector3(0.0, 0.022, -0.06), CineFX._mat(Color("#C0392B"), 0.5))
+
+
+## A spotlight shining down -Z (aim the prop with a path rotation) and a faint additive cone along the beam.
+static func _searchlight(root: Node3D, opts: Dictionary) -> void:
+	var sl := SpotLight3D.new()
+	sl.name = "Spot"
+	sl.light_color = Color(1.0, 0.97, 0.88)
+	sl.light_energy = float(opts.get("energy", 8.0))
+	sl.spot_range = float(opts.get("range", 22.0))
+	sl.spot_angle = float(opts.get("angle", 13.0))
+	sl.spot_attenuation = 0.6
+	sl.shadow_enabled = true
+	root.add_child(sl)
+	var beam := MeshInstance3D.new()
+	beam.name = "Beam"
+	var cm := CylinderMesh.new()
+	var ln: float = sl.spot_range * 0.6
+	cm.top_radius = 0.12
+	cm.bottom_radius = tan(deg_to_rad(sl.spot_angle)) * ln
+	cm.height = ln
+	cm.radial_segments = 16
+	beam.mesh = cm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.albedo_color = Color(1.0, 0.95, 0.8, 0.06)
+	beam.material_override = m
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	beam.rotation.x = -PI * 0.5                     # the cylinder's narrow top toward +Z: the cone widens down -Z
+	beam.position = Vector3(0.0, 0.0, -ln * 0.5)
+	root.add_child(beam)
+
+
+## Rain over a box (opts "extents", default 8 x 0.2 x 8, the emitter 7 m up), falling on the cinematic clock (cine_ambient).
+static func _rain(root: Node3D, opts: Dictionary) -> void:
+	var e := CPUParticles3D.new()
+	e.name = "Rain"
+	e.set_meta("cine_ambient", true)
+	e.amount = 320
+	e.lifetime = 0.9
+	e.preprocess = 0.9
+	e.local_coords = false
+	e.position = Vector3(0.0, 7.0, 0.0)
+	e.direction = Vector3(0.1, -1.0, 0.05)
+	e.spread = 4.0
+	e.gravity = Vector3(0.0, -14.0, 0.0)
+	e.initial_velocity_min = 9.0
+	e.initial_velocity_max = 12.0
+	e.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	e.emission_box_extents = opts.get("extents", Vector3(8.0, 0.2, 8.0))
+	var qm := QuadMesh.new()
+	qm.size = Vector2(0.02, 0.4)
+	var rm := StandardMaterial3D.new()
+	rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	rm.albedo_color = Color(0.75, 0.85, 1.0, 0.42)
+	rm.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
+	rm.set_meta("vice_done", true)
+	qm.material = rm
+	e.mesh = qm
+	root.add_child(e)
+
+
+## The vase gallery as a carried set (XEM LẠI PHIM): centred on the origin, the corridor gap in the +Z wall.
+static func _gallery_hall(root: Node3D, opts: Dictionary) -> void:
+	var w: float = float(opts.get("width", 28.0))
+	var d: float = float(opts.get("depth", 24.0))
+	var h: float = float(opts.get("height", 4.6))
+	var gap: float = 6.0
+	var wall: StandardMaterial3D = CineFX._mat(Color("#16120F"), 0.7)
+	var gold: StandardMaterial3D = _gold()
+	CineFX._box(root, "Floor", Vector3(w, 0.01, d), Vector3(0.0, 0.005, 0.0), CineFX._mat(Color("#2A211A"), 0.25))
+	CineFX._box(root, "BackWall", Vector3(w, h, 0.3), Vector3(0.0, h * 0.5, -d * 0.5 - 0.15), wall)
+	var fw: float = (w - gap) * 0.5
+	for sx: float in [-1.0, 1.0]:
+		CineFX._box(root, "SideWall", Vector3(0.3, h, d), Vector3(sx * (w * 0.5 + 0.15), h * 0.5, 0.0), wall)
+		CineFX._box(root, "FrontWall", Vector3(fw, h, 0.3), Vector3(sx * (gap * 0.5 + fw * 0.5), h * 0.5, d * 0.5 + 0.15), wall)
+		CineFX._box(root, "Trim", Vector3(0.05, 0.12, d), Vector3(sx * (w * 0.5 - 0.03), 3.0, 0.0), gold)
+		CineFX._box(root, "Chandelier", Vector3(1.6, 0.3, 1.6), Vector3(sx * 6.0, h - 0.1, 0.0), CineFX._glow_mat(Color("#FFE2A0"), 1.6))
+	CineFX._box(root, "Ceiling", Vector3(w + 0.6, 0.15, d + 0.6), Vector3(0.0, h + 0.075, 0.0), CineFX._mat(Color("#1C1A18"), 0.95))
+	for p: Vector3 in [Vector3(-7.0, h - 0.4, 5.0), Vector3(7.0, h - 0.4, 5.0), Vector3(-7.0, h - 0.4, -6.0), Vector3(7.0, h - 0.4, -6.0)]:
+		var l := OmniLight3D.new()
+		l.name = "GoldLight"
+		l.light_color = Color("#FFD68A")
+		l.light_energy = 1.8
+		l.omni_range = 14.0
+		l.position = p
+		root.add_child(l)
+
+
+## The rooftop as a carried set (XEM LẠI PHIM): the wet slab, the helipad, the parapet, AC units, red beacons.
+static func _roof_deck(root: Node3D, opts: Dictionary) -> void:
+	var half: float = float(opts.get("half", 15.0))
+	var concrete: StandardMaterial3D = CineFX._mat(Color("#3A3C40"), 0.15)
+	concrete.metallic_specular = 0.9
+	CineFX._box(root, "Slab", Vector3(half * 2.0, 0.01, half * 2.0), Vector3(0.0, 0.005, 0.0), concrete)
+	var pad: StandardMaterial3D = CineFX._mat(Color("#E8E2D0"), 0.4)
+	var ring := MeshInstance3D.new()
+	ring.name = "HelipadRing"
+	var tm := TorusMesh.new()
+	tm.inner_radius = 5.6
+	tm.outer_radius = 6.0
+	tm.rings = 32
+	tm.ring_segments = 4
+	ring.mesh = tm
+	ring.material_override = pad
+	ring.scale = Vector3(1.0, 0.02, 1.0)
+	ring.position = Vector3(0.0, 0.012, 0.0)
+	root.add_child(ring)
+	CineFX._box(root, "PadH", Vector3(0.5, 0.004, 3.6), Vector3(-1.1, 0.012, 0.0), pad)
+	CineFX._box(root, "PadH", Vector3(0.5, 0.004, 3.6), Vector3(1.1, 0.012, 0.0), pad)
+	CineFX._box(root, "PadH", Vector3(1.7, 0.004, 0.5), Vector3(0.0, 0.012, 0.0), pad)
+	var parapet: StandardMaterial3D = CineFX._mat(Color("#2B2D31"), 0.4)
+	for sx: float in [-1.0, 1.0]:
+		CineFX._box(root, "Parapet", Vector3(half * 2.0, 1.1, 0.4), Vector3(0.0, 0.55, sx * (half + 0.2)), parapet)
+		CineFX._box(root, "Parapet", Vector3(0.4, 1.1, half * 2.0), Vector3(sx * (half + 0.2), 0.55, 0.0), parapet)
+		CineFX._box(root, "Beacon", Vector3(0.2, 0.2, 0.2), Vector3(sx * half, 1.3, -half), CineFX._glow_mat(Color("#FF2A2A"), 3.0))
+	for q: Vector3 in [Vector3(-11.0, 0.0, 10.0), Vector3(11.0, 0.0, -10.0), Vector3(11.0, 0.0, 9.0)]:
+		CineFX._box(root, "AC", Vector3(2.4, 1.6, 1.6), q + Vector3(0.0, 0.8, 0.0), CineFX._mat(Color("#9AA0A8"), 0.5))
+	var fill := OmniLight3D.new()
+	fill.name = "Fill"
+	fill.light_color = Color("#6B7FA8")
+	fill.light_energy = 0.7
+	fill.omni_range = 26.0
+	fill.position = Vector3(0.0, 6.0, 6.0)
+	root.add_child(fill)

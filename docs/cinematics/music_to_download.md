@@ -67,6 +67,10 @@ Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột
 | [ ] | Phòng server cháy, "Ổn mà", lựa chọn 2 (Ngày 5; hai đoạn đuôi Nhận lời / Từ chối dùng chung bài này) | `cine_d5_choice_` | *Don't Worry, Be Happy*, Bobby McFerrin |
 | [ ] | Bình minh, Anh Duy báo 08:00 tool lên hệ thống thi (Ngày 7) | `cine_d7_intro_` | *Lux Aeterna* (nhạc phim *Requiem for a Dream*), Clint Mansell |
 | [ ] | Lùm Văn Lọ "Mọi thứ đều nằm trong kế hoạch", tắt đèn (Ngày 7) | `cine_d7_monologue_` | *Sweet Dreams (Are Made of This)*, Eurythmics |
+| [ ] | Phát lại: leo hết các tầng, cửa phòng bình cổ mở (Ngày 7) | `seg_d7_floors_` | *Eye of the Tiger*, Survivor |
+| [ ] | Phát lại: Lọ và sáu bảo vệ gục trong phòng bình cổ (Ngày 7) | `seg_d7_phase1_` | *In the Hall of the Mountain King*, Edvard Grieg |
+| [ ] | Có điện lại: đèn pin, loa, bình cổ, đánh nhau 25 s (Ngày 7) | `seg_d7_phase2_` | *The Power of Love*, Jennifer Rush |
+| [ ] | Sân thượng dưới mưa: đòn chân kẹp cổ số 21, "Xin vĩnh biệt cụ." (Ngày 7, 25 s) | `seg_d7_finisher_` | *What a Wonderful World*, Louis Armstrong |
 
 **Nhiệm vụ và trùm**
 

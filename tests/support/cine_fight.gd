@@ -229,7 +229,8 @@ func _solid_props() -> Array[String]:
 	var out: Array[String] = []
 	for pr: Dictionary in tl.props:
 		var id: String = String(pr["id"])
-		if id in NOT_SOLID or String(pr["kind"]) in ["bridge_deck", "fire", "monitor_wall"]:
+		# the vase gallery shell (seg_d7_phase2's carried hall: a floor sheet under everyone, walls 9+ m off) is not solid
+		if id in NOT_SOLID or String(pr["kind"]) in ["bridge_deck", "fire", "monitor_wall", "gallery_hall"]:
 			continue
 		out.append(id)
 	return out
@@ -390,15 +391,20 @@ func _initialize() -> void:
 	_check(String(hero_o.get("preset", "")) == "player", "the hero is the protagonist look (%s)" % str(hero_o))
 	var cfg: Dictionary = tl.get("cfg")
 	for role: String in ["a", "b", "c", "d"]:
-		var want: Dictionary = StoryCast.opts(String(cfg["cast"][role]), (cfg.get("cast_extra", {}) as Dictionary).get(role, {}))
-		_check(tl.actors[role]["opts"] == want, "role %s is StoryCast %s" % [role, String(cfg["cast"][role])])
-		var gear_kinds: Array = [] if role in cfg.get("bare", []) else StoryCast.gear(String(cfg["cast"][role])).map(func(g: Dictionary) -> String: return String(g["kind"]))
+		var cid: String = String(cfg["cast"][role])
+		var d7: bool = cid == "van_lo"   # Day 7's boss is CastD7's (scripts/story/CastD7.gd), not a StoryCast id
+		var want: Dictionary = CastD7.opts(cid) if d7 else StoryCast.opts(cid, (cfg.get("cast_extra", {}) as Dictionary).get(role, {}))
+		_check(tl.actors[role]["opts"] == want, "role %s is %s %s" % [role, "CastD7" if d7 else "StoryCast", cid])
+		var gear_kinds: Array = [] if role in cfg.get("bare", []) else (CastD7.gear(cid) if d7 else StoryCast.gear(cid)).map(func(g: Dictionary) -> String: return String(g["kind"]))
 		for gk: String in gear_kinds:
 			_check(tl.cues.any(func(c: Dictionary) -> bool: return c["type"] == "hold" and c["actor"] == role and String(c["kind"]) == gk),
 				"role %s wears its %s" % [role, gk])
+	# the fight's own props inside the 14 x 10 box; carried set dressing (opts "set") anywhere on the stage's cleared spot
+	var st_half: Vector2 = (tl.stage.get("size", HALF * 2.0) as Vector2) * 0.5
 	for pr: Dictionary in tl.props:
 		var pp: Vector3 = pr["pos"]
-		_check(absf(pp.x) <= HALF.x + 0.1 and absf(pp.z) <= HALF.y + 0.1, "prop %s inside the 14 x 10 box" % String(pr["id"]))
+		var hb: Vector2 = Vector2(maxf(st_half.x, HALF.x), maxf(st_half.y, HALF.y)) if bool((pr["opts"] as Dictionary).get("set", false)) else HALF
+		_check(absf(pp.x) <= hb.x + 0.1 and absf(pp.z) <= hb.y + 0.1, "prop %s inside the %.0f x %.0f box" % [String(pr["id"]), hb.x * 2.0, hb.y * 2.0])
 	var committed: String = FileAccess.get_file_as_string("res://docs/cinematics/%s.txt" % tl.slot).replace("\r\n", "\n")
 	_check(committed == tl.beat_sheet(), "docs/cinematics/%s.txt is in sync (run tools/cine_beats.gd)" % tl.slot)
 	world = Node3D.new()

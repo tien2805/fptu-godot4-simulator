@@ -61,6 +61,11 @@ const GALLERY: Array = [
 	["seg_d5_boss", 5, "Katana mua trên mạng"],
 	["cine_d5", 5, "Dòng tiền"],
 	["end_c", 5, "Kết C: Kẻ phản diện mới"],
+	# Day 7 (w4-day7)
+	["cine_d7_intro", 7, "Còn 1 ngày"],
+	["cine_d7_monologue", 7, "Mọi thứ đều nằm trong kế hoạch"],
+	["seg_d7_phase2", 7, "Có điện rồi"],
+	["seg_d7_finisher", 7, "Đòn chân kẹp cổ số 21"],
 ]
 
 static var unlocks_path: String = UNLOCKS_PATH

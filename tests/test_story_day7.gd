@@ -9,8 +9,10 @@
 # the goal -> seg_d7_floors) -> boss phase 1 (Lọ's card, the vase plinths as cover, his guards, then Lọ himself with six
 # guards' HP -> seg_d7_phase1) -> cine_d7_monologue in the real gallery (the clock frozen, its HUD hidden) -> phase 2, the
 # blackout (the look, the flashlight, Lọ stalks: the telegraph cracks a vase and lights a speaker, his lunge hits, the
-# beam staggers him, down -> retry with the power off again, the two breakers -> the power back) -> phase 3 on the roof
-# (the rain, the searchlight, the rain-mode SwordDuel, down -> retry, the QTE "Đòn chân kẹp cổ số 21") -> the typing
+# beam staggers him, down -> retry with the power off again, the two breakers -> the power back -> seg_d7_phase2 in the
+# real gallery, T4: the two plinths under its own hidden, then back) -> phase 3 on the roof
+# (the rain, the searchlight, the rain-mode SwordDuel, down -> retry, the QTE "Đòn chân kẹp cổ số 21") ->
+# seg_d7_finisher on the real roof (T4: the level's helicopter, light and rain hidden, then back) -> the typing
 # showdown (Lọ Thần 10.0's pools, the clock runs out = "08:00" and the terminal freezes -> THỬ LẠI with the grace and Anh
 # Duy's line -> every process killed -> sudo rm -rf lothan10) -> the hand-off to d7_ending (the endings stream; until it is
 # merged the scene records it and leaves the step at d7_typing).
@@ -515,6 +517,15 @@ func _process(_d: float) -> bool:
 			_check(mark.has("br0"), "both breakers held")
 			_check(tw.level.power_on and tw.level.gallery_lights[0].visible and tw.looks.is_empty() and LookPresets.active(tw) == "penthouse", "the power back: the lights, the look restored")
 			_check((sd.get("ranks") as Dictionary).has("d7_boss2"), "a rank for the blackout")
+			# the lights back: seg_d7_phase2 in the real gallery, the two hall plinths under the fight's own hidden while it plays
+			var cp27: CinePlayer = tw.cine_player
+			_check(cp27 != null and cp27.timeline.slot == "seg_d7_phase2" and cp27.stage_xf.is_equal_approx(tw.level.cine_xf("seg_d7_phase2"))
+				and tw.level.current_floor == "gallery", "the power back: seg_d7_phase2 in the real gallery (moved by its SLOT_OFFSET)")
+			var hid27: Array = tw.level.cine_hidden().duplicate()
+			_check(hid27.size() == 2 and hid27.all(func(e: Array) -> bool: return not (e[0] as Node3D).visible), "the two hall plinths under the fight's own hidden (%d)" % hid27.size())
+			_check(not tw.player.visible and not tw.clock_hud.visible and paused, "the player and the clock HUD hidden, the tree paused in the fight")
+			_check(_finish_cine_in(tw) == "seg_d7_phase2", "Gọi trực thăng. Lên sân thượng!")
+			_check(hid27.all(func(e: Array) -> bool: return (e[0] as Node3D).visible) and tw.level.cine_hidden().is_empty(), "the hall plinths back after the fight")
 			_next(28)
 		# ----- boss phase 3: the roof -----
 		28:
@@ -557,6 +568,17 @@ func _process(_d: float) -> bool:
 			_check(String(mark.get("qte_label", "")) == "[Q] GẠT KIẾM", "the Day 7 QTE prompts (%s)" % String(mark.get("qte_label", "")))
 			_check(String(mark.get("finish_popup", "")) == MissionBossSaber.T_FINISH, "Đòn chân kẹp cổ số 21!")
 			_check(is_equal_approx(Engine.time_scale, 1.0) and tw.looks.is_empty(), "the time scale and the look restored after the duel")
+			# the duel won: seg_d7_finisher on the real roof, the level's helicopter, searchlight and rain hidden (it flies its own)
+			var cp30: CinePlayer = tw.cine_player
+			_check(cp30 != null and cp30.timeline.slot == "seg_d7_finisher" and cp30.stage_xf.is_equal_approx(tw.level.cine_xf("seg_d7_finisher"))
+				and tw.level.current_floor == "roof", "the duel won: seg_d7_finisher on the real roof")
+			var hid30: Array = tw.level.cine_hidden().duplicate()
+			_check(not tw.level.heli.visible and not tw.level.heli_light.visible and tw.level.rain.all(func(e: CPUParticles3D) -> bool: return not e.visible and not e.emitting),
+				"the level's helicopter, searchlight and rain hidden while the cinematic flies its own")
+			_check(cp30 != null and cp30.prop_nodes.has("heli") and cp30.prop_nodes.has("rain") and not cp30.prop_nodes.has("roof"), "its own helicopter and rain, the roof set dropped")
+			_check(_finish_cine_in(tw) == "seg_d7_finisher", "Xin vĩnh biệt cụ.")
+			_check(hid30.all(func(e: Array) -> bool: return (e[0] as Node3D).visible == bool(e[1]) and (not e[0] is CPUParticles3D or (e[0] as CPUParticles3D).emitting == bool(e[2])))
+				and tw.level.heli.visible and tw.level.heli_light.visible, "the helicopter, the searchlight and the rain back after it")
 			_next(31)
 		# ----- the typing showdown -----
 		31:
