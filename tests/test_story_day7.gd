@@ -624,10 +624,13 @@ func _process(_d: float) -> bool:
 					_check(false, "the tower did not hand back after the typing")
 					phase = 999
 				return false
-			_check(tw.handoff_beat == "d7_ending", "the hand-off: d7_ending (the endings stream)")
 			var nb: Dictionary = StoryMissions.beat("d7_ending")
 			if nb.is_empty():
+				_check(tw.handoff_beat == "d7_ending", "the hand-off: d7_ending (the endings stream)")
 				_check(String(sd.get("step")) == "d7_typing", "pre-merge: the step stays at d7_typing (no unknown beat)")
+			else:   # merged (wave4): the typing completes and the step moves on to the endings' beat
+				_check(tw.handoff_beat == "" and String(sd.get("step")) == "d7_ending", "the hand-off: the step is d7_ending (%s)" % String(sd.get("step")))
+				_check(String(nb.get("ending", "")) == "auto" and String(nb.get("lair", "")) == "", "d7_ending is the endings' auto beat, played in free roam")
 			_check(String(sd.get("last_nav")) == "roam", "back to story free roam")
 			_check((sd.get("ranks") as Dictionary).has("d7_typing") and (sd.get("ranks") as Dictionary).has("d7_boss3"), "ranks for the roof and the typing")
 			for id: String in ["d7_parking", "d7_warehouse", "d7_servers", "d7_mannequins", "d7_lasers", "d7_boss1", "d7_monologue", "d7_boss2", "d7_boss3", "d7_typing"]:
