@@ -7,7 +7,9 @@
 #      ranks), then the save is finished with that letter, the main menu; Continue refuses it; the ending is in the unlock
 #      file and the gallery;
 #   C. a broken owner clip for ai_true_end falls back to the in-engine timeline;
-#   D. ending C on Day 5 (d5_end_c) still plays end_c and finishes "C".
+#   D. ending C on Day 5 (d5_end_c) still plays end_c and finishes "C";
+#   E. the KẾT THÚC tab of CHỌN CẢNH: a reached ending is a row ("Kết A: ..."), the others "???"; picking A replays end_a
+#      then ai_true_end in StoryGalleryPlayer and comes back to the KẾT THÚC tab, the story save untouched.
 # Run:  godot --headless --path . --script tests/test_story_endings.gd
 extends SceneTree
 
@@ -15,6 +17,7 @@ var TMP: String = "user://test_story_endings_%d.cfg" % OS.get_process_id()
 var TMP_U: String = "user://test_story_endings_unlocks_%d.cfg" % OS.get_process_id()
 var TMP_C: String = "user://test_story_endings_chapters_%d.cfg" % OS.get_process_id()
 var TMP_B: String = "user://test_story_endings_backup_%d.cfg" % OS.get_process_id()
+var TMP_U2: String = "user://test_story_endings_unlocks2_%d.cfg" % OS.get_process_id()
 var VID: String = "user://test_story_endings_video_%d/" % OS.get_process_id()
 const DT: float = 1.0 / 60.0
 const ALLOWED_SYMBOLS: Array[int] = [0x2013, 0x2014, 0x2018, 0x2019, 0x201C, 0x201D, 0x2026]
@@ -39,6 +42,9 @@ var sr: StoryRoam
 var case_i: int = 0
 var slot_i: int = 0
 var letter: String = ""
+var cs: ChapterSelect
+var gp: StoryGalleryPlayer
+var save_bytes: PackedByteArray
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -306,12 +312,83 @@ func _process(_d: float) -> bool:
 			sd.call("reset_state")
 			_check(not bool(sd.call("continue_story")), "D: Continue refuses ending C")
 			fr.queue_free()
+			fr = null
+			_next(30)
+		30:
+			if frames < 3:
+				return false
+			paused = false
+			StoryChapters.unlocks_path = TMP_U2   # a fresh unlock file: only ending A reached
+			StoryChapters.record_ending("A")
+			cs = (load(ChapterSelect.SCENE) as PackedScene).instantiate()
+			cs.nav_enabled = false
+			root.add_child(cs)
+			_next(31)
+		31:
+			if frames < 3:
+				return false
+			_gallery_tab()
+			save_bytes = FileAccess.get_file_as_bytes(TMP)
+			gp = (load(ChapterSelect.GALLERY_SCENE) as PackedScene).instantiate()
+			gp.nav_enabled = false
+			gp.cine_opts = {"manual": true, "music": false}
+			root.add_child(gp)
+			_next(32)
+		32:
+			if gp.player != null:
+				var p: CinePlayer = gp.player
+				var n: int = 0
+				while gp.player != null and n < 3000:
+					p.step(DT)
+					n += 1
+				return false
+			if gp.last_nav != "chapters":
+				if frames > 900:
+					_check(false, "E: the ending sequence did not finish (%s)" % str(gp.played))
+					return _end()
+				return false
+			_check(gp.played == (["end_a", "ai_true_end"] as Array[String]), "E: ending A replays end_a then ai_true_end (%s)" % str(gp.played))
+			_check(ChapterSelect.open_tab == "endings" and StoryGalleryPlayer.queue.is_empty() and StoryGalleryPlayer.return_tab == "gallery",
+				"E: back to the KẾT THÚC tab (%s)" % ChapterSelect.open_tab)
+			_check(FileAccess.get_file_as_bytes(TMP) == save_bytes, "E: the story save is untouched")
+			gp.queue_free()
+			gp = null
+			cs = (load(ChapterSelect.SCENE) as PackedScene).instantiate()
+			cs.nav_enabled = false
+			root.add_child(cs)
+			_next(33)
+		33:
+			if frames < 3:
+				return false
+			_check(cs.tab == "endings" and cs.row_button("A") != null, "E: the screen reopens on the KẾT THÚC tab")
+			cs.queue_free()
+			cs = null
 			return _end()
 	return false
 
 
+## E: the KẾT THÚC rows with only A reached, then A picked.
+func _gallery_tab() -> void:
+	_check(cs.tab_buttons.has("endings") and (cs.tab_buttons["endings"] as Button).text == "KẾT THÚC", "E: the KẾT THÚC tab")
+	cs.show_tab("endings")
+	_check(cs.tab == "endings" and cs.list_box.get_child_count() == StoryEndings.IDS.size(), "E: one row per ending (%d)" % cs.list_box.get_child_count())
+	var a: Button = cs.row_button("A")
+	_check(a != null and not a.disabled and a.text == "Kết A: " + StoryEndings.title("A") and _clean(a.text), "E: ending A reached (%s)" % (a.text if a else "none"))
+	for x: String in ["B", "C", "D", "E", "F"]:
+		var b: Button = cs.row_button(x)
+		_check(b != null and b.disabled and b.text == "???", "E: ending %s not reached reads ???" % x)
+	_check(not cs.empty_label.visible, "E: no empty line with an ending reached")
+	if a == null:
+		return
+	a.pressed.emit()
+	_check(cs.last_nav == "ending:A" and StoryGalleryPlayer.slot == "end_a" and StoryGalleryPlayer.queue == (["ai_true_end"] as Array[String])
+		and ChapterSelect.open_tab == "endings", "E: picking A queues its sequence (%s %s)" % [StoryGalleryPlayer.slot, str(StoryGalleryPlayer.queue)])
+	cs.queue_free()
+	cs = null
+
+
 func _end() -> bool:
-	for p: String in [TMP, TMP_U, TMP_C, TMP_B]:
+	for p: String in [TMP, TMP_U, TMP_C, TMP_B, TMP_U2]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 	StoryChapters.unlocks_path = StoryChapters.UNLOCKS_PATH
 	StoryChapters.chapters_path = StoryChapters.CHAPTERS_PATH
@@ -323,7 +400,7 @@ func _end() -> bool:
 	sd.call("reset_state")
 	sd.set("save_path", "user://story_save.cfg")
 	if fails.is_empty():
-		print("✅ SUCCESS: STORY ENDINGS (A, B, D, E, F from d7_ending; summary; gallery records; clip fallback; ending C)")
+		print("✅ SUCCESS: STORY ENDINGS (A, B, D, E, F from d7_ending; summary; gallery records; clip fallback; ending C; KẾT THÚC gallery)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())
