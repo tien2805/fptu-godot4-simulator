@@ -43,7 +43,7 @@ const LIT_S: float = 1.2
 const LIT_DEG: float = 22.0
 const LIT_RANGE: float = 17.0
 ## T5 (sim_day7): a breaker is a long hold (he comes for the player at it); Dễ shorter.
-const HOLD_S: float = 7.5
+const HOLD_S: float = 8.5
 const HOLD_S_EASY: float = 5.0
 ## T5: no quick heal in the dark (regeneration after this long without a hit; restored on cleanup).
 const REGEN_DELAY_DARK: float = 8.0

@@ -83,7 +83,7 @@ const MISSIONS: Dictionary = {
 	"d7_mannequins": {"time": [60.0, 160.0], "dmg": [0.0, 150.0], "opt": {"key": "spotted", "want": false}},
 	"d7_lasers": {"time": [35.0, 90.0], "fails": [0.0, 3.0]},
 	"d7_boss1": {"time": [60.0, 200.0], "dmg": [40.0, 300.0]},   # sim: clean 55-88 s, ~130 HP lost; mean 110 s with retries
-	"d7_boss2": {"time": [35.0, 100.0], "dmg": [0.0, 150.0], "opt": {"key": "staggers", "min": 2}},   # sim: clean 35-38 s; a lunge is 50 HP
+	"d7_boss2": {"time": [35.0, 100.0], "dmg": [0.0, 150.0], "opt": {"key": "staggers", "min": 2}},   # sim: clean 35-43 s; a lunge is 50 HP
 	"d7_boss3": {"time": [45.0, 130.0], "dmg": [20.0, 200.0], "opt": {"key": "qte_clean", "want": true}},   # sim: clean 41-53 s
 	"d7_typing": {"time": [45.0, 130.0], "opt": {"key": "leaks", "max": 0}},   # sim: clean 44-46 s, a retry ~45 s
 }

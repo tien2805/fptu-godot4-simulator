@@ -1,7 +1,7 @@
 # File: res://scripts/story/missions/MissionTowerKatana.gd
 # Day 7 floor 3, the server floor (plan 2026-11-01-w4-day7.md T1 / T3): Lê Minh Za Mẫn is back with a cheaper katana
 # ("katana 49 nghìn", freeship). MissionDuel's SwordDuel (the player's staff against KatanaBoss) without the sprinklers
-# (no fire on this floor) (his HP x KATANA_HP_K: Day 5's HP after the T5 sloppy-bot runs; 0.75 was too soft), the QTE finisher
+# (no fire on this floor) (his HP x KATANA_HP_K: Day 5's HP after the T5 sloppy-bot runs; 0.75 was too soft; on Thường KATANA_PACE), the QTE finisher
 # at 0 HP as on Day 5, his return card (CastD7 "za_man_back", flag za_man_back_card) once while he stands staged.
 # `won` = done; down = "TOANG!" -> retry() = a fresh Za Mẫn.
 # opts: "points" (start, start_yaw, boss_at, boss_yaw), "manual_card", "seed".
@@ -13,6 +13,9 @@ const START_LINE: String = "Lần này bảo hành mười bốn ngày!"
 const CARD_FLAG: String = "za_man_back_card"
 ## The cheap katana: his HP scale against Day 5's (SwordData.HP_SCALE / HP_SCALE_EASY).
 const KATANA_HP_K: float = 1.0
+## T5 (sim_day7): on Thường he decides faster than on Day 5 (a shorter think; his HP, tells, damage and the phases'
+## cooldowns stay Day 5's); Dễ keeps Day 5's pace.
+const KATANA_PACE: Dictionary = {"think": Vector2(0.4, 0.9)}
 
 var duel: SwordDuel
 var card: StoryVillainCard = null
@@ -34,7 +37,8 @@ func _start() -> void:
 	add_child(duel)
 	var o: Dictionary = {"roam": roam, "start_line": START_LINE, "seed": int(opts.get("seed", 5)),
 		"boss": {"label": "Lê Minh Za Mẫn", "body_fn": func(_look: Dictionary) -> Node3D: return StoryCast.build("za_man"),
-			"hp_scale": float(Difficulty.pick(SwordData.HP_SCALE, SwordData.HP_SCALE_EASY)) * KATANA_HP_K}}
+			"hp_scale": float(Difficulty.pick(SwordData.HP_SCALE, SwordData.HP_SCALE_EASY)) * KATANA_HP_K,
+			"stats": {} if Difficulty.easy else KATANA_PACE.duplicate()}}
 	if pts.has("boss_at"):
 		o["at"] = pts["boss_at"]
 	if pts.has("boss_yaw"):
