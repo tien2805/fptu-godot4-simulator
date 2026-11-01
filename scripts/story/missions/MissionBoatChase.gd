@@ -19,7 +19,7 @@ const HAZARD_AHEAD: float = 220.0
 const DUCK_PROMPT_M: float = 55.0
 const HAZARD_LABELS: Dictionary = {"bridge": "Cầu thấp", "net": "Lưới", "ramp": "Dốc ghe", "barge": "Sà lan pháo"}
 const HIT_LINES: Dictionary = {"bridge": BoatData.T_BONK, "net": BoatData.T_NET, "wall": BoatData.T_WALL,
-	"barge": "Đụng sà lan!", "ski": "Bị húc!"}
+	"barge": "Đụng sà lan!", "ski": "Bị húc!", "rocket": BoatData.T_ROCKET}
 
 var level: LairCanal
 var pts: Dictionary = {}
@@ -47,6 +47,7 @@ func _start() -> void:
 	chase.wave_started.connect(_on_wave)
 	chase.finale_started.connect(_on_finale)
 	chase.checkpoint_passed.connect(func(_i: int) -> void: mark_ko_checkpoint())
+	chase.set_piece.connect(_on_set_piece)
 	if player:
 		player.visible = false
 		player.controls_enabled = false
@@ -160,6 +161,17 @@ func _on_wave(i: int) -> void:
 func _on_finale() -> void:
 	popup("Bả đuối rồi! Húc vào bờ!", 1.8, PINK)
 	radio("Cano bả hết xăng r, ram nó vô bờ phải đi e.", "Bà ta sắp hết xăng, húc thuyền bà ta vào bờ phải.", 4.5)
+
+
+func _on_set_piece(kind: String) -> void:
+	match kind:
+		"net":
+			popup("Lưới giăng ngang kênh! Né sang nửa kia", 1.6, WARN)
+		"jump":
+			popup("BAY!", 1.0, PINK)
+		"titanic":
+			radio_as("thi_lo", BoatData.T_TITANIC, "", 3.0)
+			popup("Bả đứng mũi cano kìa! Húc đi!", 1.8, PINK)
 
 
 func _on_rammed(n: int) -> void:

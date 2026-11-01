@@ -16,6 +16,12 @@ const SEAT := Vector3(-0.45, 0.05, 0.95)
 const RIVAL_FINALE_D: float = 4.0       # the finale weave (half width)
 const FINALE_SLOWER: float = 4.0        # her finale pace under BoatData.v_max()
 const FINALE_FAR: float = 30.0
+const BOW := Vector3(0.0, 0.62, -1.55)   # standing on the bow (the Titanic), as in seg_d6_chase
+const POSE_IN_S: float = 0.35
+## The Titanic: standing straight, arms spread wide, chin up, a little lean back (a bone layer over the "ride" clip).
+const TITANIC_POSE: Dictionary = {"hips_y": 0.0, "thigh_l": Vector3.ZERO, "thigh_r": Vector3.ZERO, "knee_l": Vector3.ZERO,
+	"knee_r": Vector3.ZERO, "torso": Vector3(-0.12, 0.0, 0.0), "head": Vector3(-0.2, 0.0, 0.0),
+	"shoulder_l": Vector3(0.1, 0.0, -1.45), "shoulder_r": Vector3(0.1, 0.0, 1.45), "elbow_l": Vector3.ZERO, "elbow_r": Vector3.ZERO}
 
 var level: LairCanal
 var s: float = 0.0
@@ -30,17 +36,22 @@ var crashed: bool = false
 var crash_t: float = -1.0
 var hit_t: float = -1.0
 var burst_t: float = 0.0
+var titanic_t: float = 0.0
+var titanic_w: float = 0.0
 var hull_node: Node3D
 var driver: Node3D
 var spray: CPUParticles3D
 var steam: CPUParticles3D
 var _weave_t: float = 0.0
 var _bob_t: float = 0.0
+var _sk: Skeleton3D = null
+var _anim: Node = null
 
 
 func setup(lv: LairCanal) -> void:
 	level = lv
 	name = "RivalBoat"
+	process_priority = 11                  # the Titanic layer runs after the driver's RigAnimator (10)
 	hull_node = CineFX.build_prop("speedboat", {"color": Color("#FFB3D6"), "trim": Color("#FF4FA3"), "name": "LỌ"})
 	hull_node.name = "Hull"
 	add_child(hull_node)
@@ -55,6 +66,8 @@ func setup(lv: LairCanal) -> void:
 		var ap: AnimationPlayer = an.get("player") as AnimationPlayer if an else null
 		if ap:
 			ap.active = false
+		_anim = an
+		_sk = driver.get_meta("skeleton") as Skeleton3D if driver.has_meta("skeleton") else null
 	spray = PlayerBoat.make_spray(hull_node, Vector3(0.0, 0.1, -2.0))
 	steam = PlayerBoat.make_spray(hull_node, Vector3(0.0, 1.0, 2.8), 16)
 	steam.direction = Vector3.UP
@@ -78,6 +91,10 @@ func place(s0: float, d0: float, v0: float) -> void:
 	crash_t = -1.0
 	hit_t = -1.0
 	burst_t = 0.0
+	titanic_t = 0.0
+	titanic_w = 0.0
+	if driver:
+		driver.position = SEAT
 	if steam:
 		steam.emitting = false
 	_apply_xf()
@@ -92,6 +109,10 @@ func think(dt: float, boat: PlayerBoat, finale: bool) -> void:
 		if hit_t > 0.8:
 			hit_t = -1.0
 	burst_t = maxf(0.0, burst_t - dt)
+	titanic_t = maxf(0.0, titanic_t - dt)
+	titanic_w = move_toward(titanic_w, 1.0 if titanic_t > 0.0 else 0.0, dt / POSE_IN_S)
+	if driver:
+		driver.position = SEAT.lerp(BOW, titanic_w)
 	var lim: float = LairCanal.HALF_W - BoatData.BEAM_HALF
 	if crashed:
 		crash_t += dt
@@ -112,11 +133,13 @@ func think(dt: float, boat: PlayerBoat, finale: bool) -> void:
 		want_v = BoatData.v_max() - FINALE_SLOWER
 		if burst_t > 0.0:
 			want_v = BoatData.v_max() + 2.0
-		elif gap > FINALE_FAR:
-			want_v = BoatData.v_max() - FINALE_SLOWER * 2.0
+		elif gap > FINALE_FAR or titanic_t > 0.0:
+			want_v = BoatData.v_max() - FINALE_SLOWER * 2.0   # far behind / posing on the bow: nobody steering, she coasts
 	if not airborne:
 		v = move_toward(v, want_v, 12.0 * dt)
 	var td: float = _plan_d() if not finale else RIVAL_FINALE_D * sin(_weave_t * 0.9)
+	if titanic_t > 0.0:
+		td = d                               # hands off the wheel
 	lat_v = lerpf(lat_v, clampf((td - d) * 2.2, -7.0, 7.0), minf(1.0, dt * 3.0))
 	var prev_s: float = s
 	s += v * dt
@@ -157,8 +180,18 @@ func _plan_d() -> float:
 
 
 ## A ram from the player's boat: pushed toward the right bank, a wobble, a short burst away.
+## Her Titanic pose on the bow for `secs` (0 = back to the wheel now).
+func titanic(secs: float) -> void:
+	titanic_t = secs
+	if secs <= 0.0:
+		titanic_w = 0.0
+		if driver:
+			driver.position = SEAT
+
+
 func rammed() -> void:
 	rams += 1
+	titanic_t = 0.0                          # knocked back down to the wheel
 	hit_t = 0.0
 	lat_v = 5.0
 	d = minf(d + BoatData.RAM_PUSH_D, LairCanal.HALF_W - BoatData.BEAM_HALF)
@@ -188,3 +221,11 @@ func _apply_xf() -> void:
 	global_transform = Transform3D(Basis.from_euler(Vector3(pitch, yaw, roll)), pos)
 	if spray and not crashed:
 		spray.emitting = v > 6.0 and not airborne
+
+
+## The Titanic layer over the driver (on the frames her RigAnimator ran).
+func _process(_dt: float) -> void:
+	if titanic_w <= 0.001 or _sk == null:
+		return
+	if _anim == null or int(_anim.get("_lod_skip")) == 1:
+		CharacterBuilder._apply_bone_pose(_sk, TITANIC_POSE, titanic_w)

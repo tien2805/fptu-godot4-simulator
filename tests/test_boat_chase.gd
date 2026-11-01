@@ -9,6 +9,10 @@
 #   the fireworks barge bumps the boat off; jet skis: a wave behind the boat, the markers, one red-ring telegraph at a time,
 #   the ram hurts, [E] kicks the one on the right off (KO, splash, gone), a jet ski driving into a net is out;
 #   the finale: rams push Thị Lọ to the bank, the last one crashes her -> won -> done;
+#   T6 set pieces: a preview cut as the first bridge comes up; the net lies under the water and rises with its red top
+#   line (a net still down catches nothing); the ramp jump in slow motion on the side camera; the fireworks barge's sky
+#   bursts and rogue rockets (a red ring where each lands: a straight boat is hit, a swerve dodges); her Titanic pose on
+#   the bow at the finale; the finish orbit;
 #   fails: the hull at 0 -> "TOANG!" / "Cano nát bét rồi.", THỬ LẠI at the last checkpoint; falling too far behind ->
 #   "Thị Lọ chạy mất tiêu rồi."; leaving restores the player; Dễ values.
 # Run:  godot --headless --path . --script tests/test_boat_chase.gd
@@ -98,6 +102,7 @@ func _tp(s: float, d: float, v: float, ahead: float = 24.0, waves: bool = false)
 	chase._wall_cd = 0.0
 	chase._barge_cd = 0.0
 	chase._cam_init = false
+	chase.set_pieces.reset(s)
 	inp["throttle"] = 1.0
 	inp["steer"] = 0.0
 	inp["duck"] = false
@@ -215,12 +220,17 @@ func _process(_d: float) -> bool:
 				return false
 			_check(chase.log.has("duck_ok") and _cnt("bridge_hit") == 1 and is_equal_approx(b6.hull, BoatData.HULL), "ducked under the bridge: duck_ok, no hit")
 			_check(bool(mark["low"]), "the duck folds the rider down")
-			_tp(600.0, -5.0, 20.0)
+			_tp(540.0, -5.0, 20.0)
+			_check(not chase.set_pieces.net_live(0) and sc.level.nets[0].net.position.y < -1.0, "the net lies under the water")
+			mark["net_rising"] = false
 			_next(7)
 		# ------------------------------------------------------------------ nets
 		7:
+			if chase.log.has("net_up0") and not bool(mark["net_rising"]):
+				mark["net_rising"] = true
+				_check(sc.level.nets[0].net_top.visible and chase.log.has("cut_net") and mn.popup_label.text.begins_with("Lưới"), "the net rises with its red top line, a preview cut, a warning")
 			if not chase.log.has("net_hit"):
-				if chase.boat.s > 626.0 or frames > 200:
+				if chase.boat.s > 626.0 or frames > 300:
 					_check(false, "the net on the left half stops the boat")
 					_next(8)
 				return false
@@ -237,6 +247,10 @@ func _process(_d: float) -> bool:
 		# ------------------------------------------------------------------ sampan ramp, pier wall
 		9:
 			mark["air"] = maxf(float(mark["air"]), chase.boat.air_h)
+			if chase.boat.airborne and not mark.has("jump_cam"):
+				var ic: Impact = Impact.find_clock(chase)
+				mark["jump_cam"] = chase.set_pieces.cam_mode == "jump" and ic != null and ic.slowmo_active(chase.set_pieces)
+				mark["jump_side"] = chase.cam.global_position.distance_to(sc.level.course_pos(LairCanal.RAMP_S + 6.0, -(LairCanal.HALF_W - 0.8), 2.4)) < 0.1
 			if not (chase.log.has("jump") and chase.log.has("landed")):
 				if frames > 300:
 					_check(false, "the ramp jump lands")
@@ -244,6 +258,12 @@ func _process(_d: float) -> bool:
 				return false
 			_check(_cnt("wall_hit") == 0 and chase.boat.s > LairCanal.RAMP_S, "the jump clears the broken pier wall")
 			_check(float(mark["air"]) > 2.5, "a real jump (%.1f m)" % float(mark["air"]))
+			_check(bool(mark.get("jump_cam", false)) and bool(mark.get("jump_side", false)), "the jump: slow motion (Impact clock) on the side camera")
+			_next(90)
+		90:
+			if frames < int(BoatSetPieces.JUMP_CAM_HOLD * 60.0) + 3:
+				return false
+			_check(chase.set_pieces.cam_mode == "chase", "back on the chase camera after the landing")
 			_tp(880.0, 0.0, 20.0)
 			_next(10)
 		10:
@@ -286,6 +306,60 @@ func _process(_d: float) -> bool:
 					_next(14)
 				return false
 			_check(absf(chase.boat.d - LairCanal.BARGE_D) > BoatData.BARGE_HALF_D + BoatData.BEAM_HALF - 0.01, "pushed off the barge's side")
+			_tp(LairCanal.BARGE_S - BoatData.BARGE_FROM + 5.0, -3.0, BoatData.V_CRUISE)
+			inp["throttle"] = 0.0
+			_next(130)
+		# ------------------------------------------------------------------ fireworks: sky bursts, rogue rockets
+		130:
+			if not chase.log.has("rocket"):
+				if frames > 150:
+					_check(false, "a rogue rocket flies at the boat")
+					_next(14)
+				return false
+			if frames < 3 or not chase.log.has("rocket"):
+				return false
+			var ring_on: bool = false
+			for r: Dictionary in chase.set_pieces.rockets:
+				ring_on = ring_on or (bool(r["live"]) and (r["ring"] as MeshInstance3D).visible)
+			_check(ring_on and chase.set_pieces.live_rockets() == 1, "a red ring where it will land")
+			_check(chase.log.has("sky") and chase.set_pieces.sky_count > 0, "the barge lights the sky")
+			mark["hull"] = chase.boat.hull
+			_next(131)
+		131:
+			if not (chase.log.has("rocket_hit") or chase.log.has("rocket_miss")):
+				if frames > 120:
+					_check(false, "the rocket lands")
+					_next(14)
+				return false
+			_check(chase.log.has("rocket_hit") and is_equal_approx(chase.boat.hull, float(mark["hull"]) - BoatData.dmg_rocket()), "a boat going straight is hit (%.1f)" % chase.boat.hull)
+			mark["rockets"] = _cnt("rocket")
+			_next(132)
+		132:
+			if _cnt("rocket") == int(mark["rockets"]):
+				if frames > 200:
+					_check(false, "the next rocket")
+					_next(14)
+				return false
+			inp["steer"] = 1.0                   # the swerve
+			_next(133)
+		133:
+			if _cnt("rocket_hit") + _cnt("rocket_miss") < int(mark["rockets"]) + 1:
+				if frames > 150:
+					_check(false, "the second rocket lands")
+					_next(14)
+				return false
+			_check(_cnt("rocket_miss") >= 1 and _cnt("rocket_hit") == 1, "a swerve dodges the ring")
+			_tp(LairCanal.BRIDGES[0] - 85.0, 0.0, BoatData.V_CRUISE)
+			inp["throttle"] = 0.0
+			_next(134)
+		134:
+			if not chase.log.has("cut_bridge"):
+				if frames > 120:
+					_check(false, "a preview cut as the first bridge comes up")
+					_next(14)
+				return false
+			var dir: CameraDirector = CameraDirector.live()
+			_check(dir != null and chase.set_pieces.cut_count >= 1 and dir.cutting(), "the director cuts to the bridge (%d cuts)" % chase.set_pieces.cut_count)
 			_tp(100.0, 0.0, 13.0, 24.0, true)
 			inp["throttle"] = 0.0
 			_next(14)
@@ -369,6 +443,8 @@ func _process(_d: float) -> bool:
 				if sk.gone:
 					sk4 = sk
 					break
+			chase.set_pieces.net_w[0] = 1.0
+			chase.set_pieces._apply_net(0)
 			sk4.revive(-1, 0)
 			sk4.place(619.8, -5.0, 13.0)
 			kicked = sk4
@@ -380,9 +456,12 @@ func _process(_d: float) -> bool:
 			_tp(1400.0, 0.0, 24.0, 10.0)
 			mark["ram_prompt"] = false
 			mark["ram_info"] = false
+			mark["titanic"] = false
 			hold = func() -> void:
 				if chase == null or not is_instance_valid(chase):
 					return
+				if chase.rival.titanic_w > 0.9 and chase.rival.driver.position.distance_to(RivalBoat.BOW) < 0.05:
+					mark["titanic"] = true
 				inp["steer"] = clampf((chase.rival.d - chase.boat.d) * 0.9, -1.0, 1.0)
 				var duck: bool = false
 				for bs: float in LairCanal.BRIDGES:
@@ -405,6 +484,8 @@ func _process(_d: float) -> bool:
 			for k: String in ["finale", "ram1", "ram2", "ram3", "crash", "won"]:
 				_check(chase.log.has(k), "finale log has %s" % k)
 			_check(not chase.log.has("ram4"), "three rams on Thường")
+			_check(chase.log.has("titanic") and bool(mark["titanic"]), "her Titanic pose on the bow at the finale")
+			_check(chase.log.has("finish_orbit"), "the last ram: the finish orbit")
 			_check(chase.rival.crashed and chase.rival.d > LairCanal.HALF_W - BoatData.BEAM_HALF - 1.0, "she ends on the right bank (d %.1f)" % chase.rival.d)
 			_check(bool(mark["ram_prompt"]) and bool(mark["ram_info"]), "the ram prompt and the ram count")
 			_check(done_info.has("hull") and done_info.has("kos"), "done %s" % str(done_info))
@@ -470,7 +551,7 @@ func _end() -> bool:
 		sc.queue_free()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))
 	if fails.is_empty():
-		print("SUCCESS: boat chase (handling, bridges, nets, ramp, wall, barge, jet skis, kicks, finale rams, fails, retry)")
+		print("SUCCESS: boat chase (handling, bridges, nets, ramp, wall, barge, rockets, jet skis, kicks, Titanic, finale rams, fails, retry)")
 		quit(0)
 	else:
 		print("FAILED: %d check(s)" % fails.size())

@@ -67,6 +67,17 @@ const RAM_COOLDOWN: float = 1.2
 const LOSE_GAP: float = 130.0            # further ahead than this ...
 const LOSE_S: float = 5.0                # ... this long = she got away
 const END_MARGIN: float = 45.0           # the rams not done before the end of the canal = she got away
+# ----- set pieces (BoatSetPieces) -----
+const NET_RAISE_AT: float = 70.0         # a net rises when the boat is this far before it ...
+const NET_RAISE_S: float = 1.4           # ... over this long (its red top line on: the telegraph)
+const NET_LIVE_W: float = 0.6            # raised past this it catches a hull
+const JUMP_SCALE: float = 0.4            # the ramp jump in slow motion (the Impact clock) ...
+const JUMP_SLOW_S: float = 0.9           # ... for this long (real seconds), the side camera until the landing
+const BARGE_FROM: float = 150.0          # the rogue rockets fly while the boat is this far before the barge ...
+const BARGE_TO: float = 10.0             # ... until this far past it
+const ROCKET_R: float = 2.4              # a rocket's blast radius (its red ring on the water)
+const TITANIC_S: float = 3.0             # her Titanic pose on the bow at the finale (nobody steering: she coasts)
+const FINISH_ORBIT_S: float = 1.2        # the last ram: slow-motion orbit (real seconds)
 ## Checkpoints (route s): a retry starts at the last one passed with a full hull.
 const CHECKPOINTS: Array[float] = [6.0, 450.0, 860.0, 1340.0]
 
@@ -79,6 +90,8 @@ const T_LOST: String = "Thị Lọ chạy mất tiêu rồi."
 const T_BONK: String = "Cốp! Quên cúi đầu..."
 const T_NET: String = "Dính lưới!"
 const T_WALL: String = "Rầm! Đâm trụ cầu gãy"
+const T_ROCKET: String = "Dính pháo lạc!"
+const T_TITANIC: String = "Tao là nữ hoàng kênh Rạch Hầm!"
 
 
 static func v_max() -> float:
@@ -116,6 +129,19 @@ static func ski_tell() -> float:
 
 static func ski_ram_gap() -> float:
 	return float(Difficulty.pick(3.0, 4.6))
+
+
+## A rogue rocket every this many seconds near the fireworks barge, its ring this long before it lands, its damage.
+static func rocket_gap() -> float:
+	return float(Difficulty.pick(1.3, 1.9))
+
+
+static func rocket_tell() -> float:
+	return float(Difficulty.pick(1.0, 1.35))
+
+
+static func dmg_rocket() -> float:
+	return float(Difficulty.pick(12.0, 8.0))
 
 
 static func rams_needed() -> int:

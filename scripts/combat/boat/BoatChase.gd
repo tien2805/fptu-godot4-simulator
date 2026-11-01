@@ -14,8 +14,11 @@
 #   chase.stop()                   end without a result (jet skis retired)
 #   chase.input_override           a Dictionary {"throttle", "steer", "duck"} replaces the keyboard (tests, the bot)
 #   signals: lost(reason) (the hull at 0: BoatData.T_SINK; Thị Lọ too far ahead / the canal's end: T_LOST), won (after the
-#            last ram and the crash), hazard_hit(kind) (bridge | net | wall | barge | ski), ski_down(ski, cause) (kick |
-#            net | wall | barge), rammed(n), checkpoint_passed(i), wave_started(i), finale_started
+#            last ram and the crash), hazard_hit(kind) (bridge | net | wall | barge | ski | rocket), ski_down(ski, cause)
+#            (kick | net | wall | barge | rocket | finale), rammed(n), checkpoint_passed(i), wave_started(i), finale_started,
+#            set_piece(kind) (net | jump | titanic | finish)
+#   set_pieces (BoatSetPieces): the preview cuts, the rising nets, the jump cam + slow motion, the fireworks and the rogue
+#            rockets, the Titanic pose, the finish orbit
 #   state: idle | running | finishing (her boat on the bank, FINISH_S of footage) | won | lost; log (events, tests)
 # Hazards (route space, LairCanal constants): the low bridges (an upright head under the deck: BONK, the hull, the speed;
 # ducked: "duck_ok"), the nets (the half of the canal they cover), the sampan ramp (on its line fast enough: the jump over
@@ -35,6 +38,7 @@ signal rammed(n: int)
 signal checkpoint_passed(i: int)
 signal wave_started(i: int)
 signal finale_started
+signal set_piece(kind: String)          # net | jump | titanic | finish (BoatSetPieces; the mission's popups / radio)
 
 const LIP_H: float = 1.22                # the sampan ramp's lip above the water line (CinePropsD6.sampan meta lip_y)
 const CAM_BACK: float = 7.4
@@ -50,6 +54,7 @@ var level: LairCanal
 var boat: PlayerBoat
 var rival: RivalBoat
 var skis: Array[JetSki] = []
+var set_pieces: BoatSetPieces
 var cam: Camera3D
 var state: String = "idle"
 var cp_i: int = 0
@@ -92,6 +97,9 @@ func setup(lv: LairCanal, opts: Dictionary = {}) -> void:
 		sk.name = "JetSki%d" % i
 		sk.retire()
 		skis.append(sk)
+	set_pieces = BoatSetPieces.new()
+	add_child(set_pieces)
+	set_pieces.setup(self, int(opts.get("seed", 1)))
 	cam = Camera3D.new()
 	cam.name = "BoatCam"
 	cam.fov = CAM_FOV.x
@@ -99,6 +107,7 @@ func setup(lv: LairCanal, opts: Dictionary = {}) -> void:
 	cam.far = 700.0
 	add_child(cam)
 	Impact.prepare(self)
+	CameraDirector.ensure(self)              # the set pieces' preview cuts and the finish orbit
 
 
 func start() -> void:
@@ -106,8 +115,6 @@ func start() -> void:
 	_place_at(0)
 	state = "running"
 	cam.make_current()
-	for n: CineAnimD6 in level.nets:
-		n.set_raise(1.0)
 	log.append("start")
 
 
@@ -122,6 +129,7 @@ func stop() -> void:
 	state = "idle"
 	for sk: JetSki in skis:
 		sk.retire()
+	set_pieces.clear()
 
 
 func _place_at(i: int) -> void:
@@ -144,6 +152,7 @@ func _place_at(i: int) -> void:
 	_kick_q = 0
 	_wall_cd = 0.0
 	_barge_cd = 0.0
+	set_pieces.reset(s0)
 	_cam_init = false
 
 
@@ -177,6 +186,7 @@ func step(dt: float) -> void:
 				log.append("scrape")
 	if bool(r["landed"]):
 		log.append("landed")
+		set_pieces.on_landed()
 		Impact.particles(self, "splash", boat.global_position, Vector3.UP, 1.5)
 		Impact.hit(self, "light", {"pos": boat.global_position, "no_hitstop": true, "no_fx": true})
 	_hazards(prev_s, dt)
@@ -184,11 +194,13 @@ func step(dt: float) -> void:
 		finale = true
 		log.append("finale")
 		finale_started.emit()
+		set_pieces.on_finale()
 	rival.think(dt, boat, finale)
 	_skis(dt)
 	_waves()
 	_checkpoints()
 	_rams(dt)
+	set_pieces.step(dt)
 	_camera(dt)
 	if state == "finishing":
 		finish_t += dt
@@ -236,7 +248,7 @@ func _hazards(prev_s: float, dt: float) -> void:
 		var ns: float = float(LairCanal.NETS[k][0])
 		var side: float = float(LairCanal.NETS[k][1])
 		var nkey: String = "n%d" % k
-		if not hits.has(nkey) and absf(s - ns) < BoatData.NET_HALF + BoatData.LEN_HALF * 0.5 and boat.d * side > BoatData.NET_INNER - BoatData.BEAM_HALF and boat.air_h < 2.0:
+		if not hits.has(nkey) and set_pieces.net_live(k) and absf(s - ns) < BoatData.NET_HALF + BoatData.LEN_HALF * 0.5 and boat.d * side > BoatData.NET_INNER - BoatData.BEAM_HALF and boat.air_h < 2.0:
 			hits[nkey] = true
 			boat.damage(BoatData.dmg_net())
 			boat.v *= 0.3
@@ -254,6 +266,7 @@ func _hazards(prev_s: float, dt: float) -> void:
 			if boat.v >= BoatData.RAMP_MIN_V:
 				boat.launch(LIP_H, boat.v * BoatData.RAMP_UP)
 				log.append("jump")
+				set_pieces.on_jump()
 			else:
 				boat.launch(LIP_H, 0.0)
 				log.append("flop")
@@ -287,6 +300,13 @@ func _hazards(prev_s: float, dt: float) -> void:
 		boat.v *= 0.6
 		boat.damage(BoatData.dmg_barge())
 		_hit("barge", "light", boat.global_position + Vector3(0.0, 0.6, 0.0))
+
+
+## A rogue rocket's blast on the boat (BoatSetPieces): the hull, a shove, the hit.
+func rocket_hit(at: Vector3) -> void:
+	boat.damage(BoatData.dmg_rocket())
+	boat.lat_v += signf(boat.global_position.x - at.x + 0.01) * 3.0
+	_hit("rocket", "light", at + Vector3(0.0, 0.6, 0.0))
 
 
 func _hit(kind: String, tier: String, at: Vector3) -> void:
@@ -371,8 +391,9 @@ func _skis(dt: float) -> void:
 
 
 func _ski_crash(sk: JetSki) -> String:
-	for n: Array in LairCanal.NETS:
-		if absf(sk.s - float(n[0])) < BoatData.NET_HALF and sk.d * float(n[1]) > BoatData.NET_INNER:
+	for k: int in LairCanal.NETS.size():
+		var n: Array = LairCanal.NETS[k]
+		if set_pieces.net_live(k) and absf(sk.s - float(n[0])) < BoatData.NET_HALF and sk.d * float(n[1]) > BoatData.NET_INNER:
 			return "net"
 	if absf(sk.s - LairCanal.RAMP_S) < BoatData.WALL_HALF and sk.d > LairCanal.GAP_D1 + 0.5:
 		return "wall"
@@ -419,6 +440,7 @@ func _rams(dt: float) -> void:
 				state = "finishing"
 				finish_t = 0.0
 				log.append("crash")
+				set_pieces.on_last_ram()
 				for sk: JetSki in skis:
 					if sk.is_threat():
 						sk.knock_out(0, "finale")
@@ -460,6 +482,8 @@ func _lose(reason: String) -> void:
 # Camera
 # ---------------------------------------------------------------------------
 func _camera(dt: float) -> void:
+	if set_pieces.camera():
+		return                               # the ramp jump's side camera
 	var yaw: float = level.yaw_at(boat.s)
 	var fwd := Vector3(-sin(yaw), 0.0, -cos(yaw))
 	var up_h: float = CAM_UP
