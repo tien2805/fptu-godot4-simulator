@@ -2,7 +2,8 @@
 # The protagonist's phone in story free roam ([P], spec A2-D7): a vice-styled panel on the right with three tabs
 #   "Tin nhắn"   one thread per sender (Mr.T, Phúc, Anh Duy, Số lạ: only senders who wrote); showing a thread marks it read,
 #   "Bằng chứng" E1-E7, a slot not owned yet reads "???",
-#   "Nhiệm vụ"   day, objective, days left.
+#   "Nhiệm vụ"   day, objective, days left;
+#   "Tủ đồ"      (w4-endings T5e) the S-rank count and the helmet / jacket colours it unlocks (SideRewards); a tap picks one.
 # While open, player movement / camera input are blocked (block_target.controls_enabled, like the map) and the mouse is
 # free; the game is not paused. [P] or [Esc] closes it (handled in _input, before StageManager's pause key).
 # Built in code; texts are already formatted ({name}) by StoryDirector.add_text.
@@ -13,7 +14,7 @@ const GameFXScript: Script = preload("res://scripts/GameFX.gd")
 
 signal opened_changed(open: bool)
 
-const TABS: Array[String] = ["Tin nhắn", "Bằng chứng", "Nhiệm vụ"]
+const TABS: Array[String] = ["Tin nhắn", "Bằng chứng", "Nhiệm vụ", "Tủ đồ"]
 const PINK := Color("#FF4FA3")
 const CYAN := Color("#3FF2FF")
 const INK := Color("#1B0F33")
@@ -234,7 +235,37 @@ func refresh() -> void:
 				list.add_child(_label(t, 16, Color("#8F84A8") if locked else CYAN, false))
 		2:
 			list.add_child(_label(mission_text(), 16, Color("#F4F1FF"), false))
+		3:
+			_fill_wardrobe()
 	_refresh_tabs()
+
+
+## "Tủ đồ": the S-rank count, then the helmets and the jackets (locked: "??? · cần N hạng S"); a tap on an open one picks it.
+func _fill_wardrobe() -> void:
+	list.add_child(_label("Hạng S đã đạt: %d" % SideRewards.s_count(), 17, Color("#F1C40F"), true))
+	var head: String = ""
+	for r: Array in SideRewards.rows():
+		var h: String = "Mũ bảo hiểm" if String(r[1]) == "helmet" else "Áo khoác"
+		if h != head:
+			head = h
+			list.add_child(_label(h, 16, PINK, true))
+		var b := Button.new()
+		b.name = "Wear_%s_%s" % [String(r[1]), String(r[2])]
+		b.text = String(r[0])
+		b.focus_mode = Control.FOCUS_NONE
+		b.disabled = not bool(r[3])
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.add_theme_font_size_override("font_size", 15)
+		b.add_theme_color_override("font_color", CYAN if bool(r[4]) else Color("#F4F1FF"))
+		if bool(r[3]) and not bool(r[4]):
+			b.pressed.connect(_wear.bind(String(r[1]), String(r[2])))
+		list.add_child(b)
+	list.add_child(_label("Mũ và áo mới có từ lần vào thế giới sau.", 13, Color("#B8A9D9"), false))
+
+
+func _wear(kind: String, id: String) -> void:
+	SideRewards.choose(kind, id)
+	refresh()
 
 
 func _fill_messages() -> void:

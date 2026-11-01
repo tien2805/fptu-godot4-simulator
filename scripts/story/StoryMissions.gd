@@ -23,7 +23,8 @@
 #          the Day 5 server basement); cine beats inside that scene carry "lair": "basement" too (in free roam every
 #          basement beat is a marker that launches the scene);
 #   next_by_choice {"id", <key>: beat}: the branch a choice tail follows (choice 2: accept -> ending C);
-#   ending: the story ends after this beat's cinematic (the save is marked finished, then the main menu);
+#   ending: the story ends after this beat's cinematic (the save is marked finished, then the main menu); w4-endings:
+#   "ending": "auto" (d7_ending) evaluates the ending and plays its sequence and the end summary (StoryEndingRunner);
 #   after_at: anchor of an "after" cinematic (yard: the cine pad); flag_by_info {info key: flag}: set from the mission's
 #   result (d3_all_crates opens the optional E4).
 # Day 2 "Tokyo Drift" (plan 2026-10-27-d2x-drift.md) adds mission drift_duel: the beat d2_drift (the drift race against
@@ -277,6 +278,12 @@ const BEATS: Dictionary = {
 			["Linh", "Mai thi rồi đó {name}. Ngủ đi, mai tính tiếp."]]},
 	"d6_call": {"day": 6, "title": "Cuộc gọi 3 giờ sáng", "kind": "call", "days": 1, "tod": "night", "next": "d7_start",
 		"objective": "Số lạ gọi lần cuối..."},
+	# --- Endings (w4-endings) ---
+	# Day 7 hands over with "next": "d7_ending". "ending": "auto": StoryDirector.resolve_ending evaluates the save
+	# (evaluate_ending), StoryRoam's StoryEndingRunner plays StoryEndings.slots(X) (slot = the first one when X is A),
+	# then the end summary, then the save is finished and the main menu opens.
+	"d7_ending": {"day": 7, "title": "Phiên kỷ luật", "kind": "cine", "slot": "end_a", "at": "", "ending": "auto",
+		"tod": "morning", "next": "", "objective": "08:00. Phiên kỷ luật bắt đầu..."},
 }
 
 

@@ -146,7 +146,7 @@ func complete_step(id: String) -> bool:
 	if nxt != "":
 		_enter(nxt)
 	elif b.has("ending"):
-		finish_story(String(b["ending"]))
+		finish_story(resolve_ending(b))
 		return true
 	save_game()
 	return true
@@ -168,6 +168,7 @@ func finish_story(which: String) -> void:
 	ending = which
 	flags["ending"] = which
 	spawn = null
+	StoryChapters.record_ending(which)   # w4-endings: the ending gallery (Chọn cảnh, KẾT THÚC)
 	save_game()
 	active = false
 	hide_result()
@@ -394,6 +395,43 @@ static func evaluate_ending(state: Dictionary) -> String:
 		if String(ranks.get(sid, ranks.get(str(sid), ""))) != "S":
 			all_s = false
 	return "F" if all_s else "A"
+
+
+## w4-endings: the state evaluate_ending reads from this story: the evidence, the three choices (bribe from Day 6) and
+## the original study stages' ranks (study_ranks()).
+func ending_state() -> Dictionary:
+	return {"evidence": evidence.duplicate(), "choices": choices.duplicate(true), "study_ranks": study_ranks()}
+
+
+## The study stages Ending F asks for (StageManager.StageID 3 FAP class, 6 Capstone, 7 EOS exam).
+const STUDY_STAGES: Array[int] = [3, 6, 7]
+
+
+## {stage id: best rank letter} for STUDY_STAGES: StageManager's saved best_stats (progress.cfg), then
+## flags.study_ranks merged on top where it holds a letter (a story-side override, also what the tests set).
+func study_ranks() -> Dictionary:
+	var out: Dictionary = {}
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree   # (also outside the tree: headless tests' director)
+	var sm: Node = tree.root.get_node_or_null("StageManager") if tree and tree.root else null
+	var best: Variant = sm.get("best_stats") if sm else null
+	if best is Dictionary:
+		for sid: int in STUDY_STAGES:
+			var b: Variant = (best as Dictionary).get(sid)
+			if b is Dictionary and int((b as Dictionary).get("wins", 0)) > 0 and String((b as Dictionary).get("rank", "")) != "":
+				out[sid] = String((b as Dictionary)["rank"])
+	var sr: Variant = flags.get("study_ranks", {})
+	if sr is Dictionary:
+		for k: Variant in (sr as Dictionary).keys():
+			var letter: String = String((sr as Dictionary)[k])
+			if letter != "" and str(k).is_valid_int():
+				out[int(str(k))] = letter
+	return out
+
+
+## w4-endings: the ending beat b finishes on: its "ending" letter, or for "auto" (d7_ending) the evaluated one.
+func resolve_ending(b: Dictionary) -> String:
+	var e: String = String(b.get("ending", ""))
+	return evaluate_ending(ending_state()) if e == "auto" else e
 
 
 # ---------------------------------------------------------------------------

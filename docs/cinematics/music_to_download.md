@@ -107,6 +107,21 @@ Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột
 Phòng sau (búp bê cừu, hộp nhạc) dùng lại bài đi lén của Tòa nhà ban đêm (`night_stealth`); khi hộp nhạc chạy thì nhạc
 nền tắt, chỉ còn tiếng hộp nhạc.
 
+## Phase D: các kết và hoạt động tự do (w4-endings, 2026-11-01)
+
+Chưa có file thì chỗ đó im lặng. Các kết dùng đúng gợi ý trong `music_suggestions.md`.
+
+| | Chỗ dùng | Tên file bắt đầu bằng | Bài |
+|---|---|---|---|
+| [ ] | Kết A: buổi kỷ luật thành buổi khen thưởng | `end_a_` | *September*, Earth, Wind & Fire |
+| [ ] | Kết A: tấm biển Lọ Academy sập (bản dựng trong game của clip AI #3; không có file riêng thì dùng tiếp bài của `end_a`) | `ai_true_end_` | *September*, Earth, Wind & Fire |
+| [ ] | Kết B: Phúc ôm thùng đồ ra về | `end_b_` | *Lean on Me*, Bill Withers |
+| [ ] | Kết D: trùm đu trực thăng bỏ trốn | `end_d_` | *Fly Me to the Moon*, Frank Sinatra |
+| [ ] | Kết E: "Còn cái nịt", credits meme | `end_e_` | *Never Gonna Give You Up*, Rick Astley |
+| [ ] | Kết F: học bổng, trùm lên xe cảnh sát | `end_f_` | *Celebration*, Kool & the Gang |
+| [ ] | Đua drift đường phố ban đêm (đi tự do) | `side_drift_` | *Night of Fire*, Niko |
+| [ ] | Chạy giao hàng tính giờ (đi tự do) | `side_delivery_` | *Running in the 90s*, Max Coveri |
+
 ## Các màn cũ (vào từ cột sáng khi đi tự do)
 
 | | Chỗ dùng | Tên file bắt đầu bằng | Bài |

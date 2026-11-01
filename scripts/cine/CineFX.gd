@@ -58,7 +58,10 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	# pieces, built by CinePropsD6 (this list = CinePropsD6.KINDS, kept literal so it stays a constant)
 	"pink_bob", "lo_shades", "leopard_print", "cash_bag", "ledger", "milk_tea", "powder_puff", "uniform_pack", "speedboat",
 	"jet_ski", "backroom", "doll_shelf", "music_box", "sheep_doll", "vanity", "safe", "tea_shop", "canal_bank", "low_bridge",
-	"fish_net", "sampan", "pier_wall", "billboard", "fireworks", "bulb", "house_row", "cash_wad"]
+	"fish_net", "sampan", "pier_wall", "billboard", "fireworks", "bulb", "house_row", "cash_wad",
+	# w4-endings: the ending cinematics' props, built by CinePropsE (this list = CinePropsE.KINDS)
+	"end_billboard", "end_helicopter", "police_car", "box", "belt", "scholarship", "certificate", "hearing_set", "canal", "sign",
+	"boat", "lift_frame", "lift_door", "dossier"]
 
 var _serial: int = 0
 var _parts: Array[Dictionary] = []     # {node: CPUParticles3D, s0, life}
@@ -558,6 +561,8 @@ static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 				CinePropsC.build(kind, root, opts)
 			elif CinePropsD6.has(kind):
 				CinePropsD6.build(kind, root, opts)
+			elif CinePropsE.has(kind):
+				CinePropsE.build(kind, root, opts)
 			else:
 				push_warning("CineFX.build_prop: unknown kind '%s'" % kind)
 	return root

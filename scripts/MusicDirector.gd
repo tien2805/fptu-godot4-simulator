@@ -36,7 +36,9 @@ const SLOTS: Array[String] = ["menu", "roam_day", "roam_night",
 	# Wave 3 (plan 2026-10-30-w3-shared.md): the Day 3 mannequin-challenge meme, the Day 5 burning-server typing
 	"meme_mannequin", "mission_fire_hack",
 	# Phase D Day 6 (plan 2026-11-01-w4-day6.md): the shift behind the Trà Sữa Lọ counter, the speedboat chase
-	"mission_shop", "mission_boat"]
+	"mission_shop", "mission_boat",
+	# w4-endings (plan 2026-11-01-w4-endings.md T5): the free-roam side activities (night races, delivery runs)
+	"side_drift", "side_delivery"]
 ## Night Building tracks (NightMusic).
 const NIGHT_SLOTS: Array[String] = ["night_stealth", "night_tense", "night_chase", "night_escape"]
 ## Short replays (CineReplay through StoryStage.play_replay; they have no timeline file).

@@ -11,12 +11,18 @@ extends Node3D
 
 ## Slot to play (ChapterSelect.play_cine sets it before the scene change).
 static var slot: String = ""
+## w4-endings: the slots that follow (ChapterSelect.play_ending: an ending's whole sequence), played one after another.
+static var queue: Array[String] = []
+## ChapterSelect tab to come back to ("gallery", or "endings" after an ending sequence).
+static var return_tab: String = "gallery"
 
 ## false (tests): navigation is recorded in last_nav instead of changing scenes.
 var nav_enabled: bool = true
 var last_nav: String = ""
 ## Tests: extra CinePlayer opts ({"manual": true, "music": false}).
 var cine_opts: Dictionary = {}
+## Slots played so far by this player (the sequence, for tests).
+var played: Array[String] = []
 var freeroam: Node = null
 var player: CinePlayer = null
 var cards: CanvasLayer = null
@@ -39,8 +45,9 @@ func _play() -> void:
 	if tl != null:
 		player = freeroam.call("play_cinematic", tl, cine_opts.duplicate())
 	if player == null:
-		_back()
+		_next_or_back()
 		return
+	played.append(slot)
 	if slot == "ai_intro":
 		var ic := StoryIntroCards.new()
 		ic.name = "IntroCards"
@@ -88,12 +95,23 @@ func _on_finished(_skipped: bool) -> void:
 	if cards:
 		cards.queue_free()
 		cards = null
-	_back()
+	_next_or_back()
+
+
+## The next slot of the queue (deferred: the finished CinePlayer frees itself first), or back to ChapterSelect.
+func _next_or_back() -> void:
+	if queue.is_empty():
+		_back()
+		return
+	slot = queue.pop_front()
+	call_deferred("_play")
 
 
 func _back() -> void:
 	_restore()
-	ChapterSelect.open_tab = "gallery"
+	queue = []
+	ChapterSelect.open_tab = return_tab
+	return_tab = "gallery"
 	last_nav = "chapters"
 	if nav_enabled and is_inside_tree():
 		get_tree().paused = false
