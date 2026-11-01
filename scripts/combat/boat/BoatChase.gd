@@ -66,6 +66,9 @@ var finale: bool = false
 var log: Array[String] = []
 var hits: Dictionary = {}
 var input_override: Variant = null
+var _key_input: Dictionary = {"throttle": 0.0, "steer": 0.0, "duck": false}   # the keyboard's input, reused every step
+var _bridge_keys: PackedStringArray = PackedStringArray()   # the hits keys "b0".. / "n0".., formatted once
+var _net_keys: PackedStringArray = PackedStringArray()
 var rng := RandomNumberGenerator.new()
 var kos: int = 0
 var hazard_hits: int = 0
@@ -97,6 +100,12 @@ func setup(lv: LairCanal, opts: Dictionary = {}) -> void:
 		sk.name = "JetSki%d" % i
 		sk.retire()
 		skis.append(sk)
+	_bridge_keys.clear()
+	for i: int in LairCanal.BRIDGES.size():
+		_bridge_keys.append("b%d" % i)
+	_net_keys.clear()
+	for k: int in LairCanal.NETS.size():
+		_net_keys.append("n%d" % k)
 	set_pieces = BoatSetPieces.new()
 	add_child(set_pieces)
 	set_pieces.setup(self, int(opts.get("seed", 1)))
@@ -175,8 +184,8 @@ func step(dt: float) -> void:
 		return
 	_read_input()
 	var prev_s: float = boat.s
-	var r: Dictionary = boat.step(dt)
-	if bool(r["scrape"]):
+	boat.step(dt)
+	if boat.scraped:
 		boat.damage(BoatData.bank_dps() * dt)
 		_spark_t -= dt
 		if _spark_t <= 0.0:
@@ -184,7 +193,7 @@ func step(dt: float) -> void:
 			Impact.particles(self, "sparks", boat.global_position + Vector3(0.0, 0.4, 0.0), Vector3.UP, 0.6)
 			if not log.has("scrape"):
 				log.append("scrape")
-	if bool(r["landed"]):
+	if boat.landed:
 		log.append("landed")
 		set_pieces.on_landed()
 		Impact.particles(self, "splash", boat.global_position, Vector3.UP, 1.5)
@@ -218,7 +227,10 @@ func _read_input() -> void:
 		return
 	var thr: float = Input.get_action_strength("move_forward") - Input.get_action_strength("move_back")
 	var st: float = Input.get_action_strength("move_right") - Input.get_action_strength("move_left")
-	boat.input = {"throttle": thr, "steer": st, "duck": Input.is_action_pressed("walk") or Input.is_physical_key_pressed(KEY_CTRL)}
+	_key_input["throttle"] = thr
+	_key_input["steer"] = st
+	_key_input["duck"] = Input.is_action_pressed("walk") or Input.is_physical_key_pressed(KEY_CTRL)
+	boat.input = _key_input
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +243,7 @@ func _hazards(prev_s: float, dt: float) -> void:
 	# the low bridges
 	for i: int in LairCanal.BRIDGES.size():
 		var bs: float = LairCanal.BRIDGES[i]
-		var key: String = "b%d" % i
+		var key: String = _bridge_keys[i]
 		if hits.has(key):
 			continue
 		if absf(s - bs) < BoatData.BRIDGE_HALF and not boat.ducked() and not boat.airborne:
@@ -247,7 +259,7 @@ func _hazards(prev_s: float, dt: float) -> void:
 	for k: int in LairCanal.NETS.size():
 		var ns: float = float(LairCanal.NETS[k][0])
 		var side: float = float(LairCanal.NETS[k][1])
-		var nkey: String = "n%d" % k
+		var nkey: String = _net_keys[k]
 		if not hits.has(nkey) and set_pieces.net_live(k) and absf(s - ns) < BoatData.NET_HALF + BoatData.LEN_HALF * 0.5 and boat.d * side > BoatData.NET_INNER - BoatData.BEAM_HALF and boat.air_h < 2.0:
 			hits[nkey] = true
 			boat.damage(BoatData.dmg_net())

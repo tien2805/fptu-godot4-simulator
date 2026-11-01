@@ -489,8 +489,11 @@ func _process(_d: float) -> bool:
 			_check(chase.rival.crashed and chase.rival.d > LairCanal.HALF_W - BoatData.BEAM_HALF - 1.0, "she ends on the right bank (d %.1f)" % chase.rival.d)
 			_check(bool(mark["ram_prompt"]) and bool(mark["ram_info"]), "the ram prompt and the ram count")
 			_check(done_info.has("hull") and done_info.has("kos"), "done %s" % str(done_info))
-			_check(sc.player.visible, "the walking body back after the chase")
+			var stand: Vector3 = sc.level.bank_xf() * LairCanal.BANK_STAND
+			_check(chase.cam.current and not sc.player.visible and not sc.player.controls_enabled, "the win: the chase camera holds the finish through the results card")
+			_check(StoryMission.flat(sc.player.global_position, stand) < 1.5, "the walking body parked on the finish bank's quay (%s)" % str(sc.player.global_position))
 			sc._free_mission()
+			_check(sc.player.visible and sc.player.controls_enabled and sc.player.camera.current, "the walking body back on the bank when the mission is freed")
 			_next(19)
 		# ------------------------------------------------------------------ fails, retry
 		19:

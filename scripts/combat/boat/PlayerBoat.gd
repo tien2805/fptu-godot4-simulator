@@ -3,7 +3,8 @@
 # the LairCanal course (s along, d across, right +), the hull HP, the duck under the low bridges, the side kicks, the bow
 # spray. BoatChase owns it, feeds `input` and calls step(dt) on the chase clock; the hazards are BoatChase's.
 #   input: {"throttle": -1..1 ([W] / [S]), "steer": -1..1 ([A] / [D]), "duck": bool ([CTRL])}
-#   step(dt) -> Dictionary  {"scrape": bool (against a bank wall this step), "landed": bool (back on the water after a jump)}
+#   step(dt)                one step; then `scraped` (against a bank wall this step) and `landed` (back on the water after
+#                           a jump this step) tell what happened (fields: no per-frame Dictionary)
 #   kick(side) -> bool      side -1 left [Q], +1 right [E]; the kick's hit window: kick_active()
 #   damage(n), stun(secs), launch(lip_h, vy) (the ramp), place(s, d, v)
 # Look: the white and orange speedboat (CinePropsD6), the protagonist on the driver's seat in the pink shipper shirt (the
@@ -30,6 +31,8 @@ var kick_side: int = 0
 var kick_cd: float = 0.0
 var kick_hit: bool = false
 var stun_t: float = 0.0
+var scraped: bool = false                 # this step: against a bank wall
+var landed: bool = false                  # this step: back on the water after a jump
 var input: Dictionary = {"throttle": 0.0, "steer": 0.0, "duck": false}
 var hull_node: Node3D
 var rider: Node3D
@@ -110,8 +113,9 @@ func place(s0: float, d0: float, v0: float) -> void:
 	_apply_xf()
 
 
-func step(dt: float) -> Dictionary:
-	var out: Dictionary = {"scrape": false, "landed": false}
+func step(dt: float) -> void:
+	scraped = false
+	landed = false
 	_bob_t += dt
 	kick_cd = maxf(0.0, kick_cd - dt)
 	if kick_t >= 0.0:
@@ -142,17 +146,16 @@ func step(dt: float) -> Dictionary:
 			air_h = 0.0
 			air_vy = 0.0
 			airborne = false
-			out["landed"] = true
+			landed = true
 	var lim: float = LairCanal.HALF_W - BoatData.BEAM_HALF
 	if absf(d) > lim:
 		d = signf(d) * lim
 		if signf(lat_v) == signf(d):
 			lat_v = -lat_v * BoatData.BANK_BOUNCE
-		out["scrape"] = true
+		scraped = true
 	_apply_xf()
 	if spray:
 		spray.emitting = v > 6.0 and not airborne
-	return out
 
 
 ## The ramp: up off the sampan's lip at lip_h with a vertical speed vy.

@@ -2,7 +2,9 @@
 # Day 6 speedboat chase (lair task "boat", plan 2026-11-01-w4-day6.md T4): Thị Lọ grabbed the cash and ran for her pink
 # speedboat; the player takes the moored one and chases her down the Rạch Hầm canal (BoatChase on the LairCanal course).
 # The player's walking body is hidden (the protagonist drives the boat in the pink shipper shirt) and the chase camera
-# takes over; the beat's "after" cinematic seg_d6_chase follows the win.
+# takes over; the beat's "after" cinematic seg_d6_chase follows the win. The hidden body waits on the pier during the chase
+# and on the finish bank's quay after the win (LairCanal.BANK_STAND), where it shows again when StoryCanal frees the
+# mission; the chase camera stays current through the results card, so nothing after the win shows the back room.
 #   - HUD (the mission's top panel): the gap to Thị Lọ, the rams in the finale ("Húc: 1 / 3"), the hull as the meter;
 #     prompts by priority: "CÚI! [CTRL]" before a low bridge, the ram line in the finale, the kick keys while a jet ski
 #     telegraphs its ram beside the boat (its red ring: it has closed in to kick reach); short popups on every hit ("Cốp! Quên cúi đầu...", "Dính lưới!", ...).
@@ -30,6 +32,10 @@ var hazard_mark: Node3D
 var hazard_kind: String = ""
 var _events: Array = []
 var _hull_seen: float = -1.0
+var _hud_gap: int = -1                    # the HUD's last numbers: its text is rebuilt only when one changes
+var _hud_rams: int = -1
+var _hud_hull: float = -1.0
+var _hud_prompt: String = ""
 
 
 func _start() -> void:
@@ -53,6 +59,8 @@ func _start() -> void:
 	if player:
 		player.visible = false
 		player.controls_enabled = false
+		if pts.has("pier"):
+			player.teleport((pts["pier"] as Vector3) + Vector3(0.0, 0.05, 0.0), 0.0)   # out of the back room
 	markers = OffscreenMarkers.make(hud, chase.boat)
 	markers.track(chase.rival, "threat", "Thị Lọ", 2.4)
 	for sk: JetSki in chase.skis:
@@ -98,13 +106,30 @@ func focus_point() -> Vector3:
 func _refresh() -> void:
 	if chase == null:
 		return
-	var gap: int = int(round(chase.rival.s - chase.boat.s))
-	var line: String = "Thị Lọ: %d m" % maxi(gap, 0)
-	if chase.finale:
-		line += "   Húc: %d / %d" % [chase.rival.rams, BoatData.rams_needed()]
-	set_info(line)
-	set_meter(chase.boat.hull, "Thân cano")
-	set_prompt(_prompt())
+	var gap: int = maxi(int(round(chase.rival.s - chase.boat.s)), 0)
+	var rams: int = chase.rival.rams if chase.finale else -1
+	if gap != _hud_gap or rams != _hud_rams:
+		_hud_gap = gap
+		_hud_rams = rams
+		var line: String = "Thị Lọ: %d m" % gap
+		if rams >= 0:
+			line += "   Húc: %d / %d" % [rams, BoatData.rams_needed()]
+		set_info(line)
+	if chase.boat.hull != _hud_hull:
+		_hud_hull = chase.boat.hull
+		set_meter(_hud_hull, "Thân cano")
+	var pr: String = _prompt()
+	if pr != _hud_prompt:
+		_hud_prompt = pr
+		set_prompt(pr)
+
+
+## Forces the next _refresh to rebuild every HUD line (start, retry).
+func _hud_dirty() -> void:
+	_hud_gap = -1
+	_hud_rams = -1
+	_hud_hull = -1.0
+	_hud_prompt = "-"
 
 
 func _prompt() -> String:
@@ -115,7 +140,7 @@ func _prompt() -> String:
 	if chase.finale and not chase.rival.crashed:
 		return BoatData.T_RAM
 	for sk: JetSki in chase.skis:
-		if sk.is_threat() and sk.mode in ["tell", "ram"] and absf(sk.s - b.s) < 6.0:
+		if sk.is_threat() and (sk.mode == "tell" or sk.mode == "ram") and absf(sk.s - b.s) < 6.0:
 			return BoatData.T_KICK
 	return ""
 
@@ -123,15 +148,16 @@ func _prompt() -> String:
 ## The next set piece ahead within HAZARD_AHEAD m gets the prompt marker (its name and distance).
 func _place_hazard_mark() -> void:
 	var b: PlayerBoat = chase.boat
-	var next: Dictionary = {}
-	for e: Dictionary in _events:
-		if float(e["s"]) > b.s + 2.0:
-			next = e
+	var ni: int = -1
+	for i: int in _events.size():
+		if float(_events[i]["s"]) > b.s + 2.0:
+			ni = i
 			break
-	if next.is_empty() or float(next["s"]) - b.s > HAZARD_AHEAD:
+	if ni < 0 or float(_events[ni]["s"]) - b.s > HAZARD_AHEAD:
 		markers.set_on(hazard_mark, false)
 		hazard_kind = ""
 		return
+	var next: Dictionary = _events[ni]
 	var kind: String = String(next["kind"])
 	var dd: float = 0.0
 	match kind:
@@ -194,12 +220,22 @@ func _on_lost(reason: String) -> void:
 
 
 func _on_won() -> void:
+	_park_player()
 	finish({"hull": int(chase.boat.hull), "kos": chase.kos, "hits": chase.hazard_hits})
+
+
+## The hidden walking body to the finish bank's quay, facing the water (StoryCanal shows it when it frees the mission).
+func _park_player() -> void:
+	if player == null or level == null:
+		return
+	var bx: Transform3D = level.bank_xf()
+	player.teleport(bx * LairCanal.BANK_STAND + Vector3(0.0, 0.05, 0.0), yaw_of(-bx.basis.z))
 
 
 func _reset() -> void:
 	chase.retry()
 	_hull_seen = chase.boat.hull
+	_hud_dirty()
 	if player:
 		player.visible = false
 		player.controls_enabled = false
@@ -225,6 +261,10 @@ func _cleanup() -> void:
 	if markers and is_instance_valid(markers):
 		markers.clear()
 	if player and is_instance_valid(player):
+		if state == "done" and chase and is_instance_valid(chase) and chase.cam:
+			player.controls_enabled = false      # the win: the chase camera holds the finish through the results card
+			chase.cam.make_current()
+			return
 		player.visible = true
 		if player.camera:
 			player.camera.make_current()

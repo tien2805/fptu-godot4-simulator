@@ -359,6 +359,7 @@ func _process(_d: float) -> bool:
 				return false
 			_check(room.beats.has("bulb") and room.bulb_t >= 0.0 and room.guard_mode == "bulb", "the bulb dies, the guard stops to tap it")
 			_check(room._ceiling != null and room._ceiling.light_energy < room._ceiling_e * 0.7, "the room goes dark")
+			_check(is_equal_approx(room.cone.scale.x, MissionBackroom.BULB_SIGHT_K) and is_equal_approx(room.cone.scale.z, MissionBackroom.BULB_SIGHT_K), "the floor cone shrinks with his sight in the dark (%.2f)" % room.cone.scale.x)
 			_check(room._vanity_light != null and room.mirror_node != null, "the vanity bulb and the mirror figure found")
 			# the safe: the guard pinned far off facing the shop wall
 			room.patrol = []

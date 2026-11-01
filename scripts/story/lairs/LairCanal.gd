@@ -10,7 +10,8 @@
 #                 banks at y = 0): the water strip with the code water shader, the bank walls and tops, MultiMesh houses with
 #                 lit windows and lantern strings, three low bridges (BRIDGES), the net poles (NETS), the moored sampan ramp
 #                 and the broken pier wall (RAMP_S; the gap by the left bank), the fireworks barge (BARGE_S), the finish bank
-#                 with the LỌ ACADEMY billboard (dark).
+#                 with the LỌ ACADEMY billboard (dark) and a walkable quay (BANK_STAND: where the protagonist stands after
+#                 the chase, so the frames before the bank cinematics show the bank).
 # A small pool of POOL_LIGHTS OmniLights follows `focus` (the boat / the player) along the lantern strings, re-placed at
 # 4 Hz (no per-lamp lights). API: build(), world(local), route, mission_points(task), room_xf(), bank_xf(), tick(dt),
 # hide_for_cine(on), back_door_open(on), turn_dolls(target, w), dolls_state(), safe_open(w), music_box_spin(angle),
@@ -44,6 +45,7 @@ const PIER_TOP: float = 1.6
 const BARGE_S: float = 1230.0
 const BARGE_D: float = 7.5
 const BANK_S: float = 1985.0
+const BANK_STAND := Vector3(0.0, 0.0, 3.0)   # bank frame: on the quay, 3 m from the edge (facing the water: -Z)
 const BILLBOARD_S: float = 2010.0
 const POOL_LIGHTS: int = 4
 const LANTERN_M: float = 7.0
@@ -123,9 +125,13 @@ func room_xf() -> Transform3D:
 
 ## The finish bank's stage frame (the choice on the bank): origin on the right bank's edge at BANK_S, -Z toward the water.
 func bank_xf() -> Transform3D:
+	return global_transform * _bank_local()
+
+
+func _bank_local() -> Transform3D:
 	var p: Vector2 = route.world(BANK_S, HALF_W)
 	var r: Vector2 = route.right(BANK_S)
-	return global_transform * Transform3D(Basis(Vector3.UP, atan2(r.x, r.y)), Vector3(p.x, 0.0, p.y))
+	return Transform3D(Basis(Vector3.UP, atan2(r.x, r.y)), Vector3(p.x, 0.0, p.y))
 
 
 ## Route heading at s as a yaw (characters / props face -Z at 0), smoothed across the 8 m segments.
@@ -352,6 +358,7 @@ func _build_course() -> void:
 	for k2: int in 5:
 		var bpos: Vector2 = route.world(BANK_S - 30.0 + 12.0 * float(k2), HALF_W + 2.0)
 		CineFX._box(self, "Stall", Vector3(2.0, 1.0, 1.2), Vector3(bpos.x, 0.5, bpos.y), CineFX._mat(Color.from_hsv(0.92 - 0.04 * float(k2), 0.55, 0.85), 0.8))
+	_solid_local(_bank_local(), Vector3(40.0, 1.0, 10.0), Vector3(0.0, -0.5, 5.0))   # the quay's floor (top at y = 0)
 	var end_p: Vector2 = route.point(route.length - 1.0)
 	CineFX._box(self, "EndWall", Vector3(HALF_W * 2.0 + 4.0, 2.4, 1.0), Vector3(end_p.x, WATER_Y + 0.5, end_p.y), wall_mat).rotation.y = yaw_at(route.length - 1.0)
 

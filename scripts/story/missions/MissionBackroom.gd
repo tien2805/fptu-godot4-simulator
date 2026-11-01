@@ -18,7 +18,8 @@
 #     away from the safe (the dial keeps its progress).
 #     Tuned with tests/sim_day6.gd (T8).
 #   - BLEAT_AFTER_S later the dolls bleat (distorted) and Anh Duy talks the player down; BULB_AFTER_S after the music the
-#     ceiling bulb dies for BULB_S (the joke: the guard taps it, "Ủa, cúp điện hả?", his sight shrinks in the dark).
+#     ceiling bulb dies for BULB_S (the joke: the guard taps it, "Ủa, cúp điện hả?", his sight and his floor cone
+#     shrink in the dark).
 #   - The safe: hold [E] within SAFE_R for crack_s(); the dial clicks; the door swings open, the ledger is taken (E7).
 #   - The mirror: MIRROR_AFTER_S later a figure with a pink bob shows in the vanity mirror for MIRROR_S under a preview cut,
 #     then it is gone ("...Ai vậy?"); then the short replay seg_d6_infiltrate and done (cine_d6_caught tells who it was).
@@ -155,6 +156,7 @@ func _arm() -> void:
 	turn_w = 0.0
 	spin = 0.0
 	bulb_t = -1.0
+	_cone_reach(1.0)
 	mirror_t = -1.0
 	replay_wait = -1.0
 	_see_acc = 0.0
@@ -354,6 +356,7 @@ func _music_tick(dt: float) -> void:
 	if not beats.has("bulb") and music_t >= BULB_AFTER_S:
 		beats.append("bulb")
 		bulb_t = 0.0
+		_cone_reach(BULB_SIGHT_K)                # the floor cone shows his shorter sight in the dark
 		if guard_mode != "caught":
 			guard_mode = "bulb"
 			guard_t = 0.0
@@ -366,6 +369,7 @@ func _music_tick(dt: float) -> void:
 		if bulb_t >= BULB_S:
 			bulb_t = -1.0
 			_set_ceiling(1.0)
+			_cone_reach(1.0)
 
 
 ## The signature: the box plays by itself, the stealth track stops, the dolls turn to the player, the guard goes to it.
@@ -487,6 +491,12 @@ func _build_cone() -> void:
 	cone.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	cone.position = Vector3(0.0, 0.03, 0.0)
 	guard.add_child(cone)
+
+
+## The floor cone's reach as a factor of sight_m (BULB_SIGHT_K while the bulb is out, as _sight_check's range).
+func _cone_reach(k: float) -> void:
+	if cone and is_instance_valid(cone):
+		cone.scale = Vector3(k, 1.0, k)
 
 
 ## The ceiling bulb (the room's main light) and the red bulb at the vanity, from the level's room items.

@@ -343,8 +343,11 @@ func _free_mission() -> void:
 	mission_node = null
 	mission_beat = {}
 	music("")
-	if player and is_instance_valid(player) and player.camera:
-		player.camera.make_current()
+	if player and is_instance_valid(player):
+		player.visible = true                # the boat chase keeps the walking body hidden (parked on the bank) until here
+		player.controls_enabled = true
+		if player.camera:
+			player.camera.make_current()
 
 
 func _play_cine(b: Dictionary) -> void:

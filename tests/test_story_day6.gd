@@ -313,6 +313,12 @@ func _process(_d: float) -> bool:
 			if not _cine_started(cn, "seg_d6_chase", 400):
 				return false
 			_check(cn.cine_player.timeline.slot == "seg_d6_chase" and String(sd.get("step")) == "d6_choice", "the last ram: seg_d6_chase (the beat completed first)")
+			var vc: Camera3D = cn.get_viewport().get_camera_3d()
+			var stand: Vector3 = cn.level.bank_xf() * LairCanal.BANK_STAND
+			_check(vc != null and vc.global_position.distance_to(cn.level.room_xf().origin) > 60.0,
+				"after the win the view is not the back room (%s at %s)" % [str(vc.name) if vc else "no camera", str(vc.global_position) if vc else "-"])
+			_check(StoryMission.flat(cn.player.global_position, stand) < 1.5 and cn.player.camera.global_position.distance_to(stand) < 15.0 and cn.player.controls_enabled,
+				"the walking body and its camera wait on the bank's quay (the player %s, the stand %s)" % [str(cn.player.global_position), str(stand)])
 			_check(String((sd.call("read_save", TMP) as Dictionary).get("step", "")) == "d6_choice", "saved at d6_choice")
 			_finish_cine_in(cn)
 			_next(12)
