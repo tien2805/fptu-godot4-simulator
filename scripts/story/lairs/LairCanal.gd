@@ -143,7 +143,8 @@ func course_pos(s: float, d: float, up: float = 0.0) -> Vector3:
 func mission_points(task: String) -> Dictionary:
 	match task:
 		"shop":
-			var cam := Transform3D(Basis.looking_at(Vector3(0.0, -0.55, -1.0).normalized(), Vector3.UP), world(Vector3(0.0, 2.45, 3.6)))
+			# over the player's head (below the 3.25 m ceiling): the cups, the queue and the player's back in one frame
+			var cam := Transform3D(Basis.looking_at(Vector3(0.0, -2.05, -2.4).normalized(), Vector3.UP), world(Vector3(0.0, 3.05, 2.4)))
 			return {"stand": world(SHOP_STAND), "yaw": 0.0, "door": world(Vector3(0.0, 0.0, -6.0)),
 				"counter": world(Vector3(0.0, 0.0, -0.25)), "queue_dir": Vector3(0.0, 0.0, -1.0), "cam": cam,
 				"cups": [world(CinePropsD6.shop_cup_pos(0)), world(CinePropsD6.shop_cup_pos(1)), world(CinePropsD6.shop_cup_pos(2)),

@@ -13,7 +13,8 @@ class_name StoryRadio
 extends Node
 
 const PREFIX: Dictionary = {"anh_duy": "ANH DUY (bộ đàm)", "mr_t": "MR.T (điện thoại)", "linh": "LINH (tai nghe)",
-	"phuc": "PHÚC (điện thoại)", "chu_bay": "CHÚ BẢY (bộ đàm)"}
+	"phuc": "PHÚC (điện thoại)", "chu_bay": "CHÚ BẢY (bộ đàm)",
+	"thi_lo": "THỊ LỌ (loa)"}
 const READ_PAD: float = 1.6     # seconds a line stays after it finished typing (min_secs)
 const VOICE_DB: float = -10.0
 ## beat id -> [[t, speaker, line, dich], ...] (mission clock seconds, in order)
