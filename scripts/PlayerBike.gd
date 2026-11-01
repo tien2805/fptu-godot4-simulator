@@ -476,6 +476,7 @@ func _build_procedural_bike_and_seated_rider() -> void:
 		# story (A2-D5): the rider is the protagonist (sex, skin, face; the helmet stays on)
 		for k: String in ["female", "skin", "hair_color", "hair_style", "variant"]:
 			ro[k] = hero[k]
+	SideRewards.apply_rider(ro)   # w4-endings T5e: the helmet / jacket colours picked in the phone's Tủ đồ
 	rider_node = CharacterBuilder.build(ro)
 	rider_node.position = Vector3(0.0, 0.32, 0.14)
 	visual_pivot.add_child(rider_node)

@@ -237,6 +237,7 @@ func _process(_d: float) -> bool:
 				return false
 			_check(fail_ev.size() == 1 and String(fail_ev[0][1]) == "off_bike" and sa.current == null and not bool(sr.busy), "leaving the bike gives the race up (%s)" % str(fail_ev))
 			_check(SideRecords.best("dua_vong").is_empty(), "a given-up race records nothing")
+			var fin_ms: float = perf_race.pop_back() if not perf_race.is_empty() else 0.0   # the finish tick: records + toasts once
 			var mx_r: float = 0.0
 			var sum_r: float = 0.0
 			for v: float in perf_race:
@@ -245,8 +246,9 @@ func _process(_d: float) -> bool:
 			var mx_c: float = 0.0
 			for v2: float in perf_check:
 				mx_c = maxf(mx_c, v2)
-			print("  perf: race tick avg %.3f ms, max %.3f ms (%d ticks); activity check max %.3f ms" % [sum_r / maxf(perf_race.size(), 1.0), mx_r, perf_race.size(), mx_c])
-			_check(sum_r / maxf(perf_race.size(), 1.0) < 0.5 and mx_c < 3.0, "perf under budget")
+			print("  perf: race tick avg %.3f ms, max %.3f ms (%d ticks); the finish tick (record, toast, clean-up) %.3f ms; activity check max %.3f ms"
+				% [sum_r / maxf(perf_race.size(), 1.0), mx_r, perf_race.size(), fin_ms, mx_c])
+			_check(sum_r / maxf(perf_race.size(), 1.0) < 0.5 and mx_r < 3.0 and mx_c < 3.0, "perf under budget (3 ms)")
 			# T5b: a takedown challenge, by day
 			fr.set("tod_preset", "morning")
 			var sp: Dictionary = StorySideActivities.spot("td_soi")
@@ -378,6 +380,7 @@ func _process(_d: float) -> bool:
 			_check(String(fail_ev[-1][0]) == "vo_cau" and String(fail_ev[-1][1]) == "ko" and not bool(sr.busy), "knocked out: vo_cau given up (%s)" % str(fail_ev[-1]))
 			var pc: Node = fr.get("combat")
 			_check(pc == null or not bool(pc.call("is_down")), "the player stands again after the give-up")
+			_part_e()
 			fr.queue_free()
 			fr = null
 			return _end()
@@ -395,6 +398,47 @@ func _part_c_data() -> void:
 	_check(SideDelivery.rank_for(10.0, 10.0) == "S" and SideDelivery.rank_for(12.0, 10.0) == "A" and SideDelivery.rank_for(30.0, 10.0) == "C", "delivery ranks")
 
 
+## T5e: the rewards by the S-rank count, the phone's Tủ đồ, the rider's look.
+func _part_e() -> void:
+	var n0: int = SideRewards.s_count()
+	_check(SideRewards.chosen("helmet") == "xanh_fpt" and SideRewards.chosen("jacket") == "mac_dinh", "the defaults are worn first")
+	SideRecords.record("dua_gp", {"rank": "S", "time": 90.0})
+	SideRecords.record("dua_vong", {"rank": "S", "time": 30.0})
+	var cfg := ConfigFile.new()
+	cfg.load(TMP_U)
+	cfg.set_value("ranks", "d1_brawl", "S")   # a story mission's best S counts too
+	cfg.save(TMP_U)
+	var n: int = SideRewards.s_count()
+	_check(n == n0 + 3, "S count: side S ranks + story S ranks (%d -> %d)" % [n0, n])
+	_check(SideRewards.unlocked_between(0, 3) == (["Mũ Cam FPT", "Mũ Đen nhám", "Áo Đỏ đô"] as Array[String]), "unlocks by count (%s)" % str(SideRewards.unlocked_between(0, 3)))
+	_check(not SideRewards.choose("helmet", "vang_kim") and SideRewards.chosen("helmet") == "xanh_fpt", "a locked helmet cannot be picked")
+	var ph: Node = sr.get("phone")
+	_check(ph != null, "the story phone")
+	if ph == null:
+		return
+	ph.call("set_tab", 3)
+	var txt: PackedStringArray = []
+	for l: Node in ph.find_children("*", "Label", true, false):
+		txt.append((l as Label).text)
+	for b: Node in ph.find_children("Wear_*", "Button", true, false):
+		txt.append((b as Button).text)
+	var all: String = " | ".join(txt)
+	_check(all.contains("Hạng S đã đạt: %d" % n) and all.contains("Mũ bảo hiểm") and all.contains("Áo khoác") and _clean(all), "Tủ đồ lists the count and both lists (%s)" % all)
+	_check(all.contains("??? · cần 9 hạng S") or n >= 9, "a locked item says what it needs")
+	var cam: Button = ph.find_child("Wear_helmet_cam_fpt", true, false) as Button
+	_check(cam != null and not cam.disabled, "Cam FPT is open")
+	if cam:
+		cam.pressed.emit()
+	_check(SideRewards.chosen("helmet") == "cam_fpt", "a tap wears Cam FPT")
+	var red: Button = ph.find_child("Wear_jacket_do_do", true, false) as Button
+	if red:
+		red.pressed.emit()
+	var ro: Dictionary = {"helmet_color": Color("#0066CC")}
+	SideRewards.apply_rider(ro)
+	_check(ro["helmet_color"] == Color("#F37021") and ro.get("shirt_color") == Color("#7A1F2B"), "the rider wears them (%s)" % str(ro))
+	ph.call("set_tab", 0)
+
+
 func r_nitro_back() -> bool:
 	var b: Node = fr.get("bike")
 	return b != null and float(b.get("speed_cap")) > 1000.0
@@ -410,7 +454,7 @@ func _end() -> bool:
 	sd.call("reset_state")
 	sd.set("save_path", "user://story_save.cfg")
 	if fails.is_empty():
-		print("✅ SUCCESS: SIDE ACTIVITIES (night races, takedowns, deliveries, Vovinam, records)")
+		print("✅ SUCCESS: SIDE ACTIVITIES (night races, takedowns, deliveries, Vovinam, records, rewards)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())

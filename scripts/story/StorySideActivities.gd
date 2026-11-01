@@ -204,12 +204,16 @@ func start(id: String) -> bool:
 
 func _on_done(id: String, res: Dictionary) -> void:
 	last_result = res.duplicate()
+	var s0: int = SideRewards.s_count()
 	var nb: bool = SideRecords.record(id, res)
+	var opened: Array[String] = SideRewards.unlocked_between(s0, SideRewards.s_count())
 	var line: String = "Xong %s · %s · Hạng %s" % [String(spot(id).get("title", id)), SideRace.time_text(float(res.get("time", 0.0))),
 		String(res.get("rank", "C"))] if res.has("time") else "Xong %s · Hạng %s" % [String(spot(id).get("title", id)), String(res.get("rank", "C"))]
 	if nb:
 		line += " · Kỷ lục mới!"
 	_toast(line, "success_fanfare")
+	if not opened.is_empty():
+		_toast("Mở khóa trong Tủ đồ: %s" % ", ".join(PackedStringArray(opened)), "")
 	_end_current()
 	activity_done.emit(id, res, nb)
 
