@@ -120,7 +120,7 @@ static func dmg_barge() -> float:
 
 
 static func dmg_ram() -> float:
-	return float(Difficulty.pick(16.0, 9.0))
+	return float(Difficulty.pick(20.0, 9.0))
 
 
 ## Seconds the jet ski telegraphs its ram (the red ring, "!") before it dashes in.
@@ -142,7 +142,7 @@ static func rocket_tell() -> float:
 
 
 static func dmg_rocket() -> float:
-	return float(Difficulty.pick(12.0, 8.0))
+	return float(Difficulty.pick(14.0, 8.0))
 
 
 static func rams_needed() -> int:
