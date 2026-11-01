@@ -149,7 +149,7 @@ func _process(_d: float) -> bool:
 				return false
 			fr.set("tod_preset", "morning")
 			sa.advance(1.0)
-			_check(not sa.can_start("dua_cau") and not sa.can_start("giao_dem") and sa.markers.size() == SideTakedown.ORDER.size() + 1
+			_check(not sa.can_start("dua_cau") and not sa.can_start("giao_dem") and sa.markers.size() == SideTakedown.ORDER.size() + 1 + SideVovinam.ORDER.size()
 				and sa.can_start("td_soi") and sa.can_start("giao_com"), "by day: no race / night run, the takedown and day delivery rings (%d)" % sa.markers.size())
 			fr.set("tod_preset", "night")
 			var t0: int = Time.get_ticks_usec()
@@ -328,6 +328,56 @@ func _process(_d: float) -> bool:
 			dv2.auto_tick = false
 			dv2.advance(SideDelivery.par("giao_com") * SideDelivery.LIMIT_K + 1.0)
 			_check(String(fail_ev[-1][0]) == "giao_com" and String(fail_ev[-1][1]) == "time" and sa.current == null, "out of time: the run is given up")
+			_check(SideVovinam.rank_for(27.0, 3, 80.0) == "S" and SideVovinam.rank_for(27.0, 3, 50.0) == "A" and SideVovinam.rank_for(50.0, 3, 90.0) == "B"
+				and SideVovinam.rank_for(90.0, 3, 90.0) == "C", "Vovinam ranks (time per opponent and HP)")
+			# T5d: a Vovinam street fight, on foot (from the bike), the traffic parked
+			_check(sa.start("vo_hem"), "vo_hem starts")
+			var vv: SideVovinam = sa.current as SideVovinam
+			if vv == null:
+				return _end()
+			vv.auto_tick = false
+			_check(not bool(fr.get("mounted")) and vv.fight != null and vv.total == 3 and bool(sr.busy), "on foot, 3 opponents, the story busy")
+			var tr: Node = fr.get("traffic")
+			_check(tr == null or not tr.is_physics_processing(), "the traffic is parked for the fight")
+			_check(_clean(" ".join(PackedStringArray(vv.texts()))), "Vovinam HUD plain")
+			_next(13)
+		13:
+			var v2: SideVovinam = sa.current as SideVovinam
+			if v2 == null:
+				_next(14)
+				return false
+			v2.advance(DT)
+			for e: Variant in v2.fight.alive():
+				(e as MeleeEnemy).take_strike({"kind": "weapon", "dmg": 999.0, "stagger": 100.0, "push": 0.5, "breaks_block": true,
+					"knockdown": true, "from": (e as Node3D).global_position + Vector3(0.0, 0.0, 1.0)})
+			if frames > 2400:
+				_check(false, "vo_hem did not finish (%s, %d/%d)" % [v2.state, v2.kos, v2.total])
+				return _end()
+			return false
+		14:
+			if frames < 3:
+				return false
+			var last: Array = done_ev[-1] if not done_ev.is_empty() else []
+			_check(not last.is_empty() and String(last[0]) == "vo_hem" and int((last[1] as Dictionary).get("kos", 0)) == 3, "vo_hem won, 3 down (%s)" % str(last))
+			var tr2: Node = fr.get("traffic")
+			_check(tr2 == null or tr2.is_physics_processing(), "the traffic runs again")
+			_check(not SideRecords.best("vo_hem").is_empty() and not bool(sr.busy), "vo_hem recorded, the story free")
+			# knocked out: given up
+			_check(sa.start("vo_cau"), "vo_cau starts")
+			var v3: SideVovinam = sa.current as SideVovinam
+			v3.auto_tick = false
+			v3.fight.combat.hp = 0.0
+			v3.fight.combat.state = PlayerCombat.St.DOWN
+			_next(15)
+		15:
+			if sa.current != null:
+				if frames > 600:
+					_check(false, "vo_cau was not given up")
+					return _end()
+				return false
+			_check(String(fail_ev[-1][0]) == "vo_cau" and String(fail_ev[-1][1]) == "ko" and not bool(sr.busy), "knocked out: vo_cau given up (%s)" % str(fail_ev[-1]))
+			var pc: Node = fr.get("combat")
+			_check(pc == null or not bool(pc.call("is_down")), "the player stands again after the give-up")
 			fr.queue_free()
 			fr = null
 			return _end()
@@ -360,7 +410,7 @@ func _end() -> bool:
 	sd.call("reset_state")
 	sd.set("save_path", "user://story_save.cfg")
 	if fails.is_empty():
-		print("✅ SUCCESS: SIDE ACTIVITIES (night races, takedowns, deliveries, records)")
+		print("✅ SUCCESS: SIDE ACTIVITIES (night races, takedowns, deliveries, Vovinam, records)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())

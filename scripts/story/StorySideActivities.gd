@@ -7,6 +7,7 @@
 #   races (T5a)      SideRace dua_cau, dua_vong, dua_gp: at night, the bike.
 #   takedowns (T5b)  SideTakedown td_soi, td_bay: any time, the bike (Day 2 bike combat in free mode).
 #   deliveries (T5c) SideDelivery giao_com (by day or night), giao_dem (at night): timed drops on the Day 2 roads.
+#   Vovinam (T5d)    SideVovinam vo_hem, vo_cau: any time, on foot (Phase B melee, bare hands, the traffic parked).
 # API: setup(roam, story, director); spots() rows {id, kind, title, at, night}; can_start(id); start(id) -> bool; advance(dt)
 #   (auto_tick false in tests); current (the running activity node), current_id; signals activity_started(id),
 #   activity_done(id, result, new_best), activity_failed(id, reason).
@@ -19,12 +20,15 @@ signal activity_failed(id: String, reason: String)
 
 const CHECK_S: float = 0.25
 const START_M: float = 8.0
-const KIND_NAME: Dictionary = {"race": "Đua đêm", "takedown": "Hạ gục", "delivery": "Giao hàng"}
-const KIND_COLOR: Dictionary = {"race": Color("#3FF2FF"), "takedown": Color("#FF6B6B"), "delivery": Color("#F1C40F")}
+const KIND_NAME: Dictionary = {"race": "Đua đêm", "takedown": "Hạ gục", "delivery": "Giao hàng", "vovinam": "Võ đường phố"}
+const KIND_COLOR: Dictionary = {"race": Color("#3FF2FF"), "takedown": Color("#FF6B6B"), "delivery": Color("#F1C40F"),
+	"vovinam": Color("#6FA8FF")}
 ## The owner's track while it runs (MusicDirector slot; no file = silence), free-roam music again after.
-const KIND_MUSIC: Dictionary = {"race": "side_drift", "takedown": "mission_bike_chase", "delivery": "side_delivery"}
+const KIND_MUSIC: Dictionary = {"race": "side_drift", "takedown": "mission_bike_chase", "delivery": "side_delivery",
+	"vovinam": "mission_fight"}
 const FAIL_LINE: Dictionary = {"off_bike": "Bỏ cuộc: rời xe giữa chừng.", "no_course": "Không mở được thử thách.",
-	"knocked": "Toang! Bị đạp văng khỏi xe.", "time": "Hết giờ rồi. Lần sau nhanh hơn nhé."}
+	"knocked": "Toang! Bị đạp văng khỏi xe.", "time": "Hết giờ rồi. Lần sau nhanh hơn nhé.",
+	"ko": "Toang! Nằm sàn rồi. Tập thêm rồi quay lại."}
 
 static var _courses: Dictionary = {}
 
@@ -74,6 +78,10 @@ static func spots() -> Array[Dictionary]:
 		var d: Vector2 = SideDelivery.start_at(did)
 		out.append({"id": did, "kind": "delivery", "title": SideDelivery.title(did), "at": Vector3(d.x, 0.0, d.y), "yaw": 0.0,
 			"night": bool(SideDelivery.RUNS[did]["night"])})
+	for fid: String in SideVovinam.ORDER:
+		var v: Vector2 = SideVovinam.start_at(fid)
+		out.append({"id": fid, "kind": "vovinam", "title": SideVovinam.title(fid), "at": Vector3(v.x, 0.0, v.y), "yaw": 0.0,
+			"night": false})
 	return out
 
 
@@ -170,6 +178,13 @@ func start(id: String) -> bool:
 			dv.finished.connect(_on_done)
 			dv.failed.connect(_on_failed)
 			current = dv
+		"vovinam":
+			var vv := SideVovinam.new()
+			roam.add_child(vv)
+			vv.setup({"roam": roam, "id": id})
+			vv.finished.connect(_on_done)
+			vv.failed.connect(_on_failed)
+			current = vv
 		_:
 			return false
 	current_id = id
