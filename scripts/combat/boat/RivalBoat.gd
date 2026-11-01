@@ -68,6 +68,7 @@ func setup(lv: LairCanal) -> void:
 			ap.active = false
 		_anim = an
 		_sk = driver.get_meta("skeleton") as Skeleton3D if driver.has_meta("skeleton") else null
+	Readability.rim(hull_node, "enemy")   # Q3 rim on her boat and on her
 	spray = PlayerBoat.make_spray(hull_node, Vector3(0.0, 0.1, -2.0))
 	steam = PlayerBoat.make_spray(hull_node, Vector3(0.0, 1.0, 2.8), 16)
 	steam.direction = Vector3.UP

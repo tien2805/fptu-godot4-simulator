@@ -42,7 +42,7 @@ const SCRIPTS: Dictionary = {
 		[58.0, "phuc", "Tao ngồi quán cà phê đối diện nè. Bả cứ ngó ra cửa hoài, chắc đang chờ hàng.", ""]],
 	"d6_backroom": [
 		[4.0, "anh_duy", "Hộp nhạc trong đó hay tự kêu, con guard sẽ chạy lại tắt. Lúc nó quay lưng thì men tường trái ra két.", "Hộp nhạc kêu thì bảo vệ ra tắt: lúc đó đi sát tường trái ra két."],
-		[60.0, "anh_duy", "Két đời cũ, a brute force mã giùm. E đứng sát rồi giữ E là xong.", "Đứng sát két, giữ E, anh lo phần mã."]],
+		[14.0, "anh_duy", "Két đời cũ, a brute force mã giùm. E đứng sát rồi giữ E là xong.", "Đứng sát két, giữ E, anh lo phần mã."]],
 	"d6_boat": [
 		[16.0, "anh_duy", "Cano bả độ máy, top speed hơn e một xíu. Đừng nhả ga là bám được.", "Cano bà ta nhanh hơn chút, cứ giữ ga."],
 		[44.0, "phuc", "Tao đứng trên cầu thấy tụi mày nè! Phía trước có sà lan bắn pháo bông, coi chừng pháo lạc!", ""]],

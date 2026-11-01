@@ -66,6 +66,7 @@ func setup(lv: LairCanal, side_: int, slot_: int, seed_: int) -> void:
 		var ap: AnimationPlayer = an.get("player") as AnimationPlayer if an else null
 		if ap:
 			ap.active = false
+	Readability.rim(ski, "enemy")   # Q3 rim on the jet ski and its rider (not the tell ring)
 	ring = MeshInstance3D.new()
 	ring.name = "TellRing"
 	var tm := TorusMesh.new()

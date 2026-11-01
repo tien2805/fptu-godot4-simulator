@@ -13,8 +13,9 @@
 #     way in: he stands at the box for lure_s() on its far side from the safe (LURE_SPOT), his back to the safe, "Ai bật
 #     cái hộp nhạc này vậy?"; Anh Duy's radio tells the plan: along the left wall and the back wall to the safe meanwhile).
 #     Suspicious, he glances back over his shoulder every glance_every() s, by turns at the left wall and at the back wall
-#     (GLANCE_PTS; on Thường his cone then reaches the safe): "Hửm?" and glance_tell() s first (the telegraph), then he
-#     turns and looks for GLANCE_S. Freeze out of his cone or step away from the safe (the dial keeps its progress).
+#     (GLANCE_PTS; on Thường his cone then reaches the safe): "Hửm?" and glance_tell() s first (the telegraph: the line, a
+#     tick, his floor cone warms to GLANCE_WARM), then he turns and looks for GLANCE_S. Freeze out of his cone or step
+#     away from the safe (the dial keeps its progress).
 #     Tuned with tests/sim_day6.gd (T8).
 #   - BLEAT_AFTER_S later the dolls bleat (distorted) and Anh Duy talks the player down; BULB_AFTER_S after the music the
 #     ceiling bulb dies for BULB_S (the joke: the guard taps it, "Ủa, cúp điện hả?", his sight shrinks in the dark).
@@ -54,6 +55,7 @@ const T_GLANCE: String = "Hửm?"
 const GLANCE_PTS: Array[Vector3] = [Vector3(-3.0, 0.0, -1.0), Vector3(0.5, 0.0, -2.4)]   # room frame: the left wall, the back wall
 const GLANCE_S: float = 1.2
 const GLANCE_TURN: float = 3.0
+const GLANCE_WARM: float = 0.45                # the cone's tint during the "Hửm?" telegraph (0 pale .. 1 red)
 const T_LEDGER: String = "Lấy được sổ cái!"
 const CONE_COL := Color(1.0, 0.9, 0.75, 0.10)
 const CONE_HOT := Color(1.0, 0.25, 0.3, 0.32)
@@ -113,6 +115,7 @@ func _start() -> void:
 	walk_ms = float(Difficulty.pick(1.25, 1.05))
 	guard = spawn_body("guard_sheep", pts.get("guard_start", Vector3.ZERO), 0.0)
 	if guard:
+		Readability.rim(guard, "enemy")   # Q3 rim: he reads in the dark room
 		guard_tag = _tag(guard, "", WARN, 2.25, 56)
 		guard_line = _tag(guard, "", INK, 2.55, 36)
 		_build_cone()
@@ -261,6 +264,7 @@ func _glance_tick(dt: float, box: Vector3) -> Vector3:
 				glance_at = rx * GLANCE_PTS[glance_i % GLANCE_PTS.size()]
 				glance_i += 1
 				_line(T_GLANCE, glance_tell() + GLANCE_S)
+				play_cue("freeze_tick", -8.0)
 				if not beats.has("glance"):
 					beats.append("glance")
 		"tell":
@@ -312,7 +316,8 @@ func _sight_check(dt: float) -> void:
 	sus_peak = maxf(sus_peak, sus)
 	guard_tag.text = "!" if sus >= 1.0 else ("?" if sus > 0.05 else "")
 	if cone_mat:
-		cone_mat.albedo_color = CONE_COL.lerp(CONE_HOT, clampf(sus, 0.0, 1.0))
+		var warn: float = GLANCE_WARM if guard_mode == "lure" and glance_phase == "tell" else 0.0   # the "Hửm?" tint
+		cone_mat.albedo_color = CONE_COL.lerp(CONE_HOT, clampf(maxf(sus, warn), 0.0, 1.0))
 	if sus >= 1.0:
 		seen = true
 		guard_mode = "caught"

@@ -160,6 +160,7 @@ func _process(_d: float) -> bool:
 			for sk: JetSki in chase.skis:
 				sk_ok = sk_ok and mn.markers.is_tracked(sk) and not mn.markers.is_on(sk)
 			_check(sk_ok, "every pooled jet ski tracked, none shown before a wave")
+			_check(chase.skis[0].ski.is_in_group(Readability.GROUP) and chase.rival.hull_node.is_in_group(Readability.GROUP), "the Q3 enemy rim on the jet skis and on Thị Lọ's boat")
 			_check(mn.markers.is_tracked(mn.hazard_mark) and not mn.markers.is_on(mn.hazard_mark), "the next-hazard marker off (the first bridge is far)")
 			_check(sc.music_slot == "mission_boat", "the mission_boat music slot (%s)" % sc.music_slot)
 			_check(mn.hud_info.text.begins_with("Thị Lọ:"), "HUD: the gap to Thị Lọ (%s)" % mn.hud_info.text)

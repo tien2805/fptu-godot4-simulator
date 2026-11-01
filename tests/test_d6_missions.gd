@@ -5,10 +5,10 @@
 # matching cup and three decoys that differ in exactly one thing; right / wrong / too slow move the trust; 0 trust =
 # "BỊ LỘ", THỬ LẠI = a new shift; the events (the "nhiều tâm tư" customer, the Bầy Sói biker's "như cũ", the rush, Thị
 # Lọ's intercom code word, the VIP's two cups); full trust opens the back door and ends the shift; Dễ: the 9 s ticket.
-# Back room: the guard's cone sees the player ("BỊ LỘ", retry = fresh room); the music box starts by proximity, the dolls
-# turn to face the player, the guard is lured to the box; the bleat and the bulb beats; the safe ([E] held) -> the
-# ledger -> the mirror figure -> the seg_d6_infiltrate replay -> done; "Giảm hù dọa" softens the box, the dolls, the
-# bleat and the mirror.
+# Back room: the guard's cone sees the player ("BỊ LỘ", retry = fresh room); the music box starts by proximity, the
+# dolls turn to face the player, the guard is lured to the box; his glance back ("Hửm?" and a tick first); the bleat and
+# the bulb beats; the safe ([E] held) -> the ledger -> the mirror figure -> the seg_d6_infiltrate replay -> done; "Giảm
+# hù dọa" softens the box, the dolls, the bleat and the mirror.
 # Run:  godot --headless --path . --script tests/test_d6_missions.gd
 extends SceneTree
 
@@ -282,6 +282,7 @@ func _process(_d: float) -> bool:
 				return false
 			room = _start("d6_backroom") as MissionBackroom
 			_check(room != null and room.guard != null and room.cone != null, "MissionBackroom with the sheep-masked guard and his cone")
+			_check(room != null and room.guard != null and room.guard.is_in_group(Readability.GROUP), "the Q3 enemy rim on the guard")
 			_check(sc.player.controls_enabled and not room.music_on and sc.level.dolls_state() == "wall" and sc.level.ledger.visible, "on foot, the box silent, dolls to the wall, the ledger in the safe")
 			# the guard's cone: pinned at a patrol corner facing along the room, the player 2.6 m in front
 			room.patrol = []
@@ -338,6 +339,19 @@ func _process(_d: float) -> bool:
 			if frames < 3:
 				return false
 			_check(room.beats.has("bleat") and room.cues_played.has("sheep_bleat_distorted"), "the dolls bleat")
+			# his glance back over his shoulder at the box: "Hửm?" and a tick first (the telegraph), then the look
+			var box: Vector3 = room.pts["music_box"]
+			room.glance_phase = ""
+			room.glance_t = room.glance_every()
+			room._glance_tick(0.01, box)
+			_check(room.glance_phase == "tell" and room.beats.has("glance") and room.cues_played.has("freeze_tick"), "the glance's telegraph: Hửm? and a tick")
+			_check(room.glance_tell() >= 0.5, "the glance's telegraph lasts at least 0.5 s (%.2f)" % room.glance_tell())
+			room.glance_t = room.glance_tell()
+			room._glance_tick(0.01, box)
+			var look: Vector3 = room._glance_tick(0.01, box)
+			_check(room.glance_phase == "look" and look.is_equal_approx(room.glance_at), "then he looks back")
+			room.glance_phase = ""
+			room.glance_t = 0.0
 			room.music_t = MissionBackroom.BULB_AFTER_S - 0.01
 			_next(25)
 		25:
