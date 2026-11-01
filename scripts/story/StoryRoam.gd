@@ -23,6 +23,7 @@
 # a dedicated lair scene (the Day 5 basement) are markers here: [E] (intro once) -> StoryDirector.launch_lair_beat. New
 # anchors: duy_corner (BE6 lobby), bridge_road, bridge_bank, bridge_pillar, bridge_ledger (the Rạch Hầm bridge), yard_gate,
 # yard_pad, yard_mid, yard_manifest. Mission results set flag_by_info flags; "after_at" stages an after cinematic.
+# Day 6 (plan 2026-11-01-w4-day6.md): anchor lo_shop (the Trà Sữa Lọ shop by the Rạch Hầm bridge; the canal lair's marker).
 # Day 2 "Tokyo Drift" (plan 2026-10-27-d2x-drift.md): mission drift_duel (MissionDriftDuel, beat d2_drift); its slot
 # race_d2_drift is in MISSION_MUSIC for the catalogue, but SELF_MUSIC missions start their own track (the duel: silence
 # under the countdown, the track on GO); the chase track is never replaced by the roam track between the two beats.
@@ -49,6 +50,7 @@ const WANTED_ABORT_HINT: String = "Bị truy nã giữa nhiệm vụ! Cắt đu�
 
 var roam: Node3D
 var director: Node
+var day7_clock: Day7Clock = null
 var anchors: Dictionary = {}       # id -> {"pos": Vector3, "yaw": float, "return": Transform3D}
 var markers: Dictionary = {}       # beat id -> Node3D
 var marker_pos: Dictionary = {}    # beat id -> Vector2 (map plane)
@@ -91,8 +93,14 @@ var side_info: Dictionary = {}
 var entered_live: bool = false
 ## Horror polish H-D7: the night scares of story free roam (StoryNightEvents).
 var night_events: StoryNightEvents = null
+## w4-endings T4: the night second chances at missed evidence (StoryNightSecrets: the ghost boat, the lift to 13).
+var night_secrets: StoryNightSecrets = null
+## w4-endings T5: the free-roam side activities (StorySideActivities: night races, ...).
+var side_activities: StorySideActivities = null
 ## Phase C: the Day 3 container yard while a yard beat is current (else null).
 var yard: LairYard = null
+## w4-endings: the running ending sequence of d7_ending (else null).
+var ending_runner: StoryEndingRunner = null
 const MISSION_SCRIPTS: Dictionary = {"stakeout": "res://scripts/story/missions/MissionStakeout.gd",
 	"chase": "res://scripts/story/missions/MissionChase.gd", "corridor": "res://scripts/story/missions/MissionCorridor.gd",
 	"canteen": "res://scripts/story/missions/MissionCanteen.gd", "fight": "res://scripts/story/missions/MissionFight.gd",
@@ -126,13 +134,20 @@ func setup(r: Node3D) -> void:
 	night_events = StoryNightEvents.new()
 	add_child(night_events)
 	night_events.setup(roam, self, director)
+	night_secrets = StoryNightSecrets.new()
+	add_child(night_secrets)
+	night_secrets.setup(roam, self, director, night_events)
+	side_activities = StorySideActivities.new()
+	add_child(side_activities)
+	side_activities.setup(roam, self, director)
+	day7_clock = Day7Clock.attach(self, director, hud_should_show)   # Day 7 (w4-day7): the 08:00 countdown, shown on Day 7 only
 	if director:
 		director.connect("objective_changed", _on_objective)
 		director.connect("text_received", _on_text)
 		director.connect("day_changed", _on_day)
 		director.connect("evidence_added", _on_evidence)
 		director.connect("step_changed", _on_step)
-	StoryAudio.warm(beat_cues(director.call("beat") if director else {}) + WARM)   # the current beat's cues first
+	StoryAudio.warm(beat_cues(director.call("beat") if director else {}, director) + WARM)   # the current beat's cues first
 	refresh()
 	_run_t = RUN_DELAY
 
@@ -182,10 +197,21 @@ func _compute_anchors() -> void:
 	# Phase C: Anh Duy's corner of the BE6 lobby (the Day 2 / Day 5 markers; the basement stairs), the Rạch Hầm bridge
 	# (measured map points beside the deck: the cine stage "bridge" at (2145, 150) is clear 14 x 10), the container yard
 	_campus_anchor("duy_corner", sp.origin + fwd * 3.5 - right * 6.0, sp.origin + fwd * 3.5)
+	# w4-endings: the night lift to floor 13 (StoryNightSecrets), on the far side of the BE6 front from Duy's corner, the
+	# plaza and the bed spot (8 m+ from each), so its 6 m trigger never covers a mission marker
+	var lift: Vector3 = sp.origin - fwd * 1.0 + right * 10.0
+	if roam.has_method("find_free_spot"):
+		var ls: Variant = roam.call("find_free_spot", lift, lift.y, 2)
+		if ls is Vector3:
+			lift = ls
+	_campus_anchor("be6_lift", lift, sp.origin)
 	_campus_anchor("bridge_road", Vector3(2133.0, 0.0, 184.0), Vector3(2145.0, 0.0, 150.0))
 	_campus_anchor("bridge_bank", Vector3(2145.0, 0.0, 150.0), Vector3(2133.0, 0.0, 184.0))
 	_campus_anchor("bridge_pillar", Vector3(2140.0, 0.0, 156.0), Vector3(2145.0, 0.0, 150.0))
 	_campus_anchor("bridge_ledger", Vector3(2151.0, 0.0, 160.0), Vector3(2145.0, 0.0, 150.0))
+	# Day 6 (w4-day6): the Trà Sữa Lọ shop is the cafe by the Rạch Hầm bridge (map POI at 2122.3, 118.5); its marker launches
+	# the canal scene (StoryCanal)
+	_campus_anchor("lo_shop", Vector3(2122.3, 0.0, 118.5), Vector3(2113.2, 0.0, 110.87))
 	var yx := Transform3D(Basis(Vector3.UP, deg_to_rad(LairYard.YAW)), Vector3(LairYard.CENTER.x, 0.0, LairYard.CENTER.y))
 	_campus_anchor("yard_gate", yx * Vector3(-29.0, 0.0, 8.5), yx * LairYard.SNEAK_START)
 	_campus_anchor("yard_mid", yx * LairYard.MID, yx * (LairYard.MID + Vector3(0.0, 0.0, 4.0)))
@@ -498,7 +524,7 @@ func _on_step(_id: String) -> void:
 	entered_live = true
 	_run_t = 0.05 if not busy else -1.0
 	if director:
-		StoryAudio.warm(beat_cues(director.call("beat")))
+		StoryAudio.warm(beat_cues(director.call("beat"), director))
 		warm_mission_music(director.call("beat"))
 
 
@@ -597,7 +623,7 @@ func run_step() -> void:
 	if kind in ["cine", "call", "video"]:
 		# the beat's cues come from their warm tasks; wait (re-armed) up to AUDIO_WAIT_MAX s rather than synthesize on
 		# the main thread (review A2-R1)
-		if not StoryAudio.ready_for(beat_cues(b)) and _audio_wait < AUDIO_WAIT_MAX:
+		if not StoryAudio.ready_for(beat_cues(b, director)) and _audio_wait < AUDIO_WAIT_MAX:
 			_audio_wait += 0.1
 			_run_t = 0.1
 			return
@@ -618,15 +644,23 @@ func run_step() -> void:
 
 
 ## The SFX cues a beat needs (timeline sfx for cinematics, the call's cues), warmed first and waited on in run_step.
-static func beat_cues(b: Dictionary) -> Array:
+## w4-endings: an "ending": "auto" beat (d7_ending) collects the cues of every slot of the ending `dir` resolves it to
+## (StoryEndings.slots), so B, D, E, F and ai_true_end are warm too, not only the beat's own "slot".
+static func beat_cues(b: Dictionary, dir: Node = null) -> Array:
 	var out: Array = []
 	match String(b.get("kind", "")):
 		"cine", "video":
-			var tl: CineTimeline = CineTimeline.load_slot(String(b.get("slot", "")))
-			if tl:
-				for e: Dictionary in tl.sfx:
-					if StoryAudio.is_cue(String(e["cue"])) and not out.has(String(e["cue"])):
-						out.append(String(e["cue"]))
+			var slots: Array[String] = [String(b.get("slot", ""))]
+			if String(b.get("ending", "")) == "auto" and dir != null:
+				for s: String in StoryEndings.slots(String(dir.call("resolve_ending", b))):
+					if not slots.has(s):
+						slots.append(s)
+			for slot: String in slots:
+				var tl: CineTimeline = CineTimeline.load_slot(slot)
+				if tl:
+					for e: Dictionary in tl.sfx:
+						if StoryAudio.is_cue(String(e["cue"])) and not out.has(String(e["cue"])):
+							out.append(String(e["cue"]))
 		"call":
 			out = ["phone_ring_3am", "whisper_bed", "static_burst", "call_hangup"]
 	return out
@@ -704,6 +738,8 @@ static func cine_requests() -> Array:
 
 
 func _play_cine(b: Dictionary) -> bool:
+	if String(b.get("ending", "")) == "auto":
+		return _play_ending(b)   # w4-endings: d7_ending plays the evaluated ending's sequence and the end summary
 	var choice_id: String = String(b.get("choice", ""))
 	if choice_id != "" and String(director.call("choice_of", choice_id)) != "":
 		director.call("complete_step", String(b["id"]))   # recorded once: the choice scene is not asked again
@@ -718,8 +754,13 @@ func _play_cine(b: Dictionary) -> bool:
 	return true
 
 
-## The beat's cinematic slot: a branch tail follows the recorded choice (slot_by_choice), else "slot".
+## The beat's cinematic slot: a branch tail follows the recorded choice (slot_by_choice), else "slot"; w4-endings: an
+## "ending": "auto" beat starts with the evaluated ending's first slot.
 func cine_slot(b: Dictionary) -> String:
+	if String(b.get("ending", "")) == "auto" and director:
+		var seq: Array[String] = StoryEndings.slots(String(director.call("resolve_ending", b)))
+		if not seq.is_empty():
+			return seq[0]
 	var by: Dictionary = b.get("slot_by_choice", {})
 	if not by.is_empty() and director:
 		var key: String = String(director.call("choice_of", String(by.get("id", ""))))
@@ -732,6 +773,30 @@ func _free_cards() -> void:
 	if cards:
 		cards.queue_free()
 		cards = null
+
+
+## w4-endings: the ending sequence of an "ending": "auto" beat (StoryEndingRunner), then the beat completes (the save is
+## finished with the evaluated letter, the main menu).
+func _play_ending(b: Dictionary) -> bool:
+	if ending_runner != null:
+		return false
+	busy = true
+	running = String(b["id"])
+	ending_runner = StoryEndingRunner.new()
+	ending_runner.setup(self, b)
+	add_child(ending_runner)
+	ending_runner.done.connect(_on_ending_done.bind(String(b["id"])), CONNECT_ONE_SHOT)
+	ending_runner.start()
+	return true
+
+
+func _on_ending_done(_letter: String, id: String) -> void:
+	busy = false
+	running = ""
+	if ending_runner:
+		ending_runner.queue_free()
+		ending_runner = null
+	director.call("complete_step", id)
 
 
 func _on_cine_done(_slot: String, _skipped: bool, id: String) -> void:

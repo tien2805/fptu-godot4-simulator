@@ -82,7 +82,7 @@ func _initialize() -> void:
 	_night_events()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))
 	if fails.is_empty():
-		print("✅ SUCCESS: STORY DIRECTOR (state, signals, story chain to Day 6, Phase B / C beats, save/load, migration, version guard, endings)")
+		print("✅ SUCCESS: STORY DIRECTOR (state, signals, story chain Day 0 to the ending, Phase B / C beats, save/load, migration, version guard, endings)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())
@@ -95,6 +95,7 @@ func _registry() -> void:
 		var b: Dictionary = StoryMissions.beat(id)
 		_check(not b.is_empty() and String(b["kind"]) in StoryMissions.KINDS, "beat %s has a known kind" % id)
 		var nx: String = String(b.get("next", ""))
+		# wave4: Days 6, 7 and the endings are merged, so every next beat exists (d6_call -> d7_start, d7_typing -> d7_ending)
 		_check(nx == "" or not StoryMissions.beat(nx).is_empty(), "beat %s: next %s exists" % [id, nx])
 		if String(b["kind"]) == "stage":
 			_check(b.has("stage") and b.has("anchor") and b.has("return") and b.has("replay"), "stage beat %s has stage, anchor, return, replay" % id)
@@ -120,7 +121,7 @@ func _registry() -> void:
 				_check(CineTimeline.load_slot(String(b[k2])) != null, "beat %s: %s %s exists" % [id, k2, String(b[k2])])
 	var chain: Array[String] = []
 	var cur: String = StoryMissions.first_beat()
-	while cur != "" and chain.size() < 80:
+	while cur != "" and chain.size() < 200:   # wave4: the whole story is 83 beats
 		chain.append(cur)
 		cur = String(StoryMissions.beat(cur).get("next", ""))
 	var want: Array[String] = ["d0_wake", "d0_race", "d0_exam", "d0_exam_end", "d0_bed", "d0_midnight", "d0_call", "d0_intro", "d1_start", "d1_morning",
@@ -129,13 +130,20 @@ func _registry() -> void:
 		"d3_start", "d3_morning", "d3_sneak", "d3_mannequins", "d3_gunfight", "d3_crates", "d3_boss", "d3_end", "d3_bed", "d3_call",
 		"d4_start", "d4_morning", "d4_canteen", "d4_stare", "d4_brawl", "d4_escape", "d4_end", "d4_bed", "d4_call",
 		"d5_start", "d5_morning", "d5_stealth", "d5_monitors", "d5_gunfight", "d5_hack", "d5_choice", "d5_choice_tail", "d5_duel",
-		"d5_end", "d5_bed", "d5_call", "d6_start", "d6_morning", "d6_locked"]
-	_check(chain == want, "story chain is %s (got %s)" % [str(want), str(chain)])
-	var calls: Dictionary = {"d1_call": 6, "d2_call": 5, "d3_call": 4, "d4_call": 3, "d5_call": 2}
+		"d5_end", "d5_bed", "d5_call", "d6_start", "d6_morning", "d6_shop", "d6_backroom", "d6_caught", "d6_boat", "d6_choice",
+		"d6_choice_tail", "d6_reveal", "d6_bed", "d6_call", "d7_start", "d7_morning", "d7_parking", "d7_warehouse", "d7_servers",
+		"d7_mannequins", "d7_lasers", "d7_boss1", "d7_monologue", "d7_boss2", "d7_boss3", "d7_typing", "d7_ending"]
+	_check(chain == want, "story chain is %s (got %s)" % [str(want), str(chain)])   # wave4: the whole story, Day 0 to the ending
+	var fin: Dictionary = StoryMissions.beat("d7_ending")
+	_check(String(fin.get("ending", "")) == "auto" and String(fin.get("next", "x")) == "" and StoryMissions.lair_scene(fin) == "",
+		"the chain ends on the endings' auto beat in free roam (d7_ending)")
+	_check(String(StoryMissions.beat("d6_call").get("next", "")) == "d7_start" and String(StoryMissions.beat("d7_start").get("kind", "")) == "day",
+		"Day 6 hands over to Day 7 (d6_call -> d7_start)")
+	var calls: Dictionary = {"d1_call": 6, "d2_call": 5, "d3_call": 4, "d4_call": 3, "d5_call": 2, "d6_call": 1}
 	for cid: String in calls.keys():
 		_check(int(StoryMissions.beat(cid)["days"]) == int(calls[cid]), "%s says %d days" % [cid, int(calls[cid])])
 	_check(StoryMissions.beat("d2_wait").is_empty() and StoryMissions.beat("d3_wait").is_empty(), "Phase C: the Day 2 / Day 3 placeholders are gone")
-	for pair: Array in [["d2_wait", "d2_chase"], ["d3_wait", "d3_sneak"], ["d2_locked", "d2_chase"], ["d3_locked", "d3_sneak"], ["d5_locked", "d5_stealth"]]:
+	for pair: Array in [["d2_wait", "d2_chase"], ["d3_wait", "d3_sneak"], ["d2_locked", "d2_chase"], ["d3_locked", "d3_sneak"], ["d5_locked", "d5_stealth"], ["d6_locked", "d6_shop"]]:
 		_check(StoryMissions.migrate(String(pair[0])) == String(pair[1]), "an old save at %s resumes at %s" % [String(pair[0]), String(pair[1])])
 	_check(String(StoryMissions.beat("d1_stakeout")["intro"]) == "cine_d1_intro" and String(StoryMissions.beat("d4_canteen")["intro"]) == "cine_d4_intro", "mission intros")
 	_check(String(StoryMissions.beat("d1_brawl")["after"]) == "seg_d1_brawl" and String(StoryMissions.beat("d4_brawl")["after"]) == "seg_d4_brawl" and String(StoryMissions.beat("d1_corridor")["after"]) == "cine_d1_corridor", "after cinematics")
@@ -540,3 +548,44 @@ func _endings() -> void:
 	for c: Array in cases:
 		var got: String = sd.call("evaluate_ending", c[0])
 		_check(got == String(c[1]), "ending %s expected for %s, got %s" % [String(c[1]), str(c[0]), got])
+	_ending_from_progress(all7, ok)
+
+
+## Ending F in real play: the study ranks come from StageManager's saved best_stats (a temp progress file here),
+## not only from flags.study_ranks. The owner's real progress (best_stats, wallet) is restored afterwards.
+func _ending_from_progress(all7: Array, ok: Dictionary) -> void:
+	var sm: Node = root.get_node_or_null("StageManager")
+	_check(sm != null, "endings: StageManager autoload present")
+	if sm == null:
+		return
+	var keep_best: Dictionary = (sm.get("best_stats") as Dictionary).duplicate(true)
+	var keep_wallet: int = int(sm.get("wallet"))
+	var tmp: String = "user://test_story_director_progress_%d.cfg" % OS.get_process_id()
+	var ev: Array[String] = []
+	for e: Variant in all7:
+		ev.append(String(e))
+	sd.set("evidence", ev)
+	sd.set("choices", ok.duplicate())
+	(sd.get("flags") as Dictionary).erase("study_ranks")
+	var auto: Dictionary = {"ending": "auto"}
+	for rank6: String in ["S", "A"]:
+		var cfg := ConfigFile.new()
+		for sid: int in [3, 6, 7]:
+			cfg.set_value("stage_%d" % sid, "score", 900)
+			cfg.set_value("stage_%d" % sid, "rank", rank6 if sid == 6 else "S")
+			cfg.set_value("stage_%d" % sid, "wins", 1)
+			cfg.set_value("stage_%d" % sid, "plays", 1)
+		cfg.save(tmp)
+		sm.call("load_progress", tmp)
+		var want: String = "F" if rank6 == "S" else "A"
+		var got: String = String(sd.call("resolve_ending", auto))
+		_check(got == want, "endings: best_stats S/%s/S on 3/6/7 -> %s, got %s (study_ranks %s)" % [rank6, want, got, str(sd.call("study_ranks"))])
+	# a stage played but never won does not count, and flags.study_ranks still merges on top
+	(sm.get("best_stats") as Dictionary)[6] = {"score": 0, "rank": "S", "wins": 0, "plays": 3}
+	_check(String(sd.call("resolve_ending", auto)) == "A", "endings: an unwon stage's rank does not count")
+	(sd.get("flags") as Dictionary)["study_ranks"] = {"6": "S"}
+	_check(String(sd.call("resolve_ending", auto)) == "F", "endings: flags.study_ranks merges over best_stats")
+	(sd.get("flags") as Dictionary).erase("study_ranks")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp))
+	sm.set("best_stats", keep_best)
+	sm.set("wallet", keep_wallet)

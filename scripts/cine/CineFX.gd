@@ -53,7 +53,18 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	"hawaii_print", "belly", "energy_drink", "cigar_vape", "coffee_cup", "party_horn", "usb", "katana", "katana_blade",
 	"keyboard", "server_panel", "staff", "bike_mirror", "chain", "small_crate", "pallet", "pillar", "bridge_deck", "rope",
 	"motorbike", "container", "mannequins", "forklift", "server_rack", "server_room", "monitor_wall", "stonks_screen", "fire",
-	"keynote", "desk"]
+	"keynote", "desk",
+	# Phase D Day 6 (plan 2026-11-01-w4-day6.md): Thị Lọ's wearables, the shop, the back room, the boats and the canal set
+	# pieces, built by CinePropsD6 (this list = CinePropsD6.KINDS, kept literal so it stays a constant)
+	"pink_bob", "lo_shades", "leopard_print", "cash_bag", "ledger", "milk_tea", "powder_puff", "uniform_pack", "speedboat",
+	"jet_ski", "backroom", "doll_shelf", "music_box", "sheep_doll", "vanity", "safe", "tea_shop", "canal_bank", "low_bridge",
+	"fish_net", "sampan", "pier_wall", "billboard", "fireworks", "bulb", "house_row", "cash_wad",
+	# w4-endings: the ending cinematics' props, built by CinePropsE (this list = CinePropsE.KINDS)
+	"end_billboard", "end_helicopter", "police_car", "box", "belt", "scholarship", "certificate", "hearing_set", "canal", "sign",
+	"boat", "lift_frame", "lift_door", "dossier",
+	# Phase D Day 7 (w4-day7): CinePropsD7.KINDS (Lọ's gear, the saber, the gallery and roof props)
+	"gold_glasses", "pink_collar", "gold_chain", "saber", "vase", "plinth", "speaker", "laser_emitter", "breaker",
+	"exam_server", "helicopter", "academy_sign", "flashlight", "heli_rotor", "searchlight", "rain", "gallery_hall", "roof_deck"]
 
 var _serial: int = 0
 var _parts: Array[Dictionary] = []     # {node: CPUParticles3D, s0, life}
@@ -551,6 +562,12 @@ static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 		_:
 			if CinePropsC.has(kind):
 				CinePropsC.build(kind, root, opts)
+			elif CinePropsD6.has(kind):
+				CinePropsD6.build(kind, root, opts)
+			elif CinePropsE.has(kind):
+				CinePropsE.build(kind, root, opts)
+			elif CinePropsD7.has(kind):   # Day 7 (w4-day7)
+				CinePropsD7.build(kind, root, opts)
 			else:
 				push_warning("CineFX.build_prop: unknown kind '%s'" % kind)
 	return root

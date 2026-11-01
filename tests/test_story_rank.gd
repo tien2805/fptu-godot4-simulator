@@ -21,7 +21,7 @@ extends SceneTree
 
 const RANKED: Array[String] = ["d1_stakeout", "d1_chase", "d1_brawl", "d1_corridor", "d2_chase", "d2_drift", "d2_bridge",
 	"d2_duel", "d3_sneak", "d3_gunfight", "d3_crates", "d3_boss", "d4_canteen", "d4_brawl", "d4_escape", "d5_stealth",
-	"d5_gunfight", "d5_hack", "d5_duel"]
+	"d5_gunfight", "d5_hack", "d5_duel", "d6_shop", "d6_backroom", "d6_boat"]
 
 var fails: Array[String] = []
 var world: Node
@@ -83,12 +83,13 @@ static func perfect(id: String) -> Array:
 
 func _part_a() -> void:
 	print("  [part] A scoring")
-	_check(StoryRank.MISSIONS.size() == 19, "A: 19 ranked beats (%d)" % StoryRank.MISSIONS.size())
+	var days15: int = StoryRank.MISSIONS.keys().filter(func(k: Variant) -> bool: return not (String(k).begins_with("d6_") or String(k).begins_with("d7_"))).size()
+	_check(days15 == 19, "A: 19 ranked beats of Days 1-5 (%d)" % days15)   # Phase D days add their own (w4-day7)
 	for id: String in RANKED:
 		_check(StoryRank.MISSIONS.has(id), "A: %s is ranked" % id)
 		_check(StoryMissions.BEATS.has(id), "A: %s exists in StoryMissions" % id)
 	for id2: String in StoryRank.MISSIONS.keys():
-		_check(RANKED.has(id2), "A: %s is one of the plan's ranked beats" % id2)
+		_check(RANKED.has(id2) or String(id2).begins_with("d6_") or String(id2).begins_with("d7_"), "A: %s is one of the plan's ranked beats" % id2)
 	_check(StoryRank.report("d1_morning", {"time": 10.0}) == "" and StoryRank.evaluate("d0_wake", {}).is_empty(), "A: an unranked beat gives no letter")
 	# letter edges
 	_check(StoryRank.letter_of(85.0) == "S" and StoryRank.letter_of(84.9) == "A" and StoryRank.letter_of(65.0) == "A"

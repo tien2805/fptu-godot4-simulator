@@ -6,6 +6,7 @@
 #     snapshot as the save, the story continues like TIẾP TỤC). "QUAY VỀ TIẾN ĐỘ TRƯỚC KHI TUA" (only with a backup) asks
 #     too, then StoryChapters.restore_backup.
 #   XEM LẠI PHIM: the story cinematics by day; an unlocked one plays in StoryGalleryPlayer, which comes back to this tab.
+#   KẾT THÚC (w4-endings): the six endings; a reached one replays its whole sequence (StoryGalleryPlayer.queue), others "???".
 # Wave 3: a ranked beat with a best rank reads "<tên cảnh> · Hạng A" (plain text, the same row style).
 # QUAY LẠI / Esc: the main menu, or the story itself when the screen was opened from the pause menu (from_story).
 # Mouse and keyboard (focus on the buttons, the list scrolls to the focused row). No pause menu here (meta no_pause).
@@ -29,7 +30,7 @@ const RESTORE_NOTE: String = "Tiến độ chơi từ lúc tua tới giờ sẽ 
 
 ## Set by StageManager.go_to_chapter_select (pause menu in story mode): QUAY LẠI resumes the story.
 static var from_story: bool = false
-## Tab shown when the screen opens ("chapters" | "gallery"); StoryGalleryPlayer sets "gallery" on its way back.
+## Tab shown when the screen opens ("chapters" | "gallery" | "endings"); StoryGalleryPlayer sets it on its way back.
 static var open_tab: String = "chapters"
 
 ## false (tests): navigation is recorded in last_nav instead of changing scenes.
@@ -120,7 +121,8 @@ func _build() -> void:
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 12)
 	col.add_child(tabs)
-	for pair: Array in [["chapters", "CHỌN CẢNH", "TabChapters"], ["gallery", "XEM LẠI PHIM", "TabGallery"]]:
+	for pair: Array in [["chapters", "CHỌN CẢNH", "TabChapters"], ["gallery", "XEM LẠI PHIM", "TabGallery"],
+			["endings", "KẾT THÚC", "TabEndings"]]:
 		var tb: Button = _button(String(pair[1]), CYAN)
 		tb.name = String(pair[2])
 		tb.custom_minimum_size = Vector2(240, 42)
@@ -212,15 +214,18 @@ func _build_confirm() -> void:
 	hb.add_child(confirm_no)
 
 
-## Rebuilds the list for tab "chapters" or "gallery" and puts the keyboard focus on its first usable row.
+## Rebuilds the list for tab "chapters", "gallery" or "endings" and puts the keyboard focus on its first usable row.
 func show_tab(which: String) -> void:
-	tab = "gallery" if which == "gallery" else "chapters"
+	tab = which if which in ["gallery", "endings"] else "chapters"
 	for k: Variant in tab_buttons.keys():
 		var on: bool = String(k) == tab
 		(tab_buttons[k] as Button).add_theme_color_override("font_color", GameFXScript.FPT_YELLOW if on else TEXT)
 	for c: Node in list_box.get_children():
 		list_box.remove_child(c)
 		c.queue_free()
+	if tab == "endings":
+		_show_endings()
+		return
 	var rows: Array[Dictionary] = StoryChapters.chapters() if tab == "chapters" else StoryChapters.gallery()
 	var open_days: Array[int] = []
 	for r: Dictionary in rows:
@@ -276,7 +281,37 @@ func _row(r: Dictionary) -> Button:
 
 
 func row_button(id: String) -> Button:
-	return list_box.get_node_or_null(("Chapter_" if tab == "chapters" else "Cine_") + id) as Button
+	var pre: String = {"chapters": "Chapter_", "gallery": "Cine_", "endings": "Ending_"}.get(tab, "Chapter_")
+	return list_box.get_node_or_null(pre + id) as Button
+
+
+## KẾT THÚC: one row per ending ("Kết A: <tên>" + its line when reached, "???" otherwise), no day headers.
+func _show_endings() -> void:
+	var first: Button = null
+	var any: bool = false
+	for r: Dictionary in StoryChapters.endings():
+		var on: bool = bool(r["unlocked"])
+		any = any or on
+		var b: Button = _button(ending_row_text(r) if on else "???", GameFXScript.FPT_YELLOW)
+		b.name = "Ending_" + String(r["id"])
+		b.disabled = not on
+		if on:
+			b.pressed.connect(play_ending.bind(String(r["id"])))
+			if first == null:
+				first = b
+		else:
+			b.focus_mode = Control.FOCUS_NONE
+		list_box.add_child(b)
+	empty_label.visible = not any
+	empty_label.text = "Chưa mở kết thúc nào. Chơi hết cốt truyện để mở."
+	restore_btn.visible = StoryChapters.has_backup(_director())
+	var focus: Button = first if first else (tab_buttons[tab] as Button)
+	focus.call_deferred("grab_focus")
+
+
+## The title already reads "Kết X: ..." (StoryEndings.ENDINGS), so the row shows it alone.
+static func ending_row_text(r: Dictionary) -> String:
+	return String(r["title"])
 
 
 # ---------------------------------------------------------------------------
@@ -342,8 +377,24 @@ func _on_confirm() -> void:
 
 func play_cine(slot: String) -> void:
 	StoryGalleryPlayer.slot = slot
+	StoryGalleryPlayer.queue = []
+	StoryGalleryPlayer.return_tab = "gallery"
 	open_tab = "gallery"
 	last_nav = "gallery:" + slot
+	if nav_enabled:
+		get_tree().change_scene_to_file(GALLERY_SCENE)
+
+
+## A reached ending: its whole sequence (end_a then ai_true_end for A, ...) in StoryGalleryPlayer, back to KẾT THÚC.
+func play_ending(x: String) -> void:
+	var q: Array[String] = StoryEndings.slots(x)
+	if q.is_empty():
+		return
+	StoryGalleryPlayer.queue = q.slice(1)
+	StoryGalleryPlayer.slot = q[0]
+	StoryGalleryPlayer.return_tab = "endings"
+	open_tab = "endings"
+	last_nav = "ending:" + x
 	if nav_enabled:
 		get_tree().change_scene_to_file(GALLERY_SCENE)
 

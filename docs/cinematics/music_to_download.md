@@ -65,6 +65,12 @@ Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột
 | [ ] | Anh Duy giải mã USB, tìm ra server dưới hầm The Beverly (Ngày 5) | `cine_d5_intro_` | *Technologic*, Daft Punk |
 | [ ] | Mặt Za Mẫn cười trên 50 màn hình (Ngày 5) | `cine_d5_monitors_` | *Mr. Roboto*, Styx |
 | [ ] | Phòng server cháy, "Ổn mà", lựa chọn 2 (Ngày 5; hai đoạn đuôi Nhận lời / Từ chối dùng chung bài này) | `cine_d5_choice_` | *Don't Worry, Be Happy*, Bobby McFerrin |
+| [ ] | Bình minh, Anh Duy báo 08:00 tool lên hệ thống thi (Ngày 7) | `cine_d7_intro_` | *Lux Aeterna* (nhạc phim *Requiem for a Dream*), Clint Mansell |
+| [ ] | Lùm Văn Lọ "Mọi thứ đều nằm trong kế hoạch", tắt đèn (Ngày 7) | `cine_d7_monologue_` | *Sweet Dreams (Are Made of This)*, Eurythmics |
+| [ ] | Phát lại: leo hết các tầng, cửa phòng bình cổ mở (Ngày 7) | `seg_d7_floors_` | *Eye of the Tiger*, Survivor |
+| [ ] | Phát lại: Lọ và sáu bảo vệ gục trong phòng bình cổ (Ngày 7) | `seg_d7_phase1_` | *In the Hall of the Mountain King*, Edvard Grieg |
+| [ ] | Có điện lại: đèn pin, loa, bình cổ, đánh nhau 25 s (Ngày 7) | `seg_d7_phase2_` | *The Power of Love*, Jennifer Rush |
+| [ ] | Sân thượng dưới mưa: đòn chân kẹp cổ số 21, "Xin vĩnh biệt cụ." (Ngày 7, 25 s) | `seg_d7_finisher_` | *What a Wonderful World*, Louis Armstrong |
 
 **Nhiệm vụ và trùm**
 
@@ -82,12 +88,47 @@ Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột
 | [ ] | Gõ phím xoá "Lọ Thần 9.0" (Ngày 5) | `mission_typing_` | *Around the World*, Daft Punk |
 | [ ] | Phòng server cháy, gõ phím trong lúc đếm ngược (Ngày 5) | `mission_fire_hack_` | *Disco Inferno*, The Trammps |
 | [ ] | Đấu kiếm với Za Mẫn (Ngày 5) | `boss_d5_` | *Battle Without Honor or Humanity*, Tomoyasu Hotei |
+| [ ] | Leo tòa Lọ Academy: hầm xe, kho, tầng server, ma-nơ-canh, laser, gõ phím cuối (Ngày 7) | `mission_tower_` | *Thunderstruck*, AC/DC |
+| [ ] | Trùm cuối Lùm Văn Lọ: phòng bình cổ và sân thượng (Ngày 7) | `boss_d7_` | *The Final Countdown*, Europe |
 
 **Đã có trên máy, không cần tải:** `seg_d2_chase`, `seg_d2_boss` (*Heartbreaker*), `seg_d3_gunfight`, `seg_d3_crates`,
 `seg_d3_boss` (*Straighten Up and Fly Right*), `seg_d5_gunfight`, `seg_d5_hack`, `seg_d5_boss` (*The Good Life*), `cine_d2`,
 `cine_d3`, `cine_d5`, `end_c` (*Money, Money, Money*). Độ dài và các nhịp đánh của từng cảnh nằm trong
 `docs/cinematics/<tên cảnh>.txt`: 3 cảnh đánh lớn 25 s đặt các cú chậm theo một lưới nhịp chung, Claude sẽ dời cho khớp
 nhịp bài khi bạn báo.
+
+## Phase D: Ngày 6 "Trà Sữa Lọ" (mới, 2026-11-01)
+
+Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột thứ ba rồi báo Claude.
+
+| | Chỗ dùng | Tên file bắt đầu bằng | Bài |
+|---|---|---|---|
+| [ ] | Làm ca sau quầy Trà Sữa Lọ, pha trà cho khách đeo mặt nạ cừu | `mission_shop_` | *Barbie Girl*, Aqua |
+| [ ] | Rượt cano trên kênh Rạch Hầm ban đêm | `mission_boat_` | *Danger Zone*, Kenny Loggins |
+| [ ] | Phúc đưa bộ đồ shipper hồng (14 s) | `cine_d6_intro_` | *Sugar, Sugar*, The Archies |
+| [ ] | Bóng người trong gương, "Gì?", "Còn cái nịt" (20 s) | `cine_d6_caught_` | *Material Girl*, Madonna |
+| [ ] | Vali tiền trên bờ kênh, lựa chọn 3 (hai đoạn đuôi Nhận / Từ chối dùng chung bài này) | `cine_d6_choice_` | *Money for Nothing*, Dire Straits |
+| [ ] | Replay ngắn lấy sổ cái | `seg_d6_infiltrate_` | *The Pink Panther Theme*, Henry Mancini |
+| [ ] | Cảnh lớn 22 s: cano của Thị Lọ đâm vào bờ | `seg_d6_chase_` | *Ring of Fire*, Des Rocs |
+| [ ] | Bảng "LỌ ACADEMY" bật sáng (bản trong game của clip AI số 2) | `ai_reveal_` | *O Fortuna* (Carmina Burana), Carl Orff |
+
+Phòng sau (búp bê cừu, hộp nhạc) dùng lại bài đi lén của Tòa nhà ban đêm (`night_stealth`); khi hộp nhạc chạy thì nhạc
+nền tắt, chỉ còn tiếng hộp nhạc.
+
+## Phase D: các kết và hoạt động tự do (w4-endings, 2026-11-01)
+
+Chưa có file thì chỗ đó im lặng. Các kết dùng đúng gợi ý trong `music_suggestions.md`.
+
+| | Chỗ dùng | Tên file bắt đầu bằng | Bài |
+|---|---|---|---|
+| [ ] | Kết A: buổi kỷ luật thành buổi khen thưởng | `end_a_` | *September*, Earth, Wind & Fire |
+| [ ] | Kết A: tấm biển Lọ Academy sập (bản dựng trong game của clip AI #3; không có file riêng thì dùng tiếp bài của `end_a`) | `ai_true_end_` | *September*, Earth, Wind & Fire |
+| [ ] | Kết B: Phúc ôm thùng đồ ra về | `end_b_` | *Lean on Me*, Bill Withers |
+| [ ] | Kết D: trùm đu trực thăng bỏ trốn | `end_d_` | *Fly Me to the Moon*, Frank Sinatra |
+| [ ] | Kết E: "Còn cái nịt", credits meme | `end_e_` | *Never Gonna Give You Up*, Rick Astley |
+| [ ] | Kết F: học bổng, trùm lên xe cảnh sát | `end_f_` | *Celebration*, Kool & the Gang |
+| [ ] | Đua drift đường phố ban đêm (đi tự do) | `side_drift_` | *Night of Fire*, Niko |
+| [ ] | Chạy giao hàng tính giờ (đi tự do) | `side_delivery_` | *Running in the 90s*, Max Coveri |
 
 ## Các màn cũ (vào từ cột sáng khi đi tự do)
 

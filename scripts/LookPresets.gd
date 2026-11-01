@@ -91,6 +91,19 @@ const PRESETS: Dictionary = {
 		"brightness": 1.0, "contrast": 1.12, "sat": 1.0, "amb": 0.42, "amb_col": Color("#6a3a44"),
 		"key": {"col": Color("#ff4a3a"), "energy": 0.5, "shadow": 0.5},
 		"fill": {"col": Color("#ff5a40"), "energy": 0.22, "elev": 55.0, "azim": 180.0}},
+	# Phase D Day 7 (w4-day7): the vase gallery's blackout (only the flashlight, the emissives and the speakers' rings read;
+	# a faint gold fill keeps the plinths' silhouettes) ...
+	"penthouse_blackout": {"exposure": 0.95, "glow": 0.95, "glow_strength": 1.15, "thr": 1.2, "cap": 4.0, "bloom": 0.0,
+		"fog": Color("#060504"), "fog_begin": 3.0, "fog_end": 30.0, "fog_density": 0.6,
+		"brightness": 0.96, "contrast": 1.15, "sat": 0.9, "amb": 0.06, "amb_col": Color("#3a3020"),
+		"fill": {"col": Color("#d4af37"), "energy": 0.03, "elev": 12.0, "azim": 0.0}},
+	# ... and the rooftop duel in the rain: a cold blue key (the city under the storm), the helicopter's searchlight is the
+	# warm hard light, rain haze close in, the glow kept for the wet speculars and the saber.
+	"rooftop_rain": {"exposure": 1.0, "glow": 0.85, "glow_strength": 1.05, "thr": 1.25, "cap": 3.5, "bloom": 0.0,
+		"fog": Color("#1c2430"), "fog_begin": 6.0, "fog_end": 90.0, "fog_density": 0.6,
+		"brightness": 1.0, "contrast": 1.12, "sat": 0.92, "amb": 0.34, "amb_col": Color("#46566e"),
+		"key": {"col": Color("#9fb8ff"), "energy": 0.35, "shadow": 0.5},
+		"fill": {"col": Color("#ffd68a"), "energy": 0.12, "elev": 60.0, "azim": 180.0}},
 }
 
 ## FreeRoam base preset per time of day (GameFX.TOD_PRESETS keys): night = night_city, morning / noon = campus_day; dawn and

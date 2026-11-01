@@ -24,7 +24,9 @@ static var _sfx_cache: Dictionary = {}
 
 ## A slot without its own owner file plays its parent slot's file (then silence): the choice tails reuse cine_d1_choice.
 const SLOT_FALLBACK: Dictionary = {"cine_d1_choice_cover": "cine_d1_choice", "cine_d1_choice_report": "cine_d1_choice",
-	"cine_d5_choice_accept": "cine_d5_choice", "cine_d5_choice_refuse": "cine_d5_choice"}
+	"cine_d5_choice_accept": "cine_d5_choice", "cine_d5_choice_refuse": "cine_d5_choice",
+	"cine_d6_choice_take": "cine_d6_choice", "cine_d6_choice_refuse": "cine_d6_choice",
+	"ai_true_end": "end_a"}   # w4-endings: ending A's AI clip fallback keeps the true ending's song
 
 
 static func music_file(slot: String) -> String:
