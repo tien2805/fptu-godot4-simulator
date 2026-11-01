@@ -1,7 +1,7 @@
 # File: res://scripts/story/missions/MissionTowerKatana.gd
 # Day 7 floor 3, the server floor (plan 2026-11-01-w4-day7.md T1 / T3): Lê Minh Za Mẫn is back with a cheaper katana
 # ("katana 49 nghìn", freeship). MissionDuel's SwordDuel (the player's staff against KatanaBoss) without the sprinklers
-# (no fire on this floor) and a shorter fight (his HP x KATANA_HP_K: the cheap blade gives up sooner), the QTE finisher
+# (no fire on this floor) (his HP x KATANA_HP_K: Day 5's HP after the T5 sloppy-bot runs; 0.75 was too soft), the QTE finisher
 # at 0 HP as on Day 5, his return card (CastD7 "za_man_back", flag za_man_back_card) once while he stands staged.
 # `won` = done; down = "TOANG!" -> retry() = a fresh Za Mẫn.
 # opts: "points" (start, start_yaw, boss_at, boss_yaw), "manual_card", "seed".
@@ -12,7 +12,7 @@ const T_DOWN: String = "Bị chém gục rồi!"
 const START_LINE: String = "Lần này bảo hành mười bốn ngày!"
 const CARD_FLAG: String = "za_man_back_card"
 ## The cheap katana: his HP scale against Day 5's (SwordData.HP_SCALE / HP_SCALE_EASY).
-const KATANA_HP_K: float = 0.75
+const KATANA_HP_K: float = 1.0
 
 var duel: SwordDuel
 var card: StoryVillainCard = null

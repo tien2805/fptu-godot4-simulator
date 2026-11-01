@@ -5,7 +5,7 @@
 #   - "stalk": he walks toward the player (STALK_MS, slower when "Giảm hù dọa");
 #   - "wind": within LUNGE_M he winds up for WIND_S (the telegraph: the nearest vase cracks with a glass crack, the nearest
 #     speaker's ring glows and his voice comes from it), then "lunge" (LUNGE_MS for LUNGE_S): touching the player costs
-#     HIT_DMG (heavy) and he melts back into the dark ("vanish", VANISH_S, then he walks in from a far corner);
+#     HIT_DMG (heavy), hit or miss he melts back into the dark ("vanish", VANISH_S, then he walks in from BACK_M behind the beam);
 #   - the flashlight on him for LIT_S (inside its cone, a clear line) staggers him ("stagger" STAGGER_S, then "vanish"):
 #     the beam is the defence.
 # The way out: the two breakers on the side walls (points.breakers): hold [E] next to one for HOLD_S (the progress stays
@@ -22,22 +22,29 @@ class_name MissionBossDark
 extends StoryMission
 
 const LOOK: String = "penthouse_blackout"
-const STALK_MS: float = 1.7
+const STALK_MS: float = 2.6
 const STALK_MS_GENTLE: float = 1.2
 const LUNGE_M: float = 3.2
 const WIND_S: float = 0.9
 const WIND_S_GENTLE: float = 1.4
-const LUNGE_MS: float = 6.5
+const LUNGE_MS: float = 7.0
 const LUNGE_S: float = 0.55
-const HIT_M: float = 1.1
-const HIT_DMG: float = 34.0
+const HIT_M: float = 1.35
+const HIT_DMG: float = 50.0                # T5 (sim_day7): two missed dodges put him down on Thường (no quick heal)
+const HIT_DMG_EASY: float = 36.0
 const HIT_DMG_GENTLE: float = 22.0
-const VANISH_S: float = 2.6
+const VANISH_S: float = 1.0
+## T5: he walks back in from the dark behind the beam, this far from the player (else the farthest corner).
+const BACK_M: float = 6.5
 const STAGGER_S: float = 1.1
 const LIT_S: float = 1.2
 const LIT_DEG: float = 22.0
 const LIT_RANGE: float = 17.0
-const HOLD_S: float = 1.6
+## T5 (sim_day7): a breaker is a long hold (he comes for the player at it); Dễ shorter.
+const HOLD_S: float = 7.5
+const HOLD_S_EASY: float = 5.0
+## T5: no quick heal in the dark (regeneration after this long without a hit; restored on cleanup).
+const REGEN_DELAY_DARK: float = 8.0
 const BREAKER_R: float = 1.6
 const RAY_HZ: float = 10.0
 const LO_EYE: float = 1.45
@@ -140,6 +147,8 @@ func _fresh() -> void:
 	var c: Object = roam.get("combat") if roam else null
 	if c and c.has_method("revive") and float(c.get("hp")) <= 0.0:
 		c.call("revive")
+	if c:
+		c.set("regen_delay", REGEN_DELAY_DARK)
 	_next_goal()
 	_refresh_info()
 
@@ -207,9 +216,9 @@ func _tick_breakers(dt: float) -> void:
 	set_prompt(T_HOLD if near >= 0 else "")
 	if near < 0 or not _holding():
 		return
-	hold[near] = minf(HOLD_S, hold[near] + dt)
-	set_meter(hold[near] / HOLD_S * 100.0, T_BREAKER)
-	if hold[near] >= HOLD_S:
+	hold[near] = minf(hold_s(), hold[near] + dt)
+	set_meter(hold[near] / hold_s() * 100.0, T_BREAKER)
+	if hold[near] >= hold_s():
 		restored[near] = true
 		_set_breaker(near, true)
 		play_cue("door_bang", -10.0)
@@ -219,6 +228,10 @@ func _tick_breakers(dt: float) -> void:
 			_win()
 		else:
 			_next_goal()
+
+
+func hold_s() -> float:
+	return float(Difficulty.pick(HOLD_S, HOLD_S_EASY))
 
 
 func _next_goal() -> void:
@@ -286,7 +299,7 @@ func _tick_lo(dt: float) -> void:
 			if dist <= HIT_M:
 				_hit()
 			elif lo_t >= LUNGE_S:
-				_go("stalk")
+				_vanish()                        # a miss: he melts back into the dark too (T5: no lunge right after a lunge)
 		"stagger":
 			CharacterBuilder.set_speed(lo, 0.0)
 			if lo_t >= STAGGER_S:
@@ -352,7 +365,7 @@ func _hit() -> void:
 	hits += 1
 	var c: Object = roam.get("combat") if roam else null
 	if c and c.has_method("receive_attack"):
-		c.call("receive_attack", lo, {"damage": HIT_DMG_GENTLE if gentle else HIT_DMG, "heavy": true})
+		c.call("receive_attack", lo, {"damage": HIT_DMG_GENTLE if gentle else float(Difficulty.pick(HIT_DMG, HIT_DMG_EASY)), "heavy": true})
 	play_cue("impact_heavy", -4.0)
 	_vanish()
 
@@ -466,6 +479,17 @@ func _cut(target: Node3D) -> void:
 ## A dark corner away from the player (the four hall corners in turn, the farthest first).
 func _far_spot() -> Vector3:
 	var c: Vector3 = pts.get("centre", Vector3.ZERO)
+	if player and flashlight:
+		var back: Vector3 = flashlight.global_transform.basis.z
+		back.y = 0.0
+		if back.length() > 0.1:
+			var q: Vector3 = player.global_position + back.normalized() * BACK_M
+			q.x = clampf(q.x, c.x - 12.0, c.x + 12.0)
+			q.z = clampf(q.z, c.z - 10.0, c.z + 10.0)
+			q.y = c.y
+			if flat(q, player.global_position) >= 5.0:
+				_spawn_i += 1
+				return q
 	var corners: Array[Vector3] = [c + Vector3(-11.0, 0.0, -9.0), c + Vector3(11.0, 0.0, -9.0), c + Vector3(-11.0, 0.0, 9.0),
 		c + Vector3(11.0, 0.0, 9.0)]
 	var best: Vector3 = corners[0]
@@ -485,6 +509,9 @@ func _reset() -> void:
 
 func _cleanup() -> void:
 	_power(true)
+	var c: Object = roam.get("combat") if roam else null
+	if c:
+		c.set("regen_delay", CombatData.REGEN_DELAY)
 	_end_pulse()
 	for s: Variant in (level.get("speakers") if level else []):
 		var r: Node3D = (s as Node3D).get_node_or_null("Ring") as Node3D

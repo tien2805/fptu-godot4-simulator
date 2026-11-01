@@ -493,6 +493,8 @@ func _process(_d: float) -> bool:
 			tw.combat.receive_attack(md25.lo, {"damage": 999.0})
 			_next(26)
 		26:
+			if tw.combat.hp > 0.0 and is_instance_valid(m) and (m as MissionBossDark).state == "running":
+				tw.combat.receive_attack((m as MissionBossDark).lo, {"damage": 999.0})   # again once the lunge's knockdown grace is over
 			if not _fail_shown("down in the blackout"):
 				return false
 			_check(tw.fail_ui.reason_label.text == MissionBossDark.T_DOWN, "down in the dark: TOANG!")
@@ -512,7 +514,7 @@ func _process(_d: float) -> bool:
 					var lever: Node3D = tw.level.breakers[0].get_node("Lever")
 					_check(lever.rotation.x < 0.0 and not tw.level.power_on, "breaker 1 on (its lever up), still dark")
 					tw.player.teleport(md27.pts["breakers"][1], 0.0)
-			if not _at_step("d7_boss3", "the power did not come back", 900):
+			if not _at_step("d7_boss3", "the power did not come back", 1500):   # two HOLD_S holds
 				return false
 			_check(mark.has("br0"), "both breakers held")
 			_check(tw.level.power_on and tw.level.gallery_lights[0].visible and tw.looks.is_empty() and LookPresets.active(tw) == "penthouse", "the power back: the lights, the look restored")
