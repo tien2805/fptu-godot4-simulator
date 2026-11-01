@@ -28,8 +28,8 @@
 #   result (d3_all_crates opens the optional E4).
 # Day 2 "Tokyo Drift" (plan 2026-10-27-d2x-drift.md) adds mission drift_duel: the beat d2_drift (the drift race against
 # Sói Xám on the Rạch Hầm bridge course) between d2_chase and d2_bridge; saves at d2_bridge or later are unchanged.
-# Days 0-5 are implemented, Day 6 ends on a locked placeholder; old saves at a placeholder of a day that is now playable
-# resume at that day's first beat (migrate). Anchors are resolved by StoryRoam.
+# Days 0-6 are implemented (Day 6, w4-day6: the lair "canal" = StoryCanal, the day ends with "next": "d7_start"); old
+# saves at a placeholder of a day that is now playable resume at that day's first beat (migrate). Anchors are resolved by StoryRoam.
 class_name StoryMissions
 extends RefCounted
 
@@ -39,12 +39,13 @@ const MISSIONS: Array[String] = ["stakeout", "chase", "corridor", "canteen", "bi
 	"crates", "forklift", "drift_duel"]
 const FIGHTS: Array[String] = ["d1", "d4", "d2"]
 ## Phase C: tasks of a "lair" beat (run by the lair scene) and the scene of each dedicated lair.
-const LAIR_TASKS: Array[String] = ["stealth", "gunfight", "hack", "duel"]
-const LAIR_SCENES: Dictionary = {"basement": "res://scenes/story/StoryBasement.tscn"}
+const LAIR_TASKS: Array[String] = ["stealth", "gunfight", "hack", "duel", "shop", "backroom", "boat"]
+const LAIR_SCENES: Dictionary = {"basement": "res://scenes/story/StoryBasement.tscn", "canal": "res://scenes/story/StoryCanal.tscn"}
 ## Saves stopped at a placeholder of a day that is now playable resume at the day's first playable beat (B-D6, Phase C:
 ## old saves keep working).
 const MIGRATE: Dictionary = {"d1_locked": "d1_stakeout", "d2_locked": "d2_chase", "d3_locked": "d3_sneak", "d4_locked": "d4_canteen",
-	"d2_wait": "d2_chase", "d3_wait": "d3_sneak", "d5_locked": "d5_stealth"}
+	"d2_wait": "d2_chase", "d3_wait": "d3_sneak", "d5_locked": "d5_stealth",
+	"d6_locked": "d6_shop"}
 const HORROR_SCENE: String = "res://scenes/story/StoryNightEscape.tscn"
 const PLACEHOLDER_SUFFIX: String = "Về BE6 ngủ để sang ngày tiếp."
 const DAY_TITLES: Array[String] = ["Phòng 311", "Shipper bóng đêm", "Bầy Sói", "Bến container", "Cừu nhân bản", "Hầm server",
@@ -244,8 +245,38 @@ const BEATS: Dictionary = {
 		"objective": "Lại là số lạ..."},
 	"d6_start": {"day": 6, "title": "Ngày 6", "kind": "day", "tod": "morning", "next": "d6_morning"},
 	"d6_morning": {"day": 6, "title": "Sáng Ngày 6", "kind": "cine", "slot": "cine_day_start", "at": "be6_door",
-		"tod": "morning", "next": "d6_locked", "objective": "Ngày mới... còn 2 ngày",
+		"tod": "morning", "next": "d6_shop", "objective": "Ngày mới... còn 2 ngày",
 		"texts": [["Phúc", "Tao kiếm được bộ đồ shipper Trà Sữa Lọ rồi, chờ tao nha."]]},
+	# --- Day 6 (w4-day6) ---
+	# Day 6 "Trà Sữa Lọ" (plan 2026-11-01-w4-day6.md): at night in the shop by the Rạch Hầm bridge, its own scene
+	# (StoryCanal: the shop, the back room, the pier and the canal course). The shift behind the counter (shop), the back
+	# room and the ledger (backroom, E7), the mirror and "Còn cái nịt" (caught), the speedboat chase (boat), choice 3 on the
+	# bank (bribe: take / refuse), then back in free roam the AI clip #2 (ai_reveal), the bed and the last 3 a.m. call.
+	"d6_shop": {"day": 6, "title": "Shipper Trà Sữa Lọ", "kind": "lair", "lair": "canal", "task": "shop", "anchor": "lo_shop",
+		"intro": "cine_d6_intro", "tod": "night", "next": "d6_backroom",
+		"objective": "Phúc đợi trước quán Trà Sữa Lọ cạnh cầu Rạch Hầm: cột hồng, bấm [E]"},
+	"d6_backroom": {"day": 6, "title": "Phòng sau", "kind": "lair", "lair": "canal", "task": "backroom", "anchor": "lo_shop",
+		"replay": "seg_d6_infiltrate", "evidence": "E7", "tod": "night", "next": "d6_caught",
+		"objective": "Cửa sau mở rồi. Lẻn vào phòng sau, lấy sổ cái trong két"},
+	"d6_caught": {"day": 6, "title": "Còn cái nịt", "kind": "cine", "slot": "cine_d6_caught", "at": "", "lair": "canal",
+		"anchor": "lo_shop", "tod": "night", "next": "d6_boat", "objective": "Ai đang ngồi trước gương vậy..."},
+	"d6_boat": {"day": 6, "title": "Rượt cano kênh Rạch Hầm", "kind": "lair", "lair": "canal", "task": "boat",
+		"anchor": "lo_shop", "after": "seg_d6_chase", "tod": "night", "next": "d6_choice",
+		"objective": "Thị Lọ ôm tiền chạy cano! Đuổi theo, húc cano của bả vào bờ"},
+	"d6_choice": {"day": 6, "title": "Vali tiền", "kind": "cine", "slot": "cine_d6_choice", "at": "", "lair": "canal",
+		"anchor": "lo_shop", "choice": "bribe", "tod": "night", "next": "d6_choice_tail", "objective": "Thị Lọ mở vali tiền..."},
+	"d6_choice_tail": {"day": 6, "title": "Lựa chọn 3", "kind": "cine", "slot": "cine_d6_choice_refuse", "at": "",
+		"lair": "canal", "anchor": "lo_shop",
+		"slot_by_choice": {"id": "bribe", "take": "cine_d6_choice_take", "refuse": "cine_d6_choice_refuse"},
+		"tod": "night", "next": "d6_reveal", "objective": "Thị Lọ chờ câu trả lời..."},
+	"d6_reveal": {"day": 6, "title": "Lọ Academy", "kind": "video", "slot": "ai_reveal", "at": "", "tod": "night",
+		"next": "d6_bed", "objective": "Bảng quảng cáo bên kênh bật sáng..."},
+	"d6_bed": {"day": 6, "title": "Về BE6 ngủ", "kind": "bed", "anchor": "be6_bed", "tod": "night", "next": "d6_call",
+		"objective": "Có sổ cái rồi. Về BE6 ngủ: cột hồng trước sảnh, bấm [E]",
+		"texts": [["Anh Duy", "Sổ cái khớp log giao dịch, tiền chảy về Lọ Academy. (Dịch: Mai lên tòa Lọ Academy.)"],
+			["Linh", "Mai thi rồi đó {name}. Ngủ đi, mai tính tiếp."]]},
+	"d6_call": {"day": 6, "title": "Cuộc gọi 3 giờ sáng", "kind": "call", "days": 1, "tod": "night", "next": "d7_start",
+		"objective": "Số lạ gọi lần cuối..."},
 }
 
 

@@ -35,12 +35,16 @@
 #   mannequins      the smart-glasses mannequin crowd (CineCrowd, not a body; opts() returns {}; build() lays out
 #                   extra "cols" x "rows")
 #   StoryCast.villain_data("soi_xam" | "alexander" | "za_man") -> StoryVillainCard data (timeline cards or show_for)
+# Phase D, Day 6 (plan 2026-11-01-w4-day6.md; the wearables are CinePropsD6 kinds):
+#   thi_lo          Lùm Thị Lọ: neon-pink bob, leopard-print jacket, oversized pink sunglasses (villain_data "thi_lo")
 class_name StoryCast
 extends RefCounted
 
 const IDS: Array[String] = ["hero", "mr_t", "phuc", "linh", "chu_bay", "clone", "clone_masked", "dolly_disguised",
 	"dolly_unmasked", "dolly", "courier_vang", "courier_do", "courier_xanh", "shiba",
-	"soi_xam", "bay_soi", "alexander", "za_man", "anh_duy", "guard_sheep", "guard_wolf", "guard_fox", "mannequins"]
+	"soi_xam", "bay_soi", "alexander", "za_man", "anh_duy", "guard_sheep", "guard_wolf", "guard_fox", "mannequins", "thi_lo"]
+## Phase D ids (Day 6, w4-day6).
+const PHASE_D: Array[String] = ["thi_lo"]
 ## Phase C ids (spec C-D10).
 const PHASE_C: Array[String] = ["soi_xam", "bay_soi", "alexander", "za_man", "anh_duy", "guard_sheep", "guard_wolf", "guard_fox",
 	"mannequins"]
@@ -52,6 +56,8 @@ const SOI_GREY := Color("#5E6268")
 const ALEX_SHIRT := Color("#16A39A")
 const ZA_BLACK := Color("#141416")
 const DUY_HOODIE := Color("#C98A5A")
+const LO_PINK := Color("#FF4FA3")
+const LO_LEOPARD := Color("#C8913A")
 const GUARD_BLACK := Color("#131316")
 ## Eye level of the head gear (glasses) above / in front of the Head bone, measured on the PS2 heads (tests: within 2 cm of
 ## the built-in glasses frame).
@@ -67,13 +73,13 @@ const _SPEAKERS: Dictionary = {"hero": "", "mr_t": "Mr.T", "phuc": "Phúc", "lin
 	"clone": "Nhân bản", "clone_masked": "Nhân bản", "dolly_disguised": "???", "dolly_unmasked": "Cừu Dolly", "dolly": "Cừu Dolly",
 	"courier_vang": "Shipper Mũ Vàng", "courier_do": "Shipper Mũ Đỏ", "courier_xanh": "Shipper Mũ Xanh", "shiba": SHIBA_NAME,
 	"soi_xam": "Sói Xám", "bay_soi": "Bầy Sói", "alexander": "Alexander", "za_man": "Za Mẫn", "anh_duy": "Anh Duy",
-	"guard_sheep": "Bảo vệ", "guard_wolf": "Bảo vệ", "guard_fox": "Bảo vệ", "mannequins": "Ma-nơ-canh"}
+	"guard_sheep": "Bảo vệ", "guard_wolf": "Bảo vệ", "guard_fox": "Bảo vệ", "mannequins": "Ma-nơ-canh", "thi_lo": "Thị Lọ"}
 const _COLORS: Dictionary = {"hero": Color("#F37021"), "mr_t": Color("#B98CFF"), "phuc": Color("#FF9A3C"), "linh": Color("#4FD1C5"),
 	"chu_bay": Color("#7FB2E5"), "clone": Color("#D8DCE0"), "clone_masked": Color("#F4F1EA"), "dolly_disguised": Color("#D8DCE0"),
 	"dolly_unmasked": Color("#F2D7A6"), "dolly": Color("#F2D7A6"), "courier_vang": Color("#F1C40F"), "courier_do": Color("#FF6B5A"),
 	"courier_xanh": Color("#5DADE2"), "shiba": Color("#E8A25A"), "soi_xam": Color("#B8C0C8"), "bay_soi": Color("#9AA3AD"),
 		"alexander": Color("#3FE0D0"), "za_man": Color("#C9A0FF"), "anh_duy": Color("#5BD38A"), "guard_sheep": Color("#D0D3D6"),
-		"guard_wolf": Color("#D0D3D6"), "guard_fox": Color("#D0D3D6"), "mannequins": Color("#E8E1D6")}
+		"guard_wolf": Color("#D0D3D6"), "guard_fox": Color("#D0D3D6"), "mannequins": Color("#E8E1D6"), "thi_lo": Color("#FF7AC0")}
 
 
 static func has(id: String) -> bool:
@@ -129,6 +135,10 @@ static func opts(id: String, extra: Dictionary = {}) -> Dictionary:
 			o = {"preset": "student_m", "seed": 7272, "body": "casual", "backpack": false, "glasses": false, "shirt_color": DUY_HOODIE,
 				"trousers_color": Color("#3A3F4A"), "hair_style": "short", "hair_color": 1, "skin": 2, "height": 0.96,
 				"width": 1.14, "body_width": 1.3}
+		"thi_lo":
+			o = {"preset": "student_f", "seed": 6606, "body": "casual", "backpack": false, "glasses": false, "shirt_color": LO_LEOPARD,
+				"trousers_color": Color("#141416"), "hair_style": "bob", "hair_color": 0, "skin": 0, "height": 1.0,
+				"width": 0.98, "body_width": 0.96}
 		"guard_sheep", "guard_wolf", "guard_fox":
 			o = {"preset": "student_m", "seed": {"guard_sheep": 8101, "guard_wolf": 8202, "guard_fox": 8303}[id], "body": "casual",
 				"backpack": false, "glasses": false, "shirt_color": GUARD_BLACK, "trousers_color": GUARD_BLACK, "hair_style": "short",
@@ -190,7 +200,7 @@ static func build(id: String, extra: Dictionary = {}) -> Node3D:
 		attach_tells(body)
 	if id == "dolly" or id == "dolly_unmasked":
 		attach_tells(body, false)   # the cuff stays (it is her cardigan's), the keychain is gone
-	if id in PHASE_C:
+	if id in PHASE_C or id in PHASE_D:
 		attach_gear(body, id)
 	return body
 
@@ -271,6 +281,10 @@ static func gear(id: String) -> Array:
 			return [{"kind": "wolf_mask", "bone": "Head", "offset": head, "opts": {}}]
 		"guard_fox":
 			return [{"kind": "fox_mask", "bone": "Head", "offset": head, "opts": {}}]
+		"thi_lo":
+			return [{"kind": "pink_bob", "bone": "Head", "offset": head, "opts": {}},
+				{"kind": "lo_shades", "bone": "Head", "offset": eyes, "opts": {}},
+				{"kind": "leopard_print", "bone": "Chest", "offset": Vector3.ZERO, "opts": {"depth": -0.16}}]
 	return []
 
 
@@ -358,6 +372,8 @@ static func villain_data(id: String) -> Dictionary:
 		"za_man":
 			return {"name": "Lê Minh Za Mẫn", "nick": "CTO · đang pivot", "joke": "Kiếm mua trên mạng.",
 				"color": Color("#8E6CC9")}
+		"thi_lo":
+			return {"name": "Lùm Thị Lọ", "nick": "bà chủ Trà Sữa Lọ", "joke": "Ít đường, nhiều thủ đoạn.", "color": LO_PINK}
 	return {}
 
 

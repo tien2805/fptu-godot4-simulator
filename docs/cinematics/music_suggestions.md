@@ -176,6 +176,16 @@ Nhạc chuông của Sói Xám là âm thanh tự tạo (`ringtone_synth`), khô
 | `end_e` (Còn cái nịt) | *Never Gonna Give You Up*, Rick Astley | Rickroll lúc chạy credits |
 | `end_f` (học bổng) | *Celebration*, Kool & the Gang | |
 
+**Phase D: Ngày 6 "Trà Sữa Lọ" (2026-11-01, plan 2026-11-01-w4-day6.md)**
+
+| Slot | Phát khi | Bài |
+|---|---|---|
+| `cine_d6_intro` | Phúc đưa bộ đồ shipper hồng trước quán (14 s) | *Sugar, Sugar*, The Archies |
+| `mission_shop` | làm ca sau quầy, pha trà sữa cho khách đeo mặt nạ cừu | *Barbie Girl*, Aqua |
+| `cine_d6_caught` | bóng người trong gương, Thị Lọ "Gì?", "Còn cái nịt", cúp điện (20 s) | *Material Girl*, Madonna |
+| `mission_boat` | rượt cano trên kênh Rạch Hầm ban đêm | *Danger Zone*, Kenny Loggins |
+| `cine_d6_choice` | vali tiền trên bờ kênh, lựa chọn 3 (14 s); đuôi `cine_d6_choice_take` / `cine_d6_choice_refuse` dùng chung bài này | *Money for Nothing*, Dire Straits |
+
 ## Gợi ý: replay ngắn 4-6 s
 
 | Cảnh | Gợi ý |

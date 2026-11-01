@@ -89,6 +89,24 @@ Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột
 `docs/cinematics/<tên cảnh>.txt`: 3 cảnh đánh lớn 25 s đặt các cú chậm theo một lưới nhịp chung, Claude sẽ dời cho khớp
 nhịp bài khi bạn báo.
 
+## Phase D: Ngày 6 "Trà Sữa Lọ" (mới, 2026-11-01)
+
+Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột thứ ba rồi báo Claude.
+
+| | Chỗ dùng | Tên file bắt đầu bằng | Bài |
+|---|---|---|---|
+| [ ] | Làm ca sau quầy Trà Sữa Lọ, pha trà cho khách đeo mặt nạ cừu | `mission_shop_` | *Barbie Girl*, Aqua |
+| [ ] | Rượt cano trên kênh Rạch Hầm ban đêm | `mission_boat_` | *Danger Zone*, Kenny Loggins |
+| [ ] | Phúc đưa bộ đồ shipper hồng (14 s) | `cine_d6_intro_` | *Sugar, Sugar*, The Archies |
+| [ ] | Bóng người trong gương, "Gì?", "Còn cái nịt" (20 s) | `cine_d6_caught_` | *Material Girl*, Madonna |
+| [ ] | Vali tiền trên bờ kênh, lựa chọn 3 (hai đoạn đuôi Nhận / Từ chối dùng chung bài này) | `cine_d6_choice_` | *Money for Nothing*, Dire Straits |
+| [ ] | Replay ngắn lấy sổ cái | `seg_d6_infiltrate_` | *The Pink Panther Theme*, Henry Mancini |
+| [ ] | Cảnh lớn 22 s: cano của Thị Lọ đâm vào bờ | `seg_d6_chase_` | *Ring of Fire*, Des Rocs |
+| [ ] | Bảng "LỌ ACADEMY" bật sáng (bản trong game của clip AI số 2) | `ai_reveal_` | *O Fortuna* (Carmina Burana), Carl Orff |
+
+Phòng sau (búp bê cừu, hộp nhạc) dùng lại bài đi lén của Tòa nhà ban đêm (`night_stealth`); khi hộp nhạc chạy thì nhạc
+nền tắt, chỉ còn tiếng hộp nhạc.
+
 ## Các màn cũ (vào từ cột sáng khi đi tự do)
 
 | | Chỗ dùng | Tên file bắt đầu bằng | Bài |

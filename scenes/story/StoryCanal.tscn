@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://story_canal"]
+
+[ext_resource type="Script" path="res://scripts/story/StoryCanal.gd" id="1_canal"]
+
+[node name="StoryCanal" type="Node3D"]
+script = ExtResource("1_canal")
