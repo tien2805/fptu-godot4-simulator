@@ -15,11 +15,18 @@
 #   hearing_set   the disciplinary hearing room (set dressing): a long council table with a name sign, a big screen at the
 #                 back; opts "title" (the sign text), "screen" (Array of screen lines), "screen_title".
 #   canal         a strip of dark canal water (opts "width", "length"), slightly emissive so the night keeps it readable.
+#   T4 night events (w4-endings):
+#   boat          a small wooden sampan (4 m along X, origin at the waterline centre) with a green paper lantern on a pole
+#                 at its bow (+X) (a small OmniLight3D).
+#   lift_frame    a BE6 lift front: steel wall panel 2.6 x 3 m with the door frame (opening 1.2 x 2.2 m), a dark cabin
+#                 behind it (face -Z, origin on the floor at the opening's centre).
+#   lift_door     one brushed-steel door leaf 0.6 x 2.2 m (origin at its centre bottom); slide it with a prop path.
+#   dossier       a manila folder with papers poking out (one-handed, origin at its centre, face -Z).
 class_name CinePropsE
 extends RefCounted
 
 const KINDS: Array[String] = ["billboard", "helicopter", "police_car", "box", "belt", "scholarship", "certificate",
-	"hearing_set", "canal", "sign"]
+	"hearing_set", "canal", "sign", "boat", "lift_frame", "lift_door", "dossier"]
 const LO_PINK := Color("#FF8FC8")
 const GOLD := Color("#E2B23C")
 
@@ -51,6 +58,18 @@ static func build(kind: String, root: Node3D, opts: Dictionary) -> void:
 			_label(root, "Text", String(opts.get("text", "")), 80, Color("#F4F1EA"), Vector3(0.0, 0.0, -0.02), 0.004)
 		"hearing_set":
 			_hearing(root, opts)
+		"boat":
+			_boat(root)
+		"lift_frame":
+			_lift_frame(root)
+		"lift_door":
+			CineFX._box(root, "Leaf", Vector3(0.6, 2.2, 0.04), Vector3(0.0, 1.1, 0.0), CineFX._mat(Color("#AEB4BC"), 0.25))
+			CineFX._box(root, "Seam", Vector3(0.01, 2.2, 0.045), Vector3(0.0, 1.1, 0.0), CineFX._mat(Color("#6E747C"), 0.4))
+		"dossier":
+			var manila: StandardMaterial3D = CineFX._mat(Color("#D9B26A"), 0.85)
+			CineFX._box(root, "Back", Vector3(0.24, 0.31, 0.006), Vector3(0.0, 0.0, 0.004), manila)
+			CineFX._box(root, "Papers", Vector3(0.22, 0.3, 0.01), Vector3(0.0, 0.025, 0.0), CineFX._mat(Color("#F4F1EA"), 0.9))
+			CineFX._box(root, "Front", Vector3(0.24, 0.27, 0.006), Vector3(0.0, -0.02, -0.006), manila)
 		"canal":
 			var w: float = float(opts.get("width", 14.0))
 			var l: float = float(opts.get("length", 6.0))
@@ -153,6 +172,44 @@ static func _carton(root: Node3D) -> void:
 	CineFX._box(root, "Flap", Vector3(0.5, 0.02, 0.16), Vector3(0.0, 0.17, 0.2), card, Vector3(-0.6, 0.0, 0.0))
 	CineFX._cyl(root, "Mug", 0.05, 0.05, 0.12, Vector3(-0.14, 0.2, 0.0), CineFX._mat(Color("#F37021"), 0.5))
 	CineFX._sphere(root, "Plant", 0.1, Vector3(0.12, 0.25, 0.04), CineFX._mat(Color("#3E9A4A"), 0.8), Vector3(1.0, 1.3, 1.0))
+
+
+static func _boat(root: Node3D) -> void:
+	var wood: StandardMaterial3D = CineFX._mat(Color("#4A3524"), 0.85)
+	CineFX._box(root, "Hull", Vector3(3.6, 0.32, 0.9), Vector3(0.0, 0.0, 0.0), wood)
+	CineFX._box(root, "Bow", Vector3(0.7, 0.28, 0.6), Vector3(1.95, 0.08, 0.0), wood, Vector3(0.0, 0.0, 0.35))
+	CineFX._box(root, "Stern", Vector3(0.6, 0.26, 0.6), Vector3(-1.9, 0.08, 0.0), wood, Vector3(0.0, 0.0, -0.3))
+	CineFX._box(root, "Floor", Vector3(3.3, 0.02, 0.7), Vector3(0.0, 0.15, 0.0), CineFX._mat(Color("#2E2118"), 0.9))
+	CineFX._box(root, "Pole", Vector3(0.04, 1.4, 0.04), Vector3(1.7, 0.85, 0.0), wood)
+	var lantern: StandardMaterial3D = CineFX._glow_mat(Color("#7CFF9E"), 2.2)
+	CineFX._sphere(root, "Lantern", 0.13, Vector3(1.7, 1.5, 0.0), lantern, Vector3(1.0, 1.3, 1.0))
+	var l := OmniLight3D.new()
+	l.name = "LanternLight"
+	l.light_color = Color("#7CFF9E")
+	l.light_energy = 1.4
+	l.omni_range = 5.0
+	l.shadow_enabled = false
+	l.position = Vector3(1.7, 1.45, 0.0)
+	root.add_child(l)
+
+
+static func _lift_frame(root: Node3D) -> void:
+	var steel: StandardMaterial3D = CineFX._mat(Color("#8C939B"), 0.3)
+	var wall: StandardMaterial3D = CineFX._mat(Color("#C9C3B8"), 0.9)
+	CineFX._box(root, "WallL", Vector3(0.7, 3.0, 0.2), Vector3(-0.95, 1.5, 0.1), wall)
+	CineFX._box(root, "WallR", Vector3(0.7, 3.0, 0.2), Vector3(0.95, 1.5, 0.1), wall)
+	CineFX._box(root, "WallTop", Vector3(1.2, 0.8, 0.2), Vector3(0.0, 2.6, 0.1), wall)
+	CineFX._box(root, "FrameL", Vector3(0.06, 2.26, 0.24), Vector3(-0.63, 1.13, 0.08), steel)
+	CineFX._box(root, "FrameR", Vector3(0.06, 2.26, 0.24), Vector3(0.63, 1.13, 0.08), steel)
+	CineFX._box(root, "FrameTop", Vector3(1.32, 0.06, 0.24), Vector3(0.0, 2.23, 0.08), steel)
+	var dark: StandardMaterial3D = CineFX._mat(Color("#14161A"), 0.95)
+	CineFX._box(root, "CabinBack", Vector3(1.3, 2.3, 0.04), Vector3(0.0, 1.15, 1.6), dark)
+	CineFX._box(root, "CabinL", Vector3(0.04, 2.3, 1.4), Vector3(-0.66, 1.15, 0.9), dark)
+	CineFX._box(root, "CabinR", Vector3(0.04, 2.3, 1.4), Vector3(0.66, 1.15, 0.9), dark)
+	CineFX._box(root, "CabinFloor", Vector3(1.3, 0.02, 1.5), Vector3(0.0, 0.01, 0.9), dark)
+	CineFX._box(root, "CabinTop", Vector3(1.3, 0.04, 1.5), Vector3(0.0, 2.3, 0.9), dark)
+	CineFX._box(root, "Display", Vector3(0.36, 0.2, 0.02), Vector3(0.0, 2.48, -0.01), CineFX._mat(Color("#0A0A0A"), 0.5))
+	CineFX._box(root, "Button", Vector3(0.08, 0.14, 0.02), Vector3(0.82, 1.2, -0.01), CineFX._glow_mat(Color("#F5E6A8"), 0.8))
 
 
 static func _belt(root: Node3D) -> void:

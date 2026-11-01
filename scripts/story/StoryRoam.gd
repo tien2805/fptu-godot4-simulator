@@ -91,6 +91,8 @@ var side_info: Dictionary = {}
 var entered_live: bool = false
 ## Horror polish H-D7: the night scares of story free roam (StoryNightEvents).
 var night_events: StoryNightEvents = null
+## w4-endings T4: the night second chances at missed evidence (StoryNightSecrets: the ghost boat, the lift to 13).
+var night_secrets: StoryNightSecrets = null
 ## Phase C: the Day 3 container yard while a yard beat is current (else null).
 var yard: LairYard = null
 ## w4-endings: the running ending sequence of d7_ending (else null).
@@ -128,6 +130,9 @@ func setup(r: Node3D) -> void:
 	night_events = StoryNightEvents.new()
 	add_child(night_events)
 	night_events.setup(roam, self, director)
+	night_secrets = StoryNightSecrets.new()
+	add_child(night_secrets)
+	night_secrets.setup(roam, self, director, night_events)
 	if director:
 		director.connect("objective_changed", _on_objective)
 		director.connect("text_received", _on_text)
