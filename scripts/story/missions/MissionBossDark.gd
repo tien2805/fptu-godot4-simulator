@@ -12,7 +12,7 @@
 # when let go); both on = the power back, the lights on, Lọ runs to the roof: done {"staggers", "hits"}.
 # Down (the player's HP 0) = "TOANG!"; THỬ LẠI = power off again, both breakers off, Lọ back at his desk, HP full.
 # "Giảm hù dọa" (GameFX.reduce_scares): slower stalking, a longer telegraph, softer hits, no laugh, the gentle flashlight,
-# a softer crack and a smaller speaker pulse.
+# a softer crack, a smaller speaker pulse and a lighter blackout (LOOK_GENTLE: brighter ambient and fill).
 # T2 polish: the telegraph cracks the nearest vase still whole (one by one; the ones phase 1 broke are gone); every line he
 # says comes from the speaker nearest to him (the subtitle + that speaker's ring pulsing for PULSE_S, the others dark); a
 # preview cut to the first breaker when the lights go out (the way out); THỬ LẠI mends the cracks of the failed try.
@@ -22,6 +22,8 @@ class_name MissionBossDark
 extends StoryMission
 
 const LOOK: String = "penthouse_blackout"
+## "Giảm hù dọa": the same blackout with a brighter ambient and fill (the hall readable without the beam).
+const LOOK_GENTLE: String = "penthouse_blackout_gentle"
 const STALK_MS: float = 2.6
 const STALK_MS_GENTLE: float = 1.2
 const LUNGE_M: float = 3.2
@@ -84,6 +86,8 @@ var ring: Node3D = null                       # the speaker ring that pulses now
 var hold_override: bool = false
 var lit_override: int = -1
 var gentle: bool = false
+## The look this try put on (LOOK or LOOK_GENTLE: a switch of "Giảm hù dọa" between tries takes the right one off).
+var look_on: String = ""
 var guide: BasementGuide = null
 var _ray_acc: float = 0.0
 var _ray_ok: bool = false
@@ -157,10 +161,12 @@ func _power(on: bool) -> void:
 	if level and level.has_method("set_power"):
 		level.call("set_power", on)
 	if roam and roam.has_method("look"):
-		if on:
-			roam.call("unlook", LOOK)
-		else:
-			roam.call("look", LOOK)
+		if look_on != "":
+			roam.call("unlook", look_on)
+			look_on = ""
+		if not on:
+			look_on = LOOK_GENTLE if gentle else LOOK
+			roam.call("look", look_on)
 
 
 func _set_breaker(i: int, on: bool) -> void:

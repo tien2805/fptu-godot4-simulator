@@ -14,8 +14,9 @@
 # (the rain, the searchlight, the rain-mode SwordDuel, down -> retry, the QTE "Đòn chân kẹp cổ số 21") ->
 # seg_d7_finisher on the real roof (T4: the level's helicopter, light and rain hidden, then back) -> the typing
 # showdown (Lọ Thần 10.0's pools, the clock runs out = "08:00" and the terminal freezes -> THỬ LẠI with the grace and Anh
-# Duy's line -> every process killed -> sudo rm -rf lothan10) -> the hand-off to d7_ending (the endings stream; until it is
-# merged the scene records it and leaves the step at d7_typing).
+# Duy's line -> every process killed -> sudo rm -rf lothan10) -> the hand-off to d7_ending (the endings' auto beat in free
+# roam; the 08:00 clock HUD hides) -> Continue from a save at d7_boss1: the clock kept, the marker, the tower resumes at the
+# gallery.
 # A time-scale audit (tests/support/time_scale_audit.gd) watches the whole run.
 # Run:  godot --headless --path . --script tests/test_story_day7.gd
 extends SceneTree
@@ -627,18 +628,63 @@ func _process(_d: float) -> bool:
 					phase = 999
 				return false
 			var nb: Dictionary = StoryMissions.beat("d7_ending")
-			if nb.is_empty():
-				_check(tw.handoff_beat == "d7_ending", "the hand-off: d7_ending (the endings stream)")
-				_check(String(sd.get("step")) == "d7_typing", "pre-merge: the step stays at d7_typing (no unknown beat)")
-			else:   # merged (wave4): the typing completes and the step moves on to the endings' beat
-				_check(tw.handoff_beat == "" and String(sd.get("step")) == "d7_ending", "the hand-off: the step is d7_ending (%s)" % String(sd.get("step")))
-				_check(String(nb.get("ending", "")) == "auto" and String(nb.get("lair", "")) == "", "d7_ending is the endings' auto beat, played in free roam")
+			_check(String(sd.get("step")) == "d7_ending", "the hand-off: the step is d7_ending (%s)" % String(sd.get("step")))
+			_check(String(nb.get("ending", "")) == "auto" and String(nb.get("lair", "")) == "", "d7_ending is the endings' auto beat, played in free roam")
+			var ck2: Day7Clock = Day7Clock.attach(tw, sd, Callable())
+			ck2.refresh()
+			_check(not Day7Clock.is_day7(sd) and not ck2.visible, "the 08:00 clock HUD hides once the typing is done (d7_ending runs in free roam)")
 			_check(String(sd.get("last_nav")) == "roam", "back to story free roam")
 			_check((sd.get("ranks") as Dictionary).has("d7_typing") and (sd.get("ranks") as Dictionary).has("d7_boss3"), "ranks for the roof and the typing")
 			for id: String in ["d7_parking", "d7_warehouse", "d7_servers", "d7_mannequins", "d7_lasers", "d7_boss1", "d7_monologue", "d7_boss2", "d7_boss3", "d7_typing"]:
 				_check(StoryChapters.is_beat_unlocked(id), "Chọn cảnh: %s reached" % id)
 			for f: String in [MissionTowerForklift.CARD_FLAG, MissionTowerKatana.CARD_FLAG, MissionBossGuns.CARD_FLAG]:
 				_check(bool((sd.get("flags") as Dictionary).get(f, false)), "card flag %s" % f)
+			tw.queue_free()
+			tw = null
+			# a save stopped mid-Day-7 at a tower beat (d7_boss1) with 06:40 on the clock, for Continue
+			var d33: Dictionary = sd.call("to_dict")
+			d33["step"] = "d7_boss1"
+			(d33["flags"] as Dictionary)[Day7Clock.FLAG] = 800.0
+			sd.call("from_dict", d33)
+			_check(bool(sd.call("save_game")), "a mid-Day-7 save at d7_boss1")
+			_next(34)
+		# ----- Continue mid-Day-7 into a tower beat -----
+		34:
+			if frames < 3:
+				return false
+			sd.call("reset_state")
+			sd.set("save_path", TMP)
+			_check(bool(sd.call("continue_story")) and String(sd.get("step")) == "d7_boss1" and int(sd.get("day")) == 7, "Continue restores d7_boss1 on Day 7")
+			_check(is_equal_approx(Day7Clock.remaining(sd), 800.0), "Continue keeps the clock (%.0f s left)" % Day7Clock.remaining(sd))
+			_roam()
+			_next(35)
+		35:
+			if frames < 40:
+				return false
+			var ck35: Day7Clock = sr.day7_clock
+			if ck35:
+				ck35.refresh()
+			_check(ck35 != null and ck35.visible and ck35.time_label.text == "06:40", "Continue: the clock HUD in free roam (06:40)")
+			_check(sr.markers.has("d7_boss1") and sr.mission_node == null and fr.get("cine_player") == null, "Continue: the tower marker, nothing starts by itself")
+			_check(sr.start_marker("d7_boss1") and fr.get("cine_player") == null and String(sd.get("last_nav")) == "lair:" + TOWER, "[E]: back into the tower (no intro again)")
+			fr.queue_free()
+			_next(36)
+		36:
+			if frames < 3:
+				return false
+			tw = (load(TOWER) as PackedScene).instantiate()
+			root.add_child(tw)
+			_next(37)
+		37:
+			m = _wait_mission("MissionBossGuns")
+			if m == null:
+				return false
+			_check(tw.level.current_floor == "gallery" and m.state == "running", "Continue: the tower resumes at the vase gallery (phase 1)")
+			if tw.clock_hud:
+				tw.clock_hud.refresh()
+			_check(tw.clock_hud != null and tw.clock_hud.visible and Day7Clock.remaining(sd) <= 800.0 and Day7Clock.remaining(sd) > 790.0, "Continue: the clock runs on from 06:40 (no reset to 05:30)")
+			tw.abort_mission()
+			_check(tw.left and String(sd.get("step")) == "d7_boss1", "VỀ THẾ GIỚI MỞ: the beat stays")
 			tw.queue_free()
 			tw = null
 			return _end()

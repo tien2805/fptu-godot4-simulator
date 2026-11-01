@@ -527,6 +527,7 @@ func _process(_d: float) -> bool:
 			tw.fail_ui.press_retry()
 			var md: MissionBossDark = m
 			_check(md.gentle and md.flashlight.gentle, "THỬ LẠI reads Giảm hù dọa again: gentle")
+			_check(LookPresets.active(tw) == MissionBossDark.LOOK_GENTLE and md.look_on == MissionBossDark.LOOK_GENTLE and not tw.looks.has(MissionBossDark.LOOK), "gentle: the lighter blackout look, the dark one taken off")
 			_check(md._cracked.is_empty(), "the failed try's cracks forgotten")
 			var mended: bool = true
 			for v: Dictionary in tw.level.vases:

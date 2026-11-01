@@ -453,7 +453,7 @@ func _update_chip() -> void:
 	var vh: ViceHUD = roam.get("vice_hud")
 	if vh:
 		vh.set_day(text, unread)
-	day_label.text = text + (" ✉%d" % unread if unread > 0 else "")
+	day_label.text = text + (" · Tin nhắn (%d)" % unread if unread > 0 else "")   # plain text, no symbol (owner rule)
 	day_label.visible = not ViceHUD.style_active()
 	var obj: String = String(director.get("objective"))
 	if vh:
