@@ -10,6 +10,7 @@
 #     still a threat, and the next set piece within HAZARD_AHEAD m (Cầu thấp / Lưới / Dốc ghe / Sà lan pháo).
 #   - Fails: the hull at 0 ("Cano nát bét rồi.") or Thị Lọ getting away ("Thị Lọ chạy mất tiêu rồi."): "TOANG!", THỬ LẠI =
 #     BoatChase.retry() at the last checkpoint.
+#   - Rank (StoryRank "d6_boat"): stats.dmg = every drop of the hull (failed attempts included), "ko" = the jet skis down.
 # Keys: [W] / [S] throttle, [A] / [D] steer, [CTRL] duck, [Q] / [E] kick left / right. opts.input (tests): a Dictionary
 # handed to BoatChase.input_override.
 class_name MissionBoatChase
@@ -28,6 +29,7 @@ var markers: OffscreenMarkers
 var hazard_mark: Node3D
 var hazard_kind: String = ""
 var _events: Array = []
+var _hull_seen: float = -1.0
 
 
 func _start() -> void:
@@ -72,12 +74,21 @@ func _start() -> void:
 
 func _tick(dt: float) -> void:
 	chase.step(dt)
+	_sample_hull()
 	for sk: JetSki in chase.skis:
 		markers.set_on(sk, sk.is_threat())
 	_place_hazard_mark()
 	set_stat("hull", int(chase.boat.hull))
 	set_stat("hits", chase.hazard_hits)
 	_refresh()
+
+
+## Adds every drop of the hull since the last sample to stats.dmg (a retry's repaired hull is not a gain).
+func _sample_hull() -> void:
+	var h: float = chase.boat.hull
+	if _hull_seen >= 0.0 and h < _hull_seen:
+		add_stat("dmg", _hull_seen - h)
+	_hull_seen = h
 
 
 func focus_point() -> Vector3:
@@ -188,6 +199,7 @@ func _on_won() -> void:
 
 func _reset() -> void:
 	chase.retry()
+	_hull_seen = chase.boat.hull
 	if player:
 		player.visible = false
 		player.controls_enabled = false

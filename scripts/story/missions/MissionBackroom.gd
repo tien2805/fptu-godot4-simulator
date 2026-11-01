@@ -33,6 +33,7 @@ const BUMP_M: float = 0.8
 const EYE_Y: float = 1.6
 const SEE_DT: float = 0.1
 const SUS_DECAY: float = 0.6
+const NOTICED_AT: float = 0.5
 const MIRROR_AFTER_S: float = 0.9
 const MIRROR_S: float = 0.7
 const REPLAY_AFTER_S: float = 1.3
@@ -57,6 +58,7 @@ var patrol_i: int = 0
 var guard_mode: String = "patrol"         # patrol | pause | lure | bulb | caught
 var guard_t: float = 0.0
 var sus: float = 0.0
+var sus_peak: float = 0.0                 # this attempt's highest suspicion (the rank's "noticed": NOTICED_AT or more)
 var seen: bool = false
 var sight_m: float = 6.0
 var sight_deg: float = 38.0
@@ -119,6 +121,7 @@ func _arm() -> void:
 	guard_mode = "patrol"
 	guard_t = 0.0
 	sus = 0.0
+	sus_peak = 0.0
 	seen = false
 	crack = 0.0
 	hold_e = false
@@ -164,7 +167,7 @@ func _tick(dt: float) -> void:
 		replay_wait -= dt
 		if replay_wait < 0.0:
 			play_short_replay(rec, String(beat.get("replay", "seg_d6_infiltrate")), player, guard, func() -> void:
-				finish({"crack_s": crack_s(), "music": music_on}))
+				finish({"crack_s": crack_s(), "music": music_on, "noticed": sus_peak >= NOTICED_AT}))
 		return
 	if _line_t > 0.0:
 		_line_t -= dt
@@ -255,6 +258,7 @@ func _sight_check(dt: float) -> void:
 		sus += dt / see_grace()
 	else:
 		sus = maxf(0.0, sus - dt * SUS_DECAY)
+	sus_peak = maxf(sus_peak, sus)
 	guard_tag.text = "!" if sus >= 1.0 else ("?" if sus > 0.05 else "")
 	if cone_mat:
 		cone_mat.albedo_color = CONE_COL.lerp(CONE_HOT, clampf(sus, 0.0, 1.0))
