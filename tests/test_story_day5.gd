@@ -7,7 +7,7 @@
 # (StoryHack on TypingCore: a typo resets the combo, leaks -> TOANG! -> retry, the processes killed, the final command, the
 # room catches fire, the seg_d5_hack replay) -> choice 2 timing out on the honest "Từ chối" -> the refuse tail -> the Za
 # Mẫn card -> the katana duel (down = TOANG! -> retry, the katana snaps) -> seg_d5_boss -> E6 -> cine_d5 -> back to free
-# roam -> bed -> the call N = 2 -> the Day 6 placeholder. Then Continue mid-day (d5_hack: the marker, the scene resumes at
+# roam -> bed -> the call N = 2 -> Day 6 (the shop marker). Then Continue mid-day (d5_hack: the marker, the scene resumes at
 # the terminal, the wall frozen, no fire yet) and Chọn cảnh back to d5_choice: "Nhận lời" -> the accept tail -> end_c in
 # free roam -> the save finished with ending C -> the main menu; Continue refuses it, the chapter snapshots remain.
 # Wave 3 integration: a time-scale audit (tests/support/time_scale_audit.gd) watches the whole run (the domino and QTE slow
@@ -445,7 +445,7 @@ func _process(_d: float) -> bool:
 		22:
 			if frames < 5:
 				return false
-			_check(String(sd.get("step")) == "d6_locked" and String(sd.get("objective")) == "Ngày 6: Trà Sữa Lọ – sắp có trong bản cập nhật sau" and sr.markers.is_empty(), "the Day 6 placeholder")
+			_check(String(sd.get("step")) == "d6_shop" and String(sd.get("objective")) == String(StoryMissions.beat("d6_shop")["objective"]) and sr.markers.has("d6_shop"), "Day 6: the marker by the Trà Sữa Lọ shop")
 			_check(String(sd.call("evaluate_ending", sd.call("to_dict"))) != "C" and sd.call("has_evidence", "E6"), "refused: not ending C, E6 kept")
 			sd.call("on_leave_to_menu")
 			fr.queue_free()
