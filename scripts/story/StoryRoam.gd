@@ -93,6 +93,8 @@ var entered_live: bool = false
 var night_events: StoryNightEvents = null
 ## w4-endings T4: the night second chances at missed evidence (StoryNightSecrets: the ghost boat, the lift to 13).
 var night_secrets: StoryNightSecrets = null
+## w4-endings T5: the free-roam side activities (StorySideActivities: night races, ...).
+var side_activities: StorySideActivities = null
 ## Phase C: the Day 3 container yard while a yard beat is current (else null).
 var yard: LairYard = null
 ## w4-endings: the running ending sequence of d7_ending (else null).
@@ -133,6 +135,9 @@ func setup(r: Node3D) -> void:
 	night_secrets = StoryNightSecrets.new()
 	add_child(night_secrets)
 	night_secrets.setup(roam, self, director, night_events)
+	side_activities = StorySideActivities.new()
+	add_child(side_activities)
+	side_activities.setup(roam, self, director)
 	if director:
 		director.connect("objective_changed", _on_objective)
 		director.connect("text_received", _on_text)

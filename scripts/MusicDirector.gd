@@ -34,7 +34,9 @@ const SLOTS: Array[String] = ["menu", "roam_day", "roam_night",
 	# Day 2 Tokyo Drift (plan 2026-10-27-d2x-drift.md): the drift duel with Sói Xám
 	"race_d2_drift",
 	# Wave 3 (plan 2026-10-30-w3-shared.md): the Day 3 mannequin-challenge meme, the Day 5 burning-server typing
-	"meme_mannequin", "mission_fire_hack"]
+	"meme_mannequin", "mission_fire_hack",
+	# w4-endings (plan 2026-11-01-w4-endings.md T5): the free-roam side activities (night races, delivery runs)
+	"side_drift", "side_delivery"]
 ## Night Building tracks (NightMusic).
 const NIGHT_SLOTS: Array[String] = ["night_stealth", "night_tense", "night_chase", "night_escape"]
 ## Short replays (CineReplay through StoryStage.play_replay; they have no timeline file).

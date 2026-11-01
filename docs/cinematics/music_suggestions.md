@@ -176,6 +176,8 @@ Nhạc chuông của Sói Xám là âm thanh tự tạo (`ringtone_synth`), khô
 | `end_e` (Còn cái nịt) | *Never Gonna Give You Up*, Rick Astley | Rickroll lúc chạy credits |
 | `end_f` (học bổng) | *Celebration*, Kool & the Gang | |
 | `ai_true_end` (clip kết A, sau credits: tấm biển sập) | dùng chung bài của `end_a` | không có file riêng thì phát nhạc `end_a` |
+| `side_drift` (đua đêm tự do, 3 tuyến) | *Night of Fire*, Niko | eurobeat kiểu Initial D |
+| `side_delivery` (chạy giao hàng tự do) | *Running in the 90s*, Max Coveri | |
 
 ## Gợi ý: replay ngắn 4-6 s
 
