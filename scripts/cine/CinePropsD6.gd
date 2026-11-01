@@ -345,8 +345,8 @@ static func _speedboat(root: Node3D, opts: Dictionary) -> void:
 	var glass: StandardMaterial3D = CineFX._mat(Color(0.6, 0.8, 1.0, 0.35), 0.05)
 	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	CineFX._box(root, "Windscreen", Vector3(1.5, 0.45, 0.04), Vector3(0.0, 0.72, -0.15), glass, Vector3(-0.5, 0.0, 0.0))
-	CineFX._box(root, "Console", Vector3(0.6, 0.45, 0.4), Vector3(0.0, 0.7, 0.1), CineFX._mat(Color("#2A2C33"), 0.5))
-	CineFX._cyl(root, "Wheel", 0.15, 0.15, 0.03, Vector3(0.0, 0.98, 0.3), CineFX._mat(Color("#151515"), 0.5)).rotation.x = 1.1
+	CineFX._box(root, "Console", Vector3(0.6, 0.45, 0.4), Vector3(-0.45, 0.7, 0.1), CineFX._mat(Color("#2A2C33"), 0.5))   # the helm on the driver's side
+	CineFX._cyl(root, "Wheel", 0.15, 0.15, 0.03, Vector3(-0.45, 0.98, 0.3), CineFX._mat(Color("#151515"), 0.5)).rotation.x = 1.1
 	for sx: float in [-0.45, 0.45]:
 		CineFX._box(root, "Seat", Vector3(0.6, 0.18, 0.55), Vector3(sx, 0.58, 0.95), CineFX._mat(Color("#E9E2D2"), 0.8))
 		CineFX._box(root, "SeatBack", Vector3(0.6, 0.45, 0.12), Vector3(sx, 0.85, 1.22), CineFX._mat(Color("#E9E2D2"), 0.8))
