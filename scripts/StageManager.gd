@@ -68,7 +68,11 @@ const CONTROLS_GUIDE: Array = [
 	["Màn 5 – Căn tin", "[WASD] đi · [E] lấy khay / giao / vào 7-Eleven · đứng yên giữ [SPACE] cân khay · cửa hàng: [←→↑↓] chọn, [ENTER] thêm, [BACKSPACE] bỏ, [SPACE] trả tiền"],
 	["Màn 6 – Boss Capstone", "gõ chữ trên đạn · [BACKSPACE] xoá · [TAB] đổi người · [ENTER] skill / gọi điện · [SPACE] mash khi gọi · [←]/[→] chọn khối code conflict"],
 	["Extra – Giám thị EOS", "[WASD] đi tuần (theo hướng camera) · [C] CCTV · [S] chụp bằng chứng · [E] soi / lập biên bản · [Shift]+[SPACE] ép biên bản"],
-	["Thế giới mở", "[WASD] đi · [Shift] chạy · chuột xoay camera (click để bắt, ESC thả) · [Z]/[C] xoay · [F] lên/xuống xe máy · [E] vào màn tại cột sáng · [T] giờ trong ngày · [M] bản đồ"]
+	["Thế giới mở", "[WASD] đi · [Shift] chạy · chuột xoay camera (click để bắt, ESC thả) · [Z]/[C] xoay · [F] lên/xuống xe máy · [E] vào màn tại cột sáng · [T] giờ trong ngày · [M] bản đồ · giữ chuột giữa: vòng vũ khí · giữ [B]: vòng biểu cảm"],
+	["Đánh tay không", "chuột trái đấm · chuột phải đá tạt (phá thế đỡ) · giữ [Q] đỡ, đỡ đúng lúc = phản đòn · [SPACE] lăn né đòn sáng đỏ · [E] hạ gục / quật / nhặt đồ"],
+	["Súng, kiếm", "giữ chuột phải ngắm, chuột trái bắn · [R] thay đạn · [Ctrl] nấp · [SPACE] khi ngắm: lao người, thời gian chậm lại · kiếm: chuột trái chém, chuột phải đâm, giữ [Q] gạt"],
+	["Xe, cano, xe nâng", "[Q]/[E] đạp trái / phải khi rượt · [Shift] nitro · [Ctrl] cúi qua thanh chắn, gầm cầu · [L] đèn pha · xe nâng: [F] lên xuống, [Q]/[E] hạ / nâng càng"],
+	["Lén lút, cảnh phim", "[F] đèn pin · [Ctrl] rón rén · [E] trốn vào tủ, gầm bàn · [Q] hoặc chuột phải giơ điện thoại, [E] chụp · giữ [ESC] hoặc [ENTER] bỏ qua cảnh phim"]
 ]
 var pause_layer: CanvasLayer
 # Thẻ chuyển cảnh giữa các màn

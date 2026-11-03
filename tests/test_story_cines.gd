@@ -330,6 +330,25 @@ func _video() -> void:
 	var sm: Node = root.get_node_or_null("StageManager")
 	_check(sm == null or not bool(sm.get("cinematic_active")), "a refused video leaves no cinematic flag")
 	v.queue_free()
+	# w5-complete G2 (story spec 8.2): the clip's music slot plays over an owner clip, muting the clip's own audio
+	_check(StoryVideo.clip_of("user://video/ai_intro_f.ogv") == "ai_intro" and StoryVideo.clip_of("user://video/ai_true_end_m.ogv") == "ai_true_end",
+		"G2: a clip file's music slot is its name without _m / _f")
+	var tone := AudioStreamWAV.new()
+	tone.format = AudioStreamWAV.FORMAT_16_BITS
+	tone.mix_rate = 22050
+	tone.data = PackedByteArray()
+	tone.data.resize(22050 * 2)
+	MusicDirector.test_streams["w5_test_clip"] = tone
+	var v2 := StoryVideo.new()
+	root.add_child(v2)
+	_check(v2.start_music("w5_test_clip") and v2.music != null and v2.music.playing and v2.music.stream == tone,
+		"G2: a clip with a music slot file plays it from the first frame")
+	var v3 := StoryVideo.new()
+	root.add_child(v3)
+	_check(not v3.start_music("w5_no_such_clip") and v3.music == null, "G2: no slot file: no music node (the clip's own audio plays)")
+	MusicDirector.test_streams.erase("w5_test_clip")
+	v2.queue_free()
+	v3.queue_free()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(VID_DIR + "ai_intro_f.ogv"))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(VID_DIR))
 	StoryVideo.video_dir = StoryVideo.VIDEO_DIR

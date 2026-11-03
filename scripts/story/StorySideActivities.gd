@@ -32,6 +32,9 @@ const FAIL_LINE: Dictionary = {"off_bike": "Bỏ cuộc: rời xe giữa chừng
 	"knocked": "Toang! Bị đạp văng khỏi xe.", "time": "Hết giờ rồi. Lần sau nhanh hơn nhé.",
 	"ko": "Toang! Nằm sàn rồi. Tập thêm rồi quay lại.",
 	"police": "Bị truy nã giữa thử thách! Cắt đuôi rồi quay lại vòng sáng.", "quit": "Bỏ cuộc."}
+## w5-side T3: the open start spots on the radar (StoryRoam.blips), within RADAR_M of the player, with a plain label.
+const RADAR_M: float = 300.0
+const RADAR_LABEL: Dictionary = {"race": "Đua", "takedown": "Hạ gục", "delivery": "Giao hàng", "vovinam": "Võ"}
 const QUIT_HOLD_S: float = 1.0
 const QUIT_HINT: String = "Giữ [Backspace] để bỏ cuộc."
 
@@ -126,6 +129,26 @@ func can_start(id: String) -> bool:
 	return true
 
 
+## Radar blips of the start spots open now (their rings are up) within RADAR_M: {pos, color, shape "square", label}.
+func blips() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if current != null or markers.is_empty():
+		return out
+	var f: Node3D = _focus()
+	var fp: Vector2 = Vector2(f.global_position.x, f.global_position.z) if f != null and f.is_inside_tree() else Vector2(INF, INF)
+	for id: String in markers.keys():
+		var sp: Dictionary = spot(id)
+		if sp.is_empty():
+			continue
+		var at: Vector3 = sp["at"]
+		var p := Vector2(at.x, at.z)
+		if p.distance_to(fp) > RADAR_M:
+			continue
+		var kind: String = String(sp["kind"])
+		out.append({"pos": p, "color": KIND_COLOR.get(kind, Color.WHITE), "shape": "square", "label": String(RADAR_LABEL.get(kind, ""))})
+	return out
+
+
 func hint_text(id: String) -> String:
 	var sp: Dictionary = spot(id)
 	var b: Dictionary = SideRecords.best(id)
@@ -153,6 +176,8 @@ func advance(dt: float) -> void:
 	if _check_t > 0.0:
 		return
 	_check_t = CHECK_S
+	if SideRewards.pending and roam != null:   # w5-side T4: a look picked while busy shows once free
+		SideRewards.apply_live(roam)
 	var f: Node3D = _focus()
 	var was: String = near_id
 	near_id = ""
@@ -170,6 +195,9 @@ func advance(dt: float) -> void:
 
 ## While an activity runs: hold [Backspace] QUIT_HOLD_S to quit; busted (wanted state not free) fails it ("police").
 func _tick_running(dt: float) -> void:
+	if String(current.get("state")) == "podium":   # w5-side: over the line, the result is locked (no quit, no police)
+		_quit_t = 0.0
+		return
 	if quit_held or Input.is_physical_key_pressed(KEY_BACKSPACE):
 		_quit_t += dt
 		if _quit_t >= QUIT_HOLD_S:
@@ -254,6 +282,8 @@ func _on_done(id: String, res: Dictionary) -> void:
 	var opened: Array[String] = SideRewards.unlocked_between(s0, SideRewards.s_count())
 	var line: String = "Xong %s · %s · Hạng %s" % [String(spot(id).get("title", id)), SideRace.time_text(float(res.get("time", 0.0))),
 		String(res.get("rank", "C"))] if res.has("time") else "Xong %s · Hạng %s" % [String(spot(id).get("title", id)), String(res.get("rank", "C"))]
+	if res.has("place"):
+		line += " · Về thứ %d/%d" % [int(res["place"]), int(res.get("of", 1))]
 	if nb:
 		line += " · Kỷ lục mới!"
 	_toast(line, "success_fanfare")

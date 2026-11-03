@@ -3,7 +3,7 @@
 # bare hands, against a street club in blue Vovinam uniforms, wave after wave, the last one with its master. The traffic is
 # parked while it runs (a street fight stops the road), given back after. Won: the rank by the time per opponent and the
 # HP left. Knocked out: given up (no retry: try again from the ring).
-#   vo_hem   "Lò võ đầu hẻm": two students, then the "Võ sư Ba Đòn" (hp x2), on Đỗ Thế Diện.
+#   vo_hem   "Lò võ đầu hẻm": three students, then the "Võ sư Ba Đòn" (hp x2.5), on Đỗ Thế Diện (Dễ: two, then hp x2).
 #   vo_cau   "Thách đấu dưới chân cầu": three students, then two, then the "Võ sư Lưỡng Long" (hp x2.5), on Nguyễn Văn Tăng.
 # API: like SideRace: setup({"roam", "id"}), start(), advance(dt) (auto_tick false in tests), stop(); fight (MeleeFight);
 #   signals started(id), finished(id, result {"rank", "time", "hp", "kos"}), failed(id, reason "ko").
@@ -18,12 +18,24 @@ const GameFXScript = preload("res://scripts/GameFX.gd")
 const BLUE := Color("#1F4FA3")
 const FIGHTS: Dictionary = {
 	"vo_hem": {"title": "Lò võ đầu hẻm", "at": Vector2(1774.0, -17.0),
-		"waves": [[["Môn sinh Tí", 1.0], ["Môn sinh Tèo", 1.0]], [["Võ sư Ba Đòn", 2.0]]]},
+		"waves": [[["Môn sinh Tí", 1.0], ["Môn sinh Tèo", 1.0], ["Môn sinh Tũn", 1.0]], [["Võ sư Ba Đòn", 2.5]]],
+		"waves_easy": [[["Môn sinh Tí", 1.0], ["Môn sinh Tèo", 1.0]], [["Võ sư Ba Đòn", 2.0]]]},
 	"vo_cau": {"title": "Thách đấu dưới chân cầu", "at": Vector2(1905.0, -44.0),
 		"waves": [[["Môn sinh Lực", 1.0], ["Môn sinh Lượng", 1.0], ["Môn sinh Lì", 1.0]], [["Môn sinh Gắt", 1.2], ["Môn sinh Gỏn", 1.2]],
 			[["Võ sư Lưỡng Long", 2.5]]]},
 }
 const ORDER: Array[String] = ["vo_hem", "vo_cau"]
+## w5-side T5b (tests/sim_side_vovinam.gd, the sloppy melee bot): on Thường the club fights like a trained one (CombatData
+## "clone" stats overridden: quicker, more often, harder, a guard; the master more so, an opponent with hp_scale >= 2),
+## harder to stagger, HP_K more hp, and the player's HP regenerates only after REGEN_DELAY s; Dễ: the plain clone, 4 s.
+## Sloppy-bot fails (10 seeds): Thường vo_hem 1.0, vo_cau 2.4 mean; Dễ 0 on every seed.
+const STUDENT: Dictionary = {"light_dmg": 14.0, "heavy_dmg": 30.0, "windup": 0.24, "think": Vector2(0.35, 0.9), "cooldown": Vector2(0.5, 1.2),
+	"heavy_chance": 0.35, "block_chance": 0.3, "chain": 2, "stagger_max": 75.0}
+const MASTER: Dictionary = {"light_dmg": 16.0, "heavy_dmg": 34.0, "windup": 0.22, "think": Vector2(0.3, 0.8), "cooldown": Vector2(0.5, 1.1),
+	"heavy_chance": 0.4, "block_chance": 0.35, "dodge_chance": 0.25, "chain": 3, "stagger_max": 110.0}
+const ATTACKERS: Array[int] = [2, 2]
+const HP_K: Array[float] = [1.4, 1.0]
+const REGEN_DELAY: Array[float] = [10.0, CombatData.REGEN_DELAY]
 const START_LINE: String = "Vovinam đường phố, nghiêm!"
 const RING_M: float = 4.5
 ## Rank: seconds per opponent at most / HP left at least.
@@ -45,6 +57,9 @@ var result: Dictionary = {}
 var hud: CanvasLayer = null
 var top_label: Label = null
 var _traffic_off: bool = false
+## The roam's own PlayerCombat and its regen delay before the fight (given back in stop(), on every exit).
+var _combat_ref: PlayerCombat = null
+var _regen_was: float = CombatData.REGEN_DELAY
 
 
 static func title(fid: String) -> String:
@@ -61,6 +76,19 @@ static func rank_for(sec: float, opponents: int, hp: float) -> String:
 		if per <= float(RANK_T[l]) and hp >= float(RANK_HP[l]):
 			return l
 	return "C"
+
+
+## The waves for the current difficulty (Dễ: "waves_easy" when the fight has them).
+static func waves_of(fid: String) -> Array:
+	var f: Dictionary = FIGHTS.get(fid, {})
+	return f.get("waves_easy", f.get("waves", [])) if Difficulty.easy else f.get("waves", [])
+
+
+## The stats over the clone's for the current difficulty ({} on Dễ).
+static func stats_for(master: bool) -> Dictionary:
+	if Difficulty.easy:
+		return {}
+	return (MASTER if master else STUDENT).duplicate()
 
 
 func setup(opts: Dictionary) -> void:
@@ -85,15 +113,16 @@ func start() -> void:
 	fight = MeleeFight.new()
 	fight.name = "VovinamFight"
 	add_child(fight)
-	fight.setup({"roam": roam, "force_unarmed": true, "max_attackers": 2, "start_line": START_LINE, "seed": hash(id) & 0xFFFF})
+	fight.setup({"roam": roam, "force_unarmed": true, "max_attackers": int(Difficulty.pick(ATTACKERS[0], ATTACKERS[1])), "start_line": START_LINE,
+		"seed": hash(id) & 0xFFFF})
 	var k: int = 0
-	for w: Array in f["waves"]:
+	for w: Array in waves_of(id):
 		var spawns: Array = []
 		for i: int in w.size():
 			var e: Array = w[i]
 			var lat: float = (float(i) - (w.size() - 1) * 0.5) * 2.2
 			spawns.append({"archetype": "clone", "at": c + fwd * RING_M + side * lat,
-				"opts": {"label": String(e[0]), "hp_scale": float(e[1]),
+				"opts": {"label": String(e[0]), "hp_scale": float(e[1]) * float(Difficulty.pick(HP_K[0], HP_K[1])), "stats": stats_for(float(e[1]) >= 2.0),
 					"body": {"shirt_color": BLUE, "trousers_color": BLUE, "seed": 4100 + k}}})
 			k += 1
 		fight.add_wave(spawns)
@@ -107,6 +136,10 @@ func start() -> void:
 	t = 0.0
 	_build_hud()
 	fight.start()
+	if fight.combat:
+		_combat_ref = fight.combat
+		_regen_was = fight.combat.regen_delay
+		fight.combat.regen_delay = float(Difficulty.pick(REGEN_DELAY[0], REGEN_DELAY[1]))
 	started.emit(id)
 
 
@@ -143,6 +176,9 @@ func stop() -> void:
 		fight.stop()
 		fight.queue_free()
 	fight = null
+	if _combat_ref and is_instance_valid(_combat_ref):
+		_combat_ref.regen_delay = _regen_was
+	_combat_ref = null
 	_traffic(true)
 	if hud:
 		hud.queue_free()

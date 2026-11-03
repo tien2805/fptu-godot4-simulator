@@ -49,7 +49,7 @@ const LAIR_SCENES: Dictionary = {"basement": "res://scenes/story/StoryBasement.t
 ## old saves keep working).
 const MIGRATE: Dictionary = {"d1_locked": "d1_stakeout", "d2_locked": "d2_chase", "d3_locked": "d3_sneak", "d4_locked": "d4_canteen",
 	"d2_wait": "d2_chase", "d3_wait": "d3_sneak", "d5_locked": "d5_stealth",
-	"d6_locked": "d6_shop"}
+	"d6_locked": "d6_shop", "d7_locked": "d7_parking"}   # w5-complete G3: no save dead-ends on a locked Day 7
 const HORROR_SCENE: String = "res://scenes/story/StoryNightEscape.tscn"
 const PLACEHOLDER_SUFFIX: String = "Về BE6 ngủ để sang ngày tiếp."
 const DAY_TITLES: Array[String] = ["Phòng 311", "Shipper bóng đêm", "Bầy Sói", "Bến container", "Cừu nhân bản", "Hầm server",

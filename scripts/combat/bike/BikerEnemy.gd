@@ -76,6 +76,10 @@ var route_ff: bool = false               # opt "route_ff" (the Day 7 deck ring):
 var hold_k: float = 1.0                  # opt "hold_k": its hold in the slot before the wind-up x this (default 1 = as tuned)
 var _ff_tan: Vector2 = Vector2.ZERO      # route_ff: the route's direction at its spot last frame
 const RING_EDGE_M: float = 0.7             # route_ff: its slot stays this far inside the road's edge
+var _route_s: float = -1.0                # a route with heights (BikeRoute.has_y, the Day 7 spiral): its own route distance
+## A route with heights (the Day 7 deck, walled by its parapet and the core drum): the bike and its thrown rider stay within
+## this far past the lane's edge (inside the walls: there is no floor beyond them to stand or fall on).
+const DECK_EDGE_M: float = 0.8
 var st: int = St.APPROACH
 var st_t: float = 0.0
 var role: int = Role.BACK
@@ -378,6 +382,7 @@ static func attach_wolf_helmet(b: Node3D, eye_col: Color = BikeCombatData.EYE_CO
 func place(pos: Vector3, face_yaw: float, speed: float) -> void:
 	pos2 = Vector2(pos.x, pos.z)
 	floor_y = pos.y
+	_route_s = -1.0
 	yaw = face_yaw
 	vel = Vector2(-sin(face_yaw), -cos(face_yaw)) * speed
 	_prev_vel = vel
@@ -659,7 +664,10 @@ func tick(delta: float) -> void:
 	match st:
 		St.CRASH:
 			_tumble(delta)
-			_floor_ray(3)
+			if _on_deck():
+				floor_y = ch.route.height(_route_s)   # kept on the deck's road by _tumble
+			else:
+				_floor_ray(3)
 			return
 		St.DOWN:
 			if not parts.is_empty():
@@ -683,7 +691,7 @@ func tick(delta: float) -> void:
 		return
 	if magnet_t > 0.0 and ch:
 		_tick_magnet(delta)
-	_floor_ray(BikeCombatData.RAY_EVERY)
+	_floor_tick()
 	_taunts(delta)
 	if stick:
 		_stick_pose(delta)
@@ -1131,6 +1139,36 @@ func _stick_pose(_d: float) -> void:
 	stick.rotation = Vector3(rx, 0.0, -px * tilt)
 
 
+## Its floor while riding: a ray every RAY_EVERY frames; on a route with heights (BikeRoute.has_y: the Day 7 spiral deck)
+## the route's own height at its spot every frame instead (no lag up the ramps, never the lap below or the ground under
+## the core drum). Day 2 routes have no heights: the ray as before.
+func _floor_tick() -> void:
+	if _on_deck():
+		if st == St.WOBBLE:                      # a kick's wobble never carries it past the parapet or into the core
+			pos2 = _deck_keep(pos2, true)
+		else:
+			_route_s = ch.route.project(pos2, _route_s if _route_s >= 0.0 else ch.s_p, 30.0).x
+		floor_y = ch.route.height(_route_s)
+		return
+	_floor_ray(BikeCombatData.RAY_EVERY)
+
+
+## The route has heights (BikeRoute.has_y: the Day 7 spiral deck): the deck's rules apply (Day 2 routes: never).
+func _on_deck() -> bool:
+	return ch != null and ch.route != null and ch.route.has_y() and ch.s_p >= 0.0
+
+
+## p kept within DECK_EDGE_M past the lane's edge (on the deck's road, inside its walls); own: p is the bike (its route
+## distance kept in _route_s).
+func _deck_keep(p: Vector2, own: bool) -> Vector2:
+	var r: BikeRoute = ch.route
+	var pr: Vector2 = r.project(p, _route_s if _route_s >= 0.0 else ch.s_p, 30.0)
+	if own:
+		_route_s = pr.x
+	var lim: float = r.half_width + DECK_EDGE_M
+	return p if absf(pr.y) <= lim else r.world(pr.x, signf(pr.y) * lim)
+
+
 func _floor_ray(every: int) -> void:
 	if (_frame + get_index()) % every != 0 or not is_inside_tree():
 		return
@@ -1262,10 +1300,17 @@ func _traffic_contact() -> void:
 func _tumble(delta: float) -> void:
 	if not parts.is_empty():
 		_tick_parts(delta)
+	var deck: bool = _on_deck()
 	var bs: float = bike_v.length()
 	if bs > 0.0:
 		bike_v = bike_v.move_toward(Vector2.ZERO, BikeCombatData.BIKE_DECEL * delta)
 		pos2 += bike_v * delta
+		if deck:                                 # the deck: it slides along the parapet, never past it
+			var kp: Vector2 = _deck_keep(pos2, true)
+			if kp != pos2:
+				var n: Vector2 = (pos2 - kp).normalized()
+				bike_v -= n * maxf(0.0, bike_v.dot(n))
+				pos2 = kp
 		_spark_t -= delta
 		if _spark_t <= 0.0 and bs > 3.0 and ch:
 			_spark_t = BikeCombatData.SPARK_EVERY
@@ -1282,6 +1327,15 @@ func _tumble(delta: float) -> void:
 	if not rider_landed:
 		rider_v.y -= BikeCombatData.GRAVITY * delta
 	rider_pos += rider_v * delta
+	if deck:                                     # the thrown rider stays inside the deck's walls too
+		var rh := Vector2(rider_pos.x, rider_pos.z)
+		var kr: Vector2 = _deck_keep(rh, false)
+		if kr != rh:
+			var n2: Vector2 = (rh - kr).normalized()
+			var hv := Vector2(rider_v.x, rider_v.z)
+			hv -= n2 * maxf(0.0, hv.dot(n2))
+			rider_v = Vector3(hv.x, rider_v.y, hv.y)
+			rider_pos = Vector3(kr.x, rider_pos.y, kr.y)
 	if rider_pos.y <= floor_y and rider_v.y <= 0.0:
 		rider_pos.y = floor_y
 		if bounces == 0 and absf(rider_v.y) > 2.0:

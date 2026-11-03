@@ -848,12 +848,13 @@ func _traffic_obstacles() -> Array:
 # ---------------------------------------------------------------------------
 # RIDER PLACEMENT
 # ---------------------------------------------------------------------------
-## Bike transform on the route at distance s: on the floor (ray), facing along the route.
+## Bike transform on the route at distance s: on the floor (ray), facing along the route. A route with heights (BikeRoute
+## has_y: the Day 7 spiral deck, a lap above) casts from just above its own height.
 func route_transform(s: float) -> Transform3D:
 	var p: Vector2 = route.point(s)
 	var t: Vector2 = route.tangent(s)
-	var y: Variant = floor_at(Vector3(p.x, 0.0, p.y), 30.0, 10.0)
-	var fy: float = float(y) if y is float else MapBuilder.ROAD_Y
+	var y: Variant = floor_at(Vector3(p.x, route.height(s), p.y)) if route.has_y() else floor_at(Vector3(p.x, 0.0, p.y), 30.0, 10.0)
+	var fy: float = float(y) if y is float else (route.height(s) if route.has_y() else MapBuilder.ROAD_Y)
 	return Transform3D(Basis(Vector3.UP, atan2(-t.x, -t.y)), Vector3(p.x, fy - BIKE_FLOOR_OFFSET, p.y))
 
 
@@ -1351,7 +1352,8 @@ func _update_frame() -> void:
 	b_right = Vector2(-hf.y, hf.x)
 	on_route = false
 	if route:
-		var pr: Vector2 = route.project(p_pos, _hint)
+		# a route with heights (the Day 7 spiral, over itself): the bike's height picks its own lap (a retry searches it all)
+		var pr: Vector2 = route.project(p_pos, _hint, BikeRoute.WINDOW_M, bp.y + BIKE_FLOOR_OFFSET if route.has_y() else NAN)
 		s_p = pr.x
 		d_p = pr.y
 		on_route = absf(d_p) <= route.half_width + 6.0 and s_p > 0.5 and s_p < route.length - 0.5
@@ -2006,13 +2008,16 @@ func _make_helmet(i: int) -> Dictionary:
 ## shows there at once. Returns the landing point (map plane).
 func throw_helmet(b: BikerEnemy) -> Vector2:
 	var land: Vector2 = p_pos + p_vel * BikeCombatData.THROW_FLIGHT
+	var land_y: float = bike.global_position.y + BIKE_FLOOR_OFFSET
 	if route != null and s_p >= 0.0:
 		var pr: Vector2 = route.project(land, s_p, 80.0)
 		land = route.world(pr.x, clampf(pr.y, -route.half_width, route.half_width))
+		if route.has_y():
+			land_y = route.height(pr.x)            # a climbing route (the spiral deck): on the road ahead, not at the bike's level
 	for h: Dictionary in helmets:
 		if bool(h["active"]):
 			continue
-		var fy: float = bike.global_position.y + BIKE_FLOOR_OFFSET
+		var fy: float = land_y
 		h["active"] = true
 		h["t"] = 0.0
 		h["by"] = b

@@ -290,11 +290,21 @@ func _build_guide_panel() -> PanelContainer:
 	v.add_theme_constant_override("separation", 8)
 	m.add_child(v)
 	v.add_child(GameFX.make_label("HƯỚNG DẪN ĐIỀU KHIỂN", 24, Color("#3498DB")))
+	# The rows scroll inside a fixed height so the panel (title, credits, close button) stays inside the 720 px screen
+	var scroll := ScrollContainer.new()
+	scroll.name = "GuideScroll"
+	scroll.custom_minimum_size = Vector2(0, 400)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	v.add_child(scroll)
+	var rows := VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 8)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(rows)
 	var lines: Array = StageManager.CONTROLS_GUIDE
 	for ln: Array in lines:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 14)
-		v.add_child(row)
+		rows.add_child(row)
 		var k: Label = GameFX.make_label(String(ln[0]), 14, GameFX.FPT_YELLOW, HORIZONTAL_ALIGNMENT_LEFT)
 		k.custom_minimum_size = Vector2(190, 0)
 		row.add_child(k)

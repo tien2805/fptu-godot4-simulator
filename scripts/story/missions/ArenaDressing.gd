@@ -54,12 +54,13 @@ static func flip_dmg() -> float:
 	return float(Difficulty.pick(22.0, 30.0))
 
 
+## w5-complete T5 (tests/sim_story_brawls.gd): 8 / 5 put ~80 HP of buns into a sloppy wave 2 on Thường.
 static func food_dmg() -> float:
-	return float(Difficulty.pick(8.0, 5.0))
+	return float(Difficulty.pick(5.0, 3.0))
 
 
 static func throw_gap() -> float:
-	return float(Difficulty.pick(2.6, 3.8))
+	return float(Difficulty.pick(3.2, 4.0))
 
 
 static func throw_tell_s() -> float:

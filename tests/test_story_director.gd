@@ -143,7 +143,7 @@ func _registry() -> void:
 	for cid: String in calls.keys():
 		_check(int(StoryMissions.beat(cid)["days"]) == int(calls[cid]), "%s says %d days" % [cid, int(calls[cid])])
 	_check(StoryMissions.beat("d2_wait").is_empty() and StoryMissions.beat("d3_wait").is_empty(), "Phase C: the Day 2 / Day 3 placeholders are gone")
-	for pair: Array in [["d2_wait", "d2_chase"], ["d3_wait", "d3_sneak"], ["d2_locked", "d2_chase"], ["d3_locked", "d3_sneak"], ["d5_locked", "d5_stealth"], ["d6_locked", "d6_shop"]]:
+	for pair: Array in [["d2_wait", "d2_chase"], ["d3_wait", "d3_sneak"], ["d2_locked", "d2_chase"], ["d3_locked", "d3_sneak"], ["d5_locked", "d5_stealth"], ["d6_locked", "d6_shop"], ["d7_locked", "d7_parking"]]:
 		_check(StoryMissions.migrate(String(pair[0])) == String(pair[1]), "an old save at %s resumes at %s" % [String(pair[0]), String(pair[1])])
 	_check(String(StoryMissions.beat("d1_stakeout")["intro"]) == "cine_d1_intro" and String(StoryMissions.beat("d4_canteen")["intro"]) == "cine_d4_intro", "mission intros")
 	_check(String(StoryMissions.beat("d1_brawl")["after"]) == "seg_d1_brawl" and String(StoryMissions.beat("d4_brawl")["after"]) == "seg_d4_brawl" and String(StoryMissions.beat("d1_corridor")["after"]) == "cine_d1_corridor", "after cinematics")

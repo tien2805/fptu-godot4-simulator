@@ -1,5 +1,7 @@
 # Nhạc và âm thanh cho cinematic: bài đã chọn và gợi ý
 
+> **Đã gộp (2026-11-03):** danh sách đầy đủ, có trạng thái từng slot, nằm ở `docs/PHASE_E_OWNER_KIT.md`. File này giữ lại để tra lịch sử.
+
 Cập nhật: 2026-10-25 (thêm bảng mọi slot nhạc; game không còn nhạc tạo bằng code).
 
 Gu chung là kiểu phim *Nobody*: nhạc cũ, vui, đặt ngược với cảnh hành động hoặc thảm họa.

@@ -470,6 +470,16 @@ func _build_procedural_bike_and_seated_rider() -> void:
 
 	# 4. SINH VIÊN FPTU NGỒI LÁI XE – CharacterBuilder (mặt, tóc, áo polo FPT, ba lô, mũ bảo hiểm, tay ôm ghi-đông)
 	#    Gốc nhân vật đặt tại yên: hông ở 0.62 m trên gốc khi ở clip "ride"; yên xe cao 0.85 m → gốc y = 0.23.
+	rider_node = CharacterBuilder.build(_rider_opts())
+	rider_node.position = Vector3(0.0, 0.32, 0.14)
+	visual_pivot.add_child(rider_node)
+	CharacterBuilder.set_param(rider_node, "ride_shoulder", 1.2)
+	CharacterBuilder.set_param(rider_node, "ride_elbow", 0.28)
+	CharacterBuilder.set_param(rider_node, "ride_lean", 0.4)
+
+
+func _rider_opts() -> Dictionary:
+	SideRewards.pending = false   # w5-side: a rider built now wears the current pick (no stale wait from an older world)
 	var ro: Dictionary = {"preset": "rider", "seed": 2805, "name": "SeatedFPTURider", "helmet_color": Color("#0066CC"), "backpack": true, "clip": "ride", "glasses": false}
 	var hero: Dictionary = StoryUtil.hero_opts()
 	if not hero.is_empty():
@@ -477,12 +487,32 @@ func _build_procedural_bike_and_seated_rider() -> void:
 		for k: String in ["female", "skin", "hair_color", "hair_style", "variant"]:
 			ro[k] = hero[k]
 	SideRewards.apply_rider(ro)   # w4-endings T5e: the helmet / jacket colours picked in the phone's Tủ đồ
-	rider_node = CharacterBuilder.build(ro)
-	rider_node.position = Vector3(0.0, 0.32, 0.14)
-	visual_pivot.add_child(rider_node)
-	CharacterBuilder.set_param(rider_node, "ride_shoulder", 1.2)
-	CharacterBuilder.set_param(rider_node, "ride_elbow", 0.28)
-	CharacterBuilder.set_param(rider_node, "ride_lean", 0.4)
+	return ro
+
+
+## w5-side T4: rebuilds the seated rider with the colours chosen now (SideRewards.apply_live, from the phone's Tủ đồ),
+## keeping the duck pose, the turn / lean and the visibility. Only while the story is free: a bike fight caches the rider's
+## skeleton (PlayerBikeCombat.setup) and a story recording holds the rider node.
+func refresh_rider_look() -> void:
+	if rider_node == null or not is_instance_valid(rider_node) or visual_pivot == null:
+		return
+	var old: Node3D = rider_node
+	var at: Vector3 = old.position
+	var rot: Vector3 = old.rotation
+	var vis: bool = old.visible
+	var par: Node = old.get_parent()
+	if par:
+		par.remove_child(old)
+	old.queue_free()
+	rider_node = CharacterBuilder.build(_rider_opts())
+	rider_node.position = at
+	rider_node.rotation = rot
+	rider_node.visible = vis
+	(par if par else visual_pivot).add_child(rider_node)
+	CharacterBuilder.set_param(rider_node, "ride_shoulder", lerpf(1.2, 1.02, duck_w))
+	CharacterBuilder.set_param(rider_node, "ride_elbow", lerpf(0.28, 1.0, duck_w))
+	CharacterBuilder.set_param(rider_node, "ride_lean", lerpf(0.4, 1.05, duck_w))
+	CharacterBuilder.set_param(rider_node, "lean", -tilt_angle * 0.35)
 
 # ---------------------------------------------------------------------------
 # ĐÈN XE (OB-D5): đèn pha chiếu tới (-Z), cos / pha [L], đèn hậu + phanh, đèn nháy xanh đỏ
