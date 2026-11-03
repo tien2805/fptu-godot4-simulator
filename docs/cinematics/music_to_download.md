@@ -1,5 +1,7 @@
 # Danh sách nhạc cần tải (2026-10-25)
 
+> **Đã gộp (2026-11-03):** danh sách đầy đủ, có trạng thái từng slot, nằm ở `docs/PHASE_E_OWNER_KIT.md`. File này giữ lại để tra lịch sử.
+
 Game không còn nhạc tạo bằng code. Chỗ nào chưa có file thì im lặng.
 
 **Cách làm:**
