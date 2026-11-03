@@ -88,6 +88,8 @@ func _reset() -> void:
 
 
 func _cleanup() -> void:
+	if beat_fx and is_instance_valid(beat_fx):
+		beat_fx.cancel()
 	if card and is_instance_valid(card):
 		card.queue_free()
 	card = null

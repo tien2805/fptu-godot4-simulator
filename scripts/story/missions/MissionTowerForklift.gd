@@ -48,7 +48,19 @@ func _start() -> void:
 		"manual_card": bool(opts.get("manual_card", false))})
 
 
+## THỬ LẠI: a beat still running ends (no card over the retry), then MissionForklift's reset.
+func _reset() -> void:
+	if beat_fx:
+		beat_fx.cancel()
+	if card and is_instance_valid(card):
+		card.queue_free()
+	card = null
+	super._reset()
+
+
 func _cleanup() -> void:
+	if beat_fx and is_instance_valid(beat_fx):
+		beat_fx.cancel()
 	if card and is_instance_valid(card):
 		card.queue_free()
 	card = null
