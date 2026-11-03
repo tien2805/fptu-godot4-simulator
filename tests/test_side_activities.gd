@@ -10,6 +10,8 @@
 #      guide's marker on the next rival, every rival kept near the player while driven (the rubber band, the regroup after
 #      a reset), the podium panel after the line, the place in the result and the place-capped rank; the rubber band and
 #      the standings as data.
+#   w5-side T2: the delivery routes follow the roads through every drop (DriftCourse), the run shows the RouteGuide
+#      (chevrons, turn panel, radar route) and a drop ring, the HUD reads the distance along the route.
 # Run:  godot --headless --path . --script tests/test_side_activities.gd
 extends SceneTree
 
@@ -363,8 +365,15 @@ func _process(_d: float) -> bool:
 			if dv == null:
 				return _end()
 			dv.auto_tick = false
-			_check(dv.beacon != null and dv.beacon.global_position.distance_to(Vector3(1932.0, 0.0, -159.0)) < 0.1, "the beam over the first drop")
-			_check(_clean(" ".join(PackedStringArray(dv.texts()))) and dv.texts()[0].contains("Điểm giao 1/2"), "delivery HUD (%s)" % str(dv.texts()))
+			_check(dv.beacon != null and Vector2(dv.beacon.global_position.x, dv.beacon.global_position.z).distance_to(Vector2(1932.0, -159.0)) < 0.1,
+				"the drop ring on the first drop")
+			_check(_clean(" ".join(PackedStringArray(dv.texts()))) and dv.texts()[0].contains("Điểm giao 1/2") and dv.texts()[0].contains("Còn ")
+				and not dv.texts()[0].contains("hướng"), "delivery HUD: the distance along the route, no compass words (%s)" % str(dv.texts()))
+			_check(dv.guide != null and dv.guide.active and dv.course != null and is_equal_approx(dv.guide.end_s, dv.course.length)
+				and dv.guide.turns.size() >= 1, "the route guide runs (%d turns)" % (dv.guide.turns.size() if dv.guide else -1))
+			var vh: Variant = fr.get("vice_hud")
+			if vh != null and is_instance_valid(vh) and (vh as Node).get("radar") != null:
+				_check(((vh as Node).get("radar").get("guide_route") as PackedVector2Array).size() >= 2, "the route on the radar")
 			var b: Node3D = fr.get("bike") if bool(fr.get("mounted")) else fr.get("player")
 			dv.advance(5.0)
 			(fr.get("bike") as Node).emit_signal("crash_occurred")
@@ -475,6 +484,18 @@ func _part_c_data() -> void:
 	_check(SideDelivery.dir_word(Vector2.ZERO, Vector2(0.0, -10.0)) == "Bắc" and SideDelivery.dir_word(Vector2.ZERO, Vector2(10.0, 0.0)) == "Đông"
 		and SideDelivery.dir_word(Vector2.ZERO, Vector2(-10.0, 10.0)) == "Tây Nam", "direction words")
 	_check(SideDelivery.rank_for(10.0, 10.0) == "S" and SideDelivery.rank_for(12.0, 10.0) == "A" and SideDelivery.rank_for(30.0, 10.0) == "C", "delivery ranks")
+	for did2: String in SideDelivery.ORDER:
+		var c: DriftCourse = SideDelivery.route_course(did2)
+		var ds: PackedFloat32Array = SideDelivery.drops_s(did2)
+		var ok: bool = c != null and ds.size() == SideDelivery.drops(did2).size() and c.point(0.0).distance_to(SideDelivery.start_at(did2)) < 3.0
+		var prev: float = -1.0
+		for i: int in ds.size():
+			var q: Vector2 = SideDelivery.drops(did2)[i]
+			ok = ok and ds[i] > prev + 30.0 and c.point(ds[i]).distance_to(q) < 1.0
+			prev = ds[i]
+		_check(ok and absf(ds[ds.size() - 1] - c.length) < 5.0 and c.min_radius() > 2.0,
+			"%s: the road route from the start through every drop in order (%.0f m, drops at %s, tightest %.1f m)" % [did2, c.length if c else 0.0, str(ds), c.min_radius() if c else 0.0])
+		_check(SideDelivery.route_course(did2) == c, "%s route built once" % did2)
 
 
 ## T5e: the rewards by the S-rank count, the phone's Tủ đồ, the rider's look.
