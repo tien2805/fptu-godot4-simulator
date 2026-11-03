@@ -5,7 +5,8 @@
 #   - On the road: a glowing GPS line of CHEV_N pooled chevrons (one MultiMesh, an unshaded additive shader with a pulse
 #     running forward) every CHEV_STEP m along the path from CHEV_NEAR to CHEV_FAR ahead of the player, fading in near the
 #     bike (so it fades out behind) and out at the far end. Chevrons sit at fixed path distances (no sliding); each slot's
-#     floor height comes from one cached ray (at most RAYS_PER_FRAME a frame), a slot without one stays hidden.
+#     floor height comes from one cached ray (at most RAYS_PER_FRAME a frame), a slot without one stays hidden. A path with
+#     heights (BikeRoute has_y: the Day 7 spiral deck, a lap above) casts from just above its own height there.
 #   - The next turn: find_turns() lists the real turns of the path once (heading change over +/-TURN_SPAN m above
 #     TURN_RUN_DEG, at least TURN_MIN_DEG in all; same-way turns closer than TURN_MERGE_M merge). From TURN_SHOW_M before a
 #     turn the HUD panel (top left, under the stats line, above the radar: the 1280 x 720 layout keeps the top centre for
@@ -131,6 +132,7 @@ var mmi: MultiMeshInstance3D
 var _mat: ShaderMaterial
 var _hy := PackedFloat32Array()           # floor height per chevron slot (NAN = not cast yet)
 var _try := PackedByteArray()             # ray attempts per slot
+var _path_y: bool = false                 # the path has heights (BikeRoute.has_y)
 var lit: int = 0                          # chevrons shown this frame (tests)
 var lit_near: float = INF                 # nearest / farthest lit chevron distance ahead (tests)
 var lit_far: float = -INF
@@ -163,6 +165,7 @@ func setup(opts: Dictionary) -> void:
 	roam = opts.get("roam", null)
 	s_fn = opts.get("s_fn", Callable())
 	floor_fn = opts.get("floor_fn", Callable())
+	_path_y = path != null and path.has_method("has_y") and bool(path.call("has_y"))
 	targets = opts.get("targets", [])
 	boss = opts.get("boss", null)
 	if opts.has("occlude_rids"):
@@ -429,7 +432,8 @@ func _cast(k: int, cs: float, fy: float) -> void:
 		tries = 4
 	_try[k] = tries + 1
 	var off: float = 4.0 if tries % 2 == 0 else -3.0
-	var y: Variant = floor_fn.call(Vector3(p.x, fy + off, p.y))
+	var base: float = float(path.call("height", cs)) if _path_y else fy + off
+	var y: Variant = floor_fn.call(Vector3(p.x, base, p.y))
 	if y is float:
 		_hy[k] = float(y)
 

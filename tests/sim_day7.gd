@@ -1656,7 +1656,7 @@ func _parking() -> void:
 		for b2: Variant in chase.bikers:
 			var e2: BikerEnemy = b2 as BikerEnemy
 			if e2 and is_instance_valid(e2):
-				ln += " %s:%s d%.1f lat%.1f r%d set%.1f/%.1f sl%.1f" % [e2.kind, e2.state_name(), e2.pos2.distance_to(chase.p_pos), (e2.pos2 - chase.p_pos).dot(chase.p_right), e2.role, e2.settled_t, e2.pace_t, e2.pos2.distance_to(e2.slot_target())]
+				ln += " %s:%s d%.1f lat%.1f dy%.1f r%d set%.1f/%.1f sl%.1f" % [e2.kind, e2.state_name(), e2.pos2.distance_to(chase.p_pos), (e2.pos2 - chase.p_pos).dot(chase.p_right), e2.floor_y - (bike.global_position.y + BikeChase.BIKE_FLOOR_OFFSET), e2.role, e2.settled_t, e2.pace_t, e2.pos2.distance_to(e2.slot_target())]
 		print("    pk %.0f s spd %.1f s_p %.0f wave %d hits %d starts %d:%s" % [mt, spd, s, chase.wave, chase.attack_hits, chase.attack_starts, ln])
 	# thrown helmets: a brake when it reads one
 	for h: Dictionary in chase.helmets:

@@ -4,8 +4,12 @@
 # stacked: the bike AI and the gunmen find the floor with downward rays); show_floor(id) shows one cell and hides the rest
 # (hidden cells cost nothing to draw; their static colliders stay, far away).
 # Frame of every floor: x right, -z forward, floor y = 0, the cell's origin at its centre.
-#   parking    the parking deck: a ring road (lane centre RING_R, between the core wall and the parapet) for Sói Xám's bike
-#              duel; route(laps) is the ring sampled as a BikeRoute polyline, travel counter-clockwise seen from above;
+#   parking    the parking deck, a spiral (w5-day7 T2) for Sói Xám's bike duel: the lane (centre RING_R, between the core
+#              drum and the parapet) climbs one level per lap, each lap a flat level (the first half turn, its sign on the
+#              core) then an eased ramp up LEVEL_H (the second half), the lap above as the ceiling; HẦM B3-B1 walled in,
+#              open sides from TẦNG TRỆT up (a skyline round it). deck_height(angle) = the road's height at an unwrapped
+#              lane angle; route(laps) is the lane as (x, z) points, route3(laps) with the heights (BikeRoute keep_y),
+#              travel counter-clockwise seen from above;
 #   warehouse  Alexander's floor: a 40 x 34 hall, shelving along the walls, low crate stacks (cover);
 #   servers    Za Mẫn's floor: rack rows along the walls round an open duel square;
 #   mannequins the showroom: a 14 x 56 corridor, tall display walls in a zigzag (occluders), mannequin groups (dressing),
@@ -18,7 +22,7 @@
 #              `heli_light`; tick() turns the rotor and sweeps the light while the roof shows), a city far below.
 # cover_root is the shown floor's cell (MissionLairFight scans its group "cover").
 # Cost: static meshes and colliders, a few lights per floor (no shadows except the searchlight); tick() only touches the
-# roof (rotor + sweep) while it shows.
+# roof (rotor + sweep) and the deck's lamps (DECK_LIT_BEHIND..AHEAD round the camera lit, on a change only) while they show.
 class_name LairTower
 extends Node3D
 
@@ -41,6 +45,27 @@ const RING_IN: float = 17.0
 const RING_OUT: float = 27.0
 const RING_SEGS: int = 36
 const DECK_H: float = 4.4
+## The spiral deck (w5-day7 T2): one level per lap (LEVEL_H up), DECK_LAPS laps (the route's), the road slab SLAB_T thick
+## (the lap above is the ceiling: LEVEL_H - SLAB_T clear); the first FLAT_U of a lap is the flat level, the rest the ramp
+## with eased ends (RAMP_EASE of it at each end: 8.5 % at its steepest); built in DECK_STEP_DEG steps.
+const LEVEL_H: float = DECK_H
+const DECK_LAPS: int = 16
+const SLAB_T: float = 0.3
+const FLAT_U: float = 0.5
+const RAMP_EASE: float = 0.25
+const DECK_STEP_DEG: float = 5.0
+const CORE_R: float = RING_IN + 0.25         # the core drum's face (its collider; the drum drawn a hair inside)
+const SLAB_OUT: float = RING_OUT + 0.55      # the road runs on under the parapet
+const PARAPET_IN: float = RING_OUT + 0.05
+const PARAPET_H: float = 1.1
+const BASEMENT_LAPS: int = 3                 # HẦM B3-B1: walled in (BASEMENT_R) ...
+const BASEMENT_R: float = 31.0
+const COLUMN_R: float = 28.3                 # ... the columns outside the parapet, every 45 degrees
+## Sodium lamps per lap under the ceiling; lit only round the camera: DECK_LIT_BEHIND lamps behind its spot, AHEAD ahead.
+const DECK_LAMPS: int = 8
+const DECK_LAMP_RANGE: float = 9.5
+const DECK_LIT_BEHIND: int = 2
+const DECK_LIT_AHEAD: int = 3
 # warehouse
 const WH_W: float = 40.0
 const WH_D: float = 34.0
@@ -123,6 +148,11 @@ var exam_server: Node3D = null
 var _t: float = 0.0
 var _mats: Dictionary = {}
 var _cine_hidden: Array = []
+## The deck's lamp lights in lane order (DECK_LAMPS per lap) and the lit range [lo, hi] (-1: none yet); its level signs.
+var deck_lamps: Array[OmniLight3D] = []
+var deck_lit_lo: int = -1
+var deck_lit_hi: int = -1
+var deck_signs: Array[Label3D] = []
 
 
 func _init() -> void:
@@ -258,6 +288,9 @@ func set_power(on: bool) -> void:
 
 
 func tick(delta: float) -> void:
+	if current_floor == "parking":
+		_tick_deck()
+		return
 	if current_floor != "roof" or heli == null:
 		return
 	_t += delta
@@ -284,6 +317,7 @@ func mission_points(task: String) -> Dictionary:
 			d["start"] = world(f, Vector3(p0.x, 0.0, p0.y))
 			d["start_yaw"] = PI                    # along +z (the ring's travel direction at angle 0)
 			d["route"] = route(16)
+			d["route3"] = route3(16)
 			d["leash"] = 90.0
 		"warehouse":
 			d["start"] = world(f, Vector3(0.0, 0.0, 13.0))
@@ -365,6 +399,55 @@ func route(laps: int) -> PackedVector2Array:
 		var p: Vector2 = ring_point(TAU * float(i) / 36.0)
 		out.append(Vector2(o.x + p.x, o.z + p.y))
 	return out
+
+
+## The lane up the spiral as world points with the road's height, every 10 degrees (BikeRoute.from_points keep_y).
+func route3(laps: int) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var o: Vector3 = world("parking", Vector3.ZERO)
+	var n: int = 36 * laps
+	for i: int in n + 1:
+		var a: float = TAU * float(i) / 36.0
+		var p: Vector2 = ring_point(a)
+		out.append(Vector3(o.x + p.x, o.y + deck_height(a), o.z + p.y))
+	return out
+
+
+## The deck's road height (floor-local) at the unwrapped lane angle a (radians: 0 = the start, growing along the travel).
+static func deck_height(a: float) -> float:
+	var laps: float = clampf(a / TAU, 0.0, float(DECK_LAPS))
+	var k: float = floorf(laps)
+	var u: float = laps - k
+	if u <= FLAT_U:
+		return LEVEL_H * k
+	return LEVEL_H * (k + ramp_k((u - FLAT_U) / (1.0 - FLAT_U)))
+
+
+## 0..1 over a ramp (v 0..1): a constant slope with eased ends (RAMP_EASE at each end).
+static func ramp_k(v: float) -> float:
+	var e: float = RAMP_EASE
+	var m: float = 1.0 / (1.0 - e)
+	if v < e:
+		return m * v * v / (2.0 * e)
+	if v > 1.0 - e:
+		return 1.0 - m * (1.0 - v) * (1.0 - v) / (2.0 * e)
+	return m * (e * 0.5 + v - e)
+
+
+## The unwrapped lane angle of a floor-local point (the lap from its height: up = its height above the road).
+static func deck_angle(p: Vector3, up: float = 0.0) -> float:
+	var th: float = fposmod(atan2(p.z, p.x), TAU)
+	var k: int = clampi(roundi((p.y - up - deck_height(th)) / LEVEL_H), 0, DECK_LAPS - 1)
+	return th + TAU * float(k)
+
+
+## A level's name (its sign on the core): the start is basement 3.
+static func level_name(lap: int) -> String:
+	if lap < BASEMENT_LAPS:
+		return "HẦM B%d" % (BASEMENT_LAPS - lap)
+	if lap == BASEMENT_LAPS:
+		return "TẦNG TRỆT"
+	return "TẦNG %d" % (lap - BASEMENT_LAPS)
 
 
 ## The laser corridor (world): [{"a", "b" (ends; a == b in x/z = a vertical beam), "y0", "y1" (heights), "mode" (static |
@@ -507,37 +590,243 @@ func _ceiling(c: Node3D, w: float, d: float, h: float) -> void:
 # ---------------------------------------------------------------------------
 func _parking(c: Node3D) -> void:
 	var concrete: StandardMaterial3D = _mat("concrete", Color("#55524D"), 0.9)
-	_slab(c, 64.0, 64.0, _mat("asphalt", Color("#2E2D2B"), 0.95))
-	CineFX._box(c, "Ceiling", Vector3(64.0, 0.3, 64.0), Vector3(0.0, DECK_H + 0.15, 0.0), _mat("deck_ceil", Color("#3B3935"), 0.95))
-	# the core (a solid drum with the ramp stripes) and the parapet, as ring segments
-	var core: MeshInstance3D = CineFX._cyl(c, "Core", RING_IN - 0.2, RING_IN - 0.2, DECK_H, Vector3(0.0, DECK_H * 0.5, 0.0), concrete)
+	var asphalt: StandardMaterial3D = _mat("asphalt", Color("#2E2D2B"), 0.95)
+	var top: float = deck_height(TAU * float(DECK_LAPS)) + LEVEL_H
+	# the ground round the deck (under the first lap's road) and the core drum (one collider up every lap)
+	CineFX._box(c, "Ground", Vector3(260.0, 0.04, 260.0), Vector3(0.0, -0.08, 0.0), _mat("deck_ground", Color("#1E1D1B"), 0.95))
+	# its collider round the deck only (nothing under the core drum: a ray there finds no floor, never the ground below a lap)
+	var gw: float = 36.0 - CORE_R
+	for sz: float in [-1.0, 1.0]:
+		_solid(c, Vector3(72.0, 0.4, gw), Vector3(0.0, -0.26, sz * (CORE_R + gw * 0.5)))
+		_solid(c, Vector3(gw, 0.4, CORE_R * 2.0), Vector3(sz * (CORE_R + gw * 0.5), -0.26, 0.0))
+	var core: MeshInstance3D = CineFX._cyl(c, "Core", CORE_R - 0.05, CORE_R - 0.05, top, Vector3(0.0, top * 0.5, 0.0), concrete)
+	if core.mesh is CylinderMesh:
+		(core.mesh as CylinderMesh).radial_segments = 72
 	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var stripe: StandardMaterial3D = _glow("stripe", Color("#F1C40F"), 0.9)
-	var paint: StandardMaterial3D = _mat("lane_paint", Color("#D8D2C4"), 0.7)
-	for i: int in RING_SEGS:
-		var a: float = TAU * float(i) / float(RING_SEGS)
-		var seg_in: float = TAU * RING_IN / float(RING_SEGS) + 0.15
-		var seg_out: float = TAU * RING_OUT / float(RING_SEGS) + 0.15
-		var pin: Vector2 = ring_point(a, RING_IN)
-		var pout: Vector2 = ring_point(a, RING_OUT + 0.3)
-		_solid(c, Vector3(0.5, DECK_H, seg_in), Vector3(pin.x, DECK_H * 0.5, pin.y), -a)
-		_wall(c, Vector3(0.5, 1.1, seg_out), Vector3(pout.x, 0.55, pout.y), concrete, -a)
-		if i % 2 == 0:
-			var ps: Vector2 = ring_point(a, RING_IN + 0.05)
-			CineFX._box(c, "Stripe", Vector3(0.08, 0.6, 1.2), Vector3(ps.x, 0.6, ps.y), stripe, Vector3(0.0, -a, 0.0))
-		var pl: Vector2 = ring_point(a + 0.04, RING_R)
-		CineFX._box(c, "Dash", Vector3(0.14, 0.02, 1.6), Vector3(pl.x, 0.03, pl.y), paint, Vector3(0.0, -a, 0.0))
-	# corner pillars outside the parapet and sodium lights over the lane
-	for q: Vector3 in [Vector3(-29.0, 0.0, -29.0), Vector3(29.0, 0.0, -29.0), Vector3(-29.0, 0.0, 29.0), Vector3(29.0, 0.0, 29.0)]:
-		_wall(c, Vector3(1.0, DECK_H, 1.0), q + Vector3(0.0, DECK_H * 0.5, 0.0), concrete)
+	var cb := StaticBody3D.new()
+	cb.name = "CoreSolid"
+	cb.position = Vector3(0.0, top * 0.5, 0.0)
+	c.add_child(cb)
+	var ccs := CollisionShape3D.new()
+	var cyl := CylinderShape3D.new()
+	cyl.radius = CORE_R
+	cyl.height = top
+	ccs.shape = cyl
+	cb.add_child(ccs)
+	_deck_road(c, asphalt)
+	_deck_parapet(c, concrete)
+	_deck_paint(c)
+	# the basement levels walled in, the columns outside the parapet the whole height, a skyline round the open levels
+	_deck_band(c, "BasementWall", BASEMENT_R, -0.06, LEVEL_H * float(BASEMENT_LAPS) + PARAPET_H, _mat("basement", Color("#3A3834"), 0.95))
 	for k: int in 8:
-		var lp: Vector2 = ring_point(TAU * float(k) / 8.0, RING_R)
-		_omni(c, Vector3(lp.x, DECK_H - 0.4, lp.y), Color("#FFB55A"), 1.4, 13.0)
-		CineFX._box(c, "Lamp", Vector3(1.2, 0.06, 0.3), Vector3(lp.x, DECK_H - 0.05, lp.y), _glow("sodium", Color("#FFB55A"), 2.5))
+		var cp: Vector2 = ring_point(TAU * (float(k) + 0.5) / 8.0, COLUMN_R)
+		_wall(c, Vector3(0.8, top, 0.8), Vector3(cp.x, top * 0.5 - 0.06, cp.y), concrete, -TAU * (float(k) + 0.5) / 8.0)
+	var win: StandardMaterial3D = _glow("city", Color("#FFC27A"), 0.9)
+	var tower: StandardMaterial3D = _mat("city_tower", Color("#0E1014"), 0.8)
+	for k2: int in 14:
+		var a2: float = TAU * float(k2) / 14.0 + 0.3
+		var dist: float = 72.0 + 14.0 * float(k2 % 3)
+		var h: float = 30.0 + 16.0 * float((k2 * 5) % 4)
+		var at := Vector3(cos(a2) * dist, h * 0.5, sin(a2) * dist)
+		CineFX._box(c, "City", Vector3(14.0, h, 14.0), at, tower)
+		CineFX._box(c, "CityWin", Vector3(14.2, h * 0.7, 2.0), at, win)
+	# the lamps under every lap's ceiling: glow boxes (one MultiMesh) and their lights (lit round the camera: _tick_deck)
+	var lamps: Array[Transform3D] = []
+	for j: int in DECK_LAPS * DECK_LAMPS:
+		var a: float = TAU * (float(j) + 0.5) / float(DECK_LAMPS)
+		var lp: Vector2 = ring_point(a, RING_R)
+		var ceil_y: float = deck_height(a) + LEVEL_H - SLAB_T
+		lamps.append(Transform3D(Basis(Vector3.UP, -a), Vector3(lp.x, ceil_y - 0.04, lp.y)))
+		var l: OmniLight3D = _omni(c, Vector3(lp.x, ceil_y - 0.45, lp.y), Color("#FFB55A"), 1.5, DECK_LAMP_RANGE)
+		l.visible = false
+		deck_lamps.append(l)
+	_multi(c, "Lamps", Vector3(1.2, 0.06, 0.3), _glow("sodium", Color("#FFB55A"), 2.5), lamps)
+	# every level's sign on the core where it starts, LÊN DỐC on the road where its ramp starts
+	for k3: int in DECK_LAPS:
+		var a0: float = TAU * float(k3) + 0.9
+		var sp: Vector2 = ring_point(a0, CORE_R + 0.12)
+		var lb := Label3D.new()
+		lb.name = "Level%d" % k3
+		lb.text = level_name(k3)
+		lb.font_size = 88
+		lb.pixel_size = 0.01
+		lb.outline_size = 18
+		lb.modulate = Color("#F1C40F")
+		lb.outline_modulate = Color(0.08, 0.07, 0.06)
+		lb.position = Vector3(sp.x, deck_height(a0) + 2.4, sp.y)
+		lb.rotation.y = PI * 0.5 - a0
+		c.add_child(lb)
+		deck_signs.append(lb)
+		var a1: float = TAU * (float(k3) + FLAT_U) - 0.1
+		var rp: Vector2 = ring_point(a1, RING_R)
+		var up := Label3D.new()
+		up.name = "RampUp%d" % k3
+		up.text = "LÊN DỐC"
+		up.font_size = 120
+		up.pixel_size = 0.01
+		up.modulate = Color("#D8D2C4")
+		up.position = Vector3(rp.x, deck_height(a1) + 0.03, rp.y)
+		up.basis = Basis(Vector3.UP, PI - a1) * Basis(Vector3.RIGHT, -PI * 0.5)
+		c.add_child(up)
+	# the deck's end: a barrier across the top lap
+	var ep: Vector2 = ring_point(0.0, (CORE_R + PARAPET_IN) * 0.5)
+	_wall(c, Vector3(PARAPET_IN - CORE_R, 1.2, 0.5), Vector3(ep.x, top - LEVEL_H + 0.6, ep.y + 0.3), _glow("stripe", Color("#F1C40F"), 0.9))
 	var sign: Node3D = CineFX.build_prop("academy_sign", {"width": 6.0, "text": "LỌ ACADEMY · BÃI XE B3"})
-	sign.position = Vector3(0.0, 2.6, RING_IN - 0.1)
+	sign.position = Vector3(0.0, 2.6, CORE_R + 0.02)
 	sign.rotation.y = PI
 	c.add_child(sign)
+
+
+## The spiral road: its top, underside (the ceiling of the lap below) and outer edge as one mesh; top and underside as one
+## concave collider.
+func _deck_road(c: Node3D, mat: Material) -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var faces := PackedVector3Array()
+	var dn := Vector3(0.0, -SLAB_T, 0.0)
+	var n: int = roundi(360.0 / DECK_STEP_DEG) * DECK_LAPS
+	for j: int in n:
+		var a0: float = deg_to_rad(DECK_STEP_DEG * float(j))
+		var a1: float = deg_to_rad(DECK_STEP_DEG * float(j + 1))
+		var y0: float = deck_height(a0)
+		var y1: float = deck_height(a1)
+		var i0: Vector3 = _rp3(a0, CORE_R - 0.3, y0)
+		var i1: Vector3 = _rp3(a1, CORE_R - 0.3, y1)
+		var o0: Vector3 = _rp3(a0, SLAB_OUT, y0)
+		var o1: Vector3 = _rp3(a1, SLAB_OUT, y1)
+		_quad(st, i0, i1, o1, o0)                         # top (up)
+		_quad(st, o0 + dn, o1 + dn, i1 + dn, i0 + dn)     # underside (down)
+		_quad(st, o0, o1, o1 + dn, o0 + dn)               # outer edge (out)
+		faces.append_array([i0, i1, o1, i0, o1, o0, i0 + dn, i1 + dn, o1 + dn, i0 + dn, o1 + dn, o0 + dn])
+	_deck_mesh(c, "DeckRoad", st, mat, faces)
+
+
+## The parapet band along the road's outer edge, PARAPET_H high (mesh and collider alike: the cameras see what is solid).
+func _deck_parapet(c: Node3D, mat: Material) -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var faces := PackedVector3Array()
+	var hv := Vector3(0.0, PARAPET_H + 0.05, 0.0)
+	var n: int = roundi(360.0 / DECK_STEP_DEG) * DECK_LAPS
+	for j: int in n:
+		var a0: float = deg_to_rad(DECK_STEP_DEG * float(j))
+		var a1: float = deg_to_rad(DECK_STEP_DEG * float(j + 1))
+		var y0: float = deck_height(a0) - 0.05
+		var y1: float = deck_height(a1) - 0.05
+		var i0: Vector3 = _rp3(a0, PARAPET_IN, y0)
+		var i1: Vector3 = _rp3(a1, PARAPET_IN, y1)
+		var o0: Vector3 = _rp3(a0, SLAB_OUT, y0)
+		var o1: Vector3 = _rp3(a1, SLAB_OUT, y1)
+		_quad(st, i0, i1, i1 + hv, i0 + hv)               # inner face (toward the lane)
+		_quad(st, i0 + hv, i1 + hv, o1 + hv, o0 + hv)     # cap
+		_quad(st, o0, o0 + hv, o1 + hv, o1)               # outer face
+		faces.append_array([i0, i1, i1 + hv, i0, i1 + hv, i0 + hv])
+	_deck_mesh(c, "Parapet", st, mat, faces)
+
+
+## A vertical band (r, from y0 to y1) facing the centre: the basement's wall (no collider: past the parapet).
+func _deck_band(c: Node3D, nm: String, r: float, y0: float, y1: float, mat: Material) -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var hv := Vector3(0.0, y1 - y0, 0.0)
+	for j: int in 72:
+		var p0: Vector3 = _rp3(TAU * float(j) / 72.0, r, y0)
+		var p1: Vector3 = _rp3(TAU * float(j + 1) / 72.0, r, y0)
+		_quad(st, p0, p1, p1 + hv, p0 + hv)
+	_deck_mesh(c, nm, st, mat, PackedVector3Array())
+
+
+func _deck_mesh(c: Node3D, nm: String, st: SurfaceTool, mat: Material, faces: PackedVector3Array) -> void:
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.name = nm
+	mi.mesh = st.commit()
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	c.add_child(mi)
+	if faces.is_empty():
+		return
+	var body := StaticBody3D.new()
+	body.name = nm + "Solid"
+	c.add_child(body)
+	var cs := CollisionShape3D.new()
+	var sh := ConcavePolygonShape3D.new()
+	sh.backface_collision = true
+	sh.set_faces(faces)
+	cs.shape = sh
+	body.add_child(cs)
+
+
+## The lane dashes (pitched with the ramp) and the yellow stripes on the core, one MultiMesh each.
+func _deck_paint(c: Node3D) -> void:
+	var dashes: Array[Transform3D] = []
+	var stripes: Array[Transform3D] = []
+	for i: int in 36 * DECK_LAPS:
+		var a: float = TAU * float(i) / 36.0 + 0.04
+		var pl: Vector2 = ring_point(a, RING_R)
+		var slope: float = (deck_height(a + 0.02) - deck_height(a - 0.02)) / (0.04 * RING_R)
+		dashes.append(Transform3D(Basis(Vector3.UP, -a) * Basis(Vector3.RIGHT, -atan(slope)), Vector3(pl.x, deck_height(a) + 0.03, pl.y)))
+		if i % 2 == 0:
+			var ps: Vector2 = ring_point(a, CORE_R)
+			stripes.append(Transform3D(Basis(Vector3.UP, -a), Vector3(ps.x, deck_height(a) + 0.6, ps.y)))
+	_multi(c, "Dashes", Vector3(0.14, 0.02, 1.6), _mat("lane_paint", Color("#D8D2C4"), 0.7), dashes)
+	_multi(c, "Stripes", Vector3(0.08, 0.6, 1.2), _glow("stripe", Color("#F1C40F"), 0.9), stripes)
+
+
+## The deck's lamp lights: DECK_LIT_BEHIND..DECK_LIT_AHEAD round the camera's spot on the lane lit, the rest hidden
+## (touched only when that range moves).
+func _tick_deck() -> void:
+	if deck_lamps.is_empty():
+		return
+	var vp: Viewport = get_viewport() if is_inside_tree() else null
+	var cam: Camera3D = vp.get_camera_3d() if vp else null
+	if cam == null:
+		return
+	var a: float = deck_angle(floor_xf("parking").affine_inverse() * cam.global_position, 1.75)
+	var idx: int = floori(a / (TAU / float(DECK_LAMPS)) - 0.5)
+	var lo: int = clampi(idx - DECK_LIT_BEHIND + 1, 0, deck_lamps.size() - 1)
+	var hi: int = clampi(idx + DECK_LIT_AHEAD, 0, deck_lamps.size() - 1)
+	if lo == deck_lit_lo and hi == deck_lit_hi:
+		return
+	if deck_lit_lo >= 0:
+		for i: int in range(deck_lit_lo, deck_lit_hi + 1):
+			deck_lamps[i].visible = i >= lo and i <= hi
+	for i2: int in range(lo, hi + 1):
+		deck_lamps[i2].visible = true
+	deck_lit_lo = lo
+	deck_lit_hi = hi
+
+
+static func _rp3(a: float, r: float, y: float) -> Vector3:
+	return Vector3(cos(a) * r, y, sin(a) * r)
+
+
+## A quad given counter-clockwise as seen from its front, as two triangles in Godot's front-face order (clockwise).
+static func _quad(st: SurfaceTool, a: Vector3, b: Vector3, cc: Vector3, d: Vector3) -> void:
+	st.add_vertex(a)
+	st.add_vertex(cc)
+	st.add_vertex(b)
+	st.add_vertex(a)
+	st.add_vertex(d)
+	st.add_vertex(cc)
+
+
+func _multi(c: Node3D, nm: String, size: Vector3, mat: Material, xfs: Array[Transform3D]) -> MultiMeshInstance3D:
+	var bm := BoxMesh.new()
+	bm.size = size
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = bm
+	mm.instance_count = xfs.size()
+	for i: int in xfs.size():
+		mm.set_instance_transform(i, xfs[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = nm
+	mmi.multimesh = mm
+	mmi.material_override = mat
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	c.add_child(mmi)
+	return mmi
 
 
 func _warehouse(c: Node3D) -> void:

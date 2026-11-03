@@ -1,6 +1,7 @@
 # File: res://scripts/story/missions/MissionTowerParking.gd
-# Day 7 floor 1, the parking deck B3 of Lọ Academy (plan 2026-11-01-w4-day7.md T1 / T3): the Bầy Sói's last ride, on the
-# deck's one-way ring road (LairTower.route: the ring sampled as a BikeRoute, LAPS laps), on the protagonist's own bike
+# Day 7 floor 1, the parking deck B3 of Lọ Academy (plan 2026-11-01-w4-day7.md T1 / T3): the Bầy Sói's last ride, up the
+# deck's one-way spiral (w5-day7 T2: LairTower.route3, the lane with its heights as a BikeRoute, LAPS laps, one level per
+# lap: a flat half turn, then a ramp up to the next), on the protagonist's own bike
 # (StoryTower's PlayerBike, mounted by BikeChase.start). Three waves: two of Bầy Sói, then Sói Xám back on a fixed-up bike
 # (StoryCast "soi_xam" body, the heavy kind, more HP) with his return card (CastD7 "soi_xam_back", once: flag
 # soi_xam_back_card) at the start of the last wave. `won` = done; bikers still riding at the route's end ride off up the
@@ -99,12 +100,14 @@ func _start() -> void:
 	chase = BikeChase.new()
 	chase.name = "Chase"
 	add_child(chase)
-	var route: Variant = pts.get("route", null)
+	var route: Variant = pts.get("route3", pts.get("route", null))
 	var o: Dictionary = {"roam": roam, "start_line": T_START, "win_line": T_WIN, "replay_slot": "", "auto_replay": false,
 		"seed": int(opts.get("seed", 7)), "profile": PROFILE, "nitro": false, "half_width": HALF_W, "start_s": START_S,
 		"waves": deck_waves(), "wave_opts": wave_opts(),
 		"max_stability": BikeCombatData.STABILITY_MAX if Difficulty.easy else STABILITY}
-	if route != null and (route as PackedVector2Array).size() > 2:
+	if route is PackedVector3Array and (route as PackedVector3Array).size() > 2:
+		o["route"] = BikeRoute.from_points(route, HALF_W, true)        # the spiral: the lane's heights kept
+	elif route is PackedVector2Array and (route as PackedVector2Array).size() > 2:
 		o["route"] = route
 	chase.setup(o)
 	chase.won.connect(_on_won)
