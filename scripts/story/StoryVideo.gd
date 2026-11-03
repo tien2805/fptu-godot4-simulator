@@ -56,8 +56,8 @@ static func clip_of(path: String) -> String:
 	return b.substr(0, b.length() - 2) if b.ends_with("_m") or b.ends_with("_f") else b
 
 
-## Starts the clip's music slot when it has a file (play_file calls it once the clip decodes; tests call it alone):
-## true when music plays, and then the clip's own audio is muted.
+## Starts the clip's music slot when it has a file (play_file calls it just before the video starts and drops it with an
+## undecodable clip; tests call it alone): true when music plays, and then the clip's own audio is muted.
 func start_music(clip: String) -> bool:
 	var st: AudioStream = CineAudio.load_music(clip)
 	if st == null:
@@ -124,6 +124,7 @@ func play_file(path: String) -> bool:
 	ring.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	add_child(ring)
 	player.finished.connect(func() -> void: _begin_end(false))
+	start_music(clip_of(path))   # before play(): the song's (synchronous) load must not hitch or lag the running video
 	player.play()
 	if not player.is_playing() or player.get_stream_length() <= 0.0:
 		player.stop()
@@ -131,8 +132,8 @@ func play_file(path: String) -> bool:
 			remove_child(c)
 			c.queue_free()
 		player = null
+		music = null   # freed with the other children
 		return false   # undecodable: the host plays the fallback cinematic
-	start_music(clip_of(path))
 	_set_flag(true)
 	return true
 

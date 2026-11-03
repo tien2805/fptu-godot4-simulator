@@ -135,9 +135,12 @@ thưởng đi kèm.
 
 ## 4. Chọn cảnh
 
-- **TUA VỀ:** chọn một cảnh đã chơi để chơi lại từ đó, với nhân vật, ngày và bằng chứng như lúc ấy. Game giữ tiến độ cũ:
-  nút "QUAY VỀ TIẾN ĐỘ TRƯỚC KHI TUA" đưa bạn trở lại.
-- **XEM LẠI PHIM:** mọi cảnh phim đã mở, theo ngày, cả các kết đã thấy.
+Ba thẻ:
+
+- **CHỌN CẢNH:** chọn một cảnh đã chơi rồi bấm **TUA VỀ** để chơi lại từ đó, với nhân vật, ngày và bằng chứng như lúc ấy.
+  Game giữ tiến độ cũ: nút "QUAY VỀ TIẾN ĐỘ TRƯỚC KHI TUA" đưa bạn trở lại.
+- **XEM LẠI PHIM:** mọi cảnh phim đã mở, theo ngày.
+- **KẾT THÚC:** các kết bạn đã xem.
 - Cảnh chưa chơi hiện "???" ("Chơi tới cảnh này một lần để mở").
 
 ## 5. Độ khó và "Giảm hù dọa"
@@ -145,7 +148,8 @@ thưởng đi kèm.
 Trong CÀI ĐẶT ĐỒ HOẠ (menu chính hoặc menu tạm dừng):
 
 - **Chế độ Dễ:** đánh nhau, đua xe, đấu súng nhẹ tay hơn. Mặc định là **Thường**, khá khó: lần đầu thua 1-3 lần ở một
-  nhiệm vụ là bình thường. Đổi lúc nào cũng được.
+  nhiệm vụ là bình thường. Đổi lúc nào cũng được; đổi giữa một trận đang đánh thì độ khó mới áp dụng từ lần thử lại
+  sau, riêng các trận đánh tay không của cốt truyện thì từ nhiệm vụ sau.
 - **Giảm hù dọa:** bỏ tiếng rít và đèn chớp, cảnh hù không giật, cuộc gọi 3 giờ sáng không rung, âm thanh kinh dị nhỏ hơn.
   Áp dụng cho mọi cảnh hù trong truyện.
 - **Hù dọa ngẫu nhiên:** bật / tắt các cảnh hù bất ngờ khi đi tự do.
@@ -159,4 +163,4 @@ Có **6 kết**. Không có kết "sai", nhưng chỉ một kết là minh oan t
 - Lỡ mất bằng chứng? Ban đêm, vài nơi trên bản đồ có chuyện lạ. Cứ thử đi dạo.
 - Có một kết bí mật cho người vừa minh oan trọn vẹn vừa **học giỏi thật**: ghé KHÁM PHÁ CAMPUS và chơi các màn học thật
   tốt.
-- Đã xem kết nào thì mục KẾT THÚC trong Xem lại phim giữ lại cho bạn.
+- Đã xem kết nào thì thẻ KẾT THÚC trong Chọn cảnh giữ lại cho bạn.

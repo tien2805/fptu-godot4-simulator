@@ -28,8 +28,9 @@ godot --headless --path . --script tools/check_owner_media.gd -- --missing     (
 ```
 
 Chạy trong thư mục dự án. Nó in từng file `[CÓ]`, `[THIẾU]`, `[MƯỢN]` (slot dùng file của slot cha) hay `[TỰ TẠO]` (âm do
-game tạo), và liệt kê file **sai tên** trong ba thư mục (sai tên thì game không dùng). Lần chạy ngày 2026-11-03 trên máy bạn:
-thiếu 6 video, 32 slot nhạc (28 bài, vì 4 đoạn đuôi lựa chọn mượn bài của cảnh chính) và `sfx\loa_keo_keo`.
+game tạo), và liệt kê file game **không đọc** trong ba thư mục (sai tên, hoặc sai đuôi như `boss_d2.wav`). Lần chạy ngày 2026-11-03 trên máy bạn:
+thiếu 6 video và 32 slot nhạc (28 bài, vì 4 đoạn đuôi lựa chọn mượn bài của cảnh chính); `sfx\loa_keo_keo` chưa có
+nên loa kẹo kéo đang phát bolero tự tạo.
 
 ---
 
@@ -412,7 +413,8 @@ nhóm "chỉ .ogg" bỏ qua file .mp3 / .wav (công cụ kiểm tra sẽ báo).
 | Vũ khí | .ogg / .mp3 | `punch`, `swish`, `knife_hit`, `reload`, `dry_click`, `shot_pistol`, `shot_shotgun`, `pump`, `ricochet`, `rocket_launch`, `explosion`, `bonk`, `dep_whoosh`, `durian_pop`, `cough`, `bolero`, `bag_drop`, `siuuu` |
 | Súng, xe nâng | chỉ .ogg | `forklift_horn`, `forklift_lift`, `steam_hiss`, `party_horn`, `heartbeat` |
 | Xe máy của bạn | .ogg / .mp3 / .wav | `bike_exhaust` (pô), `bike_horn` (còi), `bike_rev` (rồ ga) |
-| Chỉ có khi bạn thêm (thiếu = im lặng) | .ogg / .mp3 / .wav | `dolly_wc_full` (độc thoại của Dolly trong nhà vệ sinh), `loa_keo_keo` (bài phát từ loa kẹo kéo, vũ khí) |
+| Loa kẹo kéo (vũ khí) | .ogg / .mp3 | `loa_keo_keo`: bài loa phát. Không có file thì game phát bản bolero tự tạo |
+| Chỉ có khi bạn thêm (thiếu = im lặng) | .ogg / .mp3 / .wav | `dolly_wc_full` (độc thoại của Dolly trong nhà vệ sinh) |
 
 Câu meme có giọng ("Ét o ét!", "Gét gô!", "Tới công chuyện luôn!", "Còn cái nịt", "Xin vĩnh biệt cụ") hiện chỉ có phụ đề.
 Nếu bạn hoặc bạn bè tự thu giọng thì báo Claude để thêm chỗ gắn từng câu. Không dùng giọng người nổi tiếng.
@@ -422,6 +424,6 @@ Nếu bạn hoặc bạn bè tự thu giọng thì báo Claude để thêm chỗ
 ## 4. Thứ tự gợi ý
 
 1. Tải 28 bài ở mục 2.1 (nhạc thiếu thì cảnh im lặng, đây là chỗ thấy rõ nhất).
-2. `sfx\loa_keo_keo` nếu muốn loa kẹo kéo có nhạc.
+2. `sfx\loa_keo_keo.ogg` hoặc `.mp3` nếu muốn loa kẹo kéo phát bài của bạn (không có thì game phát bolero tự tạo).
 3. Ba clip AI, bản của giới tính bạn hay chơi trước; bản còn lại sau.
 4. Chạy `tools/check_owner_media.gd -- --missing` sau mỗi đợt.
