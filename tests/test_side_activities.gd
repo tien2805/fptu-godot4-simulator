@@ -13,6 +13,8 @@
 #   w5-side T2: the delivery routes follow the roads through every drop (DriftCourse), the run shows the RouteGuide
 #      (chevrons, turn panel, radar route) and a drop ring, the HUD reads the distance along the route.
 #   w5-side T3: the open start spots (within RADAR_M) and the lit lanterns reach the radar with plain labels.
+#   w5-side T4: a pick in the phone's Tủ đồ shows on the bike's rider at once; while the story is busy it waits and shows
+#      once the story is free.
 # Run:  godot --headless --path . --script tests/test_side_activities.gd
 extends SceneTree
 
@@ -573,18 +575,64 @@ func _part_e() -> void:
 	var all: String = " | ".join(txt)
 	_check(all.contains("Hạng S đã đạt: %d" % n) and all.contains("Mũ bảo hiểm") and all.contains("Áo khoác") and _clean(all), "Tủ đồ lists the count and both lists (%s)" % all)
 	_check(all.contains("??? · cần 9 hạng S") or n >= 9, "a locked item says what it needs")
+	_check(all.contains(SideRewards.T_LIVE) and not all.contains("lần vào thế giới sau"), "Tủ đồ says the pick shows at once")
+	var bk: PlayerBike = fr.get("bike") as PlayerBike
+	var rider0: Node3D = bk.rider_node if bk else null
+	_check(rider0 != null and _helmet_col(rider0) == Color("#0066CC"), "the rider wears the default helmet (%s)" % str(_helmet_col(rider0)))
 	var cam: Button = ph.find_child("Wear_helmet_cam_fpt", true, false) as Button
 	_check(cam != null and not cam.disabled, "Cam FPT is open")
 	if cam:
 		cam.pressed.emit()
 	_check(SideRewards.chosen("helmet") == "cam_fpt", "a tap wears Cam FPT")
+	# w5-side T4: live on the bike's rider, the old rider gone, the pose and the parent kept
+	_check(bk != null and bk.rider_node != rider0 and is_instance_valid(bk.rider_node) and bk.rider_node.get_parent() == bk.visual_pivot
+		and _helmet_col(bk.rider_node) == Color("#F37021") and not SideRewards.pending and rider0.get_parent() == null,
+		"the pick shows at once on the rider (%s)" % str(_helmet_col(bk.rider_node) if bk else null))
+	_check(bk != null and bk.rider_node.position.is_equal_approx(rider0.position) and bk.visual_pivot.find_children("SeatedFPTURider*", "", false, false).size() == 1,
+		"one rider on the seat, at the same spot")
 	var red: Button = ph.find_child("Wear_jacket_do_do", true, false) as Button
 	if red:
 		red.pressed.emit()
 	var ro: Dictionary = {"helmet_color": Color("#0066CC")}
 	SideRewards.apply_rider(ro)
 	_check(ro["helmet_color"] == Color("#F37021") and ro.get("shirt_color") == Color("#7A1F2B"), "the rider wears them (%s)" % str(ro))
+	# busy: the pick waits, then shows once the story is free (the side activities' idle check)
+	var rider1: Node3D = bk.rider_node if bk else null
+	sr.busy = true
+	var blk: Button = ph.find_child("Wear_helmet_den_nham", true, false) as Button
+	_check(blk != null and not blk.disabled, "Đen nhám is open")
+	if blk:
+		blk.pressed.emit()
+	_check(SideRewards.chosen("helmet") == "den_nham" and SideRewards.pending and bk.rider_node == rider1, "busy: the pick waits (pending %s)" % str(SideRewards.pending))
+	var txt2: PackedStringArray = []
+	for l2: Node in ph.find_children("*", "Label", true, false):
+		txt2.append((l2 as Label).text)
+	_check(" ".join(txt2).contains(SideRewards.T_PENDING), "Tủ đồ says it shows when free")
+	sa.advance(StorySideActivities.CHECK_S + 0.01)
+	_check(SideRewards.pending and bk.rider_node == rider1, "still busy: still waiting")
+	sr.busy = false
+	var t0: int = Time.get_ticks_usec()
+	sa.advance(StorySideActivities.CHECK_S + 0.01)
+	var ms: float = float(Time.get_ticks_usec() - t0) / 1000.0
+	_check(not SideRewards.pending and bk.rider_node != rider1 and _helmet_col(bk.rider_node) == Color("#1C1D21"), "free again: the waiting pick shows (%s)" % str(_helmet_col(bk.rider_node)))
+	print("  rewards live: the rider rebuilt in %.1f ms (once, on a pick)" % ms)
+	for t: String in [SideRewards.T_LIVE, SideRewards.T_PENDING]:
+		_check(_clean(t), "wardrobe text plain (%s)" % t)
 	ph.call("set_tab", 0)
+
+
+## The colour of the rider's helmet dome (the meshes CharacterBuilder marks "helmet_part"), null when none.
+func _helmet_col(rider: Node) -> Variant:
+	if rider == null or not is_instance_valid(rider):
+		return null
+	for mi: Node in rider.find_children("*", "MeshInstance3D", true, false):
+		if mi.has_meta("helmet_part"):
+			var m: Material = (mi as MeshInstance3D).material_override
+			if m == null and (mi as MeshInstance3D).mesh != null and (mi as MeshInstance3D).mesh.get_surface_count() > 0:
+				m = (mi as MeshInstance3D).mesh.surface_get_material(0)
+			if m is BaseMaterial3D:
+				return (m as BaseMaterial3D).albedo_color
+	return null
 
 
 func r_nitro_back() -> bool:

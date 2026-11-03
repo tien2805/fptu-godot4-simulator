@@ -176,6 +176,8 @@ func advance(dt: float) -> void:
 	if _check_t > 0.0:
 		return
 	_check_t = CHECK_S
+	if SideRewards.pending and roam != null:   # w5-side T4: a look picked while busy shows once free
+		SideRewards.apply_live(roam)
 	var f: Node3D = _focus()
 	var was: String = near_id
 	near_id = ""

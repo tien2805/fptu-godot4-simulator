@@ -2,12 +2,18 @@
 # Rewards of the side activities and the story ranks (plan 2026-11-01-w4-endings.md T5e): helmet and jacket colours for
 # the bike rider, with plain names, unlocked by the S-rank count (best rank S of each side activity in SideRecords plus
 # each story mission with a best rank S in the unlock file). The choice is kept in the unlock file ([side_rewards]) and
-# applied when the bike's rider is built (PlayerBike: apply_rider), so it shows from the next ride into the world. The
-# phone's "Tủ đồ" tab lists them (StoryPhone).
+# applied when the bike's rider is built (PlayerBike: apply_rider). w5-side T4: a pick in the phone's "Tủ đồ" tab
+# (StoryPhone) shows at once (apply_live rebuilds the seated rider), or, while the story is busy (a mission, a side
+# activity, a cinematic), as soon as it is free again (StorySideActivities applies the pending look in its idle check).
 class_name SideRewards
 extends RefCounted
 
 const SECTION: String = "side_rewards"
+const T_LIVE: String = "Chọn là đổi ngay trên xe."
+const T_PENDING: String = "Đang bận việc: mũ và áo mới hiện khi xong."
+
+## A pick waits for the story to be free (apply_live while busy).
+static var pending: bool = false
 ## {id, name, color, need (S ranks)}; the first of each list is the default and always open.
 const HELMETS: Array = [
 	{"id": "xanh_fpt", "name": "Xanh FPT", "color": Color("#0066CC"), "need": 0},
@@ -71,6 +77,31 @@ static func apply_rider(ro: Dictionary) -> void:
 	var j: Variant = item("jacket", chosen("jacket"))["color"]
 	if j is Color:
 		ro["shirt_color"] = j
+
+
+## Shows the chosen look on the bike's rider now (true), or keeps it pending while the story is busy (false). fr: FreeRoam.
+static func apply_live(fr: Node) -> bool:
+	pending = true
+	if fr == null or not is_instance_valid(fr) or not live_ok(fr):
+		return false
+	var b: Node = fr.get("bike") as Node
+	if b == null or not is_instance_valid(b) or not b.has_method("refresh_rider_look"):
+		return false
+	b.call("refresh_rider_look")
+	pending = false
+	return true
+
+
+## The story is free for a new rider: no mission, side activity, beat run or cinematic.
+static func live_ok(fr: Node) -> bool:
+	if fr.get("cine_player") != null:
+		return false
+	var sr: Variant = fr.get("story_roam")
+	if sr != null and is_instance_valid(sr):
+		var s: Object = sr as Object
+		if s.get("mission_node") != null or bool(s.get("busy")) or String(s.get("running")) != "":
+			return false
+	return true
 
 
 ## Plain names of what opens between two S counts ("Mũ Cam FPT", "Áo Đỏ đô").
