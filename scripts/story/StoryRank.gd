@@ -78,7 +78,7 @@ const MISSIONS: Dictionary = {
 	# Day 7 (w4-day7): the bosses, the server room and the typing set from sim_day7 (plan 2026-11-01-w4-day7.md T5 table:
 	# par S near the sloppy bot's clean runs, par C past its mean with retries); the four floors stay provisional (no bot yet)
 	"d7_parking": {"time": [50.0, 130.0], "fails": [0.0, 1.5], "ko": [0, 1]},   # sim: clean 38-72 s; ko only adds (a takedown = full)
-	"d7_warehouse": {"time": [100.0, 260.0], "dmg": [150.0, 600.0]},   # sim: clean 100-150 s, ~200 HP lost; Thường mean 244 s
+	"d7_warehouse": {"time": [80.0, 210.0], "dmg": [150.0, 600.0]},   # sim (w5-day7 T5, a ram 0.2 of his bar): clean 67-121 s, ~120-240 HP lost; Thường mean 159 s
 	"d7_servers": {"time": [30.0, 100.0], "dmg": [20.0, 200.0], "opt": {"key": "qte_clean", "want": true}},   # sim: clean 35-49 s
 	"d7_mannequins": {"time": [30.0, 75.0], "dmg": [0.0, 150.0], "opt": {"key": "spotted", "want": false}},   # sim: 32-50 s (seen, then the fight)
 	"d7_lasers": {"time": [18.0, 45.0], "fails": [0.0, 3.0]},   # sim: clean 16-20 s, a retry ~10-15 s

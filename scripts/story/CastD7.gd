@@ -23,14 +23,21 @@ const RADIO_PREFIX: Dictionary = {"van_lo": "LÙM VĂN LỌ (loa)"}
 ## beat id -> [[t (mission seconds), speaker, line, dich], ...] (StoryRadio.SCRIPTS shape).
 const RADIO: Dictionary = {
 	"d7_parking": [
-		[7.0, "anh_duy", "Hầm B3 là ring road một chiều, Bầy Sói đang farm vòng ở đó. Đá văng hết r lên tầng.", "Đá hết tụi nó ở hầm xe rồi đi lên."],
-		[24.0, "van_lo", "Chào mừng tới Lọ Academy. Gửi xe miễn phí, lấy xe thì... hơi khó.", ""]],
+		[7.0, "anh_duy", "Hầm xe xoắn ốc một chiều, Bầy Sói chạy vòng lên từng tầng. Vừa leo dốc vừa đá văng tụi nó.", "Chạy lên dốc xoắn, đá hết tụi nó khỏi xe."],
+		[24.0, "van_lo", "Chào mừng tới Lọ Academy. Gửi xe miễn phí, lấy xe thì... hơi khó.", ""],
+		[45.0, "anh_duy", "Đứa nào còn trên xe lúc tới tầng thượng là chạy đi mách Lọ. Dọn sạch như dọn phòng trước kỳ thi.", "Đá hết tụi nó trước khi tới đỉnh dốc."]],
 	"d7_warehouse": [
-		[22.0, "van_lo", "Alexander, em đã ký hợp đồng 12 tháng. Đừng làm thầy thất vọng.", ""]],
+		[22.0, "van_lo", "Alexander, em đã ký hợp đồng 12 tháng. Đừng làm thầy thất vọng.", ""],
+		[50.0, "anh_duy", "Thùng nó ném rơi xuống sàn thì xúc lên càng, hất trả lại. Hàng của nó, trả cho nó.", "Hạ càng xúc thùng, [Chuột trái] ném trả lúc nó sơ hở."],
+		[95.0, "van_lo", "Alexander, xe đó còn 11 kỳ trả góp. Có ngã thì ngã nhẹ giùm thầy.", ""],
+		[150.0, "anh_duy", "Nó đứng lên ghế đọc lại cả cái tên là đang hồi máu đó. Né ra, chờ nó đọc xong r húc.", "Lúc nó xưng tên thì không đánh được, chờ xong rồi húc."]],
 	"d7_servers": [
-		[5.0, "anh_duy", "Za Mẫn đổi katana mới, hàng 49 nghìn freeship, gãy nhanh lắm.", "Kiếm dỏm, đỡ vài nhát là gãy."]],
+		[5.0, "anh_duy", "Za Mẫn đổi katana mới, hàng 49 nghìn freeship, gãy nhanh lắm.", "Kiếm dỏm, đỡ vài nhát là gãy."],
+		[25.0, "van_lo", "Za Mẫn, thầy bao ship cây đó rồi. Gãy thì tự mua cây mới nha em.", ""],
+		[45.0, "anh_duy", "Nó gồng là sắp chém, né xong đánh trả liền. Đừng spam, kiếm 49 nghìn chứ người nó không 49 nghìn.", "Thấy nó ra dấu thì né, rồi đánh trả."]],
 	"d7_mannequins": [
-		[24.0, "van_lo", "Ma-nơ-canh ở đây đứng im giỏi hơn sinh viên ngồi thi.", ""]],
+		[24.0, "van_lo", "Ma-nơ-canh ở đây đứng im giỏi hơn sinh viên ngồi thi.", ""],
+		[40.0, "anh_duy", "Mẹo nè: ma-nơ-canh không quay đầu, guard thì có. Cái nào quay là guard, né tầm nhìn nó.", "Cái nào cử động là guard, đừng vào vùng nhìn của nó."]],
 	"d7_lasers": [
 		[3.0, "anh_duy", "Laser bật theo chu kỳ, nháy trước khi bật. Canh nhịp mà qua.", "Đèn nháy là sắp bật, chờ tắt rồi đi."],
 		[18.0, "van_lo", "Hệ thống an ninh này thầy mua bằng tiền bán đề năm ngoái.", ""]],

@@ -6,11 +6,15 @@
 # reset.
 # w5-day7 T1, his return beat (D7Beat): on the first attempt a preview cut on Alexander in his seat, then (once: flag
 # alexander_back_card) his return card (CastD7 "alexander_back") over the cut's frozen last frame.
+# w5-day7 T5: no crane on this floor to skip a phase, so a ram takes RAM_FRAC of his bar (ForkliftBoss opt "ram_frac";
+# Day 3 keeps its own): sim_day7 warehouse at Day 3's share, 24 runs: Thường 3.96 mean fails (6 at the bot's cap of 8).
 # points: start (+ start_yaw), boss_at, boss_yaw, fork_at, fork_yaw, ammo, centre, leash.
 class_name MissionTowerForklift
 extends MissionForklift
 
 const CARD_FLAG: String = "alexander_back_card"
+## A ram's share of his bar here (Day 3: ForkliftBoss.RAM_FRAC 0.15; Dễ x1.2 as there).
+const RAM_FRAC: float = 0.2
 
 var card: StoryVillainCard = null
 var beat_fx: D7Beat = null
@@ -21,7 +25,7 @@ func _start() -> void:
 	make_fight({"start_alerted": true})
 	var at: Vector3 = pts.get("boss_at", player.global_position + Vector3(0.0, 0.0, -12.0) if player else Vector3.ZERO)
 	var o: Dictionary = {"body_fn": func(_look: Dictionary) -> Node3D: return StoryCast.build("alexander"),
-		"hp": float(Difficulty.pick(GunData.BOSS_HP, GunData.BOSS_HP * 0.8)), "joust": true}
+		"hp": float(Difficulty.pick(GunData.BOSS_HP, GunData.BOSS_HP * 0.8)), "joust": true, "ram_frac": RAM_FRAC}
 	fight.add_wave([{"boss": "forklift", "at": at, "yaw": float(pts.get("boss_yaw", 0.0)), "opts": o}])
 	fight.start()
 	if pts.has("fork_at"):
