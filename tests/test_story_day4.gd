@@ -5,7 +5,7 @@
 # cine_d4_intro -> the undercover (12 identical students + the disguised Dolly with her tells and the music-box hum, the
 # tray carried, a student's note and [E] Tố cáo, a wrong accusation, the tray dropped by sprinting, a new tray at the
 # counter, "BỊ LỘ" -> THỬ LẠI (Dolly elsewhere), the right accusation) -> cine_d4_stare -> the clone waves + Dolly, who
-# flees -> seg_d4_brawl -> the lobby marker -> the night escape scene (caught once: no E5; a clean run: E5) with the
+# flees -> seg_d4_brawl -> the lobby marker -> the night escape scene (caught once: no E5; a clean run: E5 and the d4_escape results card) with the
 # seg_d4_escape replay -> cine_d4 -> bed -> the call N = 3 -> Day 5 morning -> the Day 5 basement marker. Then Continue from
 # the autosave taken after the brawl (the lobby marker at night, nothing starts by itself) and at d4_brawl (the canteen
 # marker, the fight does not start by itself). The night escape's catches are saved at once (no E5 by quitting).
@@ -280,11 +280,19 @@ func _process(_d: float) -> bool:
 				_check(int((sd.get("flags") as Dictionary).get("d4_catches", 0)) == 1, "the catch was saved at once (anti save-scum)")
 				(sd.get("flags") as Dictionary).erase("d4_catches")   # a fresh playthrough of the night for the clean run
 				mark["run2"] = true
+				StoryRankCard.skip_all = false   # w5-complete G1: the clean run shows the d4_escape results card
 				esc.queue_free()
 				sd.call("set_step", "d4_escape")
 				sd.call("launch_horror_beat", "d4_escape", null, null)
 				_next(12)
 			else:
+				var card: StoryRankCard = esc.rank_card
+				_check(card != null and card.letter == "S" and String(sd.get("step")) == "d4_escape",
+					"G1: the d4_escape results card (S on 0 catches) holds the hand-off (%s)" % (card.letter if card else "no card"))
+				if card != null:
+					_check(card.texts().has("Thử lại: 0") and card.title_text == "Thoát khỏi tòa nhà", "G1: the card's line and title (%s)" % str(card.line_texts))
+					card.skip()
+				StoryRankCard.skip_all = true
 				_check(esc.result_caught == 0 and sd.call("has_evidence", "E5") and String(sd.get("step")) == "d4_end", "a clean escape: E5 (the proxy roster)")
 				esc.queue_free()
 				StoryNightEscape.test_opts = {}

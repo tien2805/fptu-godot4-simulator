@@ -17,7 +17,7 @@
 # none); record_rank(id, letter) keeps only a better letter and mirrors it into the chapter unlock file (StoryChapters,
 # which only grows); a loaded save's ranks are mirrored there too. StoryMission.finish records a ranked mission; the
 # horror beat d4_escape (not a StoryMission) is ranked here from its catches only (its time cannot be measured across a
-# Continue, so it is not a criterion), no card.
+# Continue, so it is not a criterion); its card shows in StoryNightEscape (w5-complete).
 extends Node
 
 const GameFXScript: Script = preload("res://scripts/GameFX.gd")
@@ -726,7 +726,7 @@ func on_horror_result(caught_count: int, go_roam: bool = true) -> bool:
 	flags["d4_caught"] = caught_count
 	if ctx.get("win_xf") is Transform3D:
 		spawn = ctx["win_xf"]
-	record_rank(step, StoryRank.report(step, {"fails": caught_count}))   # Wave 3: ranked from the catches (no card: known gap)
+	record_rank(step, StoryRank.report(step, {"fails": caught_count}))   # Wave 3: ranked from the catches (the card: StoryNightEscape)
 	complete_step(step)
 	if go_roam:
 		enter_roam()

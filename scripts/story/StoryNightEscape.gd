@@ -8,6 +8,7 @@
 #     StoryStage.REPLAY_AFTER s, then plays the short replay seg_d4_escape;
 #   - saves every catch at once (StoryDirector.note_horror_catch; a new run starts from the saved count, so quitting after
 #     a catch does not give E5 back) and stops the roam music;
+#   - shows the d4_escape results card (StoryRankCard, ranked on the catches; w5-complete), then
 #   - reports StoryDirector.on_horror_result(caught_count): E5 only when the player was never caught, the beat completes
 #     (autosave), story free roam resumes at the lobby marker's return spot.
 # Esc opens the usual pause menu; leaving for the menu keeps the save at the marker (the beat restarts on Continue).
@@ -24,6 +25,8 @@ var rec: CineReplayRecorder
 var replay: CineReplay
 var result_caught: int = -1
 var reported: bool = false
+## The d4_escape results card while it shows (w5-complete G1); the hand-off to the story waits for it to close.
+var rank_card: StoryRankCard = null
 var _opts: Dictionary = {}
 
 
@@ -113,6 +116,32 @@ func _report() -> void:
 	reported = true
 	replay = null
 	night.release()
+	rank_card = _make_rank_card()
+	if rank_card == null:
+		_hand_off()
+		return
+	add_child(rank_card)
+	rank_card.closed.connect(_hand_off, CONNECT_ONE_SHOT)
+
+
+## w5-complete (gap G1): the results card of d4_escape, ranked on the catches only (the count on_horror_result uses: this
+## run's or a saved earlier one's, the larger); null without a running story, with StoryRankCard.skip_all or unranked.
+func _make_rank_card() -> StoryRankCard:
+	var sd: Node = StoryUtil.director()
+	if StoryRankCard.skip_all or sd == null or not bool(sd.get("active")):
+		return null
+	var id: String = String(StoryUtil.stage_context().get("beat", sd.get("step")))
+	var catches: int = maxi(result_caught, int((sd.get("flags") as Dictionary).get("d4_catches", 0)))
+	var ev: Dictionary = StoryRank.evaluate(id, {"fails": catches})
+	if ev.is_empty():
+		return null
+	var c: StoryRankCard = StoryRankCard.make(ev, String(StoryMissions.beat(id).get("title", "")), StoryRank.best(id))
+	c.manual = bool(_opts.get("manual_replay", false))   # tests close it themselves (skip / step)
+	return c
+
+
+func _hand_off() -> void:
+	rank_card = null
 	finished.emit(result_caught)
 	var sd: Node = StoryUtil.director()
 	if sd and bool(sd.get("active")):
