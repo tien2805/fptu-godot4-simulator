@@ -104,12 +104,21 @@ const CORR_H: float = 3.2
 ## The laser corridor per difficulty (T5b, sim_day7): the second blink wall's lit share ...
 const LASER_BLINK2_ON: float = 0.6
 const LASER_BLINK2_ON_EASY: float = 0.5
-## ... and Thường's two extra sweeps (z 37, z 20) with their periods.
-const LASER_EXTRA_SWEEP_S: Array = [3.4, 3.0]
+## ... and Thường's two extra sweeps (z 37, z 20) with their periods (w5-day7 T4: faster, was 3.4 / 3.0).
+const LASER_EXTRA_SWEEP_S: Array = [2.8, 2.6]
 ## Dễ: every sweep and blink wall runs this much slower (longer gaps, the same telegraphs): never harder than Thường.
 const LASER_EASY_SLOW: float = 1.3
 ## Dễ: a blink wall's lit share of its period (Thường 0.55 / 0.6): ~0.6 s lit in every ~4 s, after the same 0.6 s warn.
 const LASER_EASY_ON: float = 0.15
+## w5-day7 T4, Thường only (sim_day7 lasers: 0.95 mean fails, under the 1-3 band): the first blink wall lit this share of
+## its period (was 0.55), the middle sweep (z 28.5) this period (was 3.6), the crossing pair before the hall this period
+## (was 4.2: the pair half a period apart), Thường's own two sweeps faster too (LASER_EXTRA_SWEEP_S, was 3.4 / 3.0). Dễ
+## keeps the old values (then its own slowdown): unchanged.
+const LASER_BLINK1_ON: float = 0.62
+const LASER_SWEEP_S: float = 3.0
+const LASER_SWEEP_S_EASY: float = 3.6
+const LASER_CROSS_S: float = 3.6
+const LASER_CROSS_S_EASY: float = 4.2
 ## w5-day7 T1, the corridor's preview cuts: [the z the player passes (INF: at the start), the z of the beams shown]: the
 ## first blink wall from the lift, the sweep and the diagonal once past that wall (room to stop before them).
 const LASER_CUTS: Array = [[INF, 34.0], [32.5, 26.0]]
@@ -470,10 +479,10 @@ func laser_defs(f: String = "gallery") -> Array:
 	# 3: a blinking wall (full width, four beams)
 	for k: int in 4:
 		out.append({"a": world(f, Vector3(-hw, 0.0, 34.0)), "b": world(f, Vector3(hw, 0.0, 34.0)), "y0": 0.3 + 0.5 * k,
-			"y1": 0.3 + 0.5 * k, "mode": "blink", "period": 3.2, "on": 0.55, "phase": 0.0})
+			"y1": 0.3 + 0.5 * k, "mode": "blink", "period": 3.2, "on": float(Difficulty.pick(LASER_BLINK1_ON, 0.55)), "phase": 0.0})
 	# 4: a sweeping vertical beam across the corridor
 	out.append({"a": world(f, Vector3(0.0, 0.0, 28.5)), "b": world(f, Vector3(0.0, 0.0, 28.5)), "y0": 0.0, "y1": CORR_H,
-		"mode": "sweep", "period": 3.6, "phase": 0.0, "sweep": Vector3(hw - 0.35, 0.0, 0.0)})
+		"mode": "sweep", "period": float(Difficulty.pick(LASER_SWEEP_S, LASER_SWEEP_S_EASY)), "phase": 0.0, "sweep": Vector3(hw - 0.35, 0.0, 0.0)})
 	# 5: a static diagonal, then a second blinking wall out of phase
 	out.append({"a": world(f, Vector3(-hw, 0.0, 25.0)), "b": world(f, Vector3(hw - 1.6, 0.0, 22.0)), "y0": 0.9, "y1": 0.9, "mode": "static"})
 	for k2: int in 4:
@@ -483,11 +492,12 @@ func laser_defs(f: String = "gallery") -> Array:
 	if not Difficulty.easy:
 		out.append({"a": world(f, Vector3(0.0, 0.0, 20.0)), "b": world(f, Vector3(0.0, 0.0, 20.0)), "y0": 0.0, "y1": CORR_H,
 			"mode": "sweep", "period": LASER_EXTRA_SWEEP_S[1], "phase": 1.0, "sweep": Vector3(hw - 0.35, 0.0, 0.0)})
-	# 6: two sweeping beams crossing before the hall
+	# 6: two sweeping beams crossing before the hall (half a period apart)
+	var cross: float = float(Difficulty.pick(LASER_CROSS_S, LASER_CROSS_S_EASY))
 	out.append({"a": world(f, Vector3(0.0, 0.0, 15.0)), "b": world(f, Vector3(0.0, 0.0, 15.0)), "y0": 0.0, "y1": CORR_H,
-		"mode": "sweep", "period": 4.2, "phase": 0.0, "sweep": Vector3(hw - 0.35, 0.0, 0.0)})
+		"mode": "sweep", "period": cross, "phase": 0.0, "sweep": Vector3(hw - 0.35, 0.0, 0.0)})
 	out.append({"a": world(f, Vector3(0.0, 0.0, 15.0)), "b": world(f, Vector3(0.0, 0.0, 15.0)), "y0": 0.0, "y1": CORR_H,
-		"mode": "sweep", "period": 4.2, "phase": 2.1, "sweep": Vector3(hw - 0.35, 0.0, 0.0)})
+		"mode": "sweep", "period": cross, "phase": cross * 0.5, "sweep": Vector3(hw - 0.35, 0.0, 0.0)})
 	if Difficulty.easy:
 		for d: Dictionary in out:
 			if d.has("period"):

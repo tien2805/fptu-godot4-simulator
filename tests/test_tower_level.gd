@@ -493,7 +493,8 @@ func _process(_d: float) -> bool:
 					break
 			var d: Dictionary = ml.defs[bi]
 			if not mark.has("in_blink"):
-				if MissionTowerLasers.beam_state(d, ml.t) == "off" and MissionTowerLasers.beam_state(d, ml.t + MissionTowerLasers.TELE_S + 0.2) == "off":
+				# (in the off part with room to spare: Thường's first wall is off ~0.6 s of its 3.2, w5-day7 T4)
+				if MissionTowerLasers.beam_state(d, ml.t) == "off" and MissionTowerLasers.beam_state(d, ml.t + 0.3) == "off":
 					mark["in_blink"] = true
 					var mid: Vector3 = ((d["a"] as Vector3) + (d["b"] as Vector3)) * 0.5
 					tw.player.teleport(mid, 0.0)
