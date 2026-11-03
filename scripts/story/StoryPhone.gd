@@ -260,11 +260,13 @@ func _fill_wardrobe() -> void:
 		if bool(r[3]) and not bool(r[4]):
 			b.pressed.connect(_wear.bind(String(r[1]), String(r[2])))
 		list.add_child(b)
-	list.add_child(_label("Mũ và áo mới có từ lần vào thế giới sau.", 13, Color("#B8A9D9"), false))
+	list.add_child(_label(SideRewards.T_PENDING if SideRewards.pending else SideRewards.T_LIVE, 13, Color("#B8A9D9"), false))
 
 
+## w5-side T4: the pick shows on the rider at once (or once the story is free).
 func _wear(kind: String, id: String) -> void:
-	SideRewards.choose(kind, id)
+	if SideRewards.choose(kind, id):
+		SideRewards.apply_live(roam)
 	refresh()
 
 

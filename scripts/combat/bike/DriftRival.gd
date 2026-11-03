@@ -27,6 +27,10 @@
 # (the clamp stops him at the cap; it never pulls him back, so a player who stops or falls far behind is still beaten);
 # beyond the cap (a reset, a stop) he rides a little slower than the player until back inside it. magnet(side, secs): the
 # player's kick assist pulls him toward the leg.
+# w5-side (plan 2026-11-03-w5-side.md): the rivals of the free-roam side races reuse him through setup opts, the defaults
+# unchanged (Day 2): "cast" (StoryCast id, "cast_extra" its extra opts) or "look" (CharacterBuilder rider opts) for the body, "name" (the label and the
+# taunts' prefix), "paint" / "glow" (scooter and underglow colours), "calm" (no kicks and no blocks: he rides `lane`, his
+# own lateral line, and still drifts and fires nitro), "lane", "taunts" (his random lines).
 class_name DriftRival
 extends Node3D
 
@@ -138,6 +142,13 @@ var _nitro_gap: float = 0.0
 ## Difficulty-picked tuning (refresh_tuning at each race start).
 var pace: float = 1.0
 var kick_dmg: float = 20.0
+## w5-side setup opts (Day 2 defaults).
+var rival_name: String = NAME
+var rival_name_up: String = NAME.to_upper()   # w5-side: the guide marker's text, made once
+var calm: bool = false
+var lane: float = 0.0
+var taunts: Array = TAUNTS
+var glow_col: Color = GLOW
 var kick_windup: float = 0.5
 var kick_cooldown: float = 2.4
 var attack_chance: float = 0.8
@@ -183,10 +194,25 @@ func setup(c: DriftCourse, opts: Dictionary = {}) -> void:
 	top_level = true
 	name = "SoiXamRival"
 	_rng.seed = int(opts.get("seed", 3131))
+	rival_name = String(opts.get("name", NAME))
+	rival_name_up = rival_name.to_upper()
+	calm = bool(opts.get("calm", false))
+	lane = float(opts.get("lane", 0.0))
+	if opts.has("taunts"):
+		taunts = opts["taunts"]
+	glow_col = opts.get("glow", GLOW)
 	refresh_tuning()
-	PropBuilder.build_scooter(self, Vector3.ZERO, 0.0, PAINT, {"baked": true, "name": "Scooter", "traffic_lamps": true})
+	PropBuilder.build_scooter(self, Vector3.ZERO, 0.0, opts.get("paint", PAINT), {"baked": true, "name": "Scooter", "traffic_lamps": true})
 	_build_tuning()
-	body = StoryCast.build("soi_xam", {"clip": "ride"})
+	if opts.has("look"):
+		var lk: Dictionary = (opts["look"] as Dictionary).duplicate()
+		lk["rigged"] = true
+		lk["clip"] = "ride"
+		body = CharacterBuilder.build(lk)
+	else:
+		var ce: Dictionary = (opts.get("cast_extra", {}) as Dictionary).duplicate()
+		ce["clip"] = "ride"
+		body = StoryCast.build(String(opts.get("cast", "soi_xam")), ce)
 	if body:
 		body.name = "Rider"
 		body.position = SEAT
@@ -207,7 +233,7 @@ func setup(c: DriftCourse, opts: Dictionary = {}) -> void:
 	label3d.outline_size = 8
 	label3d.modulate = Color("#D8DEE6")
 	label3d.position = Vector3(0.0, 2.3, 0.0)
-	label3d.text = NAME
+	label3d.text = rival_name
 	add_child(label3d)
 	_build_audio()
 	_ray_q = PhysicsRayQueryParameters3D.new()
@@ -232,16 +258,16 @@ func refresh_tuning() -> void:
 func _build_tuning() -> void:
 	var glow_mat := StandardMaterial3D.new()
 	glow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	glow_mat.albedo_color = GLOW
+	glow_mat.albedo_color = glow_col
 	glow_mat.emission_enabled = true
-	glow_mat.emission = GLOW
+	glow_mat.emission = glow_col
 	glow_mat.emission_energy_multiplier = 4.0
 	glow_mat.set_meta("vice_done", true)
 	for sx: float in [-0.13, 0.13]:
 		CineFX._box(self, "Underglow", Vector3(0.03, 0.02, 1.0), Vector3(sx, 0.16, 0.0), glow_mat)
 	glow_light = OmniLight3D.new()
 	glow_light.name = "UnderglowLight"
-	glow_light.light_color = GLOW
+	glow_light.light_color = glow_col
 	glow_light.omni_range = 2.6
 	glow_light.light_energy = 1.2
 	glow_light.shadow_enabled = false
@@ -430,7 +456,7 @@ func start_race() -> void:
 
 ## A short line in the label (taunts, the ending).
 func say(text: String, secs: float = TAUNT_S) -> void:
-	label3d.text = NAME + "\n" + text
+	label3d.text = rival_name + "\n" + text
 	_taunt_left = secs
 
 
@@ -681,6 +707,11 @@ func _think(delta: float) -> void:
 	if wobble_t > 0.0 or finished:
 		d_target = 0.0
 		return
+	if calm:
+		mode = "line"
+		d_target = lane
+		_maybe_nitro(rel_s)
+		return
 	var straight: bool = course.radius_at(s + 10.0) > 50.0 and course.radius_at(s + 25.0) > 50.0
 	# kick: the player alongside, his cooldown done
 	if kick_cd <= 0.0 and absf(rel_s) < 2.4 and absf(rel_d) < 3.4 and p_v > 6.0 and course.corner_at(s) < 0:
@@ -706,7 +737,11 @@ func _think(delta: float) -> void:
 	else:
 		mode = "line"
 		d_target = 0.0
-	# nitro: a long straight ahead, the player close or ahead, a charge left
+	_maybe_nitro(rel_s)
+
+
+## Nitro: a long straight ahead, the player close or ahead (rel_s > -10), a charge left.
+func _maybe_nitro(rel_s: float) -> void:
 	if nitro_left > 0 and nitro_t <= 0.0 and _nitro_gap <= 0.0 and v > 10.0 and course.radius_at(s + 30.0) > 150.0 \
 			and course.radius_at(s + 60.0) > 150.0 and rel_s > -10.0:
 		_fire_nitro(true)
@@ -760,7 +795,7 @@ func _taunts(delta: float, gap: float) -> void:
 	if _taunt_left > 0.0:
 		_taunt_left -= delta
 		if _taunt_left <= 0.0:
-			label3d.text = NAME
+			label3d.text = rival_name
 		return
 	if not racing or finished:
 		return
@@ -773,7 +808,7 @@ func _taunts(delta: float, gap: float) -> void:
 	elif gap > 30.0:
 		say(T_FAR)
 	else:
-		say(TAUNTS[_rng.randi() % TAUNTS.size()])
+		say(String(taunts[_rng.randi() % taunts.size()]))
 
 
 ## The kick leg over the ride clip (BikerEnemy's pose), after the rig's own update.
