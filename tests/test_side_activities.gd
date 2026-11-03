@@ -69,6 +69,16 @@ func _initialize() -> void:
 
 
 func _part_a() -> void:
+	# w5-side T5a: the takedown tuning by difficulty
+	var was_easy: bool = Difficulty.easy
+	Difficulty.set_easy(false)
+	var nw: Array = SideTakedown.waves_of("td_bay")
+	Difficulty.set_easy(true)
+	var ew: Array = SideTakedown.waves_of("td_bay")
+	_check(nw.size() == 3 and ew.size() == 2 and SideTakedown.waves_of("td_soi").size() == 1, "takedowns: Dễ keeps the shorter waves (%d / %d)" % [nw.size(), ew.size()])
+	Difficulty.set_easy(was_easy)
+	_check(SideTakedown.HP[1] == 1 and SideTakedown.STABILITY[1] == BikeCombatData.STABILITY_MAX and SideTakedown.STABILITY[0] < SideTakedown.STABILITY[1],
+		"takedowns: Dễ one-kick riders and the full stability")
 	var starts: Array[Vector3] = []
 	for rid: String in SideRace.ORDER:
 		var c: DriftCourse = SideRace.route_course(rid)
@@ -389,7 +399,10 @@ func _process(_d: float) -> bool:
 			if frames < 3:
 				return false
 			var last: Array = done_ev[-1] if not done_ev.is_empty() else []
-			_check(not last.is_empty() and String(last[0]) == "td_soi" and int((last[1] as Dictionary).get("downed", 0)) == 3, "td_soi done, 3 down (%s)" % str(last))
+			var n_soi: int = 0
+			for w5: Array in SideTakedown.waves_of("td_soi"):
+				n_soi += w5.size()
+			_check(not last.is_empty() and String(last[0]) == "td_soi" and int((last[1] as Dictionary).get("downed", 0)) == n_soi, "td_soi done, %d down (%s)" % [n_soi, str(last)])
 			_check(SideRecords.best("td_soi").get("rank", "") in StoryRank.LETTERS and not bool(sr.busy), "td_soi recorded, the story free")
 			# knocked off: given up
 			_check(sa.start("td_bay"), "td_bay starts")
