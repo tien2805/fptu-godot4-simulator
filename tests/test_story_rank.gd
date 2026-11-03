@@ -110,15 +110,16 @@ func _part_a() -> void:
 		_check(ew["letter"] == "C" and is_equal_approx(float(ew["score"]), 0.0), "A: %s worst -> C 0 (%s %.1f)" % [id3, ew["letter"], float(ew["score"])])
 		for l: Dictionary in ew["lines"]:
 			_check(plain(String(l["label"])) and plain(String(l["value"])), "A: %s card text is plain (%s %s)" % [id3, l["label"], l["value"]])
-	# linear criteria: d1_brawl time [45, 120], dmg [15, 70], fails [0, 2]
-	var e1: Dictionary = StoryRank.evaluate("d1_brawl", {"time": 82.5, "dmg": 15.0, "fails": 1})
+	# linear criteria: d1_brawl time [S, C], dmg [S, C] (read from the table), fails [0, 2]
+	var b1: Dictionary = StoryRank.MISSIONS["d1_brawl"]
+	var e1: Dictionary = StoryRank.evaluate("d1_brawl", {"time": (float(b1["time"][0]) + float(b1["time"][1])) * 0.5, "dmg": float(b1["dmg"][0]), "fails": 1})
 	var want1: float = 100.0 * (30.0 * 0.5 + 25.0 * 1.0 + 25.0 * 0.5) / 80.0
 	_check(absf(float(e1["score"]) - want1) < 0.01, "A: half the time range, no damage over par, one retry -> %.1f (%.1f)" % [want1, float(e1["score"])])
 	_check(int(e1["lines"].size()) == 3, "A: d1_brawl has no ko / optional line (%d lines)" % int(e1["lines"].size()))
 	# a criterion that does not apply passes its weight on: dmg missing from the stats
 	var e2: Dictionary = StoryRank.evaluate("d1_brawl", {"time": 10.0, "fails": 0})
 	_check(is_equal_approx(float(e2["score"]), 100.0) and e2["letter"] == "S", "A: missing damage: time and retries carry the whole score (%.1f)" % float(e2["score"]))
-	var e3: Dictionary = StoryRank.evaluate("d1_corridor", {"time": 160.0, "fails": 0})
+	var e3: Dictionary = StoryRank.evaluate("d1_corridor", {"time": float(StoryRank.MISSIONS["d1_corridor"]["time"][1]), "fails": 0})
 	_check(absf(float(e3["score"]) - 100.0 * 25.0 / 55.0) < 0.01 and e3["letter"] == "B", "A: d1_corridor at par C, no retry -> %.1f B (%.1f %s)" % [100.0 * 25.0 / 55.0, float(e3["score"]), e3["letter"]])
 	# missing optional info: no optional line
 	var e4: Dictionary = StoryRank.evaluate("d3_sneak", {"time": 70.0, "fails": 0}, {})
@@ -189,7 +190,13 @@ func _part_b() -> void:
 	m.advance(0.1)
 	_check(is_equal_approx(float(m.stats["time"]), 6.5) and is_equal_approx(float(m.stats["dmg"]), 135.0), "B: after the retry the run goes on counting (%s)" % str(m.stats))
 	var letter: String = StoryRank.report("d1_brawl", m.stats)
-	_check(letter == "B", "B: the scripted run ranks B (one retry, 135 HP lost, 6.5 s) (%s, %.1f)" % [letter, float(StoryRank.evaluate("d1_brawl", m.stats)["score"])])
+	# the expected letter from the table's pars: time and damage linear between par S and par C, one retry = half
+	var pb: Dictionary = StoryRank.MISSIONS["d1_brawl"]
+	var kt: float = clampf((float(pb["time"][1]) - 6.5) / (float(pb["time"][1]) - float(pb["time"][0])), 0.0, 1.0)
+	var kd: float = clampf((float(pb["dmg"][1]) - 135.0) / (float(pb["dmg"][1]) - float(pb["dmg"][0])), 0.0, 1.0)
+	var sc: float = 100.0 * (30.0 * kt + 25.0 * kd + 25.0 * 0.5) / 80.0
+	var want_l: String = "S" if sc >= StoryRank.S_AT else ("A" if sc >= StoryRank.A_AT else ("B" if sc >= StoryRank.B_AT else "C"))
+	_check(letter == want_l, "B: the scripted run ranks %s (one retry, 135 HP lost, 6.5 s, %.1f) (%s, %.1f)" % [want_l, sc, letter, float(StoryRank.evaluate("d1_brawl", m.stats)["score"])])
 	m.finish({})
 	_check(m.state == "done", "B: the run finishes")
 	host.queue_free()
