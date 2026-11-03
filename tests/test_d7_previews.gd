@@ -10,7 +10,9 @@
 #     card over the frozen frame; THỬ LẠI plays neither again;
 #   - the showroom: the first guard at the start, the second at the first gap, the third past the middle wall (guards blind
 #     for the test); none once seen;
-#   - the laser corridor: the first blink wall at the start, the sweep and the diagonal once past that wall.
+#   - the laser corridor: the first blink wall at the start, the sweep and the diagonal once past that wall;
+#   - D7Beat on THỬ LẠI (review fix): a beat waiting on its gate or showing its card ends with the deck's reset (idle, the
+#     card gone, the tree running, the camera not frozen, its flag unspent); once the mission failed a beat shows no card.
 # Run:  godot --headless --path . --script tests/test_d7_previews.gd
 extends SceneTree
 
@@ -20,6 +22,7 @@ var TMP_C: String = "user://test_d7_previews_chapters_%d.cfg" % OS.get_process_i
 var TMP_B: String = "user://test_d7_previews_backup_%d.cfg" % OS.get_process_id()
 const DT: float = 1.0 / 60.0
 const TOWER: String = "res://scenes/story/StoryTower.tscn"
+const BEAT_FLAG: String = "test_d7_beat_reset"
 var fails: Array[String] = []
 var frames: int = 0
 var total: int = 0
@@ -165,7 +168,8 @@ func _process(_d: float) -> bool:
 			_watch_cut("parking wave %d" % ch.wave)
 			ch.combat.god = true
 			# a wave's riders crash once its cut is over: the next wave rolls in
-			if not paused and not (CameraDirector.live() and CameraDirector.live().cutting()) and mp.card == null 					and mp.beat_fx.cuts > ch.wave and not mp.beat_fx.busy() and mp.wave_cut < 0:
+			if not paused and not (CameraDirector.live() and CameraDirector.live().cutting()) and mp.card == null \
+					and mp.beat_fx.cuts > ch.wave and not mp.beat_fx.busy() and mp.wave_cut < 0:
 				for b: Variant in ch.alive():
 					(b as BikerEnemy).crash("test")
 			if mp.card != null:
@@ -174,12 +178,57 @@ func _process(_d: float) -> bool:
 				_card_beat(mp, sx, mark["ccam"], "parking: Sói Xám")
 				_check(mp.beat_fx.cuts == 3 and mp.beat_fx.cards == 1, "parking: a cut per wave (%d), one card" % mp.beat_fx.cuts)
 				_check(cuts_seen.size() >= 3, "parking: three cuts framed (%s)" % str(cuts_seen))
-				ch.combat.god = false
-				mp.finish({})
-				_next(2)
+				_next(11)
 			elif frames > 2400:
 				_check(false, "parking: no Sói Xám card (wave %d, cuts %d)" % [ch.wave, mp.beat_fx.cuts])
 				mp.finish({})
+				_next(2)
+		# ----- D7Beat on THỬ LẠI: a beat waiting or carding ends with the reset; none once the mission failed -----
+		11:
+			var mp3: MissionTowerParking = m
+			var bf: D7Beat = mp3.beat_fx
+			var flags: Dictionary = sd.get("flags")
+			var bo: Dictionary = {"gate": func() -> bool: return false, "card": "soi_xam_back", "flag": BEAT_FLAG, "manual_card": true}
+			mp3.chase.combat.god = true
+			if frames == 1:
+				bf.play(tw.bike, bo)
+				_check(bf.state == "wait", "beat reset: the beat waits on its shut gate (%s)" % bf.state)
+				mp3.retry()                                   # THỬ LẠI while it waits
+				_check(not bf.busy() and bf.card == null and mp3.card == null and not flags.has(BEAT_FLAG),
+					"beat reset: THỬ LẠI during the wait leaves the beat idle, no card, its flag unspent (%s)" % bf.state)
+				bf.play(tw.bike, bo)
+				bf._after_cut(false)                          # its gate timed out: the card
+				var c: StoryVillainCard = mp3.card
+				_check(bf.state == "card" and c != null and paused, "beat reset: the card is up (%s)" % bf.state)
+				mark["beat_card"] = c
+				flags.erase(BEAT_FLAG)
+				mp3.retry()                                   # THỬ LẠI while the card shows
+				_check(not bf.busy() and bf.card == null and mp3.card == null, "beat reset: THỬ LẠI during the card leaves the beat idle (%s)" % bf.state)
+			elif frames == 3:
+				var c2: Variant = mark["beat_card"]
+				_check(not is_instance_valid(c2) and not paused and root.get_viewport().get_camera_3d() != bf.freeze_cam,
+					"beat reset: the card is gone, the tree runs, the camera is not frozen")
+				bf.play(tw.bike, bo)
+				mp3.fail("test: knocked off while the beat waits")
+			elif frames == 6:
+				_check(mp3.state == "failed" and not bf.busy() and mp3.card == null and not flags.has(BEAT_FLAG),
+					"beat reset: a failed mission's waiting beat ends with no card over the fail screen (%s / %s)" % [mp3.state, bf.state])
+				bf.play(tw.bike, bo)
+				bf._after_cut(false)
+				_check(not bf.busy() and mp3.card == null and not flags.has(BEAT_FLAG), "beat reset: no card once the mission failed (%s)" % bf.state)
+				if tw.fail_ui and tw.fail_ui.visible:
+					tw.fail_ui.press_retry()
+				else:
+					_check(false, "beat reset: no fail card")
+					mp3.retry()
+			elif frames > 8:
+				var cd11: CameraDirector = CameraDirector.live()
+				if cd11 and cd11.cutting() and frames < 300:
+					return false                              # the wave's own cut after the retry ends first
+				_check(not paused and mp3.state == "running", "beat reset: back in the chase (%s)" % mp3.state)
+				mp3.chase.combat.god = false
+				flags.erase(BEAT_FLAG)
+				mp3.finish({})
 				_next(2)
 		# ----- the warehouse -----
 		2:

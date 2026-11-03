@@ -10,6 +10,9 @@
 #                               yet, the card over a FREEZE of the cut's last frame (the villain framed: a camera of this node
 #                               holds the director camera's last transform while the card pauses the tree), then the camera
 #                               of before. Emits card_shown(card) and finished (always, also with no cut and no card).
+#   cancel()                    ends the beat at once (the mission's THỬ LẠI / cleanup): idle, the card freed, the camera
+#                               of before; no `finished` (the mission resets its own state). A beat whose mission no
+#                               longer runs (failed, done) cancels itself: no card over the fail screen, its flag unspent.
 # Counters: cuts (the cuts that ran), cards. Tests: opts "manual_card" (the card is stepped by the test).
 class_name D7Beat
 extends Node
@@ -65,7 +68,30 @@ func busy() -> bool:
 	return state != "idle"
 
 
+## Ends the beat now (see the header): idle, no target, the card (if any) freed, the frozen camera handed back.
+func cancel() -> void:
+	var c: StoryVillainCard = card
+	card = null
+	state = "idle"
+	target = null
+	_opts = {}
+	if c != null and is_instance_valid(c):
+		if c.finished.is_connected(_on_card_done):
+			c.finished.disconnect(_on_card_done)
+		c.queue_free()                         # its _exit_tree gives the pause state back
+	_unfreeze()
+
+
+## The owning mission still runs (a beat outside a mission: always).
+func _live() -> bool:
+	var m: StoryMission = get_parent() as StoryMission
+	return m == null or m.state == "running"
+
+
 func _try_cut() -> void:
+	if not _live():
+		cancel()
+		return
 	var gate: Callable = _opts.get("gate", Callable())
 	var open: bool = not gate.is_valid() or bool(gate.call())
 	if open and cut(target, _opts):
@@ -87,6 +113,9 @@ func _process(_d: float) -> void:
 
 ## The cut is over (or skipped): the card when one is due, else done.
 func _after_cut(had_cut: bool) -> void:
+	if not _live():                            # the mission failed meanwhile: no card over its fail screen
+		cancel()
+		return
 	var cid: String = String(_opts.get("card", ""))
 	var flag: String = String(_opts.get("flag", ""))
 	var flags: Dictionary = {}

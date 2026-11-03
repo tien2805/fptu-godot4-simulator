@@ -134,7 +134,8 @@ func wave_lead(i: int, any: bool = false) -> BikerEnemy:
 
 ## The chase's own cameras free (no opening, cameo, takedown or opening cam).
 func cut_free() -> bool:
-	return chase != null and chase.state == "running" and not chase.opening_on and chase.cameo_state != "running" 		and chase.cam_mode == ""
+	return chase != null and chase.state == "running" and not chase.opening_on and chase.cameo_state != "running" \
+		and chase.cam_mode == ""
 
 
 ## The wave's preview cut waits for its headline rider (_tick).
@@ -174,6 +175,8 @@ func _on_lost() -> void:
 func _reset() -> void:
 	escaped_fail = false
 	wave_cut = -1
+	if beat_fx:
+		beat_fx.cancel()                       # a beat waiting or carding when the wolves knocked the bike over
 	if card and is_instance_valid(card):
 		card.queue_free()
 	card = null
@@ -183,6 +186,8 @@ func _reset() -> void:
 
 
 func _cleanup() -> void:
+	if beat_fx and is_instance_valid(beat_fx):
+		beat_fx.cancel()
 	if card and is_instance_valid(card):
 		card.queue_free()
 	card = null

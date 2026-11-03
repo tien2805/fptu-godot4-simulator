@@ -49,6 +49,9 @@ var beat_fx: D7Beat = null
 ## The cut targets (markers on the corridor floor) and the cuts done this attempt.
 var cut_marks: Array[Node3D] = []
 var cut_done: Array[bool] = []
+## Each cut's trigger (world z, from points.laser_cuts at the start) and how many are still to come this attempt.
+var cut_z: PackedFloat32Array = PackedFloat32Array()
+var _cuts_left: int = 0
 var _acc: float = 0.0
 var _buzz_cd: float = 0.0                 # one buzz for a whole blinking wall
 var _warned: PackedInt32Array = PackedInt32Array()   # per beam: the blink cycle whose telegraph buzzed
@@ -138,6 +141,7 @@ func _start() -> void:
 		add_child(mk)
 		mk.global_position = c[1]
 		cut_marks.append(mk)
+		cut_z.append(float(c[0]))
 	_fresh()
 
 
@@ -149,6 +153,7 @@ func _fresh() -> void:
 	replay_wait = -1.0
 	cut_done.resize(cut_marks.size())
 	cut_done.fill(false)
+	_cuts_left = cut_marks.size()
 	if pts.has("start"):
 		teleport_player(pts["start"], float(pts.get("start_yaw", 0.0)))
 	set_info(T_INFO)
@@ -270,14 +275,14 @@ func _tick(dt: float) -> void:
 
 ## The next cut whose trigger the player passed (one at a time; a running cut waits).
 func _cuts() -> void:
-	if player == null or beat_fx == null:
+	if _cuts_left <= 0 or player == null or beat_fx == null:
 		return
-	var cs: Array = pts.get("laser_cuts", [])
-	for i: int in mini(cs.size(), cut_done.size()):
-		if cut_done[i] or player.global_position.z > float(cs[i][0]):
+	for i: int in mini(cut_z.size(), cut_done.size()):
+		if cut_done[i] or player.global_position.z > cut_z[i]:
 			continue
 		if beat_fx.cut(cut_marks[i], CUT_OPTS) or CameraDirector.live() == null:
 			cut_done[i] = true
+			_cuts_left -= 1
 		return
 
 

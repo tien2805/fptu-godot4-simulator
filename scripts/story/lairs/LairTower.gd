@@ -640,9 +640,10 @@ func _parking(c: Node3D) -> void:
 		var at := Vector3(cos(a2) * dist, h * 0.5, sin(a2) * dist)
 		CineFX._box(c, "City", Vector3(14.0, h, 14.0), at, tower)
 		CineFX._box(c, "CityWin", Vector3(14.2, h * 0.7, 2.0), at, win)
-	# the lamps under every lap's ceiling: glow boxes (one MultiMesh) and their lights (lit round the camera: _tick_deck)
+	# the lamps under every lap's ceiling: glow boxes (one MultiMesh) and their lights (lit round the camera: _tick_deck);
+	# the top lap is open to the sky (no ceiling there, so no lamps)
 	var lamps: Array[Transform3D] = []
-	for j: int in DECK_LAPS * DECK_LAMPS:
+	for j: int in (DECK_LAPS - 1) * DECK_LAMPS:
 		var a: float = TAU * (float(j) + 0.5) / float(DECK_LAMPS)
 		var lp: Vector2 = ring_point(a, RING_R)
 		var ceil_y: float = deck_height(a) + LEVEL_H - SLAB_T
