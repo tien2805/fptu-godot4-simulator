@@ -61,6 +61,8 @@ var guide_route: PackedVector2Array = PackedVector2Array():
 		_cache_center = Vector2(INF, INF)
 		_maybe_rebuild(false)
 		_dirty = true
+## w5-side: a blip's optional "label" (a plain word: "Đua", "Đèn lồng") is drawn under it while it is inside the disc.
+var labels_drawn: int = 0
 ## RouteGuide: extra blips drawn after `blips` (the enemies' red dots).
 var extra_blips: Array[Dictionary] = []:
 	set(v):
@@ -306,11 +308,20 @@ func _draw() -> void:
 		if sc.distance_to(c) + sr <= rr:
 			draw_arc(sc, sr, 0.0, TAU, 48, SEARCH_RIM, 2.0, true)
 		search_draws += 1
-	# blip (ngoài tầm: nằm ở mép)
+	# blip (ngoài tầm: nằm ở mép); nhãn chữ (w5-side) chỉ khi blip nằm trong đĩa
+	var lab_font: Font = ThemeDB.fallback_font
+	labels_drawn = 0
 	for bl: Dictionary in blips:
 		var bp: Vector2 = to_radar(bl.get("pos", Vector2.ZERO))
+		var inside: bool = (bp - c).length() <= r - 10.0
 		bp = c + (bp - c).limit_length(r - 10.0)
 		var col: Color = bl.get("color", Color.WHITE)
+		var lab: String = String(bl.get("label", ""))
+		if lab != "" and inside:
+			var lp: Vector2 = bp + Vector2(-40.0, 22.0)
+			draw_string_outline(lab_font, lp, lab, HORIZONTAL_ALIGNMENT_CENTER, 80.0, 12, 4, INK)
+			draw_string(lab_font, lp, lab, HORIZONTAL_ALIGNMENT_CENTER, 80.0, 12, col.lightened(0.35))
+			labels_drawn += 1
 		match String(bl.get("shape", "circle")):
 			"square":
 				draw_rect(Rect2(bp - Vector2(7.0, 7.0), Vector2(14.0, 14.0)), col)

@@ -339,6 +339,10 @@ func blips() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for id: String in marker_pos.keys():
 		out.append({"pos": marker_pos[id], "color": PINK, "shape": "circle"})
+	if side_activities:   # w5-side T3: the side activity starts and the night lanterns, labelled
+		out.append_array(side_activities.blips())
+	if night_secrets:
+		out.append_array(night_secrets.blips())
 	return out
 
 

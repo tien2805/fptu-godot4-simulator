@@ -27,6 +27,9 @@ const SPOTS: Dictionary = {
 		"hint": "Thang máy BE6 nửa đêm có dừng ở tầng 13. Ghé thử đi."},
 }
 const ORDER: Array[String] = ["canal", "lift"]
+## w5-side T3: a lit lantern on the radar (StoryRoam.blips).
+const RADAR_LABEL: String = "Đèn lồng"
+const RADAR_COLOR := Color("#7CFF9E")
 
 ## roam = FreeRoam (player, bike, mounted, cinematic_finished), story = StoryRoam (anchors, busy, _start_cinematic,
 ## _free_cards), director = StoryDirector, events = the StoryNightEvents whose eligible() gates the night.
@@ -163,6 +166,18 @@ func _on_cine_done(_slot: String, _skipped: bool) -> void:
 	story.set("busy", false)
 	played.append(kind)
 	secret_played.emit(kind, ev)
+
+
+## Radar blips of the lit lanterns: {pos, color, shape "circle", label "Đèn lồng"}.
+func blips() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for kind: String in markers.keys():
+		var m: Variant = markers[kind]
+		if m == null or not is_instance_valid(m) or not (m as Node3D).is_inside_tree():
+			continue
+		var p: Vector3 = (m as Node3D).global_position
+		out.append({"pos": Vector2(p.x, p.z), "color": RADAR_COLOR, "shape": "circle", "label": RADAR_LABEL})
+	return out
 
 
 ## A faint green lantern floating over the spot (null removes it).

@@ -12,6 +12,7 @@
 #      the standings as data.
 #   w5-side T2: the delivery routes follow the roads through every drop (DriftCourse), the run shows the RouteGuide
 #      (chevrons, turn panel, radar route) and a drop ring, the HUD reads the distance along the route.
+#   w5-side T3: the open start spots (within RADAR_M) and the lit lanterns reach the radar with plain labels.
 # Run:  godot --headless --path . --script tests/test_side_activities.gd
 extends SceneTree
 
@@ -149,6 +150,52 @@ func _drive(r: SideRace, v: float, sec: float, drifting: bool = false) -> void:
 	bike.set("is_drifting", false)
 
 
+## w5-side T3: the open start spots and the lit lanterns on the radar, with plain labels.
+func _radar_part(fr: Node) -> void:
+	var sb: Array[Dictionary] = sa.blips()
+	var near_lab: String = ""
+	var labs: Dictionary = {}
+	var sp0: Vector3 = StorySideActivities.spot("dua_cau")["at"]
+	for b: Dictionary in sb:
+		labs[String(b.get("label", ""))] = true
+		if (b["pos"] as Vector2).distance_to(Vector2(sp0.x, sp0.z)) < 0.5:
+			near_lab = String(b.get("label", ""))
+		_check(_clean(String(b.get("label", ""))) and String(b.get("label", "")) != "", "radar label plain (%s)" % String(b.get("label", "")))
+	_check(near_lab == "Đua" and sb.size() >= 1 and sb.size() <= sa.markers.size(), "the race start on the radar, labelled (%s, %d blips)" % [near_lab, sb.size()])
+	var pl: Vector3 = (fr.get("player") as Node3D).global_position
+	var far_ok: bool = true
+	for b2: Dictionary in sb:
+		far_ok = far_ok and (b2["pos"] as Vector2).distance_to(Vector2(pl.x, pl.z)) <= StorySideActivities.RADAR_M + 5.0
+	_check(far_ok, "only the starts within %d m" % int(StorySideActivities.RADAR_M))
+	var ns: StoryNightSecrets = sr.night_secrets
+	ns._marker("canal", pl + Vector3(20.0, 0.0, 0.0))
+	var lb: Array[Dictionary] = ns.blips()
+	_check(lb.size() == 1 and String(lb[0]["label"]) == StoryNightSecrets.RADAR_LABEL and (lb[0]["pos"] as Vector2).distance_to(Vector2(pl.x + 20.0, pl.z)) < 0.1,
+		"a lit lantern on the radar (%s)" % str(lb))
+	var all: Array[Dictionary] = sr.blips()
+	var n_lab: int = 0
+	for b3: Dictionary in all:
+		if String(b3.get("label", "")) != "":
+			n_lab += 1
+	_check(n_lab == sb.size() + 1, "StoryRoam.blips carries the starts and the lantern (%d)" % n_lab)
+	var vh: Variant = fr.get("vice_hud")
+	if vh != null and is_instance_valid(vh) and (vh as Node).get("radar") != null:
+		var rad: ViceRadar = (vh as Node).get("radar")
+		fr.call("_update_vice_hud", true)
+		var on_r: int = 0
+		for b4: Dictionary in rad.blips:
+			if String(b4.get("label", "")) != "":
+				on_r += 1
+		_check(on_r == n_lab, "the radar gets the labelled blips (%d)" % on_r)
+		print("  radar: %d start spots within %d m (%s) + 1 lantern, %d labelled blips on the radar" % [sb.size(), int(StorySideActivities.RADAR_M), ", ".join(PackedStringArray(labs.keys())), on_r])
+		rad.queue_redraw()
+	ns._marker("canal", null)
+	_check(ns.blips().is_empty(), "the lantern gone: off the radar")
+	_check(_clean(StoryNightSecrets.RADAR_LABEL), "lantern label plain")
+	for k: String in StorySideActivities.RADAR_LABEL.keys():
+		_check(_clean(String(StorySideActivities.RADAR_LABEL[k])), "kind label plain (%s)" % k)
+
+
 func _process(_d: float) -> bool:
 	frames += 1
 	total += 1
@@ -203,6 +250,7 @@ func _process(_d: float) -> bool:
 				perf_check.append(float(Time.get_ticks_usec() - t1) / 1000.0)
 			_check(sa.near_id == "dua_cau", "near the start: the race is offered (%s)" % sa.near_id)
 			_check(sa.hint_text("dua_cau").begins_with("[E] Đua đêm: ") and _clean(sa.hint_text("dua_cau")), "the hint (%s)" % sa.hint_text("dua_cau"))
+			_radar_part(fr)
 			var ev := InputEventKey.new()
 			ev.physical_keycode = KEY_E
 			ev.pressed = true
