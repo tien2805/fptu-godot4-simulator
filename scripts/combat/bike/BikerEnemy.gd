@@ -76,6 +76,7 @@ var route_ff: bool = false               # opt "route_ff" (the Day 7 deck ring):
 var hold_k: float = 1.0                  # opt "hold_k": its hold in the slot before the wind-up x this (default 1 = as tuned)
 var _ff_tan: Vector2 = Vector2.ZERO      # route_ff: the route's direction at its spot last frame
 const RING_EDGE_M: float = 0.7             # route_ff: its slot stays this far inside the road's edge
+var _route_s: float = -1.0                # a route with heights (BikeRoute.has_y, the Day 7 spiral): its own route distance
 var st: int = St.APPROACH
 var st_t: float = 0.0
 var role: int = Role.BACK
@@ -378,6 +379,7 @@ static func attach_wolf_helmet(b: Node3D, eye_col: Color = BikeCombatData.EYE_CO
 func place(pos: Vector3, face_yaw: float, speed: float) -> void:
 	pos2 = Vector2(pos.x, pos.z)
 	floor_y = pos.y
+	_route_s = -1.0
 	yaw = face_yaw
 	vel = Vector2(-sin(face_yaw), -cos(face_yaw)) * speed
 	_prev_vel = vel
@@ -683,7 +685,7 @@ func tick(delta: float) -> void:
 		return
 	if magnet_t > 0.0 and ch:
 		_tick_magnet(delta)
-	_floor_ray(BikeCombatData.RAY_EVERY)
+	_floor_tick()
 	_taunts(delta)
 	if stick:
 		_stick_pose(delta)
@@ -1129,6 +1131,18 @@ func _stick_pose(_d: float) -> void:
 		rx = lerpf(0.75, 0.0, k)
 		tilt = lerpf(-0.45, 1.45, k)
 	stick.rotation = Vector3(rx, 0.0, -px * tilt)
+
+
+## Its floor while riding: a ray every RAY_EVERY frames; on a route with heights (BikeRoute.has_y: the Day 7 spiral deck)
+## the route's own height at its spot every frame instead (no lag up the ramps, never the lap below or the ground under
+## the core drum). Day 2 routes have no heights: the ray as before.
+func _floor_tick() -> void:
+	if ch != null and ch.route != null and ch.route.has_y() and ch.s_p >= 0.0:
+		var pr: Vector2 = ch.route.project(pos2, _route_s if _route_s >= 0.0 else ch.s_p, 30.0)
+		_route_s = pr.x
+		floor_y = ch.route.height(pr.x)
+		return
+	_floor_ray(BikeCombatData.RAY_EVERY)
 
 
 func _floor_ray(every: int) -> void:

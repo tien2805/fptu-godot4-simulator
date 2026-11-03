@@ -114,11 +114,14 @@ var _stall_rammed: bool = false
 ## T9: the joust's numbers (MissionForklift passes opt "joust"): longer stalls and forks-up window, harder hits on
 ## Thường; without it the GunData numbers (the plain boss fight, test_gunfight).
 var joust: bool = false
+## A side / back ram's share of his bar (opt "ram_frac", default RAM_FRAC; w5-day7: the tower's warehouse, no crane there).
+var ram_frac: float = RAM_FRAC
 var _spin_dir: float = 1.0
 
 
 ## opts: "hp", "body" (CharacterBuilder opts over GunData.ALEX_LOOK), "body_fn" (Callable(look) -> rigged Node3D),
-## "ai" (false = HOLD until force_attack), "seed". Builds the forklift and Alexander (before add_child).
+## "ai" (false = HOLD until force_attack), "seed", "ram_frac" (a ram's share of the bar, default RAM_FRAC). Builds the
+## forklift and Alexander (before add_child).
 func setup(opts: Dictionary = {}) -> void:
 	_rng.seed = int(opts.get("seed", 3))
 	max_hp = float(opts.get("hp", GunData.BOSS_HP))
@@ -126,6 +129,7 @@ func setup(opts: Dictionary = {}) -> void:
 	ai = bool(opts.get("ai", true))
 	crate_dwell = float(opts.get("crate_dwell", Difficulty.pick(8.0, 10.0)))
 	joust = bool(opts.get("joust", false))
+	ram_frac = float(opts.get("ram_frac", RAM_FRAC))
 	for i: int in GunData.NAME_AT.size():
 		_name_used.append(false)
 	forklift = Forklift.new()
@@ -302,7 +306,7 @@ func take_ram(dir: Vector3, speed: float) -> String:
 	st_len = recover_s(false)
 	_enter(St.RECOVER)
 	_stall_rammed = true     # one ram per stall: no stun-lock
-	apply_damage(max_hp * float(Difficulty.pick(RAM_FRAC, RAM_FRAC * 1.2)))
+	apply_damage(max_hp * float(Difficulty.pick(ram_frac, ram_frac * 1.2)))
 	return "hit"
 
 

@@ -10,6 +10,9 @@
 # tests/test_lair_perf.gd: from the physics_frame / process_frame signal to a tail node that runs after every other
 # _physics_process / _process, the phase-change frame dropped). Also: no GPUParticles3D, Engine.time_scale back at 1.0.
 # Prints the numbers for the plan. Run on AC power (Get-CimInstance BatteryStatus PowerOnline).
+# w5-day7 T6: then the parking deck (MissionTowerParking on the spiral deck: the road mesh, the lamps lit round the camera,
+# the riders' floors from the route's heights every frame), its wave 1 riding round the bike (god mode, ridden on the
+# lane's centre) for one more window: the chase's cost against the same idle baseline, and the scene's whole script time.
 # Run:  godot --headless --path . --script tests/test_tower_perf.gd
 extends SceneTree
 
@@ -37,6 +40,7 @@ var phase: String = "boot"
 var t0: int = 0
 var tw: StoryTower
 var mg: MissionBossGuns
+var mp: MissionTowerParking
 var sd: Node
 var timing: bool = false
 var _pt0: int = 0
@@ -221,11 +225,83 @@ func _on_physics() -> void:
 			var r2: Array = _end_window()
 			res["base"] = r2[0]
 			res["pbase"] = r2[1]
+			_next("deck_start")
+		"deck_start":
+			if sd:
+				(sd.get("flags") as Dictionary)[MissionTowerParking.CARD_FLAG] = true   # Sói Xám's card seen
+			_check(tw.start_mission(StoryMissions.beat("d7_parking")), "the parking chase starts in the tower scene")
+			mp = tw.mission_node as MissionTowerParking
+			if mp == null:
+				_report()
+				return
+			for c: Dictionary in mp.done.get_connections():
+				mp.done.disconnect(c["callable"])
+			for c2: Dictionary in mp.failed.get_connections():
+				mp.failed.disconnect(c2["callable"])
+			_next("deck")
+		"deck":
+			# the window opens once wave 1 rides round the bike (its preview cut over)
+			var ch: BikeChase = mp.chase
+			if ch:
+				ch.combat.god = true
+				_ride(ch)
+			if (ch == null or t < 240 or _riding(ch) < 3 or mp.beat_fx.busy()) and t < 1800:
+				return
+			peak["deck_riding0"] = _riding(ch)
+			_check(ch != null and ch.state == "running" and tw.level.current_floor == "parking", "the chase runs on the deck (%s / %s)" % [ch.state if ch else "none", tw.level.current_floor])
+			_check(_riding(ch) >= 3, "wave 1 rides round the bike (%d)" % _riding(ch))
+			print("  deck: s_p %.0f at %.1f m/s, %d riding, wave %d, lamps lit %d-%d" % [ch.s_p, ch.p_vel.length(), _riding(ch), ch.wave, tw.level.deck_lit_lo, tw.level.deck_lit_hi])
+			_start_window()
+			_next("deck_window")
+		"deck_window":
+			_ride(mp.chase)
+			if t < WINDOW:
+				return
+			var r3: Array = _end_window()
+			res["deck"] = r3[0]
+			res["pdeck"] = r3[1]
+			peak["deck_riding"] = _riding(mp.chase)
+			_check(mp.state == "running" and mp.chase.state == "running", "the chase still runs after the window (%s / %s)" % [mp.state, mp.chase.state])
+			_check(tw.find_children("*", "GPUParticles3D", true, false).is_empty(), "no GPUParticles3D on the deck")
+			for a: String in ["gas", "brake", "steer_left", "steer_right"]:
+				Input.action_release(a)
+			tw._free_mission()
+			mp = null
 			_next("end")
 		"end":
 			if t < 30:
 				return
 			_report()
+
+
+## Wave riders still riding.
+func _riding(ch: BikeChase) -> int:
+	var n: int = 0
+	if ch == null:
+		return 0
+	for b: Variant in ch.bikers:
+		if is_instance_valid(b) and (b as BikerEnemy).riding() and not (b as BikerEnemy).gone:
+			n += 1
+	return n
+
+
+## Rides the bike round the deck (gas, steering at the lane's centre ahead), as test_tower_level's _ride.
+func _ride(ch: BikeChase) -> void:
+	if ch == null or ch.route == null or ch.bike == null or ch.s_p < 0.0:
+		return
+	var tgt: Vector2 = ch.route.world(clampf(ch.s_p + 9.0 + absf(ch.bike.current_speed_ms) * 0.35, 0.0, ch.route.length), 0.0)
+	var to: Vector2 = tgt - ch.p_pos
+	var steer: float = clampf(wrapf(atan2(-to.x, -to.y) - ch.bike.rotation.y, -PI, PI) * 3.0, -1.0, 1.0)
+	Input.action_press("gas")
+	if steer > 0.02:
+		Input.action_press("steer_left", steer)
+		Input.action_release("steer_right")
+	elif steer < -0.02:
+		Input.action_press("steer_right", -steer)
+		Input.action_release("steer_left")
+	else:
+		Input.action_release("steer_left")
+		Input.action_release("steer_right")
 
 
 func _report() -> void:
@@ -244,6 +320,23 @@ func _report() -> void:
 	_check(cost < GATE_MS and trim < GATE_MS, "the fight < 3 ms per physics frame (%.2f / %.2f)" % [cost, trim])
 	_check(pcost < GATE_MS and ptrim < GATE_MS, "the fight < 3 ms per process frame (%.2f / %.2f)" % [pcost, ptrim])
 	_check(abs_med < GATE_MS and abs_trim < GATE_MS, "the tower scene < 3 ms per frame, whole (%.2f / %.2f)" % [abs_med, abs_trim])
+	var dcost: float = 99.0
+	var dtrim: float = 99.0
+	var dpcost: float = 99.0
+	var dptrim: float = 99.0
+	var dabs_med: float = 99.0
+	var dabs_trim: float = 99.0
+	if res.has("deck"):
+		dcost = (float(res["deck"][0]) - float(res["base"][0])) / 1000.0
+		dtrim = (float(res["deck"][1]) - float(res["base"][1])) / 1000.0
+		dpcost = (float(res["pdeck"][0]) - float(res["pbase"][0])) / 1000.0
+		dptrim = (float(res["pdeck"][1]) - float(res["pbase"][1])) / 1000.0
+		dabs_med = (float(res["deck"][0]) + float(res["pdeck"][0])) / 1000.0
+		dabs_trim = (float(res["deck"][1]) + float(res["pdeck"][1])) / 1000.0
+		print("  parking deck: %d -> %d riding; physics %.2f ms median, %.2f ms trimmed; process %.2f / %.2f ms; whole %.2f / %.2f ms" % [int(peak.get("deck_riding0", 0)),
+			int(peak.get("deck_riding", 0)), dcost, dtrim, dpcost, dptrim, dabs_med, dabs_trim])
+	_check(dcost < GATE_MS and dtrim < GATE_MS and dpcost < GATE_MS and dptrim < GATE_MS, "the deck chase < 3 ms per physics / process frame (%.2f / %.2f, %.2f / %.2f)" % [dcost, dtrim, dpcost, dptrim])
+	_check(dabs_med < GATE_MS and dabs_trim < GATE_MS, "the tower scene with the deck chase < 3 ms per frame, whole (%.2f / %.2f)" % [dabs_med, dabs_trim])
 	_check(is_equal_approx(Engine.time_scale, 1.0), "Engine.time_scale is 1.0 (%.2f)" % Engine.time_scale)
 	StoryTower.test_opts = {}
 	StoryRankCard.skip_all = DisplayServer.get_name() == "headless"
@@ -251,7 +344,7 @@ func _report() -> void:
 		sd.set("save_path", "user://story_save.cfg")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))
 	if fails.is_empty():
-		print("SUCCESS: TOWER PERFORMANCE (boss fight %.2f / %.2f ms physics, %.2f / %.2f ms process; tower scene %.2f / %.2f ms; median / trimmed < 3 ms)" % [cost, trim, pcost, ptrim, abs_med, abs_trim])
+		print("SUCCESS: TOWER PERFORMANCE (boss fight %.2f / %.2f ms physics, %.2f / %.2f ms process; tower scene %.2f / %.2f ms; deck chase %.2f / %.2f ms whole; median / trimmed < 3 ms)" % [cost, trim, pcost, ptrim, abs_med, abs_trim, dabs_med, dabs_trim])
 		quit(0)
 	else:
 		print("FAILED: %d issues" % fails.size())

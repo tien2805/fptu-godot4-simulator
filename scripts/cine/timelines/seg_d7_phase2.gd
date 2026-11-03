@@ -5,6 +5,8 @@
 # Phase C fights through CineFightC (tests/test_cine_d7_phase2.gd on tests/support/cine_fight.gd).
 # Improvised weapons: the blackout flashlight, a wall speaker that fell in the dark, an antique vase off a plinth.
 #   0.0  standoff: the protagonist still holds the flashlight; Lọ: "Có điện thì sao? Tụi bay, xử lý nó!"
+#            (w5-day7 T3, the Q1 helpers as Days 2-5 use them: the wide S1, then a dutch angle on Lọ for his line at 0.75,
+#            a two-shot of the two into the opener at 1.45)
 #   1.7      Lọ runs in and throws a hook: the protagonist sways out of it (normal speed)
 #   2.6  H1  the flashlight, swung like a straight right, into Lọ's face (slow motion: clonk)            he reels away
 #   3.9      the sheep-masked guard's straight right on the protagonist's jaw (normal speed, punch-in)
@@ -19,7 +21,8 @@
 #  15.0  H5  finisher: an uppercut sends Lọ flying back into a plinth, its vase bursts, one long slow-motion swell to 22.000;
 #            the fox runs off
 #  20.9     joke: the fox, running: "Lương có năm triệu thôi mà!"
-#  22.0-25.0 tail at 1x: Lọ from the floor: "...Gọi trực thăng. Lên sân thượng!"
+#  22.0-25.0 tail at 1x: Lọ from the floor: "...Gọi trực thăng. Lên sân thượng!" (the wide S14, then a push-in on him
+#            down under the plinth at 23.1)
 # Staged in the tower: LairTower.cine_xf moves this stage to the hall's (0.4, 0, -0.75) so the surface plinth stands on the
 # hall's plinth at (3, 0) and the spare one on (-3, 0) (hide_for_cine hides those two real plinths while it plays); the
 # other real plinths, the speakers, the breakers and the sign are the hall's own (drop_set). For XEM LẠI PHIM the carried
@@ -38,6 +41,13 @@ const VASE_GRAB := Vector3(2.6, CinePropsD7.PLINTH_H, -0.85)
 ## and spare plinth stand in for.
 const SEED_SURFACE: int = 6
 const SEED_SPARE: int = 5
+## The helper shots (real starts) and their framing (tests/test_d7_cines.gd frames them at their start, middle and end).
+const DUTCH_R: float = 0.75
+const DUTCH: Dictionary = {"roll": -13.0, "side_deg": 30.0, "dist": 2.8, "push": 0.12}
+const TWO_R: float = 1.45
+const TWO: Dictionary = {"side": 1.0, "dist": 3.4, "look_y": 1.2, "height": 1.5, "fov": 44.0}
+const PUSH_R: float = 23.1
+const PUSH: Dictionary = {"from": 4.4, "to": 3.0, "side_deg": 40.0, "height": 1.9, "look_y": 0.45, "fov": 42.0}
 
 
 func _configure() -> void:
@@ -127,3 +137,9 @@ func _extra() -> void:
 	fx_at(sc, "debris", CRATES + Vector3(0.0, CinePropsD7.PLINTH_H + 0.3, 0.0), {"power": 1.0, "dir": Vector3(-0.3, 0.8, -0.3)})
 	sfx_at(a1, "whoosh_down", -4.0)
 	joke(20.9, "the fox guard quits mid-fight: the pay is only five million")
+	# w5-day7 T3, the Q1 shot helpers (as the Days 2-5 cines): a dutch angle on Lọ's opening line, a two-shot of the two into
+	# the opener, a push-in on him from the floor for the tail line; the fight's own S1 .. S14 stay as they were around them
+	dutch_shot("D1", _sr(DUTCH_R), "a", DUTCH)
+	two_shot("D2", _sr(TWO_R), "hero", "a", TWO)
+	push_in("D3", _sr(PUSH_R), "a", PUSH)
+	shots.sort_custom(func(x: Dictionary, y: Dictionary) -> bool: return float(x["s"]) < float(y["s"]))

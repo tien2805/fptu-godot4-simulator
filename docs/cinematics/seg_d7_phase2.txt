@@ -12,6 +12,8 @@ H5   finisher    15.000      15.200       14.350     22.000   0.25   11.051  upp
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  dolly     wide in the lit vase gallery: the protagonist with the flashlight, Lọ in his white suit, three masked guards
+SHOT D1      0.750  dutch     dutch a
+SHOT D2      1.450  two_shot  two-shot hero + a
 SHOT S2      2.600  orbit     slow-motion close orbit: the flashlight into Lọ's face
 SHOT S3      3.600  track     handheld over b's shoulder: the cross on the jaw
 SHOT S4      4.400  static    low and tight: the fallen speaker snatched off the floor
@@ -25,6 +27,7 @@ SHOT S11    14.500  orbit     low slow orbit: the uppercut, the boss lifts off
 SHOT S12    17.600  static    slow motion: Lọ into a plinth, its vase bursts
 SHOT S13    19.600  dolly     slow push: the fox runs for it
 SHOT S14    22.200  dolly     tail wide: the lit gallery, guards down, Lọ under the plinth
+SHOT D3     23.100  push_in   push-in a
 #
 # Subtitles (real start - end, speaker: line)
 SUB    0.300 -  2.500  Lùm Văn Lọ: Có điện thì sao? Tụi bay, xử lý nó!

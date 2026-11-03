@@ -2,7 +2,9 @@
 # Headless test of the Lọ Academy tower's floors (plan 2026-11-01-w4-day7.md T3):
 #   A. the level alone: seven floor cells side by side, show_floor shows one; every mission point of every task stands on
 #      its own floor (a down ray finds the slab under it), inside its cell, not inside a solid; the mannequin patrols are
-#      walkable legs; the parking ring's lane is clear of the core and the parapet;
+#      walkable legs; the parking spiral (w5-day7 T2): on every lap the lane is clear of the core and the parapet, paved at
+#      deck_height, the lap above as its ceiling (head room), the parapet at knee height; route3 = the road's heights,
+#      kept by BikeRoute (keep_y), its slope gentle (<= 10 %) and every level one LEVEL_H above the last;
 #   B. the laser rules: every lethal beam is telegraphed >= 0.5 s (a blink wall's dim warn phase right before every "on",
 #      a sweep's ghost beam running TELE_S ahead of it), and every row of beams leaves a way through at some time;
 #   C. the floors in the real tower (StoryTower from d7_parking, each mission finished in turn): the findability helper of
@@ -87,6 +89,14 @@ func _step_card(mn: Object) -> void:
 	while mn.get("card") != null and n < 600:
 		(mn.get("card") as StoryVillainCard).step(DT)
 		n += 1
+
+
+## w5-day7: the floor's opening beat is over (no director cut running, the villain card stepped through).
+func _beat_over(mn: Object) -> bool:
+	_step_card(mn)
+	var cd: CameraDirector = CameraDirector.live()
+	var bf: D7Beat = mn.get("beat_fx") as D7Beat
+	return not (cd != null and cd.cutting()) and (bf == null or not bf.busy())
 
 
 func _fail_shown(what: String, cap: int = 90) -> bool:
@@ -208,16 +218,61 @@ func _process(_d: float) -> bool:
 							blocked.append("patrol %d leg %d" % [pi_, i])
 				pi_ += 1
 			_check(blocked.is_empty(), "every showroom patrol leg is walkable %s" % str(blocked))
-			# the parking ring: the lane clear of the core and the parapet, on the slab
-			var ring: PackedVector2Array = lv.route(1)
-			var lane_ok: bool = ring.size() >= 36
-			for k2: int in range(0, ring.size(), 3):
-				var q: Vector3 = Vector3(ring[k2].x, 0.0, ring[k2].y)
-				for side: float in [-LairTower.RING_R + LairTower.RING_IN + 1.0, 0.0, LairTower.RING_OUT - LairTower.RING_R - 1.0]:
-					var o: Vector3 = lv.floor_xf("parking").origin
-					var rp: Vector3 = o + ((q - o) * Vector3(1.0, 0.0, 1.0)).normalized() * (LairTower.RING_R + side)
-					lane_ok = lane_ok and not _solid_at(space, rp + Vector3(0.0, 0.7, 0.0)) and absf(_floor_y(space, rp)) < 0.15
-			_check(lane_ok, "the ring lane (%.0f..%.0f m) is clear and paved" % [LairTower.RING_IN + 1.0, LairTower.RING_OUT - 1.0])
+			# the parking spiral (w5-day7 T2): every lap's lane clear of the core and the parapet, paved at deck_height, the lap
+			# above as its ceiling with head room, the parapet at knee height
+			var o: Vector3 = lv.floor_xf("parking").origin
+			var bad: Array[String] = []
+			var samples: int = 0
+			for k2: int in LairTower.DECK_LAPS:
+				for st: int in 12:
+					var a: float = TAU * float(k2) + TAU * float(st) / 12.0 + 0.05
+					var h: float = LairTower.deck_height(a)
+					for r: float in [LairTower.RING_IN + 1.0, LairTower.RING_R, LairTower.RING_OUT - 1.0]:
+						var rp: Vector3 = o + Vector3(cos(a) * r, h, sin(a) * r)
+						samples += 1
+						if _solid_at(space, rp + Vector3(0.0, 0.7, 0.0)) or absf(_floor_y(space, rp) - rp.y) > 0.15:
+							bad.append("lap %d %.0f deg r %.0f: floor %.2f want %.2f" % [k2, rad_to_deg(fmod(a, TAU)), r, _floor_y(space, rp), rp.y])
+						elif not _clear(space, rp + Vector3(0.0, 0.3, 0.0), rp + Vector3(0.0, 3.6, 0.0)):
+							bad.append("lap %d %.0f deg r %.0f: no head room" % [k2, rad_to_deg(fmod(a, TAU)), r])
+						elif k2 < LairTower.DECK_LAPS - 1 and _clear(space, rp + Vector3(0.0, 0.3, 0.0), rp + Vector3(0.0, LairTower.LEVEL_H, 0.0)):
+							bad.append("lap %d %.0f deg r %.0f: no ceiling" % [k2, rad_to_deg(fmod(a, TAU)), r])
+					var pin: Vector3 = o + Vector3(cos(a) * (LairTower.RING_OUT - 1.0), h + 0.6, sin(a) * (LairTower.RING_OUT - 1.0))
+					var pout: Vector3 = o + Vector3(cos(a) * (LairTower.SLAB_OUT + 0.5), h + 0.6, sin(a) * (LairTower.SLAB_OUT + 0.5))
+					if _clear(space, pin, pout):
+						bad.append("lap %d %.0f deg: no parapet" % [k2, rad_to_deg(fmod(a, TAU))])
+			_check(bad.is_empty() and samples == LairTower.DECK_LAPS * 36, "the spiral lane (%.0f..%.0f m) on all %d laps: clear, paved at its height, a ceiling with head room, the parapet %s" % [LairTower.RING_IN + 1.0, LairTower.RING_OUT - 1.0, LairTower.DECK_LAPS, str(bad.slice(0, 4))])
+			var r3: PackedVector3Array = lv.route3(LairTower.DECK_LAPS)
+			var br: BikeRoute = BikeRoute.from_points(r3, MissionTowerParking.HALF_W, true)
+			var off_road: int = 0
+			var max_slope: float = 0.0
+			for i3: int in r3.size():
+				if i3 % 4 == 0 and absf(_floor_y(space, r3[i3]) - r3[i3].y) > 0.05:
+					off_road += 1
+				if i3 > 0:
+					max_slope = maxf(max_slope, absf(r3[i3].y - r3[i3 - 1].y) / Vector2(r3[i3].x - r3[i3 - 1].x, r3[i3].z - r3[i3 - 1].z).length())
+			var hs_ok: bool = br.has_y() and absf(br.height(0.0) - r3[0].y) < 0.01 and absf(br.height(br.length) - r3[r3.size() - 1].y) < 0.01
+			var mid_s: float = br.length * 0.5 + 3.0
+			var mid_p: Vector2 = br.point(mid_s)
+			hs_ok = hs_ok and absf(br.height(mid_s) - _floor_y(space, Vector3(mid_p.x, br.height(mid_s), mid_p.y))) < 0.05
+			_check(off_road == 0 and hs_ok and max_slope <= 0.1 and absf(r3[r3.size() - 1].y - r3[0].y - LairTower.LEVEL_H * LairTower.DECK_LAPS) < 0.01,
+				"route3 rides the road (%d off), BikeRoute keeps its heights, slope %.1f %% at most, %d levels of %.1f m" % [off_road, max_slope * 100.0, LairTower.DECK_LAPS, LairTower.LEVEL_H])
+			_check(LairTower.level_name(0) == "HẦM B3" and LairTower.level_name(3) == "TẦNG TRỆT" and LairTower.level_name(5) == "TẦNG 2" and lv.deck_signs.size() == LairTower.DECK_LAPS,
+				"the levels are signed (HẦM B3 .. TẦNG TRỆT .. TẦNG %d)" % (LairTower.DECK_LAPS - 1 - LairTower.BASEMENT_LAPS))
+			# the lamps: only a few lit, round the camera
+			lv.show_floor("parking")
+			var cam := Camera3D.new()
+			root.add_child(cam)
+			cam.global_position = o + Vector3(LairTower.RING_R, LairTower.LEVEL_H * 5.0 + 1.75, 0.5)
+			cam.make_current()
+			lv.tick(DT)
+			var lit_n: int = 0
+			var near_ok: bool = true
+			for i4: int in lv.deck_lamps.size():
+				if lv.deck_lamps[i4].visible:
+					lit_n += 1
+					near_ok = near_ok and absf(lv.deck_lamps[i4].global_position.y - cam.global_position.y) < LairTower.LEVEL_H * 1.2
+			_check(lit_n > 0 and lit_n <= LairTower.DECK_LIT_BEHIND + LairTower.DECK_LIT_AHEAD and near_ok, "the deck lamps: %d lit round the camera's level (of %d)" % [lit_n, lv.deck_lamps.size()])
+			cam.queue_free()
 			_next(2)
 		# ===== B. the laser rules =====
 		2:
@@ -340,7 +395,8 @@ func _process(_d: float) -> bool:
 			if m == null:
 				return false
 			var mf: MissionTowerForklift = m
-			_step_card(mf)
+			if not _beat_over(mf):
+				return false
 			var tracked: Dictionary = {}
 			for it: Dictionary in mf.markers._items:
 				tracked[String(it["label"])] = String(it["kind"])
@@ -352,8 +408,10 @@ func _process(_d: float) -> bool:
 			if m == null:
 				return false
 			var mk: MissionTowerKatana = m
-			_step_card(mk)
-			if frames < 4:
+			if not _beat_over(mk):
+				return false
+			mark["b6"] = int(mark.get("b6", 0)) + 1
+			if int(mark["b6"]) < 4:
 				return false
 			_check(mk.guide != null and mk.guide.extra == mk.duel.boss, "servers: the guide tracks Za Mẫn")
 			mk.finish({})
@@ -363,7 +421,7 @@ func _process(_d: float) -> bool:
 			if m == null:
 				return false
 			var ms: MissionTowerStealth = m
-			if frames < 4:
+			if frames < 4 or not _beat_over(ms):
 				return false
 			ms.guide.refresh()
 			_check(ms.guide.fight == ms.fight and is_equal_approx(ms.guide.near_m, 9.0) and ms.guide.goal_mode != "", "showroom: the guide watches the patrols and shows the lift (%s)" % ms.guide.goal_mode)
@@ -396,6 +454,8 @@ func _process(_d: float) -> bool:
 			if m == null:
 				return false
 			var ml: MissionTowerLasers = m
+			if not _beat_over(ml):
+				return false
 			ml.guide.refresh()
 			_check(ml.guide.goal_mode != "", "lasers: the door is marked (%s)" % ml.guide.goal_mode)
 			var sweeps: int = 0
@@ -433,7 +493,8 @@ func _process(_d: float) -> bool:
 					break
 			var d: Dictionary = ml.defs[bi]
 			if not mark.has("in_blink"):
-				if MissionTowerLasers.beam_state(d, ml.t) == "off" and MissionTowerLasers.beam_state(d, ml.t + MissionTowerLasers.TELE_S + 0.2) == "off":
+				# (in the off part with room to spare: Thường's first wall is off ~0.6 s of its 3.2, w5-day7 T4)
+				if MissionTowerLasers.beam_state(d, ml.t) == "off" and MissionTowerLasers.beam_state(d, ml.t + 0.3) == "off":
 					mark["in_blink"] = true
 					var mid: Vector3 = ((d["a"] as Vector3) + (d["b"] as Vector3)) * 0.5
 					tw.player.teleport(mid, 0.0)
@@ -577,7 +638,7 @@ func _end() -> bool:
 	sd.call("reset_state")
 	sd.set("save_path", "user://story_save.cfg")
 	if fails.is_empty():
-		print("✅ SUCCESS: TOWER LEVEL (floors and points on the floor, walkable patrols, the ring lane, laser telegraphs and rows, every floor's markers, static / blink / sweep trips, the door)")
+		print("✅ SUCCESS: TOWER LEVEL (floors and points on the floor, walkable patrols, the spiral deck, laser telegraphs and rows, every floor's markers, static / blink / sweep trips, the door)")
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())

@@ -4,7 +4,8 @@
 # and finds the player with project(p, s_hint), which only searches a window around the last s so two close parallel
 # legs never swap. nguyen_xien(md) builds the default Day 2 route from the real map data by road name; bridge_s is the
 # route distance of the Rạch Hầm bridge's middle (find_bridge_s for any route; -1 = not on it). turn_deg / max_turn measure
-# the real turns (the Day 2 drift zones).
+# the real turns (the Day 2 drift zones). Optional heights (from_points keep_y: a route that climbs, the Day 7 spiral deck):
+# has_y(), height(s) (the road's height at s); without them (Day 2) nothing changes.
 class_name BikeRoute
 extends RefCounted
 
@@ -17,19 +18,25 @@ const BRIDGE_MAX_D: float = 8.0
 
 var pts := PackedVector2Array()
 var cum := PackedFloat32Array()
+## The road's height at each point (keep_y; empty = no heights).
+var ys := PackedFloat32Array()
 var length: float = 0.0
 var half_width: float = BikeCombatData.ROAD_HALF
 var bridge_s: float = -1.0
 
 
 ## Route from points (Vector2(x, z), Vector3 or [x, z] arrays), resampled to <= RESAMPLE_M segments. Duplicates dropped.
-static func from_points(points: Variant, half_w: float = BikeCombatData.ROAD_HALF) -> BikeRoute:
+## keep_y: a PackedVector3Array's heights are kept (height(s)).
+static func from_points(points: Variant, half_w: float = BikeCombatData.ROAD_HALF, keep_y: bool = false) -> BikeRoute:
 	var raw := PackedVector2Array()
+	var raw_y := PackedFloat32Array()
 	if points is PackedVector2Array:
 		raw = points
 	elif points is PackedVector3Array:
 		for p3: Vector3 in points:
 			raw.append(Vector2(p3.x, p3.z))
+			if keep_y:
+				raw_y.append(p3.y)
 	elif points is Array:
 		for p: Variant in points:
 			if p is Vector2:
@@ -40,9 +47,12 @@ static func from_points(points: Variant, half_w: float = BikeCombatData.ROAD_HAL
 				raw.append(Vector2(float(p[0]), float(p[1])))
 	var r := BikeRoute.new()
 	r.half_width = half_w
+	var with_y: bool = raw_y.size() == raw.size() and not raw_y.is_empty()
 	for i: int in raw.size():
 		if r.pts.is_empty():
 			r.pts.append(raw[i])
+			if with_y:
+				r.ys.append(raw_y[i])
 			continue
 		var a: Vector2 = r.pts[r.pts.size() - 1]
 		var b: Vector2 = raw[i]
@@ -50,8 +60,11 @@ static func from_points(points: Variant, half_w: float = BikeCombatData.ROAD_HAL
 		if dist < 0.05:
 			continue
 		var n: int = maxi(1, ceili(dist / RESAMPLE_M))
+		var ya: float = r.ys[r.ys.size() - 1] if with_y else 0.0
 		for k: int in range(1, n + 1):
 			r.pts.append(a.lerp(b, float(k) / float(n)))
+			if with_y:
+				r.ys.append(lerpf(ya, raw_y[i], float(k) / float(n)))
 	r.cum.resize(r.pts.size())
 	for i: int in r.pts.size():
 		r.cum[i] = 0.0 if i == 0 else r.cum[i - 1] + r.pts[i - 1].distance_to(r.pts[i])
@@ -61,6 +74,20 @@ static func from_points(points: Variant, half_w: float = BikeCombatData.ROAD_HAL
 
 func valid() -> bool:
 	return pts.size() >= 2 and length > 1.0
+
+
+## The route carries heights (from_points keep_y).
+func has_y() -> bool:
+	return not ys.is_empty() and ys.size() == pts.size()
+
+
+## The road's height at s (has_y; 0 without heights).
+func height(s: float) -> float:
+	if not has_y():
+		return 0.0
+	var i: int = _seg(s)
+	var span: float = maxf(cum[i + 1] - cum[i], 1e-4)
+	return lerpf(ys[i], ys[i + 1], clampf((s - cum[i]) / span, 0.0, 1.0))
 
 
 ## Default Day 2 route: Nguyễn Xiển northbound from the south end of its dual carriageway, then the BE6 -> FPTU route from
@@ -170,7 +197,8 @@ func world(s: float, d: float) -> Vector2:
 
 
 ## Closest point of the route to p as Vector2(s, d). s_hint >= 0 searches only segments within `window` metres of it.
-func project(p: Vector2, s_hint: float = -1.0, window: float = WINDOW_M) -> Vector2:
+## y (a route with heights): the height of p counts too, so a route over itself (the spiral deck's laps) finds p's own lap.
+func project(p: Vector2, s_hint: float = -1.0, window: float = WINDOW_M, y: float = NAN) -> Vector2:
 	var i0: int = 0
 	var i1: int = pts.size() - 2
 	if s_hint >= 0.0:
@@ -179,6 +207,7 @@ func project(p: Vector2, s_hint: float = -1.0, window: float = WINDOW_M) -> Vect
 	var best_d2: float = INF
 	var best_s: float = 0.0
 	var best_i: int = i0
+	var use_y: bool = not is_nan(y) and has_y()
 	for i: int in range(i0, i1 + 1):
 		var a: Vector2 = pts[i]
 		var ab: Vector2 = pts[i + 1] - a
@@ -186,6 +215,9 @@ func project(p: Vector2, s_hint: float = -1.0, window: float = WINDOW_M) -> Vect
 		var u: float = clampf((p - a).dot(ab) / l2, 0.0, 1.0)
 		var q: Vector2 = a + ab * u
 		var d2: float = q.distance_squared_to(p)
+		if use_y:
+			var dy: float = lerpf(ys[i], ys[i + 1], u) - y
+			d2 += dy * dy
 		if d2 < best_d2:
 			best_d2 = d2
 			best_s = cum[i] + sqrt(l2) * u
