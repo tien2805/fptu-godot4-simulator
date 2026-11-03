@@ -2,8 +2,10 @@
 # Day 7 floor 2, the warehouse (plan 2026-11-01-w4-day7.md T1 / T3): Alexander ABCXYZ is back on a new forklift (bought on
 # instalments). MissionForklift's joust in LairTower's warehouse: the boss wave (ForkliftBoss, Alexander's StoryCast body),
 # the player's own forklift (PlayerForklift: [F] in / out, rams on his side / back while his forks are up), his tossed
-# crates thrown back; no yard crane here (the warehouse has none). His return card (CastD7 "alexander_back", flag
-# alexander_back_card) once over the first frame. Down = "TOANG!", retry = a fresh boss and both forklifts reset.
+# crates thrown back; no yard crane here (the warehouse has none). Down = "TOANG!", retry = a fresh boss and both forklifts
+# reset.
+# w5-day7 T1, his return beat (D7Beat): on the first attempt a preview cut on Alexander in his seat, then (once: flag
+# alexander_back_card) his return card (CastD7 "alexander_back") over the cut's frozen last frame.
 # points: start (+ start_yaw), boss_at, boss_yaw, fork_at, fork_yaw, ammo, centre, leash.
 class_name MissionTowerForklift
 extends MissionForklift
@@ -11,6 +13,7 @@ extends MissionForklift
 const CARD_FLAG: String = "alexander_back_card"
 
 var card: StoryVillainCard = null
+var beat_fx: D7Beat = null
 
 
 func _start() -> void:
@@ -32,19 +35,13 @@ func _start() -> void:
 	_track_boss()
 	radio("Alexander mua xe nâng mới r e. Lấy con xe nâng đỗ bên trái, F lên xe, húc hông nó lúc nó giơ càng!",
 		"Lên xe nâng [F]. Khi nó SƠ HỞ hoặc giơ càng, húc vào hông.", 6.0)
-	_show_card()
-
-
-func _show_card() -> void:
-	var sd: Node = StoryUtil.director()
-	var flags: Dictionary = sd.get("flags") if sd else {}
-	if bool(flags.get(CARD_FLAG, false)):
-		return
-	flags[CARD_FLAG] = true
-	card = StoryVillainCard.show_for(self, CastD7.villain_data("alexander_back"), CastD7.card_len("alexander_back"))
-	if bool(opts.get("manual_card", false)):
-		card.manual = true
-	card.finished.connect(func() -> void: card = null, CONNECT_ONE_SHOT)
+	beat_fx = D7Beat.new()
+	add_child(beat_fx)
+	beat_fx.card_shown.connect(func(c: StoryVillainCard) -> void: card = c)
+	beat_fx.finished.connect(func() -> void: card = null)
+	var b: ForkliftBoss = fight.boss as ForkliftBoss if fight and fight.boss else null
+	beat_fx.play(b.driver if b and b.driver else b, {"card": "alexander_back", "flag": CARD_FLAG,
+		"manual_card": bool(opts.get("manual_card", false))})
 
 
 func _cleanup() -> void:

@@ -10,9 +10,11 @@
 #                                 dir is also the 0.12 s whip toward it (PlayerBike.cam_whip).
 #   shake(trauma)                 trauma 0..1 adds up (capped at 1) and decays at SHAKE_DECAY per real second; the shake
 #                                 amplitude is trauma squared (smooth noise, so small trauma is almost nothing).
-#   preview_cut(target, secs=0.6) readability rule: a director camera shows the target (a hazard ahead) from the viewer's
-#                                 side, angle picked by an occlusion test, pushing in a little; slow motion CUT_SCALE while
-#                                 it runs; then the previous camera. false when it cannot run (no target, no camera).
+#   preview_cut(target, secs=0.6, opts={}) readability rule: a director camera shows the target (a hazard ahead) from the
+#                                 viewer's side, angle picked by an occlusion test, pushing in a little; slow motion CUT_SCALE
+#                                 while it runs; then the previous camera. false when it cannot run (no target, no camera).
+#                                 opts (low rooms, w5-day7): "dist" (m back, default CUT_DIST), "up" (m above the look point,
+#                                 default CUT_UP).
 #   slowmo_orbit(target, secs=0.5) last-enemy knockouts: slow motion ORBIT_SCALE and an orbit of ORBIT_DEG round the target
 #                                 (the clear side, by occlusion test; from a start spot that sees the target, the radius
 #                                 shrunk toward it when a wall is there; false below ORBIT_R_MIN, the gameplay camera
@@ -213,7 +215,7 @@ func _hand_back() -> void:
 # ---------------------------------------------------------------------------
 # DIRECTOR CUTS
 # ---------------------------------------------------------------------------
-func preview_cut(target: Node3D, secs: float = 0.6) -> bool:
+func preview_cut(target: Node3D, secs: float = 0.6, opts: Dictionary = {}) -> bool:
 	var view: Camera3D = _view()
 	if not _cut_ready(target, view):
 		return false
@@ -221,11 +223,13 @@ func preview_cut(target: Node3D, secs: float = 0.6) -> bool:
 	var away: Vector3 = view.global_position - look
 	away.y = 0.0
 	away = away.normalized() if away.length_squared() > 0.01 else Vector3.BACK
+	var dist: float = float(opts.get("dist", CameraRules.CUT_DIST))
+	var up: float = float(opts.get("up", CameraRules.CUT_UP))
 	var cands: Array[Vector3] = []
 	for deg: float in [0.0, CameraRules.CUT_SIDE_DEG, -CameraRules.CUT_SIDE_DEG]:
 		var d: Vector3 = away.rotated(Vector3.UP, deg_to_rad(deg))
-		cands.append(look + d * CameraRules.CUT_DIST + Vector3.UP * CameraRules.CUT_UP)
-	cands.append(look + away * (CameraRules.CUT_DIST * 0.6) + Vector3.UP * (CameraRules.CUT_UP * 2.0))
+		cands.append(look + d * dist + Vector3.UP * up)
+	cands.append(look + away * (dist * 0.6) + Vector3.UP * (up * 2.0))
 	var i: int = CameraFraming.pick(_space(), cands, _cut_points(target, look), _excl_for(target))
 	_begin_cut("preview", target, view, secs)
 	_cut_off = cands[maxi(i, 0)] - look

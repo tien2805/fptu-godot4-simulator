@@ -89,6 +89,14 @@ func _step_card(mn: Object) -> void:
 		n += 1
 
 
+## w5-day7: the floor's opening beat is over (no director cut running, the villain card stepped through).
+func _beat_over(mn: Object) -> bool:
+	_step_card(mn)
+	var cd: CameraDirector = CameraDirector.live()
+	var bf: D7Beat = mn.get("beat_fx") as D7Beat
+	return not (cd != null and cd.cutting()) and (bf == null or not bf.busy())
+
+
 func _fail_shown(what: String, cap: int = 90) -> bool:
 	if tw.fail_ui and tw.fail_ui.visible:
 		return true
@@ -340,7 +348,8 @@ func _process(_d: float) -> bool:
 			if m == null:
 				return false
 			var mf: MissionTowerForklift = m
-			_step_card(mf)
+			if not _beat_over(mf):
+				return false
 			var tracked: Dictionary = {}
 			for it: Dictionary in mf.markers._items:
 				tracked[String(it["label"])] = String(it["kind"])
@@ -352,8 +361,10 @@ func _process(_d: float) -> bool:
 			if m == null:
 				return false
 			var mk: MissionTowerKatana = m
-			_step_card(mk)
-			if frames < 4:
+			if not _beat_over(mk):
+				return false
+			mark["b6"] = int(mark.get("b6", 0)) + 1
+			if int(mark["b6"]) < 4:
 				return false
 			_check(mk.guide != null and mk.guide.extra == mk.duel.boss, "servers: the guide tracks Za Mẫn")
 			mk.finish({})
@@ -363,7 +374,7 @@ func _process(_d: float) -> bool:
 			if m == null:
 				return false
 			var ms: MissionTowerStealth = m
-			if frames < 4:
+			if frames < 4 or not _beat_over(ms):
 				return false
 			ms.guide.refresh()
 			_check(ms.guide.fight == ms.fight and is_equal_approx(ms.guide.near_m, 9.0) and ms.guide.goal_mode != "", "showroom: the guide watches the patrols and shows the lift (%s)" % ms.guide.goal_mode)
@@ -396,6 +407,8 @@ func _process(_d: float) -> bool:
 			if m == null:
 				return false
 			var ml: MissionTowerLasers = m
+			if not _beat_over(ml):
+				return false
 			ml.guide.refresh()
 			_check(ml.guide.goal_mode != "", "lasers: the door is marked (%s)" % ml.guide.goal_mode)
 			var sweeps: int = 0

@@ -294,6 +294,8 @@ func _process(_d: float) -> bool:
 			if m == null:
 				return false
 			var mf: MissionTowerForklift = m
+			if mf.card == null and frames < 300:
+				return false                          # w5-day7: the card comes after the preview cut on Alexander
 			_check(tw.level.current_floor == "warehouse", "the warehouse floor shows")
 			_check(mf.card != null and String(mf.card.data.get("name", "")) == "Alexander ABCXYZ" and String(mf.card.data.get("nick", "")).begins_with("tái xuất"), "Alexander's return card")
 			_step_card(mf)
@@ -321,6 +323,9 @@ func _process(_d: float) -> bool:
 			if m == null:
 				return false
 			var mk: MissionTowerKatana = m
+			if mk.card == null and frames < 300:
+				_check(mk.duel.state != "running", "Za Mẫn stands staged during the preview cut")
+				return false                          # w5-day7: the card comes after the preview cut on Za Mẫn
 			_check(tw.level.current_floor == "servers", "the server floor shows")
 			_check(mk.card != null and String(mk.card.data.get("name", "")) == "Lê Minh Za Mẫn" and String(mk.card.data.get("nick", "")).contains("49"), "Za Mẫn's return card (katana 49 nghìn)")
 			_check(mk.duel.boss != null and mk.duel.boss.staged and mk.duel.state != "running", "Za Mẫn stands staged during the card")

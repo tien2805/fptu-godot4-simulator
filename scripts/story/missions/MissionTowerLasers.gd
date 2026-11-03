@@ -12,7 +12,10 @@
 # a sweep by its ghost, a static one by simply being there.
 # Static helpers (tests): beam_state(def, t) -> "on" | "warn" | "off", beam_point(def, t), ghost_point(def, t),
 # beam_hits(def, t, p).
-# points: start (+ start_yaw), goal, goal_r, lasers, centre, leash.
+# w5-day7 T1, the readability cuts (D7Beat, once per attempt): points.laser_cuts [[trigger (world z the player passes;
+# INF = at the start), target (world point on the corridor floor)]]: a preview cut on the beams ahead (the first blink wall
+# at the start, the sweeps once past it), each from a spot with room to stop; under the 3.2 m ceiling: CUT_OPTS.
+# points: start (+ start_yaw), goal, goal_r, lasers, laser_cuts, centre, leash.
 class_name MissionTowerLasers
 extends StoryMission
 
@@ -28,6 +31,7 @@ const T_INFO: String = "Hành lang laser: tia nháy là sắp bật"
 const T_PROMPT: String = "Tới cửa phòng bình cổ"
 const T_RAN: String = "Bỏ chạy khỏi hành lang rồi!"
 const RED := Color("#FF2A3A")
+const CUT_OPTS: Dictionary = {"up": 0.75, "dist": 6.0}
 
 var pts: Dictionary = {}
 var defs: Array = []
@@ -41,6 +45,10 @@ var buzzes: int = 0
 var rec: CineReplayRecorder = null
 var replay_wait: float = -1.0
 var guide: BasementGuide = null
+var beat_fx: D7Beat = null
+## The cut targets (markers on the corridor floor) and the cuts done this attempt.
+var cut_marks: Array[Node3D] = []
+var cut_done: Array[bool] = []
 var _acc: float = 0.0
 var _buzz_cd: float = 0.0                 # one buzz for a whole blinking wall
 var _warned: PackedInt32Array = PackedInt32Array()   # per beam: the blink cycle whose telegraph buzzed
@@ -121,6 +129,15 @@ func _start() -> void:
 	guide.setup(self)
 	if pts.has("goal"):
 		guide.set_goal(pts["goal"], "Phòng bình cổ")
+	beat_fx = D7Beat.new()
+	add_child(beat_fx)
+	for c: Array in pts.get("laser_cuts", []):
+		var mk := Node3D.new()
+		mk.name = "CutMark"
+		mk.top_level = true
+		add_child(mk)
+		mk.global_position = c[1]
+		cut_marks.append(mk)
 	_fresh()
 
 
@@ -130,6 +147,8 @@ func _fresh() -> void:
 	_warned.resize(defs.size())
 	_warned.fill(-1)
 	replay_wait = -1.0
+	cut_done.resize(cut_marks.size())
+	cut_done.fill(false)
 	if pts.has("start"):
 		teleport_player(pts["start"], float(pts.get("start_yaw", 0.0)))
 	set_info(T_INFO)
@@ -232,6 +251,7 @@ func _tick(dt: float) -> void:
 	t += dt
 	_buzz_cd -= dt
 	_update_beams()
+	_cuts()
 	_acc += dt
 	if _acc < 1.0 / BEAM_HZ or player == null:
 		return
@@ -246,6 +266,19 @@ func _tick(dt: float) -> void:
 		return
 	if pts.has("goal") and flat(p, pts["goal"]) <= float(pts.get("goal_r", 2.0)):
 		_reach_goal()
+
+
+## The next cut whose trigger the player passed (one at a time; a running cut waits).
+func _cuts() -> void:
+	if player == null or beat_fx == null:
+		return
+	var cs: Array = pts.get("laser_cuts", [])
+	for i: int in mini(cs.size(), cut_done.size()):
+		if cut_done[i] or player.global_position.z > float(cs[i][0]):
+			continue
+		if beat_fx.cut(cut_marks[i], CUT_OPTS) or CameraDirector.live() == null:
+			cut_done[i] = true
+		return
 
 
 ## A lit beam touched: the alarm, "BỊ LỘ".

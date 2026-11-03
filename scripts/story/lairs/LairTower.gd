@@ -85,6 +85,9 @@ const LASER_EXTRA_SWEEP_S: Array = [3.4, 3.0]
 const LASER_EASY_SLOW: float = 1.3
 ## Dễ: a blink wall's lit share of its period (Thường 0.55 / 0.6): ~0.6 s lit in every ~4 s, after the same 0.6 s warn.
 const LASER_EASY_ON: float = 0.15
+## w5-day7 T1, the corridor's preview cuts: [the z the player passes (INF: at the start), the z of the beams shown]: the
+## first blink wall from the lift, the sweep and the diagonal once past that wall (room to stop before them).
+const LASER_CUTS: Array = [[INF, 34.0], [32.5, 26.0]]
 const PLINTH_XS: Array[float] = [-9.0, -3.0, 3.0, 9.0]
 const PLINTH_ZS: Array[float] = [6.0, 0.0, -6.0]
 const SPEAKERS: Array = [[Vector3(-13.75, 3.2, 8.0), PI * 0.5], [Vector3(-13.75, 3.2, -8.0), PI * 0.5],
@@ -314,6 +317,10 @@ func mission_points(task: String) -> Dictionary:
 			d["goal"] = world(f, Vector3(0.0, 0.0, CORR_Z0 + 0.8))
 			d["goal_r"] = 2.0
 			d["lasers"] = laser_defs(f)
+			var lc: Array = []
+			for c: Array in LASER_CUTS:
+				lc.append([float(c[0]), world(f, Vector3(0.0, 0.0, float(c[1])))])
+			d["laser_cuts"] = lc
 			d["leash"] = 70.0
 		"boss_guns":
 			d["start"] = world(f, Vector3(0.0, 0.0, 10.0))

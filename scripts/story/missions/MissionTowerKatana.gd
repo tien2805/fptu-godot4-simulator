@@ -2,8 +2,9 @@
 # Day 7 floor 3, the server floor (plan 2026-11-01-w4-day7.md T1 / T3): Lê Minh Za Mẫn is back with a cheaper katana
 # ("katana 49 nghìn", freeship). MissionDuel's SwordDuel (the player's staff against KatanaBoss) without the sprinklers
 # (no fire on this floor) (his HP x KATANA_HP_K: Day 5's HP after the T5 sloppy-bot runs; 0.75 was too soft; on Thường KATANA_PACE), the QTE finisher
-# at 0 HP as on Day 5, his return card (CastD7 "za_man_back", flag za_man_back_card) once while he stands staged.
-# `won` = done; down = "TOANG!" -> retry() = a fresh Za Mẫn.
+# at 0 HP as on Day 5. `won` = done; down = "TOANG!" -> retry() = a fresh Za Mẫn.
+# w5-day7 T1, his return beat (D7Beat): he stands staged; a preview cut on him (the low server room: CUT_OPTS), then (once:
+# flag za_man_back_card) his return card (CastD7 "za_man_back") over the cut's frozen last frame; the duel starts after it.
 # opts: "points" (start, start_yaw, boss_at, boss_yaw), "manual_card", "seed".
 class_name MissionTowerKatana
 extends StoryMission
@@ -16,11 +17,14 @@ const KATANA_HP_K: float = 1.0
 ## T5 (sim_day7): on Thường he decides faster than on Day 5 (a shorter think; his HP, tells, damage and the phases'
 ## cooldowns stay Day 5's); Dễ keeps Day 5's pace.
 const KATANA_PACE: Dictionary = {"think": Vector2(0.4, 0.9)}
+## The preview cut under the 3.6 m ceiling.
+const CUT_OPTS: Dictionary = {"up": 1.2, "dist": 6.0}
 
 var duel: SwordDuel
 var card: StoryVillainCard = null
 var pts: Dictionary = {}
 var guide: BasementGuide = null
+var beat_fx: D7Beat = null
 
 
 func setup(r: Node3D, b: Dictionary, o: Dictionary = {}) -> void:
@@ -51,20 +55,17 @@ func _start() -> void:
 	guide.hide_fn = func() -> bool: return duel == null or not is_instance_valid(duel) or duel.in_qte or card != null
 	duel.won.connect(_on_won)
 	duel.lost.connect(_on_lost)
-	var sd: Node = StoryUtil.director()
-	var flags: Dictionary = sd.get("flags") if sd else {}
-	if bool(flags.get(CARD_FLAG, false)):
-		duel.start()
-		return
 	duel.prepare()
-	flags[CARD_FLAG] = true
-	card = StoryVillainCard.show_for(self, CastD7.villain_data("za_man_back"), CastD7.card_len("za_man_back"))
-	if bool(opts.get("manual_card", false)):
-		card.manual = true
-	card.finished.connect(func() -> void:
+	beat_fx = D7Beat.new()
+	add_child(beat_fx)
+	beat_fx.card_shown.connect(func(c: StoryVillainCard) -> void: card = c)
+	beat_fx.finished.connect(func() -> void:
 		card = null
-		if state == "running" and duel:
+		if state == "running" and duel and duel.state != "running":
 			duel.start(), CONNECT_ONE_SHOT)
+	var o2: Dictionary = CUT_OPTS.duplicate()
+	o2.merge({"card": "za_man_back", "flag": CARD_FLAG, "manual_card": bool(opts.get("manual_card", false))})
+	beat_fx.play(duel.boss, o2)
 
 
 func _tick(_dt: float) -> void:
