@@ -79,6 +79,15 @@ func _part_a() -> void:
 	Difficulty.set_easy(was_easy)
 	_check(SideTakedown.HP[1] == 1 and SideTakedown.STABILITY[1] == BikeCombatData.STABILITY_MAX and SideTakedown.STABILITY[0] < SideTakedown.STABILITY[1],
 		"takedowns: Dễ one-kick riders and the full stability")
+	# w5-side T5b: the Vovinam tuning by difficulty
+	Difficulty.set_easy(false)
+	var st_n: Dictionary = SideVovinam.stats_for(false)
+	var st_m: Dictionary = SideVovinam.stats_for(true)
+	var hem_n: int = SideVovinam.waves_of("vo_hem")[0].size()
+	Difficulty.set_easy(true)
+	_check(st_n.has("light_dmg") and float(st_m["light_dmg"]) > float(st_n["light_dmg"]) and SideVovinam.stats_for(false).is_empty()
+		and SideVovinam.waves_of("vo_hem")[0].size() < hem_n, "Vovinam: a trained club on Thường, the plain clone and the old waves on Dễ")
+	Difficulty.set_easy(was_easy)
 	var starts: Array[Vector3] = []
 	for rid: String in SideRace.ORDER:
 		var c: DriftCourse = SideRace.route_course(rid)
@@ -489,7 +498,10 @@ func _process(_d: float) -> bool:
 			if vv == null:
 				return _end()
 			vv.auto_tick = false
-			_check(not bool(fr.get("mounted")) and vv.fight != null and vv.total == 3 and bool(sr.busy), "on foot, 3 opponents, the story busy")
+			var n_vo: int = 0
+			for w7: Array in SideVovinam.waves_of("vo_hem"):
+				n_vo += w7.size()
+			_check(not bool(fr.get("mounted")) and vv.fight != null and vv.total == n_vo and bool(sr.busy), "on foot, %d opponents, the story busy" % n_vo)
 			var tr: Node = fr.get("traffic")
 			_check(tr == null or not tr.is_physics_processing(), "the traffic is parked for the fight")
 			_check(_clean(" ".join(PackedStringArray(vv.texts()))), "Vovinam HUD plain")
@@ -511,7 +523,10 @@ func _process(_d: float) -> bool:
 			if frames < 3:
 				return false
 			var last: Array = done_ev[-1] if not done_ev.is_empty() else []
-			_check(not last.is_empty() and String(last[0]) == "vo_hem" and int((last[1] as Dictionary).get("kos", 0)) == 3, "vo_hem won, 3 down (%s)" % str(last))
+			var n_hem: int = 0
+			for w6: Array in SideVovinam.waves_of("vo_hem"):
+				n_hem += w6.size()
+			_check(not last.is_empty() and String(last[0]) == "vo_hem" and int((last[1] as Dictionary).get("kos", 0)) == n_hem, "vo_hem won, %d down (%s)" % [n_hem, str(last)])
 			var tr2: Node = fr.get("traffic")
 			_check(tr2 == null or tr2.is_physics_processing(), "the traffic runs again")
 			_check(not SideRecords.best("vo_hem").is_empty() and not bool(sr.busy), "vo_hem recorded, the story free")
