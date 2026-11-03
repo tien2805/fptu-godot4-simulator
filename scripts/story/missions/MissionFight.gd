@@ -28,6 +28,25 @@ var arena: ArenaDressing
 var escalated: bool = false
 
 
+## W5 sloppy-bot tuning (tests/sim_story_brawls.gd, plan 2026-11-03-w5-complete.md T5), per fight kind:
+## [enemy damage factor Thường, Dễ, enemy HP factor Thường, Dễ]. Only these story brawls read it; the archetypes stay
+## shared (Day 5 / Day 7 duels, the side Vovinam fights).
+const TUNE: Dictionary = {"d1": [0.8, 0.6, 1.0, 0.9], "d4": [0.65, 0.5, 0.9, 0.8], "d2": [1.15, 1.0, 1.3, 1.0]}
+## Per-archetype stat overrides in a fight kind (both difficulties): Dolly's 0.2 s tell, 45 % side-steps and 3-hit chains
+## every 0.5-1.2 s (next to two clones and the food throwers) stalled the sloppy bot at wave 2 of the canteen brawl.
+const TUNE_FOE: Dictionary = {"d4": {"dolly": {"windup": 0.25, "dodge_chance": 0.35, "chain": 2, "cooldown": Vector2(0.8, 1.6)}}}
+
+
+## The spawn opts' "stats" (light / heavy damage scaled) and "hp_scale" for an archetype in this fight kind.
+static func tuned(fight_kind: String, arch: String) -> Dictionary:
+	var t: Array = TUNE.get(fight_kind, [1.0, 1.0, 1.0, 1.0])
+	var a: Dictionary = CombatData.archetype(arch)
+	var k: float = float(Difficulty.pick(t[0], t[1]))
+	var st: Dictionary = {"light_dmg": float(a["light_dmg"]) * k, "heavy_dmg": float(a["heavy_dmg"]) * k}
+	st.merge((TUNE_FOE.get(fight_kind, {}) as Dictionary).get(arch, {}), true)
+	return {"stats": st, "hp_scale": float(Difficulty.pick(t[2], t[3]))}
+
+
 ## Reinforcements of the d1 escalation (Thường 2, Dễ 1).
 static func d1_backup() -> int:
 	return int(Difficulty.pick(2, 1))
@@ -84,9 +103,10 @@ func _ring(list: Array, fwd: Vector3) -> Array:
 		var dir: Vector3 = fwd.rotated(Vector3.UP, a)
 		var at: Vector3 = free_spot(centre + dir * RING_M, 4)
 		var cast_id: String = String(list[i][1])
-		out.append({"archetype": String(list[i][0]), "at": at,
-			"opts": {"label": String(list[i][2]), "body_fn": func(_look: Dictionary) -> Node3D: return StoryCast.build(cast_id),
-				"seed": 100 + i}})
+		var o: Dictionary = {"label": String(list[i][2]), "body_fn": func(_look: Dictionary) -> Node3D: return StoryCast.build(cast_id),
+			"seed": 100 + i}
+		o.merge(tuned(kind, String(list[i][0])))
+		out.append({"archetype": String(list[i][0]), "at": at, "opts": o})
 	return out
 
 

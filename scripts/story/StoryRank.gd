@@ -20,8 +20,9 @@
 # missing from the stats / info, does not apply: its weight goes to the others (the total is renormalised).
 # Score = 100 * sum(w * k) / sum(w); S >= 85, A >= 65, B >= 45, else C.
 # Thresholds: the stake-out, the foot chase, the canteen, the bike chase and the drift race calibrated by T10 (the
-# sloppy-bot harnesses, table in the plan; the bike chase re-calibrated on wave3 after d2fix); the brawls, the corridor,
-# the bridge and the escape have no harness yet (provisional); Days 3 and 5 set on wave3 from sim_day3 / sim_day5 (the
+# sloppy-bot harnesses, table in the plan; the bike chase re-calibrated on wave3 after d2fix); the brawls, the corridor and
+# the bridge set by w5-complete T5 from tests/sim_story_brawls.gd (plan 2026-11-03-w5-complete.md table); the escape ranks
+# the catches only, by design (a Continue can split the run, so no time); Days 3 and 5 set on wave3 from sim_day3 / sim_day5 (the
 # day plans' integration tables); Day 6 from sim_day6 (plan 2026-11-01-w4-day6.md T8; the boat's "dmg" is the hull lost).
 class_name StoryRank
 extends RefCounted
@@ -50,13 +51,13 @@ const MISSIONS: Dictionary = {
 	# Day 1 (T10 calibration)
 	"d1_stakeout": {"time": [30.0, 90.0], "opt": {"key": "seen", "max": 0}},
 	"d1_chase": {"time": [55.0, 110.0], "opt": {"key": "shortcut", "want": true}},
-	"d1_brawl": {"time": [45.0, 120.0], "dmg": [15.0, 70.0]},
-	"d1_corridor": {"time": [70.0, 160.0]},
+	"d1_brawl": {"time": [55.0, 150.0], "dmg": [80.0, 350.0]},   # w5 sim: clean 49-63 s, 90-130 HP; Thường mean 80-93 s, 1.1 fails
+	"d1_corridor": {"time": [35.0, 90.0]},   # w5 sim: the walk takes 30 s at the pace cap (MIN_S); dawdling costs
 	# Day 2
 	"d2_chase": {"time": [100.0, 150.0], "fails": [0.0, 1.5], "ko": [0, 10]},   # re-calibrated on wave3 after d2fix (fewer takedowns)
 	"d2_drift": {"time": [70.0, 160.0], "ko": [2, 8]},
-	"d2_bridge": {"time": [70.0, 170.0]},
-	"d2_duel": {"time": [50.0, 130.0], "dmg": [15.0, 70.0]},
+	"d2_bridge": {"time": [12.0, 40.0]},   # w5 sim: 10-12 s to the bank
+	"d2_duel": {"time": [45.0, 150.0], "dmg": [100.0, 400.0]},   # w5 sim: clean 29-51 s, 40-180 HP; Thường mean 85 s, 1.0 fails
 	# Day 3 (set on wave3 from the sim_day3 re-tune on the merged gun core; table in the day3 plan)
 	"d3_sneak": {"time": [60.0, 180.0], "dmg": [0.0, 200.0], "opt": {"key": "spotted", "want": false}},
 	"d3_gunfight": {"time": [150.0, 350.0], "dmg": [50.0, 400.0], "opt": {"key": "crane", "want": true}},
@@ -64,7 +65,7 @@ const MISSIONS: Dictionary = {
 	"d3_boss": {"time": [80.0, 200.0], "dmg": [80.0, 400.0], "opt": {"key": "crane", "want": true}},
 	# Day 4
 	"d4_canteen": {"time": [35.0, 150.0], "opt": {"key": "wrong", "max": 0}},
-	"d4_brawl": {"time": [45.0, 120.0], "dmg": [15.0, 70.0]},
+	"d4_brawl": {"time": [70.0, 200.0], "dmg": [130.0, 500.0]},   # w5 sim: clean 63-94 s, 120-170 HP; Thường mean 148 s, 2.3 fails
 	"d4_escape": {"fails": [0.0, 4.0]},   # the catches only (no time across a Continue): 0 S, 1 A, 2 B, 3+ C
 	# Day 5 (set on wave3 from the sim_day5 re-tune on the merged gun core; table in the day5 plan)
 	"d5_stealth": {"time": [75.0, 180.0], "dmg": [0.0, 150.0], "opt": {"key": "spotted", "want": false}},

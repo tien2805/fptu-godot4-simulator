@@ -45,10 +45,12 @@ const GALLERY: Array = [
 	["cine_d2_intro", 2, "Anh Duy dò đường Bầy Sói"],
 	["seg_d2_boss", 2, "Sói Xám"],
 	["cine_d2", 2, "Trói Sói Xám"],
+	["night_lift13", 2, "Đêm: Tầng 13"],   # w5-complete: the night secrets (StoryNightSecrets) from the day they open
 	["cine_d3_intro", 3, "Đêm về bến container"],
 	["cine_d3_mannequins", 3, "Container bí ẩn"],
 	["seg_d3_boss", 3, "Xe nâng của Alexander"],
 	["cine_d3", 3, "Tên dài nhất bến"],
+	["night_ghost_boat", 3, "Đêm: Thuyền ma"],
 	["cine_d4_intro", 4, "Nằm vùng căn tin"],
 	["cine_d4_stare", 4, "Giờ đóng cửa"],
 	["seg_d4_brawl", 4, "Bầy cừu"],
