@@ -36,6 +36,8 @@ var done_ev: Array = []
 var fail_ev: Array = []
 var perf_race: Array[float] = []
 var perf_check: Array[float] = []
+var regen0: float = -1.0
+var easy0: bool = false
 var rival_gap_max: float = 0.0
 var rival_lead_max: float = -INF
 var boss_marked: int = 0
@@ -302,6 +304,9 @@ func _process(_d: float) -> bool:
 					ahead = ahead and rr2.s > 0.0 and rr2.racing and rr2.calm
 				_check(ahead and r2.place == r2.racers and r2.texts().has(SideRace.T_PLACE % [r2.racers, r2.racers]),
 					"the rivals start ahead, the player last (%s)" % str(r2.texts()))
+				var trr: Node = fr.get("traffic")
+				_check(trr == null or not trr.is_physics_processing(), "the traffic is parked for a race with rivals")
+				_check(rv2.rivals[0].rival_name_up == rv2.rivals[0].rival_name.to_upper(), "the marker name made once")
 			_drive(r2, 20.0, 6.0, true)
 			_drive(r2, 20.0, 4.0)
 			_check(r2.gate_i >= 1 and r2.drift_s > 5.0, "gates passed (%d), drift seconds (%.1f)" % [r2.gate_i, r2.drift_s])
@@ -324,6 +329,12 @@ func _process(_d: float) -> bool:
 			var pod: String = r2.podium_label.text if r2.podium_label else ""
 			_check(pod.begins_with(SideRace.T_PODIUM) and pod.split("\n").size() == r2.racers + 1 and pod.contains("Mai") and _clean(pod), "the podium lists every racer (%s)" % pod.replace("\n", " | "))
 			_check(String(r2.result["rank"]) == SideRace.capped_rank(SideRace.rank_for(float(r2.result["time"]), SideRace.par(r2.course)), int(r2.result["place"])), "the rank is capped by the place")
+			# review: over the line the result is locked: holding the quit key (or the police) cannot take it away
+			var nf: int = fail_ev.size()
+			sa.quit_held = true
+			sa.advance(StorySideActivities.QUIT_HOLD_S + 0.2)
+			sa.quit_held = false
+			_check(sa.current == r2 and fail_ev.size() == nf and r2.state == "podium", "on the podium the quit key does nothing (%d fails)" % (fail_ev.size() - nf))
 			for i3: int in int(SideRace.PODIUM_S / DT) + 5:
 				if r2.state != "podium":
 					break
@@ -340,6 +351,8 @@ func _process(_d: float) -> bool:
 			var b: Dictionary = SideRecords.best("dua_cau")
 			_check(not b.is_empty() and String(b["rank"]) == String(res.get("rank", "?")), "the best is in the unlock file")
 			_check(sa.current == null and not bool(sr.busy) and r_nitro_back(), "the story is free again, the bike given back")
+			var trr2: Node = fr.get("traffic")
+			_check(trr2 == null or trr2.is_physics_processing(), "the traffic runs again after the race")
 			_check(sa.hint_text("dua_cau").contains("Kỷ lục: Hạng"), "the hint shows the best rank")
 			# give up: start dua_vong, leave the bike
 			_check(sa.start("dua_vong"), "dua_vong starts")
@@ -493,7 +506,12 @@ func _process(_d: float) -> bool:
 			_check(SideVovinam.rank_for(27.0, 3, 80.0) == "S" and SideVovinam.rank_for(27.0, 3, 50.0) == "A" and SideVovinam.rank_for(50.0, 3, 90.0) == "B"
 				and SideVovinam.rank_for(90.0, 3, 90.0) == "C", "Vovinam ranks (time per opponent and HP)")
 			# T5d: a Vovinam street fight, on foot (from the bike), the traffic parked
+			var pcb: Node = fr.get("combat")
+			regen0 = float(pcb.get("regen_delay")) if pcb else -1.0
+			easy0 = Difficulty.easy
+			Difficulty.set_easy(false)            # Thường: the fight sets its own regen delay
 			_check(sa.start("vo_hem"), "vo_hem starts")
+			_check(pcb == null or float(pcb.get("regen_delay")) == SideVovinam.REGEN_DELAY[0], "Thường: the fight's regen delay while it runs")
 			var vv: SideVovinam = sa.current as SideVovinam
 			if vv == null:
 				return _end()
@@ -530,6 +548,7 @@ func _process(_d: float) -> bool:
 			var tr2: Node = fr.get("traffic")
 			_check(tr2 == null or tr2.is_physics_processing(), "the traffic runs again")
 			_check(not SideRecords.best("vo_hem").is_empty() and not bool(sr.busy), "vo_hem recorded, the story free")
+			_check(_regen_back(), "won: the player's regen delay given back (%s)" % str(fr.get("combat").get("regen_delay") if fr.get("combat") else null))
 			# knocked out: given up
 			_check(sa.start("vo_cau"), "vo_cau starts")
 			var v3: SideVovinam = sa.current as SideVovinam
@@ -546,6 +565,8 @@ func _process(_d: float) -> bool:
 			_check(String(fail_ev[-1][0]) == "vo_cau" and String(fail_ev[-1][1]) == "ko" and not bool(sr.busy), "knocked out: vo_cau given up (%s)" % str(fail_ev[-1]))
 			var pc: Node = fr.get("combat")
 			_check(pc == null or not bool(pc.call("is_down")), "the player stands again after the give-up")
+			_check(_regen_back(), "knocked out: the player's regen delay given back")
+			Difficulty.set_easy(easy0)
 			_part_e()
 			fr.queue_free()
 			fr = null
@@ -643,6 +664,9 @@ func _part_e() -> void:
 	sa.advance(StorySideActivities.CHECK_S + 0.01)
 	var ms: float = float(Time.get_ticks_usec() - t0) / 1000.0
 	_check(not SideRewards.pending and bk.rider_node != rider1 and _helmet_col(bk.rider_node) == Color("#1C1D21"), "free again: the waiting pick shows (%s)" % str(_helmet_col(bk.rider_node)))
+	SideRewards.pending = true    # a stale wait (picked while busy, then a new world): the next rider built clears it
+	bk.call("_rider_opts")
+	_check(not SideRewards.pending, "a rider built clears a stale wait")
 	print("  rewards live: the rider rebuilt in %.1f ms (once, on a pick)" % ms)
 	for t: String in [SideRewards.T_LIVE, SideRewards.T_PENDING]:
 		_check(_clean(t), "wardrobe text plain (%s)" % t)
@@ -661,6 +685,12 @@ func _helmet_col(rider: Node) -> Variant:
 			if m is BaseMaterial3D:
 				return (m as BaseMaterial3D).albedo_color
 	return null
+
+
+## The roam's PlayerCombat regen delay is what it was before the Vovinam fight.
+func _regen_back() -> bool:
+	var pcb: Node = fr.get("combat")
+	return pcb != null and regen0 >= 0.0 and is_equal_approx(float(pcb.get("regen_delay")), regen0)
 
 
 func r_nitro_back() -> bool:

@@ -57,6 +57,9 @@ var result: Dictionary = {}
 var hud: CanvasLayer = null
 var top_label: Label = null
 var _traffic_off: bool = false
+## The roam's own PlayerCombat and its regen delay before the fight (given back in stop(), on every exit).
+var _combat_ref: PlayerCombat = null
+var _regen_was: float = CombatData.REGEN_DELAY
 
 
 static func title(fid: String) -> String:
@@ -134,6 +137,8 @@ func start() -> void:
 	_build_hud()
 	fight.start()
 	if fight.combat:
+		_combat_ref = fight.combat
+		_regen_was = fight.combat.regen_delay
 		fight.combat.regen_delay = float(Difficulty.pick(REGEN_DELAY[0], REGEN_DELAY[1]))
 	started.emit(id)
 
@@ -171,6 +176,9 @@ func stop() -> void:
 		fight.stop()
 		fight.queue_free()
 	fight = null
+	if _combat_ref and is_instance_valid(_combat_ref):
+		_combat_ref.regen_delay = _regen_was
+	_combat_ref = null
 	_traffic(true)
 	if hud:
 		hud.queue_free()

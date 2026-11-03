@@ -195,6 +195,9 @@ func advance(dt: float) -> void:
 
 ## While an activity runs: hold [Backspace] QUIT_HOLD_S to quit; busted (wanted state not free) fails it ("police").
 func _tick_running(dt: float) -> void:
+	if String(current.get("state")) == "podium":   # w5-side: over the line, the result is locked (no quit, no police)
+		_quit_t = 0.0
+		return
 	if quit_held or Input.is_physical_key_pressed(KEY_BACKSPACE):
 		_quit_t += dt
 		if _quit_t >= QUIT_HOLD_S:

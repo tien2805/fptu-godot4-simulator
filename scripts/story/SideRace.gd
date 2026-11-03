@@ -50,6 +50,8 @@ const T_NOT_IN: String = "chưa về"
 
 const HUD_S: float = 0.1
 var _hud_t: float = 0.0   # HUD refresh countdown (_hud_tick)
+var _pod_t: float = 0.0   # podium standings refresh countdown
+var _traffic_off: bool = false
 var id: String = ""
 var course: DriftCourse = null
 var roam: Node = null
@@ -184,6 +186,7 @@ func start() -> void:
 		rivals.place_grid()
 		racers = rivals.rivals.size() + 1
 		place = racers
+		_traffic(false)
 	_build_hud()
 	if use_guide:
 		guide = RouteGuide.new()
@@ -224,12 +227,15 @@ func advance(dt: float) -> void:
 				place = rivals.place_of_player(s_p, false)
 				if guide:
 					var nr: DriftRival = rivals.near_rival(s_p)
-					guide.set_boss(nr, nr.rival_name.to_upper() if nr else "")
+					guide.set_boss(nr, nr.rival_name_up if nr else "")
 		"podium":
 			podium_t -= dt
 			if rivals:
 				rivals.tick(dt, s_p, d_p, absf(float(bike.get("current_speed_ms"))), t + PODIUM_S - podium_t)
-			_podium_text()
+			_pod_t -= dt
+			if _pod_t <= 0.0:                     # the standings at HUD_S, not every frame
+				_pod_t = HUD_S
+				_podium_text()
 			if podium_t <= 0.0:
 				state = "done"
 				finished.emit(id, result)
@@ -301,6 +307,7 @@ func _finish() -> void:
 	_hud_text()
 	_build_podium()
 	_podium_text()
+	_pod_t = HUD_S
 
 
 ## The rank by time, no better than the place allows (PLACE_CAP).
@@ -315,6 +322,7 @@ func _fail(reason: String) -> void:
 
 
 func stop() -> void:
+	_traffic(true)
 	if bike and is_instance_valid(bike):
 		if state == "countdown":
 			bike.set("speed_cap", _cap)
@@ -473,3 +481,22 @@ func _process(delta: float) -> void:
 
 func _exit_tree() -> void:
 	stop()
+
+
+## w5-side: the rivals have no collider, so the road traffic is parked for a race with rivals (RoamTraffic._park, as
+## SideVovinam and DriftDuel do) and given back in stop() (every exit: the line, a fail, quit, police).
+func _traffic(run: bool) -> void:
+	var tr: Variant = roam.get("traffic") if roam and is_instance_valid(roam) else null
+	if tr == null or not is_instance_valid(tr):
+		return
+	var traffic: RoamTraffic = tr
+	if not run and not _traffic_off:
+		_traffic_off = true
+		for v: Variant in traffic.vehicles:
+			var veh: RoamTraffic.Vehicle = v
+			if veh.active:
+				traffic.call("_park", veh)
+		traffic.set_physics_process(false)
+	elif run and _traffic_off:
+		_traffic_off = false
+		traffic.set_physics_process(true)

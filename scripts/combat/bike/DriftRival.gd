@@ -144,6 +144,7 @@ var pace: float = 1.0
 var kick_dmg: float = 20.0
 ## w5-side setup opts (Day 2 defaults).
 var rival_name: String = NAME
+var rival_name_up: String = NAME.to_upper()   # w5-side: the guide marker's text, made once
 var calm: bool = false
 var lane: float = 0.0
 var taunts: Array = TAUNTS
@@ -194,6 +195,7 @@ func setup(c: DriftCourse, opts: Dictionary = {}) -> void:
 	name = "SoiXamRival"
 	_rng.seed = int(opts.get("seed", 3131))
 	rival_name = String(opts.get("name", NAME))
+	rival_name_up = rival_name.to_upper()
 	calm = bool(opts.get("calm", false))
 	lane = float(opts.get("lane", 0.0))
 	if opts.has("taunts"):

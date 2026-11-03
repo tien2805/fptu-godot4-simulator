@@ -479,6 +479,7 @@ func _build_procedural_bike_and_seated_rider() -> void:
 
 
 func _rider_opts() -> Dictionary:
+	SideRewards.pending = false   # w5-side: a rider built now wears the current pick (no stale wait from an older world)
 	var ro: Dictionary = {"preset": "rider", "seed": 2805, "name": "SeatedFPTURider", "helmet_color": Color("#0066CC"), "backpack": true, "clip": "ride", "glasses": false}
 	var hero: Dictionary = StoryUtil.hero_opts()
 	if not hero.is_empty():
