@@ -80,6 +80,8 @@ var floor_fn: Callable
 var end_s: float = 0.0
 var targets: Array = []
 var boss: Node3D = null
+## The boss marker's name (w5-side: set_boss for the side races' rivals).
+var boss_name: String = T_BOSS
 var active: bool = false
 var hud_on: bool = true
 var metrics_on: bool = false
@@ -205,6 +207,16 @@ func set_active(on: bool) -> void:
 		turn_visible = false
 		edge_count = 0
 		boss_on_screen = false
+
+
+## The marked rival (the marker over his head with his name and distance, his edge arrow); null = none.
+func set_boss(node: Node3D, nm: String) -> void:
+	if node == boss and nm == boss_name:
+		return
+	boss = node
+	boss_name = nm
+	_boss_dist_n = -1
+	boss_hidden_t = 0.0
 
 
 ## The HUD part (turn panel, edge arrows, the boss marker) on / off while active.
@@ -484,7 +496,7 @@ func _tick_targets(delta: float) -> void:
 		var dn: int = int(roundf(Vector2(boss.global_position.x - bp.x, boss.global_position.z - bp.z).length()))
 		if dn != _boss_dist_n:
 			_boss_dist_n = dn
-			boss_dist_text = T_BOSS_DIST % [T_BOSS, dn]
+			boss_dist_text = T_BOSS_DIST % [boss_name, dn]
 		if metrics_on:
 			boss_hidden_t = 0.0 if on else boss_hidden_t + delta
 			boss_hidden_max = maxf(boss_hidden_max, boss_hidden_t)

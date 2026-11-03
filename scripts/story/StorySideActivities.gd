@@ -254,6 +254,8 @@ func _on_done(id: String, res: Dictionary) -> void:
 	var opened: Array[String] = SideRewards.unlocked_between(s0, SideRewards.s_count())
 	var line: String = "Xong %s · %s · Hạng %s" % [String(spot(id).get("title", id)), SideRace.time_text(float(res.get("time", 0.0))),
 		String(res.get("rank", "C"))] if res.has("time") else "Xong %s · Hạng %s" % [String(spot(id).get("title", id)), String(res.get("rank", "C"))]
+	if res.has("place"):
+		line += " · Về thứ %d/%d" % [int(res["place"]), int(res.get("of", 1))]
 	if nb:
 		line += " · Kỷ lục mới!"
 	_toast(line, "success_fanfare")

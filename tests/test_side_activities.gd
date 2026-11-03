@@ -6,6 +6,10 @@
 #      starts the race (story busy, on the bike at the grid, countdown with the bike held), a driven run along the path
 #      (gates, drift seconds, off the road -> back to the last gate), the finish recorded in the unlock file and the story
 #      free again; leaving the bike gives the race up. Perf: the race tick and the activity check stay far under 3 ms.
+#   w5-side T1: the races have 2-3 rivals (SideRaceRivals): on the grid ahead of the player, the place on the HUD, the
+#      guide's marker on the next rival, every rival kept near the player while driven (the rubber band, the regroup after
+#      a reset), the podium panel after the line, the place in the result and the place-capped rank; the rubber band and
+#      the standings as data.
 # Run:  godot --headless --path . --script tests/test_side_activities.gd
 extends SceneTree
 
@@ -27,6 +31,9 @@ var done_ev: Array = []
 var fail_ev: Array = []
 var perf_race: Array[float] = []
 var perf_check: Array[float] = []
+var rival_gap_max: float = 0.0
+var rival_lead_max: float = -INF
+var boss_marked: int = 0
 
 
 func _check(ok: bool, msg: String) -> void:
@@ -84,6 +91,23 @@ func _part_a() -> void:
 	_check(String(b.get("rank", "")) == "S" and int(b.get("runs", 0)) == 5 and SideRecords.s_count() == 1, "best S, 5 runs, 1 S (%s)" % str(b))
 	_check(SideRecords.record("x_score", {"rank": "A", "score": 5}) and SideRecords.record("x_score", {"rank": "A", "score": 7})
 		and not SideRecords.record("x_score", {"rank": "A", "score": 6}), "score activities: higher is better")
+	# w5-side T1: rivals as data
+	_check(SideRace.capped_rank("S", 1) == "S" and SideRace.capped_rank("S", 2) == "A" and SideRace.capped_rank("B", 2) == "B"
+		and SideRace.capped_rank("S", 3) == "B" and SideRace.capped_rank("A", 4) == "C", "the rank is capped by the place")
+	for rid2: String in SideRace.ORDER:
+		var ro: Array = SideRaceRivals.roster(rid2)
+		_check(ro.size() >= 2 and ro.size() <= 3, "%s has 2-3 rivals (%d)" % [rid2, ro.size()])
+		for e: Dictionary in ro:
+			_check(_clean(String(e["name"])) and String(e["name"]) != "", "%s rival name plain (%s)" % [rid2, String(e["name"])])
+	var rv := SideRaceRivals.new()
+	rv.band_far = 0.8
+	rv.band_lead = 1.05
+	_check(is_equal_approx(rv.band_for(2.0), 1.0) and is_equal_approx(rv.band_for(SideRaceRivals.BAND_FULL_M + 5.0), 0.8)
+		and is_equal_approx(rv.band_for(-3.0), 1.05) and is_equal_approx(rv.band_for(-SideRaceRivals.CATCH_FULL_M - 5.0), SideRaceRivals.CATCH_BAND),
+		"the rubber band: eases off ahead, pushes behind, catches up far behind")
+	rv.free()
+	for l2: String in [SideRace.T_PLACE % [2, 4], SideRace.T_PODIUM, SideRace.T_NOT_IN]:
+		_check(_clean(l2), "race text plain (%s)" % l2)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP_U))
 
 
@@ -109,9 +133,17 @@ func _drive(r: SideRace, v: float, sec: float, drifting: bool = false) -> void:
 		s += v * DT
 		var p: Vector2 = r.course.world(s, 0.0)
 		bike.global_position = Vector3(p.x, y, p.y)
+		bike.set("current_speed_ms", v)
 		var t0: int = Time.get_ticks_usec()
 		r.advance(DT)
 		perf_race.append(float(Time.get_ticks_usec() - t0) / 1000.0)
+		if r.rivals and r.state == "racing" and r.t > 4.0:
+			rival_gap_max = maxf(rival_gap_max, r.rivals.max_gap(r.s_p))
+			for rr: DriftRival in r.rivals.rivals:
+				rival_lead_max = maxf(rival_lead_max, rr.s - r.s_p)
+			if r.guide and r.guide.boss != null and r.guide.boss_name == (r.guide.boss as DriftRival).rival_name.to_upper() \
+					and r.guide.boss == r.rivals.near_rival(r.s_p):
+				boss_marked += 1
 	bike.set("is_drifting", false)
 
 
@@ -185,10 +217,20 @@ func _process(_d: float) -> bool:
 			if frames < 2:
 				return false
 			var r2: SideRace = _race()
-			_check(r2.bike.global_position.distance_to(Vector3(r2.course.world(0.0, 0.0).x, r2.bike.global_position.y, r2.course.world(0.0, 0.0).y)) < 1.0, "the bike sits on the grid")
+			var gp: Vector2 = r2.course.world(0.0, SideRaceRivals.PLAYER_GRID_D)
+			_check(r2.bike.global_position.distance_to(Vector3(gp.x, r2.bike.global_position.y, gp.y)) < 1.0, "the bike sits on the grid")
 			for i: int in 200:
 				r2.advance(DT)
 			_check(r2.state == "racing" and float(r2.bike.get("speed_cap")) > 1000.0, "GO after the countdown, the bike let go")
+			var rv2: SideRaceRivals = r2.rivals
+			_check(rv2 != null and rv2.rivals.size() == SideRaceRivals.roster("dua_cau").size() and r2.racers == rv2.rivals.size() + 1,
+				"dua_cau: %d rivals on the grid" % (rv2.rivals.size() if rv2 else 0))
+			if rv2:
+				var ahead: bool = true
+				for rr2: DriftRival in rv2.rivals:
+					ahead = ahead and rr2.s > 0.0 and rr2.racing and rr2.calm
+				_check(ahead and r2.place == r2.racers and r2.texts().has(SideRace.T_PLACE % [r2.racers, r2.racers]),
+					"the rivals start ahead, the player last (%s)" % str(r2.texts()))
 			_drive(r2, 20.0, 6.0, true)
 			_drive(r2, 20.0, 4.0)
 			_check(r2.gate_i >= 1 and r2.drift_s > 5.0, "gates passed (%d), drift seconds (%.1f)" % [r2.gate_i, r2.drift_s])
@@ -199,9 +241,23 @@ func _process(_d: float) -> bool:
 			for i2: int in 80:
 				r2.advance(DT)
 			_check(r2.resets == 1 and is_equal_approx(r2.s_p, g), "off the road 1.2 s: back to the last gate (%d, %.0f)" % [r2.resets, r2.s_p])
+			if rv2:
+				_check(rv2.max_gap(r2.s_p) <= SideRaceRivals.REGROUP_BEHIND_M + 0.5, "after the reset every rival is near again (%.1f m, %d regroups)" % [rv2.max_gap(r2.s_p), rv2.regroups])
 			_check(_clean(" ".join(PackedStringArray(r2.texts()))), "race HUD plain text")
 			_drive(r2, 22.0, 60.0)
-			_check(r2.state == "done", "the race finishes (%s, s %.0f / %.0f)" % [r2.state, r2.s_p, r2.course.length])
+			print("  rivals: farthest from the player %.1f m, most ahead %.1f m, the guide marked a rival %d ticks, contacts %d" % [rival_gap_max,
+				rival_lead_max, boss_marked, rv2.contacts if rv2 else 0])
+			_check(rival_gap_max < 32.0 and rival_lead_max <= SideRaceRivals.LEAD_CAP_M + 1.0, "the rivals stay near the player (%.1f m, lead %.1f m)" % [rival_gap_max, rival_lead_max])
+			_check(boss_marked > 200, "the guide marks the next rival with his name (%d)" % boss_marked)
+			_check(r2.state == "podium" and r2.result.has("place") and int(r2.result["of"]) == r2.racers, "over the line: the podium (%s, %s)" % [r2.state, str(r2.result)])
+			var pod: String = r2.podium_label.text if r2.podium_label else ""
+			_check(pod.begins_with(SideRace.T_PODIUM) and pod.split("\n").size() == r2.racers + 1 and pod.contains("Mai") and _clean(pod), "the podium lists every racer (%s)" % pod.replace("\n", " | "))
+			_check(String(r2.result["rank"]) == SideRace.capped_rank(SideRace.rank_for(float(r2.result["time"]), SideRace.par(r2.course)), int(r2.result["place"])), "the rank is capped by the place")
+			for i3: int in int(SideRace.PODIUM_S / DT) + 5:
+				if r2.state != "podium":
+					break
+				r2.advance(DT)
+			_check(r2.state == "done", "the race finishes after the podium (%s, s %.0f / %.0f)" % [r2.state, r2.s_p, r2.course.length])
 			_next(4)
 		4:
 			if frames < 3:
@@ -209,7 +265,7 @@ func _process(_d: float) -> bool:
 			_check(done_ev.size() == 1 and String(done_ev[0][0]) == "dua_cau" and bool(done_ev[0][2]), "activity_done with a new best")
 			var res: Dictionary = done_ev[0][1] if done_ev.size() == 1 else {}
 			print("  dua_cau run: %s" % str(res))
-			_check(String(res.get("rank", "")) in StoryRank.LETTERS and float(res.get("time", 0.0)) < float(res.get("raw", 0.0)), "rank and drift-scored time")
+			_check(String(res.get("rank", "")) in StoryRank.LETTERS and float(res.get("time", 0.0)) < float(res.get("raw", 0.0)) and res.has("place"), "rank, place and drift-scored time")
 			var b: Dictionary = SideRecords.best("dua_cau")
 			_check(not b.is_empty() and String(b["rank"]) == String(res.get("rank", "?")), "the best is in the unlock file")
 			_check(sa.current == null and not bool(sr.busy) and r_nitro_back(), "the story is free again, the bike given back")
