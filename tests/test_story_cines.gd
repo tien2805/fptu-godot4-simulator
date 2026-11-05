@@ -1312,3 +1312,18 @@ func _w6_cards() -> void:
 	_check(StoryScreenCard.clock_text(fl, 0.0, 0.3) == "07:59" and StoryScreenCard.clock_text(fl, 0.0, 0.8) == "08:00"
 		and float(f0["fold"]) == 1.0 and float(f1["fold"]) < 0.05 and float(f2["fold"]) == 1.0 and not bool(f0["red"]) and bool(f2["red"]),
 		"the flip clock: 07:59, folds shut at the flip, opens on 08:00 in red")
+	# cine_d5: the laptop shot split by the log insert at 4.4 (the flow card's start, kept for the music) and a push-in at 7.6
+	var d5: CineTimeline = CineTimeline.load_slot("cine_d5")
+	var fc: Dictionary = d5.cards[0]
+	_check(absf(float(fc["r"]) - 4.4) < 1e-6 and bool(fc["data"].get("log", false))
+		and d5.shots.any(func(sh: Dictionary) -> bool: return absf(float(sh["s"]) - 4.4) < 1e-6 and String(sh["rig"]) == "dolly")
+		and d5.shots.any(func(sh: Dictionary) -> bool: return absf(float(sh["s"]) - 7.6) < 1e-6 and String(sh["rig"]) == "push_in"),
+		"cine_d5: the log insert on the flow card at 4.4, the push-in at 7.6")
+	var lc := StoryScreenCard.new()
+	lc.data = fc["data"]
+	lc.r0 = float(fc["r"])
+	lc.dur = float(fc["dur"])
+	root.add_child(lc)
+	lc.update(lc.r0 + 0.5)
+	_check(lc.screen.log_rows and lc.frame.visible, "the flow card scrolls its log rows")
+	lc.queue_free()

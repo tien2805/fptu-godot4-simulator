@@ -9,6 +9,7 @@
 #   kind "credits" (Phase C) the end credits: a title, then "lines" roll up the black frame (end_c, ending C);
 #   kind "flow"   (Phase C) a money-flow chart on a dark screen: "nodes" (3 boxes) light up one after another, joined by
 #                 arrows that draw in, with "amounts" beside the arrows; the last node pulses (cine_d5: "TRÀ SỮA LỌ").
+#                 Wave 6: "log": true scrolls faint transaction-log rows behind the chart (the logs racing past).
 #   kind "clock"  (Wave 6) a small digital clock box in the upper right: "title" over big digits, either a countdown
 #                 ("count": seconds, ticking down in real time from the card start, red over the last 10: cine_d3_intro's
 #                 30-second camera loop) or a flip ("from" -> "to" at "flip_u", the digits fold shut and open on the new
@@ -56,6 +57,7 @@ class ScreenDraw extends Control:
 	var kind: String = "cctv"
 	var u: float = 0.0
 	var t: float = 0.0   # real seconds into the card
+	var log_rows: bool = false   # flow: the scrolling log rows behind the chart
 
 	func _draw() -> void:
 		var s: Vector2 = size
@@ -66,6 +68,14 @@ class ScreenDraw extends Control:
 			draw_rect(Rect2(Vector2.ZERO, s), Color("#0A0F14"))
 			for g: int in 9:
 				draw_line(Vector2(0.0, s.y * g / 8.0), Vector2(s.x, s.y * g / 8.0), Color(0.3, 0.6, 0.5, 0.08), 1.0)
+			if log_rows:   # log lines racing up the screen, fading out as the chart takes over (pure in u)
+				var la: float = clampf(1.0 - (u - 0.35) / 0.3, 0.25, 1.0)
+				for row: int in 16:
+					var y: float = fposmod(float(row) * 24.0 - u * s.y * 2.4, s.y + 24.0) - 12.0
+					var w1: float = 60.0 + fposmod(float(row) * 37.0, 90.0)
+					draw_rect(Rect2(18.0, y, w1, 6.0), Color(0.36, 0.83, 0.54, 0.16 * la))
+					draw_rect(Rect2(28.0 + w1, y, 140.0 + fposmod(float(row) * 53.0, 220.0), 6.0), Color(0.36, 0.83, 0.54, 0.09 * la))
+					draw_rect(Rect2(s.x - 120.0, y, 80.0, 6.0), Color(1.0, 0.82, 0.25, 0.12 * la))
 			for k: int in 3:
 				var on: float = clampf((u - 0.12 - 0.27 * k) / 0.08, 0.0, 1.0)
 				var r := Rect2(Vector2(s.x * (0.04 + 0.33 * k), s.y * 0.36), Vector2(s.x * 0.25, s.y * 0.28))
@@ -219,6 +229,7 @@ func _build() -> void:
 	screen = ScreenDraw.new()
 	screen.name = "Screen"
 	screen.kind = kind()
+	screen.log_rows = bool(data.get("log", false))
 	screen.custom_minimum_size = PHONE_SIZE if phone else CCTV_SIZE
 	if kind() == "radio":
 		screen.custom_minimum_size = RADIO_SIZE
