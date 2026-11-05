@@ -26,6 +26,7 @@ SHOT S12    10.730  static    handheld wide: hip throw onto the asphalt, the hel
 SHOT S13    11.760  static    slow motion over his shoulder: the helmet into Mũ Vàng's face (11.76)
 SHOT S14    12.130  orbit     low slow orbit: he drops low (12.13), the spear tackle (12.71), the drive begins
 SHOT S15    15.920  track     low side tracking: Mũ Vàng driven back across the kerb, legs churning
+SHOT S15b   17.530  track     close tracking: Mũ Vàng folded over the shoulder, eyes wide, the kerb rushing past
 SHOT S16    19.140  dolly     push in as they near the crate stack
 SHOT S17    21.990  static    crate close-up: he throws him off into the stack, it explodes on the 21.99 hit
 SHOT S18    22.530  dolly     tail wide: Mũ Vàng in the debris, the protagonist winded, Mũ Đỏ slips on the banana peel

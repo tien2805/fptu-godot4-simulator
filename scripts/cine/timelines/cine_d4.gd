@@ -82,7 +82,10 @@ func build() -> void:
 	sfx_at(11.6, "phone_buzz", -12.0)
 	sfx_at(14.4, "sad_trombone", -12.0)
 	sfx_at(15.9, "cliff_sting", -3.0)
-	shot("S1", 0.0, "static", "wide: night outside the lobby, Dolly cornered, the protagonist and Linh close in",
+	# Wave 6 (plan 2026-11-05-w6-cines T4): the scene opens on a slow push-in on the masked Dolly, the two closing in at the
+	# edges of the frame, then the wide for Linh's line
+	push_in("S0", 0.0, "dolly", {"from": 5.0, "to": 3.6, "look_y": 1.25, "hand": 0.1})
+	shot("S1", 1.8, "static", "wide: night outside the lobby, Dolly cornered, the protagonist and Linh close in",
 		{"pos": Vector3(-3.4, 1.7, 1.2), "look": Vector3(0.1, 1.1, -1.8), "fov": 50.0})
 	push_in("S2", 3.6, "dolly", {"from": 2.9, "to": 2.3, "look_y": 1.2, "hand": 0.15})   # Q5: the unmasking
 	shot("S3", 6.9, "static", "side-on along the wall: the protagonist asks for the schedule, Dolly in profile",

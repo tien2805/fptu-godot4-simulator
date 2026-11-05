@@ -7,6 +7,7 @@
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    wide: the road edge after the brawl, Mũ Đỏ against his scooter, the phone lights up
 SHOT S2      2.400  static    medium: the protagonist picks the phone up and reads it (the phone card plays over it)
+SHOT S2b     8.000  push_in   push-in c2
 SHOT S3      9.400  static    low wide down the road: a headlight sweeps past, engines roar
 SHOT S4     12.400  low_hero  hero hero
 SHOT S5     14.300  two_shot  two-shot hero + c2
@@ -20,7 +21,7 @@ SUB   14.500 - 16.300  Shipper Mũ Đỏ: Ê... trả tao điện thoại đi...
 SUB   16.400 - 17.900  Bạn: ...'Tao thấy mày rồi.'
 #
 # Cards (real start - end, kind: what)
-CARD    4.000 -  9.400  screen: phone Hàng đêm nay ở Nguyễn Xiển. 2h. Đừng trễ.
+CARD    4.000 -  8.000  screen: phone Hàng đêm nay ở Nguyễn Xiển. 2h. Đừng trễ.
 #
 # Pacing (Q5): joke beats and the day-end cliffhanger (real time)
 JOKE   14.500  Mũ Đỏ begs for his phone back; a flat head shake

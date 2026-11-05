@@ -4,6 +4,9 @@
 # bảy ngày...". The protagonist opens the transaction logs (E6) on a laptop; the money flow (StoryScreenCard "flow") runs
 # from "LỌ THẦN 9.0" through an anonymous wallet to "TRÀ SỮA LỌ". "...Trà Sữa Lọ?" - "Trà sữa ngon lắm... size L, ít đá..."
 # - "Lọ Thần. Trà Sữa Lọ. Lọ hết trơn." - the phone buzzes: "Chủ quán là ai đây..."
+# Wave 6 (plan 2026-11-05-w6-cines T3): the 7.7 s laptop shot is split: the OTS 2.0-4.4, a close insert on the laptop as
+# the logs race past (4.4, on the flow card that stream A's bass lands on), then a push-in on the protagonist from 7.6 as
+# the arrows reach "TRÀ SỮA LỌ" (7.62) through "...Trà Sữa Lọ?" (the card clears at 9.6, the sting at 9.7).
 # No ramps (story = real). Music slot cine_d5 (owner file, else silence).
 # Stage: CineTimeline.phase_c_stage("server"), the carried room (cine_d5_monitors.server_room).
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
@@ -63,6 +66,7 @@ func build() -> void:
 	expr("hero", 16.0, "surprised")
 	sfx_at(2.0, "keyboard_clack", -10.0)
 	sfx_at(4.4, "phone_buzz", -14.0)
+	sfx_at(4.5, "keyboard_clack", -12.0)
 	sfx_at(9.7, "dun_dun_duun", -6.0)
 	sfx_at(15.6, "phone_buzz", -4.0)
 	sfx_at(16.4, "cliff_sting", -3.0)
@@ -72,12 +76,15 @@ func build() -> void:
 		{"pos": Vector3(-3.4, 0.95, -2.0), "look": Vector3(-4.55, 0.8, -2.25), "fov": 40.0})
 	shot("S3", 2.0, "static", "over the protagonist's shoulder: the transaction logs on the laptop",
 		{"pos": Vector3(1.45, 1.65, -0.25), "look": LAPTOP + Vector3(0.0, 0.15, 0.0), "fov": 40.0})
-	push_in("S4", 9.7, "hero", {"from": 2.7, "to": 2.3, "side_deg": 30.0, "look_y": 1.2})   # Q5: "...Trà Sữa Lọ?"
-	shot("S5", 10.9, "static", "close: Za Mẫn, dreamy: the milk tea",
+	shot("S4", 4.4, "dolly", "insert: the transaction logs race past on the laptop screen",
+		{"from": Vector3(1.12, 1.08, -1.08), "to": Vector3(1.0, 1.0, -1.28), "look_from": LAPTOP + Vector3(0.0, 0.16, 0.0),
+		"look_to": LAPTOP + Vector3(0.0, 0.13, 0.0), "fov": 34.0, "hand": 0.12})
+	push_in("S5", 7.6, "hero", {"from": 3.3, "to": 2.3, "side_deg": 30.0, "look_y": 1.2})   # the arrows reach the tea shop; "...Trà Sữa Lọ?"
+	shot("S6", 10.9, "static", "close: Za Mẫn, dreamy: the milk tea",
 		{"pos": Vector3(-3.4, 0.95, -2.0), "look": Vector3(-4.55, 0.8, -2.25), "fov": 40.0})
-	two_shot("S6", 13.4, "hero", "za", {"side": 1.0, "look_y": 1.0, "dist": 6.2})   # "Lọ Thần. Trà Sữa Lọ. Lọ hết trơn."
-	push_in("S7", 15.6, "hero", {"from": 3.0, "to": 2.3, "side_deg": -30.0, "look_y": 1.2})   # the cliffhanger text
-	card("screen", 4.4, 5.2, {"kind": "flow", "title": "NHẬT KÝ GIAO DỊCH", "nodes": ["LỌ THẦN 9.0", "VÍ ẨN DANH", "TRÀ SỮA LỌ"],
+	two_shot("S7", 13.4, "hero", "za", {"side": 1.0, "look_y": 1.0, "dist": 6.2})   # "Lọ Thần. Trà Sữa Lọ. Lọ hết trơn."
+	push_in("S8", 15.6, "hero", {"from": 3.0, "to": 2.3, "side_deg": -30.0, "look_y": 1.2})   # the cliffhanger text
+	card("screen", 4.4, 5.2, {"kind": "flow", "title": "NHẬT KÝ GIAO DỊCH", "log": true, "nodes": ["LỌ THẦN 9.0", "VÍ ẨN DANH", "TRÀ SỮA LỌ"],
 		"amounts": ["2,4 tỷ", "2,4 tỷ"]})
 	sub(0.5, 1.5, "za", "Bảo hành... bảy ngày...")
 	sub(2.2, 1.9, "hero", "Tiền của Lọ Thần chảy về đâu?")

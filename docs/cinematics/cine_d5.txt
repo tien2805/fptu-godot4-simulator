@@ -8,10 +8,11 @@
 SHOT S1      0.000  static    wide: the scorched server room, Za Mẫn slumped against the racks with a broken katana
 SHOT S2      0.400  static    close: Za Mẫn, "Bảo hành... bảy ngày..."
 SHOT S3      2.000  static    over the protagonist's shoulder: the transaction logs on the laptop
-SHOT S4      9.700  push_in   push-in hero
-SHOT S5     10.900  static    close: Za Mẫn, dreamy: the milk tea
-SHOT S6     13.400  two_shot  two-shot hero + za
-SHOT S7     15.600  push_in   push-in hero
+SHOT S4      4.400  dolly     insert: the transaction logs race past on the laptop screen
+SHOT S5      7.600  push_in   push-in hero
+SHOT S6     10.900  static    close: Za Mẫn, dreamy: the milk tea
+SHOT S7     13.400  two_shot  two-shot hero + za
+SHOT S8     15.600  push_in   push-in hero
 #
 # Subtitles (real start - end, speaker: line)
 SUB    0.500 -  2.000  Za Mẫn: Bảo hành... bảy ngày...
