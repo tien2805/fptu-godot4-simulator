@@ -11,6 +11,7 @@
 #                                     prop:<id> (a scene prop); tgt: an actor, or "<actor>:held:<Prefix>" (a prop it holds)
 #   slams [[actor, [props], r0, r1]]  the actor's body reaches the props' boxes inside the real window
 #   lying [[actor, real]]             on the floor (hips < 0.45 m, lowest bone > -0.08 m)
+#   seated [[actor, real]]            sitting on the floor (hips < 0.45 m, head >= 0.35 m above the hips, lowest bone > -0.08 m)
 #   crash [story var, prop]           the crash (a "crate" fx on the prop) sits inside the finisher swell
 #   hit_vars [story vars]             more hit moments for the penetration window; pen_skip [[actor, prop, r0, r1]]
 #   not_solid [prop ids]; moving [prop ids] (boxes re-read every frame); burst {prop: story var} (not solid after it)
@@ -21,10 +22,13 @@
 # frame cost < 8 ms, surface gaps at every contact <= 0.04 m on Mixamo and <= 0.15 m on the fallbacks (never sinking more
 # than 0.06 m, props 0.10 m), lying bodies, no hips skating (<= 0.08 m / frame) through lie / sit transitions, bodies never
 # sink into each other or solid props (<= 0.03 m, near a hit <= 0.06 m limb / 0.04 m core), feet never 3 cm under the
-# floor, on every tier (cap 0 Mixamo when present, 1 UAL, 2 native, 3 code). New: every Q1 helper shot frames its subjects'
-# head, chest and hips inside the letterboxed 8 % safe area at its start, middle and end with no actor in front of a
-# subject's face (CameraFraming.report, as tests/test_d7_cines.gd), and every other shot has an actor in the frame.
-# Env: CINE_NO_MIXAMO=1, CINE_FAST=1 (no penetration sweep), CINE_NO_FREEROAM=1. Players pass {"music": false}.
+# floor, on every tier (cap 0 Mixamo when present, 1 UAL, 2 native, 3 code). Shots: tests/support/cine_frame.gd on tier 1 and
+# the code tier: 16 samples per shot, each shot's subjects (params "subj"; the helpers' own; else the actor nearest the
+# frame centre) framed in the 8 % safe area and clear of solid props in >= 90 % of them, heads never out of frame (params
+# "exit_ok" [r0, r1] skips a body thrown out on purpose), the camera never inside a prop. Subtitles carry no "..." glyph
+# and no emoji.
+# Env: CINE_NO_MIXAMO=1, CINE_FAST=1 (no penetration sweep), CINE_NO_FREEROAM=1, CINE_FRAME_ONLY=1 (static checks and shots
+# only). Players pass {"music": false}.
 # Tuning aids: CINE_DBG=1 prints the geometry of held-prop / scene-prop strikes; CINE_TR="a,b,r0,r1" traces two actors.
 extends SceneTree
 
@@ -43,7 +47,7 @@ const FOOT_FLOOR: float = -0.03
 const NOT_SOLID_KINDS: Array[String] = ["bridge_deck", "fire", "monitor_wall", "gallery_hall"]
 const ROOM_SOLID: Array[String] = ["BackWall", "SideWall"]
 const HELPERS: Array[String] = ["two_shot", "ots", "low_hero", "dutch", "push_in"]
-const BLOCK_R: float = 0.18
+const Frame = preload("res://tests/support/cine_frame.gd")
 ## Slots whose explicit point lies on the campus lawn (as the old harnesses: the baked spot, this far off, +2 m).
 const GRASS_MOVED: Dictionary = {"cine_d1_intro": 20.0, "cine_d4": 22.0, "cine_d4_intro": 24.0, "cine_d4_stare": 24.0,
 	"seg_d4_brawl": 86.9, "end_c": 86.9}
@@ -236,6 +240,17 @@ func _lying(pl: CinePlayer, label: String) -> void:
 			lo = minf(lo, a.bone_world(b).y)
 		print("  lying  %-6s %s r %.1f: hips %.2f m, lowest bone %.2f m" % [label, String(e[0]), float(e[1]), hy, lo])
 		_check(hy < 0.45 and lo > -0.08, "%s: %s on the floor at r %.1f (hips %.2f, lowest %.2f)" % [label, String(e[0]), float(e[1]), hy, lo])
+	for e: Array in conf.get("seated", []):
+		pl.seek(float(e[1]))
+		var a2: CineActor = pl.actors[String(e[0])]
+		var hy2: float = a2.bone_world("Hips").y
+		var head: float = a2.bone_world("Head").y
+		var lo2: float = INF
+		for b: String in ["Head", "Hips", "Chest", "Foot.L", "Foot.R", "Wrist.L", "Wrist.R"]:
+			lo2 = minf(lo2, a2.bone_world(b).y)
+		print("  seated %-6s %s r %.1f: hips %.2f m, head %.2f m, lowest bone %.2f m" % [label, String(e[0]), float(e[1]), hy2, head, lo2])
+		_check(hy2 < 0.45 and head - hy2 >= 0.35 and lo2 > -0.08, "%s: %s sits on the floor at r %.1f (hips %.2f, head %.2f, lowest %.2f)" % [label,
+			String(e[0]), float(e[1]), hy2, head, lo2])
 
 
 func _lie_transitions() -> Array:
@@ -386,7 +401,7 @@ func _states(pl: CinePlayer) -> void:
 	world.add_child(pd)
 	pd.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false, "drop_set": true})
 	var sets: Array = tl.props.filter(func(pr: Dictionary) -> bool: return bool((pr["opts"] as Dictionary).get("set", false)))
-	_check(sets.all(func(pr: Dictionary) -> bool: return not pd.prop_nodes.has(String(pr["id"])))
+	_check(not sets.is_empty() and sets.all(func(pr: Dictionary) -> bool: return not pd.prop_nodes.has(String(pr["id"])))
 		and (conf.get("keep", []) as Array).all(func(k: String) -> bool: return pd.prop_nodes.has(k)),
 		"drop_set leaves out the carried set dressing and keeps %s" % str(conf.get("keep", [])))
 	pd.queue_free()
@@ -394,81 +409,25 @@ func _states(pl: CinePlayer) -> void:
 		(conf["checks"] as Callable).call(self, pl)
 
 
-## Q1 helper shots framed (start, middle, end), every other shot with an actor in the frame (tests/test_d7_cines.gd).
+## Every shot on tier 1 and the code tier (tests/support/cine_frame.gd), the fight using the Q1 helpers.
 func _framing() -> void:
-	CineMoves.max_tier = 1
-	var pf := CinePlayer.new()
-	world.add_child(pf)
-	pf.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false, "drop_set": true})
-	pf.start()
-	await process_frame
-	var vs: Vector2 = root.get_visible_rect().size
-	var lb: float = (pf.overlay.bar_height_full() / vs.y) if tl.letterbox else 0.0
-	var helpers: int = 0
-	for i: int in tl.shots.size():
-		var sh: Dictionary = tl.shots[i]
-		var rig: String = String(sh["rig"])
-		var r0: float = pf._shot_r[i]
-		var r1: float = pf._shot_r[i + 1] if i + 1 < tl.shots.size() else tl.length
-		var pr: Dictionary = sh["params"]
-		if not (rig in HELPERS):
-			pf.seek((r0 + r1) * 0.5)
-			var seen: String = ""
-			for id: String in pf.actors.keys():
-				var a0: CineActor = pf.actors[id]
-				if not a0.is_visible_in_tree():
-					continue
-				for q: Vector3 in CameraFraming.subject_points(a0):
-					if seen == "" and CameraFraming.in_safe(pf.camera, q, 0.0, lb):
-						seen = id
-			_check(seen != "", "%s %s (%s) @%.2f: an actor is in the frame" % [tl.slot, String(sh["id"]), rig, (r0 + r1) * 0.5])
-			continue
-		helpers += 1
-		var subj: Array[String] = []
-		match rig:
-			"two_shot":
-				subj = [String(pr["a"]), String(pr["b"])]
-			"ots":
-				subj = [String(pr["at"])]
-			_:
-				subj = [String(pr["actor"])]
-		for rr: float in [r0 + minf(0.08, (r1 - r0) * 0.2), (r0 + r1) * 0.5, r1 - minf(0.08, (r1 - r0) * 0.2)]:
-			pf.seek(rr)
-			var cam: Camera3D = pf.camera
-			for id: String in subj:
-				var a: CineActor = pf.actors.get(id)
-				if a == null or not a.is_visible_in_tree():
-					_check(false, "%s %s @%.2f: subject %s is hidden" % [tl.slot, String(sh["id"]), rr, id])
-					continue
-				var pts: PackedVector3Array = CameraFraming.subject_points(a)
-				var rep: Dictionary = CameraFraming.report(cam, pts, world.get_world_3d().direct_space_state, [], CameraRules.SAFE_MARGIN, lb)
-				_check(bool(rep["ok"]), "%s %s (%s) @%.2f: %s %s" % [tl.slot, String(sh["id"]), rig, rr, id, CameraFraming.describe(cam, pts, rep)])
-				var blocker: String = _blocked(pf, cam.global_position, pts[0], id)
-				_check(blocker == "", "%s %s (%s) @%.2f: %s stands in front of %s's face" % [tl.slot, String(sh["id"]), rig, rr, blocker, id])
-			if rig == "dutch":
-				var want: float = float(pr.get("roll", 14.0))
-				var got: float = rad_to_deg(asin(clampf(cam.global_basis.x.y, -1.0, 1.0)))
-				_check(absf(got) >= absf(want) * 0.8 and signf(got) == signf(want), "%s %s: dutch roll %.1f (want ~%.1f)" % [tl.slot, String(sh["id"]), got, want])
-	print("  framing: %d shots, %d Q1 helper shots checked" % [tl.shots.size(), helpers])
+	var helpers: int = tl.shots.filter(func(sh: Dictionary) -> bool: return String(sh["rig"]) in HELPERS).size()
+	print("  framing: %d shots, %d Q1 helper shots" % [tl.shots.size(), helpers])
 	_check(helpers >= 4, "the fight uses the Q1 shot helpers (%d)" % helpers)
-	pf.queue_free()
-
-
-func _blocked(pl: CinePlayer, cam_p: Vector3, face: Vector3, subj: String) -> String:
-	var seg: Vector3 = face - cam_p
-	var len2: float = seg.length_squared()
-	for id: String in pl.actors.keys():
-		if id == subj:
-			continue
-		var a: CineActor = pl.actors[id]
-		if not a.is_visible_in_tree():
-			continue
-		var pts: PackedVector3Array = CameraFraming.subject_points(a)
-		for k: int in mini(2, pts.size()):
-			var t: float = clampf((pts[k] - cam_p).dot(seg) / maxf(len2, 1e-6), 0.0, 1.0)
-			if t > 0.05 and t < 0.92 and (cam_p + seg * t).distance_to(pts[k]) < BLOCK_R:
-				return id
-	return ""
+	for cap: int in [1, 3]:
+		CineMoves.max_tier = cap
+		var pf := CinePlayer.new()
+		world.add_child(pf)
+		pf.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false})
+		pf.start()
+		await process_frame
+		var vs: Vector2 = root.get_visible_rect().size
+		var lb: float = (pf.overlay.bar_height_full() / vs.y) if tl.letterbox else 0.0
+		var bad: PackedStringArray = Frame.check(tl, pf, lb, conf.get("not_solid", []), conf.get("burst", {}), ["mixamo", "ual", "native", "code"][cap])
+		for m: String in bad:
+			_check(false, m)
+		pf.queue_free()
+		await process_frame
 
 
 func _initialize() -> void:
@@ -520,7 +479,8 @@ func _initialize() -> void:
 		var hb: Vector2 = Vector2(maxf(st_half.x, HALF.x), maxf(st_half.y, HALF.y)) if bool((pr["opts"] as Dictionary).get("set", false)) else HALF
 		_check(absf(pp.x) <= hb.x + 0.1 and absf(pp.z) <= hb.y + 0.1, "prop %s inside the %.0f x %.0f box" % [String(pr["id"]), hb.x * 2.0, hb.y * 2.0])
 	for sb: Dictionary in tl.subs:
-		_check(not String(sb["text"]).contains("…"), "no ellipsis glyph in '%s'" % String(sb["text"]))
+		var line: String = String(sb["text"]) + String(sb.get("tr", ""))
+		_check(not line.contains("…") and not Frame.has_emoji(line), "no ellipsis glyph and no emoji in '%s'" % String(sb["text"]))
 	var committed: String = FileAccess.get_file_as_string("res://docs/cinematics/%s.txt" % tl.slot).replace("\r\n", "\n")
 	_check(committed == tl.beat_sheet(), "docs/cinematics/%s.txt is in sync (run tools/cine_beats.gd)" % tl.slot)
 	world = Node3D.new()
@@ -531,6 +491,9 @@ func _initialize() -> void:
 		gfx.call("set_art_style", "vice", false)
 	CharacterBuilder.ps2 = true
 	await _framing()
+	if OS.get_environment("CINE_FRAME_ONLY") == "1":   # tuning aid: the static checks and the shots only
+		_end()
+		return
 	CineMoves.max_tier = 1
 	p = CinePlayer.new()
 	world.add_child(p)
