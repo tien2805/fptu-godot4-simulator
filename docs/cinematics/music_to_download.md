@@ -71,7 +71,7 @@ Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột
 | [ ] | Lùm Văn Lọ "Mọi thứ đều nằm trong kế hoạch", tắt đèn (Ngày 7) | `cine_d7_monologue_` | *Sweet Dreams (Are Made of This)*, Eurythmics |
 | [ ] | Phát lại: leo hết các tầng, cửa phòng bình cổ mở (Ngày 7) | `seg_d7_floors_` | *Eye of the Tiger*, Survivor |
 | [ ] | Phát lại: Lọ và sáu bảo vệ gục trong phòng bình cổ (Ngày 7) | `seg_d7_phase1_` | *In the Hall of the Mountain King*, Edvard Grieg |
-| [ ] | Có điện lại: đèn pin, loa, bình cổ, đánh nhau 25 s (Ngày 7) | `seg_d7_phase2_` | *The Power of Love*, Jennifer Rush |
+| [ ] | Có điện lại: cú gõ đèn pin, quật qua bệ làm vỡ bình, chụp bình cổ lên đầu, đánh nhau 14 s (Ngày 7) | `seg_d7_phase2_` | *The Power of Love*, Jennifer Rush |
 | [ ] | Sân thượng dưới mưa: đòn chân kẹp cổ số 21, "Xin vĩnh biệt cụ." (Ngày 7, 25 s) | `seg_d7_finisher_` | *What a Wonderful World*, Louis Armstrong |
 
 **Nhiệm vụ và trùm**
