@@ -1,9 +1,9 @@
 # File: res://scripts/cine/timelines/cine_d3_mannequins.gd
-# cine_d3_mannequins (10.000 s, spec C-D7 beats 4-5, C-D9 discovery beat + villain card): Day 3, the container yard at night.
+# cine_d3_mannequins (9.000 s, spec C-D7 beats 4-5, C-D9 discovery beat + villain card): Day 3, the container yard at night.
 # Six containers (two rows of three) stand in the dark; the middle one's door creaks open on rows of mannequins in smart
 # glasses, their heads turned away. At 1.6 every head snaps to the camera at once (jump scare v2: scare_hit, the duck, the
 # screen hit, the +8 dB sting) and the other five containers bang open: hundreds of red LEDs staring. Alexander ABCXYZ hops
-# out of the middle container blowing a party horn: "Surprise!" - the frame freezes on his villain card (3.0-7.0 s real;
+# out of the middle container blowing a party horn: "Surprise!" - the frame freezes on his villain card (3.0-6.0 s real, Wave 6 T6: 4 -> 3 s, the scene 10 -> 9 s;
 # StoryVillainCard: his endless name types on, runs off the band, then shrinks to fit: data "name_run"). Tail at 1x: he
 # starts reciting the name again, "Ta là Alexander ABCXYZ DEFGH IJK..." - "Dài ghê." (the gunfight starts next).
 # "Giảm hù dọa" (read at build time): the heads turn slowly over a second, the other doors swing open quietly, the scare mark
@@ -18,6 +18,7 @@ const CREAK: float = 0.3
 const SCARE: float = 1.6
 const POP: float = 2.05
 const CARD_R: float = 3.0
+const CARD_S: float = 3.0   # the card freeze (Wave 6: shorter than StoryCast.card_len; the tail carries the joke)
 const HERO := Vector3(0.0, 0.0, 3.6)
 const ALEX_FROM := Vector3(0.35, 0.0, 0.05)
 const ALEX := Vector3(0.35, 0.0, 0.95)
@@ -30,8 +31,8 @@ var calm: bool = false
 func build() -> void:
 	calm = StoryUtil.reduce_scares()
 	slot = "cine_d3_mannequins"
-	length = 10.0
-	var card_len: float = StoryCast.card_len("alexander")
+	length = 9.0
+	var card_len: float = CARD_S
 	story_end = length - card_len   # the card freeze adds card_len real seconds without story time
 	mood = "eerie"
 	fade_in = 0.4
@@ -101,5 +102,5 @@ func build() -> void:
 	sub(0.12, 1.46, "hero", "Có ai trong đó không...?")
 	sub(2.2, 0.75, "alex", "Surprise!")
 	joke(2.2, "the horror reveal is Alexander with a party horn: Surprise!")
-	sub(7.1, 2.2, "alex", "Ta là Alexander ABCXYZ DEFGH IJK...")
-	sub(9.4, 0.55, "hero", "Dài ghê.")
+	sub(CARD_R + CARD_S + 0.1, 2.2, "alex", "Ta là Alexander ABCXYZ DEFGH IJK...")   # real s, right after the card
+	sub(CARD_R + CARD_S + 2.4, 0.55, "hero", "Dài ghê.")

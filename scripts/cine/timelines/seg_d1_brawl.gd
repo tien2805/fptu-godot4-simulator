@@ -433,6 +433,9 @@ func _shots() -> void:
 		{"center_actor": "c1", "center_y": 0.9, "radius": 3.2, "deg_from": 10.0, "deg_to": 60.0, "height": 0.8, "fov": 46.0, "hand": 0.4})
 	shot("S15", _sr(15.92), "track", "low side tracking: Mũ Vàng driven back across the kerb, legs churning",
 		{"actor": "c1", "offset": Vector3(0.9, 0.45, 2.6), "look": Vector3(0.0, 1.0, 0.0), "fov": 50.0, "hand": 0.4})
+	# Wave 6 (plan 2026-11-05-w6-cines T6): a close-up inside the swell, three beats into S15 on the 112 bpm grid
+	shot("S15b", _sr(17.53), "track", "close tracking: Mũ Vàng folded over the shoulder, eyes wide, the kerb rushing past",
+		{"actor": "c1", "offset": Vector3(0.35, 1.25, 1.3), "look": Vector3(0.0, 1.15, 0.0), "fov": 38.0, "hand": 0.4})
 	shot("S16", _sr(19.14), "dolly", "push in as they near the crate stack",
 		{"from": Vector3(-1.6, 1.2, 1.0), "to": Vector3(-0.9, 1.0, 0.4), "look_from": Vector3(-0.6, 0.9, -0.6),
 		"look_to": Vector3(0.5, 0.8, -1.2), "fov": 54.0, "hand": 0.4})

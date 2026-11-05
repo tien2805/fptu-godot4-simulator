@@ -274,7 +274,7 @@ Mỗi dòng là một file `music\<slot>.ogg` hoặc `music\<slot>.mp3`. Trạng
 | [ ] | `cine_d2_intro` | Anh Duy dò đường Bầy Sói trên ba laptop (Ngày 2) | *Who Let the Dogs Out*, Baha Men | 14 s |
 | [ ] | `cine_d3_intro` | chạy xe đêm tới kênh, Anh Duy nói qua bộ đàm (Ngày 3) | *A Real Hero*, College & Electric Youth | 14 s |
 | [ ] | `mission_sneak` | lẻn vào bến container (Ngày 3) | *Sneaky Snitch*, Kevin MacLeod | nền, lặp |
-| [ ] | `cine_d3_mannequins` | cửa container mở, ma-nơ-canh quay đầu, "Surprise!" (Ngày 3) | *Toccata and Fugue in D minor*, J. S. Bach | 10 s |
+| [ ] | `cine_d3_mannequins` | cửa container mở, ma-nơ-canh quay đầu, "Surprise!" (Ngày 3) | *Toccata and Fugue in D minor*, J. S. Bach | 9 s |
 | [ ] | `meme_mannequin` | ma-nơ-canh đứng im khi lính quay lại (Ngày 3) | *Black Beatles*, Rae Sremmurd | nền, lặp |
 | [ ] | `mission_gunfight` | đấu súng ở bến container (Ngày 3) | *Bang Bang (My Baby Shot Me Down)*, Nancy Sinatra | nền, lặp |
 | [ ] | `meme_coffin_dance` | bảo vệ khiêng thùng kính kiểu "coffin dance" (Ngày 3) | *Astronomia*, Vicetone & Tony Igy | nền, lặp |
