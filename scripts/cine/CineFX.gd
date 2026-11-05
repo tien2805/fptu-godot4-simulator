@@ -45,8 +45,9 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	# (table, stool, chair, tray, soup_pot, counter), Mr.T's laptop (screen glow via glow_at), the "THI HỘ BAO ĐẬU" flyer
 	# stand, and the night corridor set (walls, ceiling, tube lamps that flicker like "lamp": opts "flicker")
 	"shiba", "table", "stool", "chair", "tray", "soup_pot", "counter", "laptop", "flyer", "corridor",
-	# W6 fights: the rice bowl that ends up stuck on a clone's sheep mask (seg_d4_brawl)
-	"rice_bowl",
+	# W6 fights: the rice bowl that ends up stuck on a clone's sheep mask (seg_d4_brawl), the yard crane's hook on its
+	# cable (seg_d3_boss: origin at the block's centre, the cable up to opts "cable" m, the J hook below opening toward +Z)
+	"rice_bowl", "crane_hook",
 	# Dolly's tells as held props (cuff on Wrist.L, keychain on Hips) and a lobby front with glass doors (cine_d4)
 	"wool_cuff", "sheep_keychain", "lobby_wall",
 	# story Phase C (Days 2, 3, 5): wearables, hand props, sets and animated props, built by CinePropsC (see its header;
@@ -549,6 +550,8 @@ static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 			_build_soup_pot(root)
 		"rice_bowl":
 			_build_rice_bowl(root)
+		"crane_hook":
+			_build_crane_hook(root, opts)
 		"counter":
 			_build_counter(root, opts)
 		"laptop":
@@ -1090,6 +1093,21 @@ static func _build_rice_bowl(root: Node3D) -> void:
 	for i: int in 5:
 		var a: float = TAU * float(i) / 5.0
 		_sphere(root, "Grain%d" % i, 0.018, Vector3(cos(a) * 0.08, 0.01 - 0.03 * float(i % 2), sin(a) * 0.08), _mat(Color("#FBFAF5"), 0.9))
+
+
+## The container-yard crane's hook (seg_d3_boss): a yellow hook block (origin at its centre), a steel shank and a J hook
+## below it (bottom 0.45 m under the origin, the tip rising on the +Z side), the cable straight up (opts "cable" m, default
+## 5.75; tests skip it as a contact, it is never in the way).
+static func _build_crane_hook(root: Node3D, opts: Dictionary) -> void:
+	var steel: StandardMaterial3D = _mat(Color("#55595F"), 0.35)
+	steel.metallic = 0.6
+	_box(root, "HookBlock", Vector3(0.24, 0.3, 0.16), Vector3.ZERO, _mat(Color("#F2B705"), 0.5))
+	_box(root, "HookStripe", Vector3(0.245, 0.06, 0.165), Vector3(0.0, 0.06, 0.0), _mat(Color("#1E1F22"), 0.6))
+	_box(root, "HookShank", Vector3(0.04, 0.26, 0.04), Vector3(0.0, -0.28, 0.0), steel)
+	_box(root, "HookBase", Vector3(0.04, 0.04, 0.18), Vector3(0.0, -0.43, 0.07), steel)
+	_box(root, "HookTip", Vector3(0.04, 0.12, 0.04), Vector3(0.0, -0.35, 0.14), steel)
+	var ln: float = float(opts.get("cable", 5.75))
+	_cyl(root, "Cable", 0.012, 0.012, ln, Vector3(0.0, 0.15 + ln * 0.5, 0.0), steel)
 
 
 ## Empty steel soup pot (cold and empty: no burns, no gore), two side handles; origin at the bottom centre.

@@ -364,7 +364,7 @@ Mỗi dòng là một file `music\<slot>.ogg` hoặc `music\<slot>.mp3`. Trạng
 | [x] | `end_f` | Kết F | 22 s | *Celebration*, Kool & the Gang |
 | [x] | `seg_d1_brawl` | đánh 3 shipper | 25 s | *I've Gotta Be Me* |
 | [x] | `seg_d2_boss` | Sói Xám dưới cầu | 25 s | *Heartbreaker*, Pat Benatar |
-| [x] | `seg_d3_boss` | xe nâng của Alexander | 25 s | *Straighten Up and Fly Right* |
+| [x] | `seg_d3_boss` | móc cẩu và xe nâng của Alexander | 21 s | *Straighten Up and Fly Right*, Robbie Williams |
 | [x] | `seg_d4_brawl` | bầy cừu ở căn tin | 25 s | *Ain't That a Kick in the Head*, Dean Martin |
 | [x] | `seg_d5_boss` | katana mua trên mạng | 25 s | *The Good Life*, José James |
 | [x] | `seg_d6_chase` | cano của Thị Lọ đâm vào bờ | 22 s | *Ring of Fire*, Des Rocs |
