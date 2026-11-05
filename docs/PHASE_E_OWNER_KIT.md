@@ -40,7 +40,7 @@ nên loa kẹo kéo đang phát bolero tự tạo.
 
 | Clip | Phát lúc | Dài | File nam | File nữ | Nhạc phát đè |
 |---|---|---|---|---|---|
-| `ai_intro` | cuối Ngày 0: email đình chỉ thi, TOANG! | 24 s | `video\ai_intro_m.ogv` | `video\ai_intro_f.ogv` | `music\ai_intro` (đã có) |
+| `ai_intro` | cuối Ngày 0: email đình chỉ thi, TOANG! | 20 s | `video\ai_intro_m.ogv` | `video\ai_intro_f.ogv` | `music\ai_intro` (đã có) |
 | `ai_reveal` | cuối Ngày 6: bảng LỌ ACADEMY bật sáng | 24 s | `video\ai_reveal_m.ogv` | `video\ai_reveal_f.ogv` | `music\ai_reveal` (đã có) |
 | `ai_true_end` | kết A, sau credits: tấm biển sập | 20 s | `video\ai_true_end_m.ogv` | `video\ai_true_end_f.ogv` | `music\ai_true_end`, không có thì bài của `end_a` |
 
@@ -96,20 +96,20 @@ extra fingers, distorted faces
 Mỗi prompt bên dưới có `{HERO}`: thay bằng HERO_M cho bản nam, HERO_F cho bản nữ, và đính kèm ảnh tham chiếu tương ứng.
 Phần lớn công cụ tạo 5-10 s mỗi lần: tạo từng cảnh rồi ghép, cắt đúng độ dài cột "Dài".
 
-### 1.4 `ai_intro` (24 s): TOANG!
+### 1.4 `ai_intro` (20 s): TOANG!
 
 Sáng hôm sau trước tòa BE6, nhân vật chính đọc email đình chỉ thi. Nhạc gợi ý: *The End of the World*, Skeeter Davis (đã có).
 
 | Cảnh | Từ | Dài | Prompt |
 |---|---|---|---|
 | S1 | 0,0 | 1,4 s | Wide shot, sunny morning in front of a modern university building with orange accents, {HERO} stands on the plaza reading a smartphone, students passing in the background. Static camera. |
-| S2 | 1,4 | 6,6 s | Over-the-shoulder close-up of the smartphone screen: an official email titled "Quyết định đình chỉ thi", then a huge red rubber stamp "TOANG!" slams onto it, the phone shakes. Static camera. |
-| S3 | 8,0 | 4,4 s | Slow push-in on {HERO}'s face, shocked, mouth open; then a comic facepalm. Morning light. |
-| S4 | 12,4 | 5,0 s | Low-angle hero shot of {HERO} lowering the phone, determined look, clenching a fist, the building towering behind, lens flare. |
-| S5 | 17,4 | 6,6 s | Slow orbit around {HERO} standing still on the plaza while the sky turns to a warm sunset; leave the upper third empty for the title "TOOL ĐEN – 7 ngày minh oan". At the end the phone lights up with a new message. |
+| S2 | 1,4 | 3,5 s | Over-the-shoulder close-up of the smartphone screen: an official email titled "Quyết định đình chỉ thi" types itself out line by line, then (at 4,0 s) a huge red rubber stamp "TOANG!" slams onto it, the phone shakes. Static camera. |
+| S3 | 4,9 | 3,5 s | Push-in on {HERO}'s face, shocked, mouth open; then a comic facepalm. Morning light. |
+| S4 | 8,4 | 5,0 s | Low-angle hero shot of {HERO} lowering the phone, determined look, clenching a fist, the building towering behind, lens flare. |
+| S5 | 13,4 | 6,6 s | Slow orbit around {HERO} standing still on the plaza while the sky turns to a warm sunset; leave the upper third empty for the title "TOOL ĐEN – 7 ngày minh oan". At the end the phone lights up with a new message. |
 
-Chữ cần chèn: email "Phòng Khảo thí: Quyết định đình chỉ thi" (S2), dấu đỏ "TOANG!" (S2), tin của Mr.T "Thầy tin em. Tìm
-bằng chứng đi." (cuối S2), đồng hồ đếm ngược lật về 7 (S3), tựa đề "TOOL ĐEN – 7 ngày minh oan" (S5).
+Chữ cần chèn: email "Phòng Khảo thí: Quyết định đình chỉ thi" (S2, chữ hiện dần), dấu đỏ "TOANG!" (S2, ở 4,0 s), tin của
+Mr.T "Thầy tin em. Tìm bằng chứng đi." (đầu S3), đồng hồ đếm ngược lật về 7 (S4), tựa đề "TOOL ĐEN – 7 ngày minh oan" (S5).
 
 ### 1.5 `ai_reveal` (24 s): Lọ Academy
 
@@ -155,19 +155,19 @@ chính không ghi tên người nói.
 
 ```
 1
-00:00:09,200 --> 00:00:11,400
+00:00:05,000 --> 00:00:06,900
 Mình... bị đình chỉ thi á?!
 
 2
-00:00:11,450 --> 00:00:13,150
+00:00:06,950 --> 00:00:08,650
 Mới được khen hôm qua mà...
 
 3
-00:00:14,500 --> 00:00:17,400
+00:00:10,500 --> 00:00:13,400
 Được. Bảy ngày. Phải tìm ra kẻ cài cái kính đó!
 
 4
-00:00:21,000 --> 00:00:23,500
+00:00:17,000 --> 00:00:19,500
 Số lạ (tin nhắn): Đừng đào sâu. Mày còn 7 ngày thôi.
 ```
 
@@ -245,7 +245,7 @@ ffmpeg -i ai_intro_m.mp4 -vf "subtitles=ai_intro.srt:force_style='FontName=Arial
 :: Khung không phải 16:9: thu nhỏ vào 1920x1080 có viền đen
 ffmpeg -i in.mp4 -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" -c:v libtheora -q:v 7 -c:a libvorbis -q:a 5 out.ogv
 
-:: Cắt đúng độ dài (24 s)
+:: Cắt đúng độ dài (ai_reveal 24 s; ai_intro: -t 20; ai_true_end: -t 20)
 ffmpeg -i in.mp4 -t 24 -c:v libtheora -q:v 7 -c:a libvorbis -q:a 5 out.ogv
 ```
 
@@ -341,9 +341,9 @@ Mỗi dòng là một file `music\<slot>.ogg` hoặc `music\<slot>.mp3`. Trạng
 |---|---|---|---|---|
 | [x] | `cine_d0_wake` | tỉnh dậy hoảng loạn | 8 s | *Wake Me Up Before You Go-Go*, Wham! |
 | [x] | `cine_d0_brief` | Mr.T nhờ coi thi | 12 s | *Peter Gunn Theme*, Henry Mancini |
-| [x] | `cine_d0_exam` | bằng chứng đầu tiên | 18 s | *I Got You (I Feel Good)*, James Brown |
+| [x] | `cine_d0_exam` | bằng chứng đầu tiên | 15,6 s | *I Got You (I Feel Good)*, James Brown |
 | [x] | `cine_d0_midnight` | nửa đêm ở BE6 | 22 s | *Mr. Sandman*, The Chordettes |
-| [x] | `ai_intro` | TOANG! | 24 s | *The End of the World*, Skeeter Davis |
+| [x] | `ai_intro` | TOANG! | 20 s | *The End of the World*, Skeeter Davis |
 | [x] | `cine_day_start` | tờ lịch bị xé mỗi sáng | 9 s | *Good Morning* (*Singin' in the Rain*) |
 | [x] | `cine_d1_intro` | Mr.T cho xem camera | 14 s | *The X-Files Theme*, Mark Snow |
 | [x] | `cine_d1_corridor` | cuối hành lang tối | 7,5 s | *The Murder* (*Psycho*), Bernard Herrmann |

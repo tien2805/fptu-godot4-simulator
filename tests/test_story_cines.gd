@@ -1,6 +1,6 @@
 # File: res://tests/test_story_cines.gd
-# Headless test of the Day 0 cinematics (spec A2-D10, A2-D14, A2-D16): cine_d0_wake 8 s, cine_d0_exam 18 s, cine_d0_midnight
-# 22 s and the ai_intro fallback 24 s validate (exact length, music slot = slot, landmark fallback, known cues, Day-0
+# Headless test of the Day 0 cinematics (spec A2-D10, A2-D14, A2-D16): cine_d0_wake 8 s, cine_d0_exam 15.6 s, cine_d0_midnight
+# 22 s and the ai_intro fallback 20 s validate (exact length, music slot = slot, landmark fallback, known cues, Day-0
 # beats point at them), their beat sheets in docs/cinematics are in sync, every line is Vietnamese without a gendered
 # pronoun for the protagonist, the hero is the protagonist (opts + {name}), "Giảm hù dọa" drops the violin screech, the
 # camera punch and the lamp flicker, each plays to its exact end in a CinePlayer (empty world, manual steps, no music) with
@@ -16,7 +16,7 @@
 # Run:  godot --headless --path . --script tests/test_story_cines.gd
 extends SceneTree
 
-const SLOTS: Dictionary = {"cine_d0_wake": 8.0, "cine_d0_exam": 18.0, "cine_d0_midnight": 22.0, "ai_intro": 24.0,
+const SLOTS: Dictionary = {"cine_d0_wake": 8.0, "cine_d0_exam": 15.6, "cine_d0_midnight": 22.0, "ai_intro": 20.0,
 	"cine_d0_brief": 12.0, "cine_day_start": 9.0,   # A2-D17: mission intro + day start
 	# Phase B (B-D8 / B-D10): Day 1 and Day 4 intros, discovery beats, the choice scene and its tails, end cinematics, the brawl
 	"cine_d1_intro": 14.0, "cine_d1_corridor": 7.5, "cine_d1_choice": 12.0, "cine_d1_choice_cover": 4.0,
@@ -136,7 +136,7 @@ func _timelines() -> void:
 	var said: String = ""
 	for sb2: Dictionary in ex.subs:
 		said += String(sb2["text"]) + "\n"
-	_check(said.contains("Giỏi lắm em! Ảnh tai nghe này là bằng chứng rõ ràng.") and said.contains("Ét o ét! Thi xong chưa?!") and said.contains("Minh Thư"), "exam lines (Mr.T, Phúc, {name})")
+	_check(said.contains("Giỏi lắm Minh Thư! Ảnh này thầy gửi Khảo thí ngay.") and said.contains("Ét o ét! Thi xong chưa?!") and said.contains("Minh Thư"), "exam lines (Mr.T, Phúc, {name})")
 	_check(ex.actors.has("mr_t") and String(ex.actors["mr_t"]["name"]) == "Mr.T" and String((ex.actors["mr_t"]["opts"] as Dictionary)["preset"]) == "lecturer", "Mr.T is role mr_t, lecturer preset")
 	var shows: Array = ex.cues.filter(func(c: Dictionary) -> bool: return c["type"] == "show" and c["actor"] == "sheep")
 	_check(shows.size() == 3 and is_equal_approx(float(shows[2]["s"]) - float(shows[1]["s"]), 1.5), "the sheep figure is seen for 1.5 s")
@@ -281,24 +281,28 @@ func _cards() -> void:
 	var cs: Script = load("res://scripts/story/StoryIntroCards.gd")
 	var s0: Dictionary = cs.call("state_at", 0.5)
 	_check(not bool(s0["email"]) and float(s0["stamp_scale"]) == 0.0 and int(s0["count"]) == -1 and not bool(s0["title"]), "nothing at 0.5 s")
-	var s1: Dictionary = cs.call("state_at", 3.0)
-	_check(bool(s1["email"]) and float(s1["stamp_scale"]) == 0.0, "the email at 3 s, no stamp yet")
-	var s2: Dictionary = cs.call("state_at", 5.21)
-	var s3: Dictionary = cs.call("state_at", 6.0)
-	_check(float(s2["stamp_scale"]) > 2.0 and is_equal_approx(float(s3["stamp_scale"]), 1.0) and bool(s3["email"]), "TOANG! slams at 5.2 s and stays on the email")
-	var s4: Dictionary = cs.call("state_at", 9.0)
-	_check(bool(s4["text"]) and not bool(s4["email"]), "Mr.T's text at 9 s")
-	var c13: int = int((cs.call("state_at", 12.7) as Dictionary)["count"])
-	var c14: int = int((cs.call("state_at", 14.2) as Dictionary)["count"])
-	var c16: int = int((cs.call("state_at", 16.5) as Dictionary)["count"])
+	var s1: Dictionary = cs.call("state_at", 2.4)
+	_check(bool(s1["email"]) and float(s1["stamp_scale"]) == 0.0 and float(s1["typed"]) > 0.3 and float(s1["typed"]) < 0.7,
+		"the email at 2.4 s, typing out (%.2f), no stamp yet" % float(s1["typed"]))
+	var s2: Dictionary = cs.call("state_at", 4.01)
+	var s3: Dictionary = cs.call("state_at", 4.5)
+	_check(float(s2["stamp_scale"]) > 2.0 and is_equal_approx(float(s3["stamp_scale"]), 1.0) and bool(s3["email"]) and float(s3["typed"]) == 1.0,
+		"TOANG! slams at 4.0 s onto the typed email and stays on it")
+	var s4: Dictionary = cs.call("state_at", 6.0)
+	_check(bool(s4["text"]) and not bool(s4["email"]), "Mr.T's text at 6 s")
+	var c13: int = int((cs.call("state_at", 8.7) as Dictionary)["count"])
+	var c14: int = int((cs.call("state_at", 10.2) as Dictionary)["count"])
+	var c16: int = int((cs.call("state_at", 12.5) as Dictionary)["count"])
 	_check(c13 == 10 and c14 == 7 and c16 == 7, "the countdown flips 10 -> 7 (%d, %d, %d)" % [c13, c14, c16])
-	var s5: Dictionary = cs.call("state_at", 20.0)
-	_check(bool(s5["title"]) and float(s5["title_alpha"]) == 1.0 and int(s5["count"]) == -1, "title card TOOL ĐEN at 20 s")
+	var s5: Dictionary = cs.call("state_at", 16.0)
+	_check(bool(s5["title"]) and float(s5["title_alpha"]) == 1.0 and int(s5["count"]) == -1, "title card TOOL ĐEN at 16 s")
 	var cards: StoryIntroCards = StoryIntroCards.new()
 	root.add_child(cards)
-	cards.update(5.5)
+	cards.update(2.4)
+	_check(cards.email_box.visible and cards.email_body.visible_ratio > 0.3 and cards.email_body.visible_ratio < 0.7, "cards node: the email body types out")
+	cards.update(4.5)
 	_check(cards.stamp.visible and cards.email_box.visible and cards.email_body.text.contains("Minh Thư") and cards.stamp.text == "TOANG!", "cards node: email with {name} + stamp")
-	cards.update(14.5)
+	cards.update(10.5)
 	_check(cards.count_label.visible and cards.count_label.text == "CÒN 7 NGÀY" and not cards.email_box.visible, "cards node: CÒN 7 NGÀY")
 	# no one-letter-per-line labels (review A2-R3): the big words keep their text width
 	var widths: Array = [cards.stamp.get_combined_minimum_size().x, cards.count_label.get_combined_minimum_size().x]
@@ -1327,3 +1331,49 @@ func _w6_cards() -> void:
 	lc.update(lc.r0 + 0.5)
 	_check(lc.screen.log_rows and lc.frame.visible, "the flow card scrolls its log rows")
 	lc.queue_free()
+	# cine_d5_intro: the laptop insert at 6.0 with the terminal card typing the decrypted USB out, line after line
+	var d5i: CineTimeline = CineTimeline.load_slot("cine_d5_intro")
+	var tc: Array = d5i.cards.filter(func(cd: Dictionary) -> bool: return String(cd["data"].get("kind", "")) == "terminal")
+	_check(tc.size() == 1 and absf(float(tc[0]["r"]) - 6.0) < 1e-6
+		and d5i.shots.any(func(sh: Dictionary) -> bool: return absf(float(sh["s"]) - 6.0) < 1e-6),
+		"cine_d5_intro: the laptop insert with the terminal card at 6.0")
+	if tc.size() == 1:
+		var lines: Array = tc[0]["data"]["lines"]
+		var said5: String = "\n".join(PackedStringArray(lines))
+		_check(said5.contains("10.13.0.7") and said5.contains("HẦM THE BEVERLY") and _plain(said5), "the terminal shows the basement IP")
+		var c0: Array[int] = StoryScreenCard.terminal_chars(lines, 0.0)
+		var c1: Array[int] = StoryScreenCard.terminal_chars(lines, StoryScreenCard.TYPE_END * 0.5)
+		var c2: Array[int] = StoryScreenCard.terminal_chars(lines, 0.95)
+		_check(c0.max() == 0 and c1[0] > 0 and c2[2] == String(lines[2]).length() and c2[0] == String(lines[0]).length(),
+			"the terminal lines type out one after another (%s / %s)" % [str(c1), str(c2)])
+		var tcard := StoryScreenCard.new()
+		tcard.data = tc[0]["data"]
+		tcard.r0 = float(tc[0]["r"])
+		tcard.dur = float(tc[0]["dur"])
+		root.add_child(tcard)
+		tcard.update(tcard.r0 + tcard.dur * 0.2)
+		var part: int = tcard.term_labels[0].visible_characters
+		tcard.update(tcard.r0 + tcard.dur * 0.9)
+		_check(tcard.frame.visible and tcard.term_labels.size() == 3 and part < String(lines[0]).length()
+			and tcard.term_labels[2].visible_characters == String(lines[2]).length(), "the terminal card node types its lines")
+		tcard.queue_free()
+	# cine_d1_intro: the CCTV card zooms onto the hand-off and back out before it ends
+	var d1i: CineTimeline = CineTimeline.load_slot("cine_d1_intro")
+	var cc: Array = d1i.cards.filter(func(cd: Dictionary) -> bool: return String(cd["data"].get("kind", "")) == "cctv")
+	_check(cc.size() == 1 and (cc[0]["data"].get("zoom", []) as Array).size() == 5, "cine_d1_intro: the CCTV card has a zoom")
+	if cc.size() == 1:
+		var z: Array = cc[0]["data"]["zoom"]
+		_check(is_equal_approx(StoryScreenCard.zoom_at(z, 0.1), 1.0) and absf(StoryScreenCard.zoom_at(z, 0.5) - 2.2) < 1e-4
+			and StoryScreenCard.zoom_at(z, 0.29) > 1.0 and StoryScreenCard.zoom_at(z, 0.29) < 2.2
+			and is_equal_approx(StoryScreenCard.zoom_at(z, 0.95), 1.0) and is_equal_approx(StoryScreenCard.zoom_at([], 0.5), 1.0),
+			"the CCTV zoom: 1x, in to 2.2x on the hand-off, back to 1x before the card ends")
+	# cine_d7_intro: the 07:59 clock flips to 08:00 on the dun-dun-duun
+	var d7i: CineTimeline = CineTimeline.load_slot("cine_d7_intro")
+	var fk: Array = d7i.cards.filter(func(cd: Dictionary) -> bool: return String(cd["data"].get("kind", "")) == "clock")
+	_check(fk.size() == 1, "cine_d7_intro: one clock card")
+	if fk.size() == 1:
+		var fd: Dictionary = fk[0]["data"]
+		var flip_r: float = float(fk[0]["r"]) + float(fd["flip_u"]) * float(fk[0]["dur"])
+		_check(String(fd["from"]) == "07:59" and String(fd["to"]) == "08:00"
+			and d7i.sfx.any(func(e: Dictionary) -> bool: return String(e["cue"]) == "dun_dun_duun" and absf(float(e["at"]) - flip_r) < 0.05),
+			"the 07:59 -> 08:00 flip lands on the dun-dun-duun (%.2f)" % flip_r)

@@ -44,8 +44,12 @@ func build() -> void:
 	expr("mr_t", 4.8, "talk")
 	expr("mr_t", 9.3, "happy")
 	sfx_at(9.8, "dun_dun_duun", -10.0)
+	# Wave 6 (plan 2026-11-05-w6-cines T4): the two-shot is cut at 2.3 for a Mr.T close-up, and "Lọ Thần" gets its own
+	# push-in at 6.0 (the riff that enters 0.8 s in stays under the opening two-shot)
 	two_shot("S1", 0.0, "hero", "mr_t", {"side": -1.0, "push": 0.15, "look_y": 1.2})
+	push_in("S1b", 2.3, "mr_t", {"from": 2.5, "to": 2.3, "side_deg": 50.0, "look_y": 1.25, "hand": 0.12})
 	ots_shot("S2", 4.6, "hero", "mr_t", {"hand": 0.15, "look_y": 1.2})
+	push_in("S2b", 6.0, "mr_t", {"from": 3.6, "to": 2.3, "side_deg": -40.0, "look_y": 1.25})   # "...tool tên 'Lọ Thần'..."
 	shot("S3", 9.0, "static", "close: the nod", {"pos": Vector3(-0.2, 1.55, -0.6), "look": Vector3(0.45, 1.5, 0.4), "fov": 40.0})
 	shot("S4", 9.8, "dolly", "push-in on the room 311 door", {"from": Vector3(0.6, 1.6, -1.6), "to": Vector3(0.25, 1.65, 3.2), "look_from": DOOR, "look_to": DOOR, "fov": 44.0})
 	sub(0.4, 4.3, "mr_t", StoryUtil.fmt("{name}! Phòng 311 thiếu giám thị, em phụ thầy được không?"))

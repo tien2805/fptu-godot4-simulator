@@ -8,6 +8,8 @@
 SHOT S1      0.000  static    close over the laptops: Anh Duy holds up the USB "ZA MẪN LABS"
 SHOT S2      1.750  static    insert: the USB slides into the laptop
 SHOT S3      2.400  two_shot  two-shot duy + hero
+SHOT S3b     6.000  static    insert: the decrypted USB on the middle laptop, the basement IP types out
+SHOT S3c     7.800  two_shot  two-shot duy + hero
 SHOT S4     10.200  push_in   push-in hero
 SHOT S5     11.000  static    close over the laptops: Anh Duy, pleased with himself
 SHOT S6     11.850  static    wide: "Đêm nay xuống hầm."
@@ -18,6 +20,9 @@ SUB    3.900 -  5.100  Bạn: Rồi trong đó có gì?
 SUB    5.200 - 10.200  Anh Duy: IP nội bộ, trỏ về server dưới hầm The Beverly.  /  Dịch: Máy chủ nằm dưới hầm tòa mày ở.
 SUB   10.300 - 11.700  Bạn: Ngay dưới chỗ tao ngủ?!
 SUB   11.900 - 13.100  Bạn: Đêm nay xuống hầm.
+#
+# Cards (real start - end, kind: what)
+CARD    6.000 -  8.400  screen: terminal
 #
 # Pacing (Q5): joke beats and the day-end cliffhanger (real time)
 JOKE    0.400  military-grade encryption, password 123456

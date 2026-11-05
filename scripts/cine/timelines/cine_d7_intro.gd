@@ -12,6 +12,7 @@ const DESK := Vector3(0.0, 0.0, 0.0)
 const DUY := Vector3(0.0, 0.0, -0.72)
 const HERO := Vector3(0.78, 0.0, -1.42)
 const MRT := Vector3(-0.95, 0.0, -1.6)
+const FLIP_R: float = 3.2   # the insert's clock flips to 08:00
 
 
 func build() -> void:
@@ -57,10 +58,16 @@ func build() -> void:
 	expr("mrt", 0.0, "open")
 	expr("mrt", 11.3, "happy")
 	sfx_at(0.3, "keyboard_clack", -10.0)
-	sfx_at(2.6, "dun_dun_duun", -12.0)
+	sfx_at(FLIP_R, "freeze_tick", -8.0)
+	sfx_at(FLIP_R, "dun_dun_duun", -12.0)
 	sfx_at(12.3, "ba_dum_tss", -10.0)
 	shot("S1", 0.0, "static", "close over the laptops: Anh Duy, the go-live countdown on three screens",
 		{"pos": Vector3(0.22, 1.32, 0.62), "look": Vector3(0.0, 1.18, -0.72), "fov": 40.0, "hand": 0.15})
+	# Wave 6 (plan 2026-11-05-w6-cines T4): an insert on the middle laptop, the go-live clock flips 07:59 -> 08:00
+	shot("S1b", 2.2, "static", "insert over Anh Duy's right shoulder: the go-live clock on the middle laptop flips 07:59 -> 08:00",
+		{"pos": Vector3(0.42, 1.45, -1.1), "look": Vector3(0.0, 1.0, 0.0), "fov": 42.0, "hand": 0.1})
+	card("screen", 2.2, 1.7, {"kind": "clock", "title": "LỌ THẦN 10.0 · GIỜ G", "from": "07:59", "to": "08:00",
+		"flip_u": (FLIP_R - 2.2) / 1.7})
 	two_shot("S2", 3.9, "mrt", "hero", {"look_y": 1.3, "dist": 3.2})
 	push_in("S3", 6.8, "hero", {"from": 2.6, "to": 2.2, "side_deg": 40.0, "look_y": 1.25, "hand": 0.12})
 	two_shot("S4", 7.65, "duy", "hero", {"look_y": 1.05, "dist": 3.4})

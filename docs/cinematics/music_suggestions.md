@@ -157,9 +157,9 @@ Nhạc chuông của Sói Xám là âm thanh tự tạo (`ringtone_synth`), khô
 | `cine_d0_wake` (tỉnh dậy hoảng loạn, 8 s) | *Wake Me Up Before You Go-Go*, Wham!; hoặc *Yakety Sax* | sáng trễ giờ thi |
 | `cine_d0_brief` (Mr.T giao việc, 12 s) | *Peter Gunn Theme*, Henry Mancini | không khí điệp viên |
 | `seg_d0_exam` (replay bắt tool) | *Bad to the Bone* (riff) | khoảnh khắc "bắt được rồi" |
-| `cine_d0_exam` (đắc thắng rồi rợn, 18 s) | *I Got You (I Feel Good)*, James Brown | đang vui thì người cừu xuất hiện |
+| `cine_d0_exam` (đắc thắng rồi rợn, 15.6 s) | *I Got You (I Feel Good)*, James Brown | đang vui thì người cừu xuất hiện |
 | `cine_d0_midnight` (mất ngủ, bị hù, 22 s) | *Mr. Sandman*, The Chordettes | bài ru ngủ ngọt mà rợn |
-| `ai_intro` (thư đình chỉ, TOANG!, 24 s) | *The End of the World*, Skeeter Davis; hoặc *Que Sera, Sera* | nhạc ngọt phát trên thảm họa |
+| `ai_intro` (thư đình chỉ, TOANG!, 20 s) | *The End of the World*, Skeeter Davis; hoặc *Que Sera, Sera* | nhạc ngọt phát trên thảm họa |
 | `cine_day_start` (tờ lịch bị xé mỗi sáng, 9 s) | *Good Morning* (*Singin' in the Rain*) | vui vẻ trong khi đếm ngược |
 
 ## Gợi ý: cảnh cuối các ngày và các kết

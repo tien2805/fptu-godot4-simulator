@@ -1,24 +1,26 @@
 # File: res://scripts/story/StoryIntroCards.gd
 # 2D cards over the ai_intro fallback cinematic (spec A2-D10), all drawn in code, timed on the CinePlayer's REAL time r:
-#   1.5-7.5   the email "Phòng Khảo thí: Quyết định đình chỉ thi" on a phone screen;
-#   5.2       a huge red "TOANG!" stamp slams onto it (scale 3 -> 1 in 0.18 s, tilted) and stays until 7.5;
-#   8.0-12.0  Mr.T's text "Thầy tin em. Tìm bằng chứng đi.";
-#   12.6-17.0 the countdown "CÒN N NGÀY" flips 10 -> 7 (lands on 7 at 14.0) and holds;
-#   17.4-24   the title card "TOOL ĐEN" / "7 ngày minh oan".
+#   1.4-5.0   the email "Phòng Khảo thí: Quyết định đình chỉ thi" on a phone screen, its body typed out over 1.5-3.4;
+#   4.0       a huge red "TOANG!" stamp slams onto it (scale 3 -> 1 in 0.18 s, tilted) and stays until 5.0;
+#   4.9-8.0   Mr.T's text "Thầy tin em. Tìm bằng chứng đi.";
+#   8.6-13.0  the countdown "CÒN N NGÀY" flips 10 -> 7 (lands on 7 at 10.0) and holds;
+#   13.4-20   the title card "TOOL ĐEN" / "7 ngày minh oan".
+# (Wave 6, plan 2026-11-05-w6-cines T4: the 24 s fallback is now 20 s; the email is typed out in 3.5 s instead of 6.)
 # state_at(r) is a pure function (tests); update(r) applies it. Reads `player.r` itself each frame when a player is set
 # (PROCESS_MODE_ALWAYS: the cinematic pauses the tree). Layer 105: above the HUD, below the cinematic's own overlay (110+).
 class_name StoryIntroCards
 extends CanvasLayer
 
 const GameFXScript: Script = preload("res://scripts/GameFX.gd")
-const EMAIL := [1.5, 7.5]
-const STAMP_AT: float = 5.2
+const EMAIL := [1.4, 5.0]
+const TYPE := [1.5, 3.4]   # the email body types out
+const STAMP_AT: float = 4.0
 const STAMP_SLAM: float = 0.18
-const TEXT := [8.0, 12.0]
-const COUNT := [12.6, 17.0]
+const TEXT := [4.9, 8.0]
+const COUNT := [8.6, 13.0]
 const COUNT_FROM: int = 10
-const COUNT_LAND: float = 14.0
-const TITLE := [17.4, 24.0]
+const COUNT_LAND: float = 10.0
+const TITLE := [13.4, 20.0]
 ## Mr.T's text and the countdown sit in the top band of the screen (anchor 0 .. TOP_BAND), above the faces.
 const TOP_BAND: float = 0.42
 const PINK := Color("#FF4FA3")
@@ -34,10 +36,12 @@ var title_box: Control
 var last_state: Dictionary = {}
 
 
-## Card state at real time r: {email, stamp_scale (0 = hidden), text, count (-1 = hidden), title, title_alpha}.
+## Card state at real time r: {email, typed (0..1 of the email body shown), stamp_scale (0 = hidden), text, count (-1 =
+## hidden), title, title_alpha}.
 static func state_at(r: float) -> Dictionary:
 	var st: Dictionary = {"email": r >= EMAIL[0] and r < EMAIL[1], "stamp_scale": 0.0, "text": r >= TEXT[0] and r < TEXT[1],
-		"count": -1, "title": r >= TITLE[0], "title_alpha": 0.0}
+		"count": -1, "title": r >= TITLE[0], "title_alpha": 0.0,
+		"typed": clampf((r - float(TYPE[0])) / (float(TYPE[1]) - float(TYPE[0])), 0.0, 1.0)}
 	if r >= STAMP_AT and r < EMAIL[1]:
 		var u: float = clampf((r - STAMP_AT) / STAMP_SLAM, 0.0, 1.0)
 		st["stamp_scale"] = lerpf(3.0, 1.0, u * u)
@@ -118,6 +122,7 @@ func _build() -> void:
 	ev.add_child(_lbl("Phòng Khảo thí", 20, Color("#2A1C3C")))
 	ev.add_child(_lbl("QUYẾT ĐỊNH ĐÌNH CHỈ THI", 26, RED))
 	email_body = _lbl(StoryUtil.fmt("Sinh viên {name} bị đình chỉ thi môn EOS do nghi vấn mang thiết bị gian lận (kính thông minh) vào phòng 311. Hội đồng kỷ luật họp sau 7 ngày."), 15, Color("#2A1C3C"), false, true)
+	email_body.visible_characters_behavior = TextServer.VC_CHARS_AFTER_SHAPING   # the box keeps its size while it types
 	ev.add_child(email_body)
 	var c2: CenterContainer = _centered(Vector2.ZERO)
 	stamp = _lbl("TOANG!", 120, RED, true)
@@ -169,6 +174,7 @@ func update(r: float) -> void:
 	var st: Dictionary = state_at(r)
 	last_state = st
 	email_box.visible = bool(st["email"])
+	email_body.visible_ratio = float(st["typed"])
 	var sc: float = float(st["stamp_scale"])
 	stamp.visible = sc > 0.0
 	if sc > 0.0:

@@ -6,7 +6,8 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    wide over the plinths: Lọ gets up at the back of the hall
-SHOT S2      4.000  push_in   push-in lo
+SHOT S1b     2.500  push_in   push-in lo
+SHOT S2      4.000  dutch     dutch lo
 SHOT S3      7.200  ots       over hero onto lo
 SHOT S4     10.200  static    the hall goes dark: only the red floor glow and the speaker rings
 #

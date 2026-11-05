@@ -6,7 +6,9 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  two_shot  two-shot hero + mr_t
+SHOT S1b     2.300  push_in   push-in mr_t
 SHOT S2      4.600  ots       over hero onto mr_t
+SHOT S2b     6.000  push_in   push-in mr_t
 SHOT S3      9.000  static    close: the nod
 SHOT S4      9.800  dolly     push-in on the room 311 door
 #

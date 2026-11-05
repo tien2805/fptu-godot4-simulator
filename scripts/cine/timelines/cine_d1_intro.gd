@@ -61,6 +61,7 @@ func build() -> void:
 	expr("chu_bay", 0.0, "closed")
 	sfx_at(0.3, "phone_buzz", -12.0)
 	sfx_at(2.0, "static_burst", -14.0)
+	sfx_at(3.35, "freeze_tick", -10.0)   # the zoom clicks in
 	sfx_at(7.5, "static_burst", -16.0)
 	sfx_at(10.6, "dun_dun_duun", -9.0)
 	shot("S1", 0.0, "static", "wide from the side: Mr.T and the protagonist at the laptop by the gate, night",
@@ -71,7 +72,9 @@ func build() -> void:
 	two_shot("S4", 8.2, "hero", "mr_t", {"hand": 0.1, "look_y": 1.2})
 	shot("S5", 12.4, "static", "wide: Chú Bảy dozing by the booth, Lu at his feet; the protagonist nods",
 		{"pos": Vector3(1.4, 1.7, 3.2), "look": Vector3(-1.1, 0.9, -0.9), "fov": 52.0})
-	card("screen", 2.0, 5.6, {"kind": "cctv", "cam": "CAM 03", "place": "BÃI XE D1", "clock": "00:12:40"})
+	# Wave 6 (plan 2026-11-05-w6-cines T4): the replay zooms 2.2x onto the hand-off (in 3.3-3.9 s, out 6.6-7.0 s)
+	card("screen", 2.0, 5.6, {"kind": "cctv", "cam": "CAM 03", "place": "BÃI XE D1", "clock": "00:12:40",
+		"zoom": [0.24, 0.34, 2.2, 0.82, 0.9], "focus": Vector2(0.49, 0.6)})
 	sub(0.5, 3.0, "mr_t", "Em xem cái này. Camera bãi xe D1, tối qua.")
 	sub(3.6, 3.0, "mr_t", "Shipper giao 'hàng' cho sinh viên lúc nửa đêm.")
 	sub(6.8, 1.3, "hero", "Hàng gì vậy thầy?")

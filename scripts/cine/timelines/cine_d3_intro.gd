@@ -65,7 +65,7 @@ func build() -> void:
 	shot("S6", 11.6, "track", "low tracking beside the front wheel: the road to the bridge",
 		{"actor": "hero", "offset": Vector3(-0.75, 0.2, -0.3), "look": Vector3(0.35, 0.55, -10.0), "fov": 52.0, "hand": 0.4})
 	card("screen", 0.3, 12.45, {"kind": "radio", "sender": "Anh Duy"})
-	card("screen", LOOP_R, 3.95, {"kind": "clock", "title": "CAMERA BẾN: LOOP", "count": 30})
+	card("screen", LOOP_R, 3.95, {"kind": "clock", "title": "CAMERA BẾN ĐỨNG HÌNH", "count": 30})
 	# Anh Duy's lines show with their Dịch line: timed for both (0.06 s per character of the two)
 	sub(0.4, 3.75, "duy", "Tới đâu rồi? Anh track GPS mày.", "Dịch: Anh thấy mày trên bản đồ.")
 	sub(4.25, 1.3, "hero", "Gần cầu Rạch Hầm rồi.")
