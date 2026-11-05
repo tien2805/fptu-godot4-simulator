@@ -9,14 +9,17 @@ SHOT S1      0.000  static    wide: a lobby corner at night, three laptops glow,
 SHOT S2      1.900  static    close over the laptops: Anh Duy typing, the route on three screens
 SHOT S3      4.500  push_in   push-in hero
 SHOT S4      6.100  two_shot  two-shot duy + hero
+SHOT S4b     8.300  push_in   push-in duy
 SHOT S5      9.600  static    insert: the energy drink goes down, fingers on the keys
+SHOT S5b    10.600  push_in   push-in hero
 SHOT S6     11.900  static    wide: the protagonist turns and goes, "Tới công chuyện luôn!"
 #
 # Subtitles (real start - end, speaker: line)
 SUB    0.500 -  4.450  Anh Duy: Anh trace route Bầy Sói rồi.  /  Dịch: Anh biết tụi nó chạy đường nào.
 SUB    4.600 -  6.100  Bạn: Nói tiếng người đi anh.
-SUB    6.200 - 11.800  Anh Duy: 2h, Nguyễn Xiển. Còn lại e tự improvise nha.  /  Dịch: Anh hết biết rồi, em tự lo.
+SUB    6.200 -  8.200  Anh Duy: 2h, Nguyễn Xiển.  /  Dịch: 2 giờ sáng.
+SUB    8.300 - 11.900  Anh Duy: Còn lại e tự improvise nha.  /  Dịch: Anh hết biết rồi, em tự lo.
 SUB   12.050 - 13.450  Bạn: Tới công chuyện luôn!
 #
 # Pacing (Q5): joke beats and the day-end cliffhanger (real time)
-JOKE    6.200  Anh Duy's plan ends in 'tự improvise'; the protagonist facepalms
+JOKE    8.300  Anh Duy's plan ends in 'tự improvise'; the protagonist facepalms

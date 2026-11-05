@@ -1,9 +1,12 @@
 # File: res://scripts/cine/timelines/end_e.gd
-# end_e (24.000 s, story spec section 6, ending E "Còn cái nịt", plan 2026-11-01-w4-endings.md T1): expelled, credits over
+# end_e (27.000 s, story spec section 6, ending E "Còn cái nịt", plan 2026-11-01-w4-endings.md T1): expelled, credits over
 # memes. Morning at the FPTU main gate: the protagonist walks out with a cardboard box; Chú Bảy takes the student card back:
 # "Thẻ sinh viên đây con. Chú giữ lại nhé." - "Bảy ngày... mà bằng chứng không đủ." A gust (whoosh): the box drops, empty
 # but for a belt; the protagonist holds it up: "Còn... cái nịt." (toang sting, sad trombone). Phúc jogs in: "Ít ra mày còn
-# cái nịt! Tao mất cả cái nịt!" and gets a shiba-style bonk with stars. The meme credits roll (15.6-24.0 s).
+# cái nịt! Tao mất cả cái nịt!" and gets a shiba-style bonk with stars. The meme credits roll (15.6-19.0 s), then (Wave 6,
+# plan 2026-11-05-w6-cines T5) Phúc snatches the belt: "Cái nịt này tao xin nha!" and jogs off - "...Cái nịt!" (19.0-21.4 s);
+# a second card "ĐÍNH CHÍNH" corrects the credits: "Tài sản còn lại: 0 cái nịt." (21.4-27.0 s, the scene 24 -> 27 s; its
+# roll stops at 60 % so the hint line "Tìm đủ bằng chứng để mở kết khác." holds for about 3 s before the fade).
 # No ramps (story = real). Music slot end_e (owner file "Never Gonna Give You Up" for the credits, else silence).
 # Stage: the cine_d1_intro stage by the campus main gate (10 x 9), in the morning.
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
@@ -15,12 +18,15 @@ const BAY := Vector3(1.4, 0.0, 0.6)
 const PHUC_FROM := Vector3(-4.2, 0.0, 1.4)
 const PHUC := Vector3(-1.3, 0.0, 0.9)
 const CREDITS_R: float = 15.6
+const GAG_R: float = 19.0
+const GRAB_R: float = 19.4   # the belt changes hands
+const FIX_R: float = 21.4    # the "ĐÍNH CHÍNH" card
 
 
 func build() -> void:
 	slot = "end_e"
-	length = 24.0
-	story_end = 24.0
+	length = 27.0
+	story_end = 27.0
 	mood = "playful"
 	fade_in = 0.8
 	fade_out = 1.0
@@ -45,13 +51,18 @@ func build() -> void:
 	key("hero", 8.4, HERO, 0.0)
 	move("hero", 8.2, "pickup", {"fade": 0.2})
 	move("hero", 9.2, "hold_up", {"fade": 0.2})
-	hold("hero", 9.0, story_end, "belt", {"offset": Vector3(0.0, 0.0, -0.04)})
+	hold("hero", 9.0, GRAB_R, "belt", {"offset": Vector3(0.0, 0.0, -0.04)})
 	look("hero", 9.2, 11.6, HERO + Vector3(0.1, 1.4, -0.4))
 	look("hero", 11.7, 16.0, "phuc")
 	expr("hero", 0.0, "done")
 	expr("hero", 7.6, "surprised")
 	expr("hero", 9.4, "done")
 	expr("hero", 12.6, "happy")
+	look("hero", GAG_R, story_end, "phuc")
+	move("hero", GRAB_R, "startled", {"fade": 0.1})
+	move("hero", 20.2, "idle", {"fade": 0.2})
+	expr("hero", GRAB_R, "surprised")
+	expr("hero", 20.5, "angry")
 	# Chú Bảy at the gate
 	key("chu_bay", 0.0, BAY, CineTimeline.face(BAY, HERO))
 	move("chu_bay", 0.0, "idle")
@@ -74,9 +85,18 @@ func build() -> void:
 	move("phuc", 12.4, "talk", {"fade": 0.2})
 	move("phuc", 14.8, "hit_head", {"fade": 0.05})
 	move("phuc", 15.8, "head_shake", {"fade": 0.2})
-	look("phuc", 12.4, story_end, "hero")
+	look("phuc", 12.4, 19.7, "hero")
 	expr("phuc", 11.2, "happy")
 	expr("phuc", 14.8, "pain")
+	# after the credits: Phúc snatches the belt and jogs off with it
+	move("phuc", GAG_R, "grab", {"fade": 0.15})
+	hold("phuc", GRAB_R, story_end, "belt", {"offset": Vector3(0.0, 0.0, -0.04)})
+	expr("phuc", GAG_R, "happy")
+	key("phuc", 19.6, PHUC, CineTimeline.face(PHUC, HERO))
+	key("phuc", 19.85, PHUC, CineTimeline.face(PHUC, PHUC_FROM))
+	key("phuc", 21.3, PHUC_FROM, CineTimeline.face(PHUC, PHUC_FROM), {"mode": "in"})
+	show("phuc", 21.3, false)   # gone out of the gate with it
+	move("phuc", 19.85, "jog", {"fade": 0.15})
 	sfx_at(3.6, "phone_buzz", -14.0)
 	sfx_at(7.4, "whoosh_down", -3.0)
 	sfx_at(7.6, "body_fall", -8.0)
@@ -84,6 +104,8 @@ func build() -> void:
 	sfx_at(10.6, "sad_trombone", -5.0)
 	sfx_at(14.8, "bonk", -2.0)
 	fx_at(14.8, "stars", "phuc", {"until": 17.0})
+	sfx_at(GRAB_R, "whoosh_down", -8.0)
+	sfx_at(19.9, "slide_whistle", -8.0)
 	shot("S1", 0.0, "static", "wide: morning at the FPTU main gate, the protagonist walks out with a box",
 		{"pos": Vector3(3.2, 1.7, 3.0), "look": Vector3(0.0, 1.0, -1.0), "fov": 50.0})
 	two_shot("S2", 2.4, "chu_bay", "hero", {"side": 1.0, "look_y": 1.25})
@@ -94,13 +116,20 @@ func build() -> void:
 	two_shot("S6", 12.4, "phuc", "hero", {"side": -1.0, "look_y": 1.25})
 	shot("S7", 14.6, "static", "Chú Bảy bonks Phúc: stars",
 		{"pos": Vector3(0.6, 1.5, 2.6), "look": Vector3(-0.4, 1.3, 0.6), "fov": 48.0})
+	shot("S8", GAG_R, "static", "wide past the gate: Phúc snatches the belt and jogs off with it",
+		{"pos": Vector3(1.6, 1.6, 3.2), "look": Vector3(-1.2, 1.1, 0.2), "fov": 50.0})
 	sub(2.5, 2.3, "chu_bay", "Thẻ sinh viên đây con. Chú giữ lại nhé.")
 	sub(5.0, 2.2, "hero", "Bảy ngày... mà bằng chứng không đủ.")
 	sub(9.4, 1.8, "hero", "Còn... cái nịt.")
 	sub(12.5, 2.2, "phuc", "Ít ra mày còn cái nịt! Tao mất cả cái nịt!")
 	sub(14.8, 0.8, "chu_bay", "Ồn ào!")
+	sub(GAG_R + 0.1, 1.45, "phuc", "Cái nịt này tao xin nha!")
+	sub(20.6, 0.8, "hero", "...Cái nịt!")
+	joke(GAG_R + 0.1, "after the credits: Phúc steals the last belt")
 	joke(9.4, "expelled with only a belt left: 'Còn cái nịt'")
-	card("screen", CREDITS_R, length - CREDITS_R, {"kind": "credits", "title": "KẾT E: CÒN CÁI NỊT", "lines": [
+	card("screen", CREDITS_R, GAG_R - CREDITS_R, {"kind": "credits", "title": "KẾT E: CÒN CÁI NỊT", "lines": [
 		"%s: bị đuổi học." % hero_name, "Tài sản còn lại: một cái nịt.", "Sói Xám: vẫn chạy xe không gương.",
-		"Alexander: vẫn đang giới thiệu tên.", "Za Mẫn: đang pivot.", "Cừu Dolly: đang thi hộ ở đâu đó.",
-		"Lùm Văn Lọ: mở thêm ba cơ sở.", " ", "Tìm đủ bằng chứng để mở kết khác."]})
+		"Alexander: vẫn đang giới thiệu tên."]})
+	card("screen", FIX_R, length - FIX_R, {"kind": "credits", "title": "ĐÍNH CHÍNH", "lines": [
+		"Tài sản còn lại: 0 cái nịt.", "Za Mẫn: đang pivot.", "Cừu Dolly: đang thi hộ ở đâu đó.",
+		"Lùm Văn Lọ: mở thêm ba cơ sở.", "Tìm đủ bằng chứng để mở kết khác."], "roll_end": 0.6})

@@ -9,6 +9,9 @@ class_name CineAudio
 extends RefCounted
 
 const MUSIC_DIR: String = "user://music/"
+## Tests only: look for the owner files in this folder instead of MUSIC_DIR (an empty, never-written temp path makes every
+## slot resolve as if the owner had no files); reset to "" afterwards.
+static var test_music_dir: String = ""
 const SFX_DIR: String = "user://sfx/"
 const SR: int = 22050
 const FADE_OUT: float = 0.5
@@ -27,11 +30,15 @@ const SLOT_FALLBACK: Dictionary = {"cine_d1_choice_cover": "cine_d1_choice", "ci
 	"cine_d5_choice_accept": "cine_d5_choice", "cine_d5_choice_refuse": "cine_d5_choice",
 	"cine_d6_choice_take": "cine_d6_choice", "cine_d6_choice_refuse": "cine_d6_choice",
 	"ai_true_end": "end_a"}   # w4-endings: ending A's AI clip fallback keeps the true ending's song
+## Wave 6 (plan 2026-11-05-w6-cines T7): the choice tails that borrow their parent's song pick it up where the parent's
+## scene stopped (music_offset), so the song carries on through the pick instead of restarting.
+const CHOICE_TAILS: Array[String] = ["cine_d1_choice_cover", "cine_d1_choice_report", "cine_d5_choice_accept",
+	"cine_d5_choice_refuse", "cine_d6_choice_take", "cine_d6_choice_refuse"]
 
 
 static func music_file(slot: String) -> String:
 	for ext: String in [".ogg", ".mp3"]:
-		var p: String = MUSIC_DIR + slot + ext
+		var p: String = _music_dir() + slot + ext
 		if FileAccess.file_exists(p):
 			return p
 	if SLOT_FALLBACK.has(slot):
@@ -44,8 +51,29 @@ static func load_music(slot: String) -> AudioStream:
 		return MusicDirector.test_streams[slot]   # tests only
 	var p: String = music_file(slot)
 	if p == "":
-		return null
+		var parent: String = String(SLOT_FALLBACK.get(slot, ""))
+		return MusicDirector.test_streams[parent] if parent != "" and MusicDirector.test_streams.has(parent) else null   # tests only
 	return _load_file(p)
+
+
+## Seconds into the stream a slot's music starts at: a choice tail without its own file (owner file or test stream) plays
+## its parent's song from the parent cinematic's length (where that scene ended); everything else from 0.
+static func music_offset(slot: String) -> float:
+	if not CHOICE_TAILS.has(slot) or MusicDirector.test_streams.has(slot) or _own_file(slot) != "":
+		return 0.0
+	var parent: CineTimeline = CineTimeline.load_slot(String(SLOT_FALLBACK[slot]))
+	return parent.length if parent != null else 0.0
+
+
+static func _own_file(slot: String) -> String:
+	for ext: String in [".ogg", ".mp3"]:
+		if FileAccess.file_exists(_music_dir() + slot + ext):
+			return _music_dir() + slot + ext
+	return ""
+
+
+static func _music_dir() -> String:
+	return test_music_dir if test_music_dir != "" else MUSIC_DIR
 
 
 ## Shared with Phase W (called by name from its scripts): signature frozen, do not rename.

@@ -1,10 +1,10 @@
 # File: res://scripts/cine/timelines/wanted_busted.gd
 # wanted_busted (7.000 s, Phase W spec section 5 / W-D8, plan Task 10): "BỊ TÓM!" – the officer who made the catch walks up behind
-# the player and cuffs him on the B1 click (one medium ramp at real 2.400 s); if Mr.T (the story's
+# the player and cuffs him on the B1 click (one medium ramp at real 2.480 s, Wave 6 T6: on the beat); if Mr.T (the story's
 # fictional lecturer) made the catch, a guard cuffs and Mr.T stands in front shaking his head. WantedDirector sets
 # `catcher` ("guard" | "police" | "mr_t") before build() and plays it through FreeRoam.play_cinematic with opts "xf" (the
 # player's spot and facing), so `stage` stays empty. CineTimeline.load_slot("wanted_busted") builds the guard variant (beat sheet
-# docs/cinematics/wanted_busted.txt). The ramp ends at 3.260 s real: a 3.740 s normal-speed tail (A1-D8: 3-4 s).
+# docs/cinematics/wanted_busted.txt). The ramp ends at 3.340 s real: a 3.660 s normal-speed tail (A1-D8: 3-4 s).
 # Stage frame: X right, -Z forward (where the player faces), ground y = 0; yaw in degrees, characters face -Z at 0.
 extends CineTimeline
 
@@ -28,7 +28,7 @@ func build() -> void:
 	# story mode (A2-D5): the busted hero is the protagonist; without a story the default roam player "Bạn"
 	actor("hero", StoryUtil.hero_opts({"preset": "player", "seed": 2805}), StoryUtil.hero_name() if StoryUtil.story_active() else "Bạn", Color("#F37021"))
 	actor("cop", {"preset": "cop", "seed": 32} if police else {"preset": "guard", "seed": 31}, "Cảnh sát" if police else "Bảo vệ", Color("#7FB2E5"))
-	hit("B1", 2.2, "medium", "cuffs click", {"r": 2.4})
+	hit("B1", 2.2, "medium", "cuffs click", {"r": 2.48})
 	key("hero", 0.0, HERO, 0.0)
 	move("hero", 0.0, "idle")
 	move("hero", 2.25, "stunned", {"fade": 0.15})

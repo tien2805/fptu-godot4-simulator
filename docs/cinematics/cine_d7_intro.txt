@@ -6,6 +6,7 @@
 #
 # Shots (real start, rig, what)
 SHOT S1      0.000  static    close over the laptops: Anh Duy, the go-live countdown on three screens
+SHOT S1b     2.200  static    insert over Anh Duy's right shoulder: the go-live clock on the middle laptop flips 07:59 -> 08:00
 SHOT S2      3.900  two_shot  two-shot mrt + hero
 SHOT S3      6.800  push_in   push-in hero
 SHOT S4      7.650  two_shot  two-shot duy + hero
@@ -17,6 +18,9 @@ SUB    4.100 -  6.700  Mr.T: Em còn hai tiếng rưỡi. Thầy tin em.
 SUB    6.850 -  7.650  Bạn: Tòa nào?
 SUB    7.700 - 11.300  Anh Duy: Lọ Academy. A hack thang máy r.  /  Dịch: Anh hack thang máy rồi.
 SUB   11.300 - 13.000  Mr.T: Giữ thang máy, thầy già rồi.
+#
+# Cards (real start - end, kind: what)
+CARD    2.200 -  3.900  screen: clock
 #
 # Pacing (Q5): joke beats and the day-end cliffhanger (real time)
 JOKE   11.300  Mr.T: hold the lift, I'm old

@@ -56,17 +56,25 @@ func build() -> void:
 	sfx_at(2.3, "keyboard_clack", -10.0)
 	sfx_at(5.3, "keyboard_clack", -11.0)
 	sfx_at(6.4, "success_fanfare", -14.0)
+	sfx_at(6.05, "keyboard_clack", -12.0)
 	sfx_at(10.3, "record_scratch", -8.0)
 	shot("S1", 0.0, "static", "close over the laptops: Anh Duy holds up the USB \"ZA MẪN LABS\"",
 		{"pos": Vector3(0.22, 1.32, 0.62), "look": Vector3(0.0, 1.18, -0.72), "fov": 40.0, "hand": 0.15})
 	shot("S2", 1.75, "static", "insert: the USB slides into the laptop",
 		{"pos": Vector3(0.5, 0.95, -0.15), "look": USB_PORT, "fov": 34.0})
 	two_shot("S3", 2.4, "duy", "hero", {"look_y": 1.05, "dist": 3.4})   # Q5: decrypting
+	# Wave 6 (plan 2026-11-05-w6-cines T4): the 7.8 s two-shot is split by a laptop insert where the decrypted USB types out
+	# the basement server (StoryScreenCard "terminal", the 10.13.0.7 Dolly gave on Day 4), then back to the two-shot
+	shot("S3b", 6.0, "static", "insert: the decrypted USB on the middle laptop, the basement IP types out",
+		{"pos": Vector3(0.18, 1.18, -0.42), "look": Vector3(0.0, 0.98, 0.1), "fov": 36.0, "hand": 0.1})
+	two_shot("S3c", 7.8, "duy", "hero", {"look_y": 1.05, "dist": 3.4})
 	push_in("S4", 10.2, "hero", {"from": 2.7, "to": 2.3, "side_deg": 50.0, "look_y": 1.2, "hand": 0.15})
 	shot("S5", 11.0, "static", "close over the laptops: Anh Duy, pleased with himself",
 		{"pos": Vector3(0.22, 1.32, 0.62), "look": Vector3(0.0, 1.18, -0.72), "fov": 40.0})
 	shot("S6", 11.85, "static", "wide: \"Đêm nay xuống hầm.\"",
 		{"pos": Vector3(2.4, 1.65, 1.9), "look": Vector3(0.3, 1.0, -0.9), "fov": 50.0})
+	card("screen", 6.0, 2.4, {"kind": "terminal", "title": "ZA_MAN_LABS (USB)", "lines": ["> giải mã... OK (mật khẩu: 123456)",
+		"> IP nội bộ: 10.13.0.7", "> vị trí: HẦM THE BEVERLY"]})
 	# Anh Duy's lines show with their Dịch line: timed for both (0.06 s per character of the two)
 	sub(0.4, 3.4, "duy", "AES-256, mà pass là 123456.", "Dịch: Khóa xịn, mật khẩu dỏm.")
 	joke(0.4, "military-grade encryption, password 123456")

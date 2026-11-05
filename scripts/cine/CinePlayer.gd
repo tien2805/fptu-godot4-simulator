@@ -25,6 +25,7 @@ signal choice_made(id: String, key: String, timed_out: bool)
 const ESC_HOLD: float = SkipHold.HOLD
 const VOICE_DB: float = -8.0
 const SKIP_FADE: float = 0.25
+const MUSIC_FADE_IN: float = 0.25   # a choice tail picking its parent's song up mid-way fades in
 const LETTERBOX_IN: float = 0.4
 const FADE_S: float = 0.18   # hosts fade gameplay to black over this before setup (preroll)
 const SFX_POOL: int = 6
@@ -46,6 +47,7 @@ var actors: Dictionary = {}
 var prop_nodes: Dictionary = {}
 var music: AudioStreamPlayer
 var music_len: float = 0.0
+var music_from: float = 0.0    # s into the stream the music starts at (CineAudio.music_offset: the choice tails)
 var frame_ms_total: float = 0.0
 var frames: int = 0
 var _sfx: Array[AudioStreamPlayer] = []
@@ -390,12 +392,17 @@ func _build_events() -> void:
 func _prepare_music(enabled: bool) -> void:
 	music.stream = null
 	music_len = 0.0
+	music_from = 0.0
 	if not enabled:
 		return
-	var st: AudioStream = CineAudio.load_music(timeline.music_slot if timeline.music_slot != "" else timeline.slot)
+	var ms: String = timeline.music_slot if timeline.music_slot != "" else timeline.slot
+	var st: AudioStream = CineAudio.load_music(ms)
 	if st:
 		music.stream = st
 		music_len = CineAudio.stream_length(st)
+		var off: float = CineAudio.music_offset(ms)
+		if off > 0.0 and off < music_len - 0.5:   # a song shorter than the parent scene starts over instead
+			music_from = off
 
 
 ## Always true once set up (kept for the hosts that wait on it: nothing is built in the background any more).
@@ -433,7 +440,7 @@ func step(dt: float) -> void:
 			choice_node.step(dt)
 		return
 	if r == 0.0 and not music.playing and music.stream:
-		music.play()
+		music.play(music_from)
 	var t0: int = Time.get_ticks_usec()
 	_skip_logic(dt)
 	var r_prev: float = r
@@ -514,7 +521,9 @@ func _update(rr: float) -> void:
 	_update_overlay(rr, speed)
 	var duck: float = scare.duck_at(rr) if scare != null else 0.0
 	if music.stream:
-		var g: float = CineAudio.music_gain(rr, timeline.length, music_len)
+		var g: float = CineAudio.music_gain(rr, timeline.length, music_len - music_from)
+		if music_from > 0.0:
+			g *= clampf(rr / MUSIC_FADE_IN, 0.0, 1.0)   # picked up mid-song: a short fade-in, no click
 		if _skipping >= 0.0:
 			g *= clampf(1.0 - _skipping / SKIP_FADE, 0.0, 1.0)   # a skip fades the music with the picture
 		g *= 1.0 - duck   # a scare ducks it to silence just before the hit

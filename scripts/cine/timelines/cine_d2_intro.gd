@@ -54,8 +54,7 @@ func build() -> void:
 	move("hero", 0.0, "walk")
 	move("hero", 1.7, "idle", {"fade": 0.25})
 	move("hero", 2.6, "arms_crossed", {"fade": 0.3})
-	move("hero", 9.0, "facepalm", {"fade": 0.15})
-	move("hero", 10.8, "arms_crossed", {"fade": 0.25})
+	move("hero", 10.65, "facepalm", {"fade": 0.15})   # on its own push-in (Wave 6)
 	look("hero", 1.8, 12.0, Vector3(0.0, 0.95, 0.15))
 	expr("hero", 0.0, "open")
 	expr("hero", 4.6, "done")
@@ -77,13 +76,18 @@ func build() -> void:
 		{"pos": Vector3(0.22, 1.32, 0.62), "look": Vector3(0.0, 1.18, -0.72), "fov": 40.0, "hand": 0.15})
 	push_in("S3", 4.5, "hero", {"from": 2.8, "to": 2.3, "side_deg": 50.0, "hand": 0.15, "look_y": 1.2})
 	two_shot("S4", 6.1, "duy", "hero", {"look_y": 1.05, "dist": 3.4})   # Anh Duy explains, the protagonist listens
+	# Wave 6 (plan 2026-11-05-w6-cines T4): the 5.6 s line is two lines now; "tự improvise" gets a push-in on Anh Duy
+	# sipping his energy drink, the insert is shorter and the facepalm has its own push-in
+	push_in("S4b", 8.3, "duy", {"from": 3.2, "to": 2.7, "side_deg": -30.0, "height": 1.2, "look_y": 0.82, "hand": 0.1})
 	shot("S5", 9.6, "static", "insert: the energy drink goes down, fingers on the keys",
 		{"pos": Vector3(-0.75, 1.2, 0.55), "look": Vector3(0.0, 0.95, -0.35), "fov": 38.0})
+	push_in("S5b", 10.6, "hero", {"from": 2.8, "to": 2.3, "side_deg": 35.0, "hand": 0.15, "look_y": 1.2})   # the facepalm
 	shot("S6", 11.9, "static", "wide: the protagonist turns and goes, \"Tới công chuyện luôn!\"",
 		{"pos": Vector3(2.7, 1.7, 1.2), "look": Vector3(1.4, 1.2, -1.8), "fov": 48.0})
 	# Anh Duy's lines show with their Dịch line: timed for both (0.06 s per character of the two)
 	sub(0.5, 3.95, "duy", "Anh trace route Bầy Sói rồi.", "Dịch: Anh biết tụi nó chạy đường nào.")
 	sub(4.6, 1.5, "hero", "Nói tiếng người đi anh.")
-	sub(6.2, 5.6, "duy", "2h, Nguyễn Xiển. Còn lại e tự improvise nha.", "Dịch: Anh hết biết rồi, em tự lo.")
-	joke(6.2, "Anh Duy's plan ends in 'tự improvise'; the protagonist facepalms")
+	sub(6.2, 2.0, "duy", "2h, Nguyễn Xiển.", "Dịch: 2 giờ sáng.")
+	sub(8.3, 3.6, "duy", "Còn lại e tự improvise nha.", "Dịch: Anh hết biết rồi, em tự lo.")
+	joke(8.3, "Anh Duy's plan ends in 'tự improvise'; the protagonist facepalms")
 	sub(12.05, 1.4, "hero", "Tới công chuyện luôn!")
