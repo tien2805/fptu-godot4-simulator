@@ -7,7 +7,9 @@
 #   kind "phone"  a phone lock screen with one notification (sender, message, time) (cine_d1: the courier's phone);
 #   kind "radio"  (Phase C) a small walkie-talkie box in the upper left: the caller's name and a live waveform
 #                 (cine_d3_intro: Anh Duy on the radio);
-#   kind "credits" (Phase C) the end credits: a title, then "lines" roll up the black frame (end_c, ending C);
+#   kind "credits" (Phase C) the end credits: a title, then "lines" roll up the black frame (end_c, ending C); optional
+#                 "roll_end" (0..1, default 1): the roll is done at that share of the window and the last lines hold
+#                 (end_e's "ĐÍNH CHÍNH" card keeps its hint line on screen);
 #   kind "flow"   (Phase C) a money-flow chart on a dark screen: "nodes" (3 boxes) light up one after another, joined by
 #                 arrows that draw in, with "amounts" beside the arrows; the last node pulses (cine_d5: "TRÀ SỮA LỌ").
 #                 Wave 6: "log": true scrolls faint transaction-log rows behind the chart (the logs racing past).
@@ -456,7 +458,7 @@ func update(r: float) -> void:
 		var t0: float = 0.12 + 0.27 * k3 if k3 < nn else 0.3 + 0.27 * (k3 - nn)
 		flow_labels[k3].modulate.a = clampf((float(st["u"]) - t0) / 0.08, 0.0, 1.0)
 	if roll:   # the credits roll up from below the title to past the top
-		var u: float = float(st["u"])
+		var u: float = clampf(float(st["u"]) / clampf(float(data.get("roll_end", 1.0)), 0.1, 1.0), 0.0, 1.0)
 		roll.position = Vector2(0.0, lerpf(CREDITS_SIZE.y, -roll.get_combined_minimum_size().y + 140.0, u))
 		title_label.modulate.a = clampf(1.0 - (u - 0.25) / 0.15, 0.0, 1.0)
 	if clock_label:

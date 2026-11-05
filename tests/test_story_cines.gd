@@ -1391,6 +1391,36 @@ func _w6_cards() -> void:
 		and float(eer.cards[0]["r"]) + float(eer.cards[0]["dur"]) <= 19.0 + 1e-6 and float(eer.cards[1]["r"]) >= 21.0
 		and belts.size() == 2 and String(belts[1]["actor"]) == "phuc" and is_equal_approx(float(belts[0]["s1"]), float(belts[1]["s"])),
 		"end_e: the credits, Phúc snatches the belt, the ĐÍNH CHÍNH card")
+	# the ĐÍNH CHÍNH card reads: at least 4.5 s, and its last line (the hint at the other endings) fully inside the frame
+	# for at least 2.5 s before the scene's fade-out starts
+	if eer.cards.size() == 2:
+		var c2: Dictionary = eer.cards[1]
+		var hc := StoryScreenCard.new()
+		hc.data = c2["data"]
+		hc.r0 = float(c2["r"])
+		hc.dur = float(c2["dur"])
+		root.add_child(hc)
+		var labels: Array[Node] = hc.roll.get_children()
+		var above: float = 0.0
+		for k: int in labels.size() - 1:
+			above += (labels[k] as Control).get_combined_minimum_size().y + 14.0
+		var lh: float = (labels[labels.size() - 1] as Control).get_combined_minimum_size().y
+		var fade_at: float = eer.length - eer.fade_out
+		var first_in: float = -1.0
+		var rr: float = hc.r0
+		while rr <= fade_at + 1e-6:
+			hc.update(rr)
+			var top: float = hc.roll.position.y + above
+			if top >= 0.0 and top + lh <= StoryScreenCard.CREDITS_SIZE.y:
+				if first_in < 0.0:
+					first_in = rr
+			else:
+				first_in = -1.0
+			rr += 0.05
+		print("  end_e ĐÍNH CHÍNH: %.1f s, hint line in at %.2f, %.2f s before the fade" % [hc.dur, first_in, fade_at - first_in])
+		_check(hc.dur >= 4.5 - 1e-6 and first_in >= 0.0 and fade_at - first_in >= 2.5 - 1e-6,
+			"end_e: the ĐÍNH CHÍNH card %.1f s, its hint line fully on screen from %.2f, %.2f s before the fade" % [hc.dur, first_in, fade_at - first_in])
+		hc.queue_free()
 	# Wave 6 T7: the choice tail's player starts the parent's song at the parent's length, fading in (test stream, no user://)
 	if CineAudio.music_file("cine_d1_choice_cover") == "" and not MusicDirector.test_streams.has("cine_d1_choice"):
 		var w := AudioStreamWAV.new()

@@ -360,7 +360,7 @@ Mỗi dòng là một file `music\<slot>.ogg` hoặc `music\<slot>.mp3`. Trạng
 | [x] | `end_b` | Kết B | 24 s | *Lean on Me*, Bill Withers |
 | [x] | `end_c` | Kết C | 26 s | *Money, Money, Money*, ABBA |
 | [x] | `end_d` | Kết D | 26 s | *Fly Me to the Moon*, Frank Sinatra |
-| [x] | `end_e` | Kết E | 24 s | *Never Gonna Give You Up*, Rick Astley |
+| [x] | `end_e` | Kết E | 27 s | *Never Gonna Give You Up*, Rick Astley |
 | [x] | `end_f` | Kết F | 22 s | *Celebration*, Kool & the Gang |
 | [x] | `seg_d1_brawl` | đánh 3 shipper | 25 s | *I've Gotta Be Me* |
 | [x] | `seg_d2_boss` | Sói Xám dưới cầu | 25 s | *Heartbreaker*, Pat Benatar |

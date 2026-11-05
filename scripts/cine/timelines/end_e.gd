@@ -1,11 +1,12 @@
 # File: res://scripts/cine/timelines/end_e.gd
-# end_e (24.000 s, story spec section 6, ending E "Còn cái nịt", plan 2026-11-01-w4-endings.md T1): expelled, credits over
+# end_e (27.000 s, story spec section 6, ending E "Còn cái nịt", plan 2026-11-01-w4-endings.md T1): expelled, credits over
 # memes. Morning at the FPTU main gate: the protagonist walks out with a cardboard box; Chú Bảy takes the student card back:
 # "Thẻ sinh viên đây con. Chú giữ lại nhé." - "Bảy ngày... mà bằng chứng không đủ." A gust (whoosh): the box drops, empty
 # but for a belt; the protagonist holds it up: "Còn... cái nịt." (toang sting, sad trombone). Phúc jogs in: "Ít ra mày còn
 # cái nịt! Tao mất cả cái nịt!" and gets a shiba-style bonk with stars. The meme credits roll (15.6-19.0 s), then (Wave 6,
 # plan 2026-11-05-w6-cines T5) Phúc snatches the belt: "Cái nịt này tao xin nha!" and jogs off - "...Cái nịt!" (19.0-21.4 s);
-# a second card "ĐÍNH CHÍNH" corrects the credits: "Tài sản còn lại: 0 cái nịt." (21.4-24.0 s).
+# a second card "ĐÍNH CHÍNH" corrects the credits: "Tài sản còn lại: 0 cái nịt." (21.4-27.0 s, the scene 24 -> 27 s; its
+# roll stops at 60 % so the hint line "Tìm đủ bằng chứng để mở kết khác." holds for about 3 s before the fade).
 # No ramps (story = real). Music slot end_e (owner file "Never Gonna Give You Up" for the credits, else silence).
 # Stage: the cine_d1_intro stage by the campus main gate (10 x 9), in the morning.
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0.
@@ -24,8 +25,8 @@ const FIX_R: float = 21.4    # the "ĐÍNH CHÍNH" card
 
 func build() -> void:
 	slot = "end_e"
-	length = 24.0
-	story_end = 24.0
+	length = 27.0
+	story_end = 27.0
 	mood = "playful"
 	fade_in = 0.8
 	fade_out = 1.0
@@ -94,6 +95,7 @@ func build() -> void:
 	key("phuc", 19.6, PHUC, CineTimeline.face(PHUC, HERO))
 	key("phuc", 19.85, PHUC, CineTimeline.face(PHUC, PHUC_FROM))
 	key("phuc", 21.3, PHUC_FROM, CineTimeline.face(PHUC, PHUC_FROM), {"mode": "in"})
+	show("phuc", 21.3, false)   # gone out of the gate with it
 	move("phuc", 19.85, "jog", {"fade": 0.15})
 	sfx_at(3.6, "phone_buzz", -14.0)
 	sfx_at(7.4, "whoosh_down", -3.0)
@@ -130,4 +132,4 @@ func build() -> void:
 		"Alexander: vẫn đang giới thiệu tên."]})
 	card("screen", FIX_R, length - FIX_R, {"kind": "credits", "title": "ĐÍNH CHÍNH", "lines": [
 		"Tài sản còn lại: 0 cái nịt.", "Za Mẫn: đang pivot.", "Cừu Dolly: đang thi hộ ở đâu đó.",
-		"Lùm Văn Lọ: mở thêm ba cơ sở.", "Tìm đủ bằng chứng để mở kết khác."]})
+		"Lùm Văn Lọ: mở thêm ba cơ sở.", "Tìm đủ bằng chứng để mở kết khác."], "roll_end": 0.6})
