@@ -12,6 +12,7 @@ SHOT S4     10.100  static    close: Phúc in smart glasses, dead eyes, "Tuyệt
 SHOT S5     12.400  two_shot  two-shot hero + za
 SHOT S6     14.400  low_hero  hero hero
 SHOT S7     16.200  dolly     wide pull back: the smug bow, applause; the credits roll
+SHOT S8     22.000  push_in   push-in phuc
 #
 # Subtitles (real start - end, speaker: line)
 SUB    3.400 -  6.650  Bạn: Xin chào. Tôi là Bạn, CEO Lọ Thần 10.0.
@@ -19,9 +20,12 @@ SUB    6.700 -  9.800  Bạn: Thi hộ bằng AI. Đậu hay rớt... đều kh�
 SUB   10.300 - 11.900  Phúc: Tuyệt vời... tuyệt vời...
 SUB   12.600 - 14.200  Za Mẫn: Sếp ơi, server lại cháy.
 SUB   14.500 - 16.000  Bạn: Ổn mà, mọi thứ vẫn ổn.
+SUB   22.500 - 24.350  Phúc: Ủa... sao toàn ma-nơ-canh vậy?
+SUB   24.450 - 25.900  Phúc: Thôi, đeo lại cho lành.
 #
 # Cards (real start - end, kind: what)
-CARD   18.000 - 26.000  screen: credits
+CARD   17.000 - 22.000  screen: credits
 #
 # Pacing (Q5): joke beats and the day-end cliffhanger (real time)
 JOKE    6.700  the CEO pitch: pass or fail, no refunds
+JOKE   22.500  after the credits: Phúc takes the glasses off, sees only mannequins, puts them back on

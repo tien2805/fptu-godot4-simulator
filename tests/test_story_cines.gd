@@ -1377,3 +1377,17 @@ func _w6_cards() -> void:
 		_check(String(fd["from"]) == "07:59" and String(fd["to"]) == "08:00"
 			and d7i.sfx.any(func(e: Dictionary) -> bool: return String(e["cue"]) == "dun_dun_duun" and absf(float(e["at"]) - flip_r) < 0.05),
 			"the 07:59 -> 08:00 flip lands on the dun-dun-duun (%.2f)" % flip_r)
+	# the dead tails: end_c's credits end at 22.0 for the after-credits gag (the glasses come off and go back on), end_e
+	# splits its credits around Phúc's belt snatch with a second "ĐÍNH CHÍNH" card
+	var ecr: CineTimeline = CineTimeline.load_slot("end_c")
+	var gl: Array = ecr.cues.filter(func(c: Dictionary) -> bool: return c["type"] == "hold" and c["actor"] == "phuc" and String(c["kind"]) == "glasses")
+	_check(absf(float(ecr.cards[0]["r"]) + float(ecr.cards[0]["dur"]) - 22.0) < 1e-6 and gl.size() == 3
+		and String(gl[1]["opts"].get("bone", "")) == "Wrist.R" and ecr.jokes.size() >= 2
+		and ecr.shots.any(func(sh: Dictionary) -> bool: return absf(float(sh["s"]) - 22.0) < 1e-6 and String((sh["params"] as Dictionary).get("actor", "")) == "phuc"),
+		"end_c: the credits end at 22.0, then Phúc takes the glasses off and puts them back on")
+	var eer: CineTimeline = CineTimeline.load_slot("end_e")
+	var belts: Array = eer.cues.filter(func(c: Dictionary) -> bool: return c["type"] == "hold" and String(c["kind"]) == "belt")
+	_check(eer.cards.size() == 2 and String(eer.cards[1]["data"]["title"]) == "ĐÍNH CHÍNH"
+		and float(eer.cards[0]["r"]) + float(eer.cards[0]["dur"]) <= 19.0 + 1e-6 and float(eer.cards[1]["r"]) >= 21.0
+		and belts.size() == 2 and String(belts[1]["actor"]) == "phuc" and is_equal_approx(float(belts[0]["s1"]), float(belts[1]["s"])),
+		"end_e: the credits, Phúc snatches the belt, the ĐÍNH CHÍNH card")

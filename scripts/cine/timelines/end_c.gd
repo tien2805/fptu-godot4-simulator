@@ -4,7 +4,9 @@
 # glasses), walks on as CEO to an audience of mannequins in smart glasses that clap on cue: "Xin chào. Tôi là {name}, CEO
 # Lọ Thần 10.0." - "Thi hộ bằng AI. Đậu hay rớt... đều không hoàn tiền." Phúc in the front row, smart glasses on, applauds
 # with dead eyes: "Tuyệt vời... tuyệt vời...". Za Mẫn, demoted, brings the coffee: "Sếp ơi, server lại cháy." - "Ổn mà, mọi
-# thứ vẫn ổn." A smug bow; the credits roll (StoryScreenCard "credits", 18.0-26.0 s).
+# thứ vẫn ổn." A smug bow; the credits roll (StoryScreenCard "credits", 17.0-22.0 s). After the credits (Wave 6, plan
+# 2026-11-05-w6-cines T5, 22.0-26.0 s): Phúc takes the smart glasses off, sees the hall full of mannequins: "Ủa... sao
+# toàn ma-nơ-canh vậy?", and puts them straight back on: "Thôi, đeo lại cho lành." (ba-dum-tss).
 # No ramps (story = real). Music slot end_c (owner file "Money, Money, Money", else silence).
 # Stage: CineTimeline.canteen_stage (campus courtyard, 14 x 10); the keynote set is carried (set dressing: drop_set inside
 # a real hall), the mannequin audience stays.
@@ -17,7 +19,10 @@ const HERO := Vector3(0.0, STAGE_Y, -2.0)
 const ZA_FROM := Vector3(-3.6, STAGE_Y, -2.4)
 const ZA := Vector3(-0.85, STAGE_Y, -2.15)
 const PHUC := Vector3(3.75, 0.0, 0.75)
-const CREDITS_R: float = 18.0
+const CREDITS_R: float = 17.0
+const CREDITS_END: float = 22.0
+const OFF_R: float = 22.45   # the glasses come off (the peak of the first mask_on)
+const ON_R: float = 24.35    # and go back on (the peak of the second)
 
 
 func build() -> void:
@@ -38,7 +43,10 @@ func build() -> void:
 	# the new villain: Za Mẫn's turtleneck and round glasses
 	hold("hero", 0.0, story_end, "turtleneck", {"bone": "Neck"})
 	hold("hero", 0.0, story_end, "round_glasses", {"bone": "Head", "offset": Vector3(0.0, StoryCast.EYE_UP, StoryCast.EYE_FRONT)})
-	hold("phuc", 0.0, story_end, "glasses", {"bone": "Head", "offset": Vector3(0.0, StoryCast.EYE_UP, StoryCast.EYE_FRONT - 0.005)})
+	var phuc_eyes: Dictionary = {"bone": "Head", "offset": Vector3(0.0, StoryCast.EYE_UP, StoryCast.EYE_FRONT - 0.005)}
+	hold("phuc", 0.0, OFF_R, "glasses", phuc_eyes)
+	hold("phuc", OFF_R, ON_R, "glasses", {"bone": "Wrist.R", "offset": Vector3(0.0, 0.0, -0.06)})
+	hold("phuc", ON_R, story_end, "glasses", phuc_eyes)
 	prop("keynote", "keynote", Vector3(0.0, 0.0, -2.6), 180.0, {"set": true})
 	prop("crowd", "mannequins", Vector3(0.0, 0.0, 0.6), 0.0, {"anim": true, "cols": 12, "rows": 6, "dx": 0.55, "dz": 0.6,
 		"claps": [[3.1, 5.6], [9.8, 12.2], [16.5, 19.0]]})
@@ -79,12 +87,24 @@ func build() -> void:
 	move("phuc", 10.0, "nod", {"fade": 0.2})
 	move("phuc", 10.8, "nod", {"fade": 0.1})
 	move("phuc", 11.6, "idle", {"fade": 0.2})
-	look("phuc", 0.0, story_end, "hero")
+	look("phuc", 0.0, 22.4, "hero")
 	expr("phuc", 0.0, "done")
+	# after the credits: the glasses off, a look around the mannequin rows, the glasses back on
+	move("phuc", 22.0, "mask_on", {"fade": 0.1})
+	move("phuc", 22.9, "idle", {"fade": 0.2})
+	look("phuc", 22.5, 23.2, Vector3(2.4, 1.1, 1.9))
+	look("phuc", 23.2, 23.9, Vector3(1.2, 1.1, 0.9))
+	expr("phuc", 22.5, "surprised")
+	move("phuc", 23.9, "mask_on", {"fade": 0.1})
+	move("phuc", 24.8, "idle", {"fade": 0.2})
+	look("phuc", 23.9, story_end, "hero")
+	expr("phuc", 24.4, "done")
 	sfx_at(3.1, "applause", -6.0)
 	sfx_at(9.8, "applause", -7.0)
 	sfx_at(16.5, "applause", -5.0)
 	sfx_at(16.9, "dun_dun_duun", -6.0)
+	sfx_at(OFF_R + 0.05, "freeze_tick", -10.0)
+	sfx_at(25.2, "ba_dum_tss", -6.0)
 	shot("S1", 0.0, "static", "wide: a keynote stage at night, LỌ THẦN 10.0 on the screen, an audience of mannequins",
 		{"pos": Vector3(4.6, 2.2, 4.6), "look": Vector3(-0.4, 1.4, -2.0), "fov": 54.0})
 	push_in("S2", 3.25, "hero", {"from": 2.9, "to": 2.3, "side_deg": 15.0, "look_y": 1.2})   # Q5: the CEO
@@ -97,13 +117,17 @@ func build() -> void:
 	shot("S7", 16.2, "dolly", "wide pull back: the smug bow, applause; the credits roll",
 		{"from": Vector3(2.2, 2.0, 2.2), "to": Vector3(3.4, 2.6, 4.4), "look_from": Vector3(0.0, 1.5, -2.0), "look_to": Vector3(0.0, 1.5, -1.8),
 		"fov": 50.0})
+	push_in("S8", CREDITS_END, "phuc", {"from": 2.8, "to": 2.3, "side_deg": 25.0, "look_y": 1.3, "hand": 0.12})   # after the credits
 	sub(3.4, 3.25, "hero", "Xin chào. Tôi là %s, CEO Lọ Thần 10.0." % hero_name)
 	sub(6.7, 3.1, "hero", "Thi hộ bằng AI. Đậu hay rớt... đều không hoàn tiền.")
 	joke(6.7, "the CEO pitch: pass or fail, no refunds")
 	sub(10.3, 1.6, "phuc", "Tuyệt vời... tuyệt vời...")
 	sub(12.6, 1.6, "za", "Sếp ơi, server lại cháy.")
 	sub(14.5, 1.5, "hero", "Ổn mà, mọi thứ vẫn ổn.")
-	card("screen", CREDITS_R, length - CREDITS_R, {"kind": "credits", "title": "KẾT C: KẺ PHẢN DIỆN MỚI", "lines": [
+	sub(22.5, 1.85, "phuc", "Ủa... sao toàn ma-nơ-canh vậy?")
+	sub(24.45, 1.45, "phuc", "Thôi, đeo lại cho lành.")
+	joke(22.5, "after the credits: Phúc takes the glasses off, sees only mannequins, puts them back on")
+	card("screen", CREDITS_R, CREDITS_END - CREDITS_R, {"kind": "credits", "title": "KẾT C: KẺ PHẢN DIỆN MỚI", "lines": [
 		"%s nhận 0,01%% cổ phần Lọ Thần." % hero_name, "Án đình chỉ: đã xoá.", "Lương tâm: đang bảo trì.", "Phúc: vẫn đeo kính.",
-		"Za Mẫn: đi pha cà phê.", "Mr.T: đang soạn email.", "Trà Sữa Lọ: vẫn mở cửa.", " ",
+		"Za Mẫn: đi pha cà phê.", "Mr.T: đang soạn email.", "Trà Sữa Lọ: vẫn mở cửa.",
 		"Cảm ơn đã chơi FPTU Student Simulator.", "Chọn cảnh trong menu để chơi lại Ngày 5."]})
