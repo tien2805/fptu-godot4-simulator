@@ -173,7 +173,7 @@ Each entry gives the mood, then the length:
 - Day 7:
   - `seg_d7_floors`: penthouse floor reached, relentless; short auto slow-mo replay 4-6 s.
   - `seg_d7_phase1`: lights go out, ominous; short auto slow-mo replay 4-6 s.
-  - `seg_d7_phase2`: light returns, heroic; 25 s.
+  - `seg_d7_phase2`: light returns, heroic; 14 s (W6: its own fight, mostly at full speed).
   - `seg_d7_finisher`: Đòn chân kẹp cổ số 21, slow-motion triumph; 25 s, flows into the ending.
 - Owner files (S-D10) go to a local folder `user://music/<slot>.ogg` or `.mp3` (and `user://sfx/<cue>.ogg`); the folder is git-ignored and never exported. Without a file the synthesized default cue for that slot plays.
 
