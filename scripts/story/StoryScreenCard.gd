@@ -9,6 +9,10 @@
 #   kind "credits" (Phase C) the end credits: a title, then "lines" roll up the black frame (end_c, ending C);
 #   kind "flow"   (Phase C) a money-flow chart on a dark screen: "nodes" (3 boxes) light up one after another, joined by
 #                 arrows that draw in, with "amounts" beside the arrows; the last node pulses (cine_d5: "TRÀ SỮA LỌ").
+#   kind "clock"  (Wave 6) a small digital clock box in the upper right: "title" over big digits, either a countdown
+#                 ("count": seconds, ticking down in real time from the card start, red over the last 10: cine_d3_intro's
+#                 30-second camera loop) or a flip ("from" -> "to" at "flip_u", the digits fold shut and open on the new
+#                 time: cine_d7_intro's 07:59 -> 08:00).
 # data: {"kind", "cam", "place", "clock" ("21:47:05", seconds run on), "sender", "text", "time", "title", "lines"}.
 # CineTimeline.card("screen", r, dur, data) places it; CinePlayer calls update(r). state_at(u) is pure (tests).
 # Layer 106: above the HUD and StoryIntroCards / StoryDayCard (105), below the cinematic overlay (110: subtitles, fades).
@@ -24,6 +28,11 @@ const CREDITS_SIZE := Vector2(980.0, 440.0)
 const SAFE_TOP: float = 0.135
 const SAFE_BOTTOM: float = 0.865
 const FLOW_SIZE := Vector2(860.0, 360.0)
+const CLOCK_SIZE := Vector2(380.0, 150.0)
+const CLOCK_RED := Color("#FF4A4A")
+const CLOCK_GOLD := Color("#FFD23F")
+## Real seconds (as a share of u) the flip takes to fold the digits shut and open them again.
+const FLIP_U: float = 0.06
 
 var data: Dictionary = {}
 var r0: float = 0.0
@@ -46,6 +55,7 @@ var flow_labels: Array[Label] = []
 class ScreenDraw extends Control:
 	var kind: String = "cctv"
 	var u: float = 0.0
+	var t: float = 0.0   # real seconds into the card
 
 	func _draw() -> void:
 		var s: Vector2 = size
@@ -73,6 +83,13 @@ class ScreenDraw extends Control:
 						draw_line(a0, tip, Color("#FFD23F"), 4.0)
 						if d >= 1.0:
 							draw_colored_polygon(PackedVector2Array([a1, a1 + Vector2(-14.0, -9.0), a1 + Vector2(-14.0, 9.0)]), Color("#FFD23F"))
+			return
+		if kind == "clock":   # a flip-clock face: two dark tiles split across the middle
+			draw_rect(Rect2(Vector2.ZERO, s), Color("#0B0D10"))
+			draw_rect(Rect2(14.0, 44.0, s.x - 28.0, s.y - 56.0), Color("#1A1D24"))
+			draw_line(Vector2(14.0, 44.0 + (s.y - 56.0) * 0.5), Vector2(s.x - 14.0, 44.0 + (s.y - 56.0) * 0.5), Color(0.0, 0.0, 0.0, 0.85), 3.0)
+			if fmod(t * 2.0, 1.0) < 0.5:   # a blinking dot: the clock is live
+				draw_circle(Vector2(s.x - 26.0, 22.0), 7.0, Color("#FF3030"))
 			return
 		if kind == "radio":
 			draw_rect(Rect2(Vector2.ZERO, s), Color("#10161A"))
@@ -131,6 +148,24 @@ class ScreenDraw extends Control:
 			draw_rect(Rect2(feet.x - 15.0, feet.y - 110.0, 30.0, 6.0), Color("#5E7266"))
 
 
+## The clock card's digits `secs` real seconds into the card at progress u: the countdown ("count") or the flip ("from" /
+## "to" at "flip_u"). Pure (tests).
+static func clock_text(d: Dictionary, secs: float, u: float) -> String:
+	if d.has("count"):
+		var left: int = maxi(int(ceil(float(d["count"]) - secs - 1e-6)), 0)
+		return "%02d:%02d" % [left / 60, left % 60]
+	return String(d.get("to", "")) if u >= float(d.get("flip_u", 0.5)) else String(d.get("from", ""))
+
+
+## The clock card's digit height (1 = open, 0 = folded shut at the flip) and colour at the same moment. Pure (tests).
+static func clock_fold(d: Dictionary, secs: float, u: float) -> Dictionary:
+	if d.has("count"):
+		var left: float = float(d["count"]) - secs
+		return {"fold": 1.0, "red": left <= 10.0 + 1e-6}
+	var f: float = clampf(absf(u - float(d.get("flip_u", 0.5))) / (FLIP_U * 0.5), 0.0, 1.0)
+	return {"fold": f, "red": u >= float(d.get("flip_u", 0.5))}
+
+
 ## {shown, alpha, u (0..1 through the window)}.
 static func state_at(r: float, start: float, length: float) -> Dictionary:
 	var u: float = (r - start) / maxf(length, 0.001)
@@ -165,6 +200,10 @@ func _build() -> void:
 	elif kind() == "credits":
 		cc.anchor_top = SAFE_TOP
 		cc.anchor_bottom = SAFE_BOTTOM
+	elif kind() == "clock":   # the upper right, between the letterbox bars (the radio box keeps the upper left)
+		cc.anchor_left = 0.6
+		cc.anchor_top = SAFE_TOP
+		cc.anchor_bottom = 0.42
 	frame = PanelContainer.new()
 	frame.name = "Frame"
 	var sb := StyleBoxFlat.new()
@@ -187,6 +226,8 @@ func _build() -> void:
 		screen.custom_minimum_size = CREDITS_SIZE
 	elif kind() == "flow":
 		screen.custom_minimum_size = FLOW_SIZE
+	elif kind() == "clock":
+		screen.custom_minimum_size = CLOCK_SIZE
 	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	screen.clip_contents = true
 	frame.add_child(screen)
@@ -214,6 +255,19 @@ func _build() -> void:
 		head_label.name = "FlowTitle"
 		head_label.position = Vector2(20.0, 14.0)
 		screen.add_child(head_label)
+		return
+	if kind() == "clock":
+		head_label = _lbl(String(data.get("title", "")), 20, Color("#DDF5E4"))
+		head_label.name = "ClockTitle"
+		head_label.position = Vector2(18.0, 10.0)
+		screen.add_child(head_label)
+		time_label = _lbl("", 70, CLOCK_GOLD)
+		time_label.name = "Digits"
+		time_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		time_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		time_label.position = Vector2(0.0, 40.0)
+		time_label.size = Vector2(CLOCK_SIZE.x, 100.0)
+		screen.add_child(time_label)
 		return
 	if kind() == "radio":
 		sender_label = _lbl("BỘ ĐÀM: " + String(data.get("sender", "")).to_upper(), 22, Color("#DDF5E4"))
@@ -312,6 +366,7 @@ func update(r: float) -> void:
 		return
 	frame.modulate.a = float(st["alpha"])
 	screen.u = float(st["u"])
+	screen.t = maxf(r - r0, 0.0)
 	screen.queue_redraw()
 	for k3: int in flow_labels.size():   # flow: each node / amount appears with its box / arrow
 		var nn: int = (data.get("nodes", []) as Array).size()
@@ -323,3 +378,10 @@ func update(r: float) -> void:
 		title_label.modulate.a = clampf(1.0 - (u - 0.25) / 0.15, 0.0, 1.0)
 	if clock_label:
 		clock_label.text = clock_at(String(data.get("clock", "21:47:05")), maxf(r - r0, 0.0) * 1.0)
+	if kind() == "clock":
+		var secs: float = maxf(r - r0, 0.0)
+		var cf: Dictionary = clock_fold(data, secs, float(st["u"]))
+		time_label.text = clock_text(data, secs, float(st["u"]))
+		time_label.pivot_offset = time_label.size * 0.5
+		time_label.scale = Vector2(1.0, maxf(float(cf["fold"]), 0.02))
+		time_label.add_theme_color_override("font_color", CLOCK_RED if bool(cf["red"]) else CLOCK_GOLD)

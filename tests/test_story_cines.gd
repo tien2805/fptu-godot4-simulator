@@ -80,6 +80,7 @@ func _process(_d: float) -> bool:
 	_phase_c_cards()
 	_phase_c_props()
 	_phase_c_cast()
+	_w6_cards()
 	# the same shots with a male (taller, spiky-haired) protagonist
 	sd.call("new_story", {"female": false, "name": "Minh", "hair_style": "spiky", "variant": 0, "skin": 1, "hair_color": 0})
 	_occlusion()
@@ -1276,3 +1277,38 @@ func _phase_c_cast() -> void:
 	print("  PS2 glasses frame %s from the Head bone (gear eyes %.3f, %.3f)" % [str(frame), StoryCast.EYE_UP, StoryCast.EYE_FRONT])
 	_check(n >= 8 and Vector2(frame.y, frame.z).distance_to(Vector2(StoryCast.EYE_UP, StoryCast.EYE_FRONT)) < 0.025, "eye-level gear sits on the glasses line (%d pieces)" % n)
 	world.queue_free()
+
+
+## Wave 6 (plan 2026-11-05-w6-cines): the new screen-card kinds and the shots they sit on.
+func _w6_cards() -> void:
+	# cine_d3_intro: six shots, the clock card counts the camera loop down from 30 at "Ba mươi giây?!"
+	var d3: CineTimeline = CineTimeline.load_slot("cine_d3_intro")
+	_check(d3.shots.size() >= 6 and d3.shots.any(func(sh: Dictionary) -> bool: return absf(float(sh["s"]) - 9.95) < 1e-6 and String(sh["rig"]) == "push_in"),
+		"cine_d3_intro: %d shots, a push-in on 'Ba mươi giây?!' (9.95)" % d3.shots.size())
+	var ck: Array = d3.cards.filter(func(cd: Dictionary) -> bool: return String(cd["data"].get("kind", "")) == "clock")
+	_check(ck.size() == 1 and absf(float(ck[0]["r"]) - 9.95) < 1e-6, "cine_d3_intro: the clock card starts with 'Ba mươi giây?!'")
+	if ck.size() == 1:
+		var d: Dictionary = ck[0]["data"]
+		_check(StoryScreenCard.clock_text(d, 0.0, 0.0) == "00:30" and StoryScreenCard.clock_text(d, 0.5, 0.1) == "00:30"
+			and StoryScreenCard.clock_text(d, 1.2, 0.3) == "00:29" and StoryScreenCard.clock_text(d, 3.9, 0.99) == "00:27",
+			"the loop countdown ticks 00:30 -> 00:27 in real seconds")
+		var sc := StoryScreenCard.new()
+		sc.data = d
+		sc.r0 = float(ck[0]["r"])
+		sc.dur = float(ck[0]["dur"])
+		root.add_child(sc)
+		sc.update(sc.r0 + 2.1)
+		var area: Control = sc.find_child("Area", true, false) as Control
+		_check(sc.frame.visible and sc.time_label.text == "00:28" and sc.time_label.get_combined_minimum_size().x > 150.0
+			and area.anchor_left >= 0.55 and area.anchor_top >= 0.128, "the clock card shows 00:28 in the upper right (%s)" % sc.time_label.text)
+		sc.update(sc.r0 + sc.dur + 0.5)
+		_check(not sc.frame.visible, "the clock card is gone after its window")
+		sc.queue_free()
+	# the flip mode: the digits fold shut at flip_u and open on the new time, red from then on
+	var fl: Dictionary = {"kind": "clock", "title": "T", "from": "07:59", "to": "08:00", "flip_u": 0.6}
+	var f0: Dictionary = StoryScreenCard.clock_fold(fl, 0.0, 0.3)
+	var f1: Dictionary = StoryScreenCard.clock_fold(fl, 0.0, 0.6)
+	var f2: Dictionary = StoryScreenCard.clock_fold(fl, 0.0, 0.8)
+	_check(StoryScreenCard.clock_text(fl, 0.0, 0.3) == "07:59" and StoryScreenCard.clock_text(fl, 0.0, 0.8) == "08:00"
+		and float(f0["fold"]) == 1.0 and float(f1["fold"]) < 0.05 and float(f2["fold"]) == 1.0 and not bool(f0["red"]) and bool(f2["red"]),
+		"the flip clock: 07:59, folds shut at the flip, opens on 08:00 in red")
