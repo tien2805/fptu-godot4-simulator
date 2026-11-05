@@ -109,7 +109,7 @@ Không có nhạc riêng (chỉ âm thanh hiệu ứng): cuộc gọi 3 giờ s�
 | `boss_d2` | đấu tay đôi Sói Xám dưới cầu Rạch Hầm | *Hungry Like the Wolf*, Duran Duran |
 | `race_d2_drift` | đua drift một vòng với Sói Xám quanh cầu Rạch Hầm; bắt đầu đúng lúc "ĐI!", đếm ngược không có nhạc | *Deja Vu*, Dave Rodgers (bản cắt từ điệp khúc, đã có); khác: *Running in the 90s*, Max Coveri |
 | `cine_d2` | Sói Xám bị trói vào cột (18 s) | đã có |
-| `seg_d2_boss` | cảnh đánh lớn 25 s dưới cầu | *Heartbreaker*, Pat Benatar (đã có) |
+| `seg_d2_boss` | cảnh đánh lớn 22 s dưới cầu | *Heartbreaker*, Pat Benatar (đã có) |
 | `cine_d3_intro` | chạy xe đêm tới kênh (14 s) | *A Real Hero*, College & Electric Youth |
 | `mission_sneak` | lẻn vào bến container | *Sneaky Snitch*, Kevin MacLeod |
 | `cine_d3_mannequins` | cửa container mở, ma-nơ-canh quay đầu, "Surprise!" (10 s) | *Toccata and Fugue in D minor*, J. S. Bach |
@@ -118,7 +118,7 @@ Không có nhạc riêng (chỉ âm thanh hiệu ứng): cuộc gọi 3 giờ s�
 | `meme_coffin_dance` | bảo vệ khiêng thùng kính | *Astronomia*, Vicetone & Tony Igy |
 | `boss_d3` | trùm xe nâng Alexander | *Copacabana*, Barry Manilow |
 | `cine_d3` | cái tên vô tận bị cắt ngang, USB rơi (18 s) | đã có |
-| `seg_d3_boss` | cảnh đánh lớn 25 s ở bến container | *Straighten Up and Fly Right* (đã có) |
+| `seg_d3_boss` | cảnh đánh lớn 21 s ở bến container | *Straighten Up and Fly Right* (đã có) |
 | `cine_d5_intro` | Anh Duy giải mã USB (14 s) | *Technologic*, Daft Punk |
 | `mission_basement` | đi lén dưới hầm server | *Oxygène (Part IV)*, Jean-Michel Jarre |
 | `cine_d5_monitors` | mặt Za Mẫn cười trên 50 màn hình (10 s) | *Mr. Roboto*, Styx |

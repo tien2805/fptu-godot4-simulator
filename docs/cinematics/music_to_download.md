@@ -96,8 +96,9 @@ Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột
 **Đã có trên máy, không cần tải:** `seg_d2_chase`, `seg_d2_boss` (*Heartbreaker*), `seg_d3_gunfight`, `seg_d3_crates`,
 `seg_d3_boss` (*Straighten Up and Fly Right*), `seg_d5_gunfight`, `seg_d5_hack`, `seg_d5_boss` (*The Good Life*), `cine_d2`,
 `cine_d3`, `cine_d5`, `end_c` (*Money, Money, Money*). Độ dài và các nhịp đánh của từng cảnh nằm trong
-`docs/cinematics/<tên cảnh>.txt`: 3 cảnh đánh lớn 25 s đặt các cú chậm theo một lưới nhịp chung, Claude sẽ dời cho khớp
-nhịp bài khi bạn báo.
+`docs/cinematics/<tên cảnh>.txt`. 3 cảnh đánh lớn (`seg_d2_boss` 22,3 s, `seg_d3_boss` 21,1 s, `seg_d5_boss` 24,6 s) có
+bản cắt nhạc mới: mỗi cú đánh, mỗi cú bị trúng và cú đâm vào đồ rơi đúng một nhịp mạnh của bài (lệch tối đa 0,1 s). Bản
+cắt chép đè lên nhạc cũ của cảnh đó, cả file `.ogg` lẫn `.mp3`.
 
 ## Phase D: Ngày 6 "Trà Sữa Lọ" (mới, 2026-11-01)
 
