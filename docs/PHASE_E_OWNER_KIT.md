@@ -368,7 +368,7 @@ Mỗi dòng là một file `music\<slot>.ogg` hoặc `music\<slot>.mp3`. Trạng
 | [x] | `seg_d4_brawl` | bầy cừu ở căn tin | 25 s | *Ain't That a Kick in the Head*, Dean Martin |
 | [x] | `seg_d5_boss` | katana mua trên mạng | 25 s | *The Good Life*, José James |
 | [x] | `seg_d6_chase` | cano của Thị Lọ đâm vào bờ | 22 s | *Ring of Fire*, Des Rocs |
-| [x] | `seg_d7_phase2` | có điện rồi | 25 s | *The Power of Love*, Jennifer Rush |
+| [x] | `seg_d7_phase2` | có điện rồi | 14 s | *The Power of Love*, Jennifer Rush |
 | [x] | `seg_d7_finisher` | đòn chân kẹp cổ số 21 | 25 s | *What a Wonderful World*, Louis Armstrong |
 | [x] | `wanted_busted` | bị bắt khi bị truy nã | 7 s | *Bad Boys*, Inner Circle |
 
