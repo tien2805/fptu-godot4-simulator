@@ -24,7 +24,7 @@ const SLOTS: Dictionary = {"cine_d0_wake": 8.0, "cine_d0_exam": 18.0, "cine_d0_m
 	# Phase C (C-D9): Days 2, 3, 5 intros, discovery beats, choice 2 and its tails, end cinematics, ending C, the three fights
 	"cine_d2_intro": 14.0, "cine_d2": 18.0, "cine_d3_intro": 14.0, "cine_d3_mannequins": 10.0, "cine_d3": 18.0, "cine_d5_intro": 14.0,
 	"cine_d5_monitors": 10.0, "cine_d5_choice": 14.0, "cine_d5_choice_accept": 4.0, "cine_d5_choice_refuse": 4.0, "cine_d5": 18.0,
-	"end_c": 26.0, "seg_d2_boss": 25.0, "seg_d3_boss": 21.1, "seg_d5_boss": 25.0}
+	"end_c": 26.0, "seg_d2_boss": 25.0, "seg_d3_boss": 21.1, "seg_d5_boss": 24.63}
 ## Phase C dialogue slots (the fights have their own tests: tests/test_cine_d2_boss.gd etc.).
 const C_DIALOGUE: Array[String] = ["cine_d2_intro", "cine_d2", "cine_d3_intro", "cine_d3_mannequins", "cine_d3", "cine_d5_intro",
 	"cine_d5_monitors", "cine_d5_choice", "cine_d5_choice_accept", "cine_d5_choice_refuse", "cine_d5", "end_c"]

@@ -152,8 +152,26 @@ func _strike_gap(pl: CinePlayer, who: String, part: String, target: String) -> D
 		boxes = _held_boxes(a, h)
 	elif part.begins_with("prop:"):
 		boxes = Bodies.prop_boxes(pl.prop_nodes[part.substr(5)])
+	if not t_boxes.is_empty():
+		# a prop on a held prop (seg_d5_boss: the staff on the katana): the striking boxes as capsules on their long axes
+		var r2: Dictionary = Bodies.gap_boxes(_box_caps(boxes), t_boxes)
+		return {"g": r2["g"], "from": "%s %s" % [part, r2["from"]], "to": r2["to"]}
 	var r: Dictionary = Bodies.gap_boxes(t_caps, boxes)
 	return {"g": r["g"], "from": "%s %s" % [part, r["to"]], "to": r["from"]}
+
+
+## Boxes [[name, xf, half]] as capsules [[name, a, b, r]] along each box's longest axis (r = its second half size).
+static func _box_caps(boxes: Array) -> Array:
+	var out: Array = []
+	for bx: Array in boxes:
+		var xf: Transform3D = bx[1]
+		var h: Vector3 = bx[2]
+		var ax: int = 0 if h.x >= h.y and h.x >= h.z else (1 if h.y >= h.z else 2)
+		var hs: Array = [h.x, h.y, h.z]
+		var r: float = maxf(float(hs[(ax + 1) % 3]), float(hs[(ax + 2) % 3]))
+		var dv: Vector3 = xf.basis[ax].normalized() * maxf(float(hs[ax]) - r, 0.0)
+		out.append([String(bx[0]), xf.origin - dv, xf.origin + dv, r])
+	return out
 
 
 func _when(name: String) -> float:
