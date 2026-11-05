@@ -193,6 +193,12 @@ func _reduce() -> void:
 	_check(not (lamp_s["opts"]["flicker"] as Array).is_empty(), "midnight: the lamp flickers by default")
 	_check(not _cues_of(calm).has("violin_screech") and calm.punches.is_empty() and (lamp_c["opts"]["flicker"] as Array).is_empty(), "Giảm hù dọa: no screech, no punch, no flicker (the scare mark plays soft)")
 	_check(calm.validate().is_empty() and _cues_of(calm).has("ba_dum_tss") and _cues_of(calm).has("dun_dun_duun"), "the calm variant still validates and keeps the jokes")
+	# Wave 6 T1: the snap cut lands exactly on the scare frame, a close-up of Phúc's face; the calm variant has no snap cut
+	var snap: Array = scary.shots.filter(func(sh: Dictionary) -> bool: return absf(float(sh["s"]) - 10.0) < 1e-6)
+	_check(snap.size() == 1 and String(snap[0]["rig"]) == "static" and (snap[0]["params"]["look"] as Vector3).distance_to(Vector3(0.05, 1.35, 0.45)) < 0.01
+		and scary.shots.any(func(sh: Dictionary) -> bool: return absf(float(sh["s"]) - 11.2) < 1e-6 and String(sh["params"].get("actor", "")) == "hero"),
+		"midnight: a snap close-up of Phúc exactly at 10.0, the protagonist's reaction at 11.2")
+	_check(not calm.shots.any(func(sh: Dictionary) -> bool: return absf(float(sh["s"]) - 10.0) < 1e-6), "Giảm hù dọa: no snap cut at the scare")
 
 
 func _play_all() -> void:
@@ -454,7 +460,7 @@ func _scare_hits() -> void:
 	var ov2: Dictionary = {}
 	var ov3: Dictionary = {}
 	var fov_min: float = 999.0
-	var base_fov: float = 46.0
+	var base_fov: float = 38.0   # Wave 6 T1: the snap close-up of Phúc (S4b) and the reaction push-in (S4c) are both at 38
 	var twitched: bool = false
 	var k: int = 0
 	var phuc: CineActor = p.actors["phuc"]
