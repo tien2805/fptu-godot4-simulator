@@ -126,6 +126,8 @@ const MOVES: Dictionary = {
 	"idle": {"dur": 2.5, "loop": true, "src": [
 		{"t": "ual1", "a": "Idle"}, {"t": "native", "a": "Idle"}, {"t": "code", "a": "relaxed"}]},
 	"shove": {"dur": 0.6, "hit_u": 0.45, "src": [{"t": "code", "a": "shove", "hit": 0.45}]},
+	# seg_d3_boss: both hands shove the hanging crane hook at head height (code on every tier)
+	"shove_high": {"dur": 0.6, "hit_u": 0.45, "src": [{"t": "code", "a": "shove_high", "hit": 0.45}]},
 	"grab": {"dur": 1.0, "loop": true, "src": [{"t": "code", "a": "grab"}]},
 	"headbutt": {"dur": 0.6, "hit_u": 0.5, "src": [{"t": "code", "a": "headbutt", "hit": 0.5}]},
 	"yank": {"dur": 0.5, "hit_u": 0.45, "src": [{"t": "code", "a": "yank", "hit": 0.45}]},
@@ -181,6 +183,12 @@ const MOVES: Dictionary = {
 	# the hands at the hips, so this is a code pose on every tier)
 	"block_high": {"dur": 0.8, "hit_u": 0.45, "src": [{"t": "code", "a": "block_high", "hit": 0.45}]},
 	"handshake": {"dur": 1.2, "loop": true, "src": [{"t": "code", "a": "handshake"}]},
+	# --- W6 fights (plan 2026-11-05-w6-fights): seg_d4_brawl's tray shield (forearms up, a tray held two-handed in front of
+	# the face; code on every tier so the clangs land on the same tray everywhere)
+	"tray_guard": {"dur": 1.0, "loop": true, "src": [{"t": "code", "a": "tray_guard"}]},
+	# seg_d3_boss's crane-hook ride: hung by the collar off the swinging hook, legs kicking, arms flailing (code on every tier;
+	# a strike move: the snag is its first instant)
+	"dangle": {"dur": 0.8, "loop": true, "hit_u": 0.0, "src": [{"t": "code", "a": "dangle"}]},
 	# --- Q5 acting (plan 2026-10-29-w2-story T5): gestures for the talking actors. The UAL packs have Idle_Talking,
 	# Idle_FoldArms and Idle_No (used first, code poses as fallback); facepalm, shrug and laugh exist in no pack, so they
 	# are code poses on every tier (one-shots ease in and out, laugh loops).
@@ -190,6 +198,17 @@ const MOVES: Dictionary = {
 	"facepalm": {"dur": 1.8, "src": [{"t": "code", "a": "facepalm"}]},
 	"shrug": {"dur": 1.2, "src": [{"t": "code", "a": "shrug"}]},
 	"laugh": {"dur": 1.0, "loop": true, "src": [{"t": "code", "a": "laugh"}]},
+	# --- W6 stream C, seg_d5_boss (plan 2026-11-05-w6-fights): the Vovinam staff fight against Za Mẫn's katana. Code on
+	# every tier: the staff and the katana are held props whose angle the timeline keys, so the contacts must not depend
+	# on the tier. The staff's own angle (actor frame) comes from the timeline's hold track, not from these poses.
+	"staff_thrust": {"dur": 0.6, "hit_u": 0.45, "src": [{"t": "code", "a": "staff_thrust", "hit": 0.45}]},
+	"staff_sweep": {"dur": 0.9, "hit_u": 0.5, "src": [{"t": "code", "a": "staff_sweep", "hit": 0.5}]},
+	"staff_swing": {"dur": 0.7, "hit_u": 0.5, "src": [{"t": "code", "a": "staff_swing", "hit": 0.5}]},
+	"staff_run": {"dur": 0.5, "loop": true, "src": [{"t": "code", "a": "staff_run"}]},
+	"katana_slash": {"dur": 0.9, "hit_u": 0.5, "src": [{"t": "code", "a": "katana_slash", "hit": 0.5}]},
+	"blown_back": {"dur": 0.6, "loop": true, "hit_u": 0.0, "src": [{"t": "code", "a": "blown_back"}]},
+	"staff_smash": {"dur": 0.6, "hit_u": 0.37, "src": [{"t": "code", "a": "chair_smash", "hit": 0.37}]},   # the overhead smash met high (on a raised block)
+	# --- end W6 stream C, seg_d5_boss
 }
 
 ## Two-handed overhead smash (a chair or the soup pot held between both hands): wind up over the head, bring it down on
@@ -236,6 +255,23 @@ const SHOVE_KEYS: Array = [
 		"knee_r": Vector3(-0.2, 0.0, 0.0), "torso": Vector3(-0.35, 0.0, 0.0), "head": Vector3(0.25, 0.0, 0.0),
 		"shoulder_l": Vector3(1.55, 0.0, 0.05), "elbow_l": Vector3(0.4, 0.0, 0.0), "shoulder_r": Vector3(1.55, 0.0, -0.05),
 		"elbow_r": Vector3(0.4, 0.0, 0.0), "body_y": -0.07}],
+	[1.0, GUARD],
+]
+## A two-handed shove at head height (the crane hook's block, seg_d3_boss): hands up by the face, then arms out and up.
+const SHOVE_HIGH_KEYS: Array = [
+	[0.0, GUARD],
+	[0.25, {"thigh_l": Vector3(0.3, 0.0, 0.08), "knee_l": Vector3(-0.5, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.08),
+		"knee_r": Vector3(-0.35, 0.0, 0.0), "torso": Vector3(0.08, 0.0, 0.0), "head": Vector3(-0.05, 0.0, 0.0),
+		"shoulder_l": Vector3(1.5, 0.0, 0.25), "elbow_l": Vector3(1.9, 0.0, 0.0), "shoulder_r": Vector3(1.5, 0.0, -0.25),
+		"elbow_r": Vector3(1.9, 0.0, 0.0)}],
+	[0.45, {"thigh_l": Vector3(0.6, 0.0, 0.08), "knee_l": Vector3(-0.7, 0.0, 0.0), "thigh_r": Vector3(-0.3, 0.0, -0.08),
+		"knee_r": Vector3(-0.15, 0.0, 0.0), "torso": Vector3(-0.18, 0.0, 0.0), "head": Vector3(0.12, 0.0, 0.0),
+		"shoulder_l": Vector3(2.05, 0.0, 0.12), "elbow_l": Vector3(0.2, 0.0, 0.0), "shoulder_r": Vector3(2.05, 0.0, -0.12),
+		"elbow_r": Vector3(0.2, 0.0, 0.0), "body_y": -0.03}],
+	[0.7, {"thigh_l": Vector3(0.55, 0.0, 0.08), "knee_l": Vector3(-0.65, 0.0, 0.0), "thigh_r": Vector3(-0.28, 0.0, -0.08),
+		"knee_r": Vector3(-0.2, 0.0, 0.0), "torso": Vector3(-0.14, 0.0, 0.0), "head": Vector3(0.1, 0.0, 0.0),
+		"shoulder_l": Vector3(1.95, 0.0, 0.06), "elbow_l": Vector3(0.4, 0.0, 0.0), "shoulder_r": Vector3(1.95, 0.0, -0.06),
+		"elbow_r": Vector3(0.4, 0.0, 0.0), "body_y": -0.03}],
 	[1.0, GUARD],
 ]
 const HEADBUTT_KEYS: Array = [
@@ -495,6 +531,60 @@ static func _getup_keys(u: float) -> Array:
 	return []
 
 
+# --- W6 stream C, seg_d5_boss: staff keyframes (both hands on the staff, held "mid" between them)
+## The staff guard (code "staff_guard" at phase 0).
+const STAFF_SG: Dictionary = {"shoulder_l": Vector3(0.95, 0.0, 0.3), "elbow_l": Vector3(1.0, 0.0, 0.0),
+	"shoulder_r": Vector3(0.75, 0.0, -0.05), "elbow_r": Vector3(1.35, 0.0, 0.0), "torso": Vector3(0.1, 0.25, 0.0),
+	"head": Vector3(-0.05, -0.25, 0.0), "thigh_l": Vector3(0.25, 0.0, 0.08), "knee_l": Vector3(-0.4, 0.0, 0.0),
+	"thigh_r": Vector3(-0.1, 0.0, -0.08), "knee_r": Vector3(-0.3, 0.0, 0.0)}
+## A two-handed thrust: the hands drawn back, then driven forward at chest height with a lunge (hit 0.45).
+const STAFF_THRUST_KEYS: Array = [
+	[0.0, STAFF_SG],
+	[0.25, {"shoulder_l": Vector3(0.75, 0.0, 0.3), "elbow_l": Vector3(1.6, 0.0, 0.0), "shoulder_r": Vector3(0.6, 0.0, -0.05),
+		"elbow_r": Vector3(1.8, 0.0, 0.0), "torso": Vector3(0.15, 0.3, 0.0), "head": Vector3(-0.08, -0.3, 0.0),
+		"thigh_l": Vector3(0.25, 0.0, 0.08), "knee_l": Vector3(-0.4, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.08),
+		"knee_r": Vector3(-0.3, 0.0, 0.0)}],
+	[0.45, {"shoulder_l": Vector3(1.35, 0.0, 0.12), "elbow_l": Vector3(0.15, 0.0, 0.0), "shoulder_r": Vector3(1.3, 0.0, -0.05),
+		"elbow_r": Vector3(0.35, 0.0, 0.0), "torso": Vector3(-0.3, 0.05, 0.0), "head": Vector3(0.25, 0.0, 0.0),
+		"thigh_l": Vector3(0.65, 0.0, 0.08), "knee_l": Vector3(-0.75, 0.0, 0.0), "thigh_r": Vector3(-0.35, 0.0, -0.08),
+		"knee_r": Vector3(-0.15, 0.0, 0.0), "body_y": -0.08}],
+	[0.7, {"shoulder_l": Vector3(1.3, 0.0, 0.14), "elbow_l": Vector3(0.35, 0.0, 0.0), "shoulder_r": Vector3(1.25, 0.0, -0.05),
+		"elbow_r": Vector3(0.5, 0.0, 0.0), "torso": Vector3(-0.25, 0.05, 0.0), "head": Vector3(0.2, 0.0, 0.0),
+		"thigh_l": Vector3(0.6, 0.0, 0.08), "knee_l": Vector3(-0.7, 0.0, 0.0), "thigh_r": Vector3(-0.3, 0.0, -0.08),
+		"knee_r": Vector3(-0.2, 0.0, 0.0), "body_y": -0.07}],
+	[1.0, STAFF_SG],
+]
+## Deep crouch for the low sweep (the timeline turns the body through it and pitches the staff down to the shins).
+const STAFF_CROUCH: Dictionary = {"body_y": -0.33, "thigh_l": Vector3(1.3, 0.0, 0.15), "knee_l": Vector3(-1.6, 0.0, 0.0),
+	"thigh_r": Vector3(1.3, 0.0, -0.15), "knee_r": Vector3(-1.6, 0.0, 0.0), "torso": Vector3(-0.45, 0.0, 0.0),
+	"head": Vector3(0.45, 0.0, 0.0), "shoulder_l": Vector3(0.8, 0.0, 0.2), "elbow_l": Vector3(0.35, 0.0, 0.0),
+	"shoulder_r": Vector3(0.7, 0.0, -0.1), "elbow_r": Vector3(0.5, 0.0, 0.0)}
+## Staff held across at head height for the spinning strike (the timeline spins the body through it).
+const STAFF_HIGH: Dictionary = {"shoulder_l": Vector3(1.75, 0.0, 0.15), "elbow_l": Vector3(0.7, 0.0, 0.0),
+	"shoulder_r": Vector3(1.75, 0.0, -0.15), "elbow_r": Vector3(0.7, 0.0, 0.0), "torso": Vector3(-0.1, 0.0, 0.0),
+	"head": Vector3(0.05, 0.0, 0.0), "thigh_l": Vector3(0.35, 0.0, 0.08), "knee_l": Vector3(-0.5, 0.0, 0.0),
+	"thigh_r": Vector3(-0.2, 0.0, -0.08), "knee_r": Vector3(-0.2, 0.0, 0.0)}
+## Za Mẫn's horizontal katana cut, both hands on the hilt, arms out in front at shoulder height (the timeline turns his
+## body through it); he stays extended, the blade stuck in a rack, until the next move.
+const KATANA_SLASH_KEYS: Array = [
+	[0.0, {"shoulder_l": Vector3(0.9, 0.0, 0.25), "elbow_l": Vector3(1.0, 0.0, 0.0), "shoulder_r": Vector3(0.9, 0.0, -0.25),
+		"elbow_r": Vector3(1.0, 0.0, 0.0), "torso": Vector3(0.05, 0.0, 0.0), "thigh_l": Vector3(0.25, 0.0, 0.08),
+		"knee_l": Vector3(-0.4, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.08), "knee_r": Vector3(-0.3, 0.0, 0.0)}],
+	[0.3, {"shoulder_l": Vector3(1.25, 0.0, 0.3), "elbow_l": Vector3(0.7, 0.0, 0.0), "shoulder_r": Vector3(1.25, 0.0, -0.3),
+		"elbow_r": Vector3(0.7, 0.0, 0.0), "torso": Vector3(0.1, 0.0, 0.0), "thigh_l": Vector3(0.3, 0.0, 0.1),
+		"knee_l": Vector3(-0.45, 0.0, 0.0), "thigh_r": Vector3(-0.15, 0.0, -0.1), "knee_r": Vector3(-0.3, 0.0, 0.0)}],
+	[0.5, {"shoulder_l": Vector3(1.5, 0.0, 0.3), "elbow_l": Vector3(0.1, 0.0, 0.0), "shoulder_r": Vector3(1.5, 0.0, -0.3),
+		"elbow_r": Vector3(0.1, 0.0, 0.0), "torso": Vector3(-0.15, 0.0, 0.0), "head": Vector3(0.1, 0.0, 0.0),
+		"thigh_l": Vector3(0.5, 0.0, 0.1), "knee_l": Vector3(-0.6, 0.0, 0.0), "thigh_r": Vector3(-0.25, 0.0, -0.1),
+		"knee_r": Vector3(-0.2, 0.0, 0.0), "body_y": -0.05}],
+	[1.0, {"shoulder_l": Vector3(1.45, 0.0, 0.3), "elbow_l": Vector3(0.15, 0.0, 0.0), "shoulder_r": Vector3(1.45, 0.0, -0.3),
+		"elbow_r": Vector3(0.15, 0.0, 0.0), "torso": Vector3(-0.1, 0.0, 0.0), "head": Vector3(0.05, 0.0, 0.0),
+		"thigh_l": Vector3(0.45, 0.0, 0.1), "knee_l": Vector3(-0.55, 0.0, 0.0), "thigh_r": Vector3(-0.2, 0.0, -0.1),
+		"knee_r": Vector3(-0.2, 0.0, 0.0), "body_y": -0.04}],
+]
+# --- end W6 stream C, seg_d5_boss keyframes
+
+
 ## Code poses {CharacterBuilder joint: Euler (character frame, rad)} applied with CharacterBuilder._apply_bone_pose on the
 ## neutral standing base; u = progress 0..1 through the move (loops: phase). flying_kick, spin_kick and scissor are the
 ## prototype's (git show ec72795:scripts/cine/CineBrawl.gd) – retune the leg angles on the neutral base by eye in Task 7.
@@ -601,6 +691,8 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 				"elbow_r": Vector3(0.25, 0.0, 0.0), "torso": Vector3(-0.03 - bb, 0.0, 0.0), "head": Vector3(bb, 0.0, 0.0)}
 		"shove":
 			return _kpose(SHOVE_KEYS, u)
+		"shove_high":
+			return _kpose(SHOVE_HIGH_KEYS, u)
 		"grab":       # holding on, a little tug back and forth (loop phase u)
 			var g2: Dictionary = GRAB.duplicate()
 			g2["torso"] = (GRAB["torso"] as Vector3) + Vector3(0.0, 0.08 * sin(u * TAU), 0.0)
@@ -875,4 +967,44 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 				"torso": Vector3(0.1, 0.25, 0.0), "head": Vector3(-0.05, -0.25, 0.0),
 				"thigh_l": Vector3(0.25, 0.0, 0.08), "knee_l": Vector3(-0.4, 0.0, 0.0),
 				"thigh_r": Vector3(-0.1, 0.0, -0.08), "knee_r": Vector3(-0.3, 0.0, 0.0)}
+		"tray_guard":   # both forearms up in front of the face behind a tray (held "mid"), braced; a small shake (loop phase u)
+			var tg: float = sin(u * TAU * 2.0) * 0.015
+			return {"shoulder_l": Vector3(1.85 + tg, 0.0, -0.25), "elbow_l": Vector3(1.95, 0.0, 0.0),
+				"shoulder_r": Vector3(1.85 - tg, 0.0, 0.25), "elbow_r": Vector3(1.95, 0.0, 0.0),
+				"torso": Vector3(-0.12, 0.0, 0.0), "head": Vector3(0.18, 0.0, 0.0),
+				"thigh_l": Vector3(0.25, 0.0, 0.08), "knee_l": Vector3(-0.4, 0.0, 0.0),
+				"thigh_r": Vector3(-0.1, 0.0, -0.08), "knee_r": Vector3(-0.3, 0.0, 0.0)}
+		"dangle":       # hung by the collar off a crane hook: chin down, arms flailing out, legs kicking (loop phase u)
+			var dk: float = sin(u * TAU * 2.0)
+			return {"torso": Vector3(-0.12, 0.0, 0.05 * dk), "head": Vector3(-0.25, 0.0, 0.0),
+				"shoulder_l": Vector3(0.7 + 0.5 * dk, 0.0, -0.6), "elbow_l": Vector3(0.8, 0.0, 0.0),
+				"shoulder_r": Vector3(0.7 - 0.5 * dk, 0.0, 0.6), "elbow_r": Vector3(0.8, 0.0, 0.0),
+				"thigh_l": Vector3(0.35 + 0.4 * dk, 0.0, 0.06), "knee_l": Vector3(-0.45 - 0.35 * dk, 0.0, 0.0),
+				"thigh_r": Vector3(0.35 - 0.4 * dk, 0.0, -0.06), "knee_r": Vector3(-0.45 + 0.35 * dk, 0.0, 0.0)}
+		# --- W6 stream C, seg_d5_boss poses
+		"staff_thrust":
+			return _kpose(STAFF_THRUST_KEYS, u)
+		"staff_sweep":  # down into a deep crouch for the low sweep, held through the sweep, back up to the guard
+			return _kpose([[0.0, STAFF_SG], [0.3, STAFF_CROUCH], [0.7, STAFF_CROUCH], [1.0, STAFF_SG]], u)
+		"staff_swing":  # the staff raised across to head height for the spinning strike, held through it, back down
+			return _kpose([[0.0, STAFF_SG], [0.3, STAFF_HIGH], [0.7, STAFF_HIGH], [1.0, STAFF_SG]], u)
+		"staff_run":    # a short sprint carrying the staff forward in both hands (only the legs swing; loop phase u)
+			var rp: float = sin(u * TAU)
+			return {"thigh_l": Vector3(0.25 + 0.65 * rp, 0.0, 0.06),
+				"knee_l": Vector3(-0.35 - 0.55 * maxf(0.0, -rp) - 0.25 * maxf(0.0, rp), 0.0, 0.0),
+				"thigh_r": Vector3(0.25 - 0.65 * rp, 0.0, -0.06),
+				"knee_r": Vector3(-0.35 - 0.55 * maxf(0.0, rp) - 0.25 * maxf(0.0, -rp), 0.0, 0.0),
+				"torso": Vector3(-0.3, 0.0, 0.0), "head": Vector3(0.25, 0.0, 0.0),
+				"shoulder_l": Vector3(0.9, 0.0, 0.25), "elbow_l": Vector3(0.9, 0.0, 0.0),
+				"shoulder_r": Vector3(0.7, 0.0, -0.05), "elbow_r": Vector3(1.2, 0.0, 0.0), "body_y": 0.03 * absf(rp)}
+		"katana_slash":
+			return _kpose(KATANA_SLASH_KEYS, u)
+		"blown_back":   # kicked in the chest: folded at the waist, flung onto his back, arms thrown forward, legs trailing (loop u)
+			var bb: float = sin(u * TAU) * 0.08
+			return {"body_pitch": 0.5, "torso": Vector3(-0.35, 0.0, 0.0), "head": Vector3(-0.2, 0.0, 0.0),
+				"shoulder_l": Vector3(1.3 + bb, 0.0, -0.4), "elbow_l": Vector3(0.4, 0.0, 0.0),
+				"shoulder_r": Vector3(1.3 - bb, 0.0, 0.4), "elbow_r": Vector3(0.4, 0.0, 0.0),
+				"thigh_l": Vector3(0.45 - bb, 0.0, 0.1), "knee_l": Vector3(-0.5, 0.0, 0.0),
+				"thigh_r": Vector3(0.3 + bb, 0.0, -0.1), "knee_r": Vector3(-0.35, 0.0, 0.0)}
+		# --- end W6 stream C, seg_d5_boss poses
 	return {}

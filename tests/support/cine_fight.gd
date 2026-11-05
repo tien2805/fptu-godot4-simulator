@@ -1,12 +1,13 @@
 # File: res://tests/support/cine_fight.gd
-# Shared headless test of the Phase C fights (CineFightC: seg_d2_boss, seg_d3_boss, seg_d5_boss), modelled on
-# tests/test_cine_d4_brawl.gd: valid, exactly 25.000 s, slow motion on 4 impacts + 1 accent + the finisher swell, each on
-# its real time (the fight's beat table T) within 0.5 ms, the swell ending at real 22.000 with a 3.000 s tail; the hits the
-# protagonist takes at normal speed with punch-ins; the beat sheet in sync; plays 1500 steps of 1/60 with every actor inside
-# the 14 x 10 box; the improvised weapons held through their swings; surface contact at every impact (fist / held prop to
-# the target's bone capsules) <= 0.04 m on Mixamo and <= 0.15 m on the fallbacks, also for c slammed into the surface prop;
-# lying bodies on the floor; no hips skating (<= 0.08 m per frame) through lie / sit transitions; bodies never sink into
-# each other or the solid props (<= 0.03 m, near a hit <= 0.06 m limb / 0.04 m core), feet never 3 cm under the floor.
+# Shared headless test of the CineFightC fights (seg_d2_boss; the other fights are on tests/support/cine_brawl.gd since
+# plan 2026-11-05-w6-fights): valid, exactly T.h5 + 7.5 s (at most 25), slow motion on 4 impacts + 1 accent + the finisher
+# swell, each on its real time (the fight's beat table T) within 0.5 ms, the swell ending 4.5 s after H5 with a 3.000 s
+# tail; the hits the protagonist takes at normal speed with punch-ins; the beat sheet in sync; plays every 1/60 step with
+# every actor inside the 14 x 10 box; the improvised weapons held through their swings; surface contact at every impact
+# (fist / held prop to the target's bone capsules) <= 0.04 m on Mixamo and <= 0.15 m on the fallbacks, also for c slammed
+# into the surface prop; lying bodies on the floor; no hips skating (<= 0.08 m per frame) through lie / sit transitions;
+# bodies never sink into each other or the solid props (<= 0.03 m, near a hit <= 0.06 m limb / 0.04 m core), feet never
+# 3 cm under the floor.
 # Tiers: cap 0 Mixamo when present, 1 UAL, 2 native, 3 code. Then in FreeRoam: cine_stage finds a spot within 4 m of its
 # explicit point for every Phase C slot (GRASS_MOVED: at the baked spot off the campus lawn), play_cinematic stages the
 # fight, a hold-Esc skip restores the world.
@@ -171,7 +172,7 @@ func _contacts(pl: CinePlayer, label: String) -> void:
 
 
 func _lying(pl: CinePlayer, label: String) -> void:
-	for e: Array in [["b", _real("h2") + 3.7], ["b", 16.0], ["c", _real("h3") + 3.6], ["a", 24.6]]:
+	for e: Array in [["b", _real("h2") + 3.7], ["b", 16.0], ["c", _real("h3") + 3.6], ["a", tl.length - 0.4]]:
 		pl.seek(float(e[1]))
 		var a: CineActor = pl.actors[String(e[0])]
 		var hy: float = a.bone_world("Hips").y
@@ -327,7 +328,7 @@ func _weapons(pl: CinePlayer) -> void:
 	_check(not (pl.prop_nodes["grab_item"] as Node3D).visible and _held(h, "w3") != null, "the w3 pickup is taken (prop hidden, held)")
 	pl.seek(_real("pick1") - 0.8)
 	_check((pl.prop_nodes["floor_item"] as Node3D).visible and (pl.prop_nodes["grab_item"] as Node3D).visible, "both pickups in place before they are used")
-	pl.seek(24.5)
+	pl.seek(tl.length - 0.5)
 	_check(not (pl.actors["d"] as CineActor).visible, "d has run off by the tail")
 	pl.seek(tl.clock.real_at(float(tl.get("s_gone"))) - 0.05)
 	_check((pl.actors["d"] as CineActor).visible, "d is still seen running just before the S13 -> S14 cut")
@@ -358,7 +359,9 @@ func _initialize() -> void:
 		return
 	var errs: PackedStringArray = tl.validate()
 	_check(errs.is_empty(), "valid: %s" % str(errs))
-	_check(is_equal_approx(tl.length, 25.0) and absf(tl.clock.real_duration() - 25.0) < 0.0005, "exactly 25.000 s (%.5f)" % tl.clock.real_duration())
+	var want_len: float = _real("h5") + CineFightC.SWELL + CineFightC.TAIL
+	_check(is_equal_approx(tl.length, want_len) and absf(tl.clock.real_duration() - want_len) < 0.0005 and want_len <= 25.0,
+		"exactly %.3f s = H5 + the 4.5 s swell + the 3 s tail, at most 25 (%.5f)" % [want_len, tl.clock.real_duration()])
 	var freezes: int = 0
 	for row: Dictionary in tl.clock.ramps:
 		freezes += 1 if float(row["freeze"]) > 0.0 else 0
@@ -367,11 +370,13 @@ func _initialize() -> void:
 		var rh: float = float(tl.clock.ramp(nm).get("r_hit", -1.0))
 		_check(absf(rh - _real(nm.to_lower())) < 0.0005, "%s real impact %.4f on %.3f" % [nm, rh, _real(nm.to_lower())])
 	var fin: Dictionary = tl.clock.ramp("H5")
-	_check(String(fin.get("preset", "")) == "finisher" and absf(float(fin.get("r1", 0.0)) - 22.0) < 0.0005, "finisher swell ends at real 22.000")
-	var tail: float = 25.0 - float(tl.clock.ramps[tl.clock.ramps.size() - 1]["r1"])
+	var swell_end: float = _real("h5") + CineFightC.SWELL
+	_check(String(fin.get("preset", "")) == "finisher" and absf(float(fin.get("r1", 0.0)) - swell_end) < 0.0005,
+		"finisher swell ends at real %.3f, 4.5 s after H5 (%.4f)" % [swell_end, float(fin.get("r1", 0.0))])
+	var tail: float = tl.length - float(tl.clock.ramps[tl.clock.ramps.size() - 1]["r1"])
 	_check(absf(tail - 3.0) < 0.0005, "normal-speed tail %.4f s = 3.000" % tail)
 	var sc_r: float = tl.clock.real_at(float(tl.get("sc")))
-	_check(sc_r > _real("h5") + 0.2 and sc_r < 22.0 and tl.clock.speed_at(sc_r) < 0.5, "the crash (real %.2f) sits inside the slow-motion swell" % sc_r)
+	_check(sc_r > _real("h5") + 0.2 and sc_r < swell_end and tl.clock.speed_at(sc_r) < 0.5, "the crash (real %.2f) sits inside the slow-motion swell" % sc_r)
 	for ex: String in ["x1", "x2", "x3"]:
 		_check(tl.clock.speed_at(_real(ex)) > 0.99, "the hit the protagonist takes at %.2f plays at normal speed" % _real(ex))
 		var hitp: bool = tl.punches.any(func(pu: Dictionary) -> bool: return absf(tl.clock.real_at(tl.story_time(pu["at"])) - _real(ex)) < 0.0005)
@@ -429,7 +434,8 @@ func _process(_d: float) -> bool:
 		0:
 			var n: int = 0
 			var outside: String = ""
-			while ended.is_empty() and n < 1600:
+			var steps: int = int(round(tl.length * 60.0))
+			while ended.is_empty() and n < steps + 100:
 				p.step(1.0 / 60.0)
 				n += 1
 				if outside == "" and n % 6 == 0:
@@ -437,7 +443,7 @@ func _process(_d: float) -> bool:
 						var ap: Vector3 = (p.actors[id] as CineActor).position
 						if absf(ap.x) > HALF.x or absf(ap.z) > HALF.y:
 							outside = "%s at r %.2f (%.2f, %.2f)" % [id, p.r, ap.x, ap.z]
-			_check(absi(n - 1500) <= 1 and ended == [false], "plays 1500 steps of 1/60 (%d)" % n)
+			_check(absi(n - steps) <= 1 and ended == [false], "plays %d steps of 1/60 (%d)" % [steps, n])
 			_check(outside == "", "actors stay inside the 14 x 10 box (%s)" % outside)
 			var ms: float = p.frame_ms_total / maxf(float(p.frames), 1.0)
 			print("  frame update %.2f ms (5 actors)" % ms)
@@ -520,7 +526,7 @@ func _process(_d: float) -> bool:
 
 func _end() -> bool:
 	if fails.is_empty():
-		print("✅ SUCCESS: CINE %s (25.000 s, ramps, beat sheet, tiers, contacts, weapons, bodies, FreeRoam stages)" % String(conf.get("slot", "?")))
+		print("✅ SUCCESS: CINE %s (%.3f s, ramps, beat sheet, tiers, contacts, weapons, bodies, FreeRoam stages)" % [String(conf.get("slot", "?")), tl.length])
 		quit(0)
 	else:
 		print("❌ FAILED: %d issues" % fails.size())

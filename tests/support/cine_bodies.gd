@@ -13,8 +13,8 @@ const CAPS: Array = [
 const HEAD_R: float = 0.12
 const HEAD_UP: float = 0.11          # head sphere centre along the Head bone axis
 const CORE: Array[String] = ["torso", "head"]
-## Prop meshes that are not solid (lights, lamp lens, thin battens).
-const SKIP_MESH: Array[String] = ["Headlight", "Haze", "Edge", "Screen", "Hub"]
+## Prop meshes that are not solid (lights, lamp lens, thin battens, the crane hook's cable overhead).
+const SKIP_MESH: Array[String] = ["Headlight", "Haze", "Edge", "Screen", "Hub", "Cable"]
 
 
 ## [[part, a, b, r], ...] in world space (the head as a zero-length capsule).

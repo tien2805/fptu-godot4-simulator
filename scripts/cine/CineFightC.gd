@@ -1,17 +1,18 @@
 # File: res://scripts/cine/CineFightC.gd
-# Base of the three Phase C full fights (seg_d2_boss, seg_d3_boss, seg_d5_boss; spec C-D9): 25.000 s Nobody-style
-# cinematics built on the seg_d4_brawl blocking (the same surface-gap spacing, tuned on every tier), re-cast and re-propped
-# per fight, with each fight's own beat table T (real seconds: retime them to the owner's track onsets when tuning by ear;
-# every key and cue is derived from T, so the blocking follows).
+# Base of the Phase C full fight seg_d2_boss (spec C-D9; seg_d3_boss, seg_d4_brawl and seg_d5_boss have their own
+# choreography since plan 2026-11-05-w6-fights): a Nobody-style cinematic built on the old seg_d4_brawl blocking (the
+# surface-gap spacing, tuned on every tier), with the fight's own beat table T (real seconds on the owner's track onsets;
+# every key and cue is derived from T, so the blocking follows). Length: the finisher swell ends SWELL (4.5 s) after H5,
+# then a TAIL (3 s) at 1x, so the length is T.h5 + 7.5 (seg_d2_boss: 22.3 s).
 #
 # Roles (as in seg_d4_brawl):
 #   "a"  the boss: H1 (weapon w1), reels away stunned, comes back for H4 (weapon w3), then the H5 finisher flies him into the
-#        crash prop ("crates") inside the long slow-motion swell to real 22.000;
+#        crash prop ("crates") inside the slow-motion swell (to real T.h5 + SWELL);
 #   "b"  a henchman: his cross lands on the protagonist's jaw (x1), then H2 (w2, picked up off the floor) knocks him out;
 #   "c"  a henchman: his jab to the protagonist's stomach (x2), then H3 shoves him back into the surface prop ("surface"),
 #        where he slides down to sit;
 #   "d"  a henchman: his straight right catches the protagonist (x3), the second one misses (A1, slow-motion accent: the
-#        protagonist slips it), then he backs off and runs for the exit in the tail.
+#        protagonist slips it), then he backs off and runs for the exit as the swell ends.
 # The protagonist takes three hits at normal speed with punch-ins (x1, x2, x3); slow motion only on H1-H4, the A1 accent
 # and the finisher swell.
 #
@@ -19,7 +20,7 @@
 # "a" (the slow-motion miss A1 is the boss's: d only throws x3 and leaves), "x2_move" (c's hit, e.g. a knee strike),
 # "shots" (per-shot camera overrides), "floor_back" (how far behind the protagonist the w2 pickup lies), "a_blocks_h4".
 # A subclass sets `cfg` in _configure() (see the keys used below) and may add its own cues in _extra(). Tests:
-# tests/support/cine_fight.gd (tests/test_cine_d2_boss.gd, test_cine_d3_boss.gd, test_cine_d5_boss.gd).
+# tests/support/cine_fight.gd (tests/test_cine_d2_boss.gd).
 # Stage frame: X right, -Z forward, ground y = 0; yaw in degrees, characters face -Z at 0. Box 14 x 10 (|x| <= 7, |z| <= 5).
 class_name CineFightC
 extends CineTimeline
@@ -31,7 +32,10 @@ const CRASH_BACK: float = 1.75
 ## Default beat table (seg_d4_brawl's): impacts h1-h4, a1 (accent), h5 (finisher); hits taken x1-x3; pickups.
 const T_DEFAULT: Dictionary = {"h1": 2.6, "x1": 3.9, "pick1": 4.75, "h2": 5.9, "x2": 7.6, "h3": 8.4, "pick2": 9.9, "h4": 11.2,
 	"x3": 12.6, "a1": 13.6, "h5": 15.0}
-const SWELL_END: float = 22.0
+## The finisher swell: real seconds from the H5 impact to the end of its ramp (was a fixed end at real 22.0, 7.2 s).
+const SWELL: float = 4.5
+## Story seconds d takes from his turn after the crash to the exit (a sprint of about 3.7 m).
+const D_RUN: float = 0.95
 
 # blocking (seg_d4_brawl)
 const SURFACE_FACE_X: float = 2.225
@@ -90,7 +94,9 @@ var x3: float
 var s_pick1: float
 var s_pick2: float
 var sc: float
+var s_run: float          # d turns and sprints for the exit
 var s_gone: float
+var swell_end: float      # real time the finisher swell ends (T.h5 + SWELL)
 
 
 ## Subclasses fill cfg: slot, stage, cast {role: cast id}, names {role: speaker}, T (overrides of T_DEFAULT), w1 / w2 / w3
@@ -132,7 +138,8 @@ func build() -> void:
 	T = T_DEFAULT.duplicate()
 	T.merge(cfg.get("T", {}), true)
 	slot = String(cfg["slot"])
-	length = 25.0
+	swell_end = _t("h5") + SWELL
+	length = swell_end + TAIL
 	mood = "punchy"
 	fade_in = 0.5
 	fade_out = 0.5
@@ -157,7 +164,8 @@ func build() -> void:
 	if cfg.has("opener"):
 		s_open = _sr(_open_r())
 	sc = h5 + CRASH_DS
-	s_gone = _sr(SWELL_END + 0.2)
+	s_run = sc + 0.3
+	s_gone = s_run + D_RUN
 	_layout()
 	_props()
 	_hero()
@@ -198,7 +206,7 @@ func _hits() -> void:
 	hit("H4", _t("h4") - 0.6, "medium", String(w.get("H4", "w3 on the boss")), {"r": _t("h4"), "hq": 0.4, "att": "hero:w3", "tgt": "a:Head"})
 	hit("A1", _t("a1") - 0.7, "accent", String(w.get("A1", "slow-motion accent: the protagonist slips d's second punch")), {"r": _t("a1")})
 	hit("H5", _t("h5") - 0.8, "finisher", String(w.get("H5", "uppercut: the boss flies back into the crash prop (long swell)")),
-		{"r": _t("h5"), "hq": SWELL_END - _t("h5") - 0.55, "att": "hero:hands", "tgt": "a:upper"})
+		{"r": _t("h5"), "hq": SWELL - 0.55, "att": "hero:hands", "tgt": "a:upper"})
 
 
 func _layout() -> void:
@@ -378,9 +386,9 @@ func _hero() -> void:
 	look("hero", sc + 0.4, story_end, "d")
 	key("hero", sc + 0.1, P3, y_af)
 	key("hero", sc + 0.5, P3, CineTimeline.face(P3, EXIT))
-	move("hero", _sr(SWELL_END + 0.3), "winded", {"fade": 0.35})
+	move("hero", _sr(swell_end + 0.3), "winded", {"fade": 0.35})
 	expr("hero", sc, "happy")
-	expr("hero", _sr(SWELL_END + 0.4), "done")
+	expr("hero", _sr(swell_end + 0.4), "done")
 
 
 func _role_a() -> void:
@@ -511,8 +519,8 @@ func _role_d() -> void:
 		move("d", _sr(_t("a1") + 0.5), "fight_idle", {"fade": 0.15})
 		key("d", _sr(_t("a1") + 0.4), D_A, y_a)
 		key("d", _sr(_t("a1") + 0.9), D_B, y_a, {"mode": "out"})
-	key("d", sc + 0.3, D_B, y_ex)
-	move("d", sc + 0.3, "sprint", {"fade": 0.2})
+	key("d", s_run, D_B, y_ex)
+	move("d", s_run, "sprint", {"fade": 0.2})
 	key("d", s_gone, EXIT, y_ex, {"mode": "linear"})
 	show("d", s_gone, false)
 
@@ -558,7 +566,7 @@ func _shots() -> void:
 		"fov": 46.0, "hand": 0.4})
 	_shot("S12", _sr(_t("h5") + 2.6), "static", String(lab.get("S12", "slow motion: the boss into the crash prop")),
 		{"pos": CRATES + Vector3(2.6, 1.0, 2.2), "look": CRATES + Vector3(0.2, 0.6, 0.0), "fov": 48.0, "hand": 0.5})
-	_shot("S13", _sr(SWELL_END - 2.4), "dolly", String(lab.get("S13", "slow push: d turns and runs for the exit")),
+	_shot("S13", s_run - 0.05, "dolly", String(lab.get("S13", "slow push: d turns and runs for the exit")),
 		{"from": P3 + Vector3(0.6, 1.6, 2.4), "to": P3 + Vector3(0.2, 1.55, 1.8), "look_from": EXIT + Vector3(2.0, 1.0, 0.0),
 		"look_to": EXIT + Vector3(0.8, 1.0, 0.0), "fov": 50.0, "hand": 0.4})
 	_shot("S14", s_gone, "dolly", String(lab.get("S14", "tail wide: the wreckage, the protagonist winded")),
@@ -598,4 +606,4 @@ func _fx_sfx() -> void:
 	fx_at(sc, "dust", "a:Hips", {"power": 1.0})
 	sfx_at(sc, String(cue.get("crash", "crate_smash")), 0.0)
 	sfx_at(sc + 0.3, "body_fall", -3.0)
-	sfx_at(_sr(SWELL_END + 0.3), "groan", -5.0)
+	sfx_at(_sr(swell_end + 0.3), "groan", -5.0)
