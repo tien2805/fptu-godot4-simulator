@@ -42,6 +42,9 @@ const CLOCK_RED := Color("#FF4A4A")
 const CLOCK_GOLD := Color("#FFD23F")
 ## Real seconds (as a share of u) the flip takes to fold the digits shut and open them again.
 const FLIP_U: float = 0.06
+## Drawing constants of the new kinds (kept out of _draw: no per-frame array literals).
+const TERM_DOTS: Array[Color] = [Color("#FF5F56"), Color("#FFBD2E"), Color("#27C93F")]
+const ZOOM_CORNERS: PackedVector2Array = [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]
 
 var data: Dictionary = {}
 var r0: float = 0.0
@@ -59,6 +62,10 @@ var title_label: Label
 var roll: VBoxContainer
 var flow_labels: Array[Label] = []
 var term_labels: Array[Label] = []
+var _term_lens: PackedInt32Array = []   # characters per terminal line (built once)
+var _term_total: int = 0
+var _clock_key: int = -9999            # the digits last shown (seconds left / flipped): the text is formatted on change only
+var _clock_red: int = -1                # the digits' colour state last set (-1 = none yet): the override is set on change only
 
 
 ## Code-drawn screen content (redrawn when u changes).
@@ -69,6 +76,8 @@ class ScreenDraw extends Control:
 	var log_rows: bool = false   # flow: the scrolling log rows behind the chart
 	var zoom: Array = []         # cctv: [u_in0, u_in1, factor, u_out0, u_out1]
 	var focus := Vector2(0.5, 0.5)
+	var _zoom_shown: float = -1.0       # the zoom factor the tag was last built for (rebuilt only when it changes)
+	var _zoom_txt: String = ""
 
 	func _draw() -> void:
 		var s: Vector2 = size
@@ -130,7 +139,7 @@ class ScreenDraw extends Control:
 			draw_rect(Rect2(Vector2.ZERO, s), Color("#07090B"))
 			draw_rect(Rect2(0.0, 0.0, s.x, 34.0), Color("#1B2026"))
 			for k: int in 3:
-				draw_circle(Vector2(18.0 + 20.0 * k, 17.0), 6.0, [Color("#FF5F56"), Color("#FFBD2E"), Color("#27C93F")][k])
+				draw_circle(Vector2(18.0 + 20.0 * k, 17.0), 6.0, StoryScreenCard.TERM_DOTS[k])
 			if fmod(t * 2.0, 1.0) < 0.55:   # the cursor blinks
 				draw_rect(Rect2(s.x - 40.0, s.y - 36.0, 14.0, 22.0), Color("#5BD38A"))
 			return
@@ -162,11 +171,15 @@ class ScreenDraw extends Control:
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			var fp := Vector2(focus.x * s.x, focus.y * s.y)
 			var hw := Vector2(150.0, 90.0)
-			for c: Vector2 in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:   # the focus brackets
+			for c: Vector2 in StoryScreenCard.ZOOM_CORNERS:   # the focus brackets
 				var cp: Vector2 = fp + hw * c
 				draw_line(cp, cp - Vector2(26.0 * c.x, 0.0), Color("#FFD23F"), 3.0)
 				draw_line(cp, cp - Vector2(0.0, 26.0 * c.y), Color("#FFD23F"), 3.0)
-			draw_string(ThemeDB.fallback_font, Vector2(18.0, s.y * 0.2), "ZOOM x%.1f" % z, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color("#FFD23F"))
+			var zs: float = snappedf(z, 0.1)
+			if zs != _zoom_shown:
+				_zoom_shown = zs
+				_zoom_txt = "ZOOM x%.1f" % zs
+			draw_string(ThemeDB.fallback_font, Vector2(18.0, s.y * 0.2), _zoom_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color("#FFD23F"))
 		# scanlines and grain
 		var y: float = 0.0
 		while y < s.y:
@@ -223,13 +236,29 @@ static func clock_text(d: Dictionary, secs: float, u: float) -> String:
 	return String(d.get("to", "")) if u >= float(d.get("flip_u", 0.5)) else String(d.get("from", ""))
 
 
+## What the clock digits depend on (seconds left, or 0 / 1 before / after the flip): they change only when this does.
+static func clock_key(d: Dictionary, secs: float, u: float) -> int:
+	if d.has("count"):
+		return maxi(int(ceil(float(d["count"]) - secs - 1e-6)), 0)
+	return 1 if u >= float(d.get("flip_u", 0.5)) else 0
+
+
 ## The clock card's digit height (1 = open, 0 = folded shut at the flip) and colour at the same moment. Pure (tests).
 static func clock_fold(d: Dictionary, secs: float, u: float) -> Dictionary:
+	return {"fold": clock_fold_amount(d, secs, u), "red": clock_is_red(d, secs, u)}
+
+
+## clock_fold's two parts without a Dictionary (the per-frame form).
+static func clock_fold_amount(d: Dictionary, secs: float, u: float) -> float:
 	if d.has("count"):
-		var left: float = float(d["count"]) - secs
-		return {"fold": 1.0, "red": left <= 10.0 + 1e-6}
-	var f: float = clampf(absf(u - float(d.get("flip_u", 0.5))) / (FLIP_U * 0.5), 0.0, 1.0)
-	return {"fold": f, "red": u >= float(d.get("flip_u", 0.5))}
+		return 1.0
+	return clampf(absf(u - float(d.get("flip_u", 0.5))) / (FLIP_U * 0.5), 0.0, 1.0)
+
+
+static func clock_is_red(d: Dictionary, secs: float, u: float) -> bool:
+	if d.has("count"):
+		return float(d["count"]) - secs <= 10.0 + 1e-6
+	return u >= float(d.get("flip_u", 0.5))
 
 
 ## {shown, alpha, u (0..1 through the window)}.
@@ -340,6 +369,8 @@ func _build() -> void:
 			l.position = Vector2(24.0, 50.0 + 50.0 * k)
 			screen.add_child(l)
 			term_labels.append(l)
+			_term_lens.append(String(tl[k]).length())
+			_term_total += String(tl[k]).length()
 		return
 	if kind() == "clock":
 		head_label = _lbl(String(data.get("title", "")), 20, Color("#DDF5E4"))
@@ -464,13 +495,23 @@ func update(r: float) -> void:
 	if clock_label:
 		clock_label.text = clock_at(String(data.get("clock", "21:47:05")), maxf(r - r0, 0.0) * 1.0)
 	if not term_labels.is_empty():
-		var ch: Array[int] = terminal_chars(data.get("lines", []), float(st["u"]))
+		# as terminal_chars (the tests' pure form), without a per-frame array
+		var shown: int = int(floor(clampf(float(st["u"]) / TYPE_END, 0.0, 1.0) * float(_term_total) + 1e-6))
 		for k4: int in term_labels.size():
-			term_labels[k4].visible_characters = ch[k4]
+			var vc: int = clampi(shown, 0, _term_lens[k4])
+			if term_labels[k4].visible_characters != vc:
+				term_labels[k4].visible_characters = vc
+			shown -= _term_lens[k4]
 	if kind() == "clock":
 		var secs: float = maxf(r - r0, 0.0)
-		var cf: Dictionary = clock_fold(data, secs, float(st["u"]))
-		time_label.text = clock_text(data, secs, float(st["u"]))
+		var cu: float = float(st["u"])
+		var ck: int = clock_key(data, secs, cu)
+		if ck != _clock_key:
+			_clock_key = ck
+			time_label.text = clock_text(data, secs, cu)
 		time_label.pivot_offset = time_label.size * 0.5
-		time_label.scale = Vector2(1.0, maxf(float(cf["fold"]), 0.02))
-		time_label.add_theme_color_override("font_color", CLOCK_RED if bool(cf["red"]) else CLOCK_GOLD)
+		time_label.scale = Vector2(1.0, maxf(clock_fold_amount(data, secs, cu), 0.02))
+		var red: int = 1 if clock_is_red(data, secs, cu) else 0
+		if red != _clock_red:   # a theme override re-shapes the label: only on a colour change
+			_clock_red = red
+			time_label.add_theme_color_override("font_color", CLOCK_RED if red == 1 else CLOCK_GOLD)
