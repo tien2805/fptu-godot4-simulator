@@ -103,7 +103,7 @@ Sáng hôm sau trước tòa BE6, nhân vật chính đọc email đình chỉ t
 | Cảnh | Từ | Dài | Prompt |
 |---|---|---|---|
 | S1 | 0,0 | 1,4 s | Wide shot, sunny morning in front of a modern university building with orange accents, {HERO} stands on the plaza reading a smartphone, students passing in the background. Static camera. |
-| S2 | 1,4 | 3,5 s | Over-the-shoulder close-up of the smartphone screen: an official email titled "Quyết định đình chỉ thi" types itself out line by line, then (at 4,0 s) a huge red rubber stamp "TOANG!" slams onto it, the phone shakes. Static camera. |
+| S2 | 1,4 | 3,5 s | Over-the-shoulder close-up of the smartphone screen: an official email titled "Quyết định đình chỉ thi" types itself out line by line (done by 2,8 s, then held still for reading), then (at 4,0 s) a huge red rubber stamp "TOANG!" slams onto it, the phone shakes. Static camera. |
 | S3 | 4,9 | 3,5 s | Push-in on {HERO}'s face, shocked, mouth open; then a comic facepalm. Morning light. |
 | S4 | 8,4 | 5,0 s | Low-angle hero shot of {HERO} lowering the phone, determined look, clenching a fist, the building towering behind, lens flare. |
 | S5 | 13,4 | 6,6 s | Slow orbit around {HERO} standing still on the plaza while the sky turns to a warm sunset; leave the upper third empty for the title "TOOL ĐEN – 7 ngày minh oan". At the end the phone lights up with a new message. |
@@ -274,7 +274,7 @@ Mỗi dòng là một file `music\<slot>.ogg` hoặc `music\<slot>.mp3`. Trạng
 | [ ] | `cine_d2_intro` | Anh Duy dò đường Bầy Sói trên ba laptop (Ngày 2) | *Who Let the Dogs Out*, Baha Men | 14 s |
 | [ ] | `cine_d3_intro` | chạy xe đêm tới kênh, Anh Duy nói qua bộ đàm (Ngày 3) | *A Real Hero*, College & Electric Youth | 14 s |
 | [ ] | `mission_sneak` | lẻn vào bến container (Ngày 3) | *Sneaky Snitch*, Kevin MacLeod | nền, lặp |
-| [ ] | `cine_d3_mannequins` | cửa container mở, ma-nơ-canh quay đầu, "Surprise!" (Ngày 3) | *Toccata and Fugue in D minor*, J. S. Bach | 9 s |
+| [ ] | `cine_d3_mannequins` | cửa container mở, ma-nơ-canh quay đầu, "Surprise!" (Ngày 3) | *Toccata and Fugue in D minor*, J. S. Bach | 9,3 s |
 | [ ] | `meme_mannequin` | ma-nơ-canh đứng im khi lính quay lại (Ngày 3) | *Black Beatles*, Rae Sremmurd | nền, lặp |
 | [ ] | `mission_gunfight` | đấu súng ở bến container (Ngày 3) | *Bang Bang (My Baby Shot Me Down)*, Nancy Sinatra | nền, lặp |
 | [ ] | `meme_coffin_dance` | bảo vệ khiêng thùng kính kiểu "coffin dance" (Ngày 3) | *Astronomia*, Vicetone & Tony Igy | nền, lặp |
@@ -358,7 +358,7 @@ Mỗi dòng là một file `music\<slot>.ogg` hoặc `music\<slot>.mp3`. Trạng
 | [x] | `ai_reveal` | Lọ Academy | 24 s | *O Fortuna*, Carl Orff |
 | [x] | `end_a` | Kết A | 26 s | *September*, Earth, Wind & Fire |
 | [x] | `end_b` | Kết B | 24 s | *Lean on Me*, Bill Withers |
-| [x] | `end_c` | Kết C | 26 s | *Money, Money, Money*, ABBA |
+| [x] | `end_c` | Kết C | 26,5 s | *Money, Money, Money*, ABBA |
 | [x] | `end_d` | Kết D | 26 s | *Fly Me to the Moon*, Frank Sinatra |
 | [x] | `end_e` | Kết E | 27 s | *Never Gonna Give You Up*, Rick Astley |
 | [x] | `end_f` | Kết F | 22 s | *Celebration*, Kool & the Gang |

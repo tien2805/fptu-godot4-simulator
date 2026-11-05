@@ -112,7 +112,7 @@ Không có nhạc riêng (chỉ âm thanh hiệu ứng): cuộc gọi 3 giờ s�
 | `seg_d2_boss` | cảnh đánh lớn 25 s dưới cầu | *Heartbreaker*, Pat Benatar (đã có) |
 | `cine_d3_intro` | chạy xe đêm tới kênh (14 s) | *A Real Hero*, College & Electric Youth |
 | `mission_sneak` | lẻn vào bến container | *Sneaky Snitch*, Kevin MacLeod |
-| `cine_d3_mannequins` | cửa container mở, ma-nơ-canh quay đầu, "Surprise!" (9 s) | *Toccata and Fugue in D minor*, J. S. Bach |
+| `cine_d3_mannequins` | cửa container mở, ma-nơ-canh quay đầu, "Surprise!" (9.3 s) | *Toccata and Fugue in D minor*, J. S. Bach |
 | `mission_gunfight` | đấu súng ở bến container | *Bang Bang (My Baby Shot Me Down)*, Nancy Sinatra |
 | `meme_mannequin` | ma-nơ-canh đứng im khi lính quay lại, kiểu "mannequin challenge" (Ngày 3, Wave 3) | *Black Beatles*, Rae Sremmurd |
 | `meme_coffin_dance` | bảo vệ khiêng thùng kính | *Astronomia*, Vicetone & Tony Igy |
@@ -131,7 +131,7 @@ Không có nhạc riêng (chỉ âm thanh hiệu ứng): cuộc gọi 3 giờ s�
 | `cine_d5` | dòng tiền chỉ về Trà Sữa Lọ (18 s) | đã có |
 | `cine_d7_intro` | bình minh, Anh Duy báo 08:00 tool lên hệ thống thi, Mr.T "giữ cửa thang máy" (13 s) | *Lux Aeterna* (nhạc phim *Requiem for a Dream*), Clint Mansell |
 | `cine_d7_monologue` | Lùm Văn Lọ "Mọi thứ đều nằm trong kế hoạch", búng tay tắt đèn (13 s) | *Sweet Dreams (Are Made of This)*, Eurythmics |
-| `end_c` | kết C "Kẻ phản diện mới" (26 s, có credits) | *Money, Money, Money*, ABBA (đã có) |
+| `end_c` | kết C "Kẻ phản diện mới" (26.5 s, có credits) | *Money, Money, Money*, ABBA (đã có) |
 
 Nhạc chuông của Sói Xám là âm thanh tự tạo (`ringtone_synth`), không phải nhạc nền.
 

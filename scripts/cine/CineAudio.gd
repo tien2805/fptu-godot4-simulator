@@ -9,6 +9,9 @@ class_name CineAudio
 extends RefCounted
 
 const MUSIC_DIR: String = "user://music/"
+## Tests only: look for the owner files in this folder instead of MUSIC_DIR (an empty, never-written temp path makes every
+## slot resolve as if the owner had no files); reset to "" afterwards.
+static var test_music_dir: String = ""
 const SFX_DIR: String = "user://sfx/"
 const SR: int = 22050
 const FADE_OUT: float = 0.5
@@ -35,7 +38,7 @@ const CHOICE_TAILS: Array[String] = ["cine_d1_choice_cover", "cine_d1_choice_rep
 
 static func music_file(slot: String) -> String:
 	for ext: String in [".ogg", ".mp3"]:
-		var p: String = MUSIC_DIR + slot + ext
+		var p: String = _music_dir() + slot + ext
 		if FileAccess.file_exists(p):
 			return p
 	if SLOT_FALLBACK.has(slot):
@@ -64,9 +67,13 @@ static func music_offset(slot: String) -> float:
 
 static func _own_file(slot: String) -> String:
 	for ext: String in [".ogg", ".mp3"]:
-		if FileAccess.file_exists(MUSIC_DIR + slot + ext):
-			return MUSIC_DIR + slot + ext
+		if FileAccess.file_exists(_music_dir() + slot + ext):
+			return _music_dir() + slot + ext
 	return ""
+
+
+static func _music_dir() -> String:
+	return test_music_dir if test_music_dir != "" else MUSIC_DIR
 
 
 ## Shared with Phase W (called by name from its scripts): signature frozen, do not rename.

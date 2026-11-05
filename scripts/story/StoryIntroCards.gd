@@ -1,6 +1,7 @@
 # File: res://scripts/story/StoryIntroCards.gd
 # 2D cards over the ai_intro fallback cinematic (spec A2-D10), all drawn in code, timed on the CinePlayer's REAL time r:
-#   1.4-5.0   the email "Phòng Khảo thí: Quyết định đình chỉ thi" on a phone screen, its body typed out over 1.5-3.4;
+#   1.4-5.0   the email "Phòng Khảo thí: Quyết định đình chỉ thi" on a phone screen, its body typed out over 1.5-2.8
+#             (then it holds 1.2 s for reading before the stamp);
 #   4.0       a huge red "TOANG!" stamp slams onto it (scale 3 -> 1 in 0.18 s, tilted) and stays until 5.0;
 #   4.9-8.0   Mr.T's text "Thầy tin em. Tìm bằng chứng đi.";
 #   8.6-13.0  the countdown "CÒN N NGÀY" flips 10 -> 7 (lands on 7 at 10.0) and holds;
@@ -13,7 +14,7 @@ extends CanvasLayer
 
 const GameFXScript: Script = preload("res://scripts/GameFX.gd")
 const EMAIL := [1.4, 5.0]
-const TYPE := [1.5, 3.4]   # the email body types out
+const TYPE := [1.5, 2.8]   # the email body types out, then holds until the stamp (STAMP_AT)
 const STAMP_AT: float = 4.0
 const STAMP_SLAM: float = 0.18
 const TEXT := [4.9, 8.0]
