@@ -22,6 +22,19 @@ func _initialize() -> void:
 	_check(CineAudio.music_gain(25.0, 25.0, 30.0) == 0.0, "longer file: silent at the end")
 	_check(is_equal_approx(CineAudio.music_gain(24.9, 25.0, 20.0), 1.0), "shorter file: no fade")
 	_check(CineAudio.music_file("a1_no_such_slot") == "" and CineAudio.load_music("a1_no_such_slot") == null, "missing slot file -> no music")
+	# --- Wave 6 T7: a choice tail without its own file picks the parent's song up where the parent scene ended
+	for tail: String in CineAudio.CHOICE_TAILS:
+		var parent: String = String(CineAudio.SLOT_FALLBACK.get(tail, ""))
+		_check(parent != "", "%s falls back to a parent song" % tail)
+		if parent == "" or CineAudio._own_file(tail) != "":
+			continue   # the owner has a file for this tail: it plays from 0
+		var want: float = CineTimeline.load_slot(parent).length
+		_check(want > 0.0 and is_equal_approx(CineAudio.music_offset(tail), want), "%s starts the song at %.1f s (%s's end)" % [tail, CineAudio.music_offset(tail), parent])
+	_check(CineAudio.music_offset("cine_d1_choice") == 0.0 and CineAudio.music_offset("ai_true_end") == 0.0 and CineAudio.music_offset("seg_d1_brawl") == 0.0,
+		"parents, ai_true_end and other slots play their song from 0")
+	MusicDirector.test_streams["cine_d5_choice_accept"] = AudioStreamWAV.new()
+	_check(CineAudio.music_offset("cine_d5_choice_accept") == 0.0, "a tail with its own file plays it from 0")
+	MusicDirector.test_streams.erase("cine_d5_choice_accept")
 	# --- owner track (local only, never committed): when user://music/seg_d1_brawl.mp3 exists the slot resolves to it and it
 	# plays; when it does not, the slot is silent (H-D8: no code music). The test never writes to user://music.
 	var owner_mp3: String = CineAudio.MUSIC_DIR + "seg_d1_brawl.mp3"

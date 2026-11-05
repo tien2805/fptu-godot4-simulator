@@ -1391,3 +1391,39 @@ func _w6_cards() -> void:
 		and float(eer.cards[0]["r"]) + float(eer.cards[0]["dur"]) <= 19.0 + 1e-6 and float(eer.cards[1]["r"]) >= 21.0
 		and belts.size() == 2 and String(belts[1]["actor"]) == "phuc" and is_equal_approx(float(belts[0]["s1"]), float(belts[1]["s"])),
 		"end_e: the credits, Phúc snatches the belt, the ĐÍNH CHÍNH card")
+	# Wave 6 T7: the choice tail's player starts the parent's song at the parent's length, fading in (test stream, no user://)
+	if CineAudio.music_file("cine_d1_choice_cover") == "" and not MusicDirector.test_streams.has("cine_d1_choice"):
+		var w := AudioStreamWAV.new()
+		w.format = AudioStreamWAV.FORMAT_16_BITS
+		w.mix_rate = 22050
+		var pcm := PackedByteArray()
+		pcm.resize(30 * 22050 * 2)
+		w.data = pcm
+		MusicDirector.test_streams["cine_d1_choice"] = w
+		var mw := Node3D.new()
+		root.add_child(mw)
+		var mp := CinePlayer.new()
+		mw.add_child(mp)
+		mp.setup(CineTimeline.load_slot("cine_d1_choice_cover"), Transform3D.IDENTITY, {"manual": true})
+		var parent_len: float = CineTimeline.load_slot("cine_d1_choice").length
+		_check(mp.music.stream == w and is_equal_approx(mp.music_from, parent_len), "cine_d1_choice_cover: the parent's song from %.1f s" % mp.music_from)
+		mp.start()
+		mp.step(0.05)
+		var v0: float = mp.music.volume_db
+		mp.step(0.5)
+		_check(v0 < -9.0 and mp.music.volume_db > -0.5, "the picked-up song fades in (%.1f dB -> %.1f dB)" % [v0, mp.music.volume_db])
+		mw.queue_free()
+		MusicDirector.test_streams.erase("cine_d1_choice")
+		var ms := CinePlayer.new()
+		root.add_child(ms)
+		var short := AudioStreamWAV.new()
+		short.format = AudioStreamWAV.FORMAT_16_BITS
+		short.mix_rate = 22050
+		var pcm2 := PackedByteArray()
+		pcm2.resize(int(parent_len) * 22050 * 2)
+		short.data = pcm2
+		MusicDirector.test_streams["cine_d1_choice"] = short
+		ms.setup(CineTimeline.load_slot("cine_d1_choice_cover"), Transform3D.IDENTITY, {"manual": true})
+		_check(ms.music.stream == short and ms.music_from == 0.0, "a song no longer than the parent scene starts over from 0")
+		ms.queue_free()
+		MusicDirector.test_streams.erase("cine_d1_choice")
