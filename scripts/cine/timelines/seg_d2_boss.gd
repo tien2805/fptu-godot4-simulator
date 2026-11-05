@@ -1,5 +1,5 @@
 # File: res://scripts/cine/timelines/seg_d2_boss.gd
-# seg_d2_boss (25.000 s, spec C-D6 beat 6 / C-D9, the full Nobody-style cinematic after the duel with Sói Xám under the Rạch
+# seg_d2_boss (22.300 s, spec C-D6 beat 6 / C-D9, the full Nobody-style cinematic after the duel with Sói Xám under the Rạch
 # Hầm bridge; blocking, rules and tests as seg_d4_brawl through CineFightC: real-time ramp placement, surface-gap contacts,
 # the Mixamo tier first with UAL / native / code fallbacks, a beat sheet, tests/test_cine_d2_boss.gd). Night, the bike's
 # headlight and the lamp under the deck. Improvised weapons: a dropped wolf helmet, a bike mirror, the chain off a pillar.
@@ -15,12 +15,13 @@
 #  11.0  H4  the chain fist into Sói Xám's helmet: the LED eyes go dark (slow motion)               blind, stunned
 #  12.4      the third biker's straight right catches the protagonist (normal speed, punch-in); he walks off
 #  13.4  A1  slow-motion accent: the blind Sói Xám's roundhouse kick sails past the protagonist
-#  14.8  H5  finisher: an uppercut sends Sói Xám flying back into the beer crates, one long slow-motion swell to 22.000;
-#            the third biker runs for it
-#  22.0-25.0 tail at 1x: "Rút!", the protagonist winded: "Đỉnh nóc kịch trần bay phấp phới."
+#  14.8  H5  finisher: an uppercut sends Sói Xám flying back into the beer crates (18.44), a 4.5 s slow-motion swell to
+#            19.3; the third biker turns and runs for it
+#  19.3-22.3 tail at 1x: "Rút!", the protagonist winded: "Đỉnh nóc kịch trần bay phấp phới."
 # Cameras of its own: S1 low behind the bike through its headlight, low orbits, the tail from high under the deck.
-# No gore. Music slot seg_d2_boss: the owner's local "Heartbreaker" (beat table T on a ~130 bpm grid: retime to its onsets
-# when tuning by ear). Stage: CineTimeline.phase_c_stage("bridge") (14 x 10), shared with cine_d2.
+# No gore. Music slot seg_d2_boss: the owner's "Heartbreaker" re-cut from its chorus at 49.56 s (plan 2026-11-05-w6-fights:
+# every hit, hit taken and the crash within 0.07 s of an accent). Stage: CineTimeline.phase_c_stage("bridge") (14 x 10),
+# shared with cine_d2.
 extends CineFightC
 
 
@@ -82,7 +83,7 @@ func _configure() -> void:
 			"S8": "medium: the chain off the pillar", "S9": "slow motion, low: the chain fist, the LED eyes go dark",
 			"S12": "slow motion: Sói Xám into the beer crates, they burst", "S13": "slow push: the third biker runs for it",
 			"S14": "tail wide: the wreckage under the bridge, the protagonist winded"},
-		"subs": [[0.4, 1.4, "a", "Bầy Sói, xé nó ra!"], [22.3, 0.7, "d", "Rút!"], [23.0, 2.0, "hero", "Đỉnh nóc kịch trần bay phấp phới."]],
+		"subs": [[0.4, 1.4, "a", "Bầy Sói, xé nó ra!"], [19.6, 0.7, "d", "Rút!"], [20.3, 2.0, "hero", "Đỉnh nóc kịch trần bay phấp phới."]],
 	}
 
 
