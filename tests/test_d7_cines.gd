@@ -26,8 +26,8 @@ extends SceneTree
 const Bodies = preload("res://tests/support/cine_bodies.gd")
 const FIN = preload("res://scripts/cine/timelines/seg_d7_finisher.gd")
 
-const SLOTS: Dictionary = {"cine_d7_intro": 13.0, "cine_d7_monologue": 13.0, "seg_d7_phase2": 25.0, "seg_d7_finisher": 25.0}
-## Slots that must use the Q1 shot helpers (seg_d7_phase2: its own D1-D3 round the fight template's S1-S14, w5-day7 T3).
+const SLOTS: Dictionary = {"cine_d7_intro": 13.0, "cine_d7_monologue": 13.0, "seg_d7_phase2": 14.19, "seg_d7_finisher": 25.0}
+## Slots that must use the Q1 shot helpers (seg_d7_phase2: its own fight since W6, D1 / D2 / T1 / T2 / L1 / P2 among its 12 shots).
 const NEED_HELPERS: Array[String] = ["cine_d7_intro", "cine_d7_monologue", "seg_d7_phase2", "seg_d7_finisher"]
 const HELPERS: Array[String] = ["two_shot", "ots", "low_hero", "dutch", "push_in"]
 const BANNED: Array[String] = ["anh ấy", "cô ấy", "cậu ấy", "chàng", "nàng", " hắn", "anh ta", "cô ta"]

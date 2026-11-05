@@ -65,6 +65,8 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	# w4-endings: the ending cinematics' props, built by CinePropsE (this list = CinePropsE.KINDS)
 	"end_billboard", "end_helicopter", "police_car", "box", "belt", "scholarship", "certificate", "hearing_set", "canal", "sign",
 	"boat", "lift_frame", "lift_door", "dossier",
+	# W6 phase2 (seg_d7_phase2): Lùm Văn Lọ's antique urn, wide-mouthed so it ends up over a head (W6 phase2 block below)
+	"antique_urn",
 	# Phase D Day 7 (w4-day7): CinePropsD7.KINDS (Lọ's gear, the saber, the gallery and roof props)
 	"gold_glasses", "pink_collar", "gold_chain", "saber", "vase", "plinth", "speaker", "laser_emitter", "breaker",
 	"exam_server", "helicopter", "academy_sign", "flashlight", "heli_rotor", "searchlight", "rain", "gallery_hall", "roof_deck"]
@@ -505,6 +507,8 @@ static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 	var root := Node3D.new()
 	root.name = String(opts.get("name", kind.to_pascal_case()))
 	match kind:
+		"antique_urn":   # W6 phase2 block
+			_build_antique_urn(root)
 		"crate_stack":
 			_build_crates(root, opts)
 		"scooter":
@@ -1274,3 +1278,47 @@ static func _build_lobby_wall(root: Node3D, opts: Dictionary) -> void:
 		_box(root, "Door", Vector3(1.3, 2.3, 0.04), Vector3(sx, 1.15, 0.02), glass)
 		_box(root, "Frame", Vector3(1.4, 0.06, 0.06), Vector3(sx, 2.33, 0.03), _mat(Color("#6E747C"), 0.4))
 	_box(root, "SignBand", Vector3(w * 0.6, 0.35, 0.05), Vector3(0.0, 2.85, 0.03), _glow_mat(Color("#F37021"), 1.2))
+
+
+# --- W6 phase2 (plan 2026-11-05-w6-fights task 5): seg_d7_phase2's prop ---
+## Lùm Văn Lọ's antique urn: a wide-mouthed blue-and-white jar, URN_H tall, origin at its centre, mouth up (+Y), foot down.
+## Open at the mouth and drawn from both sides, so turned over (hold "rot" 180 about X) it fits over a head and a mask
+## (inner radius 0.2 at the mouth, 0.24 at the shoulder). Round about Y: any yaw looks the same.
+const URN_H: float = 0.5
+const URN_MOUTH_R: float = 0.2
+
+
+static func _build_antique_urn(root: Node3D) -> void:
+	var glaze: StandardMaterial3D = _mat(Color("#EEF0F2"), 0.18)
+	glaze.metallic_specular = 0.8
+	glaze.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var blue: StandardMaterial3D = _mat(Color("#1E4C9A"), 0.22)
+	blue.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var gold: StandardMaterial3D = _mat(Color("#D4AF37"), 0.25)
+	gold.metallic = 0.8
+	var h: float = URN_H * 0.5
+	# the body: the foot (r 0.14) widening to the shoulder (r 0.24) at y +0.08, then in to the mouth (r 0.2)
+	var body: MeshInstance3D = _cyl(root, "Body", 0.24, 0.14, 0.33, Vector3(0.0, -h + 0.165, 0.0), glaze)
+	(body.mesh as CylinderMesh).cap_top = false
+	var sh: MeshInstance3D = _cyl(root, "Shoulder", URN_MOUTH_R, 0.24, 0.17, Vector3(0.0, -h + 0.33 + 0.085, 0.0), glaze)
+	(sh.mesh as CylinderMesh).cap_top = false
+	(sh.mesh as CylinderMesh).cap_bottom = false
+	# blue bands on the belly and the shoulder, a gold lip and foot
+	var b1: MeshInstance3D = _cyl(root, "Band", 0.2135, 0.2045, 0.05, Vector3(0.0, -h + 0.21, 0.0), blue)
+	(b1.mesh as CylinderMesh).cap_top = false
+	(b1.mesh as CylinderMesh).cap_bottom = false
+	var b2: MeshInstance3D = _cyl(root, "Band", 0.2245, 0.2365, 0.05, Vector3(0.0, -h + 0.375, 0.0), blue)
+	(b2.mesh as CylinderMesh).cap_top = false
+	(b2.mesh as CylinderMesh).cap_bottom = false
+	var lip := MeshInstance3D.new()
+	lip.name = "Lip"
+	var tm := TorusMesh.new()
+	tm.inner_radius = URN_MOUTH_R - 0.006
+	tm.outer_radius = URN_MOUTH_R + 0.022
+	tm.rings = 20
+	tm.ring_segments = 6
+	lip.mesh = tm
+	lip.material_override = gold
+	lip.position = Vector3(0.0, h - 0.01, 0.0)
+	root.add_child(lip)
+	_cyl(root, "Foot", 0.13, 0.145, 0.03, Vector3(0.0, -h + 0.015, 0.0), gold)
