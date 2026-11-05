@@ -181,6 +181,9 @@ const MOVES: Dictionary = {
 	# the hands at the hips, so this is a code pose on every tier)
 	"block_high": {"dur": 0.8, "hit_u": 0.45, "src": [{"t": "code", "a": "block_high", "hit": 0.45}]},
 	"handshake": {"dur": 1.2, "loop": true, "src": [{"t": "code", "a": "handshake"}]},
+	# --- W6 fights (plan 2026-11-05-w6-fights): seg_d4_brawl's tray shield (forearms up, a tray held two-handed in front of
+	# the face; code on every tier so the clangs land on the same tray everywhere)
+	"tray_guard": {"dur": 1.0, "loop": true, "src": [{"t": "code", "a": "tray_guard"}]},
 	# --- Q5 acting (plan 2026-10-29-w2-story T5): gestures for the talking actors. The UAL packs have Idle_Talking,
 	# Idle_FoldArms and Idle_No (used first, code poses as fallback); facepalm, shrug and laugh exist in no pack, so they
 	# are code poses on every tier (one-shots ease in and out, laugh loops).
@@ -873,6 +876,13 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 			return {"shoulder_l": Vector3(0.95 + sg, 0.0, 0.3), "elbow_l": Vector3(1.0, 0.0, 0.0),
 				"shoulder_r": Vector3(0.75 + sg, 0.0, -0.05), "elbow_r": Vector3(1.35, 0.0, 0.0),
 				"torso": Vector3(0.1, 0.25, 0.0), "head": Vector3(-0.05, -0.25, 0.0),
+				"thigh_l": Vector3(0.25, 0.0, 0.08), "knee_l": Vector3(-0.4, 0.0, 0.0),
+				"thigh_r": Vector3(-0.1, 0.0, -0.08), "knee_r": Vector3(-0.3, 0.0, 0.0)}
+		"tray_guard":   # both forearms up in front of the face behind a tray (held "mid"), braced; a small shake (loop phase u)
+			var tg: float = sin(u * TAU * 2.0) * 0.015
+			return {"shoulder_l": Vector3(1.85 + tg, 0.0, -0.25), "elbow_l": Vector3(1.95, 0.0, 0.0),
+				"shoulder_r": Vector3(1.85 - tg, 0.0, 0.25), "elbow_r": Vector3(1.95, 0.0, 0.0),
+				"torso": Vector3(-0.12, 0.0, 0.0), "head": Vector3(0.18, 0.0, 0.0),
 				"thigh_l": Vector3(0.25, 0.0, 0.08), "knee_l": Vector3(-0.4, 0.0, 0.0),
 				"thigh_r": Vector3(-0.1, 0.0, -0.08), "knee_r": Vector3(-0.3, 0.0, 0.0)}
 	return {}

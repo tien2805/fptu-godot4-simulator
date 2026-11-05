@@ -20,7 +20,7 @@ const SLOTS: Dictionary = {"cine_d0_wake": 8.0, "cine_d0_exam": 18.0, "cine_d0_m
 	"cine_d0_brief": 12.0, "cine_day_start": 9.0,   # A2-D17: mission intro + day start
 	# Phase B (B-D8 / B-D10): Day 1 and Day 4 intros, discovery beats, the choice scene and its tails, end cinematics, the brawl
 	"cine_d1_intro": 14.0, "cine_d1_corridor": 7.5, "cine_d1_choice": 12.0, "cine_d1_choice_cover": 4.0,
-	"cine_d1_choice_report": 4.5, "cine_d1": 18.0, "cine_d4_intro": 14.0, "cine_d4_stare": 10.0, "seg_d4_brawl": 25.0, "cine_d4": 18.0,
+	"cine_d1_choice_report": 4.5, "cine_d1": 18.0, "cine_d4_intro": 14.0, "cine_d4_stare": 10.0, "seg_d4_brawl": 24.6, "cine_d4": 18.0,
 	# Phase C (C-D9): Days 2, 3, 5 intros, discovery beats, choice 2 and its tails, end cinematics, ending C, the three fights
 	"cine_d2_intro": 14.0, "cine_d2": 18.0, "cine_d3_intro": 14.0, "cine_d3_mannequins": 10.0, "cine_d3": 18.0, "cine_d5_intro": 14.0,
 	"cine_d5_monitors": 10.0, "cine_d5_choice": 14.0, "cine_d5_choice_accept": 4.0, "cine_d5_choice_refuse": 4.0, "cine_d5": 18.0,
