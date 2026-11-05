@@ -1,14 +1,16 @@
 # File: res://tests/test_cine_d7_phase2.gd
-# Headless test of seg_d7_phase2 (plan 2026-11-01-w4-day7.md T4, reworked by plan 2026-11-05-w6-fights task 5) on
-# tests/support/cine_brawl.gd: exactly 14.190 s, the ramps on the music's accents, the 2.5 s finisher swell and its 2 s tail,
-# the headbutt taken at normal speed with a punch-in, contacts on every tier (the flashlight bonk, the sheep's headbutt, the
-# clinch for the hip throw, the caught urn slammed over the fox's head), the sheep thrown into the surface plinth's vase,
-# bodies, framing, FreeRoam staging and the skip. Gags: the blackout flashlight is lit in the protagonist's hand on H1 and
-# knocked to the floor by the headbutt; the surface vase is whole before the throw and burst after, the sheep clears the
-# plinth itself; Lọ's urn passes from his hands to the flight to the protagonist's hands (the catch, the signature) to the
-# fox's head without a jump, and stays there to the end; the stage lines up with the real gallery: LairTower.SLOT_OFFSET
-# puts the surface and the spare plinth on the hall's plinths at (3, 0) and (-3, 0) with the same vase seeds, and every
-# carried-set plinth on the hall plinth it stands in for (XEM LẠI PHIM); Lọ's last line sends everyone to the helicopter.
+# Headless test of seg_d7_phase2 (plan 2026-11-01-w4-day7.md T4, reworked by plan 2026-11-05-w6-fights task 5 and its
+# review) on tests/support/cine_brawl.gd: exactly 14.190 s, three short ramps on the music's accents (at most 4 s of slow
+# motion in all), the finisher swell and its 3.65 s tail at full speed, the flashlight bonk and the knock at full speed, the
+# headbutt taken at full speed with a punch-in, contacts on every tier (the flashlight bonk, the sheep's headbutt, the
+# caught urn put down over the fox's head, the knuckle knock on it), the sheep's head diving into the surface plinth's vase,
+# bodies, framing, FreeRoam staging and the skip. Gags: the blackout flashlight is lit in the protagonist's hand on the bonk
+# and knocked to the floor by the headbutt; the surface vase is whole before the dive and burst after, the sheep never
+# touches the plinth itself; Lọ's urn passes from his hands (flung up in despair) to the flight to the protagonist's hands
+# (the catch, the signature) to the fox's head without a jump, and stays there to the end; the stage lines up with the real
+# gallery: LairTower.SLOT_OFFSET puts the surface and the spare plinth on the hall's plinths at (3, 0) and (-3, 0) with the
+# same vase seeds, and every carried-set plinth on the hall plinth it stands in for (XEM LẠI PHIM); Lọ's last line sends
+# everyone to the helicopter, and he is still sprinting for the stairs, in the scene, when the cinematic ends.
 # Run:  godot --headless --path . --script tests/test_cine_d7_phase2.gd   (CINE_FAST=1 / CINE_NO_FREEROAM=1 / CINE_NO_MIXAMO=1)
 extends "res://tests/support/cine_brawl.gd"
 
@@ -16,22 +18,22 @@ const HANDOVER: float = 0.06
 
 
 func _conf() -> Dictionary:
-	return {"slot": "seg_d7_phase2", "length": 14.19, "finisher": "H5", "swell_end": 12.19, "tail": 2.0, "freezes": 3,
-		"ramps": {"H1": 3.07, "H2": 6.39, "A1": 8.05, "H5": 9.70},
+	return {"slot": "seg_d7_phase2", "length": 14.19, "finisher": "H5", "swell_end": 10.54, "tail": 3.65, "freezes": 2,
+		"ramps": {"H2": 6.39, "A1": 8.05, "H5": 9.70},
 		"taken": {"X1": 4.73},
-		"touch": {"GR": 5.98},
-		"strikes": {"H1": ["hero", "held:Flashlight", "wolf"], "X1": ["sheep", "head", "hero"], "GR": ["hero", "fists", "sheep"],
-			"H5": ["hero", "held:AntiqueUrn", "fox"]},
+		"touch": {"H1": 3.07, "KN": 11.36},
+		"strikes": {"H1": ["hero", "held:Flashlight", "wolf"], "X1": ["sheep", "head", "hero"],
+			"H5": ["hero", "held:AntiqueUrn", "fox"], "KN": ["hero", "fists", "fox:held:AntiqueUrn"]},
 		"slams": [["sheep", ["surface"], 6.3, 6.45]],
-		"lying": [["sheep", 7.6], ["sheep", 14.1], ["fox", 12.3], ["fox", 14.1]],
-		"hit_vars": ["slam_s", "s_land", "s_down", "s_on"],
+		"lying": [["sheep", 7.4], ["sheep", 14.1], ["fox", 12.3], ["fox", 14.1]],
+		"hit_vars": ["slam_s", "s_land", "s_down", "s_on", "s_knock"],
 		"burst": {"surface": "slam_s"},
 		"not_solid": ["urn_fly", "torch"],
-		"held": [["hero", "Flashlight", 3.07, true], ["hero", "Flashlight", 5.2, false], ["lo", "AntiqueUrn", 7.2, true],
-			["lo", "AntiqueUrn", 7.7, false], ["hero", "AntiqueUrn", 8.3, true], ["hero", "AntiqueUrn", 10.45, false],
-			["fox", "AntiqueUrn", 10.45, true], ["fox", "AntiqueUrn", 14.1, true]],
-		"shown": [["torch", 4.5, false], ["torch", 6.0, true], ["urn_fly", 7.3, false], ["urn_fly", 7.8, true], ["urn_fly", 8.3, false]],
-		"gone": [["lo", 12.5, true], ["lo", 14.15, false]],
+		"held": [["hero", "Flashlight", 3.07, true], ["hero", "Flashlight", 5.0, false], ["lo", "AntiqueUrn", 7.3, true],
+			["lo", "AntiqueUrn", 7.5, false], ["hero", "AntiqueUrn", 8.3, true], ["hero", "AntiqueUrn", 10.6, false],
+			["fox", "AntiqueUrn", 10.6, true], ["fox", "AntiqueUrn", 14.1, true]],
+		"shown": [["torch", 4.5, false], ["torch", 5.6, true], ["urn_fly", 7.3, false], ["urn_fly", 7.6, true], ["urn_fly", 8.3, false]],
+		"gone": [["lo", 12.5, true], ["lo", 14.15, true]],
 		"keep": ["surface", "plinth_l"],
 		"stages": ["seg_d7_phase2"], "checks": _gags}
 
@@ -46,13 +48,13 @@ func _at(pl: CinePlayer, s: float) -> void:
 
 func _gags(_t: Object, pl: CinePlayer) -> void:
 	var h: CineActor = pl.actors["hero"]
-	# H1: the lit flashlight in the hand; on the floor after the headbutt
+	# the bonk: the lit flashlight in the hand; on the floor after the headbutt
 	pl.seek(3.07)
 	var torch: Node3D = _held(h, "Flashlight")
 	var lens: MeshInstance3D = torch.find_child("Lens", true, false) as MeshInstance3D if torch else null
 	var lit: bool = lens != null and lens.material_override is StandardMaterial3D and (lens.material_override as StandardMaterial3D).emission_enabled
-	_check(torch != null and lit, "the blackout flashlight is in the protagonist's hand on H1, its lens lit")
-	pl.seek(6.0)
+	_check(torch != null and lit, "the blackout flashlight is in the protagonist's hand on the bonk, its lens lit")
+	pl.seek(5.6)
 	var tf: Node3D = pl.prop_nodes["torch"]
 	_check(tf.is_visible_in_tree() and tf.global_position.y < 0.08, "the headbutt knocks the flashlight to the floor (y %.2f)" % tf.global_position.y)
 	# Lọ's urn: his hands -> the flight -> the protagonist's hands (the catch) -> the fox's head, no jump at a hand-over
@@ -89,7 +91,7 @@ func _gags(_t: Object, pl: CinePlayer) -> void:
 		fh = _hold_of(fox, "AntiqueUrn")
 		var d: float = _held_xf(fox, fh).origin.distance_to(fox.bone_world("Head")) if not fh.is_empty() else INF
 		_check(d < 0.3, "the urn stays on the fox's head at r %.1f (%.2f m)" % [r, d])
-	# the sheep flies over the surface plinth: his back sweeps the vase (the slam), never the plinth itself
+	# the sheep's dive: his head into the surface plinth's vase (the slam), never into the plinth itself
 	var sheep: CineActor = pl.actors["sheep"]
 	var surf: Vector3 = (tl.get_script() as Script).get_script_constant_map()["SURFACE"]
 	var col: Array = [["plinth", Transform3D(Basis(), surf + Vector3(0.0, CinePropsD7.PLINTH_H * 0.5, 0.0)),
@@ -100,8 +102,8 @@ func _gags(_t: Object, pl: CinePlayer) -> void:
 		pl.seek(r2)
 		deep = maxf(deep, float(Bodies.actor_boxes(Bodies.capsules(sheep), col)["d"]))
 		r2 += 1.0 / 60.0
-	print("  the sheep over the plinth: deepest %.3f m into it" % deep)
-	_check(deep <= PEN_MAX, "the sheep clears the surface plinth itself (%.3f m)" % deep)
+	print("  the sheep at the plinth: deepest %.3f m into it" % deep)
+	_check(deep <= PEN_MAX, "the sheep's dive keeps off the surface plinth itself (%.3f m)" % deep)
 	# the surface vase: whole before the throw, burst after (the crate fx is a forward event: a fresh player plays through)
 	var pf := CinePlayer.new()
 	world.add_child(pf)
@@ -142,3 +144,19 @@ func _gags(_t: Object, pl: CinePlayer) -> void:
 		_check(ok, "%s stands on the hall's plinth %d in the tower (%s, want %s)" % [String(pe[0]), sd, str(at), str(hall.get(sd, "?"))])
 	_check(LairTower.CINE_PLINTHS["seg_d7_phase2"] == [Vector2(3.0, 0.0), Vector2(-3.0, 0.0)], "the tower hides exactly the two plinths the fight brings")
 	_check(String(tl.subs[tl.subs.size() - 1]["text"]).contains("trực thăng"), "Lọ's last line sends everyone to the helicopter on the roof")
+	# Lọ never vanishes: still sprinting at a believable pace (no slide) when the cinematic ends
+	var lo: CineActor = pl.actors["lo"]
+	for r3: float in [13.6, 14.1]:
+		pl.seek(r3)
+		var q0: Vector3 = lo.global_position
+		pl.seek(r3 + 0.05)
+		var sp: float = Vector2(lo.global_position.x - q0.x, lo.global_position.z - q0.z).length() / (tl.clock.story_at(r3 + 0.05) - tl.clock.story_at(r3))
+		var mv: String = String(lo.active_move(pl.s).get("move", "?"))
+		_check(lo.is_visible_in_tree() and mv == "sprint" and sp >= 4.0 and sp <= 7.5,
+			"Lọ is still sprinting at r %.2f (%s, %.2f m/s, visible %s)" % [r3, mv, sp, str(lo.is_visible_in_tree())])
+	# mostly at full speed: the slow-motion ramps add up to at most 4 s
+	var slow: float = 0.0
+	for rw: Dictionary in tl.clock.ramps:
+		slow += float(rw["r1"]) - float(rw["r0"])
+	print("  slow motion: %.2f s in %d ramps" % [slow, tl.clock.ramps.size()])
+	_check(slow <= 4.0, "at most 4 s of slow motion (%.2f s)" % slow)

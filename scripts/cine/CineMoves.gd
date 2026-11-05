@@ -199,20 +199,22 @@ const MOVES: Dictionary = {
 	"shrug": {"dur": 1.2, "src": [{"t": "code", "a": "shrug"}]},
 	"laugh": {"dur": 1.0, "loop": true, "src": [{"t": "code", "a": "laugh"}]},
 	# --- W6 phase2 (plan 2026-11-05-w6-fights task 5, seg_d7_phase2; poses in the W6 phase2 block before code_pose, code
-	# on every tier): a hopping overhand flashlight bonk, Lọ cradling and hurling his antique urn, the two-handed catch (the
-	# signature) and the jumping crown that slams the caught urn down over a head, the cower under it and the blind grope
+	# on every tier): a hopping overhand flashlight bonk, a matador's sidestep, a bull's paw and head-down charge, Lọ
+	# cradling his antique urn and flinging it up in despair, the two-handed catch (the signature) and the jumping crown that
+	# slams the caught urn down over a head, the cower under it, the rigid stand, the knuckle knock and the timber fall
 	"bonk": {"dur": 0.7, "hit_u": 0.5, "air": [0.3, 0.68], "src": [{"t": "code", "a": "bonk", "hit": 0.5, "arc": 0.22}]},
+	"ole": {"dur": 1.0, "src": [{"t": "code", "a": "ole"}]},
+	"paw": {"dur": 0.6, "loop": true, "src": [{"t": "code", "a": "paw"}]},
+	"ram": {"dur": 0.8, "hit_u": 0.85, "src": [{"t": "code", "a": "ram", "hit": 0.85}]},
 	"cradle": {"dur": 1.6, "loop": true, "src": [{"t": "code", "a": "cradle"}]},
-	"hurl": {"dur": 0.9, "hit_u": 0.55, "src": [{"t": "code", "a": "hurl", "hit": 0.55}]},
+	"fling": {"dur": 0.9, "hit_u": 0.4, "src": [{"t": "code", "a": "fling", "hit": 0.4}]},
 	"catch": {"dur": 0.8, "hit_u": 0.35, "src": [{"t": "code", "a": "catch", "hit": 0.35}]},
 	"crown": {"dur": 0.8, "hit_u": 0.55, "air": [0.22, 0.72], "src": [{"t": "code", "a": "crown", "hit": 0.55, "arc": 0.22}]},
-	"grope": {"dur": 0.6, "loop": true, "src": [{"t": "code", "a": "grope"}]},
 	"cower": {"dur": 1.2, "loop": true, "src": [{"t": "code", "a": "cower"}]},
+	"rigid": {"dur": 0.5, "loop": true, "src": [{"t": "code", "a": "rigid"}]},
+	"knock": {"dur": 0.7, "hit_u": 0.6, "src": [{"t": "code", "a": "knock", "hit": 0.6}]},
+	"plank": {"dur": 0.75, "src": [{"t": "code", "a": "plank"}]},   # into "lie_flat" where he lies
 	"sit_down": {"dur": 0.4, "src": [{"t": "code", "a": "sit_down"}]},   # into "slumped" where he stands
-	"collar": {"dur": 1.0, "loop": true, "src": [{"t": "code", "a": "collar"}]},   # "grab" with the hands up on the collar
-	# thrown backwards over a plinth: a back flip in the air onto the back (the body meets what stands on the plinth on the
-	# hit); the timeline's keys carry the flight arc
-	"flung": {"dur": 0.3, "hit_u": 0.362, "src": [{"t": "code", "a": "flung", "hit": 0.362}]},
 }
 
 ## Two-handed overhead smash (a chair or the soup pot held between both hands): wind up over the head, bring it down on
@@ -536,8 +538,15 @@ static func _getup_keys(u: float) -> Array:
 
 
 # --- W6 phase2 (plan 2026-11-05-w6-fights task 5): seg_d7_phase2's code poses (code_pose hands these names to _w6p2_pose)
-const W6P2_POSES: Array[String] = ["bonk", "cradle", "hurl", "catch", "crown", "grope", "cower", "sit_down", "flung", "collar"]
-## Both hands round a jar held in front of the belly (cradle, the start of hurl).
+const W6P2_POSES: Dictionary = {"bonk": true, "ole": true, "paw": true, "ram": true, "cradle": true, "fling": true,
+	"catch": true, "crown": true, "cower": true, "rigid": true, "knock": true, "plank": true, "sit_down": true}
+## The knock: the right shoulder raised this far (rad), the elbow bent this far, and each knock opens it this much.
+const KNOCK_SHOULDER: float = 1.7
+const KNOCK_ELBOW: float = 1.5
+const KNOCK_TAP: float = 0.35
+## The ram's dive at the hit: [torso bend (rad), whole-body pitch (rad, - = forward), body drop (m)].
+const RAM_DIVE: Array[float] = [-0.35, -0.7, 0.1]
+## Both hands round a jar held in front of the belly (cradle, the start of fling).
 const CRADLE: Dictionary = {"shoulder_l": Vector3(0.7, 0.0, -0.08), "elbow_l": Vector3(1.3, 0.0, 0.0),
 	"shoulder_r": Vector3(0.7, 0.0, 0.08), "elbow_r": Vector3(1.3, 0.0, 0.0), "torso": Vector3(0.08, 0.0, 0.0),
 	"head": Vector3(-0.2, 0.0, 0.0)}
@@ -564,25 +573,21 @@ const BONK_KEYS: Array = [
 		"elbow_r": Vector3(0.3, 0.0, 0.0), "body_y": -0.05}],
 	[1.0, GUARD],
 ]
-## Two-handed overhead throw of a jar held "mid" (a football throw-in): cradle, up over the head and back, release in
-## front of the face (hit 0.55), follow through.
-const HURL_KEYS: Array = [
+## Both palms on the cheeks, elbows out, knees sagging (the end of fling).
+const FLING_CHEEKS: Dictionary = {"shoulder_l": Vector3(1.05, 0.0, -0.3), "elbow_l": Vector3(2.4, 0.0, 0.0),
+	"shoulder_r": Vector3(1.05, 0.0, 0.3), "elbow_r": Vector3(2.4, 0.0, 0.0), "torso": Vector3(0.12, 0.0, 0.0),
+	"head": Vector3(-0.12, 0.0, 0.0), "thigh_l": Vector3(0.3, 0.0, 0.1), "knee_l": Vector3(-0.5, 0.0, 0.0),
+	"thigh_r": Vector3(0.3, 0.0, -0.1), "knee_r": Vector3(-0.5, 0.0, 0.0), "body_y": -0.05}
+## Lọ's despair: both hands flung up from the cradle (the jar he holds "mid" flies off the top, hit 0.4), then both
+## palms to the cheeks.
+const FLING_KEYS: Array = [
 	[0.0, CRADLE],
-	[0.35, {"shoulder_l": Vector3(2.9, 0.0, -0.1), "elbow_l": Vector3(0.9, 0.0, 0.0), "shoulder_r": Vector3(2.9, 0.0, 0.1),
-		"elbow_r": Vector3(0.9, 0.0, 0.0), "torso": Vector3(0.3, 0.0, 0.0), "head": Vector3(-0.2, 0.0, 0.0),
-		"thigh_l": Vector3(0.3, 0.0, 0.08), "knee_l": Vector3(-0.3, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.08)}],
-	[0.55, {"shoulder_l": Vector3(2.0, 0.0, -0.08), "elbow_l": Vector3(0.15, 0.0, 0.0), "shoulder_r": Vector3(2.0, 0.0, 0.08),
-		"elbow_r": Vector3(0.15, 0.0, 0.0), "torso": Vector3(-0.35, 0.0, 0.0), "head": Vector3(0.2, 0.0, 0.0),
-		"thigh_l": Vector3(0.55, 0.0, 0.08), "knee_l": Vector3(-0.6, 0.0, 0.0), "thigh_r": Vector3(-0.3, 0.0, -0.08),
-		"knee_r": Vector3(-0.2, 0.0, 0.0), "body_y": -0.04}],
-	[0.8, {"shoulder_l": Vector3(1.2, 0.0, -0.1), "elbow_l": Vector3(0.2, 0.0, 0.0), "shoulder_r": Vector3(1.2, 0.0, 0.1),
-		"elbow_r": Vector3(0.2, 0.0, 0.0), "torso": Vector3(-0.45, 0.0, 0.0), "head": Vector3(0.3, 0.0, 0.0),
-		"thigh_l": Vector3(0.55, 0.0, 0.08), "knee_l": Vector3(-0.6, 0.0, 0.0), "thigh_r": Vector3(-0.3, 0.0, -0.08),
-		"knee_r": Vector3(-0.2, 0.0, 0.0), "body_y": -0.05}],
-	[1.0, {"shoulder_l": Vector3(0.4, 0.0, -0.15), "elbow_l": Vector3(0.4, 0.0, 0.0), "shoulder_r": Vector3(0.4, 0.0, 0.15),
-		"elbow_r": Vector3(0.4, 0.0, 0.0), "torso": Vector3(-0.15, 0.0, 0.0), "head": Vector3(0.1, 0.0, 0.0),
-		"thigh_l": Vector3(0.35, 0.0, 0.08), "knee_l": Vector3(-0.4, 0.0, 0.0), "thigh_r": Vector3(-0.15, 0.0, -0.08),
-		"knee_r": Vector3(-0.2, 0.0, 0.0), "body_y": -0.02}],
+	[0.4, {"shoulder_l": Vector3(2.5, 0.0, -0.15), "elbow_l": Vector3(0.35, 0.0, 0.0), "shoulder_r": Vector3(2.5, 0.0, 0.15),
+		"elbow_r": Vector3(0.35, 0.0, 0.0), "torso": Vector3(0.18, 0.0, 0.0), "head": Vector3(-0.3, 0.0, 0.0),
+		"thigh_l": Vector3(0.2, 0.0, 0.08), "knee_l": Vector3(-0.25, 0.0, 0.0), "thigh_r": Vector3(-0.1, 0.0, -0.08),
+		"knee_r": Vector3(-0.15, 0.0, 0.0)}],
+	[0.7, FLING_CHEEKS],
+	[1.0, FLING_CHEEKS],
 ]
 ## The catch: both hands up and out to a flying jar (hit 0.35: the hands on it), the weight rocks the body back on bent
 ## knees, then the jar carried at the chest.
@@ -629,49 +634,91 @@ static func _w6p2_pose(pose: String, u: float) -> Dictionary:
 	match pose:
 		"bonk":
 			return _kpose(BONK_KEYS, u)
+		"ole":        # the matador's sidestep: arched back and turned to the passing bull, both arms up and out over its
+			# path like a cape; eases in and out
+			var oa: float = _sm(clampf(u / 0.35, 0.0, 1.0)) * (1.0 - _sm(clampf((u - 0.7) / 0.3, 0.0, 1.0)))
+			return {"torso": Vector3(0.22 * oa, -0.4 * oa, 0.0), "head": Vector3(-0.12 * oa, 0.3 * oa, 0.0),
+				"shoulder_r": Vector3(0.1 + 2.3 * oa, 0.0, 0.12 + 0.5 * oa), "elbow_r": Vector3(0.25, 0.0, 0.0),
+				"shoulder_l": Vector3(0.1 + 2.6 * oa, 0.0, -0.12 - 0.2 * oa), "elbow_l": Vector3(0.25 + 0.4 * oa, 0.0, 0.0),
+				"thigh_l": Vector3(0.05, 0.0, 0.08), "knee_l": Vector3(-0.15, 0.0, 0.0),
+				"thigh_r": Vector3(-0.1 * oa, 0.0, -0.08 - 0.12 * oa), "knee_r": Vector3(-0.1, 0.0, 0.0)}
+		"paw":        # a bull before the charge: head down, the right foot scraping the floor back (loop phase u)
+			var sc: float = sin(u * TAU)
+			return {"torso": Vector3(-0.45, 0.0, 0.0), "head": Vector3(0.15, 0.0, 0.0),
+				"shoulder_l": Vector3(-0.3, 0.0, -0.2), "elbow_l": Vector3(0.5, 0.0, 0.0), "shoulder_r": Vector3(-0.3, 0.0, 0.2),
+				"elbow_r": Vector3(0.5, 0.0, 0.0), "thigh_l": Vector3(0.35, 0.0, 0.08), "knee_l": Vector3(-0.55, 0.0, 0.0),
+				"thigh_r": Vector3(0.05 - 0.35 * sc, 0.0, -0.08), "knee_r": Vector3(-0.35 - 0.3 * maxf(sc, 0.0), 0.0, 0.0),
+				"body_y": -0.06}
+		"ram":        # a bull's charge: bent double, crown first, arms back, legs churning; the last stride a dive (the
+			# whole body tipped forward, the feet off the floor) that puts the head into the target (hit 0.85); then
+			# back onto his feet, staggered
+			var rk: float = clampf(u / 0.85, 0.0, 1.0)
+			var ph2: float = rk * TAU * 2.5
+			var dv: float = _sm(clampf((u - 0.6) / 0.25, 0.0, 1.0))
+			var rc: float = _sm(clampf((u - 0.85) / 0.15, 0.0, 1.0))
+			var run: float = 1.0 - dv
+			var sw: float = 0.45 * sin(ph2) * run
+			var rm: Dictionary = {"torso": Vector3(lerpf(-0.75, RAM_DIVE[0], dv), 0.0, 0.0), "head": Vector3(lerpf(0.2, 0.35, dv), 0.0, 0.0),
+				"shoulder_l": Vector3(lerpf(-0.5, -0.9, dv), 0.0, -0.2), "elbow_l": Vector3(lerpf(0.6, 0.2, dv), 0.0, 0.0),
+				"shoulder_r": Vector3(lerpf(-0.5, -0.9, dv), 0.0, 0.2), "elbow_r": Vector3(lerpf(0.6, 0.2, dv), 0.0, 0.0),
+				"thigh_l": Vector3(lerpf(0.4, -0.1, dv) + sw, 0.0, 0.08),
+				"knee_l": Vector3(lerpf(-0.55, -0.25, dv) - 0.45 * maxf(cos(ph2), 0.0) * run, 0.0, 0.0),
+				"thigh_r": Vector3(lerpf(0.4, -0.1, dv) - sw, 0.0, -0.08),
+				"knee_r": Vector3(lerpf(-0.55, -0.25, dv) - 0.45 * maxf(-cos(ph2), 0.0) * run, 0.0, 0.0),
+				"body_pitch": RAM_DIVE[1] * dv, "body_y": lerpf(-0.12, RAM_DIVE[2], dv)}
+			if rc > 0.0:
+				var up: Dictionary = {"torso": Vector3(-0.2, 0.0, 0.0), "head": Vector3(-0.1, 0.0, 0.0),
+					"shoulder_l": Vector3(0.3, 0.0, -0.5), "elbow_l": Vector3(0.5, 0.0, 0.0),
+					"shoulder_r": Vector3(0.3, 0.0, 0.5), "elbow_r": Vector3(0.5, 0.0, 0.0),
+					"thigh_l": Vector3(0.1, 0.0, 0.08), "knee_l": Vector3(-0.2, 0.0, 0.0),
+					"thigh_r": Vector3(0.1, 0.0, -0.08), "knee_r": Vector3(-0.2, 0.0, 0.0), "body_pitch": 0.0, "body_y": -0.03}
+				for j: String in rm.keys():
+					rm[j] = lerp(rm[j], up[j], rc)
+			return rm
 		"cradle":     # a jar held like a pet at the belly, rocked from side to side (loop phase u)
 			var cr: Dictionary = CRADLE.duplicate()
 			var sw: float = sin(u * TAU)
 			cr["torso"] = (CRADLE["torso"] as Vector3) + Vector3(0.0, 0.12 * sw, 0.04 * sw)
 			cr["head"] = (CRADLE["head"] as Vector3) + Vector3(0.0, -0.1 * sw, 0.06 * sw)
 			return cr
-		"hurl":
-			return _kpose(HURL_KEYS, u)
+		"fling":
+			return _kpose(FLING_KEYS, u)
 		"catch":
 			return _kpose(CATCH_KEYS, u)
 		"crown":
 			return _kpose(CROWN_KEYS, u)
-		"grope":      # blind under a jar: arms out in front feeling the air, swaying on soft knees (loop phase u)
-			var ph: float = u * TAU
-			return {"shoulder_l": Vector3(1.45 + 0.25 * sin(ph), 0.0, -0.3), "elbow_l": Vector3(0.3, 0.0, 0.0),
-				"shoulder_r": Vector3(1.45 - 0.25 * sin(ph), 0.0, 0.3), "elbow_r": Vector3(0.3, 0.0, 0.0),
-				"torso": Vector3(0.06, 0.15 * sin(ph), 0.1 * sin(ph + 0.8)), "head": Vector3(0.0, 0.0, -0.1 * sin(ph)),
-				"thigh_l": Vector3(0.2 + 0.15 * sin(ph), 0.0, 0.08), "knee_l": Vector3(-0.35, 0.0, 0.0),
-				"thigh_r": Vector3(0.2 - 0.15 * sin(ph), 0.0, -0.08), "knee_r": Vector3(-0.35, 0.0, 0.0), "body_y": -0.03}
-		"cower":      # ducked low, hunched, forearms up in front of the face, trembling (loop phase u)
+		"cower":      # ducked low, hunched, hugging himself (the arms crossed on the chest, clear of the head), trembling
+			# (loop phase u)
 			var tw: float = sin(u * TAU * 5.0) * 0.03
 			return {"thigh_l": Vector3(0.75, 0.0, 0.1), "knee_l": Vector3(-1.2, 0.0, 0.0), "thigh_r": Vector3(0.65, 0.0, -0.1),
 				"knee_r": Vector3(-1.1, 0.0, 0.0), "torso": Vector3(-0.4 + tw, 0.0, 0.0), "head": Vector3(0.2, tw, 0.0),
-				"shoulder_l": Vector3(1.5 + tw, 0.0, -0.05), "elbow_l": Vector3(2.2, 0.0, 0.0),
-				"shoulder_r": Vector3(1.5 - tw, 0.0, 0.05), "elbow_r": Vector3(2.2, 0.0, 0.0), "body_y": -0.17}
-		"collar":     # "grab" with the hands high on the other's collar (elbows up, over the other's arms), a tug (loop phase u)
-			var co: Dictionary = GRAB.duplicate()
-			co["shoulder_l"] = Vector3(1.8, 0.0, 0.2)
-			co["elbow_l"] = Vector3(1.2, 0.0, 0.0)
-			co["shoulder_r"] = Vector3(1.8, 0.0, -0.2)
-			co["elbow_r"] = Vector3(1.2, 0.0, 0.0)
-			co["torso"] = (GRAB["torso"] as Vector3) + Vector3(0.0, 0.08 * sin(u * TAU), 0.0)
-			return co
+				"shoulder_l": Vector3(0.6 + tw, 0.0, 0.35), "elbow_l": Vector3(2.0, 0.0, 0.0),
+				"shoulder_r": Vector3(0.6 - tw, 0.0, -0.35), "elbow_r": Vector3(2.0, 0.0, 0.0), "body_y": -0.17}
+		"rigid":      # stiff as a post: heels together, arms clamped to the sides, a fine tremble (loop phase u)
+			var rt: float = sin(u * TAU * 3.0) * 0.015
+			return {"thigh_l": Vector3(0.0, 0.0, -0.02), "knee_l": Vector3(0.0, 0.0, 0.0), "thigh_r": Vector3(0.0, 0.0, 0.02),
+				"knee_r": Vector3(0.0, 0.0, 0.0), "torso": Vector3(0.03 + rt, 0.0, 0.0), "head": Vector3(-0.05, rt, 0.0),
+				"shoulder_l": Vector3(0.0, 0.0, 0.06), "elbow_l": Vector3(0.05, 0.0, 0.0),
+				"shoulder_r": Vector3(0.0, 0.0, -0.06), "elbow_r": Vector3(0.05, 0.0, 0.0)}
+		"knock":      # two knuckle knocks on something at head height, as on a door (the second one is the hit, 0.6)
+			var ke: float = _sm(clampf(u / 0.25, 0.0, 1.0)) * (1.0 - _sm(clampf((u - 0.8) / 0.2, 0.0, 1.0)))
+			var kk: float = 0.0
+			for kt: float in [0.38, 0.6]:
+				kk = maxf(kk, 1.0 - clampf(absf(u - kt) / 0.09, 0.0, 1.0))
+			return {"shoulder_r": Vector3(0.1 + KNOCK_SHOULDER * ke, 0.0, 0.12 - 0.2 * ke),
+				"elbow_r": Vector3(0.25 + (KNOCK_ELBOW - 0.25 - KNOCK_TAP * kk) * ke, 0.0, 0.0),
+				"shoulder_l": Vector3(0.1, 0.0, -0.12), "elbow_l": Vector3(0.25 + 0.3 * ke, 0.0, 0.0),
+				"torso": Vector3(-0.06 * ke, 0.12 * ke, 0.0), "head": Vector3(0.05 * ke, 0.0, 0.0),
+				"thigh_l": Vector3(0.15 * ke, 0.0, 0.08), "knee_l": Vector3(-0.2 * ke, 0.0, 0.0)}
+		"plank":      # toppling backwards stiff as a felled tree (slow, then fast) onto the back, arms still clamped
+			var pu: float = clampf(u, 0.0, 1.0)
+			var pp: float = PI * 0.5 * pu * pu
+			var pk: Dictionary = code_pose("rigid", 0.0)
+			pk["body_pitch"] = pp
+			pk["body_y"] = _lay_drop(pp)
+			return pk
 		"sit_down":   # dazed, drops onto his backside: the get-up from the floor played backwards to its sitting key
 			return code_pose("getup", lerpf(1.0, GETUP_SIT_U, clampf(u, 0.0, 1.0)))
-		"flung":      # "thrown"'s limbs on a full back flip plus the roll onto the back (pitch 0 to 450 deg, wrapped past 360
-			# so the crossfade into lie_flat at 90 deg never unwinds); the pivot drops only in the last quarter turn, onto the floor
-			var uf: float = clampf(u, 0.0, 1.0)
-			var tp: float = TAU * uf + PI * 0.5 * _sm(uf)
-			var fl: Dictionary = code_pose("thrown", uf)
-			fl["body_pitch"] = tp - TAU if tp >= TAU else tp
-			fl["body_y"] = _lay_drop(tp - TAU) if tp >= TAU else 0.0
-			return fl
 	return {}
 
 
@@ -681,7 +728,7 @@ static func _w6p2_pose(pose: String, u: float) -> Dictionary:
 ## Whole-body keys (read by CineActor, ignored by _apply_bone_pose): "body_pitch" (rad, + = onto the back, about the
 ## hip-height pivot) and "body_y" (m, pivot offset) – the lying / get-up poses lay the whole body down with them.
 static func code_pose(pose: String, u: float) -> Dictionary:
-	if pose in W6P2_POSES:   # W6 phase2 block above
+	if W6P2_POSES.has(pose):   # W6 phase2 block above
 		return _w6p2_pose(pose, u)
 	match pose:
 		"stance":
