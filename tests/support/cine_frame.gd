@@ -4,6 +4,7 @@
 #   subjects   the shot's params "subj" (actor ids). The Q1 helpers default to theirs (two_shot: a and b; ots: at; low_hero,
 #              dutch, push_in: actor). DEFAULT for any other shot without "subj": the visible actor whose head is nearest
 #              the frame centre at the shot's middle sample (so a timeline that never names subjects is still checked).
+#              An explicit empty "subj" marks an insert (a prop in close-up, no face): no subject checks, at most INSERT_MAX s.
 #   framing    each subject's head and chest inside the letterboxed 8 % safe area in >= 90 % of the samples, its head
 #              inside the letterboxed frame in every sample, no other actor standing in front of its face. Samples inside
 #              the shot's params "exit_ok" [r0, r1] (real seconds) are skipped: a body thrown out of frame on purpose.
@@ -21,6 +22,7 @@ const Bodies = preload("res://tests/support/cine_bodies.gd")
 const N: int = 16
 const CUT_SKIP: float = 2.0 / 60.0
 const KEEP: float = 0.9
+const INSERT_MAX: float = 1.5
 const BLOCK_R: float = 0.18
 const HELPERS: Array[String] = ["two_shot", "ots", "low_hero", "dutch", "push_in"]
 const NOT_SOLID_KINDS: Array[String] = ["bridge_deck", "fire", "monitor_wall", "gallery_hall"]
@@ -136,7 +138,10 @@ static func check(tl: CineTimeline, pf: CinePlayer, lb: float, not_solid: Array,
 		var ex: Array = pr.get("exit_ok", [])
 		pf.seek((r0 + r1) * 0.5)
 		var subj: Array[String] = subjects(sh, pf)
-		if subj.is_empty():
+		var insert: bool = pr.has("subj") and subj.is_empty()
+		if insert and r1 - r0 > INSERT_MAX:
+			fails.append("%s %s %s (%s): an insert holds %.2f s (> %.1f s)" % [label, tl.slot, id, rig, r1 - r0, INSERT_MAX])
+		if subj.is_empty() and not insert:
 			fails.append("%s %s %s (%s): no actor in the frame" % [label, tl.slot, id, rig])
 			continue
 		var good: Dictionary = {}
@@ -197,7 +202,7 @@ static func check(tl: CineTimeline, pf: CinePlayer, lb: float, not_solid: Array,
 					good[s] = int(good[s]) + 1
 				elif lost[s] == "":
 					lost[s] = "@%.2f %s" % [rr, why]
-		var row := PackedStringArray()
+		var row := PackedStringArray(["insert"] if insert else [])
 		for s: String in subj:
 			var frac: float = float(good[s]) / maxf(float(counted), 1.0)
 			row.append("%s %d/%d" % [s, int(good[s]), counted])

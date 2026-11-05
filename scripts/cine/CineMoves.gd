@@ -564,6 +564,10 @@ const STAFF_HIGH: Dictionary = {"shoulder_l": Vector3(1.75, 0.0, 0.15), "elbow_l
 	"shoulder_r": Vector3(1.75, 0.0, -0.15), "elbow_r": Vector3(0.7, 0.0, 0.0), "torso": Vector3(-0.1, 0.0, 0.0),
 	"head": Vector3(0.05, 0.0, 0.0), "thigh_l": Vector3(0.35, 0.0, 0.08), "knee_l": Vector3(-0.5, 0.0, 0.0),
 	"thigh_r": Vector3(-0.2, 0.0, -0.08), "knee_r": Vector3(-0.2, 0.0, 0.0)}
+## The low sweep: down into the deep crouch, held through the sweep, back up to the guard.
+const STAFF_SWEEP_KEYS: Array = [[0.0, STAFF_SG], [0.3, STAFF_CROUCH], [0.7, STAFF_CROUCH], [1.0, STAFF_SG]]
+## The spinning strike: the staff raised across to head height, held through it, back down.
+const STAFF_SWING_KEYS: Array = [[0.0, STAFF_SG], [0.3, STAFF_HIGH], [0.7, STAFF_HIGH], [1.0, STAFF_SG]]
 ## Za Mẫn's horizontal katana cut, both hands on the hilt, arms out in front at shoulder height (the timeline turns his
 ## body through it); he stays extended, the blade stuck in a rack, until the next move.
 const KATANA_SLASH_KEYS: Array = [
@@ -985,9 +989,9 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 		"staff_thrust":
 			return _kpose(STAFF_THRUST_KEYS, u)
 		"staff_sweep":  # down into a deep crouch for the low sweep, held through the sweep, back up to the guard
-			return _kpose([[0.0, STAFF_SG], [0.3, STAFF_CROUCH], [0.7, STAFF_CROUCH], [1.0, STAFF_SG]], u)
+			return _kpose(STAFF_SWEEP_KEYS, u)
 		"staff_swing":  # the staff raised across to head height for the spinning strike, held through it, back down
-			return _kpose([[0.0, STAFF_SG], [0.3, STAFF_HIGH], [0.7, STAFF_HIGH], [1.0, STAFF_SG]], u)
+			return _kpose(STAFF_SWING_KEYS, u)
 		"staff_run":    # a short sprint carrying the staff forward in both hands (only the legs swing; loop phase u)
 			var rp: float = sin(u * TAU)
 			return {"thigh_l": Vector3(0.25 + 0.65 * rp, 0.0, 0.06),
