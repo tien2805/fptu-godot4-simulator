@@ -6,28 +6,28 @@
 H1   medium       2.830       2.970        2.510      3.690   0.30    2.648  the protagonist shoves the hanging crane hook: it swings into the fox-masked guard's face
 H2   heavy        5.900       6.080        5.450      7.180   0.25    4.870  held by the collar, then let go: the hook swings back into the back of the wolf's head
 H3   heavy        8.230       8.410        7.780      9.510   0.25    6.026  a shove slams the sheep-masked guard back into the toppled forklift's roof guard
-A1   accent      12.080      12.080       11.710     12.680   0.30    8.767  slow-motion accent: Alexander's hurricane kick, the protagonist ducks under it
+A1   accent      12.080      12.080       11.710     12.680   0.30    8.767  slow-motion accent: Alexander's hurricane kick comes round into his own dazed sheep-masked guard
 H5   finisher    13.540      13.740       12.890     18.100   0.25    9.481  the returning crane hook snags Alexander's collar and hoists him away; down onto the crates (swell)
 #
 # Shots (real start, rig, what)
-SHOT K1      0.000  crane     crane down past the hanging crane hook: the toppled forklift, Alexander on the ground, three masked guards
-SHOT D1      1.150  dutch     dutch alex
+SHOT G1      0.000  static    insert: the crane hook creaking on its cable in the dark, rocking a hand's width
+SHOT R1      1.000  dolly     reveal, low and wide past the hook: the toppled forklift, Alexander picking himself up, his guards
 SHOT O1      2.200  orbit     slow-motion orbit: the shove, the hook swings into the fox's mask (2.83)
 SHOT T1      3.750  ots       over wolf onto hero
-SHOT S1      5.000  static    slow motion, low and side-on: held by the collar, then let go as the hook swings back into him (5.90)
+SHOT S1      5.000  static    slow motion, low from the south-west: held by the collar, then let go as the hook swings back into him (5.90)
 SHOT T2      7.150  two_shot  two-shot hero + sheep
-SHOT S2      7.800  static    slow motion, low: the sheep slammed back into the forklift's roof guard (8.23)
-SHOT P1      9.000  push_in   push-in alex
-SHOT T3     10.450  ots       over alex onto hero
-SHOT O2     11.550  orbit     low slow orbit: the hurricane kick sails over the ducking protagonist (12.08), the hook far off
+SHOT S2      7.800  static    slow motion, low and side-on: the sheep slammed back into the forklift's roof guard (8.23)
+SHOT D1      9.000  dutch     dutch alex
+SHOT T3     10.450  two_shot  two-shot alex + hero
+SHOT O2     11.550  orbit     low slow orbit: the hurricane kick comes round into the sheep staggering backwards in front of his boss (12.08)
 SHOT S3     12.950  static    slow motion, side-on and wide: the hook swings back and takes Alexander by the collar (13.54)
 SHOT C1     14.100  crane     crane-high, looking down the cable: the hook swings him high over the yard, kicking; the collar slips
-SHOT S4     16.200  static    slow motion at the crate stack: he drops flat onto the smart-glasses crates (16.87)
-SHOT W1     18.100  dolly     tail wide: the wreck in the yard, the sheep runs for it
-SHOT L1     19.300  low_hero  hero hero
+SHOT S4     16.200  static    slow motion at the crate stack: he drops twisting onto the smart-glasses crates (16.87)
+SHOT W1     18.100  dolly     tail wide: the wreck in the yard, Alexander in the burst crates, the sheep laid out by his own boss
+SHOT L1     18.900  low_hero  hero hero
+SHOT F2     19.550  static    last, low on the ground: his party horn, the protagonist's foot comes down on it (19.89), Alexander jolts up
 #
 # Subtitles (real start - end, speaker: line)
 SUB    1.400 -  2.800  Alexander: Bắt nó lại cho ta!
 SUB    9.150 - 10.650  Alexander: Ta học võ trên mạng đó!
-SUB   18.350 - 19.150  Bảo vệ: Chạy!
-SUB   19.450 - 20.950  Bạn: Còn ai tên dài nữa không?
+SUB   18.300 - 19.800  Bạn: Còn ai tên dài nữa không?
