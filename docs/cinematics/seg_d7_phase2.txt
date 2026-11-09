@@ -12,7 +12,7 @@ SHOT P1      0.000  push_in   push-in hero
 SHOT O1      1.430  ots       over hero onto lo
 SHOT T1      2.250  two_shot  two-shot hero + wolf
 SHOT T2      3.910  two_shot  two-shot hero + sheep
-SHOT S1      5.570  static    side-on, low: the bull's charge, the matador's sidestep, the sheep's dive into the vase (6.39), the keel-over (7.23)
+SHOT S1      5.570  static    from behind the bull: the charge, the matador's sidestep, the sheep's dive into the vase (6.39), the keel-over (7.23)
 SHOT L1      7.300  low_hero  hero lo
 SHOT C1      7.950  ots       over lo onto hero
 SHOT V1      9.250  static    from straight above: the protagonist whips round and jumps, the urn comes down over the fox's head (9.70)
