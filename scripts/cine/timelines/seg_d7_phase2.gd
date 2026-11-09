@@ -460,8 +460,9 @@ func _shots() -> void:
 	ots_shot("O1", _sr(1.43), "hero", "lo", {"side": 1.0, "fov": 40.0})
 	two_shot("T1", _sr(2.25), "hero", "wolf", {"side": 1.0, "fov": 44.0, "look_y": 1.1, "height": 1.35, "dist": 2.7})
 	two_shot("T2", _sr(3.91), "hero", "sheep", {"side": -1.0, "fov": 46.0, "look_y": 1.12, "height": 1.3, "dist": 2.4})
-	shot("S1", _sr(5.57), "static", "side-on, low: the bull's charge, the matador's sidestep, the sheep's dive into the vase (6.39), the keel-over (7.23)",
-		{"pos": Vector3(1.1, 1.0, 5.2), "look": Vector3(1.2, 0.95, 1.0), "fov": 50.0, "hand": 0.3})
+	# three-quarter from behind the bull: the sidestep carries the protagonist across the frame, never in front of the sheep
+	shot("S1", _sr(5.57), "static", "from behind the bull: the charge, the matador's sidestep, the sheep's dive into the vase (6.39), the keel-over (7.23)",
+		{"pos": Vector3(-1.5, 1.6, 3.6), "look": Vector3(1.3, 0.85, 0.9), "fov": 50.0, "hand": 0.3, "subj": ["hero", "sheep"]})
 	hero_shot("L1", _sr(7.3), "lo", {"side_deg": 15.0, "dist": 2.6, "fov": 46.0})
 	ots_shot("C1", _sr(7.95), "lo", "hero", {"side": -1.0, "fov": 44.0})
 	shot("V1", _sr(9.25), "static", "from straight above: the protagonist whips round and jumps, the urn comes down over the fox's head (9.70)",
