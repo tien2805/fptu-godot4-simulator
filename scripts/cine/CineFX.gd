@@ -585,6 +585,23 @@ static func _build_crates(root: Node3D, opts: Dictionary) -> void:
 	var col: Color = opts.get("color", COL_CRATE)
 	var wood: StandardMaterial3D = _mat(col, 0.85)
 	var edge: StandardMaterial3D = _mat(COL_CRATE_EDGE, 0.85)
+	if bool(opts.get("broken", false)):
+		# the stack after crate_break (a later scene): its planks lie flat around the spot, seeded, no intact crate
+		var rng := RandomNumberGenerator.new()
+		rng.seed = int(opts.get("seed", 3))
+		var pm := BoxMesh.new()
+		pm.size = Vector3(0.55, 0.02, 0.07)
+		for i: int in 10:
+			var pl := MeshInstance3D.new()
+			pl.name = "Plank%d" % i
+			pl.mesh = pm
+			pl.material_override = wood if i % 3 != 2 else edge
+			var a: float = rng.randf_range(0.0, TAU)
+			var r: float = rng.randf_range(0.25, 1.1)
+			pl.position = Vector3(cos(a) * r, 0.011 + 0.021 * (i % 2), sin(a) * r)
+			pl.rotation.y = rng.randf_range(0.0, TAU)
+			root.add_child(pl)
+		return
 	var places: Array[Vector3] = [Vector3(-0.33, size * 0.5, 0.0), Vector3(0.33, size * 0.5, 0.05), Vector3(0.02, size * 1.5, 0.02)]
 	var yaws: Array[float] = [0.08, -0.12, 0.3]
 	var crates: Array[Node3D] = []

@@ -145,6 +145,7 @@ const MOVES: Dictionary = {
 	"slammed": {"dur": 0.8, "hit_u": 0.05, "src": [{"t": "code", "a": "slammed", "hit": 0.05}]},
 	"slumped": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "slumped"}]},
 	"get_up_sit": {"dur": 1.2, "src": [{"t": "code", "a": "get_up_sit"}]},
+	"sit_up": {"dur": 0.5, "src": [{"t": "code", "a": "sit_up"}]},   # from lie_flat up to the slumped sit (W6 seg_d3_boss)
 	"pickup": {"dur": 0.5, "hit_u": 0.5, "src": [{"t": "code", "a": "pickup", "hit": 0.5}]},
 	# --- story Phase A2 (review A2-R3): a held prop (phone, photo, glasses) raised in front of the chest; sitting on a bench
 	# (the actor's key on the ground in front of the seat, pivot dropped to seat height), hands in the lap or one hand up
@@ -772,6 +773,8 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 			return sl
 		"get_up_sit":
 			return code_pose("getup", lerpf(GETUP_SIT_U, 1.0, clampf(u, 0.0, 1.0)))
+		"sit_up":     # lying on the back: up onto the elbows and into the slumped sit (getup up to its sitting key)
+			return code_pose("getup", lerpf(0.0, GETUP_SIT_U, clampf(u, 0.0, 1.0)))
 		"hold_up":    # right forearm up, the held prop in front of the chest at reading distance; left arm relaxed
 			var hb: float = sin(u * TAU) * 0.015
 			return {"shoulder_r": Vector3(0.9 + hb, 0.0, 0.15), "elbow_r": Vector3(1.7, 0.0, 0.0),
