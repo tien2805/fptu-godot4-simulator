@@ -17,6 +17,12 @@ const DESK := Vector3(0.9, 0.0, -1.6)
 const LAPTOP := Vector3(0.9, 0.75, -1.65)
 const HERO := Vector3(0.9, 0.0, -0.95)         # at the desk, facing the laptop (-Z)
 const HILT := Vector3(-0.15, 0.0, -0.05)
+# seg_d5_boss leaves these (tests/test_cine_d5_boss.gd checks the hand-off): the snapped blade where it fell in front of the
+# rack its flat cut bit into, that rack, and the dead rack he was kicked into (rack_l1)
+const BLADE := Vector3(-3.8, 0.02, -3.5)
+const BLADE_YAW: float = 115.0
+const RACK_A := Vector3(-4.185, 0.0, -4.118)
+const RACK_A_YAW: float = -155.0
 
 
 func build() -> void:
@@ -31,15 +37,19 @@ func build() -> void:
 	actor("za", StoryCast.opts("za_man"), StoryCast.speaker("za_man"), StoryCast.color("za_man"))
 	StoryCast.dress(self, "za", "za_man")
 	(load("res://scripts/cine/timelines/cine_d5_monitors.gd") as GDScript).call("server_room", self, true)
+	for pr: Dictionary in props:
+		if String(pr["id"]) == "rack_l1":
+			(pr["opts"] as Dictionary)["dead"] = true
+	prop("rack_a", "server_rack", RACK_A, RACK_A_YAW, {"seed": 2, "set": true})
 	prop("wall", "monitor_wall", Vector3(0.0, 0.0, -4.7), 180.0, {"anim": true, "freeze_at": -1.0, "set": true})
 	prop("desk", "desk", DESK, 0.0)
 	prop("laptop", "laptop", LAPTOP, 180.0, {"glow_at": 1.8})
-	prop("blade", "katana_blade", Vector3(-3.2, 0.02, -1.0), 70.0)
+	prop("blade", "katana_blade", BLADE, BLADE_YAW)
 	# Za Mẫn, slumped, hugging the hilt
 	key("za", 0.0, ZA, -90.0)
 	move("za", 0.0, "slumped")
 	hold("za", 0.0, 18.0, "katana", {"broken": true, "offset": HILT, "rot": Vector3(60.0, 0.0, 0.0)})
-	look("za", 0.0, 10.8, Vector3(-3.2, 0.3, -1.0))
+	look("za", 0.0, 10.8, BLADE + Vector3(0.0, 0.3, 0.0))
 	look("za", 10.9, 18.0, "hero")
 	expr("za", 0.0, "done")
 	expr("za", 11.0, "happy")

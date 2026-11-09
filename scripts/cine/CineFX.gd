@@ -45,9 +45,10 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	# (table, stool, chair, tray, soup_pot, counter), Mr.T's laptop (screen glow via glow_at), the "THI HỘ BAO ĐẬU" flyer
 	# stand, and the night corridor set (walls, ceiling, tube lamps that flicker like "lamp": opts "flicker")
 	"shiba", "table", "stool", "chair", "tray", "soup_pot", "counter", "laptop", "flyer", "corridor",
-	# W6 fights: the rice bowl that ends up stuck on a clone's sheep mask (seg_d4_brawl), the yard crane's hook on its
-	# cable (seg_d3_boss: origin at the block's centre, the cable up to opts "cable" m, the J hook below opening toward +Z)
-	"rice_bowl", "crane_hook",
+	# W6 fights: lunch plugged in a clone's sheep-mask eye holes (seg_d4_brawl; held on Head like the mask), the yard
+	# crane's hook on its cable (seg_d3_boss: origin at the block's centre, the cable up to opts "cable" m, the J hook below
+	# opening toward +Z)
+	"food_eyes", "crane_hook",
 	# Dolly's tells as held props (cuff on Wrist.L, keychain on Hips) and a lobby front with glass doors (cine_d4)
 	"wool_cuff", "sheep_keychain", "lobby_wall",
 	# story Phase C (Days 2, 3, 5): wearables, hand props, sets and animated props, built by CinePropsC (see its header;
@@ -552,8 +553,8 @@ static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 			_build_tray(root, opts)
 		"soup_pot":
 			_build_soup_pot(root)
-		"rice_bowl":
-			_build_rice_bowl(root)
+		"food_eyes":
+			_build_food_eyes(root)
 		"crane_hook":
 			_build_crane_hook(root, opts)
 		"counter":
@@ -589,6 +590,23 @@ static func _build_crates(root: Node3D, opts: Dictionary) -> void:
 	var col: Color = opts.get("color", COL_CRATE)
 	var wood: StandardMaterial3D = _mat(col, 0.85)
 	var edge: StandardMaterial3D = _mat(COL_CRATE_EDGE, 0.85)
+	if bool(opts.get("broken", false)):
+		# the stack after crate_break (a later scene): its planks lie flat around the spot, seeded, no intact crate
+		var rng := RandomNumberGenerator.new()
+		rng.seed = int(opts.get("seed", 3))
+		var pm := BoxMesh.new()
+		pm.size = Vector3(0.55, 0.02, 0.07)
+		for i: int in 10:
+			var pl := MeshInstance3D.new()
+			pl.name = "Plank%d" % i
+			pl.mesh = pm
+			pl.material_override = wood if i % 3 != 2 else edge
+			var a: float = rng.randf_range(0.0, TAU)
+			var r: float = rng.randf_range(0.25, 1.1)
+			pl.position = Vector3(cos(a) * r, 0.011 + 0.021 * (i % 2), sin(a) * r)
+			pl.rotation.y = rng.randf_range(0.0, TAU)
+			root.add_child(pl)
+		return
 	var places: Array[Vector3] = [Vector3(-0.33, size * 0.5, 0.0), Vector3(0.33, size * 0.5, 0.05), Vector3(0.02, size * 1.5, 0.02)]
 	var yaws: Array[float] = [0.08, -0.12, 0.3]
 	var crates: Array[Node3D] = []
@@ -1090,13 +1108,16 @@ static func _build_tray(root: Node3D, opts: Dictionary) -> void:
 		_box(root, "Sticks", Vector3(0.24, 0.006, 0.012), Vector3(0.02, 0.012, 0.11), _mat(Color("#D9B98A"), 0.7))
 
 
-## A canteen rice bowl full of rice (the tray's), origin at the rim centre so it sits upside down on a mask (rot 180).
-static func _build_rice_bowl(root: Node3D) -> void:
-	_cyl(root, "Bowl", 0.075, 0.05, 0.06, Vector3(0.0, -0.03, 0.0), _mat(Color("#F4F1EA"), 0.6))
-	_sphere(root, "Rice", 0.068, Vector3(0.0, 0.0, 0.0), _mat(Color("#FBFAF5"), 0.9), Vector3(1.0, 0.5, 1.0))
-	for i: int in 5:
-		var a: float = TAU * float(i) / 5.0
-		_sphere(root, "Grain%d" % i, 0.018, Vector3(cos(a) * 0.08, 0.01 - 0.03 * float(i % 2), sin(a) * 0.08), _mat(Color("#FBFAF5"), 0.9))
+## Lunch in a sheep mask's eye holes (seg_d4_brawl: the full tray shoved into a clone's face): a rice blob over each
+## glowing eye, a curry smear under them, a noodle strand hanging off; held on the Head bone with the mask's offset, so
+## the mask's eyes sit at (+-0.028, 0.06, -0.15) in this frame.
+static func _build_food_eyes(root: Node3D) -> void:
+	var rice: StandardMaterial3D = _mat(Color("#FBFAF5"), 0.9)
+	for sx: float in [-0.028, 0.028]:
+		_sphere(root, "Rice", 0.024, Vector3(sx, 0.062, -0.156), rice, Vector3(1.15, 0.95, 0.6))
+		_sphere(root, "Grain", 0.008, Vector3(sx * 1.8, 0.04, -0.153), rice)
+	_sphere(root, "Curry", 0.03, Vector3(0.01, 0.026, -0.152), _mat(Color("#D9962B"), 0.6), Vector3(1.6, 0.5, 0.3))
+	_box(root, "Noodle", Vector3(0.006, 0.09, 0.006), Vector3(0.036, 0.0, -0.156), _mat(Color("#F2D98C"), 0.7), Vector3(0.0, 0.0, 0.25))
 
 
 ## The container-yard crane's hook (seg_d3_boss): a yellow hook block (origin at its centre), a steel shank and a J hook

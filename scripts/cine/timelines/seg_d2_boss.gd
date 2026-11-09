@@ -5,8 +5,8 @@
 # headlight and the lamp under the deck. Improvised weapons: a dropped wolf helmet, a bike mirror, the chain off a pillar.
 #   0.0  standoff: the protagonist holds the wolf helmet a bareheaded biker dropped; Sói Xám howls the pack in
 #   1.5      Sói Xám charges and throws a helmet headbutt: the protagonist sways back out of it (normal speed)
-#   2.4  H1  the helmet, swung like a straight right, into Sói Xám's helmet (slow motion: clonk)     he reels away
-#   3.7      a biker's straight right lands on the protagonist's jaw (normal speed, punch-in)
+#   2.45 H1  the helmet, swung like a straight right, into Sói Xám's helmet (slow motion: clonk)    he reels away
+#   3.77     a biker's straight right lands on the protagonist's jaw (normal speed, punch-in)
 #   4.55     the protagonist snatches a broken-off bike mirror off the ground
 #   5.7  H2  the mirror comes down on that biker (slow motion, heavy: the glass cracks)            knocked out flat
 #   7.4      the bareheaded biker's knee to the stomach (normal speed, punch-in)
@@ -20,7 +20,7 @@
 #  19.3-22.3 tail at 1x: "Rút!", the protagonist winded: "Đỉnh nóc kịch trần bay phấp phới."
 # Cameras of its own: S1 low behind the bike through its headlight, low orbits, the tail from high under the deck.
 # No gore. Music slot seg_d2_boss: the owner's "Heartbreaker" re-cut from its chorus at 49.56 s (plan 2026-11-05-w6-fights:
-# every hit, hit taken and the crash within 0.07 s of an accent). Stage: CineTimeline.phase_c_stage("bridge") (14 x 10),
+# every hit, hit taken and the crash within 0.06 s of an accent). Stage: CineTimeline.phase_c_stage("bridge") (14 x 10),
 # shared with cine_d2.
 extends CineFightC
 
@@ -32,7 +32,7 @@ func _configure() -> void:
 	cfg = {
 		"slot": "seg_d2_boss",
 		"stage": st,
-		"T": {"h1": 2.4, "x1": 3.7, "pick1": 4.55, "h2": 5.7, "x2": 7.4, "h3": 8.2, "pick2": 9.7, "h4": 11.0, "x3": 12.4, "a1": 13.4, "h5": 14.8},
+		"T": {"h1": 2.45, "x1": 3.77, "pick1": 4.55, "h2": 5.7, "x2": 7.4, "h3": 8.2, "pick2": 9.7, "h4": 11.0, "x3": 12.4, "a1": 13.4, "h5": 14.8},
 		"cast": {"a": "soi_xam", "b": "bay_soi", "c": "bay_soi", "d": "bay_soi"},
 		"cast_extra": {"b": {"seed": 3201, "height": 1.0}, "c": {"seed": 3202, "height": 0.98}, "d": {"seed": 3203, "height": 1.02}},
 		"names": {"b": "Bầy Sói 1", "c": "Bầy Sói 2", "d": "Bầy Sói 3"},
@@ -52,13 +52,25 @@ func _configure() -> void:
 		"a1_reach": {"mixamo": -0.35, "ual": -0.3, "native": -0.3, "code": -0.3},
 		"x2_move": "knee_strike", "x2_react": "hit_head",   # the knee rocks him back (his arms stay clear of the leg)
 		"bare": ["c"],
+		# every shot names its subjects (tests/support/cine_frame.gd checks their heads and chests in the safe area)
 		"shots": {
-			"S1": {"rig": "dolly", "from": Vector3(-6.2, 0.75, 3.45), "to": Vector3(-5.8, 0.8, 3.15), "look_from": Vector3(-0.2, 1.0, -0.5),
-				"look_to": Vector3(0.0, 1.05, -0.4), "fov": 50.0, "hand": 0.3},
-			"S2": {"deg_from": 250.0, "deg_to": 285.0, "height": 1.1},
-			"S11": {"deg_from": 20.0, "deg_to": 65.0, "height": 0.55},
+			"S1": {"rig": "dolly", "from": Vector3(-6.4, 1.35, 3.6), "to": Vector3(-6.15, 1.35, 3.4), "look_from": Vector3(-0.2, 1.1, -0.5),
+				"look_to": Vector3(0.0, 1.15, -0.4), "fov": 50.0, "hand": 0.3, "subj": ["hero", "a"]},
+			"S2": {"deg_from": 250.0, "deg_to": 285.0, "height": 1.1, "subj": ["hero", "a"]},
+			"S3": {"offset": Vector3(-0.17, 1.65, -1.16), "look": Vector3(0.0, 1.45, 0.0), "fov": 44.0, "subj": ["hero"]},
+			"S4": {"pos": Vector3(-1.34, 0.6, 2.93), "look": Vector3(0.26, 0.9, 1.53), "fov": 50.0, "subj": ["hero"]},
+			"S5": {"subj": ["hero", "b"]},
+			"S6": {"pos": Vector3(1.225, 1.45, 3.15), "look": Vector3(1.225, 1.3, 0.75), "subj": ["hero", "c"]},
+			"S7": {"look": Vector3(SURFACE_FACE_X - 0.2, 1.05, 0.75), "subj": ["c"]},
+			"S8": {"subj": ["hero"]},
+			"S9": {"subj": ["hero", "a"]},
+			"S10": {"offset": Vector3(0.6, 1.65, -0.9), "subj": ["hero"]},
+			"S11": {"deg_from": 300.0, "deg_to": 335.0, "height": 0.6, "subj": ["hero", "a"], "exit_ok": [16.0, 17.4]},
+			"S12": {"subj": ["a"]},
+			"S13": {"from": Vector3(-1.2, 1.6, 0.4), "to": Vector3(-0.9, 1.55, -0.1), "look_from": Vector3(0.8, 1.3, -2.5),
+				"look_to": Vector3(2.4, 1.25, -3.7), "subj": ["d"]},
 			"S14": {"rig": "dolly", "from": Vector3(-4.2, 3.0, -3.9), "to": Vector3(-3.8, 2.8, -3.5), "look_from": Vector3(0.4, 0.6, 0.0),
-				"look_to": Vector3(0.5, 0.6, 0.1), "fov": 54.0, "hand": 0.5}},
+				"look_to": Vector3(0.5, 0.6, 0.1), "fov": 54.0, "hand": 0.5, "subj": ["hero"]}},
 		"surface": {"kind": "pillar", "pos": Vector3(SURFACE_FACE_X + 0.51, 0.0, 0.75)},
 		"surface_extra": [["pillar_b", "pillar", Vector3(SURFACE_FACE_X + 0.51, 0.0, -1.25), 0.0]],
 		# per-tier steps into the strikes (tuned with tests/test_cine_d2_boss.gd: surface gaps on every tier)

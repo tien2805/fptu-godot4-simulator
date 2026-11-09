@@ -559,18 +559,28 @@ func _update_props(ss: float) -> void:
 		if path.size() >= 2:
 			var s0: float = float(path[0][0])
 			var s1: float = float(path[path.size() - 1][0])
-			var k0: Array = path[0]
-			var k1: Array = path[0]
-			for i: int in path.size():
-				if float(path[i][0]) <= ss:
-					k0 = path[i]
-					k1 = path[mini(i + 1, path.size() - 1)]
-			if ss < s0:
-				k1 = k0
+			# the last key at or before ss (keys ascending; bisected: a crane hook carries ~700 keys)
+			var lo: int = 0
+			var hi: int = path.size()
+			while lo < hi:
+				var mid: int = (lo + hi) >> 1
+				if float(path[mid][0]) <= ss:
+					lo = mid + 1
+				else:
+					hi = mid
+			var k0: Array = path[maxi(lo - 1, 0)]
+			var k1: Array = path[mini(lo, path.size() - 1)] if lo > 0 else k0
 			var u: float = clampf((ss - float(k0[0])) / maxf(float(k1[0]) - float(k0[0]), 0.0001), 0.0, 1.0)
 			var w: float = clampf((ss - s0) / maxf(s1 - s0, 0.0001), 0.0, 1.0)
 			pn.position = (k0[1] as Vector3).lerp(k1[1], u) + Vector3(0.0, 4.0 * float(po.get("arc", 0.0)) * w * (1.0 - w), 0.0)
 			pn.rotation_degrees = (k0[2] as Vector3).lerp(k1[2], u)
+			# a crane hook's 4th key entry: its cable length (the Cable mesh rescaled, its top stays at the crane's anchor)
+			if k0.size() > 3 and k1.size() > 3:
+				var cab: Node3D = pn.get_node_or_null("Cable")
+				if cab != null:
+					var ln: float = lerpf(float(k0[3]), float(k1[3]), u)
+					cab.scale = Vector3(1.0, ln / maxf(float(po.get("cable", ln)), 0.001), 1.0)
+					cab.position.y = 0.15 + ln * 0.5
 
 
 func _fire_events(ss: float) -> void:

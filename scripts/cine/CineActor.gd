@@ -38,7 +38,7 @@ var keys: Array[Dictionary] = []
 var exprs: Array[Dictionary] = []
 var looks: Array[Dictionary] = []
 var shows: Array[Dictionary] = []
-var holds: Array[Dictionary] = []      # {s0, s1, node, att, bone, mid, offset, rot}
+var holds: Array[Dictionary] = []      # {s0, s1, node, att, bone, mid, offset, rot, keys}
 var parts: Array[Dictionary] = []      # {s, part, v}
 var _part_nodes: Dictionary = {}       # part -> Array of MeshInstance3D
 var last_s: float = 0.0
@@ -253,7 +253,9 @@ func show_at(s: float, on: bool) -> void:
 
 ## Hold `node` during story [s0, s1): a BoneAttachment3D on `bone` carries it (hidden outside the window). opts: "mid" (a second
 ## bone: two-handed, the prop is centred between both), "offset" (m, actor frame, from the hand / the centre), "rot" (deg, actor
-## frame). The prop's transform relative to the attachment is set on every evaluate from the bones at s (seekable).
+## frame), "keys" ([[s, rot, offset], ...] ascending: the angle and offset keyed through the window, smoothstepped between
+## keys, held before the first and after the last). The prop's transform relative to the attachment is set on every evaluate
+## from the bones at s (seekable).
 func hold(s0: float, s1: float, node: Node3D, bone: String = "Wrist.R", opts: Dictionary = {}) -> void:
 	var att := BoneAttachment3D.new()
 	att.name = "Hold%d" % holds.size()
@@ -262,7 +264,7 @@ func hold(s0: float, s1: float, node: Node3D, bone: String = "Wrist.R", opts: Di
 	att.add_child(node)
 	att.visible = false
 	holds.append({"s0": s0, "s1": s1, "node": node, "att": att, "bone": bone, "mid": String(opts.get("mid", "")),
-		"offset": opts.get("offset", Vector3.ZERO), "rot": opts.get("rot", Vector3.ZERO)})
+		"offset": opts.get("offset", Vector3.ZERO), "rot": opts.get("rot", Vector3.ZERO), "keys": opts.get("keys", [])})
 
 
 ## Show (on) or hide a body part from story time s on: "helmet" (meshes tagged helmet_part by CharacterBuilder).
@@ -634,9 +636,37 @@ func _eval_holds(s: float) -> void:
 		var p: Vector3 = hand.origin
 		if String(h["mid"]) != "":
 			p = (p + bone_world(String(h["mid"]))) * 0.5
+		var rot: Vector3 = h["rot"]
+		var off: Vector3 = h["offset"]
+		var ks: Array = h["keys"]
+		if not ks.is_empty():
+			var kv: Array = hold_key(ks, s)
+			rot = kv[0]
+			off = kv[1]
 		var bs: Basis = spin.global_transform.basis.orthonormalized()
-		var want := Transform3D(bs * Basis.from_euler((h["rot"] as Vector3) * (PI / 180.0)), p + bs * (h["offset"] as Vector3))
+		var want := Transform3D(bs * Basis.from_euler(rot * (PI / 180.0)), p + bs * off)
 		(h["node"] as Node3D).transform = hand.affine_inverse() * want
+
+
+## A keyed hold's [rot, offset] at s (keys [[s, rot, offset], ...] ascending; bisected, smoothstepped between neighbours).
+static func hold_key(ks: Array, s: float) -> Array:
+	var n: int = ks.size()
+	if s <= float(ks[0][0]):
+		return [ks[0][1], ks[0][2]]
+	if s >= float(ks[n - 1][0]):
+		return [ks[n - 1][1], ks[n - 1][2]]
+	var lo: int = 0
+	var hi: int = n - 1
+	while hi - lo > 1:
+		var mid: int = (lo + hi) >> 1
+		if float(ks[mid][0]) <= s:
+			lo = mid
+		else:
+			hi = mid
+	var a: Array = ks[lo]
+	var b: Array = ks[hi]
+	var u: float = smoothstep(0.0, 1.0, (s - float(a[0])) / maxf(float(b[0]) - float(a[0]), 1e-6))
+	return [(a[1] as Vector3).lerp(b[1], u), (a[2] as Vector3).lerp(b[2], u)]
 
 
 ## PS2 faces switch the atlas cell on the actor's own face material; classic faces (no "ps2_face" meta) swap the face

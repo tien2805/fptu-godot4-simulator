@@ -10,13 +10,16 @@
 # 3 cm under the floor.
 # Tiers: cap 0 Mixamo when present, 1 UAL, 2 native, 3 code. Then in FreeRoam: cine_stage finds a spot within 4 m of its
 # explicit point for every Phase C slot (GRASS_MOVED: at the baked spot off the campus lawn), play_cinematic stages the
-# fight, a hold-Esc skip restores the world.
+# fight, a hold-Esc skip restores the world. Shots: tests/support/cine_frame.gd on tier 1 and the code tier (16 samples per
+# shot, subjects framed in the 8 % safe area and clear of props, the camera never inside a prop); no emoji in subtitles.
 # A test extends this script and overrides _conf() -> {"slot", "label", "checks": Callable(pl) for its own gags}.
-# Env: CINE_NO_MIXAMO=1 (fallback tiers with files present), CINE_FAST=1 (no penetration sweep), CINE_NO_FREEROAM=1.
+# Env: CINE_NO_MIXAMO=1 (fallback tiers with files present), CINE_FAST=1 (no penetration sweep), CINE_NO_FREEROAM=1,
+# CINE_FRAME_ONLY=1 (static checks and shots only).
 # Every player built here passes {"music": false}: the test never depends on user://music.
 extends SceneTree
 
 const Bodies = preload("res://tests/support/cine_bodies.gd")
+const Frame = preload("res://tests/support/cine_frame.gd")
 
 const STRIKES: Dictionary = {"H1": ["hero", "w1", "a"], "X1": ["b", "fists", "hero"], "H2": ["hero", "w2", "b"],
 	"X2": ["c", "fists", "hero"], "H3": ["hero", "fists", "c"], "H4": ["hero", "w3", "a"], "X3": ["d", "fists", "hero"],
@@ -419,6 +422,25 @@ func _initialize() -> void:
 	if gfx and gfx.has_method("set_art_style"):
 		gfx.call("set_art_style", "vice", false)
 	CharacterBuilder.ps2 = true
+	for sb: Dictionary in tl.subs:
+		var line: String = String(sb["text"]) + String(sb.get("tr", ""))
+		_check(not line.contains("…") and not Frame.has_emoji(line), "no ellipsis glyph and no emoji in '%s'" % String(sb["text"]))
+	for cap: int in [1, 3]:
+		CineMoves.max_tier = cap
+		var pf := CinePlayer.new()
+		world.add_child(pf)
+		pf.setup(tl, Transform3D.IDENTITY, {"manual": true, "music": false})
+		pf.start()
+		await process_frame
+		var vs: Vector2 = root.get_visible_rect().size
+		var lb: float = (pf.overlay.bar_height_full() / vs.y) if tl.letterbox else 0.0
+		for m: String in Frame.check(tl, pf, lb, NOT_SOLID, {"crates": "sc"}, ["mixamo", "ual", "native", "code"][cap]):
+			_check(false, m)
+		pf.queue_free()
+		await process_frame
+	if OS.get_environment("CINE_FRAME_ONLY") == "1":   # tuning aid: the static checks and the shots only
+		_end()
+		return
 	CineMoves.max_tier = 1
 	p = CinePlayer.new()
 	world.add_child(p)

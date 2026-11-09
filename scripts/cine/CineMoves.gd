@@ -145,6 +145,7 @@ const MOVES: Dictionary = {
 	"slammed": {"dur": 0.8, "hit_u": 0.05, "src": [{"t": "code", "a": "slammed", "hit": 0.05}]},
 	"slumped": {"dur": 2.0, "loop": true, "src": [{"t": "code", "a": "slumped"}]},
 	"get_up_sit": {"dur": 1.2, "src": [{"t": "code", "a": "get_up_sit"}]},
+	"sit_up": {"dur": 0.5, "src": [{"t": "code", "a": "sit_up"}]},   # from lie_flat up to the slumped sit (W6 seg_d3_boss)
 	"pickup": {"dur": 0.5, "hit_u": 0.5, "src": [{"t": "code", "a": "pickup", "hit": 0.5}]},
 	# --- story Phase A2 (review A2-R3): a held prop (phone, photo, glasses) raised in front of the chest; sitting on a bench
 	# (the actor's key on the ground in front of the seat, pivot dropped to seat height), hands in the lap or one hand up
@@ -581,6 +582,10 @@ const STAFF_HIGH: Dictionary = {"shoulder_l": Vector3(1.75, 0.0, 0.15), "elbow_l
 	"shoulder_r": Vector3(1.75, 0.0, -0.15), "elbow_r": Vector3(0.7, 0.0, 0.0), "torso": Vector3(-0.1, 0.0, 0.0),
 	"head": Vector3(0.05, 0.0, 0.0), "thigh_l": Vector3(0.35, 0.0, 0.08), "knee_l": Vector3(-0.5, 0.0, 0.0),
 	"thigh_r": Vector3(-0.2, 0.0, -0.08), "knee_r": Vector3(-0.2, 0.0, 0.0)}
+## The low sweep: down into the deep crouch, held through the sweep, back up to the guard.
+const STAFF_SWEEP_KEYS: Array = [[0.0, STAFF_SG], [0.3, STAFF_CROUCH], [0.7, STAFF_CROUCH], [1.0, STAFF_SG]]
+## The spinning strike: the staff raised across to head height, held through it, back down.
+const STAFF_SWING_KEYS: Array = [[0.0, STAFF_SG], [0.3, STAFF_HIGH], [0.7, STAFF_HIGH], [1.0, STAFF_SG]]
 ## Za Mẫn's horizontal katana cut, both hands on the hilt, arms out in front at shoulder height (the timeline turns his
 ## body through it); he stays extended, the blade stuck in a rack, until the next move.
 const KATANA_SLASH_KEYS: Array = [
@@ -970,6 +975,8 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 			return sl
 		"get_up_sit":
 			return code_pose("getup", lerpf(GETUP_SIT_U, 1.0, clampf(u, 0.0, 1.0)))
+		"sit_up":     # lying on the back: up onto the elbows and into the slumped sit (getup up to its sitting key)
+			return code_pose("getup", lerpf(0.0, GETUP_SIT_U, clampf(u, 0.0, 1.0)))
 		"hold_up":    # right forearm up, the held prop in front of the chest at reading distance; left arm relaxed
 			var hb: float = sin(u * TAU) * 0.015
 			return {"shoulder_r": Vector3(0.9 + hb, 0.0, 0.15), "elbow_r": Vector3(1.7, 0.0, 0.0),
@@ -1187,9 +1194,9 @@ static func code_pose(pose: String, u: float) -> Dictionary:
 		"staff_thrust":
 			return _kpose(STAFF_THRUST_KEYS, u)
 		"staff_sweep":  # down into a deep crouch for the low sweep, held through the sweep, back up to the guard
-			return _kpose([[0.0, STAFF_SG], [0.3, STAFF_CROUCH], [0.7, STAFF_CROUCH], [1.0, STAFF_SG]], u)
+			return _kpose(STAFF_SWEEP_KEYS, u)
 		"staff_swing":  # the staff raised across to head height for the spinning strike, held through it, back down
-			return _kpose([[0.0, STAFF_SG], [0.3, STAFF_HIGH], [0.7, STAFF_HIGH], [1.0, STAFF_SG]], u)
+			return _kpose(STAFF_SWING_KEYS, u)
 		"staff_run":    # a short sprint carrying the staff forward in both hands (only the legs swing; loop phase u)
 			var rp: float = sin(u * TAU)
 			return {"thigh_l": Vector3(0.25 + 0.65 * rp, 0.0, 0.06),
