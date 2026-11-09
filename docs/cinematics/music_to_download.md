@@ -71,7 +71,7 @@ Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột
 | [ ] | Lùm Văn Lọ "Mọi thứ đều nằm trong kế hoạch", tắt đèn (Ngày 7) | `cine_d7_monologue_` | *Sweet Dreams (Are Made of This)*, Eurythmics |
 | [ ] | Phát lại: leo hết các tầng, cửa phòng bình cổ mở (Ngày 7) | `seg_d7_floors_` | *Eye of the Tiger*, Survivor |
 | [ ] | Phát lại: Lọ và sáu bảo vệ gục trong phòng bình cổ (Ngày 7) | `seg_d7_phase1_` | *In the Hall of the Mountain King*, Edvard Grieg |
-| [ ] | Có điện lại: đèn pin, loa, bình cổ, đánh nhau 25 s (Ngày 7) | `seg_d7_phase2_` | *The Power of Love*, Jennifer Rush |
+| [ ] | Có điện lại: cú gõ đèn pin, lính cừu lao đầu vỡ bình, chụp bình cổ lên đầu, đánh nhau 14 s (Ngày 7) | `seg_d7_phase2_` | *The Power of Love*, Jennifer Rush |
 | [ ] | Sân thượng dưới mưa: đòn chân kẹp cổ số 21, "Xin vĩnh biệt cụ." (Ngày 7, 25 s) | `seg_d7_finisher_` | *What a Wonderful World*, Louis Armstrong |
 
 **Nhiệm vụ và trùm**
@@ -96,8 +96,9 @@ Chưa có file thì chỗ đó im lặng. Tải xong thì đặt tên như cột
 **Đã có trên máy, không cần tải:** `seg_d2_chase`, `seg_d2_boss` (*Heartbreaker*), `seg_d3_gunfight`, `seg_d3_crates`,
 `seg_d3_boss` (*Straighten Up and Fly Right*), `seg_d5_gunfight`, `seg_d5_hack`, `seg_d5_boss` (*The Good Life*), `cine_d2`,
 `cine_d3`, `cine_d5`, `end_c` (*Money, Money, Money*). Độ dài và các nhịp đánh của từng cảnh nằm trong
-`docs/cinematics/<tên cảnh>.txt`: 3 cảnh đánh lớn 25 s đặt các cú chậm theo một lưới nhịp chung, Claude sẽ dời cho khớp
-nhịp bài khi bạn báo.
+`docs/cinematics/<tên cảnh>.txt`. 4 cảnh đánh lớn (`seg_d2_boss` 22,3 s, `seg_d3_boss` 21,1 s, `seg_d4_brawl` 22,35 s,
+`seg_d5_boss` 22,4 s) có bản cắt nhạc mới: mỗi cú đánh, mỗi cú bị trúng và cú đâm vào đồ rơi đúng một nhịp mạnh của bài
+(lệch tối đa 0,1 s). Bản cắt chép đè lên nhạc cũ của cảnh đó, cả file `.ogg` lẫn `.mp3`.
 
 ## Phase D: Ngày 6 "Trà Sữa Lọ" (mới, 2026-11-01)
 

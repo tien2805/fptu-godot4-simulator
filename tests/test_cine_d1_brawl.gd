@@ -20,7 +20,7 @@ const Bodies = preload("res://tests/support/cine_bodies.gd")
 const IMPACTS: Dictionary = {"H1": 2.76, "N1": 7.17, "H2": 8.48, "H3": 9.83, "H4": 11.76, "H5": 12.71}
 ## Real start of every shot (cuts on onsets; S15 / S16 / S18 / S19 on the 112 bpm grid through the sustained note and tail).
 const SHOTS: Dictionary = {"S1": 0.0, "S2": 1.45, "S3": 2.76, "S4": 3.02, "S5": 5.89, "S6": 6.15, "S7": 7.17, "S8": 7.72,
-	"S9": 8.48, "S10": 9.02, "S11": 9.83, "S12": 10.73, "S13": 11.76, "S14": 12.13, "S15": 15.92, "S16": 19.14, "S17": 21.99,
+	"S9": 8.48, "S10": 9.02, "S11": 9.83, "S12": 10.73, "S13": 11.76, "S14": 12.13, "S15": 15.92, "S15b": 17.53, "S16": 19.14, "S17": 21.99,
 	"S18": 22.53, "S19": 23.60}
 ## Non-ramp SFX accents on the remaining onsets (real s); 21.99 is the crash into the crate stack.
 const ACCENTS: Array[float] = [1.45, 3.02, 5.89, 7.17, 7.72, 9.02, 9.30, 10.14, 10.73, 12.13, 21.99]

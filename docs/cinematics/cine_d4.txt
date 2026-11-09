@@ -5,7 +5,8 @@
 # id   kind      real_hit  freeze_end  slowmo_from  slowmo_to  speed  story_s  what
 #
 # Shots (real start, rig, what)
-SHOT S1      0.000  static    wide: night outside the lobby, Dolly cornered, the protagonist and Linh close in
+SHOT S0      0.000  push_in   push-in dolly
+SHOT S1      1.800  static    wide: night outside the lobby, Dolly cornered, the protagonist and Linh close in
 SHOT S2      3.600  push_in   push-in dolly
 SHOT S3      6.900  static    side-on along the wall: the protagonist asks for the schedule, Dolly in profile
 SHOT S4      8.400  dutch     dutch dolly

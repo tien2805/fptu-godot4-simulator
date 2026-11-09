@@ -63,7 +63,10 @@ func build() -> void:
 		sfx_at(DARK + 0.6, "evil_laugh", -8.0)
 	shot("S1", 0.0, "static", "wide over the plinths: Lọ gets up at the back of the hall",
 		{"pos": Vector3(3.2, 1.7, 0.8), "look": Vector3(0.0, 1.1, -9.2), "fov": 46.0})
-	push_in("S2", 4.0, "lo", {"from": 3.2, "to": 2.6, "side_deg": 15.0, "look_y": 1.3, "hand": 0.1})
+	# Wave 6 (plan 2026-11-05-w6-cines T4): the wide is 2.5 s, then a low push-in as Lọ gets up and steps forward, and the
+	# line on a dutch angle (instead of a second push-in)
+	push_in("S1b", 2.5, "lo", {"from": 4.4, "to": 3.0, "side_deg": 10.0, "height": 0.6, "look_y": 1.3, "hand": 0.1})
+	dutch_shot("S2", 4.0, "lo", {"side_deg": 25.0, "dist": 3.0, "roll": -12.0, "look_y": 1.3, "hand": 0.1})
 	ots_shot("S3", 7.2, "hero", "lo", {"look_y": 1.35})
 	shot("S4", DARK, "static", "the hall goes dark: only the red floor glow and the speaker rings",
 		{"pos": Vector3(-4.0, 2.4, 2.0), "look": Vector3(0.0, 1.0, -6.0), "fov": 52.0})

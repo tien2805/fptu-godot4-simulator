@@ -2,13 +2,23 @@
 # Full-screen "screen" inserts for the Phase B cinematics, drawn in code (no images), timed on the CinePlayer's REAL time:
 #   kind "cctv"   a security-camera frame: grain, scanlines, "CAM 03  BÃI XE D1", a running timestamp, a blinking REC dot,
 #                 and two silhouettes: a courier in a helmet hands a box ("hàng") to a buyer, who walks off with it
-#                 (cine_d1_intro: Mr.T replays the CCTV);
+#                 (cine_d1_intro: Mr.T replays the CCTV); Wave 6: "zoom" [u_in0, u_in1, factor, u_out0, u_out1] and
+#                 "focus" (Vector2, 0..1 of the frame): a digital zoom onto the hand-off with a "ZOOM xN" tag;
 #   kind "phone"  a phone lock screen with one notification (sender, message, time) (cine_d1: the courier's phone);
 #   kind "radio"  (Phase C) a small walkie-talkie box in the upper left: the caller's name and a live waveform
 #                 (cine_d3_intro: Anh Duy on the radio);
-#   kind "credits" (Phase C) the end credits: a title, then "lines" roll up the black frame (end_c, ending C);
+#   kind "credits" (Phase C) the end credits: a title, then "lines" roll up the black frame (end_c, ending C); optional
+#                 "roll_end" (0..1, default 1): the roll is done at that share of the window and the last lines hold
+#                 (end_e's "ĐÍNH CHÍNH" card keeps its hint line on screen);
 #   kind "flow"   (Phase C) a money-flow chart on a dark screen: "nodes" (3 boxes) light up one after another, joined by
 #                 arrows that draw in, with "amounts" beside the arrows; the last node pulses (cine_d5: "TRÀ SỮA LỌ").
+#                 Wave 6: "log": true scrolls faint transaction-log rows behind the chart (the logs racing past).
+#   kind "terminal" (Wave 6) a dark terminal window: "title" in its bar, then "lines" typed out one after another over
+#                 the first TYPE_END of the window, the last line in orange (cine_d5_intro: the decrypted USB, the IP);
+#   kind "clock"  (Wave 6) a small digital clock box in the upper right: "title" over big digits, either a countdown
+#                 ("count": seconds, ticking down in real time from the card start, red over the last 10: cine_d3_intro's
+#                 30-second camera loop) or a flip ("from" -> "to" at "flip_u", the digits fold shut and open on the new
+#                 time: cine_d7_intro's 07:59 -> 08:00).
 # data: {"kind", "cam", "place", "clock" ("21:47:05", seconds run on), "sender", "text", "time", "title", "lines"}.
 # CineTimeline.card("screen", r, dur, data) places it; CinePlayer calls update(r). state_at(u) is pure (tests).
 # Layer 106: above the HUD and StoryIntroCards / StoryDayCard (105), below the cinematic overlay (110: subtitles, fades).
@@ -24,6 +34,17 @@ const CREDITS_SIZE := Vector2(980.0, 440.0)
 const SAFE_TOP: float = 0.135
 const SAFE_BOTTOM: float = 0.865
 const FLOW_SIZE := Vector2(860.0, 360.0)
+const CLOCK_SIZE := Vector2(380.0, 150.0)
+const TERM_SIZE := Vector2(760.0, 270.0)
+## Share of the terminal card's window over which its lines type out (then they hold).
+const TYPE_END: float = 0.7
+const CLOCK_RED := Color("#FF4A4A")
+const CLOCK_GOLD := Color("#FFD23F")
+## Real seconds (as a share of u) the flip takes to fold the digits shut and open them again.
+const FLIP_U: float = 0.06
+## Drawing constants of the new kinds (kept out of _draw: no per-frame array literals).
+const TERM_DOTS: Array[Color] = [Color("#FF5F56"), Color("#FFBD2E"), Color("#27C93F")]
+const ZOOM_CORNERS: PackedVector2Array = [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]
 
 var data: Dictionary = {}
 var r0: float = 0.0
@@ -40,12 +61,23 @@ var last_state: Dictionary = {}
 var title_label: Label
 var roll: VBoxContainer
 var flow_labels: Array[Label] = []
+var term_labels: Array[Label] = []
+var _term_lens: PackedInt32Array = []   # characters per terminal line (built once)
+var _term_total: int = 0
+var _clock_key: int = -9999            # the digits last shown (seconds left / flipped): the text is formatted on change only
+var _clock_red: int = -1                # the digits' colour state last set (-1 = none yet): the override is set on change only
 
 
 ## Code-drawn screen content (redrawn when u changes).
 class ScreenDraw extends Control:
 	var kind: String = "cctv"
 	var u: float = 0.0
+	var t: float = 0.0   # real seconds into the card
+	var log_rows: bool = false   # flow: the scrolling log rows behind the chart
+	var zoom: Array = []         # cctv: [u_in0, u_in1, factor, u_out0, u_out1]
+	var focus := Vector2(0.5, 0.5)
+	var _zoom_shown: float = -1.0       # the zoom factor the tag was last built for (rebuilt only when it changes)
+	var _zoom_txt: String = ""
 
 	func _draw() -> void:
 		var s: Vector2 = size
@@ -56,6 +88,14 @@ class ScreenDraw extends Control:
 			draw_rect(Rect2(Vector2.ZERO, s), Color("#0A0F14"))
 			for g: int in 9:
 				draw_line(Vector2(0.0, s.y * g / 8.0), Vector2(s.x, s.y * g / 8.0), Color(0.3, 0.6, 0.5, 0.08), 1.0)
+			if log_rows:   # log lines racing up the screen, fading out as the chart takes over (pure in u)
+				var la: float = clampf(1.0 - (u - 0.35) / 0.3, 0.25, 1.0)
+				for row: int in 16:
+					var y: float = fposmod(float(row) * 24.0 - u * s.y * 2.4, s.y + 24.0) - 12.0
+					var w1: float = 60.0 + fposmod(float(row) * 37.0, 90.0)
+					draw_rect(Rect2(18.0, y, w1, 6.0), Color(0.36, 0.83, 0.54, 0.16 * la))
+					draw_rect(Rect2(28.0 + w1, y, 140.0 + fposmod(float(row) * 53.0, 220.0), 6.0), Color(0.36, 0.83, 0.54, 0.09 * la))
+					draw_rect(Rect2(s.x - 120.0, y, 80.0, 6.0), Color(1.0, 0.82, 0.25, 0.12 * la))
 			for k: int in 3:
 				var on: float = clampf((u - 0.12 - 0.27 * k) / 0.08, 0.0, 1.0)
 				var r := Rect2(Vector2(s.x * (0.04 + 0.33 * k), s.y * 0.36), Vector2(s.x * 0.25, s.y * 0.28))
@@ -74,6 +114,13 @@ class ScreenDraw extends Control:
 						if d >= 1.0:
 							draw_colored_polygon(PackedVector2Array([a1, a1 + Vector2(-14.0, -9.0), a1 + Vector2(-14.0, 9.0)]), Color("#FFD23F"))
 			return
+		if kind == "clock":   # a flip-clock face: two dark tiles split across the middle
+			draw_rect(Rect2(Vector2.ZERO, s), Color("#0B0D10"))
+			draw_rect(Rect2(14.0, 44.0, s.x - 28.0, s.y - 56.0), Color("#1A1D24"))
+			draw_line(Vector2(14.0, 44.0 + (s.y - 56.0) * 0.5), Vector2(s.x - 14.0, 44.0 + (s.y - 56.0) * 0.5), Color(0.0, 0.0, 0.0, 0.85), 3.0)
+			if fmod(t * 2.0, 1.0) < 0.5:   # a blinking dot: the clock is live
+				draw_circle(Vector2(s.x - 26.0, 22.0), 7.0, Color("#FF3030"))
+			return
 		if kind == "radio":
 			draw_rect(Rect2(Vector2.ZERO, s), Color("#10161A"))
 			for i: int in 48:   # the live waveform (pure in u)
@@ -88,7 +135,19 @@ class ScreenDraw extends Control:
 			for i: int in 6:   # soft wallpaper bands
 				draw_rect(Rect2(0.0, s.y * (0.15 + 0.13 * i), s.x, s.y * 0.06), Color(0.3, 0.2, 0.6, 0.12))
 			return
+		if kind == "terminal":
+			draw_rect(Rect2(Vector2.ZERO, s), Color("#07090B"))
+			draw_rect(Rect2(0.0, 0.0, s.x, 34.0), Color("#1B2026"))
+			for k: int in 3:
+				draw_circle(Vector2(18.0 + 20.0 * k, 17.0), 6.0, StoryScreenCard.TERM_DOTS[k])
+			if fmod(t * 2.0, 1.0) < 0.55:   # the cursor blinks
+				draw_rect(Rect2(s.x - 40.0, s.y - 36.0, 14.0, 22.0), Color("#5BD38A"))
+			return
 		draw_rect(Rect2(Vector2.ZERO, s), Color("#16231C"))
+		var z: float = StoryScreenCard.zoom_at(zoom, u)
+		if z > 1.0:   # the digital zoom: p -> f + (p - f) * z (the frame clips it)
+			var f := Vector2(focus.x * s.x, focus.y * s.y)
+			draw_set_transform(f * (1.0 - z), 0.0, Vector2(z, z))
 		# parking lot: lane lines, a roof edge, two parked bikes
 		draw_rect(Rect2(0.0, s.y * 0.62, s.x, s.y * 0.38), Color("#1F3127"))
 		for i: int in 5:
@@ -108,6 +167,19 @@ class ScreenDraw extends Control:
 		var box_x: float = lerpf(cx + 26.0, bxp - 22.0, hand_off) if leave <= 0.0 else bxp - 22.0
 		draw_rect(Rect2(box_x - 14.0, s.y * 0.53, 28.0, 22.0), Color("#C9A27A"))
 		draw_line(Vector2(box_x - 14.0, s.y * 0.53 + 11.0), Vector2(box_x + 14.0, s.y * 0.53 + 11.0), Color("#7A5A3A"), 2.0)
+		if z > 1.0:
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			var fp := Vector2(focus.x * s.x, focus.y * s.y)
+			var hw := Vector2(150.0, 90.0)
+			for c: Vector2 in StoryScreenCard.ZOOM_CORNERS:   # the focus brackets
+				var cp: Vector2 = fp + hw * c
+				draw_line(cp, cp - Vector2(26.0 * c.x, 0.0), Color("#FFD23F"), 3.0)
+				draw_line(cp, cp - Vector2(0.0, 26.0 * c.y), Color("#FFD23F"), 3.0)
+			var zs: float = snappedf(z, 0.1)
+			if zs != _zoom_shown:
+				_zoom_shown = zs
+				_zoom_txt = "ZOOM x%.1f" % zs
+			draw_string(ThemeDB.fallback_font, Vector2(18.0, s.y * 0.2), _zoom_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color("#FFD23F"))
 		# scanlines and grain
 		var y: float = 0.0
 		while y < s.y:
@@ -129,6 +201,64 @@ class ScreenDraw extends Control:
 		draw_circle(Vector2(feet.x, feet.y - 106.0), 15.0 if helmet else 12.0, Color("#3A4A3F") if helmet else c)
 		if helmet:
 			draw_rect(Rect2(feet.x - 15.0, feet.y - 110.0, 30.0, 6.0), Color("#5E7266"))
+
+
+## The CCTV digital zoom factor at progress u (1 = none): zoom = [u_in0, u_in1, factor] (+ [u_out0, u_out1]), smooth. Pure.
+static func zoom_at(zoom: Array, u: float) -> float:
+	if zoom.size() < 3:
+		return 1.0
+	var a: float = clampf((u - float(zoom[0])) / maxf(float(zoom[1]) - float(zoom[0]), 1e-4), 0.0, 1.0)
+	if zoom.size() >= 5:
+		a = minf(a, 1.0 - clampf((u - float(zoom[3])) / maxf(float(zoom[4]) - float(zoom[3]), 1e-4), 0.0, 1.0))
+	return lerpf(1.0, float(zoom[2]), a * a * (3.0 - 2.0 * a))
+
+
+## Characters of each terminal line shown at progress u: the lines type out one after another over [0, TYPE_END). Pure.
+static func terminal_chars(lines: Array, u: float) -> Array[int]:
+	var total: int = 0
+	for l: Variant in lines:
+		total += String(l).length()
+	var shown: int = int(floor(clampf(u / TYPE_END, 0.0, 1.0) * float(total) + 1e-6))
+	var out: Array[int] = []
+	for l2: Variant in lines:
+		var n: int = String(l2).length()
+		out.append(clampi(shown, 0, n))
+		shown -= n
+	return out
+
+
+## The clock card's digits `secs` real seconds into the card at progress u: the countdown ("count") or the flip ("from" /
+## "to" at "flip_u"). Pure (tests).
+static func clock_text(d: Dictionary, secs: float, u: float) -> String:
+	if d.has("count"):
+		var left: int = maxi(int(ceil(float(d["count"]) - secs - 1e-6)), 0)
+		return "%02d:%02d" % [left / 60, left % 60]
+	return String(d.get("to", "")) if u >= float(d.get("flip_u", 0.5)) else String(d.get("from", ""))
+
+
+## What the clock digits depend on (seconds left, or 0 / 1 before / after the flip): they change only when this does.
+static func clock_key(d: Dictionary, secs: float, u: float) -> int:
+	if d.has("count"):
+		return maxi(int(ceil(float(d["count"]) - secs - 1e-6)), 0)
+	return 1 if u >= float(d.get("flip_u", 0.5)) else 0
+
+
+## The clock card's digit height (1 = open, 0 = folded shut at the flip) and colour at the same moment. Pure (tests).
+static func clock_fold(d: Dictionary, secs: float, u: float) -> Dictionary:
+	return {"fold": clock_fold_amount(d, secs, u), "red": clock_is_red(d, secs, u)}
+
+
+## clock_fold's two parts without a Dictionary (the per-frame form).
+static func clock_fold_amount(d: Dictionary, secs: float, u: float) -> float:
+	if d.has("count"):
+		return 1.0
+	return clampf(absf(u - float(d.get("flip_u", 0.5))) / (FLIP_U * 0.5), 0.0, 1.0)
+
+
+static func clock_is_red(d: Dictionary, secs: float, u: float) -> bool:
+	if d.has("count"):
+		return float(d["count"]) - secs <= 10.0 + 1e-6
+	return u >= float(d.get("flip_u", 0.5))
 
 
 ## {shown, alpha, u (0..1 through the window)}.
@@ -165,6 +295,10 @@ func _build() -> void:
 	elif kind() == "credits":
 		cc.anchor_top = SAFE_TOP
 		cc.anchor_bottom = SAFE_BOTTOM
+	elif kind() == "clock":   # the upper right, between the letterbox bars (the radio box keeps the upper left)
+		cc.anchor_left = 0.6
+		cc.anchor_top = SAFE_TOP
+		cc.anchor_bottom = 0.42
 	frame = PanelContainer.new()
 	frame.name = "Frame"
 	var sb := StyleBoxFlat.new()
@@ -180,6 +314,9 @@ func _build() -> void:
 	screen = ScreenDraw.new()
 	screen.name = "Screen"
 	screen.kind = kind()
+	screen.log_rows = bool(data.get("log", false))
+	screen.zoom = data.get("zoom", [])
+	screen.focus = data.get("focus", Vector2(0.5, 0.5))
 	screen.custom_minimum_size = PHONE_SIZE if phone else CCTV_SIZE
 	if kind() == "radio":
 		screen.custom_minimum_size = RADIO_SIZE
@@ -187,6 +324,10 @@ func _build() -> void:
 		screen.custom_minimum_size = CREDITS_SIZE
 	elif kind() == "flow":
 		screen.custom_minimum_size = FLOW_SIZE
+	elif kind() == "clock":
+		screen.custom_minimum_size = CLOCK_SIZE
+	elif kind() == "terminal":
+		screen.custom_minimum_size = TERM_SIZE
 	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	screen.clip_contents = true
 	frame.add_child(screen)
@@ -214,6 +355,35 @@ func _build() -> void:
 		head_label.name = "FlowTitle"
 		head_label.position = Vector2(20.0, 14.0)
 		screen.add_child(head_label)
+		return
+	if kind() == "terminal":
+		head_label = _lbl(String(data.get("title", "")), 18, Color("#9AA4AE"))
+		head_label.name = "TermTitle"
+		head_label.position = Vector2(84.0, 5.0)
+		screen.add_child(head_label)
+		var tl: Array = data.get("lines", [])
+		for k: int in tl.size():
+			var l: Label = _lbl(String(tl[k]), 26, Color("#FF9A3C") if k == tl.size() - 1 else Color("#5BD38A"))
+			l.name = "Line%d" % k
+			l.visible_characters_behavior = TextServer.VC_CHARS_AFTER_SHAPING
+			l.position = Vector2(24.0, 50.0 + 50.0 * k)
+			screen.add_child(l)
+			term_labels.append(l)
+			_term_lens.append(String(tl[k]).length())
+			_term_total += String(tl[k]).length()
+		return
+	if kind() == "clock":
+		head_label = _lbl(String(data.get("title", "")), 20, Color("#DDF5E4"))
+		head_label.name = "ClockTitle"
+		head_label.position = Vector2(18.0, 10.0)
+		screen.add_child(head_label)
+		time_label = _lbl("", 70, CLOCK_GOLD)
+		time_label.name = "Digits"
+		time_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		time_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		time_label.position = Vector2(0.0, 40.0)
+		time_label.size = Vector2(CLOCK_SIZE.x, 100.0)
+		screen.add_child(time_label)
 		return
 	if kind() == "radio":
 		sender_label = _lbl("BỘ ĐÀM: " + String(data.get("sender", "")).to_upper(), 22, Color("#DDF5E4"))
@@ -312,14 +482,36 @@ func update(r: float) -> void:
 		return
 	frame.modulate.a = float(st["alpha"])
 	screen.u = float(st["u"])
+	screen.t = maxf(r - r0, 0.0)
 	screen.queue_redraw()
 	for k3: int in flow_labels.size():   # flow: each node / amount appears with its box / arrow
 		var nn: int = (data.get("nodes", []) as Array).size()
 		var t0: float = 0.12 + 0.27 * k3 if k3 < nn else 0.3 + 0.27 * (k3 - nn)
 		flow_labels[k3].modulate.a = clampf((float(st["u"]) - t0) / 0.08, 0.0, 1.0)
 	if roll:   # the credits roll up from below the title to past the top
-		var u: float = float(st["u"])
+		var u: float = clampf(float(st["u"]) / clampf(float(data.get("roll_end", 1.0)), 0.1, 1.0), 0.0, 1.0)
 		roll.position = Vector2(0.0, lerpf(CREDITS_SIZE.y, -roll.get_combined_minimum_size().y + 140.0, u))
 		title_label.modulate.a = clampf(1.0 - (u - 0.25) / 0.15, 0.0, 1.0)
 	if clock_label:
 		clock_label.text = clock_at(String(data.get("clock", "21:47:05")), maxf(r - r0, 0.0) * 1.0)
+	if not term_labels.is_empty():
+		# as terminal_chars (the tests' pure form), without a per-frame array
+		var shown: int = int(floor(clampf(float(st["u"]) / TYPE_END, 0.0, 1.0) * float(_term_total) + 1e-6))
+		for k4: int in term_labels.size():
+			var vc: int = clampi(shown, 0, _term_lens[k4])
+			if term_labels[k4].visible_characters != vc:
+				term_labels[k4].visible_characters = vc
+			shown -= _term_lens[k4]
+	if kind() == "clock":
+		var secs: float = maxf(r - r0, 0.0)
+		var cu: float = float(st["u"])
+		var ck: int = clock_key(data, secs, cu)
+		if ck != _clock_key:
+			_clock_key = ck
+			time_label.text = clock_text(data, secs, cu)
+		time_label.pivot_offset = time_label.size * 0.5
+		time_label.scale = Vector2(1.0, maxf(clock_fold_amount(data, secs, cu), 0.02))
+		var red: int = 1 if clock_is_red(data, secs, cu) else 0
+		if red != _clock_red:   # a theme override re-shapes the label: only on a colour change
+			_clock_red = red
+			time_label.add_theme_color_override("font_color", CLOCK_RED if red == 1 else CLOCK_GOLD)

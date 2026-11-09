@@ -593,7 +593,9 @@ static func _rack(root: Node3D, opts: Dictionary) -> void:
 	var leds: Array[Color] = [Color("#3BFF7A"), Color("#3BA7FF"), Color("#FFB23B")]
 	for i: int in 10:
 		CineFX._box(piece, "Unit", Vector3(0.5, 0.1, 0.01), Vector3(0.0, 0.3 + 0.16 * i, -0.505), CineFX._mat(Color("#24262C"), 0.5))
-		CineFX._box(piece, "Led", Vector3(0.03, 0.015, 0.01), Vector3(0.19, 0.3 + 0.16 * i, -0.512), CineFX._glow_mat(leds[(i + int(opts.get("seed", 0))) % 3], 3.0))
+		# W6 stream C (seg_d5_boss): opts "dead" builds a dead rack, its LEDs off (swapped in when Za Mẫn is kicked into it)
+		var led: StandardMaterial3D = CineFX._mat(Color("#1A1C20"), 0.5) if bool(opts.get("dead", false)) else CineFX._glow_mat(leds[(i + int(opts.get("seed", 0))) % 3], 3.0)
+		CineFX._box(piece, "Led", Vector3(0.03, 0.015, 0.01), Vector3(0.19, 0.3 + 0.16 * i, -0.512), led)
 	CineFX._breakable(root, [piece], 10, Color("#2A2C31"))
 
 

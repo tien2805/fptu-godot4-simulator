@@ -109,16 +109,16 @@ Không có nhạc riêng (chỉ âm thanh hiệu ứng): cuộc gọi 3 giờ s�
 | `boss_d2` | đấu tay đôi Sói Xám dưới cầu Rạch Hầm | *Hungry Like the Wolf*, Duran Duran |
 | `race_d2_drift` | đua drift một vòng với Sói Xám quanh cầu Rạch Hầm; bắt đầu đúng lúc "ĐI!", đếm ngược không có nhạc | *Deja Vu*, Dave Rodgers (bản cắt từ điệp khúc, đã có); khác: *Running in the 90s*, Max Coveri |
 | `cine_d2` | Sói Xám bị trói vào cột (18 s) | đã có |
-| `seg_d2_boss` | cảnh đánh lớn 25 s dưới cầu | *Heartbreaker*, Pat Benatar (đã có) |
+| `seg_d2_boss` | cảnh đánh lớn 22 s dưới cầu | *Heartbreaker*, Pat Benatar (đã có) |
 | `cine_d3_intro` | chạy xe đêm tới kênh (14 s) | *A Real Hero*, College & Electric Youth |
 | `mission_sneak` | lẻn vào bến container | *Sneaky Snitch*, Kevin MacLeod |
-| `cine_d3_mannequins` | cửa container mở, ma-nơ-canh quay đầu, "Surprise!" (10 s) | *Toccata and Fugue in D minor*, J. S. Bach |
+| `cine_d3_mannequins` | cửa container mở, ma-nơ-canh quay đầu, "Surprise!" (9.3 s) | *Toccata and Fugue in D minor*, J. S. Bach |
 | `mission_gunfight` | đấu súng ở bến container | *Bang Bang (My Baby Shot Me Down)*, Nancy Sinatra |
 | `meme_mannequin` | ma-nơ-canh đứng im khi lính quay lại, kiểu "mannequin challenge" (Ngày 3, Wave 3) | *Black Beatles*, Rae Sremmurd |
 | `meme_coffin_dance` | bảo vệ khiêng thùng kính | *Astronomia*, Vicetone & Tony Igy |
 | `boss_d3` | trùm xe nâng Alexander | *Copacabana*, Barry Manilow |
 | `cine_d3` | cái tên vô tận bị cắt ngang, USB rơi (18 s) | đã có |
-| `seg_d3_boss` | cảnh đánh lớn 25 s ở bến container | *Straighten Up and Fly Right* (đã có) |
+| `seg_d3_boss` | cảnh đánh lớn 21 s ở bến container | *Straighten Up and Fly Right* (đã có) |
 | `cine_d5_intro` | Anh Duy giải mã USB (14 s) | *Technologic*, Daft Punk |
 | `mission_basement` | đi lén dưới hầm server | *Oxygène (Part IV)*, Jean-Michel Jarre |
 | `cine_d5_monitors` | mặt Za Mẫn cười trên 50 màn hình (10 s) | *Mr. Roboto*, Styx |
@@ -131,7 +131,7 @@ Không có nhạc riêng (chỉ âm thanh hiệu ứng): cuộc gọi 3 giờ s�
 | `cine_d5` | dòng tiền chỉ về Trà Sữa Lọ (18 s) | đã có |
 | `cine_d7_intro` | bình minh, Anh Duy báo 08:00 tool lên hệ thống thi, Mr.T "giữ cửa thang máy" (13 s) | *Lux Aeterna* (nhạc phim *Requiem for a Dream*), Clint Mansell |
 | `cine_d7_monologue` | Lùm Văn Lọ "Mọi thứ đều nằm trong kế hoạch", búng tay tắt đèn (13 s) | *Sweet Dreams (Are Made of This)*, Eurythmics |
-| `end_c` | kết C "Kẻ phản diện mới" (26 s, có credits) | *Money, Money, Money*, ABBA (đã có) |
+| `end_c` | kết C "Kẻ phản diện mới" (26.5 s, có credits) | *Money, Money, Money*, ABBA (đã có) |
 
 Nhạc chuông của Sói Xám là âm thanh tự tạo (`ringtone_synth`), không phải nhạc nền.
 
@@ -157,9 +157,9 @@ Nhạc chuông của Sói Xám là âm thanh tự tạo (`ringtone_synth`), khô
 | `cine_d0_wake` (tỉnh dậy hoảng loạn, 8 s) | *Wake Me Up Before You Go-Go*, Wham!; hoặc *Yakety Sax* | sáng trễ giờ thi |
 | `cine_d0_brief` (Mr.T giao việc, 12 s) | *Peter Gunn Theme*, Henry Mancini | không khí điệp viên |
 | `seg_d0_exam` (replay bắt tool) | *Bad to the Bone* (riff) | khoảnh khắc "bắt được rồi" |
-| `cine_d0_exam` (đắc thắng rồi rợn, 18 s) | *I Got You (I Feel Good)*, James Brown | đang vui thì người cừu xuất hiện |
+| `cine_d0_exam` (đắc thắng rồi rợn, 15.6 s) | *I Got You (I Feel Good)*, James Brown | đang vui thì người cừu xuất hiện |
 | `cine_d0_midnight` (mất ngủ, bị hù, 22 s) | *Mr. Sandman*, The Chordettes | bài ru ngủ ngọt mà rợn |
-| `ai_intro` (thư đình chỉ, TOANG!, 24 s) | *The End of the World*, Skeeter Davis; hoặc *Que Sera, Sera* | nhạc ngọt phát trên thảm họa |
+| `ai_intro` (thư đình chỉ, TOANG!, 20 s) | *The End of the World*, Skeeter Davis; hoặc *Que Sera, Sera* | nhạc ngọt phát trên thảm họa |
 | `cine_day_start` (tờ lịch bị xé mỗi sáng, 9 s) | *Good Morning* (*Singin' in the Rain*) | vui vẻ trong khi đếm ngược |
 
 ## Gợi ý: cảnh cuối các ngày và các kết

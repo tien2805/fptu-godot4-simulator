@@ -9,6 +9,9 @@ SHOT S1      0.000  static    wide: the bench at night
 SHOT S2      2.000  push_in   push-in hero
 SHOT S3      5.400  dolly     push-in: the backpack glows red
 SHOT S4      8.800  static    low front two-shot: the face rises behind
+SHOT S4b    10.000  static    snap close-up: the white face right behind the bench
+SHOT S4c    11.200  push_in   push-in hero
+SHOT S4d    12.400  static    low front two-shot again: Phúc laughs, the protagonist fumes
 SHOT S5     13.800  dolly     push-in: glasses that are not theirs
 SHOT S6     18.600  two_shot  two-shot hero + phuc
 #

@@ -45,6 +45,10 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	# (table, stool, chair, tray, soup_pot, counter), Mr.T's laptop (screen glow via glow_at), the "THI HỘ BAO ĐẬU" flyer
 	# stand, and the night corridor set (walls, ceiling, tube lamps that flicker like "lamp": opts "flicker")
 	"shiba", "table", "stool", "chair", "tray", "soup_pot", "counter", "laptop", "flyer", "corridor",
+	# W6 fights: lunch plugged in a clone's sheep-mask eye holes (seg_d4_brawl; held on Head like the mask), the yard
+	# crane's hook on its cable (seg_d3_boss: origin at the block's centre, the cable up to opts "cable" m, the J hook below
+	# opening toward +Z)
+	"food_eyes", "crane_hook",
 	# Dolly's tells as held props (cuff on Wrist.L, keychain on Hips) and a lobby front with glass doors (cine_d4)
 	"wool_cuff", "sheep_keychain", "lobby_wall",
 	# story Phase C (Days 2, 3, 5): wearables, hand props, sets and animated props, built by CinePropsC (see its header;
@@ -62,6 +66,8 @@ const PROP_KINDS: Array[String] = ["crate_stack", "scooter", "banana", "phone", 
 	# w4-endings: the ending cinematics' props, built by CinePropsE (this list = CinePropsE.KINDS)
 	"end_billboard", "end_helicopter", "police_car", "box", "belt", "scholarship", "certificate", "hearing_set", "canal", "sign",
 	"boat", "lift_frame", "lift_door", "dossier",
+	# W6 phase2 (seg_d7_phase2): Lùm Văn Lọ's antique urn, wide-mouthed so it ends up over a head (W6 phase2 block below)
+	"antique_urn",
 	# Phase D Day 7 (w4-day7): CinePropsD7.KINDS (Lọ's gear, the saber, the gallery and roof props)
 	"gold_glasses", "pink_collar", "gold_chain", "saber", "vase", "plinth", "speaker", "laser_emitter", "breaker",
 	"exam_server", "helicopter", "academy_sign", "flashlight", "heli_rotor", "searchlight", "rain", "gallery_hall", "roof_deck"]
@@ -502,6 +508,8 @@ static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 	var root := Node3D.new()
 	root.name = String(opts.get("name", kind.to_pascal_case()))
 	match kind:
+		"antique_urn":   # W6 phase2 block
+			_build_antique_urn(root)
 		"crate_stack":
 			_build_crates(root, opts)
 		"scooter":
@@ -545,6 +553,10 @@ static func build_prop(kind: String, opts: Dictionary = {}) -> Node3D:
 			_build_tray(root, opts)
 		"soup_pot":
 			_build_soup_pot(root)
+		"food_eyes":
+			_build_food_eyes(root)
+		"crane_hook":
+			_build_crane_hook(root, opts)
 		"counter":
 			_build_counter(root, opts)
 		"laptop":
@@ -578,6 +590,23 @@ static func _build_crates(root: Node3D, opts: Dictionary) -> void:
 	var col: Color = opts.get("color", COL_CRATE)
 	var wood: StandardMaterial3D = _mat(col, 0.85)
 	var edge: StandardMaterial3D = _mat(COL_CRATE_EDGE, 0.85)
+	if bool(opts.get("broken", false)):
+		# the stack after crate_break (a later scene): its planks lie flat around the spot, seeded, no intact crate
+		var rng := RandomNumberGenerator.new()
+		rng.seed = int(opts.get("seed", 3))
+		var pm := BoxMesh.new()
+		pm.size = Vector3(0.55, 0.02, 0.07)
+		for i: int in 10:
+			var pl := MeshInstance3D.new()
+			pl.name = "Plank%d" % i
+			pl.mesh = pm
+			pl.material_override = wood if i % 3 != 2 else edge
+			var a: float = rng.randf_range(0.0, TAU)
+			var r: float = rng.randf_range(0.25, 1.1)
+			pl.position = Vector3(cos(a) * r, 0.011 + 0.021 * (i % 2), sin(a) * r)
+			pl.rotation.y = rng.randf_range(0.0, TAU)
+			root.add_child(pl)
+		return
 	var places: Array[Vector3] = [Vector3(-0.33, size * 0.5, 0.0), Vector3(0.33, size * 0.5, 0.05), Vector3(0.02, size * 1.5, 0.02)]
 	var yaws: Array[float] = [0.08, -0.12, 0.3]
 	var crates: Array[Node3D] = []
@@ -1079,6 +1108,33 @@ static func _build_tray(root: Node3D, opts: Dictionary) -> void:
 		_box(root, "Sticks", Vector3(0.24, 0.006, 0.012), Vector3(0.02, 0.012, 0.11), _mat(Color("#D9B98A"), 0.7))
 
 
+## Lunch in a sheep mask's eye holes (seg_d4_brawl: the full tray shoved into a clone's face): a rice blob over each
+## glowing eye, a curry smear under them, a noodle strand hanging off; held on the Head bone with the mask's offset, so
+## the mask's eyes sit at (+-0.028, 0.06, -0.15) in this frame.
+static func _build_food_eyes(root: Node3D) -> void:
+	var rice: StandardMaterial3D = _mat(Color("#FBFAF5"), 0.9)
+	for sx: float in [-0.028, 0.028]:
+		_sphere(root, "Rice", 0.024, Vector3(sx, 0.062, -0.156), rice, Vector3(1.15, 0.95, 0.6))
+		_sphere(root, "Grain", 0.008, Vector3(sx * 1.8, 0.04, -0.153), rice)
+	_sphere(root, "Curry", 0.03, Vector3(0.01, 0.026, -0.152), _mat(Color("#D9962B"), 0.6), Vector3(1.6, 0.5, 0.3))
+	_box(root, "Noodle", Vector3(0.006, 0.09, 0.006), Vector3(0.036, 0.0, -0.156), _mat(Color("#F2D98C"), 0.7), Vector3(0.0, 0.0, 0.25))
+
+
+## The container-yard crane's hook (seg_d3_boss): a yellow hook block (origin at its centre), a steel shank and a J hook
+## below it (bottom 0.45 m under the origin, the tip rising on the +Z side), the cable straight up (opts "cable" m, default
+## 5.75; tests skip it as a contact, it is never in the way).
+static func _build_crane_hook(root: Node3D, opts: Dictionary) -> void:
+	var steel: StandardMaterial3D = _mat(Color("#55595F"), 0.35)
+	steel.metallic = 0.6
+	_box(root, "HookBlock", Vector3(0.24, 0.3, 0.16), Vector3.ZERO, _mat(Color("#F2B705"), 0.5))
+	_box(root, "HookStripe", Vector3(0.245, 0.06, 0.165), Vector3(0.0, 0.06, 0.0), _mat(Color("#1E1F22"), 0.6))
+	_box(root, "HookShank", Vector3(0.04, 0.26, 0.04), Vector3(0.0, -0.28, 0.0), steel)
+	_box(root, "HookBase", Vector3(0.04, 0.04, 0.18), Vector3(0.0, -0.43, 0.07), steel)
+	_box(root, "HookTip", Vector3(0.04, 0.12, 0.04), Vector3(0.0, -0.35, 0.14), steel)
+	var ln: float = float(opts.get("cable", 5.75))
+	_cyl(root, "Cable", 0.012, 0.012, ln, Vector3(0.0, 0.15 + ln * 0.5, 0.0), steel)
+
+
 ## Empty steel soup pot (cold and empty: no burns, no gore), two side handles; origin at the bottom centre.
 static func _build_soup_pot(root: Node3D) -> void:
 	var steel: StandardMaterial3D = _mat(Color("#A9B0B8"), 0.3)
@@ -1243,3 +1299,47 @@ static func _build_lobby_wall(root: Node3D, opts: Dictionary) -> void:
 		_box(root, "Door", Vector3(1.3, 2.3, 0.04), Vector3(sx, 1.15, 0.02), glass)
 		_box(root, "Frame", Vector3(1.4, 0.06, 0.06), Vector3(sx, 2.33, 0.03), _mat(Color("#6E747C"), 0.4))
 	_box(root, "SignBand", Vector3(w * 0.6, 0.35, 0.05), Vector3(0.0, 2.85, 0.03), _glow_mat(Color("#F37021"), 1.2))
+
+
+# --- W6 phase2 (plan 2026-11-05-w6-fights task 5): seg_d7_phase2's prop ---
+## Lùm Văn Lọ's antique urn: a wide-mouthed blue-and-white jar, URN_H tall, origin at its centre, mouth up (+Y), foot down.
+## Open at the mouth and drawn from both sides, so turned over (hold "rot" 180 about X) it fits over a head and a mask
+## (inner radius 0.2 at the mouth, 0.24 at the shoulder). Round about Y: any yaw looks the same.
+const URN_H: float = 0.5
+const URN_MOUTH_R: float = 0.2
+
+
+static func _build_antique_urn(root: Node3D) -> void:
+	var glaze: StandardMaterial3D = _mat(Color("#EEF0F2"), 0.18)
+	glaze.metallic_specular = 0.8
+	glaze.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var blue: StandardMaterial3D = _mat(Color("#1E4C9A"), 0.22)
+	blue.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var gold: StandardMaterial3D = _mat(Color("#D4AF37"), 0.25)
+	gold.metallic = 0.8
+	var h: float = URN_H * 0.5
+	# the body: the foot (r 0.14) widening to the shoulder (r 0.24) at y +0.08, then in to the mouth (r 0.2)
+	var body: MeshInstance3D = _cyl(root, "Body", 0.24, 0.14, 0.33, Vector3(0.0, -h + 0.165, 0.0), glaze)
+	(body.mesh as CylinderMesh).cap_top = false
+	var sh: MeshInstance3D = _cyl(root, "Shoulder", URN_MOUTH_R, 0.24, 0.17, Vector3(0.0, -h + 0.33 + 0.085, 0.0), glaze)
+	(sh.mesh as CylinderMesh).cap_top = false
+	(sh.mesh as CylinderMesh).cap_bottom = false
+	# blue bands on the belly and the shoulder, a gold lip and foot
+	var b1: MeshInstance3D = _cyl(root, "Band", 0.2135, 0.2045, 0.05, Vector3(0.0, -h + 0.21, 0.0), blue)
+	(b1.mesh as CylinderMesh).cap_top = false
+	(b1.mesh as CylinderMesh).cap_bottom = false
+	var b2: MeshInstance3D = _cyl(root, "Band", 0.2245, 0.2365, 0.05, Vector3(0.0, -h + 0.375, 0.0), blue)
+	(b2.mesh as CylinderMesh).cap_top = false
+	(b2.mesh as CylinderMesh).cap_bottom = false
+	var lip := MeshInstance3D.new()
+	lip.name = "Lip"
+	var tm := TorusMesh.new()
+	tm.inner_radius = URN_MOUTH_R - 0.006
+	tm.outer_radius = URN_MOUTH_R + 0.022
+	tm.rings = 20
+	tm.ring_segments = 6
+	lip.mesh = tm
+	lip.material_override = gold
+	lip.position = Vector3(0.0, h - 0.01, 0.0)
+	root.add_child(lip)
+	_cyl(root, "Foot", 0.13, 0.145, 0.03, Vector3(0.0, -h + 0.015, 0.0), gold)
