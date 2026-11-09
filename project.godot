@@ -21,7 +21,9 @@ window/stretch/mode="canvas_items"
 
 [physics]
 
-; Godot 4.4+ dùng Jolt: mặc định Area3D KHÔNG phát hiện StaticBody3D.
+; Game chạy GodotPhysics3D (mặc định của 4.7.2 khi không đặt physics/3d/physics_engine, đã kiểm 2026-11-09).
+; Hai cờ jolt_physics_3d dưới đây chỉ có tác dụng nếu đổi sang Jolt; giữ lại cho trường hợp đó.
+; Với Jolt: mặc định Area3D KHÔNG phát hiện StaticBody3D.
 ; Bật để vùng near-miss của xe máy thấy được xe buýt / xe máy NPC / xe tải (StaticBody3D).
 jolt_physics_3d/simulation/areas_detect_static_bodies=true
 ; Jolt dựng WorldBoundaryShape3D bằng một hộp kích thước này (mặc định 2000 m): thế giới mở trải từ campus
