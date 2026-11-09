@@ -444,4 +444,4 @@ Spec `docs/superpowers/specs/2026-10-26-story-phase-c-days-2-3-5-design.md` (C-D
 
 **Đồ hoạ ("nặng cũng được"):** `project.godot` bật MSAA 2x + FXAA + debanding, lọc dị hướng, shadow map 8192 bóng mềm chất lượng cao, SSAO/SSIL/SSR chất lượng cao, SDFGI hội tụ nhanh, sương thể tích độ phân giải cao. Mỗi màn gọi `GameFX.upgrade_scene_visuals(self, "outdoor"/"indoor")` ở cuối `_ready`: nhân bản Environment rồi bật SDFGI (6/4 cascade), SSIL, SSR, glow softlight, tonemap ACES, chỉnh màu nhẹ, sương + sương thể tích (outdoor), bán cầu dưới sky trung tính; nắng dùng PSSM 4 split, bóng mềm. Headless không kiểm được visual → tự render bằng 2 script preview ở trên và xem ảnh.
 
-> Lưu ý kỹ thuật: Godot 4.4+ dùng Jolt, Area3D không phát hiện StaticBody3D → xe NPC gắn thêm Area3D `near_miss_tag` (`PlayerBike.attach_near_miss_tag`) để vùng near-miss phát hiện area-area trên mọi engine.
+> Lưu ý kỹ thuật: game chạy GodotPhysics3D (mặc định của 4.7.2), nhưng nếu đổi sang Jolt thì Area3D không phát hiện StaticBody3D → xe NPC gắn thêm Area3D `near_miss_tag` (`PlayerBike.attach_near_miss_tag`) để vùng near-miss phát hiện area-area trên mọi engine.
