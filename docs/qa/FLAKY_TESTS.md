@@ -79,6 +79,20 @@ General rules:
 - **Flake or real.** Real: it fails alone, or part A fails.
 - **Rerun rule.** Re-run alone, up to 2 times. Record the failing check text here next time.
 
+### test_bullet_time, test_camera_director, test_melee_combat: under a full parallel regression (2026-11-09)
+
+- **Symptom.** All three failed in the Wave 6 full regression, which ran on battery while another Godot test run was
+  going. All three passed alone right after, on the same commit (wave6 74eb2c7), and on main.
+  - test_bullet_time: "M: a repeated focus_muffle(true) changes nothing (1.00)".
+  - test_camera_director: "shake moves the player's camera (0.0000 rad)".
+  - test_melee_combat: "the clones keep attacking and hurting (3 attacks, hp 97)".
+- **Cause.** Wall-clock timing:
+  - the muffle slides over MUFFLE_TIME real seconds;
+  - the shake and the clones' attacks are sampled over a fixed real-time window.
+  Wave 6 does not touch MusicDirector, BulletTime, the camera director or the melee code.
+- **Flake or real.** A flake if it passes alone. Real if it fails alone, or fails with a different check text.
+- **Rerun rule.** Re-run alone, up to 2 times.
+
 ## Timing-sensitive checks (not yet seen failing)
 
 These checks compare wall-clock time to a fixed budget. None has been recorded as flaky, but they fail the same way as
