@@ -4,7 +4,7 @@
 #
 # id   kind      real_hit  freeze_end  slowmo_from  slowmo_to  speed  story_s  what
 H1   medium       3.200       3.340        2.880      4.060   0.30    3.018  gạt kiếm: the staff comes down on the stub, it spins away
-A1   accent       8.300       8.300        7.930      8.900   0.30    7.334  slow-motion accent: Lọ's furious hook sails past the protagonist
+A1   accent       8.550       8.550        8.180      9.150   0.30    7.584  slow-motion accent: Lọ's furious hook sails past the protagonist
 H2   heavy        9.600       9.780        9.150     10.880   0.25    8.020  a flying knee to the stomach: Lọ folds double
 H5   finisher    13.000      13.200       12.350     22.000   0.25   10.115  bật nhảy, kẹp cổ số 21: the scissor takedown, Lọ flung over backwards (long swell)
 #
@@ -15,7 +15,7 @@ SHOT S3      2.900  orbit     slow-motion orbit: the staff comes down on the stu
 SHOT S4      4.400  dutch     dutch lo
 SHOT S5      6.350  push_in   push-in hero
 SHOT S6      7.150  two_shot  two-shot hero + lo
-SHOT S7      7.950  orbit     slow-motion accent, low orbit: the hook sails past
+SHOT S7      8.200  orbit     slow-motion accent, low orbit: the hook sails past
 SHOT S8      9.250  static    slow motion, low and side-on: the flying knee folds him double
 SHOT S9     10.800  dolly     the protagonist hops back for the run-up, Lọ sways doubled over
 SHOT S10    11.450  low_hero  hero hero

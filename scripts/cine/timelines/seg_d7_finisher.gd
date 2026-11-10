@@ -8,8 +8,9 @@
 #   3.2  H1  gạt kiếm: the staff comes down on the stub, sparks, it spins away over the wet deck (slow motion, medium)
 #   4.5      Lọ shakes his stinging hand, points: "Mày có biết tao là ai không?"
 #   6.45     joke: "Biết. Ông hiệu trưởng sắp về hưu."; the protagonist shrugs and tosses the staff away
-#   8.3  A1  slow-motion accent: Lọ's furious hook sails past (dodge)
-#   9.6  H2  a flying knee to the stomach (slow motion, heavy): Lọ folds double and staggers back
+#   8.55 A1  slow-motion accent (the music's accent): Lọ's furious hook sails past (dodge)
+#   9.6  H2  a flying knee to the stomach (slow motion, heavy): the protagonist swings out behind the spent hook arm and
+#            comes in on Lọ as he drifts back in, turned a little short; Lọ folds double and staggers back
 #  10.7      the protagonist hops back for a run-up, sprints in; Lọ straightens up, dazed
 #  13.0  H5  finisher: bật nhảy, the scissor takedown, legs round Lọ's neck; he is thrown off to the side in one long
 #            slow-motion flip onto the wet helipad (swell to 22.000), stars; "Đòn chân kẹp cổ số 21!"
@@ -28,7 +29,7 @@ const TAIL: float = 3.0
 const SWELL_END: float = 22.0
 # real times of the impacts (H1, A1, H2, H5) and of the helicopter leaving
 const R_H1: float = 3.2
-const R_A1: float = 8.3
+const R_A1: float = 8.55
 const R_H2: float = 9.6
 const R_H5: float = 13.0
 const R_LEAVE: float = 21.2
@@ -50,6 +51,9 @@ const L_A1 := Vector3(0.0, 0.0, 0.6)             # Lọ's hook (short of him: a 
 const L_PASS := Vector3(0.45, 0.0, 0.75)         # carried on by the miss, then he turns back
 const L_H2 := Vector3(0.45, 0.0, 1.0)            # dazed, facing the protagonist again for the knee
 const H_H2 := Vector3(0.45, 0.0, 1.7)            # where the protagonist throws the knee from (toward L_H2: -Z)
+const H_SLIP := Vector3(0.2, 0.0, 2.0)           # the side step to H_H2 swings out behind Lọ's spent hook arm
+const LO_DRIFT: float = 0.12                     # he is still drifting in (m short of L_H2) as the knee comes up
+const LO_H2_TURN: float = -12.0                  # Lọ squares up a little short (his hanging right arm off the knee's line)
 const H_H2B := Vector3(0.5, 0.0, 2.0)            # the hop back off the knee
 const L_BACK := Vector3(0.5, 0.0, 0.5)           # driven back folded double by the knee
 const L_H5 := Vector3(0.55, 0.0, 0.0)            # still doubled over when the protagonist comes flying in
@@ -216,9 +220,10 @@ func _hero() -> void:
 	strike("hero", "A1", "dodge")
 	expr("hero", a1 - 0.2, "surprised")
 	expr("hero", a1 + 0.2, "angry")
-	# H2: a side step, the flying knee
+	# H2: a side step out behind the spent hook arm (only 0.44 story s after A1), then in for the flying knee
 	key("hero", a1 + 0.12, H_A1, CineTimeline.face(H_A1, L_A1))
-	key("hero", h2 - 0.18, H_H2, CineTimeline.face(H_H2, L_H2))
+	key("hero", a1 + 0.18, H_SLIP, CineTimeline.face(H_SLIP, L_H2))
+	key("hero", h2 - 0.1, H_H2, CineTimeline.face(H_H2, L_H2))
 	strike("hero", "H2", "knee_strike", {"reach": REACH_H2})
 	key("hero", h2 + 0.02, H_H2, CineTimeline.face(H_H2, L_H2))
 	key("hero", h2 + 0.3, H_H2B, CineTimeline.face(H_H2B, L_BACK))
@@ -268,18 +273,18 @@ func _lo() -> void:
 	move("lo", _sr(6.5), "arms_crossed", {"fade": 0.25})
 	expr("lo", _sr(6.8), "surprised")
 	expr("lo", _sr(7.5), "angry")
-	# A1: the furious hook, a miss; carried past, he turns back dazed
+	# A1: the furious hook, a miss; carried past, he turns back dazed, still drifting in (his right arm off the knee's line)
 	key("lo", _sr(7.6), L1B, 180.0)
 	move("lo", _sr(7.6), "jog", {"fade": 0.15})
 	key("lo", a1, L_A1, CineTimeline.face(L_A1, H_A1))
 	strike("lo", "A1", "hook", {"reach": REACH_A1})
 	key("lo", a1 + 0.22, L_PASS, CineTimeline.face(L_A1, H_A1) + 30.0)
 	move("lo", a1 + 0.15, "stunned", {"fade": 0.12})
-	key("lo", h2 - 0.15, L_H2, CineTimeline.face(L_H2, H_H2))
+	key("lo", h2 - 0.15, L_H2 - Vector3(0.0, 0.0, LO_DRIFT), CineTimeline.face(L_H2, H_H2) + LO_H2_TURN)
 	# H2: the knee folds him double and drives him back; he sways there, doubled over
 	move("lo", h2 + 0.01, "doubled", {"fade": 0.3})   # folds as the knee drives him back (not into the protagonist)
 	expr("lo", h2, "pain")
-	key("lo", h2 + 0.01, L_H2, CineTimeline.face(L_H2, H_H2))
+	key("lo", h2 + 0.01, L_H2, CineTimeline.face(L_H2, H_H2) + LO_H2_TURN)
 	key("lo", h2 + 0.3, L_BACK, CineTimeline.face(L_BACK, H_H2))
 	key("lo", h5 - 0.5, L_H5, LO_H5_YAW)
 	key("lo", h5, L_H5, LO_H5_YAW)
@@ -306,7 +311,7 @@ func _shots() -> void:
 		{"center": (H_A1 + L_A1) * 0.5 + Vector3(0.0, 1.1, 0.0), "radius": 2.6, "deg_from": 210.0, "deg_to": 250.0,
 			"height": 1.0, "fov": 44.0})
 	shot("S8", _sr(R_H2 - 0.35), "static", "slow motion, low and side-on: the flying knee folds him double",
-		{"pos": (H_H2 + L_H2) * 0.5 + Vector3(-2.4, 0.6, -0.9), "look": (H_H2 + L_H2) * 0.5 + Vector3(0.0, 1.0, 0.0), "fov": 46.0})
+		{"pos": (H_H2 + L_H2) * 0.5 + Vector3(-2.4, 0.6, -0.9), "look": (H_H2 + L_H2) * 0.5 + Vector3(0.0, 1.25, 0.0), "fov": 46.0})
 	shot("S9", _sr(10.8), "dolly", "the protagonist hops back for the run-up, Lọ sways doubled over",
 		{"from": L_BACK + Vector3(-1.6, 1.4, -2.8), "to": L_BACK + Vector3(-1.2, 1.3, -2.4), "look_from": H_RUN + Vector3(0.0, 1.2, 0.0),
 			"look_to": L_H5 + Vector3(0.4, 1.1, 1.2), "fov": 48.0, "hand": 0.4})
